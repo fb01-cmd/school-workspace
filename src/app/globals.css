@@ -24,3 +24,39 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@media print {
+  /* CRITICAL: Remove ALL overflow and height constraints from every layout wrapper.
+     Without this, Chrome clips content beyond the first viewport height (8 classes visible,
+     9th+ classes get cut off because the flex container has overflow-hidden / overflow-auto). */
+  *,
+  html,
+  body,
+  main,
+  div,
+  aside,
+  header,
+  section,
+  article {
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  /* Remove flex scroll traps that cut off content */
+  .flex-1 {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  /* Hide sidebar, topbar completely - they cause layout push */
+  aside,
+  header,
+  nav {
+    display: none !important;
+  }
+}
