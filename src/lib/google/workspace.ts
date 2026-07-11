@@ -352,6 +352,7 @@ export const createUser = async (
       suspended: false,
     };
     mockUsers.push(newUser);
+    invalidateUserCache();
     return newUser;
   }
 
@@ -371,6 +372,7 @@ export const createUser = async (
         orgUnitPath,
       },
     });
+    invalidateUserCache();
     return res.data;
   } catch (error) {
     console.error("Error creating user in Google Workspace", error);
@@ -382,6 +384,7 @@ export const createUser = async (
 export const deleteUser = async (email: string) => {
   if (isMock) {
     mockUsers = mockUsers.filter((user) => user.primaryEmail !== email);
+    invalidateUserCache();
     return { success: true };
   }
 
@@ -392,6 +395,7 @@ export const deleteUser = async (email: string) => {
     await admin.users.delete({
       userKey: email,
     });
+    invalidateUserCache();
     return { success: true };
   } catch (error) {
     console.error("Error deleting user in Google Workspace", error);
@@ -439,6 +443,7 @@ export const updateUser = async (
       existing.primaryEmail = updates.primaryEmail;
     }
     mockUsers[userIndex] = existing;
+    invalidateUserCache();
     return existing;
   }
 
@@ -464,6 +469,7 @@ export const updateUser = async (
       userKey: email,
       requestBody,
     });
+    invalidateUserCache();
     return res.data;
   } catch (error) {
     console.error("Error updating user in Google Workspace", error);

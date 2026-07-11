@@ -37,7 +37,7 @@ export default function UserList() {
   const [studentOUMappings, setStudentOUMappings] = useState<Record<number, string>>({});
 
   // Filters & Search
-  const [selectedOUFilter, setSelectedOUFilter] = useState<string>("/");
+  const [selectedOUFilter, setSelectedOUFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Sorting State
@@ -126,17 +126,18 @@ export default function UserList() {
     }
   };
 
-  const loadUsers = async (ouFilter: string, isSilent = false) => {
+  const loadUsers = async (ouFilter: string = "", isSilent = false) => {
     if (!domain) return [];
     if (!isSilent) setLoading(true);
     try {
-      const pathToSend = ouFilter === "" ? "all" : ouFilter;
+      // Always fetch all users in the domain to enable client-side instant search across OUs,
+      // and perform fast client-side filtering for specific OUs.
       const res = await fetch("/api/workspace/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "list",
-          orgUnitPaths: [pathToSend],
+          orgUnitPaths: ["all"],
         }),
       });
       const data = await res.json();
@@ -161,13 +162,6 @@ export default function UserList() {
     hasInitializedRef.current = false;
     loadInitialConfigAndOUs();
   }, [domain]);
-
-  // Dynamically load users when OU filter changes (skip first mount — handled by loadInitialConfigAndOUs)
-  useEffect(() => {
-    if (domain && hasInitializedRef.current) {
-      loadUsers(selectedOUFilter, false);
-    }
-  }, [selectedOUFilter]);
 
   const handleRoleFilterChange = (role: string) => {
     setSelectedOUFilter(""); // clear OU filter when switching preset
@@ -514,11 +508,25 @@ export default function UserList() {
     setCurrentPage(1); // Reset to page 1 on sort change
   };
 
+  // Calculate search matches count across the entire domain (ignoring active OU filter)
+  const globalSearchMatchesCount = useMemo(() => {
+    if (!searchQuery.trim()) return 0;
+    const query = searchQuery.toLowerCase().trim();
+    return users.filter((u) => {
+      const emailMatch = u.primaryEmail.toLowerCase().includes(query);
+      const lastNameMatch = u.name.familyName.toLowerCase().includes(query);
+      const firstNameMatch = u.name.givenName.toLowerCase().includes(query);
+      const fullNameMatch = `${u.name.familyName}${u.name.givenName}`.toLowerCase().includes(query);
+      return emailMatch || lastNameMatch || firstNameMatch || fullNameMatch;
+    }).length;
+  }, [users, searchQuery]);
+
   // Process Users (Filter, Search, Sort)
   const processedUsers = useMemo(() => {
     let result = [...users];
 
     // 1. OU Filter (exact match only — each OU level has its own accounts)
+    // Strictly intersect both filters so users can narrow down query results using OU preset tabs
     if (selectedOUFilter) {
       result = result.filter((u) => u.orgUnitPath === selectedOUFilter);
     }
@@ -1005,8 +1013,21 @@ export default function UserList() {
               ))
             ) : paginatedUsers.length === 0 ? (
               <tr>
-                <td colSpan={isSuperAdmin ? 6 : 4} className="px-6 py-12 text-center text-gray-400">
-                  조건에 일치하는 사용자가 없습니다.
+                <td colSpan={isSuperAdmin ? 6 : 4} className="px-6 py-12 text-center text-gray-500">
+                  <div className="space-y-3">
+                    <p className="text-gray-400">선택한 조직단위 내에서 조건에 일치하는 사용자가 없습니다.</p>
+                    {globalSearchMatchesCount > 0 && (
+                      <div className="inline-block bg-indigo-50 text-indigo-700 text-xs px-4 py-2.5 rounded-xl border border-indigo-100 shadow-sm mt-1">
+                        ✨ <strong>전체 조직단위</strong>에서는 <strong>{globalSearchMatchesCount}명</strong>의 사용자가 검색되었습니다.&nbsp;&nbsp;
+                        <button
+                          onClick={() => setSelectedOUFilter("")}
+                          className="font-bold underline text-indigo-600 hover:text-indigo-800 transition-colors"
+                        >
+                          전체 조직에서 검색 결과 보기 →
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
             ) : (
