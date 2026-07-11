@@ -5,7 +5,7 @@ import { parseEnrollmentCSV, getEnrollmentCSVTemplate } from "@/lib/csvParser";
 import type { EnrollmentRow } from "@/lib/csvParser";
 import { callAPI, Btn, ErrBox, CSVUploader } from "./shared";
 
-export default function EnrollTab({ s, ud, onDone }: any) {
+export default function EnrollTab({ s, ud, onDone, onNext }: any) {
   const g1OU = s?.ouMapping?.students?.["1"] || "";
   const [csvText, setCsvText] = useState("");
   const [parsed, setParsed] = useState<EnrollmentRow[]>([]);
@@ -41,9 +41,11 @@ export default function EnrollTab({ s, ud, onDone }: any) {
     setRunning(true);
     setErr("");
     try {
-      setResult(
-        await callAPI("enroll_students", { students, admissionYear: admYear, grade1OUPath: g1OU }, ud)
-      );
+      const response = await callAPI("enroll_students", { students, admissionYear: admYear, grade1OUPath: g1OU }, ud);
+      setResult(response);
+      if (response && (response.succeeded?.length || 0) > 0 && onDone) {
+        onDone();
+      }
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -101,7 +103,7 @@ export default function EnrollTab({ s, ud, onDone }: any) {
       )}
 
       {!csvText ? (
-        <CSVUploader onFile={onFile} label="신입생 CSV 업로드 (성,명,반,번호)" />
+        <CSVUploader onFile={onFile} label="신입생 CSV 업로드 (이름,반,번호)" />
 
       ) : (
         <>
@@ -184,17 +186,91 @@ export default function EnrollTab({ s, ud, onDone }: any) {
               </div>
             </>
           ) : (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-5">
-              <p className="font-bold text-green-800 text-lg">✅ 신입생 계정 생성 완료!</p>
-              <p className="text-green-700 text-sm mt-1">
-                성공: <strong>{result.succeeded?.length}명</strong> / 실패:{" "}
-                <strong>{result.failed?.length || 0}명</strong>
-              </p>
-              {onDone && (
-                <button onClick={onDone} className="mt-3 px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700">
-                  다음 단계로 →
-                </button>
+            <div className="space-y-4">
+              {/* Conditional Result Banner */}
+              {result.succeeded?.length === 0 ? (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-red-800">
+                  <p className="font-bold text-lg">❌ 신입생 계정 생성 실패</p>
+                  <p className="text-sm mt-1">
+                    요청한 모든 신입생 계정 생성에 실패했습니다. 이미 등록된 학번/이메일이 있는지 양식을 다시 한 번 확인해 주세요.
+                  </p>
+                  <p className="text-xs font-semibold mt-2">
+                    성공: 0명 / 실패: <strong>{result.failed?.length || 0}명</strong>
+                  </p>
+                </div>
+              ) : (result.failed?.length || 0) > 0 ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-amber-800">
+                  <p className="font-bold text-lg">⚠️ 신입생 계정 생성 완료 (일부 실패)</p>
+                  <p className="text-sm mt-1">
+                    신입생 계정 중 일부는 성공적으로 생성되었으나, 일부 계정은 생성에 실패했습니다. 아래 실패 상세 목록을 참조해 주세요.
+                  </p>
+                  <p className="text-xs font-semibold mt-2">
+                    성공: <strong>{result.succeeded?.length}명</strong> / 실패: <strong>{result.failed?.length}명</strong>
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-green-800">
+                  <p className="font-bold text-lg">✅ 신입생 계정 생성 완료!</p>
+                  <p className="text-sm mt-1">
+                    모든 신입생 계정이 성공적으로 생성되었습니다.
+                  </p>
+                  <p className="text-xs font-semibold mt-2">
+                    성공: <strong>{result.succeeded?.length}명</strong> / 실패: 0명
+                  </p>
+                </div>
               )}
+
+              {/* Failures Detail List */}
+              {(result.failed?.length || 0) > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-red-700">⚠️ 실패 상세 내역 ({result.failed.length}건)</p>
+                  <div className="overflow-auto max-h-52 rounded-xl border border-red-100">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-red-50 text-red-700 font-semibold">
+                        <tr>
+                          <th className="px-3 py-2 text-left">이름</th>
+                          <th className="px-3 py-2 text-left">이메일</th>
+                          <th className="px-3 py-2 text-left">학번</th>
+                          <th className="px-3 py-2 text-left">실패 사유</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-red-50 bg-red-50/10">
+                        {result.failed.map((f: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-red-50/20 text-red-900">
+                            <td className="px-3 py-2 font-medium">{f.name}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{f.email}</td>
+                            <td className="px-3 py-2 font-mono">{f.studentId}</td>
+                            <td className="px-3 py-2 font-medium text-red-600">
+                              {f.reason.includes("Entity already exists") 
+                                ? "중복 오류 (이미 등록된 이메일)" 
+                                : f.reason}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <Btn
+                  onClick={() => {
+                    setCsvText("");
+                    setParsed([]);
+                    setResult(null);
+                    setErr("");
+                  }}
+                  color="gray"
+                >
+                  새로운 CSV 업로드
+                </Btn>
+                {onNext && (result.succeeded?.length || 0) > 0 && (
+                  <Btn onClick={onNext}>
+                    다음 단계로 →
+                  </Btn>
+                )}
+              </div>
             </div>
           )}
         </>

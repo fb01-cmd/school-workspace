@@ -38,10 +38,9 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
     setNextSerial(null);
     setSerialBasis("");
     try {
-      // 전출·자퇴 OU: 학년 OU의 부모에서 자동 유도
-      // 예) /학생/3학년 → /학생 → /학생/전출및자퇴
+      // 전출·자퇴 OU: 설정맵핑에서 가져오거나 학년 OU의 부모에서 자동 유도
       const parentPath = gradeOU.substring(0, gradeOU.lastIndexOf("/")) || "/";
-      const transferOutOU = `${parentPath}/전출및자퇴`;
+      const transferOutOU = s?.ouMapping?.transferOut || `${parentPath}/전출및자퇴`;
       const searchOUs = [gradeOU, transferOutOU];
 
       const res = await fetch("/api/workspace/users", {

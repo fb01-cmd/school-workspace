@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createOrgunit,
   updateOrgunit,
+  listOrgunits,
   createUser,
   updateUser,
   deleteUser,
@@ -27,12 +28,33 @@ export async function POST(req: NextRequest) {
     // ACTION: year_end_ou_transition
     // ─────────────────────────────────────────
     if (action === "year_end_ou_transition") {
-      const { grade1, grade2, grade3, parentPath } = body;
+      const { grade1, grade2, grade3, parentPath, gradName, graduatesOUPath } = body;
+      const targetGradName = gradName || "졸업생";
       const steps: any[] = [];
 
       try {
-        await updateOrgunit(grade3, "졸업생");
-        steps.push({ step: 1, action: `${grade3} → 졸업생`, status: "success" });
+        // Step 0: Archive existing graduates OU if it exists (prevents name collision)
+        if (graduatesOUPath) {
+          try {
+            const allOUs = await listOrgunits();
+            const existingGradOU = allOUs.find((o: any) => o.orgUnitPath === graduatesOUPath);
+            if (existingGradOU) {
+              const archiveName = `이전 학년도 ${targetGradName}`;
+              await updateOrgunit(graduatesOUPath, archiveName);
+              steps.push({ step: 0, action: `기존 ${targetGradName} → ${archiveName} (아카이브)`, status: "success" });
+            } else {
+              steps.push({ step: 0, action: `기존 ${targetGradName} OU 없음 (건너뜀)`, status: "success" });
+            }
+          } catch (archiveErr: any) {
+            steps.push({ step: 0, action: `기존 ${targetGradName} 아카이브 실패: ${archiveErr.message}`, status: "error" });
+            throw new Error(`기존 ${targetGradName} OU 아카이브 실패: ${archiveErr.message}`);
+          }
+        } else {
+          steps.push({ step: 0, action: `졸업생 OU 미설정 (건너뜀)`, status: "success" });
+        }
+
+        await updateOrgunit(grade3, targetGradName);
+        steps.push({ step: 1, action: `${grade3} → ${targetGradName}`, status: "success" });
 
         await updateOrgunit(grade2, "3학년");
         steps.push({ step: 2, action: `${grade2} → 3학년`, status: "success" });
@@ -46,7 +68,7 @@ export async function POST(req: NextRequest) {
         await writeAuditLog({
           operatorEmail: adminEmail, operatorName: adminName,
           action: "연도말 OU 전환", targetEmail: "-",
-          details: "OU 이름 변경 4단계 완료", status: "success",
+          details: "OU 이름 변경 5단계 완료 (아카이브 포함)", status: "success",
         });
 
         return NextResponse.json({ success: true, steps, isMock });
@@ -64,11 +86,12 @@ export async function POST(req: NextRequest) {
     // ACTION: delete_class_groups
     // ─────────────────────────────────────────
     if (action === "delete_class_groups") {
-      const result = await deleteAllClassGroups(domain);
+      const { testPrefix } = body;
+      const result = await deleteAllClassGroups(domain, testPrefix);
       await writeAuditLog({
         operatorEmail: adminEmail, operatorName: adminName,
         action: "반별 그룹 전체 삭제", targetEmail: "-",
-        details: `삭제: ${result.deleted}개, 실패: ${result.failed}개`,
+        details: `삭제: ${result.deleted}개, 실패: ${result.failed}개${testPrefix ? ` (테스트 접두사: ${testPrefix})` : ""}`,
         status: result.failed === 0 ? "success" : "failure",
       });
       return NextResponse.json({ ...result, isMock });
@@ -78,7 +101,7 @@ export async function POST(req: NextRequest) {
     // ACTION: create_class_groups
     // ─────────────────────────────────────────
     if (action === "create_class_groups") {
-      const { studentOUPaths } = body;
+      const { studentOUPaths, testPrefix } = body;
       const allStudentOUs: string[] = Object.values(studentOUPaths || {});
       if (allStudentOUs.length === 0) {
         return NextResponse.json({ error: "학생 OU 경로가 설정되지 않았습니다." }, { status: 400 });
@@ -90,12 +113,12 @@ export async function POST(req: NextRequest) {
         familyName: s.name?.familyName || "",
       }));
 
-      const result = await createAllClassGroups(domain, studentData);
+      const result = await createAllClassGroups(domain, studentData, testPrefix);
 
       await writeAuditLog({
         operatorEmail: adminEmail, operatorName: adminName,
         action: "반별 그룹 일괄 생성", targetEmail: "-",
-        details: `생성: ${result.created}개 그룹, 멤버: ${result.membersAdded}명, 실패: ${result.failed}개`,
+        details: `생성: ${result.created}개 그룹, 멤버: ${result.membersAdded}명, 실패: ${result.failed}개${testPrefix ? ` (테스트 접두사: ${testPrefix})` : ""}`,
         status: result.failed === 0 ? "success" : "failure",
       });
 
@@ -127,9 +150,11 @@ export async function POST(req: NextRequest) {
           // 1. 계정 생성
           await createUser(email, s.givenName || s.name || "학생", studentId, grade1OUPath, "1234abcd!!!!", true);
 
-          // 2. 반별 그룹에 추가: {학년}{반(2자리)}@{domain} 예) 101@hmh.or.kr
+          // 2. 반별 그룹에 추가: {testPrefix}{학년}{반(2자리)}@{domain} 예) test-101@hmh.or.kr
           //    그룹이 없을 경우 에러가 나도 계정 생성은 성공으로 처리
-          const groupEmail = `${grade}${classStr}@${domain}`;
+          const isTestMode = grade1OUPath.includes("테스트") || grade1OUPath.toLowerCase().includes("test");
+          const testPrefix = isTestMode ? "test-" : "";
+          const groupEmail = `${testPrefix}${grade}${classStr}@${domain}`;
           let groupAdded = false;
           try {
             await addGroupMember(groupEmail, email);
@@ -152,7 +177,23 @@ export async function POST(req: NextRequest) {
         .filter((r) => r.status === "fulfilled")
         .map((r) => (r as PromiseFulfilledResult<any>).value);
       const failed = results
-        .map((r, i) => r.status === "rejected" ? { index: i, reason: (r as PromiseRejectedResult).reason?.message } : null)
+        .map((r, i) => {
+          if (r.status === "rejected") {
+            const s = students[i];
+            const serialStr = String(s.serialNum).padStart(3, "0");
+            const email = `${admissionYear}${serialStr}@${domain}`;
+            const grade = s.grade ? String(s.grade) : "1";
+            const classStr = String(s.classNum).padStart(2, "0");
+            const numStr = String(s.studentNum).padStart(2, "0");
+            return {
+              name: `${s.familyName || ""}${s.givenName || s.name || ""}`,
+              email,
+              studentId: `${grade}${classStr}${numStr}`,
+              reason: (r as PromiseRejectedResult).reason?.message || "알 수 없는 오류",
+            };
+          }
+          return null;
+        })
         .filter(Boolean);
 
       invalidateUserCache();
@@ -188,7 +229,18 @@ export async function POST(req: NextRequest) {
         .filter((r) => r.status === "fulfilled")
         .map((r) => (r as PromiseFulfilledResult<any>).value);
       const failed = results
-        .map((r, i) => r.status === "rejected" ? { email: promotions[i]?.email, reason: (r as PromiseRejectedResult).reason?.message } : null)
+        .map((r, i) => {
+          if (r.status === "rejected") {
+            const p = promotions[i];
+            return {
+              email: p?.email,
+              name: p?.name || "학생",
+              studentId: p?.newStudentId,
+              reason: (r as PromiseRejectedResult).reason?.message || "업데이트 실패",
+            };
+          }
+          return null;
+        })
         .filter(Boolean);
 
       invalidateUserCache();

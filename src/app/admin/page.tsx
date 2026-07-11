@@ -10,8 +10,9 @@ import OUConfiguration from "@/components/admin/OUConfiguration";
 import AuditLogViewer from "@/components/admin/AuditLogViewer";
 import StudentRoster from "@/components/admin/StudentRoster";
 import StudentLifecycle from "@/components/admin/lifecycle/StudentLifecycle";
+import GroupList from "@/components/admin/GroupList";
 
-type MenuType = "home" | "users" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle";
+type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle";
 
 export default function AdminPage() {
   const { userData } = useAuth();
@@ -31,6 +32,8 @@ export default function AdminPage() {
     switch (activeMenu) {
       case "users":
         return <UserList />;
+      case "groups":
+        return <GroupList />;
       case "settings":
         return isSuperAdmin ? (
           <OUConfiguration />
@@ -96,6 +99,31 @@ export default function AdminPage() {
                     className="w-full text-left text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1.5"
                   >
                     사용자 전체보기 →
+                  </button>
+                </div>
+              </div>
+              )}
+
+              {/* Groups Widget - Super Admin Only */}
+              {isSuperAdmin && (
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-gray-900">그룹</h3>
+                    <span className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    </span>
+                  </div>
+                  <p className="text-gray-500 text-sm mb-6">반별 구글 메일링 그룹 및 학년별 교직원 그룹을 조회하고 가입/게시판 권한을 조정합니다.</p>
+                </div>
+                <div>
+                  <button
+                    onClick={() => setActiveMenu("groups")}
+                    className="w-full text-left text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1.5"
+                  >
+                    그룹 전체보기 →
                   </button>
                 </div>
               </div>
@@ -253,18 +281,37 @@ export default function AdminPage() {
               </button>
               )}
 
+              {/* 그룹 관리 - Super Admin Only */}
+              {isSuperAdmin && (
               <button
-                onClick={() => setActiveMenu("roster")}
+                onClick={() => setActiveMenu("groups")}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  activeMenu === "roster"
+                  activeMenu === "groups"
                     ? "bg-indigo-800 text-white"
                     : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
                 }`}
               >
-                <span>📋</span>
-                <span>학생 명렬표 인쇄</span>
+                <span>💬</span>
+                <span>그룹 관리</span>
               </button>
+              )}
 
+              {/* 조직단위 설정 - Super Admin Only */}
+              {isSuperAdmin && (
+                <button
+                  onClick={() => setActiveMenu("settings")}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    activeMenu === "settings"
+                      ? "bg-indigo-800 text-white"
+                      : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <span>⚙️</span>
+                  <span>조직단위 설정</span>
+                </button>
+              )}
+
+              {/* 학적 관리 - Super Admin Only */}
               {isSuperAdmin && (
                 <button
                   onClick={() => setActiveMenu("lifecycle")}
@@ -279,19 +326,18 @@ export default function AdminPage() {
                 </button>
               )}
 
-              {isSuperAdmin && (
-                <button
-                  onClick={() => setActiveMenu("settings")}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    activeMenu === "settings"
-                      ? "bg-indigo-800 text-white"
-                      : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                  }`}
-                >
-                  <span>⚙️</span>
-                  <span>조직단위 설정</span>
-                </button>
-              )}
+              {/* 학생 명렬표 인쇄 - All Users */}
+              <button
+                onClick={() => setActiveMenu("roster")}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  activeMenu === "roster"
+                    ? "bg-indigo-800 text-white"
+                    : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                }`}
+              >
+                <span>📋</span>
+                <span>학생 명렬표 인쇄</span>
+              </button>
 
               {/* 추가 도구 섹션 - Super Admin Only */}
               {isSuperAdmin && (

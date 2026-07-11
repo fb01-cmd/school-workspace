@@ -121,6 +121,10 @@ interface OUTreeSelectorProps {
   value: string;
   onChange: (path: string) => void;
   placeholder?: string;
+  size?: "sm" | "md";
+  "data-row-index"?: number;
+  "data-col-index"?: number;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
 }
 
 export default function OUTreeSelector({
@@ -128,6 +132,10 @@ export default function OUTreeSelector({
   value,
   onChange,
   placeholder = "-- 조직단위를 선택하세요 --",
+  size = "md",
+  "data-row-index": dataRowIndex,
+  "data-col-index": dataColIndex,
+  onKeyDown,
 }: OUTreeSelectorProps) {
   const [open, setOpen] = useState(false);
   const tree = buildTree(orgUnits);
@@ -155,13 +163,20 @@ export default function OUTreeSelector({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-white text-sm text-left focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        data-row-index={dataRowIndex}
+        data-col-index={dataColIndex}
+        onKeyDown={onKeyDown}
+        className={`w-full flex items-center justify-between border rounded bg-white text-left focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
+          size === "sm"
+            ? "px-1.5 py-1 text-xs border-slate-200 text-slate-800"
+            : "px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 focus:ring-2"
+        }`}
       >
-        <span className={value ? "text-gray-900" : "text-gray-400"}>
-          {value || placeholder}
+        <span className={value && value !== "/" ? (size === "sm" ? "text-slate-800 font-medium" : "text-gray-900") : "text-gray-400"}>
+          {!value || value === "/" ? "최상위" : value}
         </span>
         <svg
-          className={`ml-2 h-4 w-4 text-gray-400 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`ml-1 h-3.5 w-3.5 text-gray-400 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -179,11 +194,11 @@ export default function OUTreeSelector({
           {/* Root/none option */}
           <div
             className={`flex items-center gap-1 py-1.5 px-3 text-sm cursor-pointer rounded-t ${
-              value === "" ? "bg-indigo-600 text-white" : "hover:bg-gray-50 text-gray-500"
+              value === "/" || value === "" ? "bg-indigo-600 text-white" : "hover:bg-gray-50 text-gray-500"
             }`}
-            onClick={() => handleSelect("")}
+            onClick={() => handleSelect("/")}
           >
-            — 선택 안함 —
+            — / (최상위 조직) —
           </div>
           <hr className="border-gray-100" />
 

@@ -37,18 +37,27 @@ const flexInt = (v: string): number => {
 };
 
 
-// Parse raw CSV text into 2D array
+// Parse raw CSV text into 2D array supporting multiple delimiters (comma, semicolon, tab)
 export const parseCSVText = (text: string): string[][] => {
   const clean = text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const lines = clean.split("\n");
   return lines
-    .map((line) => line.split(",").map((cell) => cell.trim()))
+    .map((line) => {
+      let delimiter = ",";
+      if (line.includes(";")) {
+        delimiter = ";";
+      } else if (line.includes("\t")) {
+        delimiter = "\t";
+      }
+      return line.split(delimiter).map((cell) => cell.trim());
+    })
     .filter((row) => row.some((cell) => cell !== ""));
 };
 
+
 // ─────────────────────────────────────────────────────
-// Parse enrollment CSV
-// Expected columns: 성,명,반,번호  (생년월일 미수집)
+// Parse enrollment CSV (Supports both "성,명,반,번호" and "이름,반,번호")
+// Maps student's full name to givenName, keeping familyName empty (which is replaced by studentId when creating user)
 // ─────────────────────────────────────────────────────
 export const parseEnrollmentCSV = (text: string): ParseResult<EnrollmentRow> => {
   const raw = parseCSVText(text);
@@ -60,23 +69,41 @@ export const parseEnrollmentCSV = (text: string): ParseResult<EnrollmentRow> => 
     return { rows, errors, raw };
   }
 
+  // Detect header style
+  const header = raw[0].map(h => norm(h));
+  const isLegacyFormat = header.includes("성") && header.includes("명");
+
   // Skip header row (line 1)
   const dataRows = raw.slice(1);
 
   const parsed: Array<{ row: EnrollmentRow; lineNum: number } | null> = dataRows.map((cells, i) => {
     const lineNum = i + 2;
 
-    if (cells.length < 4) {
-      errors.push({ line: lineNum, message: `열 수가 부족합니다 (${cells.length}열, 최소 4열 필요)` });
-      return null;
+    let familyName = ""; // Will be replaced by studentId (학번) on creation
+    let givenName = "";  // Will hold the full name (풀네임)
+    let classNum = 0;
+    let studentNum = 0;
+
+    if (isLegacyFormat) {
+      if (cells.length < 4) {
+        errors.push({ line: lineNum, message: `열 수가 부족합니다 (성,명,반,번호 형식 필요, 현재 ${cells.length}열)` });
+        return null;
+      }
+      const legacyFamily = norm(cells[0]);
+      const legacyGiven = norm(cells[1]);
+      givenName = `${legacyFamily}${legacyGiven}`;
+      classNum = flexInt(norm(cells[2]));
+      studentNum = flexInt(norm(cells[3]));
+    } else {
+      if (cells.length < 3) {
+        errors.push({ line: lineNum, message: `열 수가 부족합니다 (이름,반,번호 형식 필요, 현재 ${cells.length}열)` });
+        return null;
+      }
+      givenName = norm(cells[0]);
+      classNum = flexInt(norm(cells[1]));
+      studentNum = flexInt(norm(cells[2]));
     }
 
-    const familyName = norm(cells[0]);
-    const givenName = norm(cells[1]);
-    const classNum = flexInt(norm(cells[2]));
-    const studentNum = flexInt(norm(cells[3]));
-
-    if (!familyName) { errors.push({ line: lineNum, message: "성(姓)이 비어 있습니다." }); return null; }
     if (!givenName) { errors.push({ line: lineNum, message: "이름이 비어 있습니다." }); return null; }
     if (classNum < 1 || classNum > 10) { errors.push({ line: lineNum, message: `반이 유효하지 않습니다: ${classNum}` }); return null; }
     if (studentNum < 1 || studentNum > 99) { errors.push({ line: lineNum, message: `번호가 유효하지 않습니다: ${studentNum}` }); return null; }
@@ -163,10 +190,10 @@ export const parseStudentId = (id: string): { grade: number; classNum: number; n
 
 // Generate enrollment CSV template
 export const getEnrollmentCSVTemplate = (): string => {
-  return `성,명,반,번호
-김,민준,1,1
-이,서연,1,2
-박,지호,2,1`;
+  return `이름,반,번호
+김민준,1,1
+이서연,1,2
+박지호,2,1`;
 };
 
 // Generate promotion CSV template

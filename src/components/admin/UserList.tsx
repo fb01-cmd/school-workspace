@@ -225,6 +225,11 @@ export default function UserList() {
       });
       const data = await res.json();
       if (res.ok) {
+        // Optimistic UI: filter out successfully deleted emails
+        const failedEmails = new Set((data.failures || []).map((f: any) => f.email));
+        const deletedEmails = Array.from(selectedUserEmails).filter(email => !failedEmails.has(email));
+        setUsers(prev => prev.filter(u => !deletedEmails.includes(u.primaryEmail)));
+
         if (data.failures && data.failures.length > 0) {
           alert(`일부 계정 삭제 실패:\n${data.failures.map((f: any) => `${f.email}: ${f.reason}`).join("\n")}`);
         } else {
@@ -266,6 +271,11 @@ export default function UserList() {
       });
       const data = await res.json();
       if (res.ok) {
+        // Optimistic UI: update suspension status for successfully suspended emails
+        const failedEmails = new Set((data.failures || []).map((f: any) => f.email));
+        const successEmails = Array.from(selectedUserEmails).filter(email => !failedEmails.has(email));
+        setUsers(prev => prev.map(u => successEmails.includes(u.primaryEmail) ? { ...u, suspended: suspend } : u));
+
         if (data.failures && data.failures.length > 0) {
           alert(`일부 계정 ${actionText} 실패:\n${data.failures.map((f: any) => `${f.email}: ${f.reason}`).join("\n")}`);
         } else {
@@ -320,6 +330,8 @@ export default function UserList() {
       });
       const data = await res.json();
       if (res.ok) {
+        // Optimistic UI: toggle suspension state immediately in the list
+        setUsers(prev => prev.map(u => u.primaryEmail === userItem.primaryEmail ? { ...u, suspended: !userItem.suspended } : u));
         alert(`계정이 성공적으로 ${actionText} 되었습니다.`);
         loadUsers(selectedOUFilter);
       } else {
@@ -379,6 +391,18 @@ export default function UserList() {
       });
       const data = await res.json();
       if (res.ok) {
+        // Optimistic UI: update editing user in list immediately
+        setUsers(prev => prev.map(u => u.primaryEmail === editingUser.primaryEmail ? {
+          ...u,
+          primaryEmail: updates.primaryEmail || u.primaryEmail,
+          name: {
+            familyName: updates.lastName || u.name.familyName,
+            givenName: updates.firstName || u.name.givenName,
+          },
+          orgUnitPath: updates.orgUnitPath || u.orgUnitPath,
+          suspended: updates.suspended !== undefined ? updates.suspended : u.suspended,
+        } : u));
+
         alert("계정 정보가 성공적으로 업데이트되었습니다.");
         setShowEditModal(false);
         setEditingUser(null);
@@ -627,6 +651,16 @@ export default function UserList() {
       });
       const data = await res.json();
       if (res.ok) {
+        // Optimistic UI: inject newly created user directly into users state
+        const newUserObj: GoogleUser = {
+          id: data.user?.id || `temp_${Math.random().toString(36).substr(2, 9)}`,
+          primaryEmail: targetEmailAddress,
+          name: { familyName: newLastName, givenName: newFirstName },
+          orgUnitPath: newOUPath,
+          suspended: false,
+        };
+        setUsers(prev => [newUserObj, ...prev]);
+
         alert("계정이 성공적으로 생성되었습니다.");
         setShowAddModal(false);
         setNewEmail("");
@@ -666,6 +700,8 @@ export default function UserList() {
       });
       const data = await res.json();
       if (res.ok) {
+        // Optimistic UI: filter out deleted user immediately in the list
+        setUsers(prev => prev.filter(u => u.primaryEmail !== email));
         alert("계정이 성공적으로 삭제되었습니다.");
         loadUsers(selectedOUFilter);
       } else {
@@ -712,6 +748,7 @@ export default function UserList() {
           users={sheetUsers}
           orgUnits={orgUnits}
           domain={domain}
+          defaultOrgUnitPath={selectedOUFilter}
           onSave={() => {
             setIsSheetMode(false);
             setSelectedUserEmails(new Set());
@@ -999,7 +1036,9 @@ export default function UserList() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-gray-600 whitespace-nowrap font-mono">{user.primaryEmail}</td>
-                    <td className="px-6 py-4 text-gray-500 whitespace-nowrap font-mono text-xs">{user.orgUnitPath}</td>
+                    <td className="px-6 py-4 text-gray-500 whitespace-nowrap font-mono text-xs">
+                      {user.orgUnitPath === "/" ? "최상위" : user.orgUnitPath}
+                    </td>
                     {isSuperAdmin && (
                       <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-medium space-x-1.5">
                         <button

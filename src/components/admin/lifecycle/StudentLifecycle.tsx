@@ -98,65 +98,48 @@ function NewYearStepBar({
   activeStep: NewYearStep;
   onSelect: (id: NewYearStep) => void;
 }) {
-  const getState = (id: NewYearStep, idx: number): StepState => {
-    if (completed.has(id)) return "completed";
-    const prevId = idx > 0 ? steps[idx - 1].id : null;
-    const prevDone = prevId === null || completed.has(prevId);
-    if (prevDone) return "active";
-    return "locked";
-  };
-
   return (
     <div className="flex items-stretch gap-0">
       {steps.map((step, idx) => {
-        const state = getState(step.id, idx);
+        const isCompleted = completed.has(step.id);
         const isCurrent = activeStep === step.id;
 
         const baseClasses = "flex-1 relative flex flex-col items-center gap-1 px-2 py-3 transition-all text-center border-b-2";
         const stateClasses =
-          state === "completed"
+          isCompleted
             ? "border-green-500 bg-green-50 cursor-pointer hover:bg-green-100"
-            : state === "active"
-            ? isCurrent
-              ? "border-indigo-600 bg-indigo-50 cursor-pointer"
-              : "border-indigo-300 bg-white cursor-pointer hover:bg-indigo-50"
-            : "border-gray-200 bg-gray-50 cursor-not-allowed opacity-50";
+            : isCurrent
+            ? "border-indigo-600 bg-indigo-50 cursor-pointer font-bold text-indigo-700"
+            : "border-gray-200 bg-white cursor-pointer hover:bg-gray-50 text-gray-500";
 
         return (
           <button
             key={step.id}
-            onClick={() => state !== "locked" && onSelect(step.id)}
-            disabled={state === "locked"}
+            onClick={() => onSelect(step.id)}
             className={`${baseClasses} ${stateClasses}`}
-            title={state === "locked" ? "이전 단계를 먼저 완료해 주세요" : step.desc}
+            title={step.desc}
           >
             {/* Step number badge */}
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mb-0.5 ${
-                state === "completed"
+                isCompleted
                   ? "bg-green-500 text-white"
-                  : state === "active" && isCurrent
+                  : isCurrent
                   ? "bg-indigo-600 text-white"
-                  : state === "active"
-                  ? "bg-indigo-100 text-indigo-700"
-                  : "bg-gray-200 text-gray-400"
+                  : "bg-gray-100 text-gray-400 border border-gray-200"
               }`}
             >
-              {state === "completed" ? "✓" : idx + 1}
+              {isCompleted ? "✓" : idx + 1}
             </div>
             <span className="text-lg">{step.icon}</span>
             <span className={`text-xs font-semibold leading-tight ${
-              state === "completed" ? "text-green-700" :
-              state === "active" && isCurrent ? "text-indigo-700" :
-              state === "active" ? "text-gray-700" : "text-gray-400"
+              isCompleted ? "text-green-700" :
+              isCurrent ? "text-indigo-700" : "text-gray-600"
             }`}>
               {step.label}
             </span>
-            {state === "locked" && (
-              <span className="text-xs text-gray-400">🔒</span>
-            )}
-            {state === "completed" && (
-              <span className="text-xs text-green-600">완료</span>
+            {isCompleted && (
+              <span className="text-[10px] text-green-600 bg-green-100/50 px-1 py-0.2 rounded font-semibold mt-0.5">완료</span>
             )}
           </button>
         );
@@ -196,6 +179,42 @@ export default function StudentLifecycle() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Load wizard state from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedStep = localStorage.getItem("academic_lifecycle_active_step") as NewYearStep;
+      const savedCompleted = localStorage.getItem("academic_lifecycle_completed_steps");
+      
+      if (savedStep) {
+        setActiveStep(savedStep);
+      }
+      if (savedCompleted) {
+        try {
+          const parsed = JSON.parse(savedCompleted) as NewYearStep[];
+          setCompletedSteps(new Set(parsed));
+        } catch (e) {
+          console.warn("Failed to parse saved completed steps", e);
+        }
+      }
+    }
+  }, []);
+
+  // Save wizard state to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("academic_lifecycle_active_step", activeStep);
+    }
+  }, [activeStep]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(
+        "academic_lifecycle_completed_steps",
+        JSON.stringify(Array.from(completedSteps))
+      );
+    }
+  }, [completedSteps]);
+
   useEffect(() => {
     if (!userData?.domain) return;
     getDoc(doc(db, "settings", userData.domain))
@@ -205,6 +224,18 @@ export default function StudentLifecycle() {
       .finally(() => setLoading(false));
   }, [userData?.domain]);
 
+  // Reset the lifecycle wizard state
+  const resetWizardState = () => {
+    if (confirm("⚠️ 신학기 준비 진행 단계를 초기화하고 1단계(OU 전환)부터 다시 시작하시겠습니까?\n(이미 구글 워크스페이스에 생성되거나 변경된 조직 및 사용자 계정 자체는 삭제되지 않으며, 화면 상의 진행 단계만 초기화됩니다.)")) {
+      setActiveStep("ou");
+      setCompletedSteps(new Set());
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("academic_lifecycle_active_step");
+        localStorage.removeItem("academic_lifecycle_completed_steps");
+      }
+    }
+  };
+
   // 탭 전환 시 자동으로 다음 단계로 이동하는 콜백
   const markDone = (step: NewYearStep) => {
     setCompletedSteps((prev) => {
@@ -212,11 +243,6 @@ export default function StudentLifecycle() {
       next.add(step);
       return next;
     });
-    // 다음 단계로 자동 이동
-    const idx = NEW_YEAR_STEPS.findIndex((s) => s.id === step);
-    if (idx < NEW_YEAR_STEPS.length - 1) {
-      setActiveStep(NEW_YEAR_STEPS[idx + 1].id);
-    }
   };
 
   if (loading) {
@@ -266,16 +292,25 @@ export default function StudentLifecycle() {
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
             <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
               <p className="text-xs font-bold text-gray-600">📋 신학기 준비 단계 — 순서대로 진행해 주세요</p>
-              {allDone && (
-                <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
-                  🎉 전체 완료!
-                </span>
-              )}
-              {completedSteps.size > 0 && !allDone && (
-                <span className="text-xs text-indigo-600">
-                  {completedSteps.size} / {NEW_YEAR_STEPS.length} 완료
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {allDone && (
+                  <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+                    🎉 전체 완료!
+                  </span>
+                )}
+                {completedSteps.size > 0 && !allDone && (
+                  <span className="text-xs text-indigo-600 font-semibold">
+                    {completedSteps.size} / {NEW_YEAR_STEPS.length} 단계 완료
+                  </span>
+                )}
+                <button
+                  onClick={resetWizardState}
+                  className="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded transition-colors font-medium flex items-center gap-1"
+                  title="신학기 준비 마법사 단계를 1단계(초기 상태)로 되돌립니다."
+                >
+                  🔄 단계 초기화
+                </button>
+              </div>
             </div>
             <NewYearStepBar
               steps={NEW_YEAR_STEPS}
@@ -289,30 +324,45 @@ export default function StudentLifecycle() {
           {(() => {
             const idx = NEW_YEAR_STEPS.findIndex((s) => s.id === activeStep);
             const prevStep = idx > 0 ? NEW_YEAR_STEPS[idx - 1] : null;
-            const isLocked = prevStep && !completedSteps.has(prevStep.id);
-            if (!isLocked) return null;
+            const hasUnfinishedPrev = prevStep && !completedSteps.has(prevStep.id);
+            if (!hasUnfinishedPrev) return null;
             return (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-                🔒 <strong>{prevStep!.label}</strong> 단계를 먼저 완료해 주세요.
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 flex items-start gap-2.5 shadow-xs">
+                <span>⚠️</span>
+                <div>
+                  <p className="font-bold">이전 단계 미완료 안내</p>
+                  <p className="mt-0.5 leading-relaxed">
+                    이전 단계(<strong>{prevStep!.label}</strong>)가 완료 처리되지 않은 상태입니다.
+                    이미 Google Workspace Admin 콘솔 등에서 해당 작업을 직접 진행하셨다면 이 단계를 계속 진행하셔도 무방합니다.
+                  </p>
+                </div>
               </div>
             );
           })()}
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
             {activeStep === "ou" && (
-              <OUTab s={settings} ud={userData} onDone={() => markDone("ou")} />
+              <OUTab s={settings} ud={userData} onDone={() => markDone("ou")} onNext={() => setActiveStep("groups_delete")} />
             )}
             {activeStep === "groups_delete" && (
-              <GroupDeleteTab ud={userData} onDone={() => markDone("groups_delete")} />
+              <GroupDeleteTab ud={userData} ouPaths={studentOUPaths} onDone={() => markDone("groups_delete")} onNext={() => setActiveStep("promote")} />
             )}
             {activeStep === "promote" && (
-              <PromoteTab s={settings} ud={userData} ouList={allStudentOUs} onDone={() => markDone("promote")} />
+              <PromoteTab s={settings} ud={userData} ouList={allStudentOUs} onDone={() => markDone("promote")} onNext={() => setActiveStep("enroll")} />
             )}
             {activeStep === "enroll" && (
-              <EnrollTab s={settings} ud={userData} onDone={() => markDone("enroll")} />
+              <EnrollTab s={settings} ud={userData} onDone={() => markDone("enroll")} onNext={() => setActiveStep("groups_create")} />
             )}
             {activeStep === "groups_create" && (
-              <GroupCreateTab ud={userData} ouPaths={studentOUPaths} onDone={() => markDone("groups_create")} />
+              <GroupCreateTab
+                ud={userData}
+                ouPaths={studentOUPaths}
+                onDone={() => markDone("groups_create")}
+                onComplete={() => {
+                  alert("🎉 신학기 준비 모든 단계가 성공적으로 완료되었습니다!\n이제 '학기 중 학적 변동' 탭에서 상시 업무(전입/전출 등)를 관리하실 수 있습니다.");
+                  setSection("mid_year");
+                }}
+              />
             )}
           </div>
         </>

@@ -4,10 +4,10 @@ import { useState } from "react";
 import { callAPI, Btn, ErrBox } from "./shared";
 
 export default function GraduationTab({ s, ud }: any) {
-  const studentOUs = s?.ouMapping?.students || {};
-  // "졸업" 키워드가 포함된 OU 경로를 자동으로 찾음
   const gradOU =
-    (Object.values(studentOUs) as string[]).find((p) => p.includes("졸업")) || "";
+    s?.ouMapping?.graduates ||
+    (Object.values(s?.ouMapping?.students || {}) as string[]).find((p) => p.includes("졸업")) ||
+    "";
 
   const [graduates, setGraduates] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);

@@ -36,6 +36,7 @@ interface UserSheetEditorProps {
   users: GoogleUser[];
   orgUnits: { orgUnitId: string; orgUnitPath: string; name: string }[];
   domain: string;
+  defaultOrgUnitPath?: string;
   onSave: () => void;
   onCancel: () => void;
 }
@@ -44,12 +45,573 @@ export default function UserSheetEditor({
   users,
   orgUnits,
   domain,
+  defaultOrgUnitPath,
   onSave,
   onCancel,
 }: UserSheetEditorProps) {
   const { user, userData } = useAuth();
   const [rows, setRows] = useState<SheetRow[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [history, setHistory] = useState<SheetRow[][]>([]);
+  const [selectionStart, setSelectionStart] = useState<{ row: number; col: number } | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<{ row: number; col: number } | null>(null);
+  const [isDraggingSelection, setIsDraggingSelection] = useState(false);
+  const [isDraggingFill, setIsDraggingFill] = useState(false);
+  const [fillEndRow, setFillEndRow] = useState<number | null>(null);
+  const [fillEndCol, setFillEndCol] = useState<number | null>(null);
+  const [fillDirection, setFillDirection] = useState<"vertical" | "horizontal" | null>(null);
+
+  const pushHistory = (currentRows: SheetRow[]) => {
+    const snapshot = JSON.parse(JSON.stringify(currentRows));
+    setHistory((prev) => [...prev.slice(-49), snapshot]);
+  };
+
+  const handleUndo = () => {
+    setHistory((prevHistory) => {
+      if (prevHistory.length === 0) return prevHistory;
+      const previousState = prevHistory[prevHistory.length - 1];
+      setRows(previousState);
+      return prevHistory.slice(0, -1);
+    });
+  };
+
+  const getSelectionBounds = () => {
+    if (!selectionStart || !selectionEnd) return null;
+    return {
+      minRow: Math.min(selectionStart.row, selectionEnd.row),
+      maxRow: Math.max(selectionStart.row, selectionEnd.row),
+      minCol: Math.min(selectionStart.col, selectionEnd.col),
+      maxCol: Math.max(selectionStart.col, selectionEnd.col),
+    };
+  };
+
+  const isSelected = (r: number, c: number) => {
+    const bounds = getSelectionBounds();
+    if (!bounds) return false;
+    return (
+      r >= bounds.minRow &&
+      r <= bounds.maxRow &&
+      c >= bounds.minCol &&
+      c <= bounds.maxCol
+    );
+  };
+
+  const getSelectionBorderClasses = (r: number, c: number) => {
+    const bounds = getSelectionBounds();
+    if (!bounds || !isSelected(r, c)) return "";
+    
+    let classes = "bg-indigo-50/20 ";
+    if (r === bounds.minRow) classes += "border-t-2 border-t-indigo-600 ";
+    if (r === bounds.maxRow) classes += "border-b-2 border-b-indigo-600 ";
+    if (c === bounds.minCol) classes += "border-l-2 border-l-indigo-600 ";
+    if (c === bounds.maxCol) classes += "border-r-2 border-r-indigo-600 ";
+    
+    return classes;
+  };
+
+  const isInFillRange = (r: number, c: number) => {
+    if (!isDraggingFill || !selectionStart || !selectionEnd) return false;
+    const bounds = getSelectionBounds();
+    if (!bounds) return false;
+
+    const minR = bounds.minRow;
+    const maxR = bounds.maxRow;
+    const minC = bounds.minCol;
+    const maxC = bounds.maxCol;
+
+    if (fillDirection === "vertical" && fillEndRow !== null) {
+      if (c < minC || c > maxC) return false;
+      if (fillEndRow > maxR) {
+        return r > maxR && r <= fillEndRow;
+      } else if (fillEndRow < minR) {
+        return r >= fillEndRow && r < minR;
+      }
+    } else if (fillDirection === "horizontal" && fillEndCol !== null) {
+      if (r < minR || r > maxR) return false;
+      if (fillEndCol > maxC) {
+        return c > maxC && c <= fillEndCol;
+      } else if (fillEndCol < minC) {
+        return c >= fillEndCol && c < minC;
+      }
+    }
+    return false;
+  };
+
+  const getFillBorderClasses = (r: number, c: number) => {
+    if (!isInFillRange(r, c)) return "";
+    const bounds = getSelectionBounds();
+    if (!bounds) return "";
+
+    let classes = "bg-indigo-50/10 ";
+
+    if (fillDirection === "vertical" && fillEndRow !== null) {
+      const minC = bounds.minCol;
+      const maxC = bounds.maxCol;
+      const fillMinR = fillEndRow > bounds.maxRow ? bounds.maxRow + 1 : fillEndRow;
+      const fillMaxR = fillEndRow > bounds.maxRow ? fillEndRow : bounds.minRow - 1;
+
+      if (r === fillMinR) classes += "border-t-2 border-t-indigo-400 border-dashed ";
+      if (r === fillMaxR) classes += "border-b-2 border-b-indigo-400 border-dashed ";
+      if (c === minC) classes += "border-l-2 border-l-indigo-400 border-dashed ";
+      if (c === maxC) classes += "border-r-2 border-r-indigo-400 border-dashed ";
+    } else if (fillDirection === "horizontal" && fillEndCol !== null) {
+      const minR = bounds.minRow;
+      const maxR = bounds.maxRow;
+      const fillMinC = fillEndCol > bounds.maxCol ? bounds.maxCol + 1 : fillEndCol;
+      const fillMaxC = fillEndCol > bounds.maxCol ? fillEndCol : bounds.minCol - 1;
+
+      if (r === minR) classes += "border-t-2 border-t-indigo-400 border-dashed ";
+      if (r === maxR) classes += "border-b-2 border-b-indigo-400 border-dashed ";
+      if (c === fillMinC) classes += "border-l-2 border-l-indigo-400 border-dashed ";
+      if (c === fillMaxC) classes += "border-r-2 border-r-indigo-400 border-dashed ";
+    }
+
+    return classes;
+  };
+
+  const handleMouseDown = (e: React.MouseEvent, r: number, c: number) => {
+    if ((e.target as HTMLElement).closest(".fill-handle")) return;
+
+    const isInput = (e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "SELECT";
+    
+    if (e.shiftKey) {
+      e.preventDefault();
+      setSelectionEnd({ row: r, col: c });
+    } else {
+      setSelectionStart({ row: r, col: c });
+      setSelectionEnd({ row: r, col: c });
+      setIsDraggingSelection(true);
+      if (!isInput) {
+        e.preventDefault();
+      }
+    }
+  };
+
+  const handleMouseEnter = (r: number, c: number) => {
+    if (isDraggingSelection) {
+      setSelectionEnd({ row: r, col: c });
+    } else if (isDraggingFill && selectionStart && selectionEnd) {
+      const bounds = getSelectionBounds();
+      if (!bounds) return;
+
+      const distY = Math.max(0, r - bounds.maxRow) + Math.max(0, bounds.minRow - r);
+      const distX = Math.max(0, c - bounds.maxCol) + Math.max(0, bounds.minCol - c);
+
+      let dir: "vertical" | "horizontal" = "vertical";
+      if (distX > distY) {
+        dir = "horizontal";
+      }
+
+      setFillDirection(dir);
+      if (dir === "vertical") {
+        setFillEndRow(r);
+        setFillEndCol(null);
+      } else {
+        setFillEndCol(c);
+        setFillEndRow(null);
+      }
+    }
+  };
+
+  const handleFillMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFill(true);
+    if (selectionEnd) {
+      setFillEndRow(selectionEnd.row);
+      setFillEndCol(selectionEnd.col);
+      setFillDirection(null);
+    }
+  };
+
+  const handleFillDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!selectionStart || !selectionEnd) return;
+    const bounds = getSelectionBounds();
+    if (!bounds) return;
+
+    const minR = bounds.minRow;
+    const maxR = bounds.maxRow;
+    const minC = bounds.minCol;
+    const maxC = bounds.maxCol;
+
+    const maxRows = rows.length;
+    if (maxR >= maxRows - 1) return; // Already at the bottom
+
+    // Find neighboring column to match length
+    // We check left neighbor (minC - 1) first, then right neighbor (maxC + 1)
+    let neighborCol = -1;
+    if (minC > 0) {
+      neighborCol = minC - 1;
+    } else if (maxC < FIELDS.length - 1) {
+      neighborCol = maxC + 1;
+    }
+
+    let fillToRow = maxRows - 1; // Fallback: end of table
+
+    if (neighborCol !== -1) {
+      const neighborField = FIELDS[neighborCol];
+      // Find the last contiguous non-empty row in the neighbor column starting from maxR
+      let lastNonEmpty = maxR;
+      for (let r = maxR + 1; r < maxRows; r++) {
+        const val = rows[r][neighborField];
+        const isEmpty = val === undefined || val === null || String(val).trim() === "";
+        if (!isEmpty) {
+          lastNonEmpty = r;
+        } else {
+          // Google Sheets double-click fills down to the last non-empty row of the contiguous block
+          break;
+        }
+      }
+      if (lastNonEmpty > maxR) {
+        fillToRow = lastNonEmpty;
+      }
+    }
+
+    if (fillToRow <= maxR) {
+      // If contiguous search failed to find anything below, check overall last non-empty row in the sheet
+      let lastNonEmptyRow = maxR;
+      for (let r = maxR + 1; r < maxRows; r++) {
+        const hasAnyData = FIELDS.some(f => {
+          const val = rows[r][f];
+          return val !== undefined && val !== null && String(val).trim() !== "" && val !== "/";
+        });
+        if (hasAnyData) {
+          lastNonEmptyRow = r;
+        }
+      }
+      if (lastNonEmptyRow > maxR) {
+        fillToRow = lastNonEmptyRow;
+      } else {
+        fillToRow = maxRows - 1;
+      }
+    }
+
+    if (fillToRow <= maxR) return;
+
+    // Snapshot for Undo
+    pushHistory(rows);
+
+    setRows((prevRows) => {
+      const nextRows = [...prevRows];
+      for (let r = maxR + 1; r <= fillToRow; r++) {
+        const row = { ...nextRows[r] };
+        for (let c = minC; c <= maxC; c++) {
+          const fieldName = FIELDS[c];
+          const val = getFilledValue(c, r, bounds, prevRows);
+          (row as any)[fieldName] = val;
+        }
+        row.isModified = !row.isNew;
+        validateRow(row);
+        nextRows[r] = row;
+      }
+      return nextRows;
+    });
+
+    // Expand selection to include the filled range
+    setSelectionEnd({ row: fillToRow, col: maxC });
+  };
+
+  const FIELDS: (keyof SheetRow)[] = [
+    "familyName",
+    "givenName",
+    "emailPrefix",
+    "orgUnitPath",
+    "password",
+    "changePasswordAtNextLogin",
+    "suspended"
+  ];
+
+  const parseAndIncrement = (baseVal: any, step: number) => {
+    if (typeof baseVal === "boolean") {
+      return baseVal;
+    }
+    const str = String(baseVal || "");
+    const match = str.match(/(\d+)$/);
+    if (!match) return baseVal;
+
+    const numStr = match[1];
+    const prefix = str.substring(0, str.length - numStr.length);
+    const val = parseInt(numStr, 10) + step;
+    const paddedVal = String(Math.max(0, val)).padStart(numStr.length, "0");
+    return `${prefix}${paddedVal}`;
+  };
+
+  const getFilledValue = (colIdx: number, t: number, bounds: any, currentRows: SheetRow[]) => {
+    const fieldName = FIELDS[colIdx];
+    const minR = bounds.minRow;
+    const maxR = bounds.maxRow;
+    const L = maxR - minR + 1;
+
+    if (L === 1) {
+      const baseVal = currentRows[minR][fieldName];
+      const step = t - minR;
+      return parseAndIncrement(baseVal, step);
+    } else {
+      const vals = [];
+      for (let r = minR; r <= maxR; r++) {
+        vals.push(currentRows[r][fieldName]);
+      }
+
+      if (typeof vals[0] === "boolean") {
+        const idx = ((t - minR) % L + L) % L;
+        return vals[idx];
+      }
+
+      const parsedSuffixes = vals.map(v => {
+        const match = String(v || "").match(/(\d+)$/);
+        return match ? { prefix: String(v).substring(0, String(v).length - match[1].length), num: parseInt(match[1], 10), padLen: match[1].length } : null;
+      });
+
+      const allHaveNumbers = parsedSuffixes.every(p => p !== null);
+      const samePrefix = allHaveNumbers && parsedSuffixes.every(p => p!.prefix === parsedSuffixes[0]!.prefix);
+
+      if (allHaveNumbers && samePrefix) {
+        const diff = parsedSuffixes[1]!.num - parsedSuffixes[0]!.num;
+        let isArithmetic = true;
+        for (let i = 1; i < L - 1; i++) {
+          if (parsedSuffixes[i+1]!.num - parsedSuffixes[i]!.num !== diff) {
+            isArithmetic = false;
+            break;
+          }
+        }
+
+        if (isArithmetic) {
+          const step = t - minR;
+          const targetNum = parsedSuffixes[0]!.num + step * diff;
+          const prefix = parsedSuffixes[0]!.prefix;
+          const padLen = parsedSuffixes[0]!.padLen;
+          const paddedNum = String(Math.max(0, targetNum)).padStart(padLen, "0");
+          return `${prefix}${paddedNum}`;
+        }
+      }
+
+      const idx = ((t - minR) % L + L) % L;
+      return vals[idx];
+    }
+  };
+
+  const getHorizontalFilledValue = (r: number, tC: number, bounds: any, currentRows: SheetRow[]) => {
+    const minC = bounds.minCol;
+    const maxC = bounds.maxCol;
+    const L = maxC - minC + 1;
+
+    if (L === 1) {
+      const fieldName = FIELDS[minC];
+      const baseVal = currentRows[r][fieldName];
+      const step = tC - minC;
+      return parseAndIncrement(baseVal, step);
+    } else {
+      const idx = ((tC - minC) % L + L) % L;
+      const srcCol = minC + idx;
+      const srcFieldName = FIELDS[srcCol];
+      return currentRows[r][srcFieldName];
+    }
+  };
+
+  const executeDragFill = () => {
+    if (!selectionStart || !selectionEnd) return;
+    const bounds = getSelectionBounds();
+    if (!bounds) return;
+
+    const minR = bounds.minRow;
+    const maxR = bounds.maxRow;
+    const minC = bounds.minCol;
+    const maxC = bounds.maxCol;
+
+    if (fillDirection === "vertical" && fillEndRow !== null) {
+      let targetRows: number[] = [];
+      if (fillEndRow > maxR) {
+        for (let r = maxR + 1; r <= fillEndRow; r++) targetRows.push(r);
+      } else if (fillEndRow < minR) {
+        for (let r = fillEndRow; r <= minR - 1; r++) targetRows.push(r);
+      }
+
+      if (targetRows.length === 0) return;
+
+      pushHistory(rows);
+
+      setRows((prevRows) => {
+        const nextRows = [...prevRows];
+        for (const r of targetRows) {
+          const row = { ...nextRows[r] };
+          for (let c = minC; c <= maxC; c++) {
+            const fieldName = FIELDS[c];
+            const val = getFilledValue(c, r, bounds, prevRows);
+            (row as any)[fieldName] = val;
+          }
+          row.isModified = !row.isNew;
+          validateRow(row);
+          nextRows[r] = row;
+        }
+        return nextRows;
+      });
+
+      setSelectionStart({ row: Math.min(minR, fillEndRow), col: minC });
+      setSelectionEnd({ row: Math.max(maxR, fillEndRow), col: maxC });
+    } 
+    else if (fillDirection === "horizontal" && fillEndCol !== null) {
+      let targetCols: number[] = [];
+      if (fillEndCol > maxC) {
+        for (let c = maxC + 1; c <= fillEndCol; c++) targetCols.push(c);
+      } else if (fillEndCol < minC) {
+        for (let c = fillEndCol; c <= minC - 1; c++) targetCols.push(c);
+      }
+
+      if (targetCols.length === 0) return;
+
+      pushHistory(rows);
+
+      setRows((prevRows) => {
+        const nextRows = [...prevRows];
+        for (let r = minR; r <= maxR; r++) {
+          const row = { ...nextRows[r] };
+          for (const c of targetCols) {
+            const fieldName = FIELDS[c];
+            const val = getHorizontalFilledValue(r, c, bounds, prevRows);
+            (row as any)[fieldName] = val;
+          }
+          row.isModified = !row.isNew;
+          validateRow(row);
+          nextRows[r] = row;
+        }
+        return nextRows;
+      });
+
+      setSelectionStart({ row: minR, col: Math.min(minC, fillEndCol) });
+      setSelectionEnd({ row: maxR, col: Math.max(maxC, fillEndCol) });
+    }
+
+    setFillEndRow(null);
+    setFillEndCol(null);
+    setFillDirection(null);
+  };
+
+  // Keyboard navigation & Ctrl+Z handler
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>, rowIndex: number, colIndex: number) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+      e.preventDefault();
+      handleUndo();
+      return;
+    }
+
+    const maxRows = rows.length;
+    const maxCols = 5;
+
+    const focusInput = (r: number, c: number) => {
+      const target = document.querySelector(
+        `[data-row-index="${r}"][data-col-index="${c}"]`
+      ) as HTMLElement | null;
+      if (target) {
+        target.focus();
+        if (target instanceof HTMLInputElement && target.type === "text") {
+          target.select();
+        }
+      }
+    };
+
+    if (e.key === "ArrowDown" || (e.key === "Enter" && !e.shiftKey)) {
+      if (rowIndex < maxRows - 1) {
+        e.preventDefault();
+        focusInput(rowIndex + 1, colIndex);
+        if (e.shiftKey) {
+          if (!selectionStart) setSelectionStart({ row: rowIndex, col: colIndex });
+          setSelectionEnd((prev) => prev ? { row: Math.min(maxRows - 1, prev.row + 1), col: prev.col } : { row: rowIndex + 1, col: colIndex });
+        } else {
+          setSelectionStart({ row: rowIndex + 1, col: colIndex });
+          setSelectionEnd({ row: rowIndex + 1, col: colIndex });
+        }
+      }
+    } else if (e.key === "ArrowUp" || (e.key === "Enter" && e.shiftKey)) {
+      if (rowIndex > 0) {
+        e.preventDefault();
+        focusInput(rowIndex - 1, colIndex);
+        if (e.shiftKey) {
+          if (!selectionStart) setSelectionStart({ row: rowIndex, col: colIndex });
+          setSelectionEnd((prev) => prev ? { row: Math.max(0, prev.row - 1), col: prev.col } : { row: rowIndex - 1, col: colIndex });
+        } else {
+          setSelectionStart({ row: rowIndex - 1, col: colIndex });
+          setSelectionEnd({ row: rowIndex - 1, col: colIndex });
+        }
+      }
+    } else if (e.key === "ArrowLeft") {
+      const target = e.target as HTMLInputElement;
+      const isBoundary = target instanceof HTMLInputElement && target.type === "text"
+        ? (target.selectionStart === 0 && target.selectionEnd === 0)
+        : true;
+        
+      if (isBoundary || e.shiftKey) {
+        if (colIndex > 0) {
+          e.preventDefault();
+          focusInput(rowIndex, colIndex - 1);
+          if (e.shiftKey) {
+            if (!selectionStart) setSelectionStart({ row: rowIndex, col: colIndex });
+            setSelectionEnd((prev) => prev ? { row: prev.row, col: Math.max(0, prev.col - 1) } : { row: rowIndex, col: colIndex - 1 });
+          } else {
+            setSelectionStart({ row: rowIndex, col: colIndex - 1 });
+            setSelectionEnd({ row: rowIndex, col: colIndex - 1 });
+          }
+        }
+      }
+    } else if (e.key === "ArrowRight") {
+      const target = e.target as HTMLInputElement;
+      const isBoundary = target instanceof HTMLInputElement && target.type === "text"
+        ? (target.selectionStart === target.value.length && target.selectionEnd === target.value.length)
+        : true;
+
+      if (isBoundary || e.shiftKey) {
+        if (colIndex < maxCols - 1) {
+          e.preventDefault();
+          focusInput(rowIndex, colIndex + 1);
+          if (e.shiftKey) {
+            if (!selectionStart) setSelectionStart({ row: rowIndex, col: colIndex });
+            setSelectionEnd((prev) => prev ? { row: prev.row, col: Math.min(maxCols - 1, prev.col + 1) } : { row: rowIndex, col: colIndex + 1 });
+          } else {
+            setSelectionStart({ row: rowIndex, col: colIndex + 1 });
+            setSelectionEnd({ row: rowIndex, col: colIndex + 1 });
+          }
+        }
+      }
+    }
+  };
+
+  // Global listeners for mouse move, mouse up, and keyboard Ctrl+Z
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (isDraggingSelection) {
+        window.getSelection()?.removeAllRanges();
+      }
+    };
+
+    const handleGlobalMouseUp = () => {
+      if (isDraggingSelection) {
+        setIsDraggingSelection(false);
+      }
+      if (isDraggingFill) {
+        setIsDraggingFill(false);
+        executeDragFill();
+      }
+    };
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        handleUndo();
+      }
+    };
+
+    window.addEventListener("mousemove", handleGlobalMouseMove);
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    window.addEventListener("keydown", handleGlobalKeyDown);
+
+    return () => {
+      window.removeEventListener("mousemove", handleGlobalMouseMove);
+      window.removeEventListener("mouseup", handleGlobalMouseUp);
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, [isDraggingSelection, isDraggingFill, selectionStart, selectionEnd, fillEndRow, fillEndCol, fillDirection, rows, history]);
 
   // Initialize sheet rows from props
   useEffect(() => {
@@ -86,7 +648,13 @@ export default function UserSheetEditor({
       }
     }
 
-    const defaultOU = orgUnits.length > 0 ? orgUnits[0].orgUnitPath : "/";
+    let defaultOU = "/";
+    if (defaultOrgUnitPath && defaultOrgUnitPath !== "all") {
+      defaultOU = defaultOrgUnitPath;
+    } else if (orgUnits.length > 0) {
+      const studentOU = orgUnits.find((ou) => ou.orgUnitPath.startsWith("/학생"));
+      defaultOU = studentOU ? studentOU.orgUnitPath : orgUnits[0].orgUnitPath;
+    }
     const newRows: SheetRow[] = Array.from({ length: count }).map(() => ({
       id: `new_${Math.random().toString(36).substr(2, 9)}_${Math.random().toString(36).substr(2, 9)}`,
       isNew: true,
@@ -99,6 +667,7 @@ export default function UserSheetEditor({
       changePasswordAtNextLogin: true,
       suspended: false,
     }));
+    pushHistory(rows);
     setRows((prev) => [...prev, ...newRows]);
   };
 
@@ -106,12 +675,14 @@ export default function UserSheetEditor({
   const handleRemoveRow = (id: string, index: number) => {
     const row = rows[index];
     if (row.isNew) {
+      pushHistory(rows);
       setRows((prev) => prev.filter((r) => r.id !== id));
     }
   };
 
   // Update a specific cell
   const handleCellChange = (index: number, field: keyof SheetRow, value: any) => {
+    pushHistory(rows);
     setRows((prev) => {
       const next = [...prev];
       const row = { ...next[index] };
@@ -152,6 +723,7 @@ export default function UserSheetEditor({
     if (rows.length <= startIndex + 1) return;
     const baseValue = rows[startIndex][field];
 
+    pushHistory(rows);
     setRows((prev) =>
       prev.map((row, idx) => {
         if (idx <= startIndex) return row;
@@ -183,6 +755,7 @@ export default function UserSheetEditor({
     const prefix = baseValue.substring(0, baseValue.length - baseNumberStr.length);
     const padLength = baseNumberStr.length;
 
+    pushHistory(rows);
     setRows((prev) =>
       prev.map((row, idx) => {
         if (idx <= startIndex) return row;
@@ -395,12 +968,12 @@ export default function UserSheetEditor({
               <th className="px-3 py-2 text-center text-slate-500 w-12 select-none font-bold border-r border-slate-200">No</th>
               
               {/* Family Name */}
-              <th className="px-3 py-3 text-left font-semibold text-slate-700 w-24 border-r border-slate-200">
+              <th className="px-3 py-3 text-left font-semibold text-slate-700 w-40 border-r border-slate-200">
                 <span>성 (Family)*</span>
               </th>
 
               {/* Given Name */}
-              <th className="px-3 py-3 text-left font-semibold text-slate-700 w-32 border-r border-slate-200">
+              <th className="px-3 py-3 text-left font-semibold text-slate-700 w-40 border-r border-slate-200">
                 <span>이름 (Given)*</span>
               </th>
 
@@ -467,6 +1040,7 @@ export default function UserSheetEditor({
             ) : (
               rows.map((row, index) => {
                 const hasError = !!row.error;
+                const bounds = getSelectionBounds();
                 return (
                   <tr
                     key={row.id}
@@ -487,58 +1061,75 @@ export default function UserSheetEditor({
                     </td>
 
                     {/* Family Name */}
-                    <td className="p-1 border-r border-slate-100 relative group">
+                    <td 
+                      className={`p-1 border-r border-slate-100 relative group transition-all ${getSelectionBorderClasses(index, 0)} ${getFillBorderClasses(index, 0)}`}
+                      onMouseDown={(e) => handleMouseDown(e, index, 0)}
+                      onMouseEnter={() => handleMouseEnter(index, 0)}
+                    >
                       <input
                         type="text"
                         value={row.familyName}
                         onChange={(e) => handleCellChange(index, "familyName", e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(e, index, 0)}
+                        data-row-index={index}
+                        data-col-index={0}
                         placeholder="성"
-                        className={`w-full px-2 py-1 pr-14 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+                        className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
                           hasError && !row.familyName.trim() ? "border-red-400 bg-red-50/50" : "border-slate-200"
                         }`}
                       />
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-white/95 border border-slate-200 shadow-md rounded-md px-1.5 py-0.5 z-20">
-                        <button
-                          type="button"
-                          onClick={() => handleFillDownFrom(index, "familyName")}
-                          className="text-[9px] text-indigo-600 hover:text-indigo-800 hover:bg-slate-100 font-bold px-1 py-0.5 rounded transition-all"
-                          title="이 행의 성 값을 아래 행들에 모두 복사"
-                        >
-                          ▼ 복사
-                        </button>
-                      </div>
+                      {bounds && index === bounds.maxRow && 0 === bounds.maxCol && (
+                        <div
+                          onMouseDown={(e) => handleFillMouseDown(e)}
+                          onDoubleClick={(e) => handleFillDoubleClick(e)}
+                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+                          title="더블클릭하거나 끌어서 자동 채우기"
+                        />
+                      )}
                     </td>
 
                     {/* Given Name */}
-                    <td className="p-1 border-r border-slate-100 relative group">
+                    <td 
+                      className={`p-1 border-r border-slate-100 relative group transition-all ${getSelectionBorderClasses(index, 1)} ${getFillBorderClasses(index, 1)}`}
+                      onMouseDown={(e) => handleMouseDown(e, index, 1)}
+                      onMouseEnter={() => handleMouseEnter(index, 1)}
+                    >
                       <input
                         type="text"
                         value={row.givenName}
                         onChange={(e) => handleCellChange(index, "givenName", e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(e, index, 1)}
+                        data-row-index={index}
+                        data-col-index={1}
                         placeholder="이름"
-                        className={`w-full px-2 py-1 pr-14 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+                        className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
                           hasError && !row.givenName.trim() ? "border-red-400 bg-red-50/50" : "border-slate-200"
                         }`}
                       />
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-white/95 border border-slate-200 shadow-md rounded-md px-1.5 py-0.5 z-20">
-                        <button
-                          type="button"
-                          onClick={() => handleFillDownFrom(index, "givenName")}
-                          className="text-[9px] text-indigo-600 hover:text-indigo-800 hover:bg-slate-100 font-bold px-1 py-0.5 rounded transition-all"
-                          title="이 행의 이름 값을 아래 행들에 모두 복사"
-                        >
-                          ▼ 복사
-                        </button>
-                      </div>
+                      {bounds && index === bounds.maxRow && 1 === bounds.maxCol && (
+                        <div
+                          onMouseDown={(e) => handleFillMouseDown(e)}
+                          onDoubleClick={(e) => handleFillDoubleClick(e)}
+                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+                          title="더블클릭하거나 끌어서 자동 채우기"
+                        />
+                      )}
                     </td>
 
                     {/* Google ID Prefix */}
-                    <td className="p-1 border-r border-slate-100 relative group">
+                    <td 
+                      className={`p-1 border-r border-slate-100 relative group transition-all ${getSelectionBorderClasses(index, 2)} ${getFillBorderClasses(index, 2)}`}
+                      onMouseDown={(e) => handleMouseDown(e, index, 2)}
+                      onMouseEnter={() => handleMouseEnter(index, 2)}
+                    >
                       <div className="flex items-center">
                         <input
                           type="text"
                           value={row.emailPrefix}
                           onChange={(e) => handleCellChange(index, "emailPrefix", e.target.value.replace(/\s/g, "").toLowerCase())}
+                          onKeyDown={(e) => handleKeyDown(e, index, 2)}
+                          data-row-index={index}
+                          data-col-index={2}
                           placeholder="아이디"
                           className={`flex-1 min-w-0 px-2 py-1 text-xs border rounded-l focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 font-mono ${
                             hasError && !row.emailPrefix.trim() ? "border-red-400 bg-red-50/50" : "border-slate-200"
@@ -548,77 +1139,75 @@ export default function UserSheetEditor({
                           @{domain}
                         </span>
                       </div>
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-white/95 border border-slate-200 shadow-md rounded-md px-1.5 py-0.5 z-20">
-                        <button
-                          type="button"
-                          onClick={() => handleFillDownFrom(index, "emailPrefix")}
-                          className="text-[9px] text-indigo-600 hover:text-indigo-800 hover:bg-slate-100 font-bold px-1.5 py-0.5 rounded transition-all"
-                          title="이 행의 아이디 값을 아래 행들에 모두 복사"
-                        >
-                          ▼ 복사
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAutoIncrementFrom(index, "emailPrefix")}
-                          className="text-[9px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold px-1.5 py-0.5 rounded transition-all border border-indigo-100"
-                          title="이 행의 아이디 숫자 패턴 기준 순차 채우기 (예: 25001 -> 25002)"
-                        >
-                          ⚡ 채우기
-                        </button>
-                      </div>
+                      {bounds && index === bounds.maxRow && 2 === bounds.maxCol && (
+                        <div
+                          onMouseDown={(e) => handleFillMouseDown(e)}
+                          onDoubleClick={(e) => handleFillDoubleClick(e)}
+                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+                          title="더블클릭하거나 끌어서 자동 채우기"
+                        />
+                      )}
                     </td>
 
                     {/* Org Unit Path */}
-                    <td className="p-1 border-r border-slate-100 w-52 relative group">
-                      <select
+                    <td 
+                      className={`p-1 border-r border-slate-100 w-52 relative group transition-all ${getSelectionBorderClasses(index, 3)} ${getFillBorderClasses(index, 3)}`}
+                      onMouseDown={(e) => handleMouseDown(e, index, 3)}
+                      onMouseEnter={() => handleMouseEnter(index, 3)}
+                    >
+                      <OUTreeSelector
+                        orgUnits={orgUnits}
                         value={row.orgUnitPath}
-                        onChange={(e) => handleCellChange(index, "orgUnitPath", e.target.value)}
-                        className="w-full px-1.5 py-1 pr-8 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 bg-white"
-                      >
-                        <option value="/">/</option>
-                        {orgUnits.map((ou) => (
-                          <option key={ou.orgUnitId} value={ou.orgUnitPath}>
-                            {ou.orgUnitPath}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-white/95 border border-slate-200 shadow-md rounded-md px-1.5 py-0.5 z-20">
-                        <button
-                          type="button"
-                          onClick={() => handleFillDownFrom(index, "orgUnitPath")}
-                          className="text-[9px] text-indigo-600 hover:text-indigo-800 hover:bg-slate-100 font-bold px-1.5 py-0.5 rounded transition-all"
-                          title="이 행의 조직단위를 아래 행들에 모두 복사"
-                        >
-                          ▼ 복사
-                        </button>
-                      </div>
+                        onChange={(path) => handleCellChange(index, "orgUnitPath", path || "/")}
+                        size="sm"
+                        data-row-index={index}
+                        data-col-index={3}
+                        onKeyDown={(e) => handleKeyDown(e, index, 3)}
+                      />
+                      {bounds && index === bounds.maxRow && 3 === bounds.maxCol && (
+                        <div
+                          onMouseDown={(e) => handleFillMouseDown(e)}
+                          onDoubleClick={(e) => handleFillDoubleClick(e)}
+                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+                          title="더블클릭하거나 끌어서 자동 채우기"
+                        />
+                      )}
                     </td>
 
                     {/* Password */}
-                    <td className="p-1 border-r border-slate-100 relative group">
+                    <td 
+                      className={`p-1 border-r border-slate-100 relative group transition-all ${getSelectionBorderClasses(index, 4)} ${getFillBorderClasses(index, 4)}`}
+                      onMouseDown={(e) => handleMouseDown(e, index, 4)}
+                      onMouseEnter={() => handleMouseEnter(index, 4)}
+                    >
                       <input
                         type="text"
                         value={row.password || ""}
                         onChange={(e) => handleCellChange(index, "password", e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(e, index, 4)}
+                        data-row-index={index}
+                        data-col-index={4}
                         placeholder={row.isNew ? "임시비밀번호" : "(변경 시 입력)"}
-                        className={`w-full px-2 py-1 pr-10 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 font-mono ${
+                        className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 font-mono ${
                           hasError && row.isNew && (!row.password || row.password.length < 8) ? "border-red-400 bg-red-50/50" : "border-slate-200"
                         }`}
                       />
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-white/95 border border-slate-200 shadow-md rounded-md px-1.5 py-0.5 z-20">
-                        <button
-                          type="button"
-                          onClick={() => handleFillDownFrom(index, "password")}
-                          className="text-[9px] text-indigo-600 hover:text-indigo-800 hover:bg-slate-100 font-bold px-1.5 py-0.5 rounded transition-all"
-                          title="이 행의 비밀번호를 아래 행들에 모두 복사"
-                        >
-                          ▼ 복사
-                        </button>
-                      </div>
+                      {bounds && index === bounds.maxRow && 4 === bounds.maxCol && (
+                        <div
+                          onMouseDown={(e) => handleFillMouseDown(e)}
+                          onDoubleClick={(e) => handleFillDoubleClick(e)}
+                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+                          title="더블클릭하거나 끌어서 자동 채우기"
+                        />
+                      )}
                     </td>
 
                     {/* Change Password next sign in */}
-                    <td className="p-1 text-center border-r border-slate-100">
+                    <td 
+                      className={`p-1 text-center border-r border-slate-100 relative transition-all ${getSelectionBorderClasses(index, 5)} ${getFillBorderClasses(index, 5)}`}
+                      onMouseDown={(e) => handleMouseDown(e, index, 5)}
+                      onMouseEnter={() => handleMouseEnter(index, 5)}
+                    >
                       <div className="flex items-center justify-center">
                         <input
                           type="checkbox"
@@ -627,10 +1216,22 @@ export default function UserSheetEditor({
                           className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
                         />
                       </div>
+                      {bounds && index === bounds.maxRow && 5 === bounds.maxCol && (
+                        <div
+                          onMouseDown={(e) => handleFillMouseDown(e)}
+                          onDoubleClick={(e) => handleFillDoubleClick(e)}
+                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+                          title="더블클릭하거나 끌어서 자동 채우기"
+                        />
+                      )}
                     </td>
 
                     {/* Suspend status */}
-                    <td className="p-1 text-center border-r border-slate-100">
+                    <td 
+                      className={`p-1 text-center border-r border-slate-100 relative transition-all ${getSelectionBorderClasses(index, 6)} ${getFillBorderClasses(index, 6)}`}
+                      onMouseDown={(e) => handleMouseDown(e, index, 6)}
+                      onMouseEnter={() => handleMouseEnter(index, 6)}
+                    >
                       <div className="flex items-center justify-center">
                         <input
                           type="checkbox"
@@ -639,6 +1240,14 @@ export default function UserSheetEditor({
                           className="rounded text-red-600 focus:ring-red-500 w-3.5 h-3.5 cursor-pointer"
                         />
                       </div>
+                      {bounds && index === bounds.maxRow && 6 === bounds.maxCol && (
+                        <div
+                          onMouseDown={(e) => handleFillMouseDown(e)}
+                          onDoubleClick={(e) => handleFillDoubleClick(e)}
+                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+                          title="더블클릭하거나 끌어서 자동 채우기"
+                        />
+                      )}
                     </td>
 
                     {/* Delete row */}

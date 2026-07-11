@@ -24,6 +24,8 @@ export default function OUConfiguration() {
   const [gradesCount, setGradesCount] = useState<number>(6);
   const [teacherOU, setTeacherOU] = useState<string>("");
   const [studentOUMappings, setStudentOUMappings] = useState<Record<number, string>>({});
+  const [graduatesOU, setGraduatesOU] = useState<string>("");
+  const [transferOutOU, setTransferOutOU] = useState<string>("");
   
   // New OU Form State
   const [newOUName, setNewOUName] = useState("");
@@ -55,6 +57,8 @@ export default function OUConfiguration() {
           setGradesCount(settings.gradesCount || 6);
           setTeacherOU(settings.ouMapping?.teachers || "");
           setStudentOUMappings(settings.ouMapping?.students || {});
+          setGraduatesOU(settings.ouMapping?.graduates || "");
+          setTransferOutOU(settings.ouMapping?.transferOut || "");
         }
       }
     } catch (error) {
@@ -82,6 +86,8 @@ export default function OUConfiguration() {
         ouMapping: {
           teachers: teacherOU,
           students: studentOUMappings,
+          graduates: graduatesOU,
+          transferOut: transferOutOU,
         },
         updatedAt: new Date(),
       });
@@ -161,7 +167,6 @@ export default function OUConfiguration() {
       }
     } catch (error: any) {
       alert(`삭제 실패: ${error.message}`);
-      throw error;
     }
   };
 
@@ -258,6 +263,46 @@ export default function OUConfiguration() {
                 );
               })}
             </div>
+          </div>
+
+          <hr className="border-gray-200" />
+
+          {/* Graduate OU mapping */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              4. 졸업생 조직단위(OU) 매핑
+            </label>
+            <div className="max-w-md">
+              <OUTreeSelector
+                orgUnits={orgUnits}
+                value={graduatesOU}
+                onChange={setGraduatesOU}
+                placeholder="-- 졸업생용 조직단위를 선택하세요 --"
+              />
+            </div>
+            <span className="text-gray-500 text-xs mt-1 block">
+              학년 말 OU 전환 시 최종 학년(예: 3학년) 학생이 이름 변경되거나 보관되는 대상 조직단위로 사용됩니다.
+            </span>
+          </div>
+
+          <hr className="border-gray-200" />
+
+          {/* Transfer out OU mapping */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              5. 전출 및 자퇴(학업중단) 조직단위(OU) 매핑
+            </label>
+            <div className="max-w-md">
+              <OUTreeSelector
+                orgUnits={orgUnits}
+                value={transferOutOU}
+                onChange={setTransferOutOU}
+                placeholder="-- 전출/자퇴자용 조직단위를 선택하세요 --"
+              />
+            </div>
+            <span className="text-gray-500 text-xs mt-1 block">
+              학기 중 전출이나 학업중단(자퇴) 처리된 학생이 보관 및 정지 상태로 이동되는 조직단위입니다.
+            </span>
           </div>
 
           <div className="pt-4 flex justify-end">

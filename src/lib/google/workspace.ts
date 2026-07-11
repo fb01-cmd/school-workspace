@@ -35,6 +35,39 @@ let mockUsers: {
   { id: "u5", primaryEmail: "24001@hmh.or.kr", name: { familyName: "한", givenName: "재민" }, orgUnitPath: "/학생/2학년", suspended: false, aliases: [] },
 ];
 
+let mockGroups: { id: string; email: string; name: string; description: string }[] = [
+  { id: "g1", email: "teacher-all@hmh.or.kr", name: "전체 교직원", description: "교직원 전체 소통 그룹" },
+  { id: "g2", email: "101@hmh.or.kr", name: "1학년 1반", description: "1학년 1반 학생 그룹" },
+  { id: "g3", email: "102@hmh.or.kr", name: "1학년 2반", description: "1학년 2반 학생 그룹" },
+];
+
+let mockGroupMembers: Record<string, string[]> = {
+  "teacher-all@hmh.or.kr": ["teacher01@hmh.or.kr", "teacher02@hmh.or.kr"],
+  "101@hmh.or.kr": ["25001@hmh.or.kr", "25002@hmh.or.kr"],
+  "102@hmh.or.kr": [],
+};
+
+let mockGroupSettings: Record<string, any> = {
+  "teacher-all@hmh.or.kr": {
+    whoCanJoin: "INVITED_CAN_JOIN",
+    whoCanViewMembership: "ALL_MEMBERS_CAN_VIEW",
+    whoCanViewGroup: "ALL_MEMBERS_CAN_VIEW",
+    whoCanPostMessage: "ALL_IN_DOMAIN_CAN_POST",
+  },
+  "101@hmh.or.kr": {
+    whoCanJoin: "INVITED_CAN_JOIN",
+    whoCanViewMembership: "ALL_MEMBERS_CAN_VIEW",
+    whoCanViewGroup: "ALL_MEMBERS_CAN_VIEW",
+    whoCanPostMessage: "ALL_IN_DOMAIN_CAN_POST",
+  },
+  "102@hmh.or.kr": {
+    whoCanJoin: "INVITED_CAN_JOIN",
+    whoCanViewMembership: "ALL_MEMBERS_CAN_VIEW",
+    whoCanViewGroup: "ALL_MEMBERS_CAN_VIEW",
+    whoCanPostMessage: "ALL_IN_DOMAIN_CAN_POST",
+  },
+};
+
 // Helper to get Google Admin Directory API Client
 const getAdminClient = () => {
   if (isMock) return null;
@@ -53,6 +86,24 @@ const getAdminClient = () => {
   });
 
   return google.admin({ version: "directory_v1", auth });
+};
+
+// Helper to get Google Groups Settings API Client
+const getGroupsSettingsClient = () => {
+  if (isMock) return null;
+
+  const privateKey = process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY!.replace(/\\n/g, "\n");
+  
+  const auth = new google.auth.JWT({
+    email: process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL,
+    key: privateKey,
+    scopes: [
+      "https://www.googleapis.com/auth/apps.groups.settings",
+    ],
+    subject: process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL
+  });
+
+  return google.groupssettings({ version: "v1", auth });
 };
 
 // 1. Fetch OUs
@@ -125,6 +176,16 @@ export const updateOrgunit = async (orgUnitPath: string, newName: string) => {
       }
       return o;
     });
+    // Also update users whose orgUnitPath is under the renamed OU
+    mockUsers = mockUsers.map((u) => {
+      if (u.orgUnitPath === orgUnitPath) {
+        return { ...u, orgUnitPath: newPath };
+      }
+      if (u.orgUnitPath.startsWith(orgUnitPath + "/")) {
+        return { ...u, orgUnitPath: newPath + u.orgUnitPath.slice(orgUnitPath.length) };
+      }
+      return u;
+    });
     return { success: true };
   }
 
@@ -132,13 +193,19 @@ export const updateOrgunit = async (orgUnitPath: string, newName: string) => {
   if (!admin) throw new Error("Admin client is not initialized.");
 
   try {
-    // Google requires orgUnitPath encoded (without leading slash for the path param)
-    const encodedPath = encodeURIComponent(orgUnitPath.replace(/^\//, ""));
+    // Resolve orgUnitPath to orgUnitId to bypass Google API URL-routing slash-parsing bugs
+    const listRes = await admin.orgunits.list({ customerId: "my_customer", type: "all" });
+    const ous = listRes.data.organizationUnits || [];
+    const targetOU = ous.find((o) => o.orgUnitPath === orgUnitPath);
+    const pathOrId = (targetOU && targetOU.orgUnitId) ? targetOU.orgUnitId : orgUnitPath.replace(/^\//, "");
+
     const res = await admin.orgunits.patch({
       customerId: "my_customer",
-      orgUnitPath: encodedPath,
+      orgUnitPath: pathOrId,
       requestBody: { name: newName },
     });
+    // OU rename changes users' orgUnitPath — invalidate cache so next listing is fresh
+    invalidateUserCache();
     return res.data;
   } catch (error) {
     console.error("Error updating OU in Google Workspace", error);
@@ -161,10 +228,15 @@ export const deleteOrgunit = async (orgUnitPath: string) => {
   if (!admin) throw new Error("Admin client is not initialized.");
 
   try {
-    const encodedPath = encodeURIComponent(orgUnitPath.replace(/^\//, ""));
+    // Resolve orgUnitPath to orgUnitId to bypass Google API URL-routing slash-parsing bugs
+    const listRes = await admin.orgunits.list({ customerId: "my_customer", type: "all" });
+    const ous = listRes.data.organizationUnits || [];
+    const targetOU = ous.find((o) => o.orgUnitPath === orgUnitPath);
+    const pathOrId = (targetOU && targetOU.orgUnitId) ? targetOU.orgUnitId : orgUnitPath.replace(/^\//, "");
+
     await admin.orgunits.delete({
       customerId: "my_customer",
-      orgUnitPath: encodedPath,
+      orgUnitPath: pathOrId,
     });
     return { success: true };
   } catch (error) {
@@ -226,32 +298,30 @@ export const listUsersInOUs = async (orgUnitPaths: string[]) => {
       return allUsers;
     }
 
-    // Fetch all OU paths in parallel for faster loading
-    const fetchUsersForOU = async (path: string) => {
-      const users: any[] = [];
-      let pageToken: string | undefined;
-      do {
-        const res = await (admin.users.list as any)({
-          customer: "my_customer",
-          query: `orgUnitPath='${path}'`,
-          orderBy: "email",
-          maxResults: 500,
-          projection: "basic",
-          pageToken,
-        });
-        if (res.data.users) {
-          users.push(...res.data.users);
-        }
-        pageToken = res.data.nextPageToken || undefined;
-      } while (pageToken);
-      return users;
-    };
+    // Fetch all users in the domain and filter locally in JavaScript
+    // This bypasses Google's search query indexing lag (query: "orgUnitPath='...'")
+    // ensuring newly created or moved users are immediately visible.
+    let allUsers: any[] = [];
+    let pageToken: string | undefined;
+    do {
+      const res = await (admin.users.list as any)({
+        customer: "my_customer",
+        orderBy: "email",
+        maxResults: 500,
+        projection: "basic",
+        pageToken,
+      });
+      if (res.data.users) {
+        allUsers = [...allUsers, ...res.data.users];
+      }
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
 
-    const results = await Promise.all(orgUnitPaths.map(fetchUsersForOU));
-    const allUsers = results.flat();
+    // Filter by requested OUs
+    const filteredUsers = allUsers.filter((u: any) => orgUnitPaths.includes(u.orgUnitPath));
 
-    userCache.set(cacheKey, { data: allUsers, timestamp: Date.now() });
-    return allUsers;
+    userCache.set(cacheKey, { data: filteredUsers, timestamp: Date.now() });
+    return filteredUsers;
   } catch (error) {
     console.error("Error fetching users from Google Workspace", error);
     throw error;
@@ -268,6 +338,12 @@ export const createUser = async (
   changePasswordAtNextLogin: boolean
 ) => {
   if (isMock) {
+    const exists = mockUsers.some((u) => u.primaryEmail.toLowerCase() === email.toLowerCase());
+    if (exists) {
+      const err = new Error(`Entity already exists: ${email}`);
+      (err as any).code = 409;
+      throw err;
+    }
     const newUser = {
       id: `u_${Math.random().toString(36).substr(2, 9)}`,
       primaryEmail: email,
@@ -463,7 +539,10 @@ export const deleteAlias = async (email: string, alias: string) => {
 // 9. List all Groups in domain
 export const listGroups = async (domain: string) => {
   if (isMock) {
-    return [];
+    return mockGroups.map((g) => ({
+      ...g,
+      directMembersCount: String(mockGroupMembers[g.email]?.length || 0),
+    }));
   }
 
   const admin = getAdminClient();
@@ -494,7 +573,16 @@ export const listGroups = async (domain: string) => {
 // groupEmail format: "101@hmh.or.kr" (학년+반)
 export const createGroup = async (groupEmail: string, groupName: string, description = "") => {
   if (isMock) {
-    return { email: groupEmail, name: groupName };
+    const newGroup = { id: `g_${Math.random().toString(36).substr(2, 9)}`, email: groupEmail, name: groupName, description };
+    mockGroups.push(newGroup);
+    mockGroupMembers[groupEmail] = [];
+    mockGroupSettings[groupEmail] = {
+      whoCanJoin: "CAN_REQUEST_TO_JOIN",
+      whoCanViewMembership: "ALL_IN_DOMAIN_CAN_VIEW",
+      whoCanViewGroup: "ALL_IN_DOMAIN_CAN_VIEW",
+      whoCanPostMessage: "ALL_IN_DOMAIN_CAN_POST",
+    };
+    return newGroup;
   }
 
   const admin = getAdminClient();
@@ -510,8 +598,18 @@ export const createGroup = async (groupEmail: string, groupName: string, descrip
       },
     });
 
-    // Set group to be publicly accessible (whoCanViewMembership, whoCanPostMessage etc.)
-    // This requires the groupssettings API — handled separately via groupssettings
+    // Make it a public group by default (all in domain can view and post)
+    try {
+      await updateGroupSettings(groupEmail, {
+        whoCanPostMessage: "ALL_IN_DOMAIN_CAN_POST",
+        whoCanViewGroup: "ALL_IN_DOMAIN_CAN_VIEW",
+        whoCanViewMembership: "ALL_IN_DOMAIN_CAN_VIEW",
+        whoCanJoin: "CAN_REQUEST_TO_JOIN",
+      });
+    } catch (settingsErr) {
+      console.warn("Failed to set default group settings on creation", settingsErr);
+    }
+
     return res.data;
   } catch (error) {
     console.error("Error creating group", error);
@@ -522,6 +620,9 @@ export const createGroup = async (groupEmail: string, groupName: string, descrip
 // 11. Delete a Google Group
 export const deleteGroup = async (groupEmail: string) => {
   if (isMock) {
+    mockGroups = mockGroups.filter((g) => g.email !== groupEmail);
+    delete mockGroupMembers[groupEmail];
+    delete mockGroupSettings[groupEmail];
     return { success: true };
   }
 
@@ -544,6 +645,12 @@ export const deleteGroup = async (groupEmail: string) => {
 // 12. Add member to a group
 export const addGroupMember = async (groupEmail: string, memberEmail: string) => {
   if (isMock) {
+    if (!mockGroupMembers[groupEmail]) {
+      mockGroupMembers[groupEmail] = [];
+    }
+    if (!mockGroupMembers[groupEmail].includes(memberEmail)) {
+      mockGroupMembers[groupEmail].push(memberEmail);
+    }
     return { success: true };
   }
 
@@ -570,6 +677,9 @@ export const addGroupMember = async (groupEmail: string, memberEmail: string) =>
 // 13. Remove member from a group
 export const removeGroupMember = async (groupEmail: string, memberEmail: string) => {
   if (isMock) {
+    if (mockGroupMembers[groupEmail]) {
+      mockGroupMembers[groupEmail] = mockGroupMembers[groupEmail].filter((m) => m !== memberEmail);
+    }
     return { success: true };
   }
 
@@ -589,26 +699,160 @@ export const removeGroupMember = async (groupEmail: string, memberEmail: string)
   }
 };
 
+// 13a. List members of a group
+export const listGroupMembers = async (groupEmail: string) => {
+  if (isMock) {
+    const emails = mockGroupMembers[groupEmail] || [];
+    return emails.map((email, idx) => ({
+      id: `m_${idx}`,
+      email,
+      role: "MEMBER",
+      type: "USER",
+    }));
+  }
+
+  const admin = getAdminClient();
+  if (!admin) throw new Error("Admin client is not initialized.");
+
+  try {
+    let allMembers: any[] = [];
+    let pageToken: string | undefined;
+    do {
+      const res = await (admin.members.list as any)({
+        groupKey: groupEmail,
+        maxResults: 200,
+        pageToken,
+      });
+      if (res.data.members) {
+        allMembers = [...allMembers, ...res.data.members];
+      }
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
+    return allMembers;
+  } catch (error) {
+    console.error(`Error listing members for group ${groupEmail}`, error);
+    throw error;
+  }
+};
+
+// 13b. Get group settings
+export const getGroupSettings = async (groupEmail: string) => {
+  if (isMock) {
+    return mockGroupSettings[groupEmail] || {
+      whoCanJoin: "CAN_REQUEST_TO_JOIN",
+      whoCanViewMembership: "ALL_IN_DOMAIN_CAN_VIEW",
+      whoCanViewGroup: "ALL_IN_DOMAIN_CAN_VIEW",
+      whoCanPostMessage: "ALL_IN_DOMAIN_CAN_POST",
+    };
+  }
+
+  const groupsSettings = getGroupsSettingsClient();
+  if (!groupsSettings) throw new Error("Groups Settings client is not initialized.");
+
+  try {
+    const res = await (groupsSettings.groups.get as any)({
+      groupUniqueId: groupEmail,
+      alt: "json",
+    });
+    const raw = res.data || {};
+
+    // Normalize: the API may return fields as camelCase, snake_case, or nested
+    // Build a flattened version checking all known key patterns
+    const normalize = (camel: string, snake: string) => {
+      return raw[camel] || raw[snake] || undefined;
+    };
+
+    const settings = {
+      ...raw,
+      whoCanPostMessage: normalize("whoCanPostMessage", "who_can_post_message"),
+      whoCanJoin: normalize("whoCanJoin", "who_can_join"),
+      whoCanViewGroup: normalize("whoCanViewGroup", "who_can_view_group"),
+      whoCanViewMembership: normalize("whoCanViewMembership", "who_can_view_membership"),
+    };
+
+    return settings;
+  } catch (error) {
+    console.warn(`Error getting settings for group ${groupEmail}`, error);
+    throw error;
+  }
+};
+
+// 13c. Update group settings
+export const updateGroupSettings = async (groupEmail: string, settings: any) => {
+  if (isMock) {
+    mockGroupSettings[groupEmail] = {
+      ...(mockGroupSettings[groupEmail] || {}),
+      ...settings,
+    };
+    return mockGroupSettings[groupEmail];
+  }
+
+  const groupsSettings = getGroupsSettingsClient();
+  if (!groupsSettings) throw new Error("Groups Settings client is not initialized.");
+
+  try {
+    const res = await groupsSettings.groups.patch({
+      groupUniqueId: groupEmail,
+      requestBody: settings,
+    });
+    return res.data;
+  } catch (error) {
+    console.error(`Error updating settings for group ${groupEmail}`, error);
+    throw error;
+  }
+};
+
 // 14. Delete all class groups matching pattern {학년}{반2자리}@{domain}
 // e.g. 101@hmh.or.kr through 310@hmh.or.kr
-export const deleteAllClassGroups = async (domain: string) => {
+export const deleteAllClassGroups = async (domain: string, testPrefix: string = "") => {
   if (isMock) {
-    return { deleted: 0, failed: 0 };
+    const patternStr = testPrefix ? `^${testPrefix}[123]\\d{2}@` : `^[123]\\d{2}@`;
+    const classGroupPattern = new RegExp(patternStr);
+    const emailsToDelete = Object.keys(mockGroupSettings).filter((email) => classGroupPattern.test(email));
+    
+    emailsToDelete.forEach((email) => {
+      delete mockGroupSettings[email];
+      delete mockGroupMembers[email];
+    });
+    
+    mockGroups = mockGroups.filter((g) => !emailsToDelete.includes(g.email));
+
+    return { 
+      deleted: emailsToDelete.length, 
+      failed: 0, 
+      total: emailsToDelete.length,
+      succeededList: emailsToDelete,
+      failedList: []
+    };
   }
 
   const groups = await listGroups(domain);
-  // Match groups like 101, 102, ... 110, 201, ... 310
-  const classGroupPattern = /^[123]\d{2}@/;
+  // Match groups like 101, 102, ... 110, 201, ... 310 (with optional test prefix)
+  const patternStr = testPrefix 
+    ? `^${testPrefix}[123]\\d{2}@` 
+    : `^[123]\\d{2}@`;
+  const classGroupPattern = new RegExp(patternStr);
   const classGroups = groups.filter((g: any) => classGroupPattern.test(g.email || ""));
 
+  const succeededList: string[] = [];
+  const failedList: any[] = [];
+
   const results = await Promise.allSettled(
-    classGroups.map((g: any) => deleteGroup(g.email))
+    classGroups.map(async (g: any) => {
+      try {
+        await deleteGroup(g.email);
+        succeededList.push(g.email);
+      } catch (err: any) {
+        failedList.push({ email: g.email, reason: err.message || "삭제 실패" });
+        throw err;
+      }
+    })
   );
 
   const deleted = results.filter((r) => r.status === "fulfilled").length;
   const failed = results.filter((r) => r.status === "rejected").length;
 
-  return { deleted, failed, total: classGroups.length };
+  return { deleted, failed, total: classGroups.length, succeededList, failedList };
 };
 
 // 15. Create all class groups from current student familyNames
@@ -616,10 +860,74 @@ export const deleteAllClassGroups = async (domain: string) => {
 // Creates groups like 101@domain, 102@domain, ...
 export const createAllClassGroups = async (
   domain: string,
-  students: { primaryEmail: string; familyName: string }[]
+  students: { primaryEmail: string; familyName: string }[],
+  testPrefix: string = ""
 ) => {
   if (isMock) {
-    return { created: 0, membersAdded: 0, failed: 0 };
+    const succeededList: any[] = [];
+    const failedList: any[] = [];
+    let createdCount = 0;
+    let membersAddedCount = 0;
+
+    const groupMap = new Map<string, string[]>();
+    for (const student of students) {
+      const fn = student.familyName?.trim();
+      if (!fn || fn.length < 5) continue;
+      const grade = fn[0];
+      const classNum = fn.substring(1, 3);
+      const classNumInt = parseInt(classNum, 10);
+      if (isNaN(classNumInt) || classNumInt < 1 || classNumInt > 10) continue;
+      const groupEmail = `${testPrefix}${grade}${classNum}@${domain}`;
+      if (!groupMap.has(groupEmail)) {
+        groupMap.set(groupEmail, []);
+      }
+      groupMap.get(groupEmail)!.push(student.primaryEmail);
+    }
+
+    for (const [groupEmail, members] of groupMap.entries()) {
+      try {
+        const pureEmail = testPrefix && groupEmail.startsWith(testPrefix) 
+          ? groupEmail.substring(testPrefix.length) 
+          : groupEmail;
+        const classNumStr = pureEmail.substring(1, pureEmail.indexOf("@"));
+        const grade = pureEmail[0];
+        const classNum = parseInt(classNumStr, 10);
+        const groupName = `${testPrefix ? "[테스트] " : ""}${grade}학년 ${classNum}반`;
+
+        const exists = mockGroups.some((g) => g.email.toLowerCase() === groupEmail.toLowerCase());
+        if (!exists) {
+          mockGroups.push({
+            id: `g_${Math.random().toString(36).substr(2, 9)}`,
+            email: groupEmail,
+            name: groupName,
+            description: `효명고등학교 ${groupName} 학생 그룹`,
+          });
+          createdCount++;
+        }
+
+        mockGroupMembers[groupEmail] = members;
+        membersAddedCount += members.length;
+        succeededList.push({
+          email: groupEmail,
+          name: groupName,
+          membersCount: members.length,
+          status: exists ? "synced" : "created"
+        });
+      } catch (err: any) {
+        failedList.push({
+          email: groupEmail,
+          reason: err.message
+        });
+      }
+    }
+
+    return {
+      created: createdCount,
+      membersAdded: membersAddedCount,
+      failed: failedList.length,
+      succeededList,
+      failedList
+    };
   }
 
   // Build map: groupEmail -> member emails
@@ -634,7 +942,7 @@ export const createAllClassGroups = async (
     const classNumInt = parseInt(classNum, 10);
     if (isNaN(classNumInt) || classNumInt < 1 || classNumInt > 10) continue;
 
-    const groupEmail = `${grade}${classNum}@${domain}`;
+    const groupEmail = `${testPrefix}${grade}${classNum}@${domain}`;
     if (!groupMap.has(groupEmail)) {
       groupMap.set(groupEmail, []);
     }
@@ -644,28 +952,74 @@ export const createAllClassGroups = async (
   let created = 0;
   let membersAdded = 0;
   let failed = 0;
+  const succeededList: any[] = [];
+  const failedList: any[] = [];
+
+  // Google Directory API eventual consistency helper
+  const addGroupMemberWithRetry = async (groupEmail: string, email: string, retries = 3, delayMs = 1500) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        await addGroupMember(groupEmail, email);
+        return;
+      } catch (error: any) {
+        const isNotFound = error?.code === 404 || error?.message?.includes("NotFound") || error?.message?.includes("groupKey");
+        if (isNotFound && i < retries - 1) {
+          console.warn(`Group ${groupEmail} not found yet when adding ${email}. Retrying in ${delayMs}ms... (Attempt ${i + 1}/${retries})`);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        } else {
+          throw error;
+        }
+      }
+    }
+  };
 
   for (const [groupEmail, members] of groupMap.entries()) {
     try {
-      const classNumStr = groupEmail.substring(1, groupEmail.indexOf("@"));
-      const grade = groupEmail[0];
+      const pureEmail = testPrefix && groupEmail.startsWith(testPrefix) 
+        ? groupEmail.substring(testPrefix.length) 
+        : groupEmail;
+      const classNumStr = pureEmail.substring(1, pureEmail.indexOf("@"));
+      const grade = pureEmail[0];
       const classNum = parseInt(classNumStr, 10);
-      const groupName = `${grade}학년 ${classNum}반`;
+      const groupName = `${testPrefix ? "[테스트] " : ""}${grade}학년 ${classNum}반`;
 
-      await createGroup(groupEmail, groupName, `효명고등학교 ${groupName} 학생 그룹`);
-      created++;
+      let isNew = false;
+      try {
+        await createGroup(groupEmail, groupName, `효명고등학교 ${groupName} 학생 그룹`);
+        created++;
+        isNew = true;
+        // Give Google a tiny headstart to propagate the new group
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      } catch (createErr: any) {
+        if (createErr?.code === 409) {
+          console.log(`Group ${groupEmail} already exists. Syncing members.`);
+        } else {
+          throw createErr;
+        }
+      }
 
-      // Add all members in parallel
+      // Add all members in parallel with retry support
       const memberResults = await Promise.allSettled(
-        members.map((email) => addGroupMember(groupEmail, email))
+        members.map((email) => addGroupMemberWithRetry(groupEmail, email))
       );
       membersAdded += memberResults.filter((r) => r.status === "fulfilled").length;
-    } catch (error) {
-      console.error(`Failed to create group ${groupEmail}`, error);
+
+      succeededList.push({
+        email: groupEmail,
+        name: groupName,
+        membersCount: members.length,
+        status: isNew ? "created" : "synced"
+      });
+    } catch (error: any) {
+      console.error(`Failed to manage group ${groupEmail}`, error);
       failed++;
+      failedList.push({
+        email: groupEmail,
+        reason: error.message || "생성 실패"
+      });
     }
   }
 
-  return { created, membersAdded, failed };
+  return { created, membersAdded, failed, succeededList, failedList };
 };
 

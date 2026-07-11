@@ -10,7 +10,7 @@ import {
 import type { PromotionRow } from "@/lib/csvParser";
 import { callAPI, Btn, ErrBox, CSVUploader } from "./shared";
 
-export default function PromoteTab({ s, ud, ouList, onDone }: any) {
+export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
   const [csvText, setCsvText] = useState("");
   const [parsed, setParsed] = useState<PromotionRow[]>([]);
   const [pErr, setPErr] = useState<{ line: number; message: string }[]>([]);
@@ -100,19 +100,22 @@ export default function PromoteTab({ s, ud, ouList, onDone }: any) {
     setRunning(true);
     setErr("");
     try {
-      setResult(
-        await callAPI(
-          "promote_students",
-          {
-            promotions: matched.map((m) => ({
-              email: m.email,
-              prevStudentId: m.prevStudentId,
-              newStudentId: m.newStudentId,
-            })),
-          },
-          ud
-        )
+      const response = await callAPI(
+        "promote_students",
+        {
+          promotions: matched.map((m) => ({
+            email: m.email,
+            name: m.name,
+            prevStudentId: m.prevStudentId,
+            newStudentId: m.newStudentId,
+          })),
+        },
+        ud
       );
+      setResult(response);
+      if (response && onDone) {
+        onDone();
+      }
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -147,7 +150,7 @@ export default function PromoteTab({ s, ud, ouList, onDone }: any) {
         <CSVUploader onFile={onFile} label="진급 CSV 업로드 (이전학년,이전반,이전번호,새학년,새반,새번호)" />
       ) : (
         <>
-          <div className="bg-gray-50 rounded-xl border p-4 text-sm">
+          <div className="bg-gray-50 rounded-xl border p-4 text-sm space-y-2">
             <p className="font-semibold">
               파싱: <span className="text-green-700">{parsed.length}행</span>
             </p>
@@ -163,6 +166,28 @@ export default function PromoteTab({ s, ud, ouList, onDone }: any) {
                 </ul>
               </details>
             )}
+
+            {(() => {
+              const isTemplateData = parsed.length === 3 && 
+                parsed.every((row, idx) => {
+                  const t = [
+                    { pg: 1, pc: 1, pn: 1, ng: 2, nc: 3, nn: 5 },
+                    { pg: 1, pc: 1, pn: 2, ng: 2, nc: 1, nn: 1 },
+                    { pg: 2, pc: 5, pn: 10, ng: 3, nc: 2, nn: 8 }
+                  ][idx];
+                  return t && row.prevGrade === t.pg && row.prevClass === t.pc && row.prevNum === t.pn &&
+                         row.newGrade === t.ng && row.newClass === t.nc && row.newNum === t.nn;
+                });
+              if (isTemplateData) {
+                return (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800 font-medium">
+                    ⚠️ <strong>주의:</strong> 업로드된 파일이 수정하지 않은 <strong>기본 예시 템플릿 데이터</strong>입니다. 
+                    엑셀에서 편집하신 <code>진급처리_양식.xlsx</code> 파일을 <strong>[파일] → [다른 이름으로 저장] → [CSV (쉼표로 분리) (*.csv)]</strong> 형식으로 저장한 후, 해당 실제 데이터 파일을 다시 업로드해 주세요!
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
 
           {!matched.length && !result ? (
@@ -306,18 +331,92 @@ export default function PromoteTab({ s, ud, ouList, onDone }: any) {
               </div>
             </>
           ) : (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-5">
-              <p className="font-bold text-green-800 text-lg">✅ 진급 처리 완료!</p>
-              <p className="text-green-700 text-sm mt-1">
-                성공: <strong>{result.succeeded?.length}명</strong> / 실패:{" "}
-                <strong>{result.failed?.length || 0}명</strong>
-              </p>
-              <p className="text-green-600 text-xs mt-1">진급 이력이 Firestore에 저장되었습니다.</p>
-              {onDone && (
-                <button onClick={onDone} className="mt-3 px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700">
-                  다음 단계로 →
-                </button>
+            <div className="space-y-4">
+              {/* Conditional Result Banner */}
+              {result.succeeded?.length === 0 ? (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-red-800">
+                  <p className="font-bold text-lg">❌ 진급 처리 실패</p>
+                  <p className="text-sm mt-1">
+                    요청한 모든 학생의 진급 처리에 실패했습니다. 구글 계정 권한 또는 데이터 일치 여부를 확인해 주세요.
+                  </p>
+                  <p className="text-xs font-semibold mt-2">
+                    성공: 0명 / 실패: <strong>{result.failed?.length || 0}명</strong>
+                  </p>
+                </div>
+              ) : (result.failed?.length || 0) > 0 ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-amber-800">
+                  <p className="font-bold text-lg">⚠️ 진급 처리 완료 (일부 실패)</p>
+                  <p className="text-sm mt-1">
+                    일부 학생의 진급 처리가 성공했으나, 일부 학생의 학번 업데이트에 실패했습니다. 아래 실패 상세 목록을 확인해 주세요.
+                  </p>
+                  <p className="text-xs font-semibold mt-2">
+                    성공: <strong>{result.succeeded?.length}명</strong> / 실패: <strong>{result.failed?.length}명</strong>
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-green-800">
+                  <p className="font-bold text-lg">✅ 진급 처리 완료!</p>
+                  <p className="text-sm mt-1">
+                    모든 학생의 학번 업데이트(진급)가 성공적으로 완료되었습니다.
+                  </p>
+                  <p className="text-xs font-semibold mt-2">
+                    성공: <strong>{result.succeeded?.length}명</strong> / 실패: 0명
+                  </p>
+                </div>
               )}
+
+              {/* Failures Detail List */}
+              {(result.failed?.length || 0) > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-red-700">⚠️ 진급 실패 상세 내역 ({result.failed.length}건)</p>
+                  <div className="overflow-auto max-h-52 rounded-xl border border-red-100">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-red-50 text-red-700 font-semibold">
+                        <tr>
+                          <th className="px-3 py-2 text-left">이름</th>
+                          <th className="px-3 py-2 text-left">이메일</th>
+                          <th className="px-3 py-2 text-left">대상 학번</th>
+                          <th className="px-3 py-2 text-left">실패 사유</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-red-50 bg-red-50/10">
+                        {result.failed.map((f: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-red-50/20 text-red-900">
+                            <td className="px-3 py-2 font-medium">{f.name}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{f.email}</td>
+                            <td className="px-3 py-2 font-mono">{f.studentId}</td>
+                            <td className="px-3 py-2 font-medium text-red-600">
+                              {f.reason}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-gray-500 text-xs mt-1">진급 이력이 Firestore 로그에 저장되었습니다.</p>
+
+              <div className="flex gap-3">
+                <Btn
+                  onClick={() => {
+                    setCsvText("");
+                    setParsed([]);
+                    setMatched([]);
+                    setResult(null);
+                    setErr("");
+                  }}
+                  color="gray"
+                >
+                  새로운 CSV 업로드
+                </Btn>
+                {onNext && (result.succeeded?.length || 0) > 0 && (
+                  <Btn onClick={onNext}>
+                    다음 단계로 →
+                  </Btn>
+                )}
+              </div>
             </div>
           )}
         </>

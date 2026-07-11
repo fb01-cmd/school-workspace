@@ -61,8 +61,10 @@ export function ErrBox({ msg }: { msg: string }) {
 
 export function StepTracker({
   steps,
+  startIndex = 1,
 }: {
   steps: { label: string; status: "pending" | "running" | "success" | "error" }[];
+  startIndex?: number;
 }) {
   const icons = { pending: "⬜", running: "⏳", success: "✅", error: "❌" };
   const textColors = {
@@ -77,7 +79,7 @@ export function StepTracker({
         <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border">
           <span className="text-lg w-6 text-center">{icons[s.status]}</span>
           <span className={`text-sm font-medium ${textColors[s.status]}`}>
-            {i + 1}단계. {s.label}
+            {i + startIndex}단계. {s.label}
           </span>
         </div>
       ))}

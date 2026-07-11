@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAlias, invalidateUserCache, isMock } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit";
 
+interface RecentAction {
+  action: "create" | "delete" | "update";
+  timestamp: number;
+  data?: any;
+}
+
+// In-memory process-level buffer for Google eventual consistency
+const recentActionsCache = new Map<string, RecentAction>();
+
+function pruneRecentActions() {
+  const now = Date.now();
+  for (const [email, record] of recentActionsCache.entries()) {
+    if (now - record.timestamp > 120 * 1000) {
+      recentActionsCache.delete(email);
+    }
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -14,7 +32,38 @@ export async function POST(req: NextRequest) {
       if (!Array.isArray(orgUnitPaths)) {
         return NextResponse.json({ error: "orgUnitPaths must be an array" }, { status: 400 });
       }
-      const users = await listUsersInOUs(orgUnitPaths);
+      pruneRecentActions();
+      let users = await listUsersInOUs(orgUnitPaths);
+
+      // Apply patches from recentActionsCache to handle propagation delay
+      const now = Date.now();
+      for (const [email, record] of recentActionsCache.entries()) {
+        if (now - record.timestamp <= 120 * 1000) {
+          if (record.action === "delete") {
+            users = users.filter((u: any) => u.primaryEmail?.toLowerCase() !== email);
+          } else if (record.action === "create") {
+            const alreadyExists = users.some((u: any) => u.primaryEmail?.toLowerCase() === email);
+            if (!alreadyExists && record.data) {
+              const userOrgUnit = record.data.orgUnitPath || "/";
+              if (orgUnitPaths.includes(userOrgUnit)) {
+                users.unshift(record.data);
+              }
+            }
+          } else if (record.action === "update") {
+            users = users.map((u: any) => {
+              if (u.primaryEmail?.toLowerCase() === email && record.data) {
+                const updatedUser = { ...u, ...record.data };
+                if (record.data.orgUnitPath && !orgUnitPaths.includes(record.data.orgUnitPath)) {
+                  return null;
+                }
+                return updatedUser;
+              }
+              return u;
+            }).filter(Boolean);
+          }
+        }
+      }
+
       return NextResponse.json({ users, isMock });
     }
 
@@ -33,6 +82,21 @@ export async function POST(req: NextRequest) {
           details: `이름: ${lastName}${firstName}, 조직단위: ${orgUnitPath}`,
           status: "success",
         });
+
+        // Add to buffer cache to prevent propagation latency
+        recentActionsCache.set(email.toLowerCase(), {
+          action: "create",
+          timestamp: Date.now(),
+          data: {
+            id: user.id || `temp_${Math.random().toString(36).substr(2, 9)}`,
+            primaryEmail: email,
+            name: { familyName: lastName, givenName: firstName },
+            orgUnitPath,
+            changePasswordAtNextLogin: !!changePasswordAtNextLogin,
+            suspended: false,
+          }
+        });
+
         invalidateUserCache();
         return NextResponse.json({ user, isMock });
       } catch (err: any) {
@@ -72,6 +136,26 @@ export async function POST(req: NextRequest) {
           details: detailParts.length > 0 ? detailParts.join(", ") : "계정 정보 수정",
           status: "success",
         });
+
+        // Add to buffer cache to prevent propagation latency
+        const mappedUpdates: any = {};
+        if (updates.firstName !== undefined) {
+          mappedUpdates.name = mappedUpdates.name || {};
+          mappedUpdates.name.givenName = updates.firstName;
+        }
+        if (updates.lastName !== undefined) {
+          mappedUpdates.name = mappedUpdates.name || {};
+          mappedUpdates.name.familyName = updates.lastName;
+        }
+        if (updates.orgUnitPath !== undefined) mappedUpdates.orgUnitPath = updates.orgUnitPath;
+        if (updates.suspended !== undefined) mappedUpdates.suspended = updates.suspended;
+
+        recentActionsCache.set(email.toLowerCase(), {
+          action: "update",
+          timestamp: Date.now(),
+          data: mappedUpdates
+        });
+
         invalidateUserCache();
         return NextResponse.json({ user, isMock });
       } catch (err: any) {
@@ -103,6 +187,13 @@ export async function POST(req: NextRequest) {
           details: `계정 구글 워크스페이스 영구 삭제 완료`,
           status: "success",
         });
+
+        // Add to buffer cache to prevent propagation latency
+        recentActionsCache.set(email.toLowerCase(), {
+          action: "delete",
+          timestamp: Date.now()
+        });
+
         invalidateUserCache();
         return NextResponse.json({ success: true, isMock });
       } catch (err: any) {
@@ -130,6 +221,16 @@ export async function POST(req: NextRequest) {
         const failures = results
           .map((res, idx) => (res.status === "rejected" ? { email: emails[idx], reason: res.reason?.message } : null))
           .filter(Boolean);
+
+        // Add successful deletions to buffer cache to prevent propagation latency
+        results.forEach((res, idx) => {
+          if (res.status === "fulfilled") {
+            recentActionsCache.set(emails[idx].toLowerCase(), {
+              action: "delete",
+              timestamp: Date.now()
+            });
+          }
+        });
 
         await writeAuditLog({
           operatorEmail: adminEmail,
@@ -172,6 +273,17 @@ export async function POST(req: NextRequest) {
         const failures = results
           .map((res, idx) => (res.status === "rejected" ? { email: emails[idx], reason: res.reason?.message } : null))
           .filter(Boolean);
+
+        // Add successful suspensions to buffer cache to prevent propagation latency
+        results.forEach((res, idx) => {
+          if (res.status === "fulfilled") {
+            recentActionsCache.set(emails[idx].toLowerCase(), {
+              action: "update",
+              timestamp: Date.now(),
+              data: { suspended }
+            });
+          }
+        });
 
         await writeAuditLog({
           operatorEmail: adminEmail,
@@ -302,6 +414,49 @@ export async function POST(req: NextRequest) {
               : null
           )
           .filter(Boolean);
+
+        // Add successful creates to buffer cache to prevent propagation latency
+        createResults.forEach((res, idx) => {
+          if (res.status === "fulfilled") {
+            const u = parsedCreates[idx];
+            recentActionsCache.set(u.email.toLowerCase(), {
+              action: "create",
+              timestamp: Date.now(),
+              data: {
+                id: `temp_${Math.random().toString(36).substr(2, 9)}`,
+                primaryEmail: u.email,
+                name: { familyName: u.lastName, givenName: u.firstName },
+                orgUnitPath: u.orgUnitPath,
+                changePasswordAtNextLogin: !!u.changePasswordAtNextLogin,
+                suspended: false,
+              }
+            });
+          }
+        });
+
+        // Add successful updates to buffer cache to prevent propagation latency
+        updateResults.forEach((res, idx) => {
+          if (res.status === "fulfilled") {
+            const u = parsedUpdates[idx];
+            const mappedUpdates: any = {};
+            if (u.updates.firstName !== undefined) {
+              mappedUpdates.name = mappedUpdates.name || {};
+              mappedUpdates.name.givenName = u.updates.firstName;
+            }
+            if (u.updates.lastName !== undefined) {
+              mappedUpdates.name = mappedUpdates.name || {};
+              mappedUpdates.name.familyName = u.updates.lastName;
+            }
+            if (u.updates.orgUnitPath !== undefined) mappedUpdates.orgUnitPath = u.updates.orgUnitPath;
+            if (u.updates.suspended !== undefined) mappedUpdates.suspended = u.updates.suspended;
+
+            recentActionsCache.set(u.email.toLowerCase(), {
+              action: "update",
+              timestamp: Date.now(),
+              data: mappedUpdates
+            });
+          }
+        });
 
         const success = createFailures.length === 0 && updateFailures.length === 0;
 
