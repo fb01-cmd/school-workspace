@@ -106,6 +106,118 @@ const getGroupsSettingsClient = () => {
   return google.groupssettings({ version: "v1", auth });
 };
 
+// Helper to get Gmail API Client (서비스 계정으로 발신자 계정 사칭)
+// subject: 발신자로 사용할 워크스페이스 계정 이메일 (관리자 계정)
+const getGmailClient = (senderEmail: string) => {
+  if (isMock) return null;
+
+  const privateKey = process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY!.replace(/\\n/g, "\n");
+
+  const auth = new google.auth.JWT({
+    email: process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL,
+    key: privateKey,
+    scopes: ["https://www.googleapis.com/auth/gmail.send"],
+    subject: senderEmail, // 이 계정으로 가장(impersonate)하여 메일 발송
+  });
+
+  return google.gmail({ version: "v1", auth });
+};
+
+/**
+ * 구글 워크스페이스 Gmail API로 메일 발송
+ * @param from    발신자 이메일 (관리자 계정 — 도메인 위임 필요)
+ * @param to      수신자 이메일 (학생 계정)
+ * @param subject 메일 제목
+ * @param body    메일 본문 (plain text)
+ */
+export const sendGmail = async (from: string, to: string, subject: string, body: string): Promise<void> => {
+  if (isMock) {
+    console.log(`[Gmail MOCK] From: ${from} → To: ${to}\nSubject: ${subject}\n${body}`);
+    return;
+  }
+
+  const gmail = getGmailClient(from);
+  if (!gmail) throw new Error("Gmail 클라이언트를 초기화할 수 없습니다.");
+
+  // RFC 2822 형식의 메일 메시지 구성 (UTF-8 제목 인코딩 포함)
+  const encodedSubject = `=?UTF-8?B?${Buffer.from(subject).toString("base64")}?=`;
+  const raw = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${encodedSubject}`,
+    `Content-Type: text/plain; charset=UTF-8`,
+    `MIME-Version: 1.0`,
+    ``,
+    body,
+  ].join("\r\n");
+
+  const encoded = Buffer.from(raw).toString("base64url");
+
+  await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw: encoded },
+  });
+};
+
+// Helper to get Google Chat API Client (앱 봇으로 동작)
+const getChatClient = () => {
+  if (isMock) return null;
+
+  const privateKey = process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY!.replace(/\\n/g, "\n");
+
+  // Chat API spaces.setup은 사용자 인증이 필요하므로 관리자 계정으로 사칭(impersonate)
+  const auth = new google.auth.JWT({
+    email: process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL,
+    key: privateKey,
+    scopes: [
+      "https://www.googleapis.com/auth/chat.spaces.create",
+      "https://www.googleapis.com/auth/chat.messages.create",
+      "https://www.googleapis.com/auth/chat.memberships",
+    ],
+    subject: process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL, // 관리자 계정으로 사칭
+  });
+
+  return google.chat({ version: "v1", auth });
+};
+
+/**
+ * 구글 챗 DM 발송 (앱→학생 1:1 메시지)
+ * @param studentEmail 수신 학생 계정 이메일
+ * @param message      보낼 텍스트 메시지
+ */
+export const sendGoogleChat = async (studentEmail: string, message: string): Promise<void> => {
+  if (isMock) {
+    console.log(`[Chat MOCK] → ${studentEmail}\n${message}`);
+    return;
+  }
+
+  const chat = getChatClient();
+  if (!chat) throw new Error("Chat 클라이언트를 초기화할 수 없습니다.");
+
+  // 1. 학생과의 DM 스페이스 생성 (이미 존재하면 기존 스페이스 반환)
+  const spaceRes = await (chat as any).spaces.setup({
+    requestBody: {
+      space: { spaceType: "DIRECT_MESSAGE" },
+      memberships: [
+        {
+          member: {
+            name: `users/${studentEmail}`,
+            type: "HUMAN",
+          },
+        },
+      ],
+    },
+  });
+
+  const spaceName = spaceRes.data.name; // e.g. "spaces/XXXXXX"
+
+  // 2. DM 스페이스에 메시지 전송
+  await (chat as any).spaces.messages.create({
+    parent: spaceName,
+    requestBody: { text: message },
+  });
+};
+
 // 1. Fetch OUs
 export const listOrgunits = async () => {
   if (isMock) {
@@ -571,6 +683,37 @@ export const listGroups = async (domain: string) => {
     return allGroups;
   } catch (error) {
     console.error("Error listing groups", error);
+    throw error;
+  }
+};
+
+// 9.2. List all Groups a user belongs to
+export const listGroupsForUser = async (userEmail: string) => {
+  if (isMock) {
+    const matchedGroups = [];
+    for (const [groupEmail, members] of Object.entries(mockGroupMembers)) {
+      if (members.includes(userEmail)) {
+        const grp = mockGroups.find((g) => g.email === groupEmail);
+        if (grp) {
+          matchedGroups.push(grp);
+        } else {
+          matchedGroups.push({ email: groupEmail, name: groupEmail });
+        }
+      }
+    }
+    return matchedGroups;
+  }
+
+  const admin = getAdminClient();
+  if (!admin) throw new Error("Admin client is not initialized.");
+
+  try {
+    const res = await admin.groups.list({
+      userKey: userEmail,
+    });
+    return res.data.groups || [];
+  } catch (error) {
+    console.error(`Error listing groups for user ${userEmail}`, error);
     throw error;
   }
 };

@@ -167,9 +167,13 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
         <div className="bg-green-50 border border-green-200 rounded-xl p-5">
           <p className="font-bold text-green-800">✅ 전입생 계정 생성 완료!</p>
           {result.succeeded?.map((st: any, i: number) => (
-            <div key={i} className="mt-2 text-sm space-y-0.5">
-              <p className="text-green-700">이메일: <strong>{st.email}</strong></p>
+            <div key={i} className="mt-3 text-sm space-y-1">
+              <p className="text-green-700">이메일(아이디): <strong>{st.email}</strong></p>
               <p className="text-green-700">학번: <strong>{st.studentId}</strong></p>
+              <p className="text-green-700">
+                초기 비밀번호: <strong className="font-mono bg-green-100 px-1.5 py-0.5 rounded text-green-900">1234abcd!!!!</strong>
+                <span className="ml-2 text-xs text-green-600">(첫 로그인 후 반드시 변경)</span>
+              </p>
               {st.groupAdded ? (
                 <p className="text-green-700">그룹 추가: <strong>{st.groupEmail}</strong> ✅</p>
               ) : (
@@ -177,9 +181,35 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
                   ⚠️ 그룹 <strong>{st.groupEmail}</strong> 없음 — 그룹 재생성 후 수동 추가 필요
                 </p>
               )}
+
+              {/* 클립보드 복사 */}
+              <div className="mt-3 pt-3 border-t border-green-200">
+                <p className="text-xs text-green-700 font-semibold mb-1.5">📋 학생 안내 문구 복사</p>
+                <div className="bg-white border border-green-200 rounded-lg p-3 text-xs text-gray-700 font-mono whitespace-pre-wrap leading-relaxed">
+{`효명고등학교에 오신 것을 환영합니다! 🎉
+
+효명고에서는 재학 중 학교 전용 구글 계정을 사용합니다.
+아래 계정 정보로 구글(google.com)에 로그인하세요.
+
+▪ 아이디(이메일): ${st.email}
+▪ 초기 비밀번호: 1234abcd!!!!
+
+첫 로그인 후 반드시 비밀번호를 변경해 주세요.
+문의사항은 담당 선생님께 말씀해 주세요.`}
+                </div>
+                <button
+                  onClick={() => {
+                    const msg = `효명고등학교에 오신 것을 환영합니다! 🎉\n\n효명고에서는 재학 중 학교 전용 구글 계정을 사용합니다.\n아래 계정 정보로 구글(google.com)에 로그인하세요.\n\n▪ 아이디(이메일): ${st.email}\n▪ 초기 비밀번호: 1234abcd!!!!\n\n첫 로그인 후 반드시 비밀번호를 변경해 주세요.\n문의사항은 담당 선생님께 말씀해 주세요.`;
+                    navigator.clipboard.writeText(msg);
+                  }}
+                  className="mt-2 w-full px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  📋 안내 문구 클립보드 복사
+                </button>
+              </div>
             </div>
           ))}
-          <button onClick={reset} className="mt-3 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700">
+          <button onClick={reset} className="mt-4 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700">
             추가 전입생 처리
           </button>
         </div>

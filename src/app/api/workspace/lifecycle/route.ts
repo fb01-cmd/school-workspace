@@ -10,12 +10,25 @@ import {
   deleteAllClassGroups,
   createAllClassGroups,
   addGroupMember,
+  removeGroupMember,
+  listGroupsForUser,
   invalidateUserCache,
+  sendGmail,
+  sendGoogleChat,
   isMock,
 } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { db } from "@/lib/firebase/config";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+} from "firebase/firestore";
 
 export async function POST(req: NextRequest) {
   try {
@@ -325,6 +338,278 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json({ succeeded, failed, isMock });
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: register_transfer_out (전출/자퇴 등록)
+    // ─────────────────────────────────────────
+    if (action === "register_transfer_out") {
+      const { email, studentName, studentId, originalOU } = body;
+      if (!email) {
+        return NextResponse.json({ error: "이메일이 누락되었습니다." }, { status: 400 });
+      }
+
+      // 1. 설정에서 전출/자퇴자용 OU 경로 조회
+      let transferOutOU = "/학생/전출및자퇴";
+      let suspendGraceDays = 7;
+      let deleteGraceDays = 30;
+
+      if (domain) {
+        const settingsSnap = await getDoc(doc(db, "settings", domain));
+        if (settingsSnap.exists()) {
+          const sData = settingsSnap.data();
+          if (sData.ouMapping?.transferOut) {
+            transferOutOU = sData.ouMapping.transferOut;
+          }
+          if (sData.transferOutSettings) {
+            suspendGraceDays = Number(sData.transferOutSettings.suspendGraceDays) || 7;
+            deleteGraceDays = Number(sData.transferOutSettings.deleteGraceDays) || 30;
+          }
+        }
+      }
+
+      // 2. 구글 워크스페이스에서 해당 유저의 OU를 전출/자퇴 OU로 이동
+      try {
+        await updateUser(email, { orgUnitPath: transferOutOU });
+      } catch (err: any) {
+        console.error("Failed to move user OU:", err);
+        return NextResponse.json({ error: `조직단위 이동 실패: ${err.message}` }, { status: 500 });
+      }
+
+      // 3. 학생이 속한 모든 Google Groups 조회 및 탈퇴
+      let originalGroups: string[] = [];
+      try {
+        const groups = await listGroupsForUser(email);
+        originalGroups = groups.map((g: any) => g.email);
+        for (const gEmail of originalGroups) {
+          try {
+            await removeGroupMember(gEmail, email);
+          } catch (grpErr) {
+            console.warn(`그룹 탈퇴 실패 (${gEmail}):`, grpErr);
+          }
+        }
+      } catch (grpListErr) {
+        console.warn("그룹스 목록 조회 실패:", grpListErr);
+      }
+
+      // 4. Firestore에 전출 진행 태스크 등록
+      const now = new Date();
+      const suspendDueDate = new Date(now.getTime() + suspendGraceDays * 24 * 60 * 60 * 1000);
+      const deleteDueDate = new Date(suspendDueDate.getTime() + deleteGraceDays * 24 * 60 * 60 * 1000);
+
+      const taskRef = doc(db, "transfer_out_tasks", domain || "mock-domain", "students", email);
+      const taskData = {
+        email,
+        name: studentName || "학생",
+        studentId: studentId || "-",
+        originalOU: originalOU || "/학생",
+        originalGroups,
+        status: "OU_MOVED",
+        registeredAt: now,
+        suspendDueDate,
+        deleteDueDate,
+        suspendedAt: null,
+        deletedAt: null,
+      };
+      await setDoc(taskRef, taskData);
+
+      // 5. Gmail 발송 (설정에 저장된 템플릿 사용)
+      try {
+        // 설정에서 이메일 제목/본문 템플릿 로드
+        let emailSubject = "[안내] 전출/자퇴로 인한 구글 워크스페이스 계정 정지 및 데이터 백업 안내";
+        let emailBody = `[효명고등학교 계정관리시스템]\n\n${studentName}님의 전출/자퇴 처리에 따른 구글 워크스페이스 계정 정지 및 데이터 백업 안내입니다.\n\n■ 계정 일시정지 예정일: ${suspendDueDate.toLocaleDateString("ko-KR")}\n■ 계정 영구삭제 예정일: ${deleteDueDate.toLocaleDateString("ko-KR")}\n\n계정이 일시정지되면 모든 구글 서비스 이용이 차단되므로, 정지 예정일 전까지 중요 데이터를 반드시 백업해 주세요.\n\n- 개인 기기로 데이터 다운로드 가이드: https://www.iorad.com/player/1765417/--------------#trysteps-1\n- 타 구글 계정으로 데이터 전송 가이드: https://www.iorad.com/player/1813583/GW---------------------#trysteps-1\n- 구글 테이크아웃 바로가기: https://takeout.google.com\n\n감사합니다.`;
+
+        if (domain) {
+          const settingsSnap = await getDoc(doc(db, "settings", domain));
+          if (settingsSnap.exists()) {
+            const sData = settingsSnap.data();
+            if (sData.transferOutSettings?.emailTemplateSubject) {
+              emailSubject = sData.transferOutSettings.emailTemplateSubject;
+            }
+            if (sData.transferOutSettings?.emailTemplateBody) {
+              // 템플릿 변수 치환
+              emailBody = sData.transferOutSettings.emailTemplateBody
+                .replace(/\{name\}/g, studentName || "학생")
+                .replace(/\{email\}/g, email)
+                .replace(/\{suspendDate\}/g, suspendDueDate.toLocaleDateString("ko-KR"))
+                .replace(/\{deleteDate\}/g, deleteDueDate.toLocaleDateString("ko-KR"))
+                .replace(/\{suspendGraceDays\}/g, String(suspendGraceDays))
+                .replace(/\{deleteGraceDays\}/g, String(deleteGraceDays));
+            }
+          }
+        }
+
+        const senderEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || adminEmail;
+        await sendGmail(senderEmail, email, emailSubject, emailBody);
+        console.log(`[Gmail] 전출/자퇴 안내 메일 발송 완료 → ${email}`);
+      } catch (mailErr: any) {
+        console.warn(`[Gmail] 메일 발송 실패 (${email}):`, mailErr.message);
+      }
+
+      // 6. Google Chat DM 발송 (설정에 저장된 챗 템플릿 사용)
+      try {
+        let chatBody = `📢 [효명고등학교 계정관리시스템]\n${studentName || "학생"}님의 전출/자퇴 처리에 따라 사용 중이던 학교 계정(${email})이 ${suspendDueDate.toLocaleDateString("ko-KR")}에 일시정지 및 ${deleteDueDate.toLocaleDateString("ko-KR")}에 영구 삭제될 예정입니다.\n\n아래 튜토리얼 가이드를 참고하여 중요한 자료는 그 전까지 반드시 개인 기기로 다운로드하거나 타 계정으로 전송하여 백업해 주시기 바랍니다.\n- 데이터 다운로드 가이드: https://www.iorad.com/player/1765417/--------------#trysteps-1\n- 타 계정 전송 가이드: https://www.iorad.com/player/1813583/GW---------------------#trysteps-1\n- 구글 테이크아웃: https://takeout.google.com`;
+
+        if (domain) {
+          const settingsSnap2 = await getDoc(doc(db, "settings", domain));
+          if (settingsSnap2.exists()) {
+            const sData2 = settingsSnap2.data();
+            if (sData2.transferOutSettings?.chatTemplateBody) {
+              chatBody = sData2.transferOutSettings.chatTemplateBody
+                .replace(/\{name\}/g, studentName || "학생")
+                .replace(/\{email\}/g, email)
+                .replace(/\{suspendDate\}/g, suspendDueDate.toLocaleDateString("ko-KR"))
+                .replace(/\{deleteDate\}/g, deleteDueDate.toLocaleDateString("ko-KR"))
+                .replace(/\{suspendGraceDays\}/g, String(suspendGraceDays))
+                .replace(/\{deleteGraceDays\}/g, String(deleteGraceDays));
+            }
+          }
+        }
+
+        await sendGoogleChat(email, chatBody);
+        console.log(`[Chat] 전출/자퇴 안내 챗 DM 발송 완료 → ${email}`);
+      } catch (chatErr: any) {
+        // 챗 발송 실패도 전체 프로세스를 중단하지 않음 (경고만 기록)
+        console.warn(`[Chat] 챗 DM 발송 실패 (${email}):`, chatErr.message);
+      }
+
+      invalidateUserCache();
+
+      await writeAuditLog({
+        operatorEmail: adminEmail,
+        operatorName: adminName,
+        action: "전출/자퇴 등록 (OU 이동 및 격리)",
+        targetEmail: email,
+        details: `이름: ${studentName || "미입력"}, 이동 OU: ${transferOutOU}, 그룹스 ${originalGroups.length}개 탈퇴 처리`,
+        status: "success",
+      });
+
+      return NextResponse.json({ success: true, task: taskData, isMock });
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: execute_transfer_out_suspend (계정 일시정지)
+    // ─────────────────────────────────────────
+    if (action === "execute_transfer_out_suspend") {
+      const { email } = body;
+      if (!email) {
+        return NextResponse.json({ error: "이메일이 누락되었습니다." }, { status: 400 });
+      }
+
+      try {
+        await updateUser(email, { suspended: true });
+        
+        const taskRef = doc(db, "transfer_out_tasks", domain || "mock-domain", "students", email);
+        await updateDoc(taskRef, {
+          status: "SUSPENDED",
+          suspendedAt: new Date(),
+        });
+
+        invalidateUserCache();
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "전출/자퇴 계정 정지",
+          targetEmail: email,
+          details: "구글 워크스페이스 계정 즉시 일시 정지(Suspend) 수행 완료",
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `계정 일시정지 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: execute_transfer_out_delete (계정 영구삭제)
+    // ─────────────────────────────────────────
+    if (action === "execute_transfer_out_delete") {
+      const { email } = body;
+      if (!email) {
+        return NextResponse.json({ error: "이메일이 누락되었습니다." }, { status: 400 });
+      }
+
+      try {
+        await deleteUser(email);
+
+        // 삭제 완료된 태스크는 Firestore에서도 제거 (감사 로그에 기록되므로 이력 보존 OK)
+        const taskRef = doc(db, "transfer_out_tasks", domain || "mock-domain", "students", email);
+        await deleteDoc(taskRef);
+
+        invalidateUserCache();
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "전출/자퇴 계정 영구 삭제",
+          targetEmail: email,
+          details: "구글 워크스페이스 계정 영구 삭제(Delete) 수행 완료",
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `계정 영구삭제 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: restore_transfer_out (전출/자퇴 취소 및 계정 복구)
+    // ─────────────────────────────────────────
+    if (action === "restore_transfer_out") {
+      const { email } = body;
+      if (!email) {
+        return NextResponse.json({ error: "이메일이 누락되었습니다." }, { status: 400 });
+      }
+
+      try {
+        const taskRef = doc(db, "transfer_out_tasks", domain || "mock-domain", "students", email);
+        const taskSnap = await getDoc(taskRef);
+        
+        if (!taskSnap.exists()) {
+          return NextResponse.json({ error: "해당 학생의 전출 처리 기록이 존재하지 않습니다." }, { status: 404 });
+        }
+
+        const taskData = taskSnap.data();
+        const { originalOU, originalGroups } = taskData;
+
+        // 1. 구글 워크스페이스에서 계정 활성화 및 이전 OU로 이동
+        await updateUser(email, {
+          orgUnitPath: originalOU || "/학생",
+          suspended: false,
+        });
+
+        // 2. 이전 가입했던 그룹스 복구
+        if (Array.isArray(originalGroups)) {
+          for (const gEmail of originalGroups) {
+            try {
+              await addGroupMember(gEmail, email);
+            } catch (grpErr) {
+              console.warn(`그룹 재복구 실패 (${gEmail}):`, grpErr);
+            }
+          }
+        }
+
+        // 3. Firestore에서 전출 태스크 레코드 삭제
+        await deleteDoc(taskRef);
+
+        invalidateUserCache();
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "전출/자퇴 취소 및 계정 복구",
+          targetEmail: email,
+          details: `이전 OU(${originalOU || "/학생"}) 이동, 계정 활성화 및 소속 그룹스 복구 완료`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `계정 복구 실패: ${err.message}` }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });

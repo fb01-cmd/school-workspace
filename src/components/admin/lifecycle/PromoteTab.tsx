@@ -140,12 +140,14 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
           <h3 className="text-lg font-bold mb-1">📈 진급 처리</h3>
           <p className="text-sm text-gray-500">CSV 업로드 → 구글 계정 대조 검증 → 학번 일괄 업데이트</p>
         </div>
-        <button
-          onClick={downloadTemplate}
-          className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100"
-        >
-          📥 CSV 양식
-        </button>
+        {inputMode === "csv" && parsed.length === 0 && (
+          <button
+            onClick={downloadTemplate}
+            className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+          >
+            📥 CSV 양식
+          </button>
+        )}
       </div>
 
       {parsed.length === 0 ? (

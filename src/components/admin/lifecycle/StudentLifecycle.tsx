@@ -10,6 +10,7 @@ import { GroupDeleteTab, GroupCreateTab } from "./GroupTabs";
 import PromoteTab from "./PromoteTab";
 import EnrollTab from "./EnrollTab";
 import TransferInTab from "./TransferInTab";
+import TransferOutTab from "./TransferOutTab";
 import GraduationTab from "./GraduationTab";
 
 // ─────────────────────────────────────────────────────
@@ -387,7 +388,9 @@ export default function StudentLifecycle() {
             {midYearTab === "transfer_in" && (
               <TransferInTab s={settings} ud={userData} ouList={allStudentOUs} ouPaths={studentOUPaths} />
             )}
-            {midYearTab === "transfer_out" && <TransferOutPlaceholder />}
+            {midYearTab === "transfer_out" && (
+              <TransferOutTab s={settings} ud={userData} ouList={allStudentOUs} />
+            )}
             {midYearTab === "graduate" && <GraduationTab s={settings} ud={userData} />}
           </div>
         </>

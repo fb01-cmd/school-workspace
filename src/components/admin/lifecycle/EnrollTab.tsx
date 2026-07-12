@@ -65,12 +65,14 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
             (최초 로그인 즉시 변경 강제)
           </p>
         </div>
-        <button
-          onClick={downloadTemplate}
-          className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100"
-        >
-          📥 CSV 양식
-        </button>
+        {inputMode === "csv" && parsed.length === 0 && (
+          <button
+            onClick={downloadTemplate}
+            className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+          >
+            📥 CSV 양식
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">

@@ -26,6 +26,8 @@ export default function OUConfiguration() {
   const [studentOUMappings, setStudentOUMappings] = useState<Record<number, string>>({});
   const [graduatesOU, setGraduatesOU] = useState<string>("");
   const [transferOutOU, setTransferOutOU] = useState<string>("");
+
+
   
   // New OU Form State
   const [newOUName, setNewOUName] = useState("");
@@ -59,6 +61,7 @@ export default function OUConfiguration() {
           setStudentOUMappings(settings.ouMapping?.students || {});
           setGraduatesOU(settings.ouMapping?.graduates || "");
           setTransferOutOU(settings.ouMapping?.transferOut || "");
+
         }
       }
     } catch (error) {
@@ -316,6 +319,8 @@ export default function OUConfiguration() {
           </div>
         </div>
       </div>
+
+
 
       {/* OU Management Table */}
       <OUTreeManager
