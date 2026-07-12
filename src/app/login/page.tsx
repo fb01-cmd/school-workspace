@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithGoogle } from "@/lib/firebase/auth";
+import { signInWithGoogle, logOut } from "@/lib/firebase/auth";
 import { useAuth } from "@/context/AuthContext";
 
 export default function LoginPage() {
@@ -35,7 +35,46 @@ export default function LoginPage() {
     }
   };
 
-  if (loading || user) {
+  const handleSignOut = async () => {
+    try {
+      await logOut();
+      window.location.reload();
+    } catch (err) {
+      console.error("Sign out failed", err);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <p className="text-gray-500">로딩 중...</p>
+      </div>
+    );
+  }
+
+  // If user is authenticated in Firebase but their database profile (userData) couldn't be loaded
+  if (user && !userData) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md space-y-6 rounded-xl bg-white p-10 shadow-lg text-center">
+          <h2 className="text-2xl font-bold text-red-600">계정 권한 확인 실패</h2>
+          <p className="text-gray-600 text-sm">
+            로그인한 계정(<strong className="font-mono">{user.email}</strong>)의 권한 정보를 불러오지 못했거나 등록되지 않은 계정입니다.
+          </p>
+          <div className="pt-2">
+            <button
+              onClick={handleSignOut}
+              className="w-full flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors shadow-sm"
+            >
+              로그아웃 / 다른 계정으로 로그인
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (user) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
         <p className="text-gray-500">로딩 중...</p>

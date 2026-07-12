@@ -577,6 +577,74 @@ export default function UserSheetEditor({
     }
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>, rowIndex: number, colIndex: number) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text");
+    if (!text) return;
+
+    // Excel/Google Sheets copy puts tab separated values for columns and newlines for rows
+    const pastedRows = text.split(/\r?\n/).map((line) => line.split("\t"));
+    
+    pushHistory(rows);
+
+    let defaultOU = "/";
+    if (defaultOrgUnitPath && defaultOrgUnitPath !== "all") {
+      defaultOU = defaultOrgUnitPath;
+    } else if (orgUnits.length > 0) {
+      const studentOU = orgUnits.find((ou) => ou.orgUnitPath.startsWith("/학생"));
+      defaultOU = studentOU ? studentOU.orgUnitPath : orgUnits[0].orgUnitPath;
+    }
+
+    setRows((prevRows) => {
+      let nextRows = [...prevRows];
+
+      const requiredRows = rowIndex + pastedRows.length;
+      if (requiredRows > nextRows.length) {
+        const extraCount = requiredRows - nextRows.length;
+        const newRows: SheetRow[] = Array.from({ length: extraCount }).map(() => ({
+          id: `new_${Math.random().toString(36).substr(2, 9)}_${Math.random().toString(36).substr(2, 9)}`,
+          isNew: true,
+          isModified: false,
+          familyName: "",
+          givenName: "",
+          emailPrefix: "",
+          orgUnitPath: defaultOU,
+          password: "",
+          changePasswordAtNextLogin: true,
+          suspended: false,
+        }));
+        nextRows = [...nextRows, ...newRows];
+      }
+
+      for (let r = 0; r < pastedRows.length; r++) {
+        const targetRowIdx = rowIndex + r;
+        if (targetRowIdx >= nextRows.length) break;
+
+        const row = { ...nextRows[targetRowIdx] };
+        const cols = pastedRows[r];
+
+        for (let c = 0; c < cols.length; c++) {
+          const targetColIdx = colIndex + c;
+          if (targetColIdx >= FIELDS.length) break;
+
+          const fieldName = FIELDS[targetColIdx];
+          const rawVal = cols[c].trim();
+
+          if (fieldName === "suspended" || fieldName === "changePasswordAtNextLogin") {
+            (row as any)[fieldName] = ["true", "y", "yes", "예", "1", "o", "true"].includes(rawVal.toLowerCase());
+          } else {
+            (row as any)[fieldName] = rawVal;
+          }
+        }
+        row.isModified = !row.isNew;
+        validateRow(row);
+        nextRows[targetRowIdx] = row;
+      }
+
+      return nextRows;
+    });
+  };
+
   // Global listeners for mouse move, mouse up, and keyboard Ctrl+Z
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
@@ -1071,6 +1139,7 @@ export default function UserSheetEditor({
                         value={row.familyName}
                         onChange={(e) => handleCellChange(index, "familyName", e.target.value)}
                         onKeyDown={(e) => handleKeyDown(e, index, 0)}
+                        onPaste={(e) => handlePaste(e, index, 0)}
                         data-row-index={index}
                         data-col-index={0}
                         placeholder="성"
@@ -1099,6 +1168,7 @@ export default function UserSheetEditor({
                         value={row.givenName}
                         onChange={(e) => handleCellChange(index, "givenName", e.target.value)}
                         onKeyDown={(e) => handleKeyDown(e, index, 1)}
+                        onPaste={(e) => handlePaste(e, index, 1)}
                         data-row-index={index}
                         data-col-index={1}
                         placeholder="이름"
@@ -1128,6 +1198,7 @@ export default function UserSheetEditor({
                           value={row.emailPrefix}
                           onChange={(e) => handleCellChange(index, "emailPrefix", e.target.value.replace(/\s/g, "").toLowerCase())}
                           onKeyDown={(e) => handleKeyDown(e, index, 2)}
+                          onPaste={(e) => handlePaste(e, index, 2)}
                           data-row-index={index}
                           data-col-index={2}
                           placeholder="아이디"
@@ -1185,6 +1256,7 @@ export default function UserSheetEditor({
                         value={row.password || ""}
                         onChange={(e) => handleCellChange(index, "password", e.target.value)}
                         onKeyDown={(e) => handleKeyDown(e, index, 4)}
+                        onPaste={(e) => handlePaste(e, index, 4)}
                         data-row-index={index}
                         data-col-index={4}
                         placeholder={row.isNew ? "임시비밀번호" : "(변경 시 입력)"}

@@ -40,8 +40,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setLoading(false);
           } else {
             // Self-heal: If document is missing (e.g. previous permission error), create it now.
-            handleUserRoles(currentUser).catch(console.error);
-            // Don't setLoading(false) yet, wait for the next snapshot after creation
+            handleUserRoles(currentUser).catch((error) => {
+              console.error("Error creating user roles on sign in:", error);
+              setLoading(false);
+            });
           }
         }, (error) => {
           console.error("Error fetching user data:", error);
