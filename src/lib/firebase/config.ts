@@ -18,7 +18,7 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// Optional: you can add custom parameters to the provider if needed
+// 항상 계정 선택 창을 표시 — 기존 세션 계정과 다른 계정으로 로그인 가능하게
 googleProvider.setCustomParameters({
-  // prompt: 'select_account'
+  prompt: 'select_account'
 });

@@ -18,6 +18,7 @@ import {
   isMock,
 } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit";
+import { deleteAuthUserByEmail } from "@/lib/firebase/admin";
 import { db } from "@/lib/firebase/config";
 import {
   collection,
@@ -25,6 +26,7 @@ import {
   serverTimestamp,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -439,7 +441,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const senderEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || adminEmail;
+        const senderEmail = process.env.GOOGLE_WORKSPACE_SENDER_EMAIL || process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || adminEmail;
         await sendGmail(senderEmail, email, emailSubject, emailBody);
         console.log(`[Gmail] 전출/자퇴 안내 메일 발송 완료 → ${email}`);
       } catch (mailErr: any) {
@@ -532,6 +534,9 @@ export async function POST(req: NextRequest) {
       }
 
       try {
+        // Firebase Auth에서도 유저 레코드 동기화 삭제
+        await deleteAuthUserByEmail(email);
+
         await deleteUser(email);
 
         // 삭제 완료된 태스크는 Firestore에서도 제거 (감사 로그에 기록되므로 이력 보존 OK)
@@ -609,6 +614,759 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, isMock });
       } catch (err: any) {
         return NextResponse.json({ error: `계정 복구 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: sync_graduation_candidates (졸업 대상 학생 동기화)
+    // ─────────────────────────────────────────
+    if (action === "sync_graduation_candidates") {
+      try {
+        if (!domain) {
+          return NextResponse.json({ error: "도메인 정보가 누락되었습니다." }, { status: 400 });
+        }
+
+        // 1. 설정에서 3학년 및 졸업생 OU 경로 조회
+        let grade3OU = "";
+        let graduatesOU = "";
+        const settingsSnap = await getDoc(doc(db, "settings", domain));
+        if (settingsSnap.exists()) {
+          const sData = settingsSnap.data();
+          if (sData.ouMapping?.students) {
+            grade3OU = sData.ouMapping.students[3] || sData.ouMapping.students["3"] || "";
+          }
+          if (sData.ouMapping?.graduates) {
+            graduatesOU = sData.ouMapping.graduates;
+          }
+        }
+
+        // 동기화할 대상 OU 취합 (3학년 또는 졸업생 OU)
+        const targetOUs = [grade3OU, graduatesOU].filter(Boolean);
+        if (targetOUs.length === 0) {
+          return NextResponse.json({ error: "3학년 또는 졸업생 OU 경로가 매핑되지 않았습니다." }, { status: 400 });
+        }
+
+        // 2. 구글 워크스페이스에서 해당 OU 학생 전체 조회
+        const students = await listUsersInOUs(targetOUs);
+        const results = { added: 0, skipped: 0, errors: 0 };
+
+        // 3. 각 학생별로 Firestore에 graduation_tasks 등록 (이메일 기준 고유 보존)
+        for (const student of students) {
+          const email = student.primaryEmail;
+          if (!email) continue;
+
+          try {
+            const taskRef = doc(db, "graduation_tasks", domain, "students", email);
+            const taskSnap = await getDoc(taskRef);
+
+            const name = student.name?.givenName || student.name || "학생";
+            const studentId = student.name?.familyName || ""; // familyName에 학번 저장 관례
+
+            if (!taskSnap.exists()) {
+              // 최초 등록 시 구글 계정 일시정지 상태에 따라 초기 상태 지정
+              await setDoc(taskRef, {
+                email,
+                name,
+                studentId,
+                originalOU: student.orgUnitPath || "/학생",
+                status: student.suspended ? "SUSPENDED" : "PENDING",
+                registeredAt: new Date(),
+                consentSubmitted: false,
+                consentedAt: null,
+                acknowledgedDeletion: false,
+                acknowledgedDownload: false,
+                suspendedAt: student.suspended ? new Date() : null,
+                deletedAt: null,
+                warnedCount: 0,
+                lastWarnedAt: null,
+              });
+              results.added++;
+            } else {
+              // 이미 존재하는 졸업생 태스크의 경우, 구글의 일시정지 상태와 동기화
+              const task = taskSnap.data();
+              const isGwsSuspended = !!student.suspended;
+              const isDbSuspended = task.status === "SUSPENDED";
+
+              if (isGwsSuspended !== isDbSuspended) {
+                if (isGwsSuspended) {
+                  // GWS에선 정지되었으나 DB 상태가 정지가 아니면 정지로 변경
+                  await updateDoc(taskRef, {
+                    status: "SUSPENDED",
+                    suspendedAt: new Date(),
+                  });
+                } else {
+                  // GWS에선 정지 해제되었으나 DB 상태가 여전히 정지이면 원래 상태로 변경
+                  const originalStatus = task.consentSubmitted ? "CONSENTED" : "PENDING";
+                  await updateDoc(taskRef, {
+                    status: originalStatus,
+                    suspendedAt: null,
+                  });
+                }
+              }
+              results.skipped++;
+            }
+          } catch (studentErr) {
+            console.error(`학생 등록 중 오류 (${email}):`, studentErr);
+            results.errors++;
+          }
+        }
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "졸업 대상자 동기화",
+          targetEmail: "복수 계정",
+          details: `동기화 완료: 신규 추가 ${results.added}명, 기존 유지 ${results.skipped}명, 오류 ${results.errors}건`,
+          status: results.errors === 0 ? "success" : "failure",
+        });
+
+        return NextResponse.json({ success: true, results, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `동기화 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: clear_graduation_candidates (졸업 대상자 목록 전체 비우기)
+    // ─────────────────────────────────────────
+    if (action === "clear_graduation_candidates") {
+      try {
+        if (!domain) {
+          return NextResponse.json({ error: "도메인 정보가 누락되었습니다." }, { status: 400 });
+        }
+
+        const studentsCol = collection(db, "graduation_tasks", domain, "students");
+        const snap = await getDocs(studentsCol);
+        
+        let deletedCount = 0;
+        for (const sDoc of snap.docs) {
+          const task = sDoc.data();
+          // 테스트용 학생은 제외하고 실제 동기화된 일반 학생 데이터만 삭제
+          if (!task.isTest && task.originalOU !== "/학생/테스트") {
+            await deleteDoc(doc(db, "graduation_tasks", domain, "students", sDoc.id));
+            deletedCount++;
+          }
+        }
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "졸업 대상자 목록 비우기",
+          targetEmail: "복수 계정",
+          details: `동기화된 일반 학생 ${deletedCount}명 기록 삭제 완료 (테스트 학생 제외)`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, deletedCount, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `목록 비우기 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: save_graduation_settings (졸업 설정 저장)
+    // ─────────────────────────────────────────
+    if (action === "save_graduation_settings") {
+      const { graduationSettings } = body;
+      if (!domain || !graduationSettings) {
+        return NextResponse.json({ error: "도메인 또는 설정 정보가 누락되었습니다." }, { status: 400 });
+      }
+
+      try {
+        const settingsRef = doc(db, "settings", domain);
+        const settingsSnap = await getDoc(settingsRef);
+        if (settingsSnap.exists()) {
+          await setDoc(settingsRef, {
+            ...settingsSnap.data(),
+            graduationSettings,
+            updatedAt: new Date(),
+          });
+        } else {
+          await setDoc(settingsRef, {
+            graduationSettings,
+            updatedAt: new Date(),
+          });
+        }
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "졸업 설정 변경",
+          targetEmail: "-",
+          details: `정지 예정일: ${graduationSettings.suspendDate}, 삭제 예정일: ${graduationSettings.deleteDate}`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `설정 저장 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: submit_student_consent (학생 본인 동의 제출)
+    // ─────────────────────────────────────────
+    if (action === "submit_student_consent") {
+      const { email, signature } = body;
+      if (!email || !domain) {
+        return NextResponse.json({ error: "이메일 또는 도메인 정보가 누락되었습니다." }, { status: 400 });
+      }
+
+      try {
+        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
+        const taskSnap = await getDoc(taskRef);
+
+        if (!taskSnap.exists()) {
+          return NextResponse.json({ error: "졸업 관리 대상자 명단에 이메일이 존재하지 않습니다." }, { status: 404 });
+        }
+
+        const taskData = taskSnap.data();
+
+        // 1. 별도 보관용 컬렉션 graduation_consents에 영구 보존용 동의서(서명 포함) 저장
+        const consentRef = doc(db, "graduation_consents", `${domain}_${email}`);
+        await setDoc(consentRef, {
+          email,
+          domain,
+          name: taskData.name || "학생",
+          studentId: taskData.studentId || "",
+          consentedAt: new Date(),
+          signature: signature || "서명 누락",
+          expiresAt: new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000), // 3년 후 만료
+        });
+
+        // 2. 기존 graduation_tasks의 개별 학생 타스크 상태 업데이트
+        await updateDoc(taskRef, {
+          status: "CONSENTED",
+          consentSubmitted: true,
+          consentedAt: new Date(),
+          acknowledgedDeletion: true,
+          acknowledgedDownload: true,
+        });
+
+        await writeAuditLog({
+          operatorEmail: email,
+          operatorName: taskData.name || "학생",
+          action: "졸업생 동의서 제출",
+          targetEmail: email,
+          details: "학생 본인 계정 삭제 및 데이터 백업 안내 동의 제출 완료 (터치 서명 포함)",
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `동의 제출 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: toggle_student_consent (수동 동의/동의 취소 토글)
+    // ─────────────────────────────────────────
+    if (action === "toggle_student_consent") {
+      const { email, consentSubmitted } = body;
+      if (!email || !domain) {
+        return NextResponse.json({ error: "이메일 또는 도메인 정보가 누락되었습니다." }, { status: 400 });
+      }
+
+      try {
+        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
+        const taskSnap = await getDoc(taskRef);
+
+        if (!taskSnap.exists()) {
+          return NextResponse.json({ error: "졸업 대상자 기록이 존재하지 않습니다." }, { status: 404 });
+        }
+
+        const taskData = taskSnap.data();
+        const isSubmit = !!consentSubmitted;
+
+        // 1. 수동 동의 처리 시 graduation_consents 보존 레코드도 생성/삭제 동기화
+        const consentRef = doc(db, "graduation_consents", `${domain}_${email}`);
+        if (isSubmit) {
+          await setDoc(consentRef, {
+            email,
+            domain,
+            name: taskData.name || "학생",
+            studentId: taskData.studentId || "",
+            consentedAt: new Date(),
+            signature: "대리 동의 (관리자 승인)",
+            expiresAt: new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000), // 3년 후 만료
+          });
+        } else {
+          await deleteDoc(consentRef);
+        }
+
+        // 2. 태스크 상태 업데이트
+        await updateDoc(taskRef, {
+          status: isSubmit ? "CONSENTED" : "PENDING",
+          consentSubmitted: isSubmit,
+          consentedAt: isSubmit ? new Date() : null,
+          acknowledgedDeletion: isSubmit,
+          acknowledgedDownload: isSubmit,
+        });
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: isSubmit ? "졸업 동의 강제 등록" : "졸업 동의 등록 취소",
+          targetEmail: email,
+          details: `관리자에 의한 상태 변경: ${isSubmit ? "동의 완료" : "미동의(대기)"}`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `상태 변경 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+    // ─────────────────────────────────────────
+    // ACTION: execute_graduation_suspend (졸업 예정 학생 일괄 정지)
+    // ─────────────────────────────────────────
+    if (action === "execute_graduation_suspend") {
+      try {
+        if (!domain) {
+          return NextResponse.json({ error: "도메인 정보가 누락되었습니다." }, { status: 400 });
+        }
+
+        const studentsCol = collection(db, "graduation_tasks", domain, "students");
+        const snap = await getDocs(studentsCol);
+        const results = { suspended: 0, skipped: 0, errors: 0 };
+
+        for (const sDoc of snap.docs) {
+          const task = sDoc.data();
+          const email = task.email;
+          if (task.status === "PENDING" || task.status === "CONSENTED") {
+            try {
+              await updateUser(email, { suspended: true });
+              await updateDoc(doc(db, "graduation_tasks", domain, "students", email), {
+                status: "SUSPENDED",
+                suspendedAt: new Date(),
+              });
+              results.suspended++;
+            } catch (err) {
+              console.error(`계정 정지 실패 (${email}):`, err);
+              results.errors++;
+            }
+          } else {
+            results.skipped++;
+          }
+        }
+
+        invalidateUserCache();
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "졸업생 계정 일괄 정지",
+          targetEmail: "복수 계정",
+          details: `정지 완료: ${results.suspended}명, 건너뜀: ${results.skipped}명, 에러: ${results.errors}건`,
+          status: results.errors === 0 ? "success" : "failure",
+        });
+
+        return NextResponse.json({ success: true, results, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `일괄 정지 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: execute_graduation_delete (졸업 예정 학생 일괄 삭제)
+    // ─────────────────────────────────────────
+    if (action === "execute_graduation_delete") {
+      try {
+        if (!domain) {
+          return NextResponse.json({ error: "도메인 정보가 누락되었습니다." }, { status: 400 });
+        }
+
+        const studentsCol = collection(db, "graduation_tasks", domain, "students");
+        const snap = await getDocs(studentsCol);
+        const results = { deleted: 0, skipped: 0, errors: 0 };
+
+        for (const sDoc of snap.docs) {
+          const task = sDoc.data();
+          const email = task.email;
+          if (task.status === "SUSPENDED") {
+            try {
+              // Firebase Auth에서도 해당 졸업생 유저 레코드 동기화 삭제
+              await deleteAuthUserByEmail(email);
+
+              await deleteUser(email);
+              await updateDoc(doc(db, "graduation_tasks", domain, "students", email), {
+                status: "DELETED",
+                deletedAt: new Date(),
+              });
+              results.deleted++;
+            } catch (err) {
+              console.error(`계정 삭제 실패 (${email}):`, err);
+              results.errors++;
+            }
+          } else {
+            results.skipped++;
+          }
+        }
+
+        invalidateUserCache();
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "졸업생 계정 일괄 영구 삭제",
+          targetEmail: "복수 계정",
+          details: `삭제 완료: ${results.deleted}명, 건너뜀: ${results.skipped}명, 에러: ${results.errors}건`,
+          status: results.errors === 0 ? "success" : "failure",
+        });
+
+        return NextResponse.json({ success: true, results, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `일괄 삭제 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: execute_graduation_restore (졸업 예정 학생 일괄 활성화/정지 해제)
+    // ─────────────────────────────────────────
+    if (action === "execute_graduation_restore") {
+      try {
+        if (!domain) {
+          return NextResponse.json({ error: "도메인 정보가 누락되었습니다." }, { status: 400 });
+        }
+
+        const studentsCol = collection(db, "graduation_tasks", domain, "students");
+        const snap = await getDocs(studentsCol);
+        const results = { restored: 0, skipped: 0, errors: 0 };
+
+        for (const sDoc of snap.docs) {
+          const task = sDoc.data();
+          const email = task.email;
+          if (task.status === "SUSPENDED") {
+            try {
+              // 1. 구글 워크스페이스 상에서 계정 활성화
+              await updateUser(email, { suspended: false });
+              
+              // 2. 동의 여부에 따라 상태 원복
+              const originalStatus = task.consentSubmitted ? "CONSENTED" : "PENDING";
+              await updateDoc(doc(db, "graduation_tasks", domain, "students", email), {
+                status: originalStatus,
+                suspendedAt: null,
+              });
+              results.restored++;
+            } catch (err) {
+              console.error(`계정 활성화 실패 (${email}):`, err);
+              results.errors++;
+            }
+          } else {
+            results.skipped++;
+          }
+        }
+
+        invalidateUserCache();
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "졸업생 계정 일괄 활성화 (정지 해제)",
+          targetEmail: "복수 계정",
+          details: `활성화 완료: ${results.restored}명, 건너뜀: ${results.skipped}명, 에러: ${results.errors}건`,
+          status: results.errors === 0 ? "success" : "failure",
+        });
+
+        return NextResponse.json({ success: true, results, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `일괄 활성화 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: execute_individual_graduation_restore (개별 졸업생 계정 활성화 / 정지 해제)
+    // ─────────────────────────────────────────
+    if (action === "execute_individual_graduation_restore") {
+      const { email } = body;
+      if (!email || !domain) {
+        return NextResponse.json({ error: "이메일 또는 도메인 정보가 누락되었습니다." }, { status: 400 });
+      }
+
+      try {
+        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
+        const taskSnap = await getDoc(taskRef);
+        if (!taskSnap.exists()) {
+          return NextResponse.json({ error: "졸업 대상자 기록이 존재하지 않습니다." }, { status: 404 });
+        }
+
+        const task = taskSnap.data();
+
+        // 1. 구글 워크스페이스 상에서 계정 활성화 (정지 해제)
+        await updateUser(email, { suspended: false });
+
+        // 2. 동의 여부에 따라 Firestore 상태 원복
+        const originalStatus = task.consentSubmitted ? "CONSENTED" : "PENDING";
+        await updateDoc(taskRef, {
+          status: originalStatus,
+          suspendedAt: null,
+        });
+
+        invalidateUserCache();
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "졸업생 개별 계정 활성화 (정지 해제)",
+          targetEmail: email,
+          details: `계정 활성화 및 Firestore 상태 복구 완료 (${originalStatus})`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `계정 개별 활성화 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: add_test_graduation_student (테스트용 졸업생 수동 등록)
+    // ─────────────────────────────────────────
+    if (action === "add_test_graduation_student") {
+      const { name, email, studentId } = body;
+      if (!email || !name || !domain) {
+        return NextResponse.json({ error: "필수 정보(이름, 이메일, 도메인)가 누락되었습니다." }, { status: 400 });
+      }
+
+      try {
+        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
+        await setDoc(taskRef, {
+          email,
+          name,
+          studentId: studentId || "테스트",
+          originalOU: "/학생/테스트",
+          status: "PENDING",
+          registeredAt: new Date(),
+          consentSubmitted: false,
+          consentedAt: null,
+          acknowledgedDeletion: false,
+          acknowledgedDownload: false,
+          suspendedAt: null,
+          deletedAt: null,
+          warnedCount: 0,
+          lastWarnedAt: null,
+          isTest: true,
+        });
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "테스트 졸업생 수동 등록",
+          targetEmail: email,
+          details: `이름: ${name}, 학번: ${studentId || "없음"} 수동 등록 완료`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `테스트 학생 등록 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: delete_test_graduation_student (테스트용 졸업생 수동 삭제)
+    // ─────────────────────────────────────────
+    if (action === "delete_test_graduation_student") {
+      const { email } = body;
+      if (!email || !domain) {
+        return NextResponse.json({ error: "이메일 또는 도메인이 누락되었습니다." }, { status: 400 });
+      }
+
+      try {
+        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
+        await deleteDoc(taskRef);
+
+        // 테스트 유저 삭제 시 보관함에 들어간 테스트용 동의 서명 기록도 동시 영구 삭제
+        const consentRef = doc(db, "graduation_consents", `${domain}_${email}`);
+        await deleteDoc(consentRef);
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "테스트 졸업생 수동 삭제",
+          targetEmail: email,
+          details: `${email} 테스트 학생 기록 삭제 완료`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `테스트 학생 삭제 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: test_graduation_cron (졸업생 스케줄러 가상 테스트 실행)
+    // ─────────────────────────────────────────
+    if (action === "test_graduation_cron") {
+      const { mockToday, testEmailFilter } = body;
+      try {
+        const cronUrl = new URL(`/api/workspace/lifecycle/cron`, req.url);
+        if (mockToday) {
+          cronUrl.searchParams.set("mockToday", mockToday);
+        }
+        if (testEmailFilter) {
+          cronUrl.searchParams.set("testEmailFilter", testEmailFilter);
+        }
+        
+        const headers: HeadersInit = {};
+        if (process.env.CRON_SECRET) {
+          headers["authorization"] = `Bearer ${process.env.CRON_SECRET}`;
+        }
+        
+        const response = await fetch(cronUrl.toString(), {
+          method: "GET",
+          headers,
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          return NextResponse.json({ error: `크론 테스트 실행 실패: ${errText}` }, { status: response.status });
+        }
+
+        const data = await response.json();
+        // cron 응답 필드를 그대로 반환 (results로 이중 래핑하지 않음)
+        return NextResponse.json({ success: true, ...data });
+      } catch (err: any) {
+        return NextResponse.json({ error: `시뮬레이션 테스트 실행 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: send_individual_graduation_warning (개별 졸업 독촉 알림 발송)
+    // ─────────────────────────────────────────
+    if (action === "send_individual_graduation_warning") {
+      const { email } = body;
+      if (!email || !domain) {
+        return NextResponse.json({ error: "이메일 또는 도메인이 누락되었습니다." }, { status: 400 });
+      }
+      try {
+        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
+        const taskSnap = await getDoc(taskRef);
+        if (!taskSnap.exists()) {
+          return NextResponse.json({ error: "학생 기록을 찾을 수 없습니다." }, { status: 404 });
+        }
+        const task = taskSnap.data();
+        
+        let suspendFmt = "지정일";
+        let deleteFmt = "지정일";
+        let emailSubject = "[중요] 구글 워크스페이스 계정 삭제 사전 안내 — 안내 확인 서명이 필요합니다";
+        let emailBody = "";
+        let chatBody = "";
+
+        const settingsSnap = await getDoc(doc(db, "settings", domain));
+        if (settingsSnap.exists()) {
+          const sData = settingsSnap.data();
+          const gradSettings = sData.graduationSettings;
+          if (gradSettings) {
+            suspendFmt = gradSettings.suspendDate ? new Date(gradSettings.suspendDate).toLocaleDateString("ko-KR") : "지정일";
+            deleteFmt = gradSettings.deleteDate ? new Date(gradSettings.deleteDate).toLocaleDateString("ko-KR") : "지정일";
+            emailSubject = gradSettings.emailTemplateSubject || emailSubject;
+            emailBody = gradSettings.emailTemplateBody || "";
+            chatBody = gradSettings.chatTemplateBody || "";
+          }
+        }
+
+        const portalOrigin = new URL(req.url).origin;
+        const portalUrl = `${portalOrigin}/student-portal`;
+
+        const name = task.name || "학생";
+        const replaceVars = (txt: string) =>
+          txt
+            .replace(/\{name\}/g, name)
+            .replace(/\{email\}/g, email)
+            .replace(/\{suspendDate\}/g, suspendFmt)
+            .replace(/\{deleteDate\}/g, deleteFmt)
+            .replace(/\{portalUrl\}/g, portalUrl);
+
+        emailSubject = replaceVars(emailSubject);
+        if (!emailBody) {
+          emailBody = replaceVars(`안녕하세요, {name}님.
+
+효명고등학교 구글 워크스페이스 계정 관리 시스템에서 안내드립니다.
+
+학교에서 사용 중인 구글 계정(학교 이메일)은 학교 전체가 드라이브 용량을 공유하는 교육용 계정으로, 졸업 이후에는 해당 계정을 삭제해야 합니다. 아래 내용을 확인하고 서명을 완료해 주세요.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  계정 처리 예정 일정
+━━━━━━━━━━━━━━━━━━━━━━━━━
+  📅 계정 일시정지 예정일 : {suspendDate}
+  🗑️  계정 영구 삭제 예정일 : {deleteDate}
+
+※ 계정이 일시정지되면 구글 드라이브, Gmail, 구글 포토 등 모든 데이터에 접근할 수 없게 됩니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+✅  안내 확인 서명 (필수 — 정지 예정일 이전까지 완료)
+━━━━━━━━━━━━━━━━━━━━━━━━━
+학교는 위 계정 삭제 일정 및 아래 데이터 이전·다운로드 방법을 학생에게 안내하였습니다.
+아래 학생 포털에 접속하여 '안내 확인 서명'을 완료해 주세요.
+
+  → {portalUrl}
+
+이 서명은 '데이터 백업을 완료했다'는 의미가 아니라,
+'학교로부터 계정 삭제 안내 및 방법을 전달받았음'을 확인하는 것입니다.
+
+※ 계정이 정지되면 포털 접속 자체가 불가능하므로, 반드시 정지 예정일 이전에 서명해 주세요.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📦  데이터 이전 및 다운로드 방법
+━━━━━━━━━━━━━━━━━━━━━━━━━
+다른 구글 계정으로의 데이터 이전 방법과 다운로드 방법 모두 아래 가이드에 상세히 안내되어 있습니다.
+
+  → https://gw.googleforeducation.org/관리하기/학년을-마무리-하며-할-일/졸업생을-위한-안내자료
+
+궁금하신 점은 학교 정보부에 문의해 주세요.
+감사합니다.
+
+효명고등학교 드림`);
+        } else {
+          emailBody = replaceVars(emailBody);
+        }
+        if (!chatBody) {
+          chatBody = replaceVars(`📢 *[효명고등학교 구글 계정 삭제 사전 안내]*
+
+안녕하세요, *{name}*님.
+학교 구글 계정이 아래 일정에 따라 처리될 예정입니다.
+
+📅 *계정 일시정지 예정:* {suspendDate}
+🗑️ *계정 영구삭제 예정:* {deleteDate}
+
+━━━━━━━━━━━━━━━━━━━
+⚠️ 계정이 정지되면 드라이브·Gmail·포토 등 모든 데이터에 접근할 수 없습니다.
+
+✅ *[필수] 정지 예정일 전까지 학생 포털에서 안내 확인 서명을 완료해 주세요.*
+서명은 '백업 완료' 확인이 아니라, 학교로부터 계정 삭제 안내를 받았음을 확인하는 것입니다.
+계정이 정지되면 서명도 불가능합니다!
+
+  → {portalUrl}
+
+📦 *데이터 이전 및 다운로드 방법*
+  → https://gw.googleforeducation.org/관리하기/학년을-마무리-하며-할-일/졸업생을-위한-안내자료`);
+        } else {
+          chatBody = replaceVars(chatBody);
+        }
+
+        const mailSender = process.env.GOOGLE_WORKSPACE_SENDER_EMAIL || process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || adminEmail;
+        await sendGmail(mailSender, email, emailSubject, emailBody);
+        await sendGoogleChat(email, chatBody);
+
+        await updateDoc(taskRef, {
+          warnedCount: (task.warnedCount || 0) + 1,
+          lastWarnedAt: new Date(),
+        });
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "개별 졸업 안내 리마인더 발송",
+          targetEmail: email,
+          details: `이메일 및 구글 챗 안내 리마인더 개별 발송 완료`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `알림 발송 실패: ${err.message}` }, { status: 500 });
       }
     }
 

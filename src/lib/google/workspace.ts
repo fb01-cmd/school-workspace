@@ -125,8 +125,13 @@ const getGmailClient = (senderEmail: string) => {
 
 /**
  * 구글 워크스페이스 Gmail API로 메일 발송
- * @param from    발신자 이메일 (관리자 계정 — 도메인 위임 필요)
- * @param to      수신자 이메일 (학생 계정)
+ *
+ * ⚠️ 발신자 규칙: `from`은 반드시 `process.env.GOOGLE_WORKSPACE_SENDER_EMAIL`
+ * (= hmnotice@hmh.or.kr)을 사용할 것. admin@hmh.or.kr을 발신자로 쓰지 않는다.
+ * 패턴: `process.env.GOOGLE_WORKSPACE_SENDER_EMAIL || process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL`
+ *
+ * @param from    발신자 이메일 — 반드시 GOOGLE_WORKSPACE_SENDER_EMAIL (도메인 위임 필요)
+ * @param to      수신자 이메일 (학생/교직원 계정)
  * @param subject 메일 제목
  * @param body    메일 본문 (plain text)
  */
@@ -174,7 +179,7 @@ const getChatClient = () => {
       "https://www.googleapis.com/auth/chat.messages.create",
       "https://www.googleapis.com/auth/chat.memberships",
     ],
-    subject: process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL, // 관리자 계정으로 사칭
+    subject: process.env.GOOGLE_WORKSPACE_SENDER_EMAIL || process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL, // 발신자 계정으로 사칭
   });
 
   return google.chat({ version: "v1", auth });

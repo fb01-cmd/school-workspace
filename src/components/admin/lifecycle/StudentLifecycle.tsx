@@ -12,13 +12,15 @@ import EnrollTab from "./EnrollTab";
 import TransferInTab from "./TransferInTab";
 import TransferOutTab from "./TransferOutTab";
 import GraduationTab from "./GraduationTab";
+import GraduationConsentsTab from "./GraduationConsentsTab";
 
 // ─────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────
 type NewYearStep = "ou" | "groups_delete" | "promote" | "enroll" | "groups_create";
-type MidYearTabId = "transfer_in" | "transfer_out" | "graduate";
-type SectionId = "new_year" | "mid_year";
+type MidYearTabId = "transfer_in" | "transfer_out";
+type GraduateTabId = "candidates" | "archive";
+type SectionId = "new_year" | "mid_year" | "graduate";
 
 interface Settings {
   domain: string;
@@ -42,24 +44,12 @@ const NEW_YEAR_STEPS: {
 const MID_YEAR_TABS: { id: MidYearTabId; icon: string; label: string }[] = [
   { id: "transfer_in", icon: "➕", label: "전입 처리" },
   { id: "transfer_out", icon: "🚪", label: "전출·학업중단" },
-  { id: "graduate", icon: "🏫", label: "졸업생 처리" },
 ];
 
-// ─────────────────────────────────────────────────────
-// TransferOut Placeholder
-// ─────────────────────────────────────────────────────
-function TransferOutPlaceholder() {
-  return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-bold">🚪 전출·학업중단 관리</h3>
-      <div className="bg-gray-50 border border-gray-200 rounded-xl p-10 text-center text-gray-400">
-        <div className="text-4xl mb-3">🚧</div>
-        <p className="font-semibold">개발 예정</p>
-        <p className="text-sm mt-1">전출/학업중단 등록 → 안내 메일 → 계정 정지 → 삭제 3단계 워크플로우</p>
-      </div>
-    </div>
-  );
-}
+const GRADUATE_TABS: { id: GraduateTabId; icon: string; label: string }[] = [
+  { id: "candidates", icon: "🏫", label: "졸업예정자 및 동의서" },
+  { id: "archive", icon: "🗄️", label: "졸업생 동의서 보관함" },
+];
 
 // ─────────────────────────────────────────────────────
 // Section Selector Button
@@ -86,8 +76,6 @@ function SectionBtn({ active, onClick, icon, title, desc }: {
 // ─────────────────────────────────────────────────────
 // New Year Step Progress Bar
 // ─────────────────────────────────────────────────────
-type StepState = "completed" | "active" | "locked";
-
 function NewYearStepBar({
   steps,
   completed,
@@ -120,7 +108,6 @@ function NewYearStepBar({
             className={`${baseClasses} ${stateClasses}`}
             title={step.desc}
           >
-            {/* Step number badge */}
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mb-0.5 ${
                 isCompleted
@@ -140,7 +127,7 @@ function NewYearStepBar({
               {step.label}
             </span>
             {isCompleted && (
-              <span className="text-[10px] text-green-600 bg-green-100/50 px-1 py-0.2 rounded font-semibold mt-0.5">완료</span>
+              <span className="text-[10px] text-green-600 bg-green-100/50 px-1 py-0.5 rounded font-semibold mt-0.5">완료</span>
             )}
           </button>
         );
@@ -177,6 +164,7 @@ export default function StudentLifecycle() {
   const [activeStep, setActiveStep] = useState<NewYearStep>("ou");
   const [completedSteps, setCompletedSteps] = useState<Set<NewYearStep>>(new Set());
   const [midYearTab, setMidYearTab] = useState<MidYearTabId>("transfer_in");
+  const [graduateTab, setGraduateTab] = useState<GraduateTabId>("candidates");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -185,10 +173,8 @@ export default function StudentLifecycle() {
     if (typeof window !== "undefined") {
       const savedStep = localStorage.getItem("academic_lifecycle_active_step") as NewYearStep;
       const savedCompleted = localStorage.getItem("academic_lifecycle_completed_steps");
-      
-      if (savedStep) {
-        setActiveStep(savedStep);
-      }
+
+      if (savedStep) setActiveStep(savedStep);
       if (savedCompleted) {
         try {
           const parsed = JSON.parse(savedCompleted) as NewYearStep[];
@@ -200,7 +186,6 @@ export default function StudentLifecycle() {
     }
   }, []);
 
-  // Save wizard state to localStorage whenever it changes
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.setItem("academic_lifecycle_active_step", activeStep);
@@ -225,7 +210,6 @@ export default function StudentLifecycle() {
       .finally(() => setLoading(false));
   }, [userData?.domain]);
 
-  // Reset the lifecycle wizard state
   const resetWizardState = () => {
     if (confirm("⚠️ 신학기 준비 진행 단계를 초기화하고 1단계(OU 전환)부터 다시 시작하시겠습니까?\n(이미 구글 워크스페이스에 생성되거나 변경된 조직 및 사용자 계정 자체는 삭제되지 않으며, 화면 상의 진행 단계만 초기화됩니다.)")) {
       setActiveStep("ou");
@@ -237,7 +221,6 @@ export default function StudentLifecycle() {
     }
   };
 
-  // 탭 전환 시 자동으로 다음 단계로 이동하는 콜백
   const markDone = (step: NewYearStep) => {
     setCompletedSteps((prev) => {
       const next = new Set(prev);
@@ -282,14 +265,20 @@ export default function StudentLifecycle() {
           onClick={() => setSection("mid_year")}
           icon="📝"
           title="학기 중 학적 변동"
-          desc="전입 처리 · 전출·학업중단 · 졸업생 관리"
+          desc="전입 처리 · 전출·학업중단"
+        />
+        <SectionBtn
+          active={section === "graduate"}
+          onClick={() => setSection("graduate")}
+          icon="🏫"
+          title="졸업생 처리"
+          desc="계정 삭제 안내 · 동의 서명 · 일시정지 · 영구삭제"
         />
       </div>
 
       {/* ── 신학기 준비 ── */}
       {section === "new_year" && (
         <>
-          {/* 진행 상황 바 */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
             <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
               <p className="text-xs font-bold text-gray-600">📋 신학기 준비 단계 — 순서대로 진행해 주세요</p>
@@ -321,14 +310,13 @@ export default function StudentLifecycle() {
             />
           </div>
 
-          {/* 잠금 안내 */}
           {(() => {
             const idx = NEW_YEAR_STEPS.findIndex((s) => s.id === activeStep);
             const prevStep = idx > 0 ? NEW_YEAR_STEPS[idx - 1] : null;
             const hasUnfinishedPrev = prevStep && !completedSteps.has(prevStep.id);
             if (!hasUnfinishedPrev) return null;
             return (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 flex items-start gap-2.5 shadow-xs">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 flex items-start gap-2.5">
                 <span>⚠️</span>
                 <div>
                   <p className="font-bold">이전 단계 미완료 안내</p>
@@ -391,7 +379,32 @@ export default function StudentLifecycle() {
             {midYearTab === "transfer_out" && (
               <TransferOutTab s={settings} ud={userData} ouList={allStudentOUs} />
             )}
-            {midYearTab === "graduate" && <GraduationTab s={settings} ud={userData} />}
+          </div>
+        </>
+      )}
+
+      {/* ── 졸업생 처리 ── */}
+      {section === "graduate" && (
+        <>
+          <div className="flex gap-1 flex-wrap mb-4">
+            {GRADUATE_TABS.map((tab) => (
+              <TabBtn
+                key={tab.id}
+                active={graduateTab === tab.id}
+                onClick={() => setGraduateTab(tab.id)}
+                icon={tab.icon}
+                label={tab.label}
+              />
+            ))}
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            {graduateTab === "candidates" && (
+              <GraduationTab s={settings} ud={userData} />
+            )}
+            {graduateTab === "archive" && (
+              <GraduationConsentsTab s={settings} ud={userData} />
+            )}
           </div>
         </>
       )}

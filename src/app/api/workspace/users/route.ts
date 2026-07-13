@@ -1,6 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAlias, invalidateUserCache, isMock } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit";
+import { db } from "@/lib/firebase/config";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { deleteAuthUserByEmail } from "@/lib/firebase/admin";
+
+async function syncUserSuspensionToLifecycle(email: string, suspended: boolean) {
+  try {
+    const domain = email.split("@")[1];
+    if (!domain) return;
+
+    // 1. 졸업생 태스크 일시정지 상태 동기화
+    const gradTaskRef = doc(db, "graduation_tasks", domain, "students", email);
+    const gradTaskSnap = await getDoc(gradTaskRef);
+    if (gradTaskSnap.exists()) {
+      const task = gradTaskSnap.data();
+      if (suspended) {
+        if (task.status === "PENDING" || task.status === "CONSENTED") {
+          await updateDoc(gradTaskRef, {
+            status: "SUSPENDED",
+            suspendedAt: new Date(),
+          });
+        }
+      } else {
+        if (task.status === "SUSPENDED") {
+          const originalStatus = task.consentSubmitted ? "CONSENTED" : "PENDING";
+          await updateDoc(gradTaskRef, {
+            status: originalStatus,
+            suspendedAt: null,
+          });
+        }
+      }
+    }
+
+    // 2. 전출/자퇴 태스크 일시정지 상태 동기화
+    const transferTaskRef = doc(db, "transfer_out_tasks", domain, "students", email);
+    const transferTaskSnap = await getDoc(transferTaskRef);
+    if (transferTaskSnap.exists()) {
+      const task = transferTaskSnap.data();
+      if (suspended) {
+        if (task.status === "OU_MOVED") {
+          await updateDoc(transferTaskRef, {
+            status: "SUSPENDED",
+            suspendedAt: new Date(),
+          });
+        }
+      } else {
+        if (task.status === "SUSPENDED") {
+          await updateDoc(transferTaskRef, {
+            status: "OU_MOVED",
+            suspendedAt: null,
+          });
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error(`[Lifecycle Sync] Failed to sync suspension status for ${email}:`, err.message);
+  }
+}
 
 interface RecentAction {
   action: "create" | "delete" | "update";
@@ -73,6 +130,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
       }
       try {
+        // 계정 생성 전, GWS 고유 ID 변경에 따른 Firebase Auth 로그인 충돌 방지를 위해 stale 계정 선제 정리
+        await deleteAuthUserByEmail(email);
+
         const user = await createUser(email, firstName, lastName, orgUnitPath, password, !!changePasswordAtNextLogin);
         await writeAuditLog({
           operatorEmail: adminEmail,
@@ -120,6 +180,10 @@ export async function POST(req: NextRequest) {
       }
       try {
         const user = await updateUser(email, updates);
+        
+        if (updates.suspended !== undefined) {
+          await syncUserSuspensionToLifecycle(email, updates.suspended);
+        }
         
         const detailParts = [];
         if (updates.firstName || updates.lastName) detailParts.push(`이름 변경: ${updates.lastName || ""}${updates.firstName || ""}`);
@@ -178,13 +242,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Email is required" }, { status: 400 });
       }
       try {
+        // Firebase Auth에서도 해당 유저 레코드 동기화 삭제
+        await deleteAuthUserByEmail(email);
+
         await deleteUser(email);
         await writeAuditLog({
           operatorEmail: adminEmail,
           operatorName: adminName,
           action: "계정 삭제",
           targetEmail: email,
-          details: `계정 구글 워크스페이스 영구 삭제 완료`,
+          details: `계정 구글 워크스페이스 및 Firebase 인증 영구 삭제 완료`,
           status: "success",
         });
 
@@ -216,6 +283,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "emails must be an array" }, { status: 400 });
       }
       try {
+        // Firebase Auth에서도 해당 유저 레코드들을 즉시 일괄 삭제
+        await Promise.allSettled(emails.map(email => deleteAuthUserByEmail(email)));
+
         const results = await Promise.allSettled(emails.map(email => deleteUser(email)));
         
         const failures = results
@@ -277,11 +347,14 @@ export async function POST(req: NextRequest) {
         // Add successful suspensions to buffer cache to prevent propagation latency
         results.forEach((res, idx) => {
           if (res.status === "fulfilled") {
-            recentActionsCache.set(emails[idx].toLowerCase(), {
+            const email = emails[idx];
+            recentActionsCache.set(email.toLowerCase(), {
               action: "update",
               timestamp: Date.now(),
               data: { suspended }
             });
+            // 생애주기 테이블 동기화 연동 (비동기 수행)
+            syncUserSuspensionToLifecycle(email, suspended);
           }
         });
 
@@ -455,6 +528,11 @@ export async function POST(req: NextRequest) {
               timestamp: Date.now(),
               data: mappedUpdates
             });
+
+            if (u.updates.suspended !== undefined) {
+              // 생애주기 테이블 동기화 연동 (비동기 수행)
+              syncUserSuspensionToLifecycle(u.email, u.updates.suspended);
+            }
           }
         });
 

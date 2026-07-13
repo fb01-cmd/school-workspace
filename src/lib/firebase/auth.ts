@@ -1,4 +1,4 @@
-import { signInWithPopup, signOut, User } from "firebase/auth";
+import { signInWithPopup, signInWithCredential, signOut, GoogleAuthProvider, User } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db, googleProvider } from "./config";
 
@@ -33,18 +33,20 @@ const checkIsWorkspaceAdmin = async (email: string): Promise<boolean> => {
 
 export const signInWithGoogle = async () => {
   try {
+    // 기존 세션을 무조건 종료 후 새 계정으로 로그인
+    await signOut(auth);
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
-
-    // Evaluate and save role to Firestore
     await handleUserRoles(user);
-
     return user;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Google Sign-In Error", error);
     throw error;
   }
 };
+
+
+
 
 export const handleUserRoles = async (user: User) => {
   if (!user.email) throw new Error("No email found for user.");
