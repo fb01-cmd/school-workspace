@@ -5,7 +5,6 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/context/AuthContext";
 import OUTreeSelector from "@/components/admin/OUTreeSelector";
-import OUTreeManager from "@/components/admin/OUTreeManager";
 
 interface OU {
   orgUnitId: string;
@@ -26,13 +25,14 @@ export default function OUConfiguration() {
   const [studentOUMappings, setStudentOUMappings] = useState<Record<number, string>>({});
   const [graduatesOU, setGraduatesOU] = useState<string>("");
   const [transferOutOU, setTransferOutOU] = useState<string>("");
-
-
-  
-  // New OU Form State
-  const [newOUName, setNewOUName] = useState("");
-  const [newOUParent, setNewOUParent] = useState("/");
-  const [creatingOU, setCreatingOU] = useState(false);
+  const [teachersOB, setTeachersOB] = useState<string>("");
+  const [autoJoinGroups, setAutoJoinGroups] = useState<string[]>([
+    "ts@hmh.or.kr",
+    "classroom_teachers@hmh.or.kr",
+    "hmhteacher@hmh.or.kr",
+    "hmh_teachers@hmh.or.kr",
+  ]);
+  const [newGroupInput, setNewGroupInput] = useState("");
 
   const domain = userData?.domain || "";
 
@@ -61,7 +61,10 @@ export default function OUConfiguration() {
           setStudentOUMappings(settings.ouMapping?.students || {});
           setGraduatesOU(settings.ouMapping?.graduates || "");
           setTransferOutOU(settings.ouMapping?.transferOut || "");
-
+          setTeachersOB(settings.ouMapping?.teachersOB || "");
+          if (settings.teacherSettings?.autoJoinGroups) {
+            setAutoJoinGroups(settings.teacherSettings.autoJoinGroups);
+          }
         }
       }
     } catch (error) {
@@ -91,6 +94,10 @@ export default function OUConfiguration() {
           students: studentOUMappings,
           graduates: graduatesOU,
           transferOut: transferOutOU,
+          teachersOB: teachersOB,
+        },
+        teacherSettings: {
+          autoJoinGroups: autoJoinGroups,
         },
         updatedAt: new Date(),
       });
@@ -103,75 +110,6 @@ export default function OUConfiguration() {
     }
   };
 
-  // Handle creating a new OU
-  const handleCreateOU = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newOUName) return;
-    setCreatingOU(true);
-    try {
-      const res = await fetch("/api/workspace/ou", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newOUName,
-          parentOrgUnitPath: newOUParent,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        alert(`조직단위 '${newOUName}'이(가) 성공적으로 생성되었습니다.`);
-        setNewOUName("");
-        // Reload list of OUs
-        loadData();
-      } else {
-        throw new Error(data.error);
-      }
-    } catch (error: any) {
-      console.error("Failed to create OU", error);
-      alert(`조직단위 생성 실패: ${error.message}`);
-    } finally {
-      setCreatingOU(false);
-    }
-  };
-
-  // Handle rename OU
-  const handleRenameOU = async (orgUnitPath: string, newName: string) => {
-    try {
-      const res = await fetch("/api/workspace/ou", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgUnitPath, newName }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        loadData();
-      } else {
-        throw new Error(data.error);
-      }
-    } catch (error: any) {
-      alert(`이름 변경 실패: ${error.message}`);
-      throw error;
-    }
-  };
-
-  // Handle delete OU
-  const handleDeleteOU = async (orgUnitPath: string) => {
-    try {
-      const res = await fetch("/api/workspace/ou", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgUnitPath }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        loadData();
-      } else {
-        throw new Error(data.error);
-      }
-    } catch (error: any) {
-      alert(`삭제 실패: ${error.message}`);
-    }
-  };
 
   // Helper to update mapping for a specific grade
   const handleStudentMappingChange = (grade: number, path: string) => {
@@ -308,6 +246,94 @@ export default function OUConfiguration() {
             </span>
           </div>
 
+          <hr className="border-gray-200" />
+
+          {/* Teachers OB OU mapping */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              6. 명예퇴임 교사 (OB 보존실) 조직단위(OU) 매핑
+            </label>
+            <div className="max-w-md">
+              <OUTreeSelector
+                orgUnits={orgUnits}
+                value={teachersOB}
+                onChange={setTeachersOB}
+                placeholder="-- OB 보존용 조직단위를 선택하세요 --"
+              />
+            </div>
+            <span className="text-gray-500 text-xs mt-1 block">
+              사립학교 교직원 중 끝까지 학교 교사로 있다가 퇴임(명예퇴직 등)하시는 분들의 계정을 영구 보존하기 위해 이동시킬 조직단위입니다.
+            </span>
+          </div>
+
+          <hr className="border-gray-200" />
+
+          {/* Teacher Auto-Join Groups */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              7. 교직원 등록/전출 연동 그룹 사전 지정
+            </label>
+            <p className="text-gray-500 text-xs mb-3">
+              교직원이 전입할 때 자동으로 가입되고, 전출/퇴임할 때 자동으로 탈퇴시킬 Google Workspace 그룹(메일링 리스트) 이메일 주소들을 관리합니다.
+            </p>
+            
+            <div className="space-y-3 max-w-md">
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={newGroupInput}
+                  onChange={(e) => setNewGroupInput(e.target.value)}
+                  placeholder="예: target-group@hmh.or.kr"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newGroupInput) return;
+                    const val = newGroupInput.trim().toLowerCase();
+                    if (!val.includes("@")) {
+                      alert("올바른 이메일 형식을 입력해주세요.");
+                      return;
+                    }
+                    if (autoJoinGroups.includes(val)) {
+                      alert("이미 추가된 그룹입니다.");
+                      return;
+                    }
+                    setAutoJoinGroups([...autoJoinGroups, val]);
+                    setNewGroupInput("");
+                  }}
+                  className="bg-gray-800 hover:bg-gray-900 text-white font-medium px-4 py-2 rounded-md text-sm transition-colors"
+                >
+                  추가
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {autoJoinGroups.length === 0 ? (
+                  <span className="text-gray-400 text-xs">지정된 연동 그룹이 없습니다.</span>
+                ) : (
+                  autoJoinGroups.map((group) => (
+                    <span
+                      key={group}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
+                    >
+                      {group}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAutoJoinGroups(autoJoinGroups.filter((g) => g !== group));
+                        }}
+                        className="text-indigo-400 hover:text-indigo-600 focus:outline-none text-[14px] leading-none"
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="pt-4 flex justify-end">
             <button
               onClick={handleSaveSettings}
@@ -322,53 +348,7 @@ export default function OUConfiguration() {
 
 
 
-      {/* OU Management Table */}
-      <OUTreeManager
-        orgUnits={orgUnits}
-        onRename={handleRenameOU}
-        onDelete={handleDeleteOU}
-        onRefresh={loadData}
-      />
 
-      {/* OU Creation Form */}
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">조직단위(OU) 신규 생성</h2>
-        <p className="text-gray-600 text-sm mb-6">
-          구글 워크스페이스에 매핑할 적절한 조직단위가 없다면 아래 폼을 통해 새로 만들 수 있습니다.
-        </p>
-
-        <form onSubmit={handleCreateOU} className="space-y-4 max-w-md">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">상위 조직단위 선택</label>
-            <OUTreeSelector
-              orgUnits={[{ orgUnitId: "root", orgUnitPath: "/", name: "/" }, ...orgUnits]}
-              value={newOUParent}
-              onChange={setNewOUParent}
-              placeholder="/ (최상위)"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">새 조직단위 이름</label>
-            <input
-              type="text"
-              placeholder="예: 신입생"
-              value={newOUName}
-              onChange={(e) => setNewOUName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={creatingOU}
-            className="bg-gray-800 hover:bg-gray-900 text-white font-medium px-4 py-2 rounded-md focus:outline-none disabled:opacity-50 transition-colors text-sm"
-          >
-            {creatingOU ? "생성 중..." : "조직단위 생성"}
-          </button>
-        </form>
-      </div>
     </div>
   );
 }

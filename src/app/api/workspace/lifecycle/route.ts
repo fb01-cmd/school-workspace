@@ -16,6 +16,7 @@ import {
   sendGmail,
   sendGoogleChat,
   isMock,
+  checkIsSecurityGroup,
 } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { deleteAuthUserByEmail } from "@/lib/firebase/admin";
@@ -1367,6 +1368,321 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, isMock });
       } catch (err: any) {
         return NextResponse.json({ error: `알림 발송 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // DYNAMIC TEACHER GROUPS HELPER
+    // ─────────────────────────────────────────
+    const DEFAULT_TEACHER_GROUPS = [
+      "ts@hmh.or.kr",
+      "classroom_teachers@hmh.or.kr",
+      "hmhteacher@hmh.or.kr",
+      "hmh_teachers@hmh.or.kr",
+    ];
+
+    const getTeacherGroups = async (): Promise<string[]> => {
+      if (!domain) return DEFAULT_TEACHER_GROUPS;
+      try {
+        const settingsSnap = await getDoc(doc(db, "settings", domain));
+        if (settingsSnap.exists()) {
+          const settings = settingsSnap.data();
+          if (settings.teacherSettings?.autoJoinGroups && Array.isArray(settings.teacherSettings.autoJoinGroups)) {
+            return settings.teacherSettings.autoJoinGroups;
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to load autoJoinGroups setting, using fallback defaults:", err);
+      }
+      return DEFAULT_TEACHER_GROUPS;
+    };
+
+    // ─────────────────────────────────────────
+    // ACTION: enroll_teacher
+    // 신규 교사 계정 생성 및 지정된 그룹 자동 가입
+    // ─────────────────────────────────────────
+    if (action === "enroll_teacher") {
+      const { teacherEmail, teacherGivenName, teacherFamilyName, teacherOU } = body;
+      if (!teacherEmail || !teacherGivenName || !teacherFamilyName) {
+        return NextResponse.json({ error: "교사 이메일, 이름(성/이름)은 필수 항목입니다." }, { status: 400 });
+      }
+
+      try {
+        // Firebase Auth 구버전 UID 충돌 사전 방지
+        await deleteAuthUserByEmail(teacherEmail);
+
+        // GWS 계정 생성 (초기 패스워드: 고정값)
+        const tempPassword = "1234abcd!!!!";
+        const ouPath = teacherOU || "/교직원";
+        await createUser(
+          teacherEmail,
+          teacherGivenName,
+          teacherFamilyName,
+          ouPath,
+          tempPassword,
+          true
+        );
+
+        // 사전 지정된 교사 그룹 동적 조회 및 자동 가입 (보안그룹은 최초 로그인 락 방지를 위해 가입 유보)
+        const activeGroups = await getTeacherGroups();
+        const groupResults: { group: string; success: boolean; error?: string }[] = [];
+        for (const groupEmail of activeGroups) {
+          const isSecurity = await checkIsSecurityGroup(groupEmail);
+          if (isSecurity) {
+            // 보안그룹은 나중에 로그인 성공 시 연동하므로 가입 보류
+            continue;
+          }
+          try {
+            await addGroupMember(groupEmail, teacherEmail);
+            groupResults.push({ group: groupEmail, success: true });
+          } catch (gErr: any) {
+            groupResults.push({ group: groupEmail, success: false, error: gErr.message });
+          }
+        }
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "교사 신규 등록",
+          targetEmail: teacherEmail,
+          details: `GWS 계정 생성 및 지정 연동 그룹 가입 처리. 결과: ${JSON.stringify(groupResults)}`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock, tempPassword, groupResults });
+      } catch (err: any) {
+        return NextResponse.json({ error: `교사 등록 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: register_teacher_transfer
+    // 교사 전출 등록: 지정 연동 그룹 즉시 탈퇴 + Firestore 큐 적재 + 안내 알림 발송
+    // ─────────────────────────────────────────
+    if (action === "register_teacher_transfer") {
+      const { teacherEmail, teacherName } = body;
+      if (!teacherEmail || !domain) {
+        return NextResponse.json({ error: "교사 이메일과 도메인은 필수 항목입니다." }, { status: 400 });
+      }
+
+      try {
+        // 지정 연동 그룹 즉시 강제 탈퇴 (보안 즉각 차단)
+        const activeGroups = await getTeacherGroups();
+        const groupResults: { group: string; success: boolean; error?: string }[] = [];
+        for (const groupEmail of activeGroups) {
+          try {
+            await removeGroupMember(groupEmail, teacherEmail);
+            groupResults.push({ group: groupEmail, success: true });
+          } catch (gErr: any) {
+            groupResults.push({ group: groupEmail, success: false, error: gErr.message });
+          }
+        }
+
+        // Firestore에 전출 작업 등록
+        const taskRef = doc(db, "teacher_transfer_tasks", domain, "teachers", teacherEmail);
+        await setDoc(taskRef, {
+          email: teacherEmail,
+          name: teacherName || teacherEmail,
+          status: "PENDING_DEADLINE",
+          registeredAt: new Date(),
+          deadlineDate: null,
+          deadlineSetAt: null,
+          suspendedAt: null,
+          deletedAt: null,
+          warnedCount: 0,
+          lastWarnedAt: null,
+          registeredBy: adminEmail,
+        });
+
+        // 안내 이메일 및 구글 챗 알림 발송
+        const mailSender =
+          process.env.GOOGLE_WORKSPACE_SENDER_EMAIL ||
+          process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL ||
+          "hmnotice@hmh.or.kr";
+
+        const emailSubject = `[중요] 학교 구글 계정 전출 처리 안내 - 데이터 백업 기한을 설정해 주세요`;
+        const emailBody = `안녕하세요, ${teacherName || teacherEmail}님.
+
+학교 행정상 선생님의 구글 워크스페이스 계정이 전출 처리되었습니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📋  조치 사항
+━━━━━━━━━━━━━━━━━━━━━━━━━
+선생님의 학교 그룹 및 클래스룸 접근 권한이 즉시 해제되었습니다.
+구글 계정 자체는 아직 유지되고 있으나, 아래 안내에 따라 데이터 백업 기한을 직접 설정하셔야 합니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📅  기한 설정 방법
+━━━━━━━━━━━━━━━━━━━━━━━━━
+학교 어드민 시스템(${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-deadline)에 접속하시면
+데이터 백업 완료 후 계정 삭제를 희망하시는 날짜(최대 1년 이내)를 직접 입력하실 수 있습니다.
+
+📦  데이터 이전 및 다운로드 방법:
+→ https://gw.googleforeducation.org/관리하기/학년을-마무리-하며-할-일/졸업생을-위한-안내자료
+
+궁금하신 점은 학교 정보부에 문의해 주세요. 감사합니다.
+
+효명고등학교 드림`;
+
+        const chatBody = `📢 *[효명고등학교 구글 계정 전출 처리 안내]*
+
+안녕하세요, *${teacherName || teacherEmail}*님.
+학교 구글 워크스페이스 그룹 및 클래스룸 접근 권한이 오늘부로 해제되었습니다.
+
+⚠️ 계정은 아직 유지되고 있으나, 데이터 백업 후 삭제 기한을 직접 설정해 주셔야 합니다.
+
+→ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-deadline
+
+궁금한 점은 학교 정보부에 문의해 주세요.`;
+
+        try {
+          await sendGmail(mailSender, teacherEmail, emailSubject, emailBody);
+          await sendGoogleChat(teacherEmail, chatBody);
+        } catch (notifyErr) {
+          console.warn("전출 안내 알림 발송 실패(계속 진행):", notifyErr);
+        }
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "교사 전출 등록",
+          targetEmail: teacherEmail,
+          details: `연동 그룹 즉시 탈퇴 처리 및 전출 큐 등록. 그룹 결과: ${JSON.stringify(groupResults)}`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock, groupResults });
+      } catch (err: any) {
+        return NextResponse.json({ error: `전출 등록 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: submit_teacher_deadline
+    // 전출 교사 본인이 백업 완료 예정 기한(최대 1년) 직접 제출
+    // ─────────────────────────────────────────
+    if (action === "submit_teacher_deadline") {
+      const { teacherEmail, deadlineDate } = body;
+      if (!teacherEmail || !deadlineDate || !domain) {
+        return NextResponse.json({ error: "teacherEmail, deadlineDate, domain은 필수입니다." }, { status: 400 });
+      }
+
+      // 1년 초과 여부 검증
+      const deadline = new Date(deadlineDate);
+      const maxDeadline = new Date();
+      maxDeadline.setFullYear(maxDeadline.getFullYear() + 1);
+      if (deadline > maxDeadline) {
+        return NextResponse.json({ error: "데드라인은 오늘로부터 최대 1년 이내로 설정해야 합니다." }, { status: 400 });
+      }
+
+      try {
+        const taskRef = doc(db, "teacher_transfer_tasks", domain, "teachers", teacherEmail);
+        const taskSnap = await getDoc(taskRef);
+        if (!taskSnap.exists()) {
+          return NextResponse.json({ error: "해당 교사의 전출 레코드가 없습니다." }, { status: 404 });
+        }
+
+        await updateDoc(taskRef, {
+          deadlineDate: deadline,
+          deadlineSetAt: new Date(),
+          status: "DEADLINE_SET",
+        });
+
+        await writeAuditLog({
+          operatorEmail: teacherEmail,
+          operatorName: taskSnap.data().name || teacherEmail,
+          action: "교사 전출 기한 설정",
+          targetEmail: teacherEmail,
+          details: `데드라인 설정: ${deadline.toLocaleDateString("ko-KR")}`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true });
+      } catch (err: any) {
+        return NextResponse.json({ error: `기한 설정 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: execute_teacher_ob
+    // 교사 명예퇴임: OB 보존실 OU 이동 + 연동 그룹 탈퇴 (계정은 영구 보존)
+    // ─────────────────────────────────────────
+    if (action === "execute_teacher_ob") {
+      const { teacherEmail, teacherName, teachersOBPath } = body;
+      if (!teacherEmail || !teachersOBPath) {
+        return NextResponse.json({ error: "teacherEmail과 teachersOBPath(OB 보존실 OU 경로)는 필수입니다." }, { status: 400 });
+      }
+
+      try {
+        // 지정 연동 그룹에서 탈퇴
+        const activeGroups = await getTeacherGroups();
+        const groupResults: { group: string; success: boolean; error?: string }[] = [];
+        for (const groupEmail of activeGroups) {
+          try {
+            await removeGroupMember(groupEmail, teacherEmail);
+            groupResults.push({ group: groupEmail, success: true });
+          } catch (gErr: any) {
+            groupResults.push({ group: groupEmail, success: false, error: gErr.message });
+          }
+        }
+
+        // OB 보존실 OU로 이동 (계정 active 유지)
+        await updateUser(teacherEmail, { orgUnitPath: teachersOBPath });
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "교사 명예퇴임 처리",
+          targetEmail: teacherEmail,
+          details: `OB 보존실(${teachersOBPath})로 OU 이동 및 지정 연동 그룹 탈퇴. 결과: ${JSON.stringify(groupResults)}`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock, groupResults });
+      } catch (err: any) {
+        return NextResponse.json({ error: `명예퇴임 처리 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: join_security_group
+    // 교사 최초 로그인 확인 시 GWS 보안그룹들 가입 처리
+    // ─────────────────────────────────────────
+    if (action === "join_security_group") {
+      const { teacherEmail } = body;
+      if (!teacherEmail) {
+        return NextResponse.json({ error: "teacherEmail은 필수입니다." }, { status: 400 });
+      }
+
+      try {
+        // 지정된 그룹스 중 보안그룹 속성을 지닌 그룹만 골라 가입
+        const activeGroups = await getTeacherGroups();
+        const groupResults: { group: string; success: boolean; error?: string }[] = [];
+        
+        for (const groupEmail of activeGroups) {
+          const isSecurity = await checkIsSecurityGroup(groupEmail);
+          if (isSecurity) {
+            try {
+              await addGroupMember(groupEmail, teacherEmail);
+              groupResults.push({ group: groupEmail, success: true });
+            } catch (gErr: any) {
+              groupResults.push({ group: groupEmail, success: false, error: gErr.message });
+            }
+          }
+        }
+
+        await writeAuditLog({
+          operatorEmail: "system@portal",
+          operatorName: "[자동 연동] 포털 시스템",
+          action: "교사 보안그룹 자동 연동",
+          targetEmail: teacherEmail,
+          details: `교사 최초 포털 로그인 감지로 보안그룹 가입 완료. 결과: ${JSON.stringify(groupResults)}`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock, groupResults });
+      } catch (err: any) {
+        return NextResponse.json({ error: `보안그룹 가입 실패: ${err.message}` }, { status: 500 });
       }
     }
 

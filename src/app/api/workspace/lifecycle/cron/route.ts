@@ -458,7 +458,117 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ─────────────────────────────────────────────
+    // 교직원 전출 자동 배치
+    // ─────────────────────────────────────────────
+    try {
+      for (const domain of domains) {
+        const teachersCol = collection(db, "teacher_transfer_tasks", domain, "teachers");
+        const teachersSnap = await getDocs(teachersCol);
+
+        for (const teacherDoc of teachersSnap.docs) {
+          const task = teacherDoc.data();
+          const email = task.email as string;
+          if (!email) continue;
+          if (testEmailFilter && email !== testEmailFilter) continue;
+
+          // ── 미선정 교사 주간 리마인더 발송 (PENDING_DEADLINE 상태)
+          if (task.status === "PENDING_DEADLINE") {
+            const lastWarned = task.lastWarnedAt
+              ? (task.lastWarnedAt.toDate ? task.lastWarnedAt.toDate() : new Date(task.lastWarnedAt))
+              : null;
+            const sevenDaysAgo = new Date(now);
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+            if (!lastWarned || lastWarned <= sevenDaysAgo) {
+              try {
+                const mailSender =
+                  process.env.GOOGLE_WORKSPACE_SENDER_EMAIL ||
+                  process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL ||
+                  "hmnotice@hmh.or.kr";
+                const warnedCount = (task.warnedCount || 0) + 1;
+                const chatBody = `📢 *[효명고등학교 - 데이터 백업 기한 설정 안내 ${warnedCount}차]*\n\n안녕하세요, *${task.name}*님.\n아직 데이터 백업 기한을 설정하지 않으셨습니다.\n\n아래 주소에서 기한을 직접 설정해 주세요:\n→ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-deadline\n\n설정 기한은 최대 1년 이내로 지정 가능합니다.`;
+                await sendGoogleChat(email, chatBody);
+                await updateDoc(doc(db, "teacher_transfer_tasks", domain, "teachers", email), {
+                  warnedCount,
+                  lastWarnedAt: new Date(),
+                });
+                results.warned.push(email);
+                dbg(`[교사 리마인더] ${email} — ${warnedCount}차 알림 발송 완료`);
+              } catch (wErr: any) {
+                results.errors.push({ email, error: `교사 리마인더 발송 실패: ${wErr.message}` });
+              }
+            }
+          }
+
+          // ── 데드라인 도달 시 계정 일시정지 (DEADLINE_SET → SUSPENDED)
+          if (task.status === "DEADLINE_SET" && task.deadlineDate) {
+            const deadline = task.deadlineDate.toDate
+              ? task.deadlineDate.toDate()
+              : new Date(task.deadlineDate);
+
+            if (deadline <= todayMidnight) {
+              try {
+                await updateUser(email, { suspended: true });
+                await updateDoc(doc(db, "teacher_transfer_tasks", domain, "teachers", email), {
+                  status: "SUSPENDED",
+                  suspendedAt: new Date(),
+                });
+                results.suspended.push(email);
+                dbg(`[교사 자동 일시정지] ${email} — 데드라인(${deadline.toLocaleDateString("ko-KR")}) 도달로 계정 정지`);
+                await writeAuditLog({
+                  operatorEmail: "system@cron",
+                  operatorName: "[자동 처리] 크론 스케줄러",
+                  action: "교사 전출 계정 자동 일시정지",
+                  targetEmail: email,
+                  details: `데드라인(${deadline.toLocaleDateString("ko-KR")}) 경과로 GWS 계정 일시정지 처리`,
+                  status: "success",
+                });
+              } catch (sErr: any) {
+                results.errors.push({ email, error: `교사 자동 일시정지 실패: ${sErr.message}` });
+              }
+            }
+          }
+
+          // ── 일시정지 후 30일 경과 시 영구삭제 (SUSPENDED → DELETED)
+          if (task.status === "SUSPENDED" && task.suspendedAt) {
+            const suspendedAt = task.suspendedAt.toDate
+              ? task.suspendedAt.toDate()
+              : new Date(task.suspendedAt);
+            const deleteAfter = new Date(suspendedAt);
+            deleteAfter.setDate(deleteAfter.getDate() + 30);
+
+            if (deleteAfter <= todayMidnight) {
+              try {
+                await deleteAuthUserByEmail(email);
+                await deleteUser(email);
+                await updateDoc(doc(db, "teacher_transfer_tasks", domain, "teachers", email), {
+                  status: "DELETED",
+                  deletedAt: new Date(),
+                });
+                results.deleted.push(email);
+                dbg(`[교사 영구삭제] ${email} — 일시정지 후 30일 경과로 계정 영구 삭제`);
+                await writeAuditLog({
+                  operatorEmail: "system@cron",
+                  operatorName: "[자동 처리] 크론 스케줄러",
+                  action: "교사 전출 계정 자동 영구삭제",
+                  targetEmail: email,
+                  details: `일시정지 후 30일 경과 (일시정지: ${suspendedAt.toLocaleDateString("ko-KR")})로 GWS 계정 및 Firebase Auth 영구 삭제`,
+                  status: "success",
+                });
+              } catch (dErr: any) {
+                results.errors.push({ email, error: `교사 자동 영구삭제 실패: ${dErr.message}` });
+              }
+            }
+          }
+        }
+      }
+    } catch (teacherCronErr: any) {
+      console.error("[Cron] 교사 전출 배치 처리 실패:", teacherCronErr.message);
+    }
+
     console.log(`[Cron] 자동 처리 완료 - 정지: ${results.suspended.length}명, 삭제: ${results.deleted.length}명, 오류: ${results.errors.length}건`);
+
 
     return NextResponse.json({
       success: true,

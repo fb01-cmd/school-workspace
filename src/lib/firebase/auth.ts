@@ -7,6 +7,7 @@ export interface UserData {
   domain: string;
   role: "student" | "teacher" | "super_admin";
   isApproved: boolean;
+  isSecurityGroupJoined?: boolean;
   createdAt?: any;
 }
 

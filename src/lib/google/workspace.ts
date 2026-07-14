@@ -1177,3 +1177,29 @@ export const createAllClassGroups = async (
   return { created, membersAdded, failed, succeededList, failedList };
 };
 
+// ─────────────────────────────────────────
+// 12. Check if a Group is a GWS Security Group
+// ─────────────────────────────────────────
+export const checkIsSecurityGroup = async (groupEmail: string): Promise<boolean> => {
+  if (isMock) {
+    const lower = groupEmail.toLowerCase();
+    // Mock 모드에서는 ts 또는 tc로 시작하는 그룹을 보안그룹으로 가정
+    return lower.startsWith("ts@") || lower.startsWith("tc@") || lower.includes("security");
+  }
+
+  const admin = getAdminClient();
+  if (!admin) throw new Error("Admin client is not initialized.");
+
+  try {
+    const res = await admin.groups.get({
+      groupKey: groupEmail,
+    });
+    const labels = (res.data as any).labels || [];
+    return labels.includes("system/groups/security");
+  } catch (error) {
+    console.error(`Error checking security status for group ${groupEmail}:`, error);
+    return false;
+  }
+};
+
+
