@@ -5,6 +5,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/context/AuthContext";
 import OUTreeSelector from "@/components/admin/OUTreeSelector";
+import AutocompleteInput from "@/components/admin/AutocompleteInput";
 
 interface OU {
   orgUnitId: string;
@@ -33,8 +34,26 @@ export default function OUConfiguration() {
     "hmh_teachers@hmh.or.kr",
   ]);
   const [newGroupInput, setNewGroupInput] = useState("");
+  const [securityMap, setSecurityMap] = useState<Record<string, boolean>>({});
 
   const domain = userData?.domain || "";
+
+  const checkSecurityForGroups = async (groupsList: string[]) => {
+    if (groupsList.length === 0) return;
+    try {
+      const res = await fetch("/api/workspace/groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "check_security", groupEmails: groupsList }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSecurityMap((prev) => ({ ...prev, ...data.results }));
+      }
+    } catch (err) {
+      console.error("Failed to check security status of groups", err);
+    }
+  };
 
   // Fetch OUs and Load Settings
   const loadData = async () => {
@@ -54,6 +73,7 @@ export default function OUConfiguration() {
       if (domain) {
         const settingsRef = doc(db, "settings", domain);
         const settingsSnap = await getDoc(settingsRef);
+        const defaultClassroomGroup = `classroom_teachers@${domain}`;
         if (settingsSnap.exists()) {
           const settings = settingsSnap.data();
           setGradesCount(settings.gradesCount || 6);
@@ -62,9 +82,23 @@ export default function OUConfiguration() {
           setGraduatesOU(settings.ouMapping?.graduates || "");
           setTransferOutOU(settings.ouMapping?.transferOut || "");
           setTeachersOB(settings.ouMapping?.teachersOB || "");
-          if (settings.teacherSettings?.autoJoinGroups) {
-            setAutoJoinGroups(settings.teacherSettings.autoJoinGroups);
+          
+          let loadedGroups = settings.teacherSettings?.autoJoinGroups || [];
+          if (!loadedGroups.includes(defaultClassroomGroup)) {
+            loadedGroups = [defaultClassroomGroup, ...loadedGroups];
           }
+          setAutoJoinGroups(loadedGroups);
+          checkSecurityForGroups(loadedGroups);
+        } else {
+          // 기본값 설정 (도메인 포함)
+          const defaultGroups = [
+            `ts@${domain}`,
+            defaultClassroomGroup,
+            `hmhteacher@${domain}`,
+            `hmh_teachers@${domain}`,
+          ];
+          setAutoJoinGroups(defaultGroups);
+          checkSecurityForGroups(defaultGroups);
         }
       }
     } catch (error) {
@@ -86,6 +120,12 @@ export default function OUConfiguration() {
     if (!domain) return;
     setSaving(true);
     try {
+      const defaultClassroomGroup = `classroom_teachers@${domain}`;
+      let finalGroups = [...autoJoinGroups];
+      if (!finalGroups.includes(defaultClassroomGroup)) {
+        finalGroups = [defaultClassroomGroup, ...finalGroups];
+      }
+
       const settingsRef = doc(db, "settings", domain);
       await setDoc(settingsRef, {
         gradesCount,
@@ -97,10 +137,11 @@ export default function OUConfiguration() {
           teachersOB: teachersOB,
         },
         teacherSettings: {
-          autoJoinGroups: autoJoinGroups,
+          autoJoinGroups: finalGroups,
         },
         updatedAt: new Date(),
       });
+      setAutoJoinGroups(finalGroups);
       alert("설정이 성공적으로 저장되었습니다!");
     } catch (error) {
       console.error("Failed to save settings", error);
@@ -278,13 +319,15 @@ export default function OUConfiguration() {
             </p>
             
             <div className="space-y-3 max-w-md">
-              <div className="flex gap-2">
-                <input
-                  type="email"
+              <div className="flex gap-2 items-center flex-1">
+                <AutocompleteInput
+                  type="group"
                   value={newGroupInput}
-                  onChange={(e) => setNewGroupInput(e.target.value)}
+                  onChange={setNewGroupInput}
+                  domain={domain}
+                  onSelect={(email) => setNewGroupInput(email)}
                   placeholder="예: target-group@hmh.or.kr"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                  className="flex-1"
                 />
                 <button
                   type="button"
@@ -299,8 +342,10 @@ export default function OUConfiguration() {
                       alert("이미 추가된 그룹입니다.");
                       return;
                     }
-                    setAutoJoinGroups([...autoJoinGroups, val]);
+                    const updated = [...autoJoinGroups, val];
+                    setAutoJoinGroups(updated);
                     setNewGroupInput("");
+                    checkSecurityForGroups([val]);
                   }}
                   className="bg-gray-800 hover:bg-gray-900 text-white font-medium px-4 py-2 rounded-md text-sm transition-colors"
                 >
@@ -312,23 +357,39 @@ export default function OUConfiguration() {
                 {autoJoinGroups.length === 0 ? (
                   <span className="text-gray-400 text-xs">지정된 연동 그룹이 없습니다.</span>
                 ) : (
-                  autoJoinGroups.map((group) => (
-                    <span
-                      key={group}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
-                    >
-                      {group}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAutoJoinGroups(autoJoinGroups.filter((g) => g !== group));
-                        }}
-                        className="text-indigo-400 hover:text-indigo-600 focus:outline-none text-[14px] leading-none"
+                  autoJoinGroups.map((group) => {
+                    const isDefaultGroup = group.startsWith("classroom_teachers@");
+                    const isSecurity = securityMap[group];
+                    return (
+                      <span
+                        key={group}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
                       >
-                        &times;
-                      </button>
-                    </span>
-                  ))
+                        <span>{group}</span>
+                        {isDefaultGroup && (
+                          <span className="bg-indigo-100 text-indigo-800 text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                            기본 필수
+                          </span>
+                        )}
+                        {isSecurity && (
+                          <span className="bg-red-50 text-red-600 border border-red-200 text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                            보안 그룹
+                          </span>
+                        )}
+                        {!isDefaultGroup && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAutoJoinGroups(autoJoinGroups.filter((g) => g !== group));
+                            }}
+                            className="text-indigo-400 hover:text-indigo-600 focus:outline-none text-[16px] leading-none ml-1"
+                          >
+                            &times;
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })
                 )}
               </div>
             </div>

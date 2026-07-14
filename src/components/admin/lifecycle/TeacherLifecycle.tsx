@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc, collection, getDocs } from "firebase/firestore";
+import AutocompleteInput from "@/components/admin/AutocompleteInput";
 
 // ─────────────────────────────────────────────────────
 // Types
@@ -81,7 +82,7 @@ export default function TeacherLifecycle() {
 
       {/* Section Selector */}
       <div className="flex gap-4">
-        <SectionBtn active={section === "enroll"} onClick={() => setSection("enroll")} icon="➕" title="교직원 전입 (신규 등록)" desc="계정 생성 + 4대 그룹 자동 가입" />
+        <SectionBtn active={section === "enroll"} onClick={() => setSection("enroll")} icon="➕" title="교직원 전입 (신규 등록)" desc="계정 생성 + 지정 그룹 자동 가입" />
         <SectionBtn active={section === "transfer"} onClick={() => setSection("transfer")} icon="🚪" title="교직원 전출 관리" desc="보안 즉시 해제 + 기한 설정 관리" />
         <SectionBtn active={section === "ob"} onClick={() => setSection("ob")} icon="🏅" title="명예퇴임 처리" desc="OB 보존실 이동 + 계정 영구 보존" />
       </div>
@@ -278,6 +279,37 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
   const [result, setResult] = useState<{ success?: boolean; error?: string; groupResults?: any[] } | null>(null);
   const [queue, setQueue] = useState<TeacherTransferTask[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
+  const [cancelling, setCancelling] = useState<string | null>(null);
+
+  const handleCancelTransfer = async (email: string, name: string) => {
+    if (!confirm(`${name || email} 선생님의 전출 등록을 취소하시겠습니까?\n전출 큐에서 제외되고 지정된 연동 그룹에 다시 가입 처리됩니다.`)) return;
+    setCancelling(email);
+    try {
+      const res = await fetch("/api/workspace/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "cancel_teacher_transfer",
+          operatorEmail,
+          operatorName,
+          domain,
+          teacherEmail: email,
+          teacherName: name,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("전출 취소 처리가 완료되었습니다.");
+        loadQueue();
+      } else {
+        alert(`전출 취소 실패: ${data.error}`);
+      }
+    } catch (err: any) {
+      alert(`오류 발생: ${err.message}`);
+    } finally {
+      setCancelling(null);
+    }
+  };
 
   const loadQueue = async () => {
     if (!domain) return;
@@ -300,7 +332,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
   const handleRegisterTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!transferEmail) return;
-    if (!confirm(`${transferName || transferEmail} 선생님을 전출로 등록하시겠습니까?\n4개 그룹에서 즉시 탈퇴 처리되고, 본인에게 안내 알림이 발송됩니다.`)) return;
+    if (!confirm(`${transferName || transferEmail} 선생님을 전출로 등록하시겠습니까?\n지정된 연동 그룹에서 즉시 탈퇴 처리되고, 본인에게 안내 알림이 발송됩니다.`)) return;
     setLoading(true);
     setResult(null);
     try {
@@ -336,31 +368,28 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <h3 className="text-lg font-bold text-gray-900 mb-1">전출 교사 등록</h3>
         <p className="text-sm text-gray-500 mb-4">
-          등록 즉시 4개 보안·클래스룸 그룹에서 강제 탈퇴하고, 교사 본인에게 데이터 백업 기한 선택 안내를 발송합니다.
+          등록 즉시 지정된 연동 그룹에서 강제 탈퇴하고, 교사 본인에게 데이터 백업 기한 선택 안내를 발송합니다.
         </p>
         <form onSubmit={handleRegisterTransfer} className="space-y-4 max-w-lg">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">교사 이메일</label>
-              <input
-                type="email"
-                value={transferEmail}
-                onChange={(e) => setTransferEmail(e.target.value)}
-                placeholder="teacher@hmh.or.kr"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">교사 이름 (선택)</label>
-              <input
-                type="text"
-                value={transferName}
-                onChange={(e) => setTransferName(e.target.value)}
-                placeholder="예: 김민수 선생님"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-              />
-            </div>
+          <div className="w-full">
+            <label className="block text-sm font-medium text-gray-700 mb-1">전출 교사 이메일/이름 검색</label>
+            <AutocompleteInput
+              type="user"
+              value={transferEmail}
+              onChange={setTransferEmail}
+              domain={domain}
+              onSelect={(email, name) => {
+                setTransferEmail(email);
+                setTransferName(name || "");
+              }}
+              placeholder="이름 또는 이메일 검색..."
+              className="w-full"
+            />
+            {transferName && (
+              <p className="text-xs text-indigo-600 font-medium mt-1.5">
+                🎯 선택된 교사: <span className="font-bold">{transferName}</span> ({transferEmail})
+              </p>
+            )}
           </div>
           <button
             type="submit"
@@ -407,7 +436,8 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                   <th className="pb-3 pr-4 font-semibold">상태</th>
                   <th className="pb-3 pr-4 font-semibold">전출 등록일</th>
                   <th className="pb-3 pr-4 font-semibold">기한 선택일</th>
-                  <th className="pb-3 font-semibold">D-Day</th>
+                  <th className="pb-3 pr-4 font-semibold">D-Day</th>
+                  <th className="pb-3 font-semibold text-right">작업</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -445,6 +475,15 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                           <span className="text-gray-400">-</span>
                         )}
                       </td>
+                      <td className="py-3 text-right">
+                        <button
+                          onClick={() => handleCancelTransfer(task.email, task.name)}
+                          disabled={cancelling === task.email}
+                          className="text-xs bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 hover:border-red-200 transition-colors focus:outline-none disabled:opacity-50"
+                        >
+                          {cancelling === task.email ? "취소 중..." : "전출 취소"}
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -474,7 +513,7 @@ function OBTeacherPanel({ domain, operatorEmail, operatorName, settingsOBPath }:
   const handleOB = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!obEmail || !obPath) return;
-    if (!confirm(`${obName || obEmail} 선생님을 명예퇴임 처리하시겠습니까?\n4개 그룹에서 탈퇴되고 OB 보존실(${obPath})로 OU가 이동됩니다.\n계정은 영구 보존됩니다.`)) return;
+    if (!confirm(`${obName || obEmail} 선생님을 명예퇴임 처리하시겠습니까?\n지정된 연동 그룹에서 탈퇴되고 OB 보존실(${obPath})로 OU가 이동됩니다.\n계정은 영구 보존됩니다.`)) return;
     setLoading(true);
     setResult(null);
     try {
@@ -518,28 +557,25 @@ function OBTeacherPanel({ domain, operatorEmail, operatorName, settingsOBPath }:
       )}
 
       <form onSubmit={handleOB} className="space-y-4 max-w-lg">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">교사 이메일</label>
-            <input
-              type="email"
-              value={obEmail}
-              onChange={(e) => setObEmail(e.target.value)}
-              placeholder="teacher@hmh.or.kr"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">교사 이름 (선택)</label>
-            <input
-              type="text"
-              value={obName}
-              onChange={(e) => setObName(e.target.value)}
-              placeholder="예: 박영호 선생님"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900"
-            />
-          </div>
+        <div className="w-full">
+          <label className="block text-sm font-medium text-gray-700 mb-1">퇴임 교사 이메일/이름 검색</label>
+          <AutocompleteInput
+            type="user"
+            value={obEmail}
+            onChange={setObEmail}
+            domain={domain}
+            onSelect={(email, name) => {
+              setObEmail(email);
+              setObName(name || "");
+            }}
+            placeholder="이름 또는 이메일 검색..."
+            className="w-full"
+          />
+          {obName && (
+            <p className="text-xs text-indigo-600 font-medium mt-1.5">
+              🎯 선택된 교사: <span className="font-bold">{obName}</span> ({obEmail})
+            </p>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">OB 보존실 OU 경로</label>

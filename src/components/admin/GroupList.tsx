@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
+import AutocompleteInput from "@/components/admin/AutocompleteInput";
 
 interface GoogleGroup {
   id: string;
@@ -693,15 +694,18 @@ export default function GroupList() {
                   </h4>
 
                   {/* Add Member form */}
-                  <form onSubmit={handleAddMember} className="flex gap-2">
-                    <input
-                      type="email"
-                      required
-                      placeholder="추가할 사용자 이메일 입력..."
-                      value={newMemberEmail}
-                      onChange={(e) => setNewMemberEmail(e.target.value)}
-                      className="flex-1 px-3 py-2 border rounded-xl text-xs outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    />
+                  <form onSubmit={handleAddMember} className="flex gap-2 items-center flex-1 w-full">
+                    <div className="flex-1">
+                      <AutocompleteInput
+                        type="user"
+                        value={newMemberEmail}
+                        onChange={setNewMemberEmail}
+                        domain={domain}
+                        onSelect={(email) => setNewMemberEmail(email)}
+                        placeholder="추가할 사용자 이메일 입력..."
+                        className="flex-1"
+                      />
+                    </div>
                     <button
                       type="submit"
                       disabled={addingMember || !newMemberEmail}

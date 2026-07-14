@@ -24,23 +24,11 @@
 
 > **⚠️ 이 섹션은 Vercel 정식 배포 시 빠짐없이 확인해야 합니다.**
 > AI 에이전트가 배포 시점에 이 항목들을 꺼내서 안내해 줍니다.
+>
+> 📌 상세한 체크리스트 및 검증 시나리오는 다음 아티팩트 파일을 참고하세요:
+> - [deployment_checklist.md](file:///home/fb01/.gemini/antigravity-ide/brain/df7bb5f4-6ff8-4650-9da8-db5a2dbf44d9/deployment_checklist.md)
 
-### ✅ 환경변수 설정 (Vercel 대시보드 → Project Settings → Environment Variables)
-
-| 변수명 | 설명 |
-|--------|------|
-| `CRON_SECRET` | `.env.local`의 값과 동일하게 등록. 없으면 계정 자동 정지/삭제 크론 API가 보안 없이 외부에 노출됨. |
-| `NEXT_PUBLIC_FIREBASE_*` | Firebase 연결 설정. 로컬 `.env.local`에 있는 값들을 그대로 등록. |
-| `GOOGLE_WORKSPACE_*` | Google Workspace 서비스 계정 키. 로컬 `.env.local`에 있는 값들을 그대로 등록. |
-
-### ✅ Vercel 크론 자동화 확인 사항
-
-- 배포 후 Vercel 대시보드 → **Cron Jobs** 탭에서 `/api/workspace/lifecycle/cron`이 등록되었는지 확인
-- 스케줄: `"0 15 * * *"` (UTC 기준) = **KST 매일 0시** 자동 실행
-- Vercel 무료 플랜(Hobby)은 크론 1개까지 무료. Pro 이상은 제한 없음.
-
-### ✅ 배포 후 기타 확인 사항
-
-- Firebase 보안 규칙(Firestore Security Rules)이 프로덕션 환경에 맞게 설정되었는지 확인
-- Google Workspace 서비스 계정의 도메인 위임(Domain-wide delegation) 권한 정상 여부 확인
-- 배포 직후 `/admin` 페이지에서 수퍼어드민 계정(`fb01@hmh.or.kr`)으로 로그인 테스트
+### ✅ 주요 필수 체크사항
+1. **환경 변수 지정**: `GOOGLE_WORKSPACE_SENDER_EMAIL` (알리미 계정: `hmnotice@hmh.or.kr`) 및 `NEXT_PUBLIC_BASE_URL` (배포 사이트 도메인) 등이 누락 없이 설정되어야 합니다.
+2. **서비스 계정 역할**: Firebase Auth UID 정리 동기화를 위해 GCP Console에서 **`Firebase 인증 관리자 (Firebase Authentication Admin)`** 역할이 반드시 부여되어 있어야 합니다.
+3. **Vercel 크론 스케줄링**: 배포 후 스케줄러를 위해 `CRON_SECRET`를 등록해야 합니다.

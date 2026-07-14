@@ -124,6 +124,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ users, isMock });
     }
 
+    if (action === "search") {
+      const { query } = body;
+      if (!query || typeof query !== "string") {
+        return NextResponse.json({ users: [], isMock });
+      }
+      const normalizedQuery = query.trim().toLowerCase();
+      if (!normalizedQuery) {
+        return NextResponse.json({ users: [], isMock });
+      }
+
+      const allUsers = await listUsersInOUs(["all"]);
+      
+      const filtered = allUsers.filter((u: any) => {
+        const email = (u.primaryEmail || "").toLowerCase();
+        const familyName = (u.name?.familyName || "").toLowerCase();
+        const givenName = (u.name?.givenName || "").toLowerCase();
+        const fullName = familyName + givenName;
+        const reversedFullName = givenName + familyName;
+        
+        return (
+          email.includes(normalizedQuery) ||
+          familyName.includes(normalizedQuery) ||
+          givenName.includes(normalizedQuery) ||
+          fullName.includes(normalizedQuery) ||
+          reversedFullName.includes(normalizedQuery)
+        );
+      });
+      
+      const limited = filtered.slice(0, 15).map((u: any) => ({
+        primaryEmail: u.primaryEmail,
+        name: u.name,
+        orgUnitPath: u.orgUnitPath,
+      }));
+
+      return NextResponse.json({ users: limited, isMock });
+    }
+
     if (action === "create") {
       const { email, firstName, lastName, orgUnitPath, password, changePasswordAtNextLogin } = body;
       if (!email || !firstName || !lastName || !orgUnitPath || !password) {

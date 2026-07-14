@@ -442,7 +442,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const senderEmail = process.env.GOOGLE_WORKSPACE_SENDER_EMAIL || process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || adminEmail;
+        const senderEmail = process.env.GOOGLE_WORKSPACE_SENDER_EMAIL || process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || "hmnotice@hmh.or.kr";
         await sendGmail(senderEmail, email, emailSubject, emailBody);
         console.log(`[Gmail] 전출/자퇴 안내 메일 발송 완료 → ${email}`);
       } catch (mailErr: any) {
@@ -1347,7 +1347,7 @@ export async function POST(req: NextRequest) {
           chatBody = replaceVars(chatBody);
         }
 
-        const mailSender = process.env.GOOGLE_WORKSPACE_SENDER_EMAIL || process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || adminEmail;
+        const mailSender = process.env.GOOGLE_WORKSPACE_SENDER_EMAIL || process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || "hmnotice@hmh.or.kr";
         await sendGmail(mailSender, email, emailSubject, emailBody);
         await sendGoogleChat(email, chatBody);
 
@@ -1382,13 +1382,18 @@ export async function POST(req: NextRequest) {
     ];
 
     const getTeacherGroups = async (): Promise<string[]> => {
+      const classroomTeachersGroup = `classroom_teachers@${domain || "hmh.or.kr"}`;
       if (!domain) return DEFAULT_TEACHER_GROUPS;
       try {
         const settingsSnap = await getDoc(doc(db, "settings", domain));
         if (settingsSnap.exists()) {
           const settings = settingsSnap.data();
           if (settings.teacherSettings?.autoJoinGroups && Array.isArray(settings.teacherSettings.autoJoinGroups)) {
-            return settings.teacherSettings.autoJoinGroups;
+            const groups = settings.teacherSettings.autoJoinGroups;
+            if (!groups.includes(classroomTeachersGroup)) {
+              return [classroomTeachersGroup, ...groups];
+            }
+            return groups;
           }
         }
       } catch (err) {
@@ -1508,17 +1513,19 @@ export async function POST(req: NextRequest) {
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 📋  조치 사항
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-선생님의 학교 그룹 및 클래스룸 접근 권한이 즉시 해제되었습니다.
+선생님이 가입되어 있던 교사용 연동 그룹에서 즉시 탈퇴 처리되었습니다.
 구글 계정 자체는 아직 유지되고 있으나, 아래 안내에 따라 데이터 백업 기한을 직접 설정하셔야 합니다.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 📅  기한 설정 방법
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-학교 어드민 시스템(${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-deadline)에 접속하시면
-데이터 백업 완료 후 계정 삭제를 희망하시는 날짜(최대 1년 이내)를 직접 입력하실 수 있습니다.
+학교 어드민 시스템에 접속하시면 데이터 백업 완료 후 계정 삭제를 희망하시는 날짜(최대 1년 이내)를 직접 입력하실 수 있습니다.
+
+👉 어드민 시스템 바로가기:
+${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-deadline
 
 📦  데이터 이전 및 다운로드 방법:
-→ https://gw.googleforeducation.org/관리하기/학년을-마무리-하며-할-일/졸업생을-위한-안내자료
+→ https://gw.googleforeducation.org/%EA%B4%80%EB%A6%AC%ED%95%98%EA%B8%B0/%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%9D%B4%EC%A0%84%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-%EC%95%88%EB%82%B4
 
 궁금하신 점은 학교 정보부에 문의해 주세요. 감사합니다.
 
@@ -1527,13 +1534,22 @@ export async function POST(req: NextRequest) {
         const chatBody = `📢 *[효명고등학교 구글 계정 전출 처리 안내]*
 
 안녕하세요, *${teacherName || teacherEmail}*님.
-학교 구글 워크스페이스 그룹 및 클래스룸 접근 권한이 오늘부로 해제되었습니다.
+학교 행정상 선생님의 구글 워크스페이스 계정이 전출 처리되었습니다.
 
-⚠️ 계정은 아직 유지되고 있으나, 데이터 백업 후 삭제 기한을 직접 설정해 주셔야 합니다.
+*📋  조치 사항*
+선생님이 가입되어 있던 교사용 연동 그룹에서 즉시 탈퇴 처리되었습니다.
+구글 계정 자체는 아직 유지되고 있으나, 아래 안내에 따라 데이터 백업 기한을 직접 설정하셔야 합니다.
 
-→ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-deadline
+*📅  기한 설정 방법*
+학교 어드민 시스템에 접속하시면 데이터 백업 완료 후 계정 삭제를 희망하시는 날짜(최대 1년 이내)를 직접 입력하실 수 있습니다.
 
-궁금한 점은 학교 정보부에 문의해 주세요.`;
+👉 어드민 시스템 바로가기:
+${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-deadline
+
+*📦  데이터 이전 및 다운로드 방법:*
+→ https://gw.googleforeducation.org/%EA%B4%80%EB%A6%AC%ED%95%98%EA%B8%B0/%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%9D%B4%EC%A0%84%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-%EC%95%88%EB%82%B4
+
+궁금하신 점은 학교 정보부에 문의해 주세요. 감사합니다.`;
 
         try {
           await sendGmail(mailSender, teacherEmail, emailSubject, emailBody);
@@ -1554,6 +1570,48 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, isMock, groupResults });
       } catch (err: any) {
         return NextResponse.json({ error: `전출 등록 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: cancel_teacher_transfer
+    // 교사 전출 취소: Firestore 큐 삭제 + 지정 연동 그룹 재가입 (롤백)
+    // ─────────────────────────────────────────
+    if (action === "cancel_teacher_transfer") {
+      const { teacherEmail, teacherName } = body;
+      if (!teacherEmail || !domain) {
+        return NextResponse.json({ error: "교사 이메일과 도메인은 필수 항목입니다." }, { status: 400 });
+      }
+
+      try {
+        // 1. 지정 연동 그룹 재가입 (롤백)
+        const activeGroups = await getTeacherGroups();
+        const groupResults: { group: string; success: boolean; error?: string }[] = [];
+        for (const groupEmail of activeGroups) {
+          try {
+            await addGroupMember(groupEmail, teacherEmail);
+            groupResults.push({ group: groupEmail, success: true });
+          } catch (gErr: any) {
+            groupResults.push({ group: groupEmail, success: false, error: gErr.message });
+          }
+        }
+
+        // 2. Firestore 전출 큐 삭제
+        const taskRef = doc(db, "teacher_transfer_tasks", domain, "teachers", teacherEmail);
+        await deleteDoc(taskRef);
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "교사 전출 취소",
+          targetEmail: teacherEmail,
+          details: `전출 등록 취소 완료 및 지정된 연동 그룹 재가입 처리. 그룹 결과: ${JSON.stringify(groupResults)}`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock, groupResults });
+      } catch (err: any) {
+        return NextResponse.json({ error: `전출 취소 실패: ${err.message}` }, { status: 500 });
       }
     }
 

@@ -9,6 +9,7 @@ import {
   getGroupSettings,
   updateGroupSettings,
   listUsersInOUs,
+  checkIsSecurityGroup,
   isMock,
 } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit";
@@ -155,6 +156,19 @@ export async function POST(req: NextRequest) {
         status: "success",
       });
       return NextResponse.json({ settings: updated, isMock });
+    }
+
+    // 9. CHECK SECURITY GROUP
+    if (action === "check_security") {
+      const { groupEmails } = body;
+      if (!groupEmails || !Array.isArray(groupEmails)) {
+        return NextResponse.json({ error: "groupEmails array is required" }, { status: 400 });
+      }
+      const results: Record<string, boolean> = {};
+      for (const email of groupEmails) {
+        results[email] = await checkIsSecurityGroup(email);
+      }
+      return NextResponse.json({ results, isMock });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });

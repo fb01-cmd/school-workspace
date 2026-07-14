@@ -1181,10 +1181,14 @@ export const createAllClassGroups = async (
 // 12. Check if a Group is a GWS Security Group
 // ─────────────────────────────────────────
 export const checkIsSecurityGroup = async (groupEmail: string): Promise<boolean> => {
+  const lower = groupEmail.toLowerCase();
+  // 1. 이메일 패턴 기반 1차 판별 (ts@, tc@로 시작하거나 security가 포함된 경우)
+  if (lower.startsWith("ts@") || lower.startsWith("tc@") || lower.includes("security")) {
+    return true;
+  }
+
   if (isMock) {
-    const lower = groupEmail.toLowerCase();
-    // Mock 모드에서는 ts 또는 tc로 시작하는 그룹을 보안그룹으로 가정
-    return lower.startsWith("ts@") || lower.startsWith("tc@") || lower.includes("security");
+    return false;
   }
 
   const admin = getAdminClient();
@@ -1194,8 +1198,25 @@ export const checkIsSecurityGroup = async (groupEmail: string): Promise<boolean>
     const res = await admin.groups.get({
       groupKey: groupEmail,
     });
+    // 2. API 응답에 labels가 존재하는 경우 대비
     const labels = (res.data as any).labels || [];
-    return labels.includes("system/groups/security");
+    if (labels.includes("system/groups/security")) {
+      return true;
+    }
+    
+    // 3. Name 또는 Description에 보안그룹 관련 명시가 있는 경우
+    const name = (res.data.name || "").toLowerCase();
+    const description = (res.data.description || "").toLowerCase();
+    if (
+      name.includes("보안그룹") || 
+      description.includes("보안그룹") || 
+      name.includes("security group") || 
+      description.includes("security group")
+    ) {
+      return true;
+    }
+
+    return false;
   } catch (error) {
     console.error(`Error checking security status for group ${groupEmail}:`, error);
     return false;

@@ -122,7 +122,7 @@ export default function TransferDeadlinePage() {
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left text-sm text-blue-800">
                 <p className="font-semibold mb-2">📦 지금 바로 데이터를 백업하세요</p>
                 <a
-                  href="https://gw.googleforeducation.org/관리하기/학년을-마무리-하며-할-일/졸업생을-위한-안내자료"
+                  href="https://gw.googleforeducation.org/%EA%B4%80%EB%A6%AC%ED%95%98%EA%B8%B0/%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%9D%B4%EC%A0%84%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-%EC%95%88%EB%82%B4"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-600 hover:underline"

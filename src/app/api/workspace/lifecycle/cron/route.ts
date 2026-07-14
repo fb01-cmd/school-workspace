@@ -369,7 +369,7 @@ export async function GET(req: NextRequest) {
                     chatBody = replaceVars(chatBody);
 
                     // Gmail 발송
-                    const mailSender = process.env.GOOGLE_WORKSPACE_SENDER_EMAIL || process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || "admin@hmh.or.kr";
+                    const mailSender = process.env.GOOGLE_WORKSPACE_SENDER_EMAIL || process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || "hmnotice@hmh.or.kr";
                     dbg(`[Grad] 메일 발송 시도: ${mailSender} → ${email}`);
                     try {
                       await sendGmail(mailSender, email, emailSubject, emailBody);
