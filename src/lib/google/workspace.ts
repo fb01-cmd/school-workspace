@@ -1223,4 +1223,250 @@ export const checkIsSecurityGroup = async (groupEmail: string): Promise<boolean>
   }
 };
 
+// ─────────────────────────────────────────
+// 13. Deleted Users List & Restore
+// ─────────────────────────────────────────
+
+// Mock deleted users for test environments
+const mockDeletedUsers = [
+  {
+    id: "deleted_1",
+    primaryEmail: "del_testuser1@hmh.or.kr",
+    name: { familyName: "홍", givenName: "길동" },
+    orgUnitPath: "/학생/3학년",
+    deletionTime: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "deleted_2",
+    primaryEmail: "del_testuser2@hmh.or.kr",
+    name: { familyName: "김", givenName: "영희" },
+    orgUnitPath: "/교사",
+    deletionTime: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+  }
+];
+
+export const listDeletedUsers = async (domain: string) => {
+  if (isMock) {
+    return mockDeletedUsers.filter(u => u.primaryEmail.endsWith(`@${domain}`));
+  }
+
+  const admin = getAdminClient();
+  if (!admin) throw new Error("Admin client is not initialized.");
+
+  try {
+    const res = await (admin.users.list as any)({
+      customer: "my_customer",
+      showDeleted: true,
+      orderBy: "email",
+      maxResults: 100,
+    });
+    
+    const users = res.data.users || [];
+    return users.filter((u: any) => u.primaryEmail?.endsWith(`@${domain}`));
+  } catch (error) {
+    console.error("Error fetching deleted users from Google Workspace", error);
+    throw error;
+  }
+};
+
+export const restoreDeletedUser = async (userKey: string, orgUnitPath: string) => {
+  if (isMock) {
+    console.log(`[Mock] Restored user: ${userKey} to ${orgUnitPath}`);
+    return true;
+  }
+
+  const admin = getAdminClient();
+  if (!admin) throw new Error("Admin client is not initialized.");
+
+  try {
+    await admin.users.undelete({
+      userKey: userKey,
+      requestBody: {
+        orgUnitPath: orgUnitPath,
+      },
+    });
+    return true;
+  } catch (error) {
+    console.error(`Error restoring user ${userKey} from Google Workspace`, error);
+    throw error;
+  }
+};
+
+// ─────────────────────────────────────────
+// 14. Google Classroom Course & Roster API
+// ─────────────────────────────────────────
+
+// Mock data for classroom simulation
+let mockCourses = [
+  { id: "course_1", name: "1학년 1학기 수학", section: "1반", ownerId: "teacher01@hmh.or.kr" },
+  { id: "course_2", name: "1학년 1학기 국어", section: "2반", ownerId: "teacher01@hmh.or.kr" },
+  { id: "course_3", name: "2학년 1학기 물리", section: "기초", ownerId: "teacher02@hmh.or.kr" }
+];
+
+let mockCourseStudents: Record<string, string[]> = {
+  "course_1": ["25001@hmh.or.kr"],
+  "course_2": [],
+  "course_3": ["24001@hmh.or.kr"]
+};
+
+// Helper to get Google Classroom API Client with Impersonation
+export const getClassroomClient = (impersonatedEmail: string) => {
+  if (isMock) return null;
+
+  const privateKey = process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY!.replace(/\\n/g, "\n");
+  const auth = new google.auth.JWT({
+    email: process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL,
+    key: privateKey,
+    scopes: [
+      "https://www.googleapis.com/auth/classroom.courses",
+      "https://www.googleapis.com/auth/classroom.rosters"
+    ],
+    subject: impersonatedEmail // Impersonate the teacher
+  });
+
+  return google.classroom({ version: "v1", auth });
+};
+
+// List Courses owned by a specific teacher
+export const listClassroomCourses = async (teacherEmail: string) => {
+  if (isMock) {
+    return mockCourses.filter(c => c.ownerId === teacherEmail);
+  }
+
+  const classroom = getClassroomClient(teacherEmail);
+  if (!classroom) throw new Error("Classroom client not initialized.");
+
+  try {
+    const res = await classroom.courses.list({
+      teacherId: teacherEmail,
+      courseStates: ["ACTIVE"]
+    });
+    return res.data.courses || [];
+  } catch (error) {
+    console.error(`Error listing classroom courses for ${teacherEmail}:`, error);
+    throw error;
+  }
+};
+
+// Create a new Classroom Course
+export const createClassroomCourse = async (courseName: string, sectionName: string, teacherEmail: string) => {
+  if (isMock) {
+    const newId = `course_${Math.random().toString(36).substr(2, 9)}`;
+    const newCourse = { id: newId, name: courseName, section: sectionName, ownerId: teacherEmail };
+    mockCourses.push(newCourse);
+    mockCourseStudents[newId] = [];
+    return newCourse;
+  }
+
+  const classroom = getClassroomClient(teacherEmail);
+  if (!classroom) throw new Error("Classroom client not initialized.");
+
+  try {
+    const res = await classroom.courses.create({
+      requestBody: {
+        name: courseName,
+        section: sectionName,
+        ownerId: teacherEmail,
+        courseState: "ACTIVE"
+      }
+    });
+    return res.data;
+  } catch (error) {
+    console.error(`Error creating classroom course for ${teacherEmail}:`, error);
+    throw error;
+  }
+};
+
+// Add a student directly to Classroom Course Roster
+// NOTE: Direct student enrollment (without enrollment code) requires a domain admin.
+// Regular teacher impersonation results in 403 "The caller does not have permission".
+// We impersonate the admin account so Google grants the direct-add privilege.
+export const addStudentToClassroom = async (courseId: string, studentEmail: string, teacherEmail: string) => {
+  if (isMock) {
+    if (!mockCourseStudents[courseId]) {
+      mockCourseStudents[courseId] = [];
+    }
+    if (!mockCourseStudents[courseId].includes(studentEmail)) {
+      mockCourseStudents[courseId].push(studentEmail);
+    }
+    return true;
+  }
+
+  // Use admin email for impersonation — domain admins can directly add students to any course
+  const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || teacherEmail;
+  const classroom = getClassroomClient(adminEmail);
+  if (!classroom) throw new Error("Classroom client not initialized.");
+
+  try {
+    await classroom.courses.students.create({
+      courseId: courseId,
+      requestBody: {
+        userId: studentEmail
+      }
+    });
+    return true;
+  } catch (error: any) {
+    console.error(`Error adding student ${studentEmail} to course ${courseId}:`, error);
+    throw error;
+  }
+};
+
+// Remove a student from Classroom Course Roster
+// Same admin impersonation rule applies as addStudentToClassroom
+export const removeStudentFromClassroom = async (courseId: string, studentEmail: string, teacherEmail: string) => {
+  if (isMock) {
+    if (mockCourseStudents[courseId]) {
+      mockCourseStudents[courseId] = mockCourseStudents[courseId].filter(email => email !== studentEmail);
+    }
+    return true;
+  }
+
+  // Use admin email for impersonation — domain admins can directly remove students from any course
+  const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || teacherEmail;
+  const classroom = getClassroomClient(adminEmail);
+  if (!classroom) throw new Error("Classroom client not initialized.");
+
+  try {
+    await classroom.courses.students.delete({
+      courseId: courseId,
+      userId: studentEmail
+    });
+    return true;
+  } catch (error) {
+    console.error(`Error removing student ${studentEmail} from course ${courseId}:`, error);
+    throw error;
+  }
+};
+
+// List students registered in a Classroom Course
+export const listClassroomStudents = async (courseId: string, teacherEmail: string) => {
+  if (isMock) {
+    const studentEmails = mockCourseStudents[courseId] || [];
+    // In mock mode, return minimal stub objects — clientCache is not accessible server-side
+    return studentEmails.map(email => ({
+      profile: {
+        id: `mock_${email}`,
+        name: {
+          familyName: "학",
+          givenName: "생"
+        },
+        emailAddress: email
+      }
+    }));
+  }
+
+  const classroom = getClassroomClient(teacherEmail);
+  if (!classroom) throw new Error("Classroom client not initialized.");
+
+  try {
+    const res = await classroom.courses.students.list({
+      courseId: courseId
+    });
+    return res.data.students || [];
+  } catch (error) {
+    console.error(`Error listing students for course ${courseId}:`, error);
+    throw error;
+  }
+};
+
 

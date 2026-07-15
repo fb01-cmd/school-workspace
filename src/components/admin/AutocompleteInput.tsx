@@ -50,33 +50,73 @@ export default function AutocompleteInput({
     }
   }, [type, domain]);
 
-  // 2. 디바운스 검색 (type === "user" 일 때 사용)
+  // 2. 캐시 기반 실시간 로컬 검색 (type === "user" 일 때 사용)
   useEffect(() => {
     if (type !== "user" || !value || !domain) {
       setSuggestions([]);
       return;
     }
 
-    const delayDebounce = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/workspace/users", {
+    const searchUsersLocal = () => {
+      const { getClientCache } = require("@/lib/cache/clientCache");
+      const cachedUsers = getClientCache("users:all");
+      
+      const lowerQuery = value.toLowerCase().trim();
+
+      if (cachedUsers) {
+        // 캐시 히트: 로컬 메모리 필터링 (1ms)
+        const filtered = cachedUsers.filter((u: any) => {
+          const email = (u.primaryEmail || "").toLowerCase();
+          const givenName = (u.name?.givenName || "").toLowerCase();
+          const familyName = (u.name?.familyName || "").toLowerCase();
+          const fullName = familyName + givenName;
+
+          return (
+            email.includes(lowerQuery) ||
+            givenName.includes(lowerQuery) ||
+            familyName.includes(lowerQuery) ||
+            fullName.includes(lowerQuery)
+          );
+        });
+
+        setSuggestions(filtered.slice(0, 10));
+      } else {
+        // 캐시 미스 -> 비상 폴백 API 호출 후 로컬 캐시 채움
+        setLoading(true);
+        fetch("/api/workspace/users", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "search", query: value }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setSuggestions(data.users || []);
-        }
-      } catch (err) {
-        console.error("Failed to search users", err);
-      } finally {
-        setLoading(false);
-      }
-    }, 300); // 300ms 디바운스
+          body: JSON.stringify({ action: "list", orgUnitPaths: ["all"] }),
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (data && data.users) {
+              const { setClientCache } = require("@/lib/cache/clientCache");
+              setClientCache("users:all", data.users);
+              
+              const filtered = data.users.filter((u: any) => {
+                const email = (u.primaryEmail || "").toLowerCase();
+                const givenName = (u.name?.givenName || "").toLowerCase();
+                const familyName = (u.name?.familyName || "").toLowerCase();
+                const fullName = familyName + givenName;
 
-    return () => clearTimeout(delayDebounce);
+                return (
+                  email.includes(lowerQuery) ||
+                  givenName.includes(lowerQuery) ||
+                  familyName.includes(lowerQuery) ||
+                  fullName.includes(lowerQuery)
+                );
+              });
+              setSuggestions(filtered.slice(0, 10));
+            }
+          })
+          .catch((err) => console.error("Fallback search failed", err))
+          .finally(() => setLoading(false));
+      }
+    };
+
+    const delay = setTimeout(searchUsersLocal, 50);
+    return () => clearTimeout(delay);
   }, [value, type, domain]);
 
   // 3. 그룹 자동완성 로컬 필터링 (type === "group" 일 때 사용)

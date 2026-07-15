@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/context/AuthContext";
 import OUTreeSelector from "@/components/admin/OUTreeSelector";
 import UserSheetEditor from "@/components/admin/UserSheetEditor";
+import { getClientCache, setClientCache, invalidateClientCache } from "@/lib/cache/clientCache";
 
 interface GoogleUser {
   id: string;
@@ -81,6 +82,73 @@ export default function UserList() {
   const isSuperAdmin = userData?.role === "super_admin";
   const [isSheetMode, setIsSheetMode] = useState(false);
 
+  // 삭제된 사용자 관련 상태
+  const [showDeletedTab, setShowDeletedTab] = useState(false);
+  const [deletedUsers, setDeletedUsers] = useState<any[]>([]);
+  const [deletedLoading, setDeletedLoading] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [restoringUser, setRestoringUser] = useState<any>(null);
+  const [restoreOUPath, setRestoreOUPath] = useState("");
+  const [restoreSubmitting, setRestoreSubmitting] = useState(false);
+
+  const loadDeletedUsers = async () => {
+    if (!domain) return;
+    setDeletedLoading(true);
+    try {
+      const res = await fetch("/api/workspace/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list_deleted" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDeletedUsers(data.users || []);
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (error: any) {
+      console.error("Failed to load deleted users", error);
+      alert(`삭제 사용자 조회 실패: ${error.message}`);
+    } finally {
+      setDeletedLoading(false);
+    }
+  };
+
+  const handleRestoreUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restoringUser || !restoreOUPath) return;
+    
+    setRestoreSubmitting(true);
+    try {
+      const res = await fetch("/api/workspace/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "restore",
+          email: restoringUser.primaryEmail,
+          id: restoringUser.id,
+          orgUnitPath: restoreOUPath,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`${restoringUser.primaryEmail} 계정이 성공적으로 복원되었습니다.`);
+        setShowRestoreModal(false);
+        setRestoringUser(null);
+        
+        loadDeletedUsers();
+        loadUsers(selectedOUFilter, false, true);
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (error: any) {
+      console.error("Restore user error", error);
+      alert(`복원 실패: ${error.message}`);
+    } finally {
+      setRestoreSubmitting(false);
+    }
+  };
+
 
   const hasInitializedRef = useRef(false);
 
@@ -126,8 +194,18 @@ export default function UserList() {
     }
   };
 
-  const loadUsers = async (ouFilter: string = "", isSilent = false) => {
+  const loadUsers = async (ouFilter: string = "", isSilent = false, forceRefresh = false) => {
     if (!domain) return [];
+
+    // 캐시 조회 (강제 갱신이 아닌 경우)
+    if (!forceRefresh) {
+      const cached = getClientCache("users:all");
+      if (cached) {
+        setUsers(cached);
+        return cached;
+      }
+    }
+
     if (!isSilent) setLoading(true);
     try {
       // Always fetch all users in the domain to enable client-side instant search across OUs,
@@ -144,6 +222,8 @@ export default function UserList() {
       if (res.ok) {
         setUsers(data.users || []);
         setIsMock(data.isMock);
+        // 캐시 갱신
+        setClientCache("users:all", data.users || []);
         return data.users || [];
       } else {
         throw new Error(data.error);
@@ -230,7 +310,7 @@ export default function UserList() {
           alert("선택한 계정이 모두 성공적으로 삭제되었습니다.");
         }
         setSelectedUserEmails(new Set());
-        loadUsers(selectedOUFilter);
+        loadUsers(selectedOUFilter, false, true);
       } else {
         throw new Error(data.error);
       }
@@ -276,7 +356,7 @@ export default function UserList() {
           alert(`선택한 계정이 모두 성공적으로 ${actionText} 되었습니다.`);
         }
         setSelectedUserEmails(new Set());
-        loadUsers(selectedOUFilter);
+        loadUsers(selectedOUFilter, false, true);
       } else {
         throw new Error(data.error);
       }
@@ -327,7 +407,7 @@ export default function UserList() {
         // Optimistic UI: toggle suspension state immediately in the list
         setUsers(prev => prev.map(u => u.primaryEmail === userItem.primaryEmail ? { ...u, suspended: !userItem.suspended } : u));
         alert(`계정이 성공적으로 ${actionText} 되었습니다.`);
-        loadUsers(selectedOUFilter);
+        loadUsers(selectedOUFilter, false, true);
       } else {
         throw new Error(data.error);
       }
@@ -402,7 +482,7 @@ export default function UserList() {
         setEditingUser(null);
         setEditPassword("");
         setSelectedUserEmails(new Set());
-        loadUsers(editOUPath);
+        loadUsers(editOUPath, false, true);
       } else {
         throw new Error(data.error);
       }
@@ -444,7 +524,7 @@ export default function UserList() {
       const data = await res.json();
       if (res.ok) {
         setNewAliasPrefix("");
-        const freshUsers = await loadUsers(editingUser.orgUnitPath, true);
+        const freshUsers = await loadUsers(editingUser.orgUnitPath, true, true);
         const freshUser = freshUsers?.find((u: any) => u.id === editingUser.id);
         if (freshUser) {
           setEditingUser(freshUser);
@@ -481,7 +561,7 @@ export default function UserList() {
       });
       const data = await res.json();
       if (res.ok) {
-        const freshUsers = await loadUsers(editingUser.orgUnitPath, true);
+        const freshUsers = await loadUsers(editingUser.orgUnitPath, true, true);
         const freshUser = freshUsers?.find((u: any) => u.id === editingUser.id);
         if (freshUser) {
           setEditingUser(freshUser);
@@ -677,7 +757,7 @@ export default function UserList() {
         setNewOUPath("");
         setNewPassword("");
         setNewChangePasswordAtNextLogin(true);
-        loadUsers(selectedOUFilter);
+        loadUsers(selectedOUFilter, false, true);
       } else {
         throw new Error(data.error);
       }
@@ -711,7 +791,7 @@ export default function UserList() {
         // Optimistic UI: filter out deleted user immediately in the list
         setUsers(prev => prev.filter(u => u.primaryEmail !== email));
         alert("계정이 성공적으로 삭제되었습니다.");
-        loadUsers(selectedOUFilter);
+        loadUsers(selectedOUFilter, false, true);
       } else {
         throw new Error(data.error);
       }
@@ -760,7 +840,7 @@ export default function UserList() {
           onSave={() => {
             setIsSheetMode(false);
             setSelectedUserEmails(new Set());
-            loadUsers(selectedOUFilter);
+            loadUsers(selectedOUFilter, false, true);
           }}
           onCancel={() => setIsSheetMode(false)}
         />
@@ -800,6 +880,110 @@ export default function UserList() {
         )}
       </div>
 
+      {/* Tab Switcher: 전체 사용자 / 삭제된 사용자 복원 */}
+      {isSuperAdmin && (
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-6">
+            <button
+              onClick={() => setShowDeletedTab(false)}
+              className={`pb-3 px-1 border-b-2 font-bold text-sm transition-all ${
+                !showDeletedTab
+                  ? "border-indigo-600 text-indigo-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              👥 전체 사용자 명단
+            </button>
+            <button
+              onClick={() => {
+                setShowDeletedTab(true);
+                loadDeletedUsers();
+              }}
+              className={`pb-3 px-1 border-b-2 font-bold text-sm transition-all ${
+                showDeletedTab
+                  ? "border-red-500 text-red-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              🗑️ 삭제된 사용자 복원 <span className="text-xs font-normal">(20일 이내)</span>
+            </button>
+          </nav>
+        </div>
+      )}
+
+      {showDeletedTab ? (
+        /* ─── 삭제된 사용자 복원 뷰 ─── */
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">⚠️ 삭제 후 <strong>20일</strong>이 경과하면 복원이 영구 불가능합니다.</p>
+            <button
+              onClick={loadDeletedUsers}
+              className="text-xs text-indigo-600 hover:underline font-medium"
+            >
+              🔄 새로고침
+            </button>
+          </div>
+          {deletedLoading ? (
+            <div className="flex items-center justify-center gap-3 py-16 text-gray-400">
+              <div className="w-5 h-5 border-2 border-gray-300 border-t-indigo-600 rounded-full animate-spin"></div>
+              <span className="text-sm">삭제된 사용자 목록을 불러오는 중...</span>
+            </div>
+          ) : deletedUsers.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <p className="text-3xl mb-3">🗄️</p>
+              <p className="text-sm font-medium">20일 이내에 삭제된 사용자가 없습니다.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-gray-50 text-xs text-gray-600 uppercase tracking-wide">
+                  <tr className="border-b border-gray-200">
+                    <th className="px-6 py-3 font-semibold">이름</th>
+                    <th className="px-6 py-3 font-semibold">이메일</th>
+                    <th className="px-6 py-3 font-semibold">삭제 전 조직단위 (OU)</th>
+                    <th className="px-6 py-3 font-semibold">삭제 일시</th>
+                    <th className="px-6 py-3 font-semibold text-right">작업</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
+                  {deletedUsers.map((u) => {
+                    const delTime = u.deletionTime
+                      ? new Date(u.deletionTime).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
+                      : "-";
+                    return (
+                      <tr key={u.id} className="hover:bg-red-50/20 transition-colors">
+                        <td className="px-6 py-4 font-medium text-gray-900">
+                          {u.name?.familyName}{u.name?.givenName}
+                        </td>
+                        <td className="px-6 py-4 font-mono text-gray-600 text-xs">{u.primaryEmail}</td>
+                        <td className="px-6 py-4">
+                          <code className="bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600 font-mono">
+                            {u.orgUnitPath || "-"}
+                          </code>
+                        </td>
+                        <td className="px-6 py-4 text-xs text-gray-500">{delTime}</td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => {
+                              setRestoringUser(u);
+                              setRestoreOUPath(u.orgUnitPath || "/");
+                              setShowRestoreModal(true);
+                            }}
+                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold px-3 py-1.5 rounded-md transition-all"
+                          >
+                            🔄 복원하기
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
       {/* Filtering & Search Toolbar */}
       <div className="space-y-3 bg-gray-50 p-4 rounded-lg">
         {/* Row 1: Search */}
@@ -1166,6 +1350,64 @@ export default function UserList() {
           </div>
         )}
       </div>
+      )}
+        </>
+      )}
+
+      {/* Restore Deleted User Modal */}
+      {showRestoreModal && restoringUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900">🔄 삭제된 계정 복원</h3>
+              <p className="text-xs text-gray-500 mt-0.5">{restoringUser.primaryEmail}</p>
+            </div>
+            <form onSubmit={handleRestoreUser} className="p-6 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
+                <strong>{restoringUser.name?.familyName}{restoringUser.name?.givenName}</strong> 계정을 Google Workspace에 복원합니다.
+                복원 후 로그인이 즉시 가능해집니다.
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  복원할 조직단위 (OU) <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={restoreOUPath}
+                  onChange={(e) => setRestoreOUPath(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-gray-900"
+                  required
+                >
+                  {orgUnits.map((ou) => (
+                    <option key={ou.orgUnitId} value={ou.orgUnitPath}>
+                      {ou.orgUnitPath}
+                    </option>
+                  ))}
+                </select>
+                {restoringUser.orgUnitPath && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    삭제 전 원래 위치: <code className="font-mono bg-gray-100 px-1 rounded">{restoringUser.orgUnitPath}</code>
+                  </p>
+                )}
+              </div>
+              <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => { setShowRestoreModal(false); setRestoringUser(null); }}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium px-4 py-2 rounded-md transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={restoreSubmitting || !restoreOUPath}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded-md transition-colors"
+                >
+                  {restoreSubmitting ? "복원 중..." : "복원하기"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Add User Modal */}

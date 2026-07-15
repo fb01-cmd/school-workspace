@@ -44,8 +44,54 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const userRef = doc(db, "users", currentUser.uid);
         unsubscribeDoc = onSnapshot(userRef, (userSnap) => {
           if (userSnap.exists()) {
-            setUserData(userSnap.data() as UserData);
+            const data = userSnap.data() as UserData;
+            setUserData(data);
             setLoading(false);
+
+            // 로그인 성공 시 백그라운드 프리페칭 실행 (교사 및 어드민만)
+            if (data.domain && (data.role === "super_admin" || data.role === "teacher")) {
+              const domain = data.domain;
+              const role = data.role;
+              setTimeout(() => {
+                // 1. OUs 로드
+                fetch("/api/workspace/ou")
+                  .then(res => res.ok ? res.json() : null)
+                  .then(ouData => {
+                    if (ouData) {
+                      const { setClientCache } = require("@/lib/cache/clientCache");
+                      setClientCache("ou:all", ouData.orgUnits || []);
+                    }
+                  }).catch(() => {});
+
+                // 2. 전체 사용자 로드 (검색 및 캐시용)
+                fetch("/api/workspace/users", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "list", orgUnitPaths: ["all"] })
+                })
+                  .then(res => res.ok ? res.json() : null)
+                  .then(uData => {
+                    if (uData) {
+                      const { setClientCache } = require("@/lib/cache/clientCache");
+                      setClientCache("users:all", uData.users || []);
+                    }
+                  }).catch(() => {});
+
+                // 3. 그룹 로드
+                fetch("/api/workspace/groups", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "list", domain })
+                })
+                  .then(res => res.ok ? res.json() : null)
+                  .then(gData => {
+                    if (gData) {
+                      const { setClientCache } = require("@/lib/cache/clientCache");
+                      setClientCache("groups:all", gData.groups || []);
+                    }
+                  }).catch(() => {});
+              }, 100);
+            }
           } else {
             // Self-heal: If document is missing (e.g. previous permission error), create it now.
             handleUserRoles(currentUser).catch((error) => {
@@ -58,8 +104,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setLoading(false);
         });
       } else {
-        // 쿠키 만료/삭제
+        // 쿠키 만료/삭제 및 캐시 전부 삭제
         document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax";
+        try {
+          const { invalidateClientCache } = require("@/lib/cache/clientCache");
+          invalidateClientCache();
+        } catch (cacheErr) {}
         setUserData(null);
         setLoading(false);
         if (unsubscribeDoc) unsubscribeDoc();

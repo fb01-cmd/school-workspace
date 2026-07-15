@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAlias, invalidateUserCache, isMock } from "@/lib/google/workspace";
+import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAlias, invalidateUserCache, isMock, listDeletedUsers, restoreDeletedUser } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
@@ -622,6 +622,64 @@ export async function POST(req: NextRequest) {
           error: err.message,
         });
         throw err;
+      }
+    }
+
+    // 8. LIST DELETED USERS
+    if (action === "list_deleted") {
+      const domain = adminEmail.split("@")[1];
+      if (!domain) {
+        return NextResponse.json({ error: "올바르지 않은 관리자 계정 도메인입니다." }, { status: 400 });
+      }
+      try {
+        const deletedUsers = await listDeletedUsers(domain);
+        return NextResponse.json({ users: deletedUsers, isMock });
+      } catch (err: any) {
+        return NextResponse.json({ error: `삭제 사용자 조회 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // 9. RESTORE DELETED USER
+    if (action === "restore") {
+      const { email, id, orgUnitPath } = body;
+      const targetKey = id || email;
+      if (!targetKey || !orgUnitPath) {
+        return NextResponse.json({ error: "email/id와 orgUnitPath는 필수입니다." }, { status: 400 });
+      }
+      try {
+        await restoreDeletedUser(targetKey, orgUnitPath);
+        invalidateUserCache();
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "삭제 계정 복원",
+          targetEmail: email,
+          details: `삭제된 계정을 [${orgUnitPath}] 조직단위로 복원 처리 완료`,
+          status: "success",
+        });
+
+        return NextResponse.json({ success: true, isMock });
+      } catch (err: any) {
+        let friendlyMessage = err.message || "알 수 없는 오류가 발생했습니다.";
+        const isConflict = friendlyMessage.includes("already exists") || 
+                           friendlyMessage.includes("EntityAlreadyExists") || 
+                           friendlyMessage.includes("domainUserEmailAlreadyExists");
+        
+        if (isConflict) {
+          friendlyMessage = "동일한 이메일 주소를 사용하는 활성 계정이 이미 존재하여 복원할 수 없습니다. (이메일 중복 충돌)";
+        }
+
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "삭제 계정 복원",
+          targetEmail: email,
+          details: `삭제된 계정 복원 시도 실패`,
+          status: "failure",
+          error: friendlyMessage,
+        });
+        return NextResponse.json({ error: friendlyMessage }, { status: 500 });
       }
     }
 

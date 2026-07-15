@@ -13,8 +13,9 @@ import StudentRoster from "@/components/admin/StudentRoster";
 import StudentLifecycle from "@/components/admin/lifecycle/StudentLifecycle";
 import TeacherLifecycle from "@/components/admin/lifecycle/TeacherLifecycle";
 import GroupList from "@/components/admin/GroupList";
+import ClassroomPage from "@/app/admin/classroom/page";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage";
+type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom";
 
 export default function AdminPage() {
   const { userData } = useAuth();
@@ -34,6 +35,8 @@ export default function AdminPage() {
     switch (activeMenu) {
       case "users":
         return <UserList />;
+      case "classroom":
+        return <ClassroomPage />;
       case "groups":
         return <GroupList />;
       case "settings":
@@ -179,6 +182,29 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              {/* Classroom Widget - All Teachers */}
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-gray-900">클래스룸 배정</h3>
+                    <span className="p-2 rounded-lg bg-pink-50 text-pink-600">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                    </span>
+                  </div>
+                  <p className="text-gray-500 text-sm mb-6">새로운 클래스룸 수업을 개설하거나 기존 수업에 학생들을 즉시 강제 배정합니다.</p>
+                </div>
+                <div>
+                  <button
+                    onClick={() => setActiveMenu("classroom")}
+                    className="w-full text-left text-sm text-pink-600 hover:text-pink-800 font-semibold py-1.5"
+                  >
+                    수업 생성 및 학생 배정 →
+                  </button>
+                </div>
+              </div>
+
               {/* Bulk Upload Widget - Super Admin Only */}
               {isSuperAdmin && (
               <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow opacity-75">
@@ -281,6 +307,18 @@ export default function AdminPage() {
                   >
                     <span>📋</span>
                     <span>학생 명렬표 인쇄</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveMenu("classroom")}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      activeMenu === "classroom"
+                        ? "bg-indigo-800 text-white"
+                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    <span>🏫</span>
+                    <span>클래스룸 학생 강제 배정</span>
                   </button>
 
                   <button
@@ -467,6 +505,7 @@ export default function AdminPage() {
                 {activeMenu === "forms" && "생활지도 기록 작성"}
                 {activeMenu === "logs" && "작업 감사 로그"}
                 {activeMenu === "roster" && "학급 명렬표 인쇄 & 관리"}
+                {activeMenu === "classroom" && "구글 클래스룸 학생 즉시 배정"}
                 {activeMenu === "teachers" && "교직원 계정 및 생애주기 관리"}
                 {activeMenu === "lifecycle" && "학생 계정 생애주기 관리"}
               </h1>

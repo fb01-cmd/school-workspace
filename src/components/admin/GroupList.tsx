@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
+import { getClientCache, setClientCache, invalidateClientCache } from "@/lib/cache/clientCache";
 
 interface GoogleGroup {
   id: string;
@@ -63,8 +64,18 @@ export default function GroupList() {
   const opName = user?.displayName || user?.email?.split("@")[0] || "관리자";
 
   // Load Groups list
-  const loadGroups = async () => {
+  const loadGroups = async (forceRefresh = false) => {
     if (!domain) return;
+
+    if (!forceRefresh) {
+      const cached = getClientCache("groups:all");
+      if (cached) {
+        setGroups(cached);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
     setError("");
     try {
@@ -78,6 +89,7 @@ export default function GroupList() {
 
       setGroups(data.groups || []);
       setIsMock(data.isMock || false);
+      setClientCache("groups:all", data.groups || []);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -88,32 +100,41 @@ export default function GroupList() {
   // Load members and settings when a group is selected for editing
   const openEditModal = async (group: GoogleGroup) => {
     setSelectedGroup(group);
-    setMembers([]);
     setGroupSettings(null);
-    setShowSettingsAccordion(false); // Reset accordion to closed by default
+    setShowSettingsAccordion(false);
     setError("");
     setSuccess("");
 
-    // Fetch members
-    setLoadingMembers(true);
-    try {
-      const res = await fetch("/api/workspace/groups", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list_members", groupEmail: group.email }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setMembers(data.members || []);
-      } else {
-        console.warn("Failed to load group members:", data.error);
-        setError(`그룹 멤버 목록을 불러오지 못했습니다: ${data.error}`);
-      }
-    } catch (err: any) {
-      console.warn("Error fetching members:", err);
-      setError(`멤버 목록 요청 실패: ${err.message}`);
-    } finally {
+    // 선 캐시 확인
+    const cacheKey = `group_members:${group.email}`;
+    const cached = getClientCache(cacheKey);
+    if (cached) {
+      setMembers(cached);
       setLoadingMembers(false);
+    } else {
+      setMembers([]);
+      // Fetch members
+      setLoadingMembers(true);
+      try {
+        const res = await fetch("/api/workspace/groups", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "list_members", groupEmail: group.email }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setMembers(data.members || []);
+          setClientCache(cacheKey, data.members || [], 3 * 60 * 1000); // 3분 TTL
+        } else {
+          console.warn("Failed to load group members:", data.error);
+          setError(`그룹 멤버 목록을 불러오지 못했습니다: ${data.error}`);
+        }
+      } catch (err: any) {
+        console.warn("Error fetching members:", err);
+        setError(`멤버 목록 요청 실패: ${err.message}`);
+      } finally {
+        setLoadingMembers(false);
+      }
     }
 
     // Fetch settings
@@ -179,7 +200,8 @@ export default function GroupList() {
       setNewGroupDesc("");
 
       // Refresh list to update member counts and add new group
-      loadGroups();
+      invalidateClientCache("groups:");
+      loadGroups(true);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -211,6 +233,7 @@ export default function GroupList() {
       if (!res.ok) throw new Error(data.error || "Failed to delete group");
 
       setSuccess(`그룹 '${groupEmail}'이 삭제되었습니다.`);
+      invalidateClientCache("groups:");
       setGroups((prev) => prev.filter((g) => g.email !== groupEmail));
       setSelectedGroup(null);
       setMembers([]);
@@ -248,7 +271,8 @@ export default function GroupList() {
       setSuccess(`'${targetEmail}' 멤버를 추가했습니다.`);
       setNewMemberEmail("");
 
-      // Refresh members list to resolve user name correctly
+      // 멤버 캐시 무효화 후 다시 로드
+      invalidateClientCache(`group_members:${selectedGroup.email}`);
       openEditModal(selectedGroup);
 
       // Update parent list count optimistically
@@ -293,6 +317,8 @@ export default function GroupList() {
       if (!res.ok) throw new Error(data.error || "Failed to remove member");
 
       setSuccess(`'${memberEmail}' 멤버를 제외했습니다.`);
+      // 쾐시 무효화 (Optimistic UI로 화면은 이미 업데이트됨)
+      invalidateClientCache(`group_members:${selectedGroup.email}`);
       setMembers((prev) => prev.filter((m) => m.email !== memberEmail));
 
       // Update parent list count optimistically

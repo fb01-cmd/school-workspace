@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/context/AuthContext";
+import { getClientCache } from "@/lib/cache/clientCache";
 
 interface GoogleUser {
   id: string;
@@ -82,21 +83,28 @@ export default function StudentRoster() {
         }
       }
 
-      // Fetch students from Workspace API
-      const res = await fetch("/api/workspace/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "list",
-          orgUnitPaths: orgUnitPaths,
-        }),
-      });
+      // 캐시 우선 조회
+      let rawUsers: GoogleUser[] = [];
+      const cachedAllUsers = getClientCache("users:all");
+      if (cachedAllUsers) {
+        rawUsers = cachedAllUsers.filter((u: any) => orgUnitPaths.includes(u.orgUnitPath));
+      } else {
+        const res = await fetch("/api/workspace/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "list",
+            orgUnitPaths: orgUnitPaths,
+          }),
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        const rawUsers: GoogleUser[] = data.users || [];
+        if (res.ok) {
+          const data = await res.json();
+          rawUsers = data.users || [];
+        }
+      }
 
-        // Parse student info from familyName
+      // Parse student info from familyName
         const parsed: ParsedStudent[] = rawUsers.map((u) => {
           const familyName = u.name.familyName || "";
           const givenName = u.name.givenName || "";
@@ -137,9 +145,6 @@ export default function StudentRoster() {
         });
 
         setStudents(parsed);
-      } else {
-        throw new Error("학생 리스트를 불러오지 못했습니다.");
-      }
     } catch (error: any) {
       console.error(error);
       alert(`명렬표 로드 실패: ${error.message}`);
