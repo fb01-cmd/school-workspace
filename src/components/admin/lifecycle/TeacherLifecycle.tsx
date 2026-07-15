@@ -442,12 +442,21 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {queue.map((task) => {
+                  const getKSTDateString = (d: Date) => {
+                    const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+                    return kst.toISOString().split("T")[0];
+                  };
                   const deadline = task.deadlineDate
                     ? (task.deadlineDate.toDate ? task.deadlineDate.toDate() : new Date(task.deadlineDate))
                     : null;
-                  const dDay = deadline
-                    ? Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-                    : null;
+                  let dDay: number | null = null;
+                  if (deadline) {
+                    const todayStr = getKSTDateString(new Date());
+                    const deadlineStr = getKSTDateString(deadline);
+                    const todayTime = new Date(todayStr).getTime();
+                    const deadlineTime = new Date(deadlineStr).getTime();
+                    dDay = Math.round((deadlineTime - todayTime) / (1000 * 60 * 60 * 24));
+                  }
                   const st = STATUS_LABEL[task.status] || { label: task.status, color: "bg-gray-100 text-gray-600" };
                   return (
                     <tr key={task.email} className="py-2">

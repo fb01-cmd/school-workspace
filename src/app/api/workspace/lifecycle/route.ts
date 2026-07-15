@@ -1500,6 +1500,10 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        // 1년 뒤 기본 데드라인 설정 (KST 시차 고려한 1년 뒤 Date 객체 생성)
+        const defaultDeadline = new Date();
+        defaultDeadline.setFullYear(defaultDeadline.getFullYear() + 1);
+
         // Firestore에 전출 작업 등록
         const taskRef = doc(db, "teacher_transfer_tasks", domain, "teachers", teacherEmail);
         await setDoc(taskRef, {
@@ -1507,7 +1511,7 @@ export async function POST(req: NextRequest) {
           name: teacherName || teacherEmail,
           status: "PENDING_DEADLINE",
           registeredAt: new Date(),
-          deadlineDate: null,
+          deadlineDate: defaultDeadline,
           deadlineSetAt: null,
           suspendedAt: null,
           deletedAt: null,
@@ -1661,20 +1665,50 @@ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-
           return NextResponse.json({ error: "해당 교사의 전출 레코드가 없습니다." }, { status: 404 });
         }
 
-        await updateDoc(taskRef, {
-          deadlineDate: deadline,
-          deadlineSetAt: new Date(),
-          status: "DEADLINE_SET",
-        });
+        const getKSTDateString = (d: Date): string => {
+          const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+          return kst.toISOString().split("T")[0];
+        };
+        const deadlineKST = getKSTDateString(deadline);
+        const todayKST = getKSTDateString(new Date());
 
-        await writeAuditLog({
-          operatorEmail: teacherEmail,
-          operatorName: taskSnap.data().name || teacherEmail,
-          action: "교사 전출 기한 설정",
-          targetEmail: teacherEmail,
-          details: `데드라인 설정: ${deadline.toLocaleDateString("ko-KR")}`,
-          status: "success",
-        });
+        const isDueNow = deadlineKST <= todayKST;
+
+        if (isDueNow) {
+          // 즉시 일시정지 처리 실행!
+          await updateUser(teacherEmail, { suspended: true });
+          await updateDoc(taskRef, {
+            deadlineDate: deadline,
+            deadlineSetAt: new Date(),
+            status: "SUSPENDED",
+            suspendedAt: new Date(),
+          });
+          invalidateUserCache();
+
+          await writeAuditLog({
+            operatorEmail: teacherEmail,
+            operatorName: taskSnap.data().name || teacherEmail,
+            action: "교사 전출 기한 즉시 정지 처리",
+            targetEmail: teacherEmail,
+            details: `데드라인 즉시 정지 실행 (설정 날짜: ${deadlineKST})`,
+            status: "success",
+          });
+        } else {
+          await updateDoc(taskRef, {
+            deadlineDate: deadline,
+            deadlineSetAt: new Date(),
+            status: "DEADLINE_SET",
+          });
+
+          await writeAuditLog({
+            operatorEmail: teacherEmail,
+            operatorName: taskSnap.data().name || teacherEmail,
+            action: "교사 전출 기한 설정",
+            targetEmail: teacherEmail,
+            details: `데드라인 설정: ${deadlineKST}`,
+            status: "success",
+          });
+        }
 
         return NextResponse.json({ success: true });
       } catch (err: any) {

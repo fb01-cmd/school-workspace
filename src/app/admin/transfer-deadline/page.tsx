@@ -17,12 +17,22 @@ export default function TransferDeadlinePage() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
 
-  const minDate = new Date();
-  minDate.setDate(minDate.getDate() + 1);
-  const maxDate = new Date();
-  maxDate.setFullYear(maxDate.getFullYear() + 1);
+  const getKSTDateString = (d: Date): string => {
+    const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+    return kst.toISOString().split("T")[0];
+  };
 
-  const toDateInput = (d: Date) => d.toISOString().split("T")[0];
+  const getKSTMinDateString = (): string => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return getKSTDateString(tomorrow);
+  };
+
+  const getKSTMaxDateString = (): string => {
+    const maxDate = new Date();
+    maxDate.setFullYear(maxDate.getFullYear() + 1);
+    return getKSTDateString(maxDate);
+  };
 
   useEffect(() => {
     if (loading) return;
@@ -45,7 +55,7 @@ export default function TransferDeadlinePage() {
           if (data.status === "DEADLINE_SET") {
             setSubmitted(true);
             const dl = data.deadlineDate?.toDate ? data.deadlineDate.toDate() : new Date(data.deadlineDate);
-            setSelectedDate(toDateInput(dl));
+            setSelectedDate(getKSTDateString(dl));
           } else if (data.status === "SUSPENDED") {
             signOut(auth).then(() => {
               router.replace("/login");
@@ -179,8 +189,8 @@ export default function TransferDeadlinePage() {
                   <input
                     type="date"
                     value={selectedDate}
-                    min={toDateInput(minDate)}
-                    max={toDateInput(maxDate)}
+                    min={getKSTMinDateString()}
+                    max={getKSTMaxDateString()}
                     onChange={(e) => setSelectedDate(e.target.value)}
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:border-indigo-500 text-sm transition-colors"
                     required

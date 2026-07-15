@@ -32,13 +32,20 @@ export async function GET(req: NextRequest) {
   const mockToday = searchParams.get("mockToday");
   const testEmailFilter = searchParams.get("testEmailFilter");
   const now = mockToday ? new Date(mockToday) : new Date();
-  
-  // 오늘 0시 기준 (한국 표준시 KST = UTC+9 기준으로 0시를 UTC로 환산)
-  // Vercel 서버는 UTC 기준으로 동작하므로, KST 0시 = 전날 UTC 15:00
-  // 단순화를 위해 "현재 시각 기준으로 예정일이 지났으면 처리" 방식으로 구현
-  // → 크론이 KST 0시 이후에 호출되면 자동으로 정확하게 처리됨
-  const todayMidnight = new Date(now);
-  todayMidnight.setHours(0, 0, 0, 0); // 실행 당일 0시 기준
+
+  // KST (UTC+9) 날짜 기준 문자열 YYYY-MM-DD 구하는 헬퍼
+  const getKSTDateString = (d: Date): string => {
+    const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+    return kst.toISOString().split("T")[0];
+  };
+
+  const addDaysToKSTDateString = (dateStr: string, days: number): string => {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split("T")[0];
+  };
+
+  const todayKSTStr = getKSTDateString(now);
 
   const results = {
     suspended: [] as string[],
@@ -68,14 +75,13 @@ export async function GET(req: NextRequest) {
 
         if (!email) continue;
 
-        // ── 일시정지 처리: 상태가 OU_MOVED이고 suspendDueDate가 오늘 0시 이전인 경우
         if (task.status === "OU_MOVED" && task.suspendDueDate) {
           const suspendDue = task.suspendDueDate.toDate
             ? task.suspendDueDate.toDate()
             : new Date(task.suspendDueDate);
-          suspendDue.setHours(0, 0, 0, 0);
+          const suspendDueStr = getKSTDateString(suspendDue);
 
-          if (suspendDue <= todayMidnight) {
+          if (suspendDueStr <= todayKSTStr) {
             try {
               await updateUser(email, { suspended: true });
               await updateDoc(doc(db, "transfer_out_tasks", domain, "students", email), {
@@ -98,14 +104,13 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // ── 영구삭제 처리: 상태가 SUSPENDED이고 deleteDueDate가 오늘 0시 이전인 경우
         else if (task.status === "SUSPENDED" && task.deleteDueDate) {
           const deleteDue = task.deleteDueDate.toDate
             ? task.deleteDueDate.toDate()
             : new Date(task.deleteDueDate);
-          deleteDue.setHours(0, 0, 0, 0);
+          const deleteDueStr = getKSTDateString(deleteDue);
 
-          if (deleteDue <= todayMidnight) {
+          if (deleteDueStr <= todayKSTStr) {
             try {
               await deleteUser(email);
               // 삭제 완료 태스크는 Firestore에서 제거 (감사 로그에 기록되므로 이력 보존 OK)
@@ -402,9 +407,12 @@ export async function GET(req: NextRequest) {
               }
 
               // ── B. 계정 자동 일시정지 (suspendDate 도래 시) ──
-              if ((task.status === "PENDING" || task.status === "CONSENTED") && suspendDue && suspendDue <= todayMidnight) {
+              const suspendDueStr = suspendDue ? getKSTDateString(suspendDue) : null;
+              const deleteDueStr = deleteDue ? getKSTDateString(deleteDue) : null;
+
+              if ((task.status === "PENDING" || task.status === "CONSENTED") && suspendDueStr && suspendDueStr <= todayKSTStr) {
                 try {
-                  const suspendFmt = suspendDue.toLocaleDateString("ko-KR");
+                  const suspendFmt = suspendDue ? suspendDue.toLocaleDateString("ko-KR") : "";
                   await updateUser(email, { suspended: true });
                   await updateDoc(doc(db, "graduation_tasks", domain, "students", email), {
                     status: "SUSPENDED",
@@ -426,7 +434,7 @@ export async function GET(req: NextRequest) {
               }
 
               // ── C. 계정 자동 영구삭제 (deleteDate 도래 시) ──
-              if (task.status === "SUSPENDED" && deleteDue && deleteDue <= todayMidnight) {
+              if (task.status === "SUSPENDED" && deleteDue && deleteDueStr && deleteDueStr <= todayKSTStr) {
                 try {
                   const deleteFmt = deleteDue.toLocaleDateString("ko-KR");
                   
@@ -503,14 +511,14 @@ export async function GET(req: NextRequest) {
             }
           }
 
-          // ── 데드라인 도달 시 계정 일시정지 (DEADLINE_SET → SUSPENDED)
-          if (task.status === "DEADLINE_SET" && task.deadlineDate) {
+          // ── 데드라인 도달 시 계정 일시정지 (DEADLINE_SET 또는 PENDING_DEADLINE 상태 모두 대응)
+          if ((task.status === "DEADLINE_SET" || task.status === "PENDING_DEADLINE") && task.deadlineDate) {
             const deadline = task.deadlineDate.toDate
               ? task.deadlineDate.toDate()
               : new Date(task.deadlineDate);
-            deadline.setHours(0, 0, 0, 0);
+            const deadlineStr = getKSTDateString(deadline);
 
-            if (deadline <= todayMidnight) {
+            if (deadlineStr <= todayKSTStr) {
               try {
                 await updateUser(email, { suspended: true });
                 await updateDoc(doc(db, "teacher_transfer_tasks", domain, "teachers", email), {
@@ -538,12 +546,10 @@ export async function GET(req: NextRequest) {
             const suspendedAt = task.suspendedAt.toDate
               ? task.suspendedAt.toDate()
               : new Date(task.suspendedAt);
-            suspendedAt.setHours(0, 0, 0, 0);
-            const deleteAfter = new Date(suspendedAt);
-            deleteAfter.setDate(deleteAfter.getDate() + 30);
-            deleteAfter.setHours(0, 0, 0, 0);
+            const suspendedAtStr = getKSTDateString(suspendedAt);
+            const deleteAfterStr = addDaysToKSTDateString(suspendedAtStr, 30);
 
-            if (deleteAfter <= todayMidnight) {
+            if (deleteAfterStr <= todayKSTStr) {
               try {
                 await deleteAuthUserByEmail(email);
                 await deleteUser(email);
