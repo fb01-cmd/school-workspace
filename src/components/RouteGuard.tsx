@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase/config";
+import { auth, db } from "@/lib/firebase/config";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { signOut } from "firebase/auth";
 
 export default function RouteGuard({
   children,
@@ -76,8 +77,13 @@ export default function RouteGuard({
       const email = userData.email;
       getDoc(doc(db, "teacher_transfer_tasks", domain, "teachers", email))
         .then((snap) => {
-          if (snap.exists() && snap.data()?.status === "PENDING_DEADLINE") {
+          const status = snap.data()?.status;
+          if (snap.exists() && (status === "PENDING_DEADLINE" || status === "DEADLINE_SET")) {
             router.replace("/admin/transfer-deadline");
+          } else if (snap.exists() && status === "SUSPENDED") {
+            signOut(auth).then(() => {
+              router.replace("/login");
+            });
           } else {
             setTransferCheckDone(true);
           }

@@ -46,6 +46,11 @@ export default function TransferDeadlinePage() {
             setSubmitted(true);
             const dl = data.deadlineDate?.toDate ? data.deadlineDate.toDate() : new Date(data.deadlineDate);
             setSelectedDate(toDateInput(dl));
+          } else if (data.status === "SUSPENDED") {
+            signOut(auth).then(() => {
+              router.replace("/login");
+            });
+            return;
           } else {
             router.replace("/admin");
             return;

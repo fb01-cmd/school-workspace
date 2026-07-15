@@ -1584,6 +1584,10 @@ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-
       }
 
       try {
+        // 0. GWS 계정 일시정지 해제 (활성화)
+        await updateUser(teacherEmail, { suspended: false });
+        invalidateUserCache();
+
         // 1. 지정 연동 그룹 재가입 (롤백)
         const activeGroups = await getTeacherGroups();
         const groupResults: { group: string; success: boolean; error?: string }[] = [];

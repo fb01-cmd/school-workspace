@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
           const suspendDue = task.suspendDueDate.toDate
             ? task.suspendDueDate.toDate()
             : new Date(task.suspendDueDate);
+          suspendDue.setHours(0, 0, 0, 0);
 
           if (suspendDue <= todayMidnight) {
             try {
@@ -102,6 +103,7 @@ export async function GET(req: NextRequest) {
           const deleteDue = task.deleteDueDate.toDate
             ? task.deleteDueDate.toDate()
             : new Date(task.deleteDueDate);
+          deleteDue.setHours(0, 0, 0, 0);
 
           if (deleteDue <= todayMidnight) {
             try {
@@ -506,6 +508,7 @@ export async function GET(req: NextRequest) {
             const deadline = task.deadlineDate.toDate
               ? task.deadlineDate.toDate()
               : new Date(task.deadlineDate);
+            deadline.setHours(0, 0, 0, 0);
 
             if (deadline <= todayMidnight) {
               try {
@@ -535,8 +538,10 @@ export async function GET(req: NextRequest) {
             const suspendedAt = task.suspendedAt.toDate
               ? task.suspendedAt.toDate()
               : new Date(task.suspendedAt);
+            suspendedAt.setHours(0, 0, 0, 0);
             const deleteAfter = new Date(suspendedAt);
             deleteAfter.setDate(deleteAfter.getDate() + 30);
+            deleteAfter.setHours(0, 0, 0, 0);
 
             if (deleteAfter <= todayMidnight) {
               try {
