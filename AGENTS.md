@@ -50,3 +50,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 2. **서비스 계정 역할(IAM) 전제 조건**:
    이 자동 삭제 메커니즘(`deleteAuthUserByEmail`)이 정상 작동하려면, 백엔드 서버에서 실행되는 GCP 서비스 계정(`GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL`)에 GCP Console 또는 Firebase Console을 통해 **`Firebase 인증 관리자 (Firebase Authentication Admin)`** 역할이 반드시 부여되어 있어야 한다. 만약 이 권한이 누락되면 권한 오류로 자동 정리가 실패하여 로그인 꼬임이 발생한다.
 <!-- END:gws-firebase-uid-sync-rules -->
+
+<!-- BEGIN:git-based-roadmap-rules -->
+# 개발 로드맵 및 기획 문서 Git 연동 의존 규칙
+
+이 프로젝트에서 개발 관련 기획 문서, 진행 상태 보고서(Status Report), 구현 계획서(Implementation Plan), 할 일 목록(Task) 등을 에이전트가 작성할 때 다음 규칙을 따른다:
+
+1. 에이전트 전용 격리 공간(예: C:\Users\...\.gemini\antigravity-ide\brain)에만 마크다운 문서를 작성하여 격리시키지 않는다.
+2. 모든 기획, 계획, 진행 현황 문서는 프로젝트 루트에 파일(예: development_roadmap.md)로 작성하고 Git 추적 대상에 포함되게 한다. 이를 통해 기기 전환이나 대화 세션 만료 시에도 기획 맥락이 끊기지 않도록 방지한다.
+<!-- END:git-based-roadmap-rules -->
