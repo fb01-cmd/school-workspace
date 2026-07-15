@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { User, onAuthStateChanged } from "firebase/auth";
+import { User, onIdTokenChanged } from "firebase/auth";
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
 import { UserData, handleUserRoles } from "@/lib/firebase/auth";
@@ -28,10 +28,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     let unsubscribeDoc: (() => void) | null = null;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribeAuth = onIdTokenChanged(auth, async (currentUser) => {
       setUser(currentUser);
       
       if (currentUser) {
+        try {
+          const token = await currentUser.getIdToken();
+          // 쿠키 설정 (로컬 개발 서버 HTTP 환경 호환을 위해 Secure는 제외하되, 경로 설정 명시)
+          document.cookie = `token=${token}; path=/; SameSite=Lax`;
+        } catch (tokenErr) {
+          console.error("쿠키 토큰 설정 실패:", tokenErr);
+        }
+
         // Listen to user data from Firestore in real-time
         const userRef = doc(db, "users", currentUser.uid);
         unsubscribeDoc = onSnapshot(userRef, (userSnap) => {
@@ -50,6 +58,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setLoading(false);
         });
       } else {
+        // 쿠키 만료/삭제
+        document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax";
         setUserData(null);
         setLoading(false);
         if (unsubscribeDoc) unsubscribeDoc();

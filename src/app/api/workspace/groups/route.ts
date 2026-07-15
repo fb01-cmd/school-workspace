@@ -13,12 +13,30 @@ import {
   isMock,
 } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit";
+import { verifyAuthAccess } from "@/lib/firebase/admin";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { action, operatorEmail, operatorName } = body;
-    const adminEmail = operatorEmail || "unknown@domain.com";
+
+    // ─────────────────────────────────────────
+    // 🔐 서버 사이드 인증 가드
+    // 조회 액션은 일반 교사도 허용, 그룹 생성/수정/삭제는 수퍼어드민 전용
+    // ─────────────────────────────────────────
+    const TEACHER_ALLOWED_ACTIONS = ["list", "list_members", "get_settings", "list_for_user"];
+    const authUser = await verifyAuthAccess(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "인증되지 않은 요청입니다." }, { status: 401 });
+    }
+    if (
+      authUser.role !== "super_admin" &&
+      !TEACHER_ALLOWED_ACTIONS.includes(action)
+    ) {
+      return NextResponse.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+    }
+
+    const adminEmail = operatorEmail || authUser.email || "unknown@domain.com";
     const adminName = operatorName || "관리자";
 
     // 1. LIST GROUPS

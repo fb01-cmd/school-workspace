@@ -19,7 +19,7 @@ import {
   checkIsSecurityGroup,
 } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit";
-import { deleteAuthUserByEmail } from "@/lib/firebase/admin";
+import { deleteAuthUserByEmail, verifyAuthAccess } from "@/lib/firebase/admin";
 import { db } from "@/lib/firebase/config";
 import {
   collection,
@@ -37,7 +37,24 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { action, operatorEmail, operatorName, domain } = body;
-    const adminEmail = operatorEmail || "unknown@domain.com";
+
+    // ─────────────────────────────────────────
+    // 🔐 서버 사이드 인증 가드
+    // 전출 교사가 본인 데드라인을 제출하는 액션은 일반 교사도 허용, 나머지는 수퍼어드민 전용
+    // ─────────────────────────────────────────
+    const TEACHER_ALLOWED_ACTIONS = ["submit_teacher_deadline", "get_teacher_transfer_status"];
+    const authUser = await verifyAuthAccess(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "인증되지 않은 요청입니다." }, { status: 401 });
+    }
+    if (
+      authUser.role !== "super_admin" &&
+      !TEACHER_ALLOWED_ACTIONS.includes(action)
+    ) {
+      return NextResponse.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+    }
+
+    const adminEmail = operatorEmail || authUser.email || "unknown@domain.com";
     const adminName = operatorName || "관리자";
 
     // ─────────────────────────────────────────

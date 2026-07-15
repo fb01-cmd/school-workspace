@@ -9,7 +9,11 @@
 - **Styling**: Tailwind CSS is used for styling.
 
 ## 미검증 사항 (Pending Verification)
-- (현재 대기 중인 미검증 사항 없음)
+- **[보안 강화] 로그인 상태에서 API 가드 동작 검증 필요** (2026-07-15 미완료)
+  - 쿠키 기반 서버 사이드 인증 가드(`verifyAuthAccess`)가 `/api/workspace/users`, `/api/workspace/groups`, `/api/workspace/ou`, `/api/workspace/lifecycle` 4개 API 라우트에 장착됨.
+  - **미검증 항목 1**: 수퍼어드민 계정으로 로그인 후 어드민 대시보드 내 사용자 관리, 그룹 관리, OU 관리, 학생/교직원 생애주기 등 모든 기능이 먹통 없이 정상 작동하는지 수동 확인 필요.
+  - **미검증 항목 2**: 크론 배치(`/api/workspace/lifecycle/cron`)가 `CRON_SECRET` 기반으로 기존처럼 정상 우회 호출되는지 확인 필요.
+  - **검증 완료 항목**: 비로그인 상태에서 `/api/workspace/users` POST 직접 호출 시 `401 인증되지 않은 요청입니다.` 응답 확인 완료.
 
 ## 검증 완료 사항 (Verified Items)
 - **학생 계정 생애주기 웹 시트 복사-붙여넣기 및 신입생/진급 에디터** (2026-07-15 검증 완료)

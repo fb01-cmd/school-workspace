@@ -3,7 +3,7 @@ import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAli
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { deleteAuthUserByEmail } from "@/lib/firebase/admin";
+import { deleteAuthUserByEmail, verifyAuthAccess } from "@/lib/firebase/admin";
 
 async function syncUserSuspensionToLifecycle(email: string, suspended: boolean) {
   try {
@@ -81,7 +81,24 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { action, operatorEmail, operatorName } = body;
-    const adminEmail = operatorEmail || "unknown@domain.com";
+
+    // ─────────────────────────────────────────
+    // 🔐 서버 사이드 인증 가드
+    // list 같은 조회 기능은 승인된 일반 교사도 허용, 나머지 쌓기/수정/삭제는 수퍼어드민 전용
+    // ─────────────────────────────────────────
+    const TEACHER_ALLOWED_ACTIONS = ["list"];
+    const authUser = await verifyAuthAccess(req);
+    if (!authUser) {
+      return NextResponse.json({ error: "인증되지 않은 요청입니다." }, { status: 401 });
+    }
+    if (
+      authUser.role !== "super_admin" &&
+      !TEACHER_ALLOWED_ACTIONS.includes(action)
+    ) {
+      return NextResponse.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+    }
+
+    const adminEmail = operatorEmail || authUser.email || "unknown@domain.com";
     const adminName = operatorName || "관리자";
 
     if (action === "list") {
