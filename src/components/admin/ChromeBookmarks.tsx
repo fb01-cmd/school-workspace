@@ -7,6 +7,43 @@ import OUTreeSelector from "@/components/admin/OUTreeSelector";
 import BookmarkTreeEditor, { BookmarkItem } from "@/components/admin/BookmarkTreeEditor";
 
 
+
+// ─── Bookmark Diff Helpers ────────────────────────────────────────────────────
+
+interface FlatItem {
+  path: string;      // "폴더 > 하위폴더 > 이름"
+  name: string;
+  url?: string;
+  isFolder: boolean;
+}
+
+function flattenBookmarks(items: BookmarkItem[], prefix = ""): FlatItem[] {
+  const result: FlatItem[] = [];
+  for (const item of items) {
+    const p = prefix ? `${prefix} › ${item.name}` : item.name;
+    result.push({ path: p, name: item.name, url: item.url, isFolder: !!item.children });
+    if (item.children) result.push(...flattenBookmarks(item.children, p));
+  }
+  return result;
+}
+
+function computeBookmarkDiff(before: BookmarkItem[], after: BookmarkItem[]) {
+  const fb = flattenBookmarks(before);
+  const fa = flattenBookmarks(after);
+
+  const pathsBefore = new Set(fb.map(i => i.path));
+  const pathsAfter  = new Set(fa.map(i => i.path));
+  const keyOf = (i: FlatItem) => `${i.isFolder ? "F" : "L"}|${i.name}|${i.url ?? ""}`;
+  const keysBefore = new Set(fb.map(keyOf));
+  const keysAfter  = new Set(fa.map(keyOf));
+
+  const added   = fa.filter(i => !pathsBefore.has(i.path) && !keysBefore.has(keyOf(i)));
+  const removed = fb.filter(i => !pathsAfter.has(i.path)  && !keysAfter.has(keyOf(i)));
+  const moved   = fa.filter(i => !pathsBefore.has(i.path) && keysBefore.has(keyOf(i)));
+
+  return { added, removed, moved, unchanged: fa.filter(i => pathsBefore.has(i.path)) };
+}
+
 interface SyncLog {
   id: string;
   operatorEmail: string;
@@ -24,6 +61,7 @@ interface OU {
 }
 
 export default function ChromeBookmarks() {
+
   const { userData, schoolSettings } = useAuth();
   const domain = userData?.domain || "";
   const isSuperAdmin = userData?.role === "super_admin";
@@ -334,53 +372,88 @@ export default function ChromeBookmarks() {
             <div className="text-center py-16 text-gray-400 text-xs">최근 변경된 크롬 북마크 이력이 존재하지 않습니다.</div>
           ) : (
             <div className="space-y-4 pr-1 max-h-[600px] overflow-y-auto">
-              {logs.map((log) => (
-                <div key={log.id} className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3 text-xs shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-indigo-100 text-indigo-800">
-                        북마크 변경
-                      </span>
-                      <strong className="text-sm text-gray-900">{log.orgUnitPath}</strong>
-                    </div>
-                    <span className="text-gray-400 font-mono text-[10px]">{log.timestamp}</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                    <div>
-                      <span className="font-semibold text-gray-500 block mb-1">수정 전 설정:</span>
-                      <div className="bg-white border rounded p-2.5 font-mono text-[11px] text-gray-600 max-h-24 overflow-y-auto">
-                        <p className="font-bold text-gray-800 mb-1">📂 {log.beforeConfig?.toplevel_name || "(없음)"}</p>
-                        {Array.isArray(log.beforeConfig?.bookmarks) && log.beforeConfig.bookmarks.length > 0 ? (
-                          log.beforeConfig.bookmarks.map((b, i) => (
-                            <div key={i} className="truncate">
-                              {b.children ? `📁 ${b.name}` : `🔗 ${b.name} (${b.url})`}
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-gray-400 italic">설정 없음</p>
-                        )}
+              {logs.map((log) => {
+                const before = log.beforeConfig?.bookmarks || [];
+                const after  = log.afterConfig?.bookmarks  || [];
+                const { added, removed, moved } = computeBookmarkDiff(before, after);
+                const hasChanges = added.length > 0 || removed.length > 0 || moved.length > 0;
+                const totalAfter = flattenBookmarks(after).length;
+                return (
+                  <div key={log.id} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 text-xs shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-indigo-100 text-indigo-800">북마크 변경</span>
+                        <strong className="text-sm text-gray-900">{log.orgUnitPath}</strong>
                       </div>
+                      <span className="text-gray-400 font-mono text-[10px]">{log.timestamp}</span>
                     </div>
 
-                    <div>
-                      <span className="font-semibold text-gray-500 block mb-1 text-indigo-700">수정 후 설정:</span>
-                      <div className="bg-indigo-50/20 border border-indigo-100 rounded p-2.5 font-mono text-[11px] text-gray-700 max-h-24 overflow-y-auto">
-                        <p className="font-bold text-indigo-900 mb-1">📂 {log.afterConfig?.toplevel_name}</p>
-                        {Array.isArray(log.afterConfig?.bookmarks) && log.afterConfig.bookmarks.map((b, i) => (
-                          <div key={i} className="truncate">
-                            {b.children ? `📁 ${b.name}` : `🔗 ${b.name} (${b.url})`}
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      {added.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold text-[11px]">
+                          ➕ {added.length}개 추가
+                        </span>
+                      )}
+                      {removed.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold text-[11px]">
+                          ➖ {removed.length}개 삭제
+                        </span>
+                      )}
+                      {moved.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold text-[11px]">
+                          ↕️ {moved.length}개 위치 변경
+                        </span>
+                      )}
+                      {!hasChanges && (
+                        <span className="text-gray-400 italic text-[11px]">변경 없음 (재배포)</span>
+                      )}
+                      <span className="ml-auto text-[10px] text-gray-400">전체 {totalAfter}개 항목</span>
+                    </div>
+
+                    {hasChanges && (
+                      <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 space-y-1 max-h-44 overflow-y-auto">
+                        {added.slice(0, 15).map((item, i) => (
+                          <div key={`a${i}`} className="flex items-start gap-1.5 text-green-700">
+                            <span className="flex-shrink-0">➕</span>
+                            <span>
+                              {item.isFolder ? "📁" : "🔗"} <span className="font-semibold">{item.name}</span>
+                              {!item.isFolder && item.url && <span className="text-green-500 text-[10px] ml-1 font-mono"> {item.url}</span>}
+                              {item.path.includes(" › ") && (
+                                <span className="text-gray-400 text-[10px] ml-1">← {item.path.split(" › ").slice(0, -1).join(" › ")}</span>
+                              )}
+                            </span>
                           </div>
                         ))}
+                        {removed.slice(0, 10).map((item, i) => (
+                          <div key={`r${i}`} className="flex items-start gap-1.5 text-red-500">
+                            <span className="flex-shrink-0">➖</span>
+                            <span className="line-through opacity-70">
+                              {item.isFolder ? "📁" : "🔗"} <span className="font-semibold">{item.name}</span>
+                              {!item.isFolder && item.url && <span className="text-[10px] ml-1 font-mono"> {item.url}</span>}
+                            </span>
+                          </div>
+                        ))}
+                        {moved.slice(0, 10).map((item, i) => (
+                          <div key={`m${i}`} className="flex items-start gap-1.5 text-amber-600">
+                            <span className="flex-shrink-0">↕️</span>
+                            <span>
+                              {item.isFolder ? "📁" : "🔗"} <span className="font-semibold">{item.name}</span>
+                              <span className="text-gray-400 text-[10px] ml-1">→ {item.path.includes(" › ") ? item.path.split(" › ").slice(0, -1).join(" › ") : "루트"}</span>
+                            </span>
+                          </div>
+                        ))}
+                        {(added.length + removed.length + moved.length) > 15 && (
+                          <p className="text-gray-400 text-[10px] pt-1 border-t">외 {(added.length + removed.length + moved.length) - 15}개 변경...</p>
+                        )}
                       </div>
+                    )}
+
+                    <div className="text-gray-500 text-[10px] text-right">
+                      수정 작업: <span className="font-bold text-gray-800">{log.operatorName}</span> ({log.operatorEmail})
                     </div>
                   </div>
-
-                  <div className="text-gray-500 text-[10px] text-right font-medium">
-                    수정 작업 교사: <span className="text-gray-800 font-bold">{log.operatorName}</span> ({log.operatorEmail})
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
