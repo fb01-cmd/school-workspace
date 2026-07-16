@@ -75,30 +75,39 @@ export const getChromeManagedBookmarks = async (orgUnitPath: string): Promise<Ma
   // REAL MODE: Fetch from Google Chrome Policy API
   try {
     const orgUnitId = await getOrgUnitIdFromPath(cleanPath);
+    console.log(`[ChromePolicy] Resolving bookmarks for OU: ${cleanPath}, orgUnitId: ${orgUnitId}`);
     const client = getChromePolicyClient();
     
     const res = await client.customers.policies.resolve({
       customer: `customers/my_customer`,
       requestBody: {
-        policySchemaFilter: "chrome.users.ManagedBookmarksSetting",
+        policySchemaFilter: "chrome.users.ManagedBookmarks",
         policyTargetKey: {
           targetResource: `orgunits/${orgUnitId}`
         }
       }
     });
 
+    console.log(`[ChromePolicy] Raw resolve response:`, JSON.stringify(res.data, null, 2));
+
     const policies = res.data.resolvedPolicies || [];
-    const matchPolicy = policies.find((p: any) => p.value?.policySchema === "chrome.users.ManagedBookmarksSetting");
+    console.log(`[ChromePolicy] Found ${policies.length} policies`);
+    
+    const matchPolicy = policies.find((p: any) => 
+      p.value?.policySchema?.includes("ManagedBookmarks")
+    );
+    console.log(`[ChromePolicy] Matched policy:`, JSON.stringify(matchPolicy, null, 2));
     
     if (matchPolicy && matchPolicy.value?.value) {
       const rawValue = matchPolicy.value.value;
+      console.log(`[ChromePolicy] Policy value:`, JSON.stringify(rawValue, null, 2));
       return {
-        toplevel_name: rawValue.toplevel_name || "북마크바",
-        bookmarks: rawValue.bookmarks || []
+        toplevel_name: rawValue.toplevel_name || "효명고등학교",
+        bookmarks: rawValue.managedBookmarks || rawValue.bookmarks || rawValue.value || []
       };
     }
 
-    return { toplevel_name: "북마크바", bookmarks: [] };
+    return { toplevel_name: "효명고등학교", bookmarks: [] };
   } catch (error: any) {
     console.warn(`[GWS Policy API] Failed to resolve from GWS. Falling back to local Firestore config. Reason: ${error.message}`);
     
@@ -163,14 +172,17 @@ export const updateChromeManagedBookmarks = async (
               targetResource: `orgunits/${orgUnitId}`
             },
             policyValue: {
-              policySchema: "chrome.users.ManagedBookmarksSetting",
-              value: policyValue
+              policySchema: "chrome.users.ManagedBookmarks",
+              value: {
+                managedBookmarks: bookmarks
+              }
             },
-            updateMask: "value"
+            updateMask: "managedBookmarks"
           }
         ]
       }
     });
+    console.log(`[ChromePolicy] batchModify success for OU: ${cleanPath}`);
 
     // Also mirror to local database so fallbacks will read it
     const localRef = doc(db, "chrome_bookmarks_local", encodeURIComponent(cleanPath));
