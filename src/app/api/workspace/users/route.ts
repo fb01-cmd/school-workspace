@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAlias, invalidateUserCache, isMock, listDeletedUsers, restoreDeletedUser } from "@/lib/google/workspace";
+import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAlias, invalidateUserCache, isMock, listDeletedUsers, restoreDeletedUser, resetStudentPassword } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     // 🔐 서버 사이드 인증 가드
     // list 같은 조회 기능은 승인된 일반 교사도 허용, 나머지 쌓기/수정/삭제는 수퍼어드민 전용
     // ─────────────────────────────────────────
-    const TEACHER_ALLOWED_ACTIONS = ["list"];
+    const TEACHER_ALLOWED_ACTIONS = ["list", "search", "reset_password"];
     const authUser = await verifyAuthAccess(req);
     if (!authUser) {
       return NextResponse.json({ error: "인증되지 않은 요청입니다." }, { status: 401 });
@@ -100,6 +100,36 @@ export async function POST(req: NextRequest) {
 
     const adminEmail = operatorEmail || authUser.email || "unknown@domain.com";
     const adminName = operatorName || "관리자";
+
+    if (action === "reset_password") {
+      const { email } = body;
+      if (!email) {
+        return NextResponse.json({ error: "Email is required" }, { status: 400 });
+      }
+      try {
+        const { tempPassword } = await resetStudentPassword(email);
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "비밀번호 초기화",
+          targetEmail: email,
+          details: `학생 비밀번호 일괄 임시번호(${tempPassword})로 초기화 및 로그인 시 강제변경 지정`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, tempPassword, isMock });
+      } catch (err: any) {
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "비밀번호 초기화",
+          targetEmail: email,
+          details: `비밀번호 초기화 실패`,
+          status: "failure",
+          error: err.message,
+        });
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
+    }
 
     if (action === "list") {
       const { orgUnitPaths } = body;

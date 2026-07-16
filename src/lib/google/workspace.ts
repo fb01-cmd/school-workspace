@@ -1470,3 +1470,26 @@ export const listClassroomStudents = async (courseId: string, teacherEmail: stri
 };
 
 
+// Reset student password to the fixed temporary password.
+// changePasswordAtNextLogin is set to true so the student must update immediately.
+export const resetStudentPassword = async (email: string): Promise<{ tempPassword: string }> => {
+  const TEMP_PASSWORD = "1234abcd!!!!";
+
+  if (isMock) {
+    // Mock mode: just return success
+    return { tempPassword: TEMP_PASSWORD };
+  }
+
+  const admin = getAdminClient();
+  if (!admin) throw new Error("Admin client is not initialized.");
+
+  await admin.users.patch({
+    userKey: email,
+    requestBody: {
+      password: TEMP_PASSWORD,
+      changePasswordAtNextLogin: true,
+    },
+  });
+
+  return { tempPassword: TEMP_PASSWORD };
+};

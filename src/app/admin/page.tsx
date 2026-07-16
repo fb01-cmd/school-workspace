@@ -15,8 +15,9 @@ import TeacherLifecycle from "@/components/admin/lifecycle/TeacherLifecycle";
 import GroupList from "@/components/admin/GroupList";
 import ClassroomPage from "@/app/admin/classroom/page";
 import ChromeBookmarks from "@/components/admin/ChromeBookmarks";
+import PasswordReset from "@/components/admin/PasswordReset";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "chrome_bookmarks";
+type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "chrome_bookmarks" | "password_reset";
 
 export default function AdminPage() {
   const { userData } = useAuth();
@@ -40,6 +41,8 @@ export default function AdminPage() {
         return <ClassroomPage />;
       case "chrome_bookmarks":
         return <ChromeBookmarks />;
+      case "password_reset":
+        return <PasswordReset />;
       case "groups":
         return <GroupList />;
       case "settings":
@@ -334,6 +337,18 @@ export default function AdminPage() {
                   >
                     <span>🔖</span>
                     <span>크롬 북마크 배정</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveMenu("password_reset")}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      activeMenu === "password_reset"
+                        ? "bg-indigo-800 text-white"
+                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    <span>🔑</span>
+                    <span>학생 비밀번호 초기화</span>
                   </button>
 
                   <button
