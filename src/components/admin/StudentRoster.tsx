@@ -37,6 +37,7 @@ export default function StudentRoster() {
   const [hasSearched, setHasSearched] = useState(false); // Only render sheet after clicking "Search/View"
   const [students, setStudents] = useState<ParsedStudent[]>([]);
   const [gradesCount, setGradesCount] = useState(3); // Default to 3 grades
+  const [classCounts, setClassCounts] = useState<Record<string, number>>({});
   
   // Roster view filters - Default to 1st Grade, 1st Class to prevent loading all
   const [selectedGrade, setSelectedGrade] = useState<string>("1");
@@ -76,6 +77,7 @@ export default function StudentRoster() {
       if (settingsSnap.exists()) {
         const settings = settingsSnap.data();
         setGradesCount(settings.gradesCount || 3);
+        setClassCounts(settings.classCounts || {});
         const studOUs = settings.ouMapping?.students || {};
         const paths = Object.values(studOUs) as string[];
         if (paths.length > 0) {
@@ -153,10 +155,24 @@ export default function StudentRoster() {
     }
   };
 
-  // Compute list of available classes in local state (or default to 1~15 if empty before loading)
+  // Compute list of available classes in local state (from settings config first, fallback to scanning)
   const availableClasses = useMemo(() => {
+    // 1. If settings classCounts has configuration for selected grade, use it directly
+    if (selectedGrade !== "all" && classCounts[selectedGrade]) {
+      const count = classCounts[selectedGrade];
+      return Array.from({ length: count }, (_, i) => i + 1);
+    }
+
+    // 2. If grade is "all", compute maximum class count across all configured grades, or default to 10
+    if (selectedGrade === "all") {
+      const counts = Object.values(classCounts);
+      const maxCount = counts.length > 0 ? Math.max(...counts) : 10;
+      return Array.from({ length: maxCount }, (_, i) => i + 1);
+    }
+
+    // 3. Fallback scan if no settings are available
     if (students.length === 0) {
-      return Array.from({ length: 15 }, (_, i) => i + 1); // Mock 15 classes before search
+      return Array.from({ length: 10 }, (_, i) => i + 1); // Fallback to 10 classes
     }
     const targetStudents = selectedGrade === "all" 
       ? students 
@@ -167,8 +183,8 @@ export default function StudentRoster() {
       .map((s) => s.classNum);
     
     const uniqueClasses = Array.from(new Set(classes)).sort((a, b) => a - b);
-    return uniqueClasses.length > 0 ? uniqueClasses : Array.from({ length: 15 }, (_, i) => i + 1);
-  }, [students, selectedGrade]);
+    return uniqueClasses.length > 0 ? uniqueClasses : Array.from({ length: 10 }, (_, i) => i + 1);
+  }, [students, selectedGrade, classCounts]);
 
   // Filter students based on selection controls
   const filteredStudents = useMemo(() => {

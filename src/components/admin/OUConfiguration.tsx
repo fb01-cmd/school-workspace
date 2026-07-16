@@ -22,6 +22,7 @@ export default function OUConfiguration() {
   
   // Settings State
   const [gradesCount, setGradesCount] = useState<number>(6);
+  const [classCounts, setClassCounts] = useState<Record<number, number>>({});
   const [teacherOU, setTeacherOU] = useState<string>("");
   const [studentOUMappings, setStudentOUMappings] = useState<Record<number, string>>({});
   const [graduatesOU, setGraduatesOU] = useState<string>("");
@@ -77,6 +78,7 @@ export default function OUConfiguration() {
         if (settingsSnap.exists()) {
           const settings = settingsSnap.data();
           setGradesCount(settings.gradesCount || 6);
+          setClassCounts(settings.classCounts || {});
           setTeacherOU(settings.ouMapping?.teachers || "");
           setStudentOUMappings(settings.ouMapping?.students || {});
           setGraduatesOU(settings.ouMapping?.graduates || "");
@@ -129,6 +131,7 @@ export default function OUConfiguration() {
       const settingsRef = doc(db, "settings", domain);
       await setDoc(settingsRef, {
         gradesCount,
+        classCounts,
         ouMapping: {
           teachers: teacherOU,
           students: studentOUMappings,
@@ -225,21 +228,48 @@ export default function OUConfiguration() {
           {/* Student OU mapping per grade */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              3. 학년별 학생 조직단위(OU) 매핑
+              3. 학년별 학생 조직단위(OU) 및 학급(반) 수 설정
             </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4 max-w-4xl">
               {Array.from({ length: gradesCount }).map((_, i) => {
                 const grade = i + 1;
                 return (
-                  <div key={grade} className="flex items-center gap-3">
-                    <span className="w-16 flex-shrink-0 text-sm font-medium text-gray-700">{grade}학년:</span>
-                    <div className="flex-1">
+                  <div key={grade} className="flex flex-col sm:flex-row sm:items-center gap-4 bg-gray-50/50 p-3 rounded-lg border border-gray-100">
+                    <div className="w-20 flex-shrink-0 text-sm font-bold text-gray-800">
+                      {grade}학년 설정
+                    </div>
+                    
+                    {/* OU Selector */}
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="block text-[10px] font-semibold text-gray-500 mb-1">학생 OU 경로</label>
                       <OUTreeSelector
                         orgUnits={orgUnits}
                         value={studentOUMappings[grade] || ""}
                         onChange={(path) => handleStudentMappingChange(grade, path)}
                         placeholder="-- 미매핑 --"
                       />
+                    </div>
+
+                    {/* Class Count Input */}
+                    <div className="w-36 flex-shrink-0">
+                      <label className="block text-[10px] font-semibold text-gray-500 mb-1">학급(반) 수</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          max="30"
+                          value={classCounts[grade] || 10}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 10;
+                            setClassCounts(prev => ({
+                              ...prev,
+                              [grade]: val
+                            }));
+                          }}
+                          className="w-20 px-2 py-1.5 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm text-gray-900 bg-white"
+                        />
+                        <span className="text-xs text-gray-500 font-medium">개 반</span>
+                      </div>
                     </div>
                   </div>
                 );

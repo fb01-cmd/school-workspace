@@ -60,6 +60,7 @@ export default function ClassroomPage() {
   // Grade/Class settings loaded from Firestore
   const [gradesCount, setGradesCount] = useState(3);
   const [studentOUs, setStudentOUs] = useState<Record<string, string>>({});
+  const [classCounts, setClassCounts] = useState<Record<string, number>>({});
   const [loadingSettings, setLoadingSettings] = useState(false);
 
   // Class selection for batch insert
@@ -105,9 +106,18 @@ export default function ClassroomPage() {
     }
   }, [tabMode, selectedCourseId]);
 
-  // Dynamically compute available classes in the selected grade from user cache
+  // Dynamically compute available classes in the selected grade (respecting classCounts first, fallback to user list cache)
   useEffect(() => {
     if (!domain) return;
+    
+    // 1. Check if classCounts has configuration for selected grade
+    if (classCounts[batchGrade]) {
+      const count = classCounts[batchGrade];
+      setAvailableClasses(Array.from({ length: count }).map((_, i) => String(i + 1)));
+      return;
+    }
+
+    // 2. Fallback to scanning cache if settings are not available
     const ouPath = studentOUs[String(batchGrade)];
     if (!ouPath) {
       setAvailableClasses([]);
@@ -147,7 +157,7 @@ export default function ClassroomPage() {
     } else {
       setAvailableClasses(uniqueClasses);
     }
-  }, [batchGrade, studentOUs, domain]);
+  }, [batchGrade, studentOUs, classCounts, domain]);
 
   // Adjust selected batchClass when availableClasses change
   useEffect(() => {
@@ -186,6 +196,7 @@ export default function ClassroomPage() {
         const data = settingsSnap.data();
         setGradesCount(data.gradesCount || 3);
         setStudentOUs(data.ouMapping?.students || {});
+        setClassCounts(data.classCounts || {});
       }
     } catch (err) {
       console.error("Failed to load school settings", err);
