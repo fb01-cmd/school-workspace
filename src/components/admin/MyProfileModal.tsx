@@ -30,9 +30,11 @@ export default function MyProfileModal({ onClose }: Props) {
   const positions = (schoolSettings?.positions || DEFAULT_POSITIONS).filter(p => p !== "계원");
   const gradesCount = schoolSettings?.gradesCount || 3;
 
-  // 소속 없음 여부 초기값
-  const initNoDept =
-    !teacherProfile || !teacherProfile.departments || teacherProfile.departments.length === 0;
+  // 소속 없음 초기값: 기존 프로필이 있고 명시적으로 noDept=true인 경우에만 true
+  // 신규 등록(프로필 없음) 시에는 false — 모든 부서 버튼 활성화
+  const initNoDept = teacherProfile
+    ? (teacherProfile as any).noDept === true
+    : false;
 
   // Form state — pre-fill from existing profile if any
   const [noDept, setNoDept] = useState(initNoDept);
@@ -231,9 +233,9 @@ export default function MyProfileModal({ onClose }: Props) {
                       value={homeroomGrade}
                       onChange={e => {
                         setHomeroomGrade(Number(e.target.value));
-                        setHomeroomClass(1); // 학년 변경 시 반 초기화
+                        setHomeroomClass(1);
                       }}
-                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
                       {Array.from({ length: gradesCount }, (_, i) => i + 1).map(g => (
                         <option key={g} value={g}>{g}학년</option>
@@ -249,7 +251,7 @@ export default function MyProfileModal({ onClose }: Props) {
                     <select
                       value={homeroomClass}
                       onChange={e => setHomeroomClass(Number(e.target.value))}
-                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
                       {Array.from({ length: classCountForGrade }, (_, i) => i + 1).map(c => (
                         <option key={c} value={c}>{c}반</option>
