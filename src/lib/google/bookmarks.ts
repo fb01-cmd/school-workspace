@@ -40,6 +40,14 @@ export interface BookmarkItem {
 export interface ManagedBookmarksConfig {
   toplevel_name: string;
   bookmarks: BookmarkItem[];
+  isLocalFallback?: boolean;
+  authWarning?: string;
+}
+
+export interface UpdateBookmarksResult {
+  success: boolean;
+  isLocalFallback?: boolean;
+  error?: string;
 }
 
 // 1. Resolve Managed Bookmarks for an OU
@@ -89,8 +97,31 @@ export const getChromeManagedBookmarks = async (orgUnitPath: string): Promise<Ma
 
     return { toplevel_name: "북마크바", bookmarks: [] };
   } catch (error: any) {
-    console.error(`Failed to resolve chrome bookmarks for ${orgUnitPath}:`, error.message);
-    throw new Error(`북마크 로드 실패: ${error.message}`);
+    console.warn(`[GWS Policy API] Failed to resolve from GWS. Falling back to local Firestore config. Reason: ${error.message}`);
+    
+    // FALLBACK TO FIRESTORE LOCAL CONFIG
+    try {
+      const localRef = doc(db, "chrome_bookmarks_local", encodeURIComponent(cleanPath));
+      const snap = await getDoc(localRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        return {
+          toplevel_name: data.toplevel_name || "북마크바",
+          bookmarks: data.bookmarks || [],
+          isLocalFallback: true,
+          authWarning: error.message
+        };
+      }
+    } catch (fsErr) {
+      console.error("Firestore local fallback fetch failed:", fsErr);
+    }
+
+    return { 
+      toplevel_name: "북마크바", 
+      bookmarks: [], 
+      isLocalFallback: true,
+      authWarning: error.message 
+    };
   }
 };
 
@@ -99,7 +130,7 @@ export const updateChromeManagedBookmarks = async (
   orgUnitPath: string,
   toplevel_name: string,
   bookmarks: BookmarkItem[]
-): Promise<boolean> => {
+): Promise<UpdateBookmarksResult> => {
   const cleanPath = orgUnitPath.trim();
 
   // MOCK MODE: Write to Firestore mock collection
@@ -111,7 +142,7 @@ export const updateChromeManagedBookmarks = async (
       bookmarks,
       updatedAt: new Date()
     });
-    return true;
+    return { success: true };
   }
 
   // REAL MODE: Push update to Google Chrome Policy API
@@ -138,9 +169,32 @@ export const updateChromeManagedBookmarks = async (
       }
     });
 
-    return true;
+    // Also mirror to local database so fallbacks will read it
+    const localRef = doc(db, "chrome_bookmarks_local", encodeURIComponent(cleanPath));
+    await setDoc(localRef, { toplevel_name, bookmarks, updatedAt: new Date() });
+
+    return { success: true };
   } catch (error: any) {
-    console.error(`Failed to update chrome bookmarks for ${orgUnitPath}:`, error.message);
-    throw new Error(`북마크 적용 실패: ${error.message}`);
+    console.warn(`[GWS Policy API] Failed to update bookmarks on GWS. Mirroring to local Firestore only. Reason: ${error.message}`);
+    
+    try {
+      const localRef = doc(db, "chrome_bookmarks_local", encodeURIComponent(cleanPath));
+      await setDoc(localRef, {
+        toplevel_name,
+        bookmarks,
+        updatedAt: new Date()
+      });
+      return {
+        success: true,
+        isLocalFallback: true,
+        error: error.message
+      };
+    } catch (fsErr: any) {
+      console.error("Firestore local fallback save failed:", fsErr);
+      return {
+        success: false,
+        error: `로컬 DB 저장 실패: ${fsErr.message}`
+      };
+    }
   }
 };

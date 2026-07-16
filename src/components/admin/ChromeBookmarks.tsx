@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { getClientCache } from "@/lib/cache/clientCache";
+import OUTreeSelector from "@/components/admin/OUTreeSelector";
 
 interface BookmarkItem {
   name: string;
@@ -45,6 +46,9 @@ export default function ChromeBookmarks() {
   // Logs state
   const [logs, setLogs] = useState<SyncLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+
+  const [isLocalFallback, setIsLocalFallback] = useState(false);
+  const [authWarning, setAuthWarning] = useState("");
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -108,6 +112,8 @@ export default function ChromeBookmarks() {
       if (res.ok) {
         setToplevelName(data.toplevel_name || "북마크바");
         setBookmarks(data.bookmarks || []);
+        setIsLocalFallback(!!data.isLocalFallback);
+        setAuthWarning(data.authWarning || "");
       } else {
         throw new Error(data.error);
       }
@@ -195,7 +201,8 @@ export default function ChromeBookmarks() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccess(`[${selectedOU}] 조직단위 크롬 관리 북마크가 실시간으로 성공 배정되었습니다.`);
+        setSuccess(`[${selectedOU}] 조직단위 크롬 관리 북마크 설정이 반영되었습니다.${data.isLocalFallback ? " (구글 API 연동 불가로 로컬 DB 임시 저장)" : ""}`);
+        setIsLocalFallback(!!data.isLocalFallback);
       } else {
         throw new Error(data.error);
       }
@@ -241,6 +248,28 @@ export default function ChromeBookmarks() {
         </nav>
       </div>
 
+      {isLocalFallback && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-md p-4 text-xs font-semibold space-y-1">
+          <p className="flex items-center gap-1.5 text-amber-800 font-bold text-sm">
+            <span>⚠️</span>
+            <span>구글 Workspace 크롬 정책 API 권한(DWD) 미활성 안내</span>
+          </p>
+          <p className="leading-relaxed">
+            현재 구글 Workspace 최고관리자의 도메인 위임 권한 중 
+            <span className="font-mono bg-amber-100 px-1 py-0.5 rounded text-[10px] mx-1">https://www.googleapis.com/auth/chrome.management.policy</span> 
+            스코프가 API 콘솔에 등록되지 않았거나 승인되지 않아 **[로컬 DB 백업 모드]**로 자동 전환하여 구동 중입니다.
+          </p>
+          <p className="text-[10px] text-amber-600 font-medium">
+            (북마크 편집 정보는 플랫폼 데이터베이스와 수정 이력에 정상 보관되나, 실제 학생 기기 크롬 브라우저 상단바에 즉시 배포되지는 않습니다. 도메인 위임이 활성화되면 실시간 동기화가 재개됩니다.)
+          </p>
+          {authWarning && (
+            <p className="text-[10px] font-mono text-amber-500 mt-1.5 border-t border-amber-200/50 pt-1">
+              API 반환 상세 오류: {authWarning}
+            </p>
+          )}
+        </div>
+      )}
+
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-4 text-sm font-medium">
           ⚠️ {error}
@@ -264,21 +293,14 @@ export default function ChromeBookmarks() {
                 {loadingOUs ? (
                   <p className="text-xs text-gray-400">조직도 로드 중...</p>
                 ) : (
-                  <select
-                    value={selectedOU}
-                    onChange={(e) => setSelectedOU(e.target.value)}
-                    className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm text-gray-900 bg-white"
-                  >
-                    {filteredOUs.length === 0 ? (
-                      <option value="">배포 권한이 부여된 OU가 없습니다.</option>
-                    ) : (
-                      filteredOUs.map((ou) => (
-                        <option key={ou.orgUnitId} value={ou.orgUnitPath}>
-                          {ou.orgUnitPath} ({ou.name})
-                        </option>
-                      ))
-                    )}
-                  </select>
+                  <div className="max-w-md">
+                    <OUTreeSelector
+                      orgUnits={filteredOUs}
+                      value={selectedOU}
+                      onChange={(path) => setSelectedOU(path)}
+                      placeholder="배포할 대상 조직단위를 선택하세요"
+                    />
+                  </div>
                 )}
               </div>
 

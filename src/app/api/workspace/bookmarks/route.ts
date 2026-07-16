@@ -119,7 +119,11 @@ export async function POST(req: NextRequest) {
       }
 
       // 3. Update Managed Bookmarks
-      await updateChromeManagedBookmarks(orgUnitPath, toplevel_name, bookmarks);
+      const updateResult = await updateChromeManagedBookmarks(orgUnitPath, toplevel_name, bookmarks);
+      if (!updateResult.success) {
+        return NextResponse.json({ error: updateResult.error || "북마크 적용에 실패했습니다." }, { status: 500 });
+      }
+      const isFallback = !!updateResult.isLocalFallback;
 
       // 4. Log the audit details in Firestore custom logs
       const logData = {
@@ -131,6 +135,7 @@ export async function POST(req: NextRequest) {
           toplevel_name,
           bookmarks
         },
+        isLocalFallback: isFallback,
         timestamp: new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
       };
       await addDoc(collection(db, "chrome_bookmark_logs"), logData);
@@ -141,11 +146,11 @@ export async function POST(req: NextRequest) {
         operatorName,
         action: "크롬 관리 북마크 변경",
         targetEmail: orgUnitPath,
-        details: `조직단위 [${orgUnitPath}]의 크롬 북마크를 업데이트했습니다. (폴더명: '${toplevel_name}', 북마크 수: ${bookmarks.length}개)`,
+        details: `조직단위 [${orgUnitPath}]의 크롬 북마크를 업데이트했습니다. (폴더명: '${toplevel_name}', 북마크 수: ${bookmarks.length}개)${isFallback ? " [구글 API 오류로 로컬 DB 임시 적용]" : ""}`,
         status: "success"
       });
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, isLocalFallback: isFallback });
     }
 
     return NextResponse.json({ error: "올바르지 않은 action입니다." }, { status: 400 });
