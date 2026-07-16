@@ -825,6 +825,16 @@ export default function StudentRoster() {
           border: 1px solid #cbd5e1 !important;
         }
 
+        /* ─────────────────────────────────────────────────────────
+         * @page: CSS-level page margin control.
+         * Chrome의 헤더/푸터는 이 margin 안에 들어가므로
+         * 콘텐츠를 왜돌리지 않습니다.
+         * ───────────────────────────────────────────────────────── */
+        @page {
+          size: A4 portrait;
+          margin: 18mm 15mm; /* top/bottom 18mm: header+footer 8mm 포함할 수 있는 여백 */
+        }
+
         @media print {
           /* Hide sidebar, topnav and filters */
           .no-print,
@@ -895,7 +905,8 @@ export default function StudentRoster() {
           .print-container {
             border: none !important;
             box-shadow: none !important;
-            padding: 10mm 15mm 15mm 15mm !important; /* Retain A4 standard print margin (15mm left/right) */
+            /* @page가 외부 여백을 제어하므로 여기에서는 0으로 설정 */
+            padding: 0 !important;
             margin: 0 auto !important;
             overflow: visible !important;
           }
