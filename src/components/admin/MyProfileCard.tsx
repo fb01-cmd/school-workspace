@@ -20,9 +20,14 @@ export default function MyProfileCard() {
   if (!isTeacher) return null;
 
   const hasProfile = !!teacherProfile;
-  const noDept = (teacherProfile as any)?.noDept;
-  const isDeptHead = (teacherProfile as any)?.isDeptHead;
-  const depts = noDept ? "소속 없음" : (teacherProfile?.departments?.join(", ") || "");
+  const noDept = teacherProfile?.noDept;
+  const deptHeadMap = teacherProfile?.deptHeadMap || {};
+  
+  const deptsList = teacherProfile?.departments || [];
+  const depts = noDept 
+    ? "소속 없음" 
+    : deptsList.map(d => !!deptHeadMap[d] ? `${d}(부장)` : d).join(", ");
+
   const position = teacherProfile?.position || "";
   const homeroom =
     teacherProfile?.isHomeroom && teacherProfile?.homeroom
@@ -43,9 +48,6 @@ export default function MyProfileCard() {
                 <span className="text-indigo-400 font-semibold">소속 </span>
                 {depts}
               </p>
-            )}
-            {isDeptHead && (
-              <p className="text-xs text-amber-300 font-semibold">⭐ 부서장</p>
             )}
             {position && (
               <p className="text-xs text-indigo-200">

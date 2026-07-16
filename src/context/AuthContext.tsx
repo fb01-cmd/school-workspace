@@ -12,7 +12,8 @@ export interface TeacherProfile {
   departments: string[];  // 다중 부서
   noDept?: boolean;      // 소속 없음 (관리 계정 등)
   position?: string;     // 직책 (교사, 부장 등)
-  isDeptHead?: boolean;  // 부서장 여부
+  isDeptHead?: boolean;  // 부서장 여부 (전체 중 하나라도 부서장인지 여부)
+  deptHeadMap?: Record<string, boolean>; // 부서별 부서장 여부 맵
   isHomeroom?: boolean;
   homeroom?: { grade: number; class: number };
   updatedAt?: string;

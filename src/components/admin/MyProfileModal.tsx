@@ -42,7 +42,9 @@ export default function MyProfileModal({ onClose }: Props) {
     teacherProfile?.departments || []
   );
   const [position, setPosition] = useState(teacherProfile?.position || "");
-  const [isDeptHead, setIsDeptHead] = useState((teacherProfile as any)?.isDeptHead || false);
+  const [deptHeadMap, setDeptHeadMap] = useState<Record<string, boolean>>(
+    (teacherProfile as any)?.deptHeadMap || {}
+  );
   const [isHomeroom, setIsHomeroom] = useState(teacherProfile?.isHomeroom || false);
   const [homeroomGrade, setHomeroomGrade] = useState(teacherProfile?.homeroom?.grade || 1);
   const [homeroomClass, setHomeroomClass] = useState(teacherProfile?.homeroom?.class || 1);
@@ -54,15 +56,25 @@ export default function MyProfileModal({ onClose }: Props) {
 
   const toggleDept = (dept: string) => {
     if (noDept) setNoDept(false);
-    setSelectedDepts(prev =>
-      prev.includes(dept) ? prev.filter(d => d !== dept) : [...prev, dept]
-    );
+    setSelectedDepts(prev => {
+      const isSelected = prev.includes(dept);
+      if (isSelected) {
+        setDeptHeadMap(curr => {
+          const updated = { ...curr };
+          delete updated[dept];
+          return updated;
+        });
+        return prev.filter(d => d !== dept);
+      } else {
+        return [...prev, dept];
+      }
+    });
   };
 
   const handleNoDeptToggle = () => {
     setNoDept(true);
     setSelectedDepts([]);
-    setIsDeptHead(false);
+    setDeptHeadMap({});
   };
 
   const handleSubmit = async () => {
@@ -79,6 +91,7 @@ export default function MyProfileModal({ onClose }: Props) {
     setSaving(true);
     try {
       const name = userData.email.split("@")[0];
+      const isAnyDeptHead = Object.values(deptHeadMap).some(Boolean);
       const pendingRef = doc(db, "teacher_profiles_pending", userData.email);
       await setDoc(pendingRef, {
         email: userData.email,
@@ -86,7 +99,8 @@ export default function MyProfileModal({ onClose }: Props) {
         departments: noDept ? [] : selectedDepts,
         noDept,
         position,
-        isDeptHead: noDept ? false : isDeptHead,
+        isDeptHead: noDept ? false : isAnyDeptHead,
+        deptHeadMap: noDept ? {} : deptHeadMap,
         isHomeroom,
         homeroom: isHomeroom ? { grade: homeroomGrade, class: homeroomClass } : null,
         status: "PENDING",
@@ -165,27 +179,35 @@ export default function MyProfileModal({ onClose }: Props) {
                 ))}
               </div>
 
-              {/* 선택 요약 */}
-              <p className="mt-2 text-xs font-medium">
-                {noDept ? (
-                  <span className="text-gray-500">소속 없음 (관리 계정 등)</span>
-                ) : selectedDepts.length > 0 ? (
-                  <span className="text-indigo-600">선택됨: {selectedDepts.join(", ")}</span>
-                ) : null}
-              </p>
-
-              {/* 부서장 여부 — 소속이 있을 때만 */}
+              {/* 선택 요약 & 부서별 부서장 지정 */}
               {!noDept && selectedDepts.length > 0 && (
-                <label className="mt-3 flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={isDeptHead}
-                    onChange={e => setIsDeptHead(e.target.checked)}
-                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400"
-                  />
-                  <span className="text-sm font-semibold text-amber-700">⭐ 부서장</span>
-                  <span className="text-xs text-gray-400">(조직도 최상단에 배치됩니다)</span>
-                </label>
+                <div className="mt-3 space-y-2 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
+                  <p className="text-xs font-semibold text-indigo-800 mb-1.5">부서별 역할 지정</p>
+                  <div className="space-y-1.5">
+                    {selectedDepts.map(dept => {
+                      const isHead = !!deptHeadMap[dept];
+                      return (
+                        <div key={dept} className="flex items-center justify-between bg-white px-3 py-1.5 rounded border border-indigo-100 text-xs">
+                          <span className="font-bold text-gray-800">{dept}</span>
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none text-gray-600">
+                            <input
+                              type="checkbox"
+                              checked={isHead}
+                              onChange={e => {
+                                setDeptHeadMap(prev => ({
+                                  ...prev,
+                                  [dept]: e.target.checked
+                                }));
+                              }}
+                              className="w-3.5 h-3.5 rounded text-amber-500 focus:ring-amber-400"
+                            />
+                            <span>부서장(부장)</span>
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
 

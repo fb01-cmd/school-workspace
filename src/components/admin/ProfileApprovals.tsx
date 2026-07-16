@@ -56,6 +56,7 @@ export default function ProfileApprovals() {
         noDept: profile.noDept || false,
         position: profile.position,
         isDeptHead: profile.isDeptHead || false,
+        deptHeadMap: (profile as any).deptHeadMap || {},
         isHomeroom: profile.isHomeroom,
         homeroom: profile.homeroom || null,
         updatedAt: serverTimestamp(),
@@ -135,14 +136,21 @@ export default function ProfileApprovals() {
                     <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded-md text-xs font-semibold border border-gray-200">소속 없음</span>
                   ) : (
                     <div className="flex flex-wrap gap-1">
-                      {profile.departments?.map(d => (
-                        <span key={d} className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md text-xs font-semibold border border-indigo-100">
-                          {d}
-                        </span>
-                      ))}
-                      {profile.isDeptHead && (
-                        <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md text-xs font-semibold border border-amber-200">⭐ 부서장</span>
-                      )}
+                      {profile.departments?.map(d => {
+                        const isHead = !!(profile as any).deptHeadMap?.[d];
+                        return (
+                          <span
+                            key={d}
+                            className={`px-2 py-0.5 rounded-md text-xs font-semibold border ${
+                              isHead
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : "bg-indigo-50 text-indigo-700 border-indigo-100"
+                            }`}
+                          >
+                            {d}{isHead ? " (부장)" : ""}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
