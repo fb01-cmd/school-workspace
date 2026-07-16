@@ -80,9 +80,7 @@ export default function ChromeBookmarks() {
 
   // B. Compute Allowed OUs for dropdown based on allowedBookmarkOUs and hierarchy
   const filteredOUs = orgUnits.filter((ou) => {
-    if (isSuperAdmin) return true; // Super admin can manage all OUs
-
-    const allowedList = schoolSettings?.allowedBookmarkOUs || ["/교직원", "/학생"];
+    const allowedList: string[] = schoolSettings?.allowedBookmarkOUs || ["/교직원", "/학생"];
     const cleanTarget = ou.orgUnitPath.trim().toLowerCase();
 
     return allowedList.some((allowed: string) => {
