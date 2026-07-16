@@ -5,6 +5,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/context/AuthContext";
 import OUTreeSelector from "@/components/admin/OUTreeSelector";
+import OUCheckboxTree from "@/components/admin/OUCheckboxTree";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 
 interface OU {
@@ -433,31 +434,15 @@ export default function OUConfiguration() {
               8. 교사용 크롬 북마크 배포 권한 OU 설정
             </label>
             <p className="text-gray-500 text-xs mb-3">
-              일반 교사들이 학생/교직원 크롬 브라우저에 북마크를 강제 배정할 때, 접근 및 조작을 허용할 조직단위(OU)를 체크해 주세요. 
+              일반 교사들이 학생/교직원 크롬 브라우저에 북마크를 강제 배정할 때, 접근 및 조작을 허용할 조직단위(OU)를 체크해 주세요.
               (상위 조직단위 선택 시 하위 조직단위 권한도 자동으로 상속됩니다.)
             </p>
-            <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-4 bg-gray-50/30 space-y-2.5 max-w-xl">
-              {orgUnits.map((ou) => {
-                const isChecked = allowedBookmarkOUs.includes(ou.orgUnitPath);
-                return (
-                  <label key={ou.orgUnitId} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer hover:bg-gray-100/50 p-1.5 rounded transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setAllowedBookmarkOUs((prev) => [...prev, ou.orgUnitPath]);
-                        } else {
-                          setAllowedBookmarkOUs((prev) => prev.filter((p) => p !== ou.orgUnitPath));
-                        }
-                      }}
-                      className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                    />
-                    <span className="font-mono text-gray-800 font-semibold">{ou.orgUnitPath}</span>
-                    <span className="text-[10px] text-gray-400">({ou.name})</span>
-                  </label>
-                );
-              })}
+            <div className="max-w-xl max-h-72 overflow-y-auto">
+              <OUCheckboxTree
+                orgUnits={orgUnits}
+                selected={allowedBookmarkOUs}
+                onChange={setAllowedBookmarkOUs}
+              />
             </div>
           </div>
 
