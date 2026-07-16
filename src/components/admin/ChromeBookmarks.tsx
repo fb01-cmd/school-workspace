@@ -41,8 +41,16 @@ function computeBookmarkDiff(before: BookmarkItem[], after: BookmarkItem[]) {
   const removed = fb.filter(i => !pathsAfter.has(i.path)  && !keysAfter.has(keyOf(i)));
   const moved   = fa.filter(i => !pathsBefore.has(i.path) && keysBefore.has(keyOf(i)));
 
-  return { added, removed, moved, unchanged: fa.filter(i => pathsBefore.has(i.path)) };
+  // Detect reordering: same item set but different sequence
+  const orderedBefore = fb.map(i => i.path).join("|");
+  const orderedAfter  = fa.map(i => i.path).join("|");
+  const isReordered = added.length === 0 && removed.length === 0 && moved.length === 0 
+                      && orderedBefore !== orderedAfter;
+
+  return { added, removed, moved, isReordered,
+           countBefore: fb.length, countAfter: fa.length };
 }
+
 
 interface SyncLog {
   id: string;
@@ -375,9 +383,9 @@ export default function ChromeBookmarks() {
               {logs.map((log) => {
                 const before = log.beforeConfig?.bookmarks || [];
                 const after  = log.afterConfig?.bookmarks  || [];
-                const { added, removed, moved } = computeBookmarkDiff(before, after);
-                const hasChanges = added.length > 0 || removed.length > 0 || moved.length > 0;
-                const totalAfter = flattenBookmarks(after).length;
+                const { added, removed, moved, isReordered, countBefore, countAfter } = computeBookmarkDiff(before, after);
+                const hasChanges = added.length > 0 || removed.length > 0 || moved.length > 0 || isReordered;
+                const totalAfter = countAfter;
                 return (
                   <div key={log.id} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 text-xs shadow-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
@@ -404,8 +412,15 @@ export default function ChromeBookmarks() {
                           ↕️ {moved.length}개 위치 변경
                         </span>
                       )}
+                      {isReordered && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold text-[11px]">
+                          🔄 순서 변경
+                        </span>
+                      )}
                       {!hasChanges && (
-                        <span className="text-gray-400 italic text-[11px]">변경 없음 (재배포)</span>
+                        <span className="text-gray-400 italic text-[11px]">
+                          변경 없음 (재배포) &mdash; before {countBefore}개 / after {countAfter}개
+                        </span>
                       )}
                       <span className="ml-auto text-[10px] text-gray-400">전체 {totalAfter}개 항목</span>
                     </div>
