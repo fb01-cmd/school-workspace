@@ -53,10 +53,11 @@ export default function ProfileApprovals() {
         email: profile.email,
         name: profile.name,
         departments: profile.departments,
+        noDept: profile.noDept || false,
         position: profile.position,
+        isDeptHead: profile.isDeptHead || false,
         isHomeroom: profile.isHomeroom,
         homeroom: profile.homeroom || null,
-        subjects: profile.subjects || [],
         updatedAt: serverTimestamp(),
       });
       // 2. Update pending status
@@ -130,13 +131,20 @@ export default function ProfileApprovals() {
               <div className="px-6 py-4 grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">소속 부서</p>
-                  <div className="flex flex-wrap gap-1">
-                    {profile.departments?.map(d => (
-                      <span key={d} className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md text-xs font-semibold border border-indigo-100">
-                        {d}
-                      </span>
-                    ))}
-                  </div>
+                  {profile.noDept ? (
+                    <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded-md text-xs font-semibold border border-gray-200">소속 없음</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {profile.departments?.map(d => (
+                        <span key={d} className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md text-xs font-semibold border border-indigo-100">
+                          {d}
+                        </span>
+                      ))}
+                      {profile.isDeptHead && (
+                        <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md text-xs font-semibold border border-amber-200">⭐ 부서장</span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">직책</p>
@@ -148,14 +156,6 @@ export default function ProfileApprovals() {
                     {profile.isHomeroom && profile.homeroom
                       ? `🏫 ${profile.homeroom.grade}학년 ${profile.homeroom.class}반`
                       : "담임 아님"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">담당 과목</p>
-                  <p className="text-gray-900 font-medium">
-                    {profile.subjects && profile.subjects.length > 0
-                      ? profile.subjects.join(", ")
-                      : "—"}
                   </p>
                 </div>
               </div>

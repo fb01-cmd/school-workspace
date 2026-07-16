@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
@@ -13,7 +13,10 @@ const DEFAULT_DEPARTMENTS = [
   "진로상담", "행정실", "급식실", "휴직 및 퇴직 교사",
 ];
 
-const DEFAULT_POSITIONS = ["교장", "교감", "교목", "부장", "교사", "계원", "영양사", "행정실장", "주무관", "조리사"];
+// 계원 제거
+const DEFAULT_POSITIONS = ["교장", "교감", "교목", "부장", "교사", "영양사", "행정실장", "주무관", "조리사"];
+
+const NO_DEPT = "__none__";
 
 interface Props {
   onClose: () => void;
@@ -23,43 +26,47 @@ export default function MyProfileModal({ onClose }: Props) {
   const { userData, teacherProfile, schoolSettings } = useAuth();
 
   const departments = schoolSettings?.departments || DEFAULT_DEPARTMENTS;
-  const positions = schoolSettings?.positions || DEFAULT_POSITIONS;
+  // 직책 목록에서 계원 제거 (저장된 설정에도 혹시 있으면 필터)
+  const positions = (schoolSettings?.positions || DEFAULT_POSITIONS).filter(p => p !== "계원");
   const gradesCount = schoolSettings?.gradesCount || 3;
 
+  // 소속 없음 여부 초기값
+  const initNoDept =
+    !teacherProfile || !teacherProfile.departments || teacherProfile.departments.length === 0;
+
   // Form state — pre-fill from existing profile if any
-  const [selectedDepts, setSelectedDepts] = useState<string[]>(teacherProfile?.departments || []);
+  const [noDept, setNoDept] = useState(initNoDept);
+  const [selectedDepts, setSelectedDepts] = useState<string[]>(
+    teacherProfile?.departments || []
+  );
   const [position, setPosition] = useState(teacherProfile?.position || "");
+  const [isDeptHead, setIsDeptHead] = useState((teacherProfile as any)?.isDeptHead || false);
   const [isHomeroom, setIsHomeroom] = useState(teacherProfile?.isHomeroom || false);
   const [homeroomGrade, setHomeroomGrade] = useState(teacherProfile?.homeroom?.grade || 1);
   const [homeroomClass, setHomeroomClass] = useState(teacherProfile?.homeroom?.class || 1);
-  const [subjectInput, setSubjectInput] = useState("");
-  const [subjects, setSubjects] = useState<string[]>(teacherProfile?.subjects || []);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
 
-  // Max class count from settings (use max across all grades or default 15)
-  const maxClass = Math.max(...Object.values(schoolSettings?.classCounts || {}).map(Number), 15);
+  // 학년별 반 수: 캐시된 schoolSettings.classCounts에서 해당 학년 반 수를 가져옴
+  const classCountForGrade = Number(schoolSettings?.classCounts?.[homeroomGrade] ?? 10);
 
   const toggleDept = (dept: string) => {
+    if (noDept) setNoDept(false);
     setSelectedDepts(prev =>
       prev.includes(dept) ? prev.filter(d => d !== dept) : [...prev, dept]
     );
   };
 
-  const addSubject = () => {
-    const trimmed = subjectInput.trim();
-    if (trimmed && !subjects.includes(trimmed)) {
-      setSubjects(prev => [...prev, trimmed]);
-    }
-    setSubjectInput("");
+  const handleNoDeptToggle = () => {
+    setNoDept(true);
+    setSelectedDepts([]);
+    setIsDeptHead(false);
   };
-
-  const removeSubject = (s: string) => setSubjects(prev => prev.filter(x => x !== s));
 
   const handleSubmit = async () => {
     if (!userData?.email) return;
-    if (selectedDepts.length === 0) {
-      alert("소속 부서를 1개 이상 선택해 주세요.");
+    if (!noDept && selectedDepts.length === 0) {
+      alert("소속 부서를 1개 이상 선택하거나 '소속 없음'을 선택해 주세요.");
       return;
     }
     if (!position) {
@@ -69,16 +76,17 @@ export default function MyProfileModal({ onClose }: Props) {
 
     setSaving(true);
     try {
-      const name = userData.email.split("@")[0]; // fallback
+      const name = userData.email.split("@")[0];
       const pendingRef = doc(db, "teacher_profiles_pending", userData.email);
       await setDoc(pendingRef, {
         email: userData.email,
         name,
-        departments: selectedDepts,
+        departments: noDept ? [] : selectedDepts,
+        noDept,
         position,
+        isDeptHead: noDept ? false : isDeptHead,
         isHomeroom,
         homeroom: isHomeroom ? { grade: homeroomGrade, class: homeroomClass } : null,
-        subjects,
         status: "PENDING",
         requestedAt: serverTimestamp(),
         rejectedReason: "",
@@ -117,20 +125,35 @@ export default function MyProfileModal({ onClose }: Props) {
           </div>
         ) : (
           <div className="p-6 space-y-6">
-            {/* 소속 부서 다중 선택 */}
+
+            {/* ── 소속 부서 ── */}
             <div>
               <label className="block text-sm font-semibold text-gray-800 mb-2">
                 소속 부서 <span className="text-red-500">*</span>
                 <span className="text-xs font-normal text-gray-400 ml-1">(복수 선택 가능)</span>
               </label>
               <div className="flex flex-wrap gap-2">
+                {/* 소속 없음 특수 버튼 */}
+                <button
+                  type="button"
+                  onClick={handleNoDeptToggle}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                    noDept
+                      ? "bg-gray-700 border-gray-700 text-white shadow-sm"
+                      : "bg-gray-50 border-gray-300 text-gray-500 hover:border-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  소속 없음
+                </button>
+
                 {departments.map(dept => (
                   <button
                     key={dept}
                     type="button"
                     onClick={() => toggleDept(dept)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                      selectedDepts.includes(dept)
+                    disabled={noDept}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all disabled:opacity-40 ${
+                      !noDept && selectedDepts.includes(dept)
                         ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
                         : "bg-gray-50 border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
                     }`}
@@ -139,14 +162,32 @@ export default function MyProfileModal({ onClose }: Props) {
                   </button>
                 ))}
               </div>
-              {selectedDepts.length > 0 && (
-                <p className="mt-2 text-xs text-indigo-600 font-medium">
-                  선택됨: {selectedDepts.join(", ")}
-                </p>
+
+              {/* 선택 요약 */}
+              <p className="mt-2 text-xs font-medium">
+                {noDept ? (
+                  <span className="text-gray-500">소속 없음 (관리 계정 등)</span>
+                ) : selectedDepts.length > 0 ? (
+                  <span className="text-indigo-600">선택됨: {selectedDepts.join(", ")}</span>
+                ) : null}
+              </p>
+
+              {/* 부서장 여부 — 소속이 있을 때만 */}
+              {!noDept && selectedDepts.length > 0 && (
+                <label className="mt-3 flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={isDeptHead}
+                    onChange={e => setIsDeptHead(e.target.checked)}
+                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400"
+                  />
+                  <span className="text-sm font-semibold text-amber-700">⭐ 부서장</span>
+                  <span className="text-xs text-gray-400">(조직도 최상단에 배치됩니다)</span>
+                </label>
               )}
             </div>
 
-            {/* 직책 단일 선택 */}
+            {/* ── 직책 ── */}
             <div>
               <label className="block text-sm font-semibold text-gray-800 mb-2">
                 직책 <span className="text-red-500">*</span>
@@ -169,7 +210,7 @@ export default function MyProfileModal({ onClose }: Props) {
               </div>
             </div>
 
-            {/* 담임 여부 */}
+            {/* ── 담임 여부 ── */}
             <div>
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
@@ -183,11 +224,15 @@ export default function MyProfileModal({ onClose }: Props) {
 
               {isHomeroom && (
                 <div className="mt-3 ml-7 flex items-center gap-3">
+                  {/* 학년 선택 */}
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">학년</label>
                     <select
                       value={homeroomGrade}
-                      onChange={e => setHomeroomGrade(Number(e.target.value))}
+                      onChange={e => {
+                        setHomeroomGrade(Number(e.target.value));
+                        setHomeroomClass(1); // 학년 변경 시 반 초기화
+                      }}
                       className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
                       {Array.from({ length: gradesCount }, (_, i) => i + 1).map(g => (
@@ -195,14 +240,18 @@ export default function MyProfileModal({ onClose }: Props) {
                       ))}
                     </select>
                   </div>
+
+                  {/* 반 선택 — 해당 학년 classCounts 캐시 기준 */}
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">반</label>
+                    <label className="block text-xs text-gray-500 mb-1">
+                      반 <span className="text-indigo-400">({classCountForGrade}반까지)</span>
+                    </label>
                     <select
                       value={homeroomClass}
                       onChange={e => setHomeroomClass(Number(e.target.value))}
                       className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
-                      {Array.from({ length: maxClass }, (_, i) => i + 1).map(c => (
+                      {Array.from({ length: classCountForGrade }, (_, i) => i + 1).map(c => (
                         <option key={c} value={c}>{c}반</option>
                       ))}
                     </select>
@@ -211,39 +260,7 @@ export default function MyProfileModal({ onClose }: Props) {
               )}
             </div>
 
-            {/* 담당 과목 태그 입력 */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-800 mb-2">담당 과목</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={subjectInput}
-                  onChange={e => setSubjectInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addSubject(); }}}
-                  placeholder="과목명 입력 후 Enter"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                <button
-                  type="button"
-                  onClick={addSubject}
-                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 transition-colors"
-                >
-                  추가
-                </button>
-              </div>
-              {subjects.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {subjects.map(s => (
-                    <span key={s} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold border border-blue-100">
-                      {s}
-                      <button onClick={() => removeSubject(s)} className="text-blue-400 hover:text-blue-600 leading-none">✕</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* 제출 버튼 */}
+            {/* ── 제출 버튼 ── */}
             <button
               type="button"
               onClick={handleSubmit}

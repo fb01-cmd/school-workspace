@@ -10,10 +10,11 @@ export interface TeacherProfile {
   email: string;
   name?: string;
   departments: string[];  // 다중 부서
-  position?: string;     // 직책 (교사, 부장, 계원 등)
+  noDept?: boolean;      // 소속 없음 (관리 계정 등)
+  position?: string;     // 직책 (교사, 부장 등)
+  isDeptHead?: boolean;  // 부서장 여부
   isHomeroom?: boolean;
   homeroom?: { grade: number; class: number };
-  subjects?: string[];   // 담당 과목
   updatedAt?: string;
 }
 
