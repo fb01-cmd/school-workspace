@@ -20,7 +20,7 @@ let mockOUs = [
   { orgUnitId: "ou8", orgUnitPath: "/학생/6학년", name: "6학년" },
 ];
 
-let mockUsers: {
+export let mockUsers: {
   id: string;
   primaryEmail: string;
   name: { familyName: string; givenName: string };
@@ -1493,3 +1493,23 @@ export const resetStudentPassword = async (email: string): Promise<{ tempPasswor
 
   return { tempPassword: TEMP_PASSWORD };
 };
+
+// Retrieve user details from Google Workspace or mock list
+export const getUser = async (email: string): Promise<any | null> => {
+  if (isMock) {
+    const u = mockUsers.find((x: any) => x.primaryEmail?.toLowerCase() === email.toLowerCase());
+    return u || null;
+  }
+
+  const admin = getAdminClient();
+  if (!admin) throw new Error("Admin client is not initialized.");
+
+  try {
+    const res = await admin.users.get({ userKey: email });
+    return res.data;
+  } catch (error) {
+    console.error(`Error getting user ${email} from Google Workspace`, error);
+    throw error;
+  }
+};
+

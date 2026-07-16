@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAlias, invalidateUserCache, isMock, listDeletedUsers, restoreDeletedUser, resetStudentPassword } from "@/lib/google/workspace";
+import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAlias, invalidateUserCache, isMock, listDeletedUsers, restoreDeletedUser, resetStudentPassword, mockUsers, getUser } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
@@ -107,6 +107,40 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Email is required" }, { status: 400 });
       }
       try {
+        const domain = authUser.email.split("@")[1];
+        if (!domain) {
+          return NextResponse.json({ error: "도메인 정보가 올바르지 않습니다." }, { status: 400 });
+        }
+
+        // 1. Fetch target user's details to check their OU
+        const targetUser = await getUser(email);
+        if (!targetUser) {
+          return NextResponse.json({ error: "해당 사용자를 찾을 수 없습니다." }, { status: 404 });
+        }
+        const targetOU = (targetUser.orgUnitPath || "").toLowerCase().trim();
+
+        // 2. If general teacher, verify target user is in the student OUs
+        if (authUser.role !== "super_admin") {
+          const settingsRef = doc(db, "settings", domain);
+          const settingsSnap = await getDoc(settingsRef);
+          if (!settingsSnap.exists()) {
+            return NextResponse.json({ error: "학교 조직단위 설정 정보가 없습니다. Workspace 환경 설정을 완료해 주세요." }, { status: 400 });
+          }
+          const sData = settingsSnap.data();
+          const studentOUMappings: Record<string, string> = sData?.ouMapping?.students || {};
+          const studentOUPaths = Object.values(studentOUMappings).map(p => p.toLowerCase().trim());
+
+          const isTargetInStudentOU = studentOUPaths.some(studentOU => 
+            targetOU === studentOU || targetOU.startsWith(studentOU + "/")
+          );
+
+          if (!isTargetInStudentOU) {
+            return NextResponse.json({ 
+              error: "일반 교사는 학생 조직단위(OU)에 소속된 계정만 비밀번호를 초기화할 수 있습니다." 
+            }, { status: 403 });
+          }
+        }
+
         const { tempPassword } = await resetStudentPassword(email);
         await writeAuditLog({
           operatorEmail: adminEmail,

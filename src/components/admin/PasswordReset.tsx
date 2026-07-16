@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import { getClientCache } from "@/lib/cache/clientCache";
@@ -15,7 +15,7 @@ interface SearchedStudent {
 }
 
 export default function PasswordReset() {
-  const { userData } = useAuth();
+  const { userData, schoolSettings } = useAuth();
   const [searchValue, setSearchValue] = useState("");
   const [selectedStudent, setSelectedStudent] = useState<SearchedStudent | null>(null);
   const [loading, setLoading] = useState(false);
@@ -54,6 +54,21 @@ export default function PasswordReset() {
     setSuccessResult(null);
     setError("");
   };
+
+  const isSuperAdmin = userData?.role === "super_admin";
+
+  const isAllowedStudent = useMemo(() => {
+    if (!selectedStudent) return false;
+    if (isSuperAdmin) return true; // Super admin can reset any account
+
+    const studentOUMappings: Record<string, string> = schoolSettings?.ouMapping?.students || {};
+    const studentOUPaths = Object.values(studentOUMappings).map(p => p.toLowerCase().trim());
+    const targetOU = (selectedStudent.orgUnitPath || "").toLowerCase().trim();
+
+    return studentOUPaths.some(studentOU => 
+      targetOU === studentOU || targetOU.startsWith(studentOU + "/")
+    );
+  }, [selectedStudent, schoolSettings, isSuperAdmin]);
 
   const handleResetPassword = async () => {
     if (!selectedStudent) return;
@@ -163,21 +178,29 @@ export default function PasswordReset() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleResetPassword}
-            disabled={loading}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 text-sm"
-          >
-            {loading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                <span>초기화 진행 중...</span>
-              </>
-            ) : (
-              <span>⚡ 비밀번호를 1234abcd!!!! 로 즉시 초기화</span>
-            )}
-          </button>
+          {isAllowedStudent ? (
+            <button
+              type="button"
+              onClick={handleResetPassword}
+              disabled={loading}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 text-sm"
+            >
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <span>초기화 진행 중...</span>
+                </>
+              ) : (
+                <span>⚡ 비밀번호를 1234abcd!!!! 로 즉시 초기화</span>
+              )}
+            </button>
+          ) : (
+            <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 text-xs font-semibold leading-relaxed">
+              ⚠️ 일반 교사는 학생 조직단위(OU)에 소속된 계정만 비밀번호를 초기화할 수 있습니다.
+              <br />
+              (현재 계정의 조직단위: <code className="bg-red-100 px-1.5 py-0.5 rounded font-mono font-bold text-red-900">{selectedStudent.orgUnitPath}</code>)
+            </div>
+          )}
         </div>
       )}
 
