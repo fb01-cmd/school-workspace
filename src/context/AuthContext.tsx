@@ -22,10 +22,17 @@ export interface SchoolSettings {
   };
 }
 
+export interface OrgUnit {
+  orgUnitId: string;
+  orgUnitPath: string;
+  name: string;
+}
+
 interface AuthContextType {
   user: User | null;
   userData: UserData | null;
   schoolSettings: SchoolSettings | null;
+  orgUnits: OrgUnit[];
   loading: boolean;
 }
 
@@ -33,6 +40,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   userData: null,
   schoolSettings: null,
+  orgUnits: [],
   loading: true,
 });
 
@@ -42,7 +50,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [schoolSettings, setSchoolSettings] = useState<SchoolSettings | null>(null);
+  const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
   const [loading, setLoading] = useState(true);
+
 
   useEffect(() => {
     let unsubscribeDoc: (() => void) | null = null;
@@ -108,8 +118,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                   .then(res => res.ok ? res.json() : null)
                   .then(ouData => {
                     if (ouData) {
+                      const units = ouData.orgUnits || [];
                       const { setClientCache } = require("@/lib/cache/clientCache");
-                      setClientCache("ou:all", ouData.orgUnits || []);
+                      setClientCache("ou:all", units);
+                      setOrgUnits(units); // ← context state에도 저장 (즉시 접근 가능)
                     }
                   }).catch(() => {});
 
@@ -162,6 +174,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } catch (cacheErr) {}
         setUserData(null);
         setSchoolSettings(null);
+        setOrgUnits([]);
         setLoading(false);
         if (unsubscribeDoc) unsubscribeDoc();
         if (unsubscribeSettings) unsubscribeSettings();
@@ -176,7 +189,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, userData, schoolSettings, loading }}>
+    <AuthContext.Provider value={{ user, userData, schoolSettings, orgUnits, loading }}>
       {children}
     </AuthContext.Provider>
   );

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { getClientCache } from "@/lib/cache/clientCache";
 import OUTreeSelector from "@/components/admin/OUTreeSelector";
 import BookmarkTreeEditor, { BookmarkItem } from "@/components/admin/BookmarkTreeEditor";
 
@@ -62,23 +61,15 @@ interface SyncLog {
   timestamp: string;
 }
 
-interface OU {
-  orgUnitId: string;
-  orgUnitPath: string;
-  name: string;
-}
-
 export default function ChromeBookmarks() {
 
-  const { userData, schoolSettings } = useAuth();
+  const { userData, schoolSettings, orgUnits } = useAuth();
   const domain = userData?.domain || "";
   const isSuperAdmin = userData?.role === "super_admin";
 
   const [activeTab, setActiveTab] = useState<"edit" | "logs">("edit");
-  const [orgUnits, setOrgUnits] = useState<OU[]>([]);
-  const [loadingOUs, setLoadingOUs] = useState(false);
   const [selectedOU, setSelectedOU] = useState("");
-  
+
   // Bookmark Config States
   const toplevelName = "효명고등학교";
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
@@ -95,30 +86,6 @@ export default function ChromeBookmarks() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // A. Load OUs
-  const loadOUs = async () => {
-    setLoadingOUs(true);
-    try {
-      const cached = getClientCache("ou:all") as OU[];
-      if (cached && cached.length > 0) {
-        setOrgUnits(cached);
-        return;
-      }
-      const res = await fetch("/api/workspace/ou");
-      const data = await res.json();
-      if (res.ok) {
-        setOrgUnits(data.orgUnits || []);
-      }
-    } catch (err) {
-      console.error("Failed to load OUs:", err);
-    } finally {
-      setLoadingOUs(false);
-    }
-  };
-
-  useEffect(() => {
-    loadOUs();
-  }, []);
 
   // B. Compute Allowed OUs for dropdown - show ONLY OUs explicitly listed in allowedBookmarkOUs (exact match)
   // The cascade inheritance (parent allows children) is enforced on the backend for security,
@@ -300,8 +267,8 @@ export default function ChromeBookmarks() {
             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">수정할 배포 조직단위(OU) 선택</label>
-                {loadingOUs ? (
-                  <p className="text-xs text-gray-400">조직도 로드 중...</p>
+                {orgUnits.length === 0 ? (
+                  <p className="text-xs text-gray-400">조직 정보 로드 중...</p>
                 ) : (
                   <div className="max-w-md">
                     <OUTreeSelector
