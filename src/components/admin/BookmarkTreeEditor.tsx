@@ -75,18 +75,22 @@ function appendToFolder(items: BookmarkItem[], folderPath: number[], newItem: Bo
 type DragPayload = { path: number[]; item: BookmarkItem };
 let _drag: DragPayload | null = null;
 
-// ─── Add Modal ───────────────────────────────────────────────────────────────
+// ─── Item Modal (Add & Edit) ────────────────────────────────────────────────
 
-interface AddModalProps {
+interface ItemModalProps {
+  mode: "add" | "edit";
   type: "bookmark" | "folder";
+  initialName?: string;
+  initialUrl?: string;
   onConfirm: (name: string, url?: string) => void;
   onCancel: () => void;
 }
 
-function AddModal({ type, onConfirm, onCancel }: AddModalProps) {
-  const [name, setName] = useState("");
-  const [url, setUrl] = useState("https://");
+function ItemModal({ mode, type, initialName = "", initialUrl = "https://", onConfirm, onCancel }: ItemModalProps) {
+  const [name, setName] = useState(initialName);
+  const [url, setUrl] = useState(initialUrl || "https://");
   const isBookmark = type === "bookmark";
+  const isEdit = mode === "edit";
 
   const handleSubmit = () => {
     const trimmedName = name.trim();
@@ -103,13 +107,17 @@ function AddModal({ type, onConfirm, onCancel }: AddModalProps) {
     }
   };
 
+  const title = isEdit
+    ? (isBookmark ? "북마크 수정" : "폴더 이름 수정")
+    : (isBookmark ? "북마크 추가" : "폴더 추가");
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
         <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
           <span>{isBookmark ? "🔗" : "📁"}</span>
-          {isBookmark ? "북마크 추가" : "폴더 추가"}
+          {title}
         </h3>
 
         <div className="space-y-3">
@@ -159,13 +167,16 @@ function AddModal({ type, onConfirm, onCancel }: AddModalProps) {
             disabled={!name.trim()}
             className="flex-1 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 rounded-lg py-2 transition-colors"
           >
-            등록
+            {isEdit ? "저장" : "등록"}
           </button>
         </div>
       </div>
     </div>
   );
 }
+
+
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -190,10 +201,7 @@ function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, 
 
   const isFolder = item.children !== undefined;
   const [expanded, setExpanded] = useState(false);
-  const [editName, setEditName] = useState(false);
-  const [editUrl, setEditUrl] = useState(false);
-  const [tmpName, setTmpName] = useState(item.name);
-  const [tmpUrl, setTmpUrl] = useState(item.url || "");
+  const [showEditModal, setShowEditModal] = useState(false);
 
   const rowRef = useRef<HTMLDivElement>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -262,18 +270,6 @@ function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, 
     _drag = null;
   };
 
-  const commitName = () => {
-    const n = tmpName.trim();
-    if (n) onUpdate(path, { name: n });
-    else setTmpName(item.name);
-    setEditName(false);
-  };
-
-  const commitUrl = () => {
-    onUpdate(path, { url: tmpUrl.trim() });
-    setEditUrl(false);
-  };
-
   return (
     <div className={isSelf ? "opacity-30" : ""}>
       {isDropBefore && <div className="h-0.5 bg-indigo-500 rounded-full mx-2 my-0.5 pointer-events-none" />}
@@ -310,55 +306,49 @@ function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, 
         </span>
 
         {/* Name & URL */}
+        {/* Edit Modal */}
+        {showEditModal && (
+          <ItemModal
+            mode="edit"
+            type={isFolder ? "folder" : "bookmark"}
+            initialName={item.name}
+            initialUrl={item.url}
+            onConfirm={(name, url) => {
+              const updates: Partial<BookmarkItem> = { name };
+              if (url !== undefined) updates.url = url;
+              onUpdate(path, updates);
+              setShowEditModal(false);
+            }}
+            onCancel={() => setShowEditModal(false)}
+          />
+        )}
+
+        {/* Name & URL */}
         <div className="flex-1 min-w-0">
-          {editName ? (
-            <input
-              autoFocus
-              value={tmpName}
-              onChange={e => setTmpName(e.target.value)}
-              onBlur={commitName}
-              onKeyDown={e => { if (e.key === "Enter") commitName(); if (e.key === "Escape") { setTmpName(item.name); setEditName(false); } }}
-              onClick={e => e.stopPropagation()}
-              className="w-full text-[13px] font-semibold text-gray-900 bg-indigo-50 border-b-2 border-indigo-400 outline-none px-0.5 rounded-sm"
-            />
-          ) : (
-            <p
-              className="text-[13px] font-semibold text-gray-900 truncate leading-tight cursor-pointer"
-              onClick={() => isFolder && setExpanded(v => !v)}
-              onDoubleClick={e => { e.stopPropagation(); setEditName(true); setTmpName(item.name); }}
-              title={item.name}
-            >
-              {item.name}
-            </p>
-          )}
+          <p
+            className="text-[13px] font-semibold text-gray-900 truncate leading-tight cursor-pointer"
+            onClick={() => isFolder && setExpanded(v => !v)}
+            onDoubleClick={e => { e.stopPropagation(); setShowEditModal(true); }}
+            title={item.name}
+          >
+            {item.name}
+          </p>
 
           {!isFolder && (
-            editUrl ? (
-              <input
-                autoFocus
-                value={tmpUrl}
-                onChange={e => setTmpUrl(e.target.value)}
-                onBlur={commitUrl}
-                onKeyDown={e => { if (e.key === "Enter") commitUrl(); if (e.key === "Escape") { setTmpUrl(item.url || ""); setEditUrl(false); } }}
-                onClick={e => e.stopPropagation()}
-                className="w-full text-[11px] text-blue-600 bg-blue-50 border-b border-blue-400 outline-none mt-0.5 font-mono rounded-sm"
-              />
-            ) : (
-              <p
-                className="text-[11px] text-gray-400 truncate font-mono leading-tight mt-px hover:text-blue-500 cursor-text"
-                onDoubleClick={e => { e.stopPropagation(); setEditUrl(true); setTmpUrl(item.url || ""); }}
-                title={item.url}
-              >
-                {item.url || "URL 없음 — 더블클릭으로 입력"}
-              </p>
-            )
+            <p
+              className="text-[11px] text-gray-400 truncate font-mono leading-tight mt-px hover:text-blue-500 cursor-text"
+              onDoubleClick={e => { e.stopPropagation(); setShowEditModal(true); }}
+              title={item.url}
+            >
+              {item.url || "URL 없음"}
+            </p>
           )}
         </div>
 
         {/* Action buttons */}
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          <button onClick={e => { e.stopPropagation(); setEditName(true); setTmpName(item.name); }}
-            className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 text-[11px] transition-colors" title="이름 수정">✏️</button>
+          <button onClick={e => { e.stopPropagation(); setShowEditModal(true); }}
+            className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 text-[11px] transition-colors" title="수정">✏️</button>
           {isFolder && <>
             <button onClick={e => { e.stopPropagation(); onOpenAddModal(path, "bookmark"); setExpanded(true); }}
               className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 text-[11px] transition-colors" title="폴더 안에 북마크 추가">🔗+</button>
@@ -482,11 +472,13 @@ export default function BookmarkTreeEditor({ items, onChange }: BookmarkTreeEdit
     <div onDragEnd={() => { setDropTarget(null); _drag = null; }}>
       {/* Add Item Modal */}
       {modal.open && (
-        <AddModal
+        <ItemModal
+          mode="add"
           type={modal.type}
           onConfirm={handleModalConfirm}
           onCancel={closeModal}
         />
+
       )}
 
       {/* Toolbar */}
