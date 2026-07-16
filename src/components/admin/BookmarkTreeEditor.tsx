@@ -75,6 +75,98 @@ function appendToFolder(items: BookmarkItem[], folderPath: number[], newItem: Bo
 type DragPayload = { path: number[]; item: BookmarkItem };
 let _drag: DragPayload | null = null;
 
+// ─── Add Modal ───────────────────────────────────────────────────────────────
+
+interface AddModalProps {
+  type: "bookmark" | "folder";
+  onConfirm: (name: string, url?: string) => void;
+  onCancel: () => void;
+}
+
+function AddModal({ type, onConfirm, onCancel }: AddModalProps) {
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("https://");
+  const isBookmark = type === "bookmark";
+
+  const handleSubmit = () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+    if (isBookmark) {
+      const trimmedUrl = url.trim();
+      if (!trimmedUrl.startsWith("http")) {
+        alert("URL은 http:// 또는 https://로 시작해야 합니다.");
+        return;
+      }
+      onConfirm(trimmedName, trimmedUrl);
+    } else {
+      onConfirm(trimmedName);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+          <span>{isBookmark ? "🔗" : "📁"}</span>
+          {isBookmark ? "북마크 추가" : "폴더 추가"}
+        </h3>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wide">
+              {isBookmark ? "북마크 이름" : "폴더 이름"}
+            </label>
+            <input
+              autoFocus
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") handleSubmit();
+                if (e.key === "Escape") onCancel();
+              }}
+              placeholder={isBookmark ? "예: 학업성적관리 시스템" : "예: 교무부"}
+              className="w-full text-sm text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition"
+            />
+          </div>
+
+          {isBookmark && (
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase tracking-wide">URL 주소</label>
+              <input
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") handleSubmit();
+                  if (e.key === "Escape") onCancel();
+                }}
+                placeholder="https://"
+                className="w-full text-sm font-mono text-gray-900 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition"
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onCancel}
+            className="flex-1 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg py-2 transition-colors"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!name.trim()}
+            className="flex-1 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 rounded-lg py-2 transition-colors"
+          >
+            등록
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type DropPos = "before" | "after" | "into";
@@ -88,13 +180,14 @@ interface NodeProps {
   setDropTarget: (dt: DropTarget) => void;
   onUpdate: (path: number[], u: Partial<BookmarkItem>) => void;
   onDelete: (path: number[]) => void;
-  onAdd: (folderPath: number[], item: BookmarkItem) => void;
+  onOpenAddModal: (folderPath: number[], type: "bookmark" | "folder") => void;
   onMove: (from: DragPayload, toPath: number[], pos: DropPos) => void;
 }
 
 // ─── Node Component ───────────────────────────────────────────────────────────
 
-function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, onDelete, onAdd, onMove }: NodeProps) {
+function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, onDelete, onOpenAddModal, onMove }: NodeProps) {
+
   const isFolder = item.children !== undefined;
   const [expanded, setExpanded] = useState(false);
   const [editName, setEditName] = useState(false);
@@ -267,12 +360,19 @@ function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, 
           <button onClick={e => { e.stopPropagation(); setEditName(true); setTmpName(item.name); }}
             className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 text-[11px] transition-colors" title="이름 수정">✏️</button>
           {isFolder && <>
-            <button onClick={e => { e.stopPropagation(); onAdd(path, { name: "새 북마크", url: "https://" }); setExpanded(true); }}
+            <button onClick={e => { e.stopPropagation(); onOpenAddModal(path, "bookmark"); setExpanded(true); }}
               className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 text-[11px] transition-colors" title="폴더 안에 북마크 추가">🔗+</button>
-            <button onClick={e => { e.stopPropagation(); onAdd(path, { name: "새 폴더", children: [] }); setExpanded(true); }}
+            <button onClick={e => { e.stopPropagation(); onOpenAddModal(path, "folder"); setExpanded(true); }}
               className="p-1 rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50 text-[11px] transition-colors" title="폴더 안에 하위 폴더 추가">📁+</button>
           </>}
-          <button onClick={e => { e.stopPropagation(); onDelete(path); }}
+          <button
+            onClick={e => {
+              e.stopPropagation();
+              const label = isFolder ? `폴더 "${item.name}" (하위 항목 포함)` : `"${item.name}"`;
+              if (window.confirm(`${label}을(를) 삭제하시겠습니까?\n\n저장 버튼을 누르기 전까지는 실제 반영되지 않습니다.`)) {
+                onDelete(path);
+              }
+            }}
             className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 text-[11px] transition-colors" title="삭제">✕</button>
         </div>
       </div>
@@ -295,10 +395,11 @@ function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, 
               setDropTarget={setDropTarget}
               onUpdate={onUpdate}
               onDelete={onDelete}
-              onAdd={onAdd}
+              onOpenAddModal={onOpenAddModal}
               onMove={onMove}
             />
           ))}
+
         </div>
       )}
     </div>
@@ -312,8 +413,33 @@ interface BookmarkTreeEditorProps {
   onChange: (items: BookmarkItem[]) => void;
 }
 
+interface ModalState {
+  open: boolean;
+  type: "bookmark" | "folder";
+  folderPath: number[] | null; // null = root level
+}
+
 export default function BookmarkTreeEditor({ items, onChange }: BookmarkTreeEditorProps) {
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
+  const [modal, setModal] = useState<ModalState>({ open: false, type: "bookmark", folderPath: null });
+
+  const openAddModal = (folderPath: number[] | null, type: "bookmark" | "folder") =>
+    setModal({ open: true, type, folderPath });
+
+  const closeModal = () => setModal(s => ({ ...s, open: false }));
+
+  const handleModalConfirm = (name: string, url?: string) => {
+    const newItem: BookmarkItem = url !== undefined
+      ? { name, url }
+      : { name, children: [] };
+
+    if (modal.folderPath === null) {
+      onChange([...deepClone(items), deepClone(newItem)]);
+    } else {
+      onChange(appendToFolder(items, modal.folderPath, newItem));
+    }
+    closeModal();
+  };
 
   const handleUpdate = (path: number[], updates: Partial<BookmarkItem>) =>
     onChange(updateAtPath(items, path, updates));
@@ -322,12 +448,6 @@ export default function BookmarkTreeEditor({ items, onChange }: BookmarkTreeEdit
     const [newItems] = removeAtPath(items, path);
     onChange(newItems);
   };
-
-  const handleAdd = (folderPath: number[], newItem: BookmarkItem) =>
-    onChange(appendToFolder(items, folderPath, newItem));
-
-  const handleAddRoot = (newItem: BookmarkItem) =>
-    onChange([...deepClone(items), deepClone(newItem)]);
 
   const handleMove = (from: DragPayload, toPath: number[], pos: DropPos) => {
     const fromStr = from.path.join("-");
@@ -360,13 +480,22 @@ export default function BookmarkTreeEditor({ items, onChange }: BookmarkTreeEdit
 
   return (
     <div onDragEnd={() => { setDropTarget(null); _drag = null; }}>
+      {/* Add Item Modal */}
+      {modal.open && (
+        <AddModal
+          type={modal.type}
+          onConfirm={handleModalConfirm}
+          onCancel={closeModal}
+        />
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <button type="button" onClick={() => handleAddRoot({ name: "새 북마크", url: "https://" })}
+        <button type="button" onClick={() => openAddModal(null, "bookmark")}
           className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-md transition-colors shadow-sm">
           🔗 북마크 추가
         </button>
-        <button type="button" onClick={() => handleAddRoot({ name: "새 폴더", children: [] })}
+        <button type="button" onClick={() => openAddModal(null, "folder")}
           className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold px-3 py-1.5 rounded-md transition-colors shadow-sm">
           📁 폴더 추가
         </button>
@@ -396,7 +525,7 @@ export default function BookmarkTreeEditor({ items, onChange }: BookmarkTreeEdit
               setDropTarget={setDropTarget}
               onUpdate={handleUpdate}
               onDelete={handleDelete}
-              onAdd={handleAdd}
+              onOpenAddModal={openAddModal}
               onMove={handleMove}
             />
           ))}
@@ -405,3 +534,5 @@ export default function BookmarkTreeEditor({ items, onChange }: BookmarkTreeEdit
     </div>
   );
 }
+
+
