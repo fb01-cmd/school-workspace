@@ -195,7 +195,7 @@ export default function ChromeBookmarks() {
       <div>
         <h2 className="text-xl font-bold text-gray-900">구글 크롬 브라우저 관리 북마크 배정</h2>
         <p className="text-gray-500 text-xs mt-1">
-          교사가 직접 학생들 크롬 브라우저의 최상단 북마크바(Managed Bookmarks)를 일괄 배포 및 제어합니다.
+          크롬 브라우저 최상단 북마크바(Managed Bookmarks)를 조직단위별로 일괄 배포 및 제어합니다.
         </p>
       </div>
 
@@ -234,7 +234,7 @@ export default function ChromeBookmarks() {
           <p className="leading-relaxed">
             현재 구글 Workspace 최고관리자의 도메인 위임 권한 중 
             <span className="font-mono bg-amber-100 px-1 py-0.5 rounded text-[10px] mx-1">https://www.googleapis.com/auth/chrome.management.policy</span> 
-            스코프가 API 콘솔에 등록되지 않았거나 승인되지 않아 **[로컬 DB 백업 모드]**로 자동 전환하여 구동 중입니다.
+            스코프가 API 콘솔에 등록되지 않았거나 승인되지 않아 <strong>[로컬 DB 백업 모드]</strong>로 자동 전환하여 구동 중입니다.
           </p>
           <p className="text-[10px] text-amber-600 font-medium">
             (북마크 편집 정보는 플랫폼 데이터베이스와 수정 이력에 정상 보관되나, 실제 학생 기기 크롬 브라우저 상단바에 즉시 배포되지는 않습니다. 도메인 위임이 활성화되면 실시간 동기화가 재개됩니다.)
@@ -324,7 +324,7 @@ export default function ChromeBookmarks() {
             <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-5 space-y-3">
               <h4 className="text-xs font-bold text-indigo-950 uppercase tracking-wide">💡 크롬 북마크 배포 가이드</h4>
               <ul className="list-disc pl-4 space-y-2 text-xs text-indigo-900 leading-relaxed">
-                <li>배포를 적용하면, 해당 조직단위(OU)에 소속된 모든 학생/교사 계정이 로그인된 크롬 브라우저 상단에 북마크바 폴더가 **강제로 생성**되며 사용자가 삭제할 수 없습니다.</li>
+                <li>배포를 적용하면, 해당 조직단위(OU)에 소속된 모든 계정이 로그인된 크롬 브라우저 상단에 북마크바 폴더가 <strong>강제로 생성</strong>되며 사용자가 삭제할 수 없습니다.</li>
                 <li>적용 완료 후 반영까지 크롬 브라우저 수명 주기에 따라 최대 1~5분가량 소요될 수 있으며, 브라우저 주소창에 <span className="font-mono bg-indigo-150 px-1 py-0.5 rounded text-[10px]">chrome://policy</span>를 입력하여 [정책 새로고침]을 누르면 즉시 동기화됩니다.</li>
                 <li>안전한 협업을 위해 모든 북마크 수정 이력은 백엔드 감사 로그에 실시간 기록되며, 수정 로그 열람실에서 즉시 조회가 가능합니다.</li>
               </ul>

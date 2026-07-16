@@ -493,7 +493,7 @@ export default function BookmarkTreeEditor({ items, onChange }: BookmarkTreeEdit
         </button>
         {items.length > 0 && (
           <span className="ml-auto text-[11px] text-gray-400">
-            총 {items.length}개 항목 · 폴더 클릭 시 열림 · 이름 더블클릭으로 수정 · 드래그로 순서 변경
+            총 {items.length}개 항목 · 폴더 클릭 시 열림 · ✏️ 버튼으로 수정 · 드래그로 순서 변경
           </span>
         )}
       </div>

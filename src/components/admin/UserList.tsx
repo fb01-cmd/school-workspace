@@ -823,7 +823,7 @@ export default function UserList() {
       <div className="bg-white rounded-lg border border-gray-200 p-8 text-center shadow-sm">
         <h3 className="text-lg font-bold text-gray-900 mb-2">아직 조직단위(OU) 설정이 없습니다</h3>
         <p className="text-gray-600 mb-4">
-          명단을 불러오기 전에 **[조직단위 설정]** 메뉴에서 학교 매핑을 먼저 완료해 주세요.
+          명단을 불러오기 전에 <strong>[조직단위 설정]</strong> 메뉴에서 학교 매핑을 먼저 완료해 주세요.
         </p>
       </div>
     );
