@@ -59,3 +59,48 @@ This version has breaking changes — APIs, conventions, and file structure may 
 1. 에이전트 전용 격리 공간(예: C:\Users\...\.gemini\antigravity-ide\brain)에만 마크다운 문서를 작성하여 격리시키지 않는다.
 2. 모든 기획, 계획, 진행 현황 문서는 프로젝트 루트에 파일(예: development_roadmap.md)로 작성하고 Git 추적 대상에 포함되게 한다. 이를 통해 기기 전환이나 대화 세션 만료 시에도 기획 맥락이 끊기지 않도록 방지한다.
 <!-- END:git-based-roadmap-rules -->
+
+<!-- BEGIN:prefetch-first-rules -->
+# 백그라운드 프리페치 데이터 우선 사용 규칙
+
+이 프로젝트는 로그인 직후 `AuthContext.tsx`에서 핵심 데이터를 백그라운드로 미리 로딩한다.
+새 기능을 개발할 때 아래 목록을 **1순위로 확인**하고, 해당 데이터가 있으면 반드시 우선 사용한다.
+불필요한 API 재호출, 로딩 스피너, 중복 state를 만들지 않는다.
+
+## 프리페치 데이터 목록 (로그인 시 자동 로드)
+
+| 데이터 | 접근 방법 | 캐시 키 | 대상 API |
+|---|---|---|---|
+| **조직단위(OU) 목록** | `useAuth().orgUnits` (React state) | `"ou:all"` | `GET /api/workspace/ou` |
+| **전체 사용자 목록** | `getClientCache("users:all")` | `"users:all"` | `POST /api/workspace/users` |
+| **그룹(메일링리스트) 목록** | `getClientCache("groups:all")` | `"groups:all"` | `POST /api/workspace/groups` |
+| **학교 설정** | `useAuth().schoolSettings` (React state) | Firestore 실시간 구독 | — |
+| **로그인 사용자 정보** | `useAuth().userData` (React state) | Firestore 실시간 구독 | — |
+
+## 개발 체크리스트 (새 컴포넌트/기능 개발 전 필독)
+
+1. **OU 목록이 필요한가?** → `useAuth().orgUnits`를 바로 사용한다. `fetch("/api/workspace/ou")`를 새로 호출하지 않는다.
+2. **사용자 검색/목록이 필요한가?** → `getClientCache("users:all")`로 로컬 필터링한다. 캐시가 없는 경우에만 API를 온디맨드 호출한다.
+3. **그룹 목록이 필요한가?** → `getClientCache("groups:all")`로 로컬 필터링한다.
+4. **학교 설정(학년 수, OU 매핑 등)이 필요한가?** → `useAuth().schoolSettings`를 사용한다.
+
+## 구현 패턴 예시
+
+```typescript
+// ✅ 올바른 방법 - 프리페치 데이터 우선 사용
+const { orgUnits, schoolSettings } = useAuth();
+
+// ❌ 금지 - 이미 있는 데이터를 재호출
+const [orgUnits, setOrgUnits] = useState([]);
+useEffect(() => {
+  fetch("/api/workspace/ou").then(...).then(data => setOrgUnits(data));
+}, []);
+```
+
+## 새 데이터를 프리페치에 추가하는 방법
+
+새 기능에서 공통적으로 필요한 데이터가 생겼을 때, 개별 컴포넌트에 fetch를 추가하지 말고:
+1. `src/context/AuthContext.tsx`의 백그라운드 프리페치 블록(`setTimeout` 내부)에 추가한다.
+2. 필요 시 `AuthContextType` 인터페이스와 state를 추가하여 `useAuth()`로 노출한다.
+3. 이 문서의 프리페치 데이터 목록 표를 업데이트한다.
+<!-- END:prefetch-first-rules -->
