@@ -87,21 +87,30 @@ export default function ChromeBookmarks() {
   const [success, setSuccess] = useState("");
 
 
-  // B. Compute Allowed OUs for dropdown - show ONLY OUs explicitly listed in allowedBookmarkOUs (exact match)
-  // The cascade inheritance (parent allows children) is enforced on the backend for security,
-  // but the dropdown should only show what the admin explicitly allowed.
-  const filteredOUs = orgUnits.filter((ou) => {
-    const allowedList: string[] = schoolSettings?.allowedBookmarkOUs || ["/교직원", "/학생"];
-    const cleanTarget = ou.orgUnitPath.trim().toLowerCase();
-    return allowedList.some((allowed: string) => cleanTarget === allowed.trim().toLowerCase());
-  });
+  // B. Compute Allowed OUs for dropdown — sorted by depth then alphabetically
+  // so filteredOUs[0] is always the shallowest (topmost) allowed OU.
+  const filteredOUs = orgUnits
+    .filter((ou) => {
+      const allowedList: string[] = schoolSettings?.allowedBookmarkOUs || ["/교직원", "/학생"];
+      const cleanTarget = ou.orgUnitPath.trim().toLowerCase();
+      return allowedList.some((allowed: string) => cleanTarget === allowed.trim().toLowerCase());
+    })
+    .sort((a, b) => {
+      const depthA = (a.orgUnitPath.match(/\//g) || []).length;
+      const depthB = (b.orgUnitPath.match(/\//g) || []).length;
+      if (depthA !== depthB) return depthA - depthB;
+      return a.orgUnitPath.localeCompare(b.orgUnitPath, "ko");
+    });
 
-  // Set default selected OU
+  // Set default selected OU — pick the first (topmost) when nothing is selected
+  // or when the current selection is no longer in the allowed list
   useEffect(() => {
-    if (filteredOUs.length > 0 && !selectedOU) {
+    if (filteredOUs.length === 0) return;
+    const stillValid = filteredOUs.some(ou => ou.orgUnitPath === selectedOU);
+    if (!selectedOU || !stillValid) {
       setSelectedOU(filteredOUs[0].orgUnitPath);
     }
-  }, [filteredOUs, selectedOU]);
+  }, [filteredOUs.map(o => o.orgUnitPath).join(",")]);
 
   // C. Load Current Bookmarks Configuration when selected OU changes
   const loadBookmarkConfig = async (ouPath: string) => {
