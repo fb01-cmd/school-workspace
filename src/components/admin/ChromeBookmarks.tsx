@@ -38,7 +38,7 @@ export default function ChromeBookmarks() {
   const [selectedOU, setSelectedOU] = useState("");
   
   // Bookmark Config States
-  const [toplevelName, setToplevelName] = useState("효명고등학교 북마크바");
+  const toplevelName = "효명고등학교";
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
@@ -110,7 +110,7 @@ export default function ChromeBookmarks() {
       const res = await fetch(`/api/workspace/bookmarks?action=get&orgUnitPath=${encodeURIComponent(ouPath)}`);
       const data = await res.json();
       if (res.ok) {
-        setToplevelName(data.toplevel_name || "북마크바");
+        // toplevelName is fixed as "효명고등학교" - no longer user-configurable
         setBookmarks(data.bookmarks || []);
         setIsLocalFallback(!!data.isLocalFallback);
         setAuthWarning(data.authWarning || "");
@@ -304,16 +304,7 @@ export default function ChromeBookmarks() {
                 )}
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">북마크바 최상단 폴더 이름</label>
-                <input
-                  type="text"
-                  value={toplevelName}
-                  onChange={(e) => setToplevelName(e.target.value)}
-                  placeholder="예: 효명고등학교 공식 북마크바"
-                  className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm text-gray-900 bg-white"
-                />
-              </div>
+              {/* toplevel_name is fixed as "효명고등학교" across all OUs - not user-editable */}
             </div>
 
             {/* Bookmarks Tree Container */}

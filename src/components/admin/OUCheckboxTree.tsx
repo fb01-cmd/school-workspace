@@ -113,9 +113,6 @@ function CheckboxNode({ node, selected, onChange, depth = 0 }: CheckboxNodeProps
           onClick={handleToggle}
         >
           {node.name}
-          <span className="text-[10px] text-gray-400 font-normal ml-1.5 font-mono">
-            {node.path}
-          </span>
         </span>
 
         {/* Badge when fully selected */}
