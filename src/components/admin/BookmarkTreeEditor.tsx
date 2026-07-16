@@ -103,6 +103,7 @@ function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, 
   const [tmpUrl, setTmpUrl] = useState(item.url || "");
 
   const rowRef = useRef<HTMLDivElement>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pathStr = path.join("-");
 
   const isSelf = _drag?.path.join("-") === pathStr;
@@ -110,10 +111,16 @@ function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, 
   const isDropAfter  = dropTarget?.pathStr === pathStr && dropTarget.pos === "after";
   const isDropInto   = dropTarget?.pathStr === pathStr && dropTarget.pos === "into";
 
+  // Clear hover-expand timer
+  const clearHoverTimer = () => {
+    if (hoverTimer.current) { clearTimeout(hoverTimer.current); hoverTimer.current = null; }
+  };
+
+
   const handleDragStart = (e: React.DragEvent) => {
     _drag = { path, item };
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", pathStr); // Required for browser DnD
+    e.dataTransfer.setData("text/plain", pathStr);
     e.stopPropagation();
   };
 
@@ -128,18 +135,26 @@ function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, 
     const ratio = (e.clientY - rect.top) / rect.height;
 
     let pos: DropPos;
-    if (isFolder && expanded && ratio > 0.3 && ratio < 0.7) {
+    // Allow "into" for ALL folders (expanded or not) when hovering middle zone
+    if (isFolder && ratio > 0.25 && ratio < 0.75) {
       pos = "into";
-    } else if (ratio < 0.5) {
-      pos = "before";
+      // Auto-expand collapsed folders after 650ms hover
+      if (!expanded && !hoverTimer.current) {
+        hoverTimer.current = setTimeout(() => {
+          setExpanded(true);
+          hoverTimer.current = null;
+        }, 650);
+      }
     } else {
-      pos = "after";
+      clearHoverTimer();
+      pos = ratio < 0.5 ? "before" : "after";
     }
     setDropTarget({ pathStr, pos });
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     if (!rowRef.current?.contains(e.relatedTarget as Node)) {
+      clearHoverTimer();
       setDropTarget(null);
     }
   };
