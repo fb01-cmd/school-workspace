@@ -78,17 +78,13 @@ export default function ChromeBookmarks() {
     loadOUs();
   }, []);
 
-  // B. Compute Allowed OUs for dropdown based on allowedBookmarkOUs and hierarchy
+  // B. Compute Allowed OUs for dropdown - show ONLY OUs explicitly listed in allowedBookmarkOUs (exact match)
+  // The cascade inheritance (parent allows children) is enforced on the backend for security,
+  // but the dropdown should only show what the admin explicitly allowed.
   const filteredOUs = orgUnits.filter((ou) => {
     const allowedList: string[] = schoolSettings?.allowedBookmarkOUs || ["/교직원", "/학생"];
     const cleanTarget = ou.orgUnitPath.trim().toLowerCase();
-
-    return allowedList.some((allowed: string) => {
-      const cleanAllowed = allowed.trim().toLowerCase();
-      if (cleanTarget === cleanAllowed) return true;
-      const prefix = cleanAllowed.endsWith("/") ? cleanAllowed : `${cleanAllowed}/`;
-      return cleanTarget.startsWith(prefix);
-    });
+    return allowedList.some((allowed: string) => cleanTarget === allowed.trim().toLowerCase());
   });
 
   // Set default selected OU
