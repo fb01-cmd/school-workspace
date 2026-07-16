@@ -104,3 +104,47 @@ useEffect(() => {
 2. 필요 시 `AuthContextType` 인터페이스와 state를 추가하여 `useAuth()`로 노출한다.
 3. 이 문서의 프리페치 데이터 목록 표를 업데이트한다.
 <!-- END:prefetch-first-rules -->
+
+<!-- BEGIN:firestore-security-rules -->
+# Firestore 보안 규칙 — 배포 전 필수 변경 규칙
+
+이 프로젝트는 현재 개발 편의를 위해 Firestore 보안 규칙이 공개(open) 상태이다.
+**배포(Vercel 등 외부 공개) 직전에 반드시 아래 절차를 수행해야 한다.**
+
+## 현재 개발용 규칙 (배포 금지)
+
+```js
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{documents=**} {
+      allow read, write: if true;  // ⛔ 공개 — 로컬 전용
+    }
+  }
+}
+```
+
+## 배포 시 적용해야 할 규칙
+
+```js
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      // ✅ 로그인한 사용자(Google 계정)만 읽기/쓰기 허용
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+```
+
+## 변경 방법
+
+Firebase 콘솔 → Firestore → **규칙** 탭 → 위 내용으로 교체 → **게시** 클릭
+
+## 근거
+
+- 이 앱의 서버 로직(Next.js API Route)은 Firebase Admin SDK를 사용하므로 보안 규칙 적용 대상 외
+- 클라이언트는 로그인 후 실시간 구독(`onSnapshot`)만 사용하므로 `request.auth != null` 조건이 충분
+- 학생 개인정보 보호를 위해 공개 규칙 상태로 배포하는 것은 절대 금지
+<!-- END:firestore-security-rules -->
