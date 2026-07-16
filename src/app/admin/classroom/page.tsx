@@ -217,6 +217,17 @@ export default function ClassroomPage() {
     }
   };
 
+  // Helper: lookup display info from users:all cache
+  const getUserInfo = (email: string): { studentId: string; givenName: string } => {
+    const cached: any[] = getClientCache("users:all") || [];
+    const u = cached.find((u: any) => u.primaryEmail === email);
+    if (!u) return { studentId: "", givenName: "" };
+    return {
+      studentId: u.name?.familyName || "",
+      givenName: u.name?.givenName || "",
+    };
+  };
+
   // 2. Student Selection Management
   const handleSelectStudent = (email: string) => {
     if (!email) return;
@@ -431,7 +442,7 @@ export default function ClassroomPage() {
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
             }`}
           >
-            ⚙️ 수업 인원 관리 (실수 복구)
+            📋 수업 인원 관리
           </button>
           <button
             onClick={() => setTabMode("logs")}
@@ -684,25 +695,40 @@ export default function ClassroomPage() {
                     </p>
                   </div>
                 ) : (
-                  studentBasket.map((email, idx) => (
-                    <div
-                      key={email}
-                      className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-150 rounded-lg text-xs hover:bg-gray-100/50 transition-colors"
-                    >
-                      <div className="font-mono text-gray-700 flex items-center gap-2">
-                        <span className="text-[10px] text-gray-400 font-sans">{idx + 1}</span>
-                        <span>{email}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveFromBasket(email)}
-                        className="text-red-500 hover:text-red-700 font-bold px-1.5"
-                        title="제외"
+                  studentBasket.map((email, idx) => {
+                    const info = getUserInfo(email);
+                    const hasInfo = !!(info.studentId || info.givenName);
+                    return (
+                      <div
+                        key={email}
+                        className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-150 rounded-lg text-xs hover:bg-gray-100/50 transition-colors"
                       >
-                        ×
-                      </button>
-                    </div>
-                  ))
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[10px] text-gray-400 font-sans flex-shrink-0">{idx + 1}</span>
+                          <div className="min-w-0">
+                            {hasInfo ? (
+                              <>
+                                <span className="font-semibold text-gray-800">
+                                  {info.studentId} {info.givenName}
+                                </span>
+                                <span className="ml-1.5 text-[10px] text-gray-400 font-mono truncate">{email}</span>
+                              </>
+                            ) : (
+                              <span className="font-mono text-gray-700">{email}</span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFromBasket(email)}
+                          className="text-red-500 hover:text-red-700 font-bold px-1.5 flex-shrink-0"
+                          title="제외"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
 
@@ -766,37 +792,33 @@ export default function ClassroomPage() {
                 현재 수업에 등록된 학생이 없거나 데이터 로드가 필요합니다.
               </div>
             ) : (
-              <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider border-b">
-                    <tr>
-                      <th className="px-6 py-3 font-semibold">이름</th>
-                      <th className="px-6 py-3 font-semibold">구글 이메일</th>
-                      <th className="px-6 py-3 font-semibold text-right">작업</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 bg-white">
-                    {courseStudents.map((s) => (
-                      <tr key={s.profile.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-gray-900">
-                          {s.profile.name.familyName}{s.profile.name.givenName}
-                        </td>
-                        <td className="px-6 py-4 font-mono text-xs text-gray-600">{s.profile.emailAddress}</td>
-                        <td className="px-6 py-4 text-right">
-                          <button
-                            onClick={() => handleRemoveStudentFromCourse(
-                              s.profile.emailAddress, 
-                              `${s.profile.name.familyName}${s.profile.name.givenName}`
-                            )}
-                            className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[11px] font-bold px-2.5 py-1.5 rounded transition-all"
-                          >
-                            제외하기
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {courseStudents.map((s) => {
+                  const fullName = `${s.profile.name.familyName} ${s.profile.name.givenName}`;
+                  return (
+                    <div
+                      key={s.profile.id}
+                      className="group relative bg-white border border-gray-200 rounded-xl p-3.5 hover:border-red-300 hover:bg-red-50/30 transition-all shadow-sm"
+                    >
+                      {/* Remove button top-right */}
+                      <button
+                        onClick={() => handleRemoveStudentFromCourse(s.profile.emailAddress, fullName)}
+                        className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-300 group-hover:text-red-500 group-hover:bg-red-100 transition-all text-sm font-bold"
+                        title="수업에서 제외"
+                      >
+                        ×
+                      </button>
+
+                      <div className="pr-6">
+                        <p className="text-[13px] font-bold text-gray-900">
+                          {s.profile.name.familyName}
+                          <span className="ml-1 font-semibold text-gray-700">{s.profile.name.givenName}</span>
+                        </p>
+                        <p className="text-[11px] font-mono text-gray-400 mt-0.5 truncate">{s.profile.emailAddress}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
