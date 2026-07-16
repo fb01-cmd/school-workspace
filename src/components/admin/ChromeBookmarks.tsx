@@ -4,12 +4,8 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { getClientCache } from "@/lib/cache/clientCache";
 import OUTreeSelector from "@/components/admin/OUTreeSelector";
+import BookmarkTreeEditor, { BookmarkItem } from "@/components/admin/BookmarkTreeEditor";
 
-interface BookmarkItem {
-  name: string;
-  url?: string;
-  children?: BookmarkItem[];
-}
 
 interface SyncLog {
   id: string;
@@ -149,32 +145,6 @@ export default function ChromeBookmarks() {
     }
   }, [activeTab]);
 
-  // E. Add Bookmark / Folder
-  const addBookmarkNode = (parentList: BookmarkItem[], isFolder: boolean) => {
-    const name = prompt(isFolder ? "새 폴더 이름을 입력하세요:" : "북마크 사이트 이름을 입력하세요:");
-    if (!name || !name.trim()) return;
-
-    let url = "";
-    if (!isFolder) {
-      url = prompt("북마크 URL 주소를 입력하세요 (http:// 또는 https:// 포함):", "https://") || "";
-      if (!url.startsWith("http://") && !url.startsWith("https://")) {
-        alert("올바른 프로토콜 형식이 아닙니다. http:// 또는 https://로 시작되어야 합니다.");
-        return;
-      }
-    }
-
-    const newNode: BookmarkItem = isFolder
-      ? { name: name.trim(), children: [] }
-      : { name: name.trim(), url: url.trim() };
-
-    setBookmarks((prev) => [...prev, newNode]);
-  };
-
-  const removeBookmarkNode = (index: number) => {
-    if (confirm("이 북마크(또는 폴더)를 제외하시겠습니까?")) {
-      setBookmarks((prev) => prev.filter((_, i) => i !== index));
-    }
-  };
 
   // F. Push Update to API
   const handleSaveConfig = async () => {
@@ -302,70 +272,26 @@ export default function ChromeBookmarks() {
             </div>
 
             {/* Bookmarks Tree Container */}
-            <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white p-6 space-y-4">
-              <div className="flex justify-between items-center border-b pb-3">
-                <h3 className="text-sm font-bold text-gray-800">
-                  📁 {toplevelName || "크롬 북마크바"} 하위 항목 목록
-                </h3>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => addBookmarkNode(bookmarks, false)}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-3 py-1.5 rounded transition-all shadow-sm"
-                  >
-                    🔗 북마크 추가
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => addBookmarkNode(bookmarks, true)}
-                    className="bg-slate-700 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded transition-all shadow-sm"
-                  >
-                    📁 폴더 추가
-                  </button>
-                </div>
+            <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white p-5">
+              <div className="flex items-center gap-2 mb-4 border-b pb-3">
+                <span className="text-base">📁</span>
+                <h3 className="text-sm font-bold text-gray-800">{toplevelName} 북마크 목록</h3>
+                {loadingConfig && (
+                  <span className="text-xs text-gray-400 ml-auto">구글 크롬 정책 불러오는 중...</span>
+                )}
               </div>
 
               {loadingConfig ? (
-                <div className="py-20 text-center text-xs text-gray-400">
+                <div className="py-16 text-center text-xs text-gray-400">
+                  <div className="animate-spin text-2xl mb-3">⏳</div>
                   구글 크롬 정책 정보 조회 중...
                 </div>
-              ) : bookmarks.length === 0 ? (
-                <div className="py-20 text-center text-xs text-gray-400">
-                  <p className="text-2xl mb-2">📌</p>
-                  <p>설정된 북마크가 없습니다. [북마크 추가]를 눌러 링크를 채워주세요.</p>
-                </div>
               ) : (
-                <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-                  {bookmarks.map((node, index) => {
-                    const isFolder = node.children !== undefined;
-                    return (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border border-gray-150 rounded-lg text-xs hover:bg-gray-100/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-base">{isFolder ? "📁" : "🔗"}</span>
-                          <div className="space-y-0.5">
-                            <p className="font-bold text-gray-800">{node.name}</p>
-                            {!isFolder && <p className="text-[10px] text-gray-400 font-mono">{node.url}</p>}
-                            {isFolder && (
-                              <p className="text-[10px] text-indigo-600 font-semibold">
-                                폴더 (하위 노드 지원은 향후 순차 추가 가능)
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeBookmarkNode(index)}
-                          className="text-red-500 hover:text-red-700 font-bold px-1.5"
-                          title="삭제"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    );
-                  })}
+                <div className="max-h-[520px] overflow-y-auto">
+                  <BookmarkTreeEditor
+                    items={bookmarks}
+                    onChange={setBookmarks}
+                  />
                 </div>
               )}
             </div>
