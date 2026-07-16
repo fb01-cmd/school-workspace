@@ -6,6 +6,24 @@ import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
 import { UserData, handleUserRoles } from "@/lib/firebase/auth";
 
+export interface TeacherProfile {
+  email: string;
+  name?: string;
+  departments: string[];  // 다중 부서
+  position?: string;     // 직책 (교사, 부장, 계원 등)
+  isHomeroom?: boolean;
+  homeroom?: { grade: number; class: number };
+  subjects?: string[];   // 담당 과목
+  updatedAt?: string;
+}
+
+export interface SchedulePeriod {
+  period: string;      // e.g. "1", "lunch", "7"
+  name: string;        // e.g. "1교시", "점심시간"
+  startTime: string;   // e.g. "09:00"
+  endTime: string;     // e.g. "09:50"
+}
+
 export interface SchoolSettings {
   gradesCount: number;
   classCounts: Record<string, number>;
@@ -20,6 +38,9 @@ export interface SchoolSettings {
   teacherSettings?: {
     autoJoinGroups?: string[];
   };
+  schedule?: SchedulePeriod[];
+  departments?: string[];
+  positions?: string[];
 }
 
 export interface OrgUnit {
@@ -33,6 +54,7 @@ interface AuthContextType {
   userData: UserData | null;
   schoolSettings: SchoolSettings | null;
   orgUnits: OrgUnit[];
+  teacherProfile: TeacherProfile | null;
   loading: boolean;
 }
 
@@ -41,6 +63,7 @@ const AuthContext = createContext<AuthContextType>({
   userData: null,
   schoolSettings: null,
   orgUnits: [],
+  teacherProfile: null,
   loading: true,
 });
 
@@ -51,12 +74,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [schoolSettings, setSchoolSettings] = useState<SchoolSettings | null>(null);
   const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
+  const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
 
   useEffect(() => {
     let unsubscribeDoc: (() => void) | null = null;
     let unsubscribeSettings: (() => void) | null = null;
+    let unsubscribeTeacherProfile: (() => void) | null = null;
 
     const unsubscribeAuth = onIdTokenChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -107,6 +132,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               });
             } else {
               setLoading(false);
+            }
+
+            // 교직원인 경우 teacher_profiles 실시간 구독
+            if (data.domain && (data.role === "super_admin" || data.role === "teacher") && data.email) {
+              if (unsubscribeTeacherProfile) unsubscribeTeacherProfile();
+              const profileRef = doc(db, "teacher_profiles", data.email);
+              unsubscribeTeacherProfile = onSnapshot(profileRef, (snap) => {
+                if (snap.exists()) {
+                  setTeacherProfile(snap.data() as TeacherProfile);
+                } else {
+                  setTeacherProfile(null);
+                }
+              });
             }
 
             // 로그인 성공 시 백그라운드 프리페칭 실행 (교사 및 어드민만)
@@ -175,9 +213,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUserData(null);
         setSchoolSettings(null);
         setOrgUnits([]);
+        setTeacherProfile(null);
         setLoading(false);
         if (unsubscribeDoc) unsubscribeDoc();
         if (unsubscribeSettings) unsubscribeSettings();
+        if (unsubscribeTeacherProfile) unsubscribeTeacherProfile();
       }
     });
 
@@ -185,11 +225,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       unsubscribeAuth();
       if (unsubscribeDoc) unsubscribeDoc();
       if (unsubscribeSettings) unsubscribeSettings();
+      if (unsubscribeTeacherProfile) unsubscribeTeacherProfile();
     };
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, userData, schoolSettings, orgUnits, loading }}>
+    <AuthContext.Provider value={{ user, userData, schoolSettings, orgUnits, teacherProfile, loading }}>
       {children}
     </AuthContext.Provider>
   );

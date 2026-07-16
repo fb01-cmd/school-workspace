@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import RouteGuard from "@/components/RouteGuard";
 import { logOut } from "@/lib/firebase/auth";
@@ -16,14 +16,31 @@ import GroupList from "@/components/admin/GroupList";
 import ClassroomPage from "@/app/admin/classroom/page";
 import ChromeBookmarks from "@/components/admin/ChromeBookmarks";
 import PasswordReset from "@/components/admin/PasswordReset";
+import ProfileApprovals from "@/components/admin/ProfileApprovals";
+import MyProfileCard from "@/components/admin/MyProfileCard";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "chrome_bookmarks" | "password_reset";
+import { db } from "@/lib/firebase/config";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+
+type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "chrome_bookmarks" | "password_reset" | "profile_approvals";
 
 export default function AdminPage() {
-  const { userData } = useAuth();
+  const { userData, teacherProfile } = useAuth();
   const router = useRouter();
   const [activeMenu, setActiveMenu] = useState<MenuType>("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [pendingProfileCount, setPendingProfileCount] = useState(0);
+
+  // Real-time pending profile approvals count
+  useEffect(() => {
+    if (userData?.role !== "super_admin") return;
+    const q = query(
+      collection(db, "teacher_profiles_pending"),
+      where("status", "==", "PENDING")
+    );
+    const unsub = onSnapshot(q, snap => setPendingProfileCount(snap.size));
+    return () => unsub();
+  }, []);
 
   const handleLogout = async () => {
     await logOut();
@@ -32,11 +49,15 @@ export default function AdminPage() {
 
   const hasAccess = userData?.role === "super_admin" || userData?.isApproved;
   const isSuperAdmin = userData?.role === "super_admin";
+  const isTeacher = userData?.role === "teacher";
+  const hasNoProfile = (isSuperAdmin || isTeacher) && !teacherProfile;
 
   const renderContent = () => {
     switch (activeMenu) {
       case "users":
         return <UserList />;
+      case "profile_approvals":
+        return <ProfileApprovals />;
       case "classroom":
         return <ClassroomPage />;
       case "chrome_bookmarks":
@@ -77,6 +98,22 @@ export default function AdminPage() {
       default:
         return (
           <div className="space-y-8">
+            {/* 조직 정보 미등록 안내 배너 */}
+            {hasNoProfile && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 flex items-start gap-4">
+                <span className="text-2xl mt-0.5">⚠️</span>
+                <div className="flex-1">
+                  <p className="font-bold text-amber-800 text-sm">조직 정보를 아직 등록하지 않으셨습니다.</p>
+                  <p className="text-amber-700 text-xs mt-1">소속 부서, 직책, 담임 여부 등을 등록하면 앞으로 업무 배포나 메시지 발송 기능에서 올바르게 식별됩니다.</p>
+                </div>
+                <button
+                  onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
+                  className="flex-shrink-0 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition-colors"
+                >
+                  지금 등록하기
+                </button>
+              </div>
+            )}
             {/* Summary Banner */}
             <div className="bg-gradient-to-r from-indigo-800 to-blue-900 rounded-lg text-white p-6 shadow-md">
               <h2 className="text-xl font-bold mb-2">효명고등학교 관리 시스템</h2>
@@ -362,6 +399,20 @@ export default function AdminPage() {
                     <span>📝</span>
                     <span>생활지도 기록 작성</span>
                   </button>
+
+                  {/* 조직 정보 신청 (교사 본인) */}
+                  {!isSuperAdmin && (
+                    <button
+                      onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors hover:bg-indigo-900/50 text-gray-400 hover:text-white`}
+                    >
+                      <span>🏷️</span>
+                      <span>내 조직 정보 신청</span>
+                      {hasNoProfile && (
+                        <span className="ml-auto text-[10px] bg-amber-400 text-amber-900 font-bold px-1.5 py-0.5 rounded-full">미등록</span>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -383,6 +434,24 @@ export default function AdminPage() {
                     >
                       <span>🛠️</span>
                       <span>Workspace 환경 설정</span>
+                    </button>
+
+                    {/* 프로필 승인 대기 (어드민) */}
+                    <button
+                      onClick={() => setActiveMenu("profile_approvals")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "profile_approvals"
+                          ? "bg-indigo-800 text-white"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>📥</span>
+                      <span>프로필 승인 대기</span>
+                      {pendingProfileCount > 0 && (
+                        <span className="ml-auto bg-amber-400 text-amber-900 text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                          {pendingProfileCount}
+                        </span>
+                      )}
                     </button>
                   </div>
 
@@ -499,7 +568,9 @@ export default function AdminPage() {
           </div>
 
           {/* User profile section at the bottom */}
-          <div className="p-4 border-t border-indigo-900 bg-indigo-950/50">
+          <div className="p-4 border-t border-indigo-900 bg-indigo-950/50 space-y-3">
+            {/* 내 조직 정보 카드 */}
+            <MyProfileCard />
             <div className="text-xs text-gray-500 font-semibold mb-1">로그인 계정</div>
             <div className="text-sm font-medium text-white truncate mb-3" title={userData?.email}>
               {userData?.email}

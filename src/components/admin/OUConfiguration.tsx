@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import OUTreeSelector from "@/components/admin/OUTreeSelector";
 import OUCheckboxTree from "@/components/admin/OUCheckboxTree";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
+import { SchedulePeriod } from "@/context/AuthContext";
 
 interface OU {
   orgUnitId: string;
@@ -38,6 +39,33 @@ export default function OUConfiguration() {
   ]);
   const [newGroupInput, setNewGroupInput] = useState("");
   const [securityMap, setSecurityMap] = useState<Record<string, boolean>>({});
+
+  // Schedule state (일과표)
+  const DEFAULT_SCHEDULE: SchedulePeriod[] = [
+    { period: "1", name: "1교시", startTime: "09:00", endTime: "09:50" },
+    { period: "2", name: "2교시", startTime: "10:00", endTime: "10:50" },
+    { period: "3", name: "3교시", startTime: "11:00", endTime: "11:50" },
+    { period: "4", name: "4교시", startTime: "12:00", endTime: "12:50" },
+    { period: "lunch", name: "점심시간", startTime: "12:50", endTime: "13:50" },
+    { period: "5", name: "5교시", startTime: "13:50", endTime: "14:40" },
+    { period: "6", name: "6교시", startTime: "14:50", endTime: "15:40" },
+    { period: "7", name: "7교시", startTime: "16:00", endTime: "16:50" },
+  ];
+  const [schedule, setSchedule] = useState<SchedulePeriod[]>(DEFAULT_SCHEDULE);
+
+  // Departments and positions master list
+  const DEFAULT_DEPARTMENTS = [
+    "교장", "교감", "교목", "교무기획부", "교육연구부", "학생생활자치부",
+    "교육과정부", "과학정보융합부", "건학인성부", "창의적체험활동부", "학력향상부",
+    "진학지원부", "학생건강부", "1학년", "2학년", "3학년",
+    "국어", "수학", "사회", "과학", "외국어", "생활교양", "예술", "체육",
+    "진로상담", "행정실", "급식실", "휴직 및 퇴직 교사",
+  ];
+  const DEFAULT_POSITIONS = ["교장", "교감", "교목", "부장", "교사", "계원", "영양사", "행정실장", "주무관", "조리사"];
+  const [departments, setDepartments] = useState<string[]>(DEFAULT_DEPARTMENTS);
+  const [positions, setPositions] = useState<string[]>(DEFAULT_POSITIONS);
+  const [newDeptInput, setNewDeptInput] = useState("");
+  const [newPosInput, setNewPosInput] = useState("");
 
   const domain = userData?.domain || "";
 
@@ -90,6 +118,11 @@ export default function OUConfiguration() {
         }
         setAutoJoinGroups(loadedGroups);
         checkSecurityForGroups(loadedGroups);
+
+        // Load schedule and department/position masters
+        if (schoolSettings.schedule) setSchedule(schoolSettings.schedule);
+        if (schoolSettings.departments) setDepartments(schoolSettings.departments);
+        if (schoolSettings.positions) setPositions(schoolSettings.positions);
       } else if (domain) {
         // Fallback default setup
         setAllowedBookmarkOUs(["/교직원", "/학생"]);
@@ -143,6 +176,9 @@ export default function OUConfiguration() {
         teacherSettings: {
           autoJoinGroups: finalGroups,
         },
+        schedule,
+        departments,
+        positions,
         updatedAt: new Date(),
       });
       setAutoJoinGroups(finalGroups);
@@ -428,21 +464,143 @@ export default function OUConfiguration() {
 
           <hr className="border-gray-200" />
 
-          {/* Chrome Bookmarks allowed OUs configuration */}
+          {/* === 일과표 설정 === */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              8. 교사용 크롬 북마크 배포 권한 OU 설정
+              9. 일과표 (교시별 시간) 설정
             </label>
             <p className="text-gray-500 text-xs mb-3">
-              일반 교사들이 학생/교직원 크롬 브라우저에 북마크를 강제 배정할 때, 접근 및 조작을 허용할 조직단위(OU)를 체크해 주세요.
-              (상위 조직단위 선택 시 하위 조직단위 권한도 자동으로 상속됩니다.)
+              시간표 및 티칭러닝 라이센스 배정에 활용됩니다. 교시는 자유롭게 추가/삭제하세요.
             </p>
-            <div className="max-w-xl max-h-72 overflow-y-auto">
-              <OUCheckboxTree
-                orgUnits={orgUnits}
-                selected={allowedBookmarkOUs}
-                onChange={setAllowedBookmarkOUs}
-              />
+            <div className="space-y-2 max-w-2xl">
+              {schedule.map((p, idx) => (
+                <div key={idx} className="flex items-center gap-3 bg-gray-50/50 border border-gray-100 rounded-lg px-4 py-2.5">
+                  <input
+                    type="text"
+                    value={p.name}
+                    onChange={e => setSchedule(prev => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
+                    placeholder="교시명"
+                    className="w-28 px-2.5 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-900 bg-white"
+                  />
+                  <span className="text-gray-400 text-xs">시작</span>
+                  <input
+                    type="time"
+                    value={p.startTime}
+                    onChange={e => setSchedule(prev => prev.map((s, i) => i === idx ? { ...s, startTime: e.target.value } : s))}
+                    className="px-2.5 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-900 bg-white"
+                  />
+                  <span className="text-gray-400 text-xs">종료</span>
+                  <input
+                    type="time"
+                    value={p.endTime}
+                    onChange={e => setSchedule(prev => prev.map((s, i) => i === idx ? { ...s, endTime: e.target.value } : s))}
+                    className="px-2.5 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-900 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSchedule(prev => prev.filter((_, i) => i !== idx))}
+                    className="ml-auto text-red-400 hover:text-red-600 text-xs font-bold px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                  >
+                    삭제
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setSchedule(prev => [...prev, { period: String(prev.length + 1), name: `${prev.length + 1}교시`, startTime: "17:00", endTime: "17:50" }])}
+                className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition-colors font-medium"
+              >
+                + 교시 추가
+              </button>
+            </div>
+          </div>
+
+          <hr className="border-gray-200" />
+
+          {/* === 부서/직책 마스터 목록 관리 === */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* 부서 목록 */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">10. 부서 목록 관리</label>
+              <p className="text-gray-500 text-xs mb-3">교직원이 조직 정보 신청 시 선택할 수 있는 부서 목록입니다.</p>
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  value={newDeptInput}
+                  onChange={e => setNewDeptInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const v = newDeptInput.trim();
+                      if (v && !departments.includes(v)) setDepartments(prev => [...prev, v]);
+                      setNewDeptInput("");
+                    }
+                  }}
+                  placeholder="부서명 입력 후 Enter"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-900"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const v = newDeptInput.trim();
+                    if (v && !departments.includes(v)) setDepartments(prev => [...prev, v]);
+                    setNewDeptInput("");
+                  }}
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium transition-colors"
+                >
+                  추가
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+                {departments.map(dept => (
+                  <span key={dept} className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-semibold border border-indigo-100">
+                    {dept}
+                    <button onClick={() => setDepartments(prev => prev.filter(d => d !== dept))} className="text-indigo-300 hover:text-indigo-600 leading-none">✕</button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* 직책 목록 */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">11. 직책 목록 관리</label>
+              <p className="text-gray-500 text-xs mb-3">교직원이 선택할 수 있는 직책 목록입니다.</p>
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  value={newPosInput}
+                  onChange={e => setNewPosInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const v = newPosInput.trim();
+                      if (v && !positions.includes(v)) setPositions(prev => [...prev, v]);
+                      setNewPosInput("");
+                    }
+                  }}
+                  placeholder="직책명 입력 후 Enter"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-900"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const v = newPosInput.trim();
+                    if (v && !positions.includes(v)) setPositions(prev => [...prev, v]);
+                    setNewPosInput("");
+                  }}
+                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-sm font-medium transition-colors"
+                >
+                  추가
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {positions.map(pos => (
+                  <span key={pos} className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-100">
+                    {pos}
+                    <button onClick={() => setPositions(prev => prev.filter(p => p !== pos))} className="text-emerald-300 hover:text-emerald-600 leading-none">✕</button>
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
