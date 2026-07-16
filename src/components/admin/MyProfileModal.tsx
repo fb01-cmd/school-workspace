@@ -55,7 +55,7 @@ export default function MyProfileModal({ onClose }: Props) {
   const classCountForGrade = Number(schoolSettings?.classCounts?.[homeroomGrade] ?? 10);
 
   const toggleDept = (dept: string) => {
-    if (noDept) setNoDept(false);
+    setNoDept(false);
     setSelectedDepts(prev => {
       const isSelected = prev.includes(dept);
       if (isSelected) {
@@ -75,15 +75,17 @@ export default function MyProfileModal({ onClose }: Props) {
     setNoDept(true);
     setSelectedDepts([]);
     setDeptHeadMap({});
+    setPosition("");
+    setIsHomeroom(false);
   };
 
   const handleSubmit = async () => {
     if (!userData?.email) return;
     if (!noDept && selectedDepts.length === 0) {
-      alert("소속 부서를 1개 이상 선택하거나 '소속 없음'을 선택해 주세요.");
+      alert("소속 부서를 1개 이상 선택하거나 '해당사항 없음'을 선택해 주세요.");
       return;
     }
-    if (!position) {
+    if (!noDept && !position) {
       alert("직책을 선택해 주세요.");
       return;
     }
@@ -149,7 +151,7 @@ export default function MyProfileModal({ onClose }: Props) {
                 <span className="text-xs font-normal text-gray-400 ml-1">(복수 선택 가능)</span>
               </label>
               <div className="flex flex-wrap gap-2">
-                {/* 소속 없음 특수 버튼 */}
+                {/* 해당사항 없음 특수 버튼 */}
                 <button
                   type="button"
                   onClick={handleNoDeptToggle}
@@ -159,7 +161,7 @@ export default function MyProfileModal({ onClose }: Props) {
                       : "bg-gray-50 border-gray-300 text-gray-500 hover:border-gray-500 hover:text-gray-700"
                   }`}
                 >
-                  소속 없음
+                  해당사항 없음
                 </button>
 
                 {departments.map(dept => (
@@ -211,78 +213,82 @@ export default function MyProfileModal({ onClose }: Props) {
               )}
             </div>
 
-            {/* ── 직책 ── */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-800 mb-2">
-                직책 <span className="text-red-500">*</span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {positions.map(pos => (
-                  <button
-                    key={pos}
-                    type="button"
-                    onClick={() => setPosition(pos)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                      position === pos
-                        ? "bg-emerald-600 border-emerald-600 text-white shadow-sm"
-                        : "bg-gray-50 border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-600"
-                    }`}
-                  >
-                    {pos}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* ── 담임 여부 ── */}
-            <div>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isHomeroom}
-                  onChange={e => setIsHomeroom(e.target.checked)}
-                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
-                />
-                <span className="text-sm font-semibold text-gray-800">🏫 담임 교사</span>
-              </label>
-
-              {isHomeroom && (
-                <div className="mt-3 ml-7 flex items-center gap-3">
-                  {/* 학년 선택 */}
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">학년</label>
-                    <select
-                      value={homeroomGrade}
-                      onChange={e => {
-                        setHomeroomGrade(Number(e.target.value));
-                        setHomeroomClass(1);
-                      }}
-                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            {/* ── 직책 (해당사항 없을 시 미노출) ── */}
+            {!noDept && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-800 mb-2">
+                  직책 <span className="text-red-500">*</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {positions.map(pos => (
+                    <button
+                      key={pos}
+                      type="button"
+                      onClick={() => setPosition(pos)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                        position === pos
+                          ? "bg-emerald-600 border-emerald-600 text-white shadow-sm"
+                          : "bg-gray-50 border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-600"
+                      }`}
                     >
-                      {Array.from({ length: gradesCount }, (_, i) => i + 1).map(g => (
-                        <option key={g} value={g}>{g}학년</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* 반 선택 — 해당 학년 classCounts 캐시 기준 */}
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      반 <span className="text-indigo-400">({classCountForGrade}반까지)</span>
-                    </label>
-                    <select
-                      value={homeroomClass}
-                      onChange={e => setHomeroomClass(Number(e.target.value))}
-                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      {Array.from({ length: classCountForGrade }, (_, i) => i + 1).map(c => (
-                        <option key={c} value={c}>{c}반</option>
-                      ))}
-                    </select>
-                  </div>
+                      {pos}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* ── 담임 여부 (해당사항 없을 시 미노출) ── */}
+            {!noDept && (
+              <div>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isHomeroom}
+                    onChange={e => setIsHomeroom(e.target.checked)}
+                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm font-semibold text-gray-800">🏫 담임 교사</span>
+                </label>
+
+                {isHomeroom && (
+                  <div className="mt-3 ml-7 flex items-center gap-3">
+                    {/* 학년 선택 */}
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">학년</label>
+                      <select
+                        value={homeroomGrade}
+                        onChange={e => {
+                          setHomeroomGrade(Number(e.target.value));
+                          setHomeroomClass(1);
+                        }}
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        {Array.from({ length: gradesCount }, (_, i) => i + 1).map(g => (
+                          <option key={g} value={g}>{g}학년</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 반 선택 */}
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">
+                        반 <span className="text-indigo-400">({classCountForGrade}반까지)</span>
+                      </label>
+                      <select
+                        value={homeroomClass}
+                        onChange={e => setHomeroomClass(Number(e.target.value))}
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        {Array.from({ length: classCountForGrade }, (_, i) => i + 1).map(c => (
+                          <option key={c} value={c}>{c}반</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── 제출 버튼 ── */}
             <button
