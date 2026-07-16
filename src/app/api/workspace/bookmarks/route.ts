@@ -32,6 +32,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(data);
     }
 
+    // DEBUG: dump all Chrome policies for an OU
+    if (action === "debug") {
+      const orgUnitPath = searchParams.get("orgUnitPath") || "/";
+      const { rawDebugChromePolicies } = await import("@/lib/google/bookmarks");
+      const raw = await rawDebugChromePolicies(orgUnitPath);
+      return NextResponse.json(raw);
+    }
+
     // B. Fetch bookmark edit history logs
     if (action === "logs") {
       try {
