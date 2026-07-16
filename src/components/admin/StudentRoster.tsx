@@ -32,12 +32,10 @@ interface ParsedStudent {
 }
 
 export default function StudentRoster() {
-  const { userData } = useAuth();
+  const { userData, schoolSettings } = useAuth();
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false); // Only render sheet after clicking "Search/View"
   const [students, setStudents] = useState<ParsedStudent[]>([]);
-  const [gradesCount, setGradesCount] = useState(3); // Default to 3 grades
-  const [classCounts, setClassCounts] = useState<Record<string, number>>({});
   
   // Roster view filters - Default to 1st Grade, 1st Class to prevent loading all
   const [selectedGrade, setSelectedGrade] = useState<string>("1");
@@ -70,15 +68,9 @@ export default function StudentRoster() {
     setLoading(true);
     setHasSearched(true);
     try {
-      const settingsRef = doc(db, "settings", domain);
-      const settingsSnap = await getDoc(settingsRef);
-      
       let orgUnitPaths: string[] = ["/students"]; // Fallback default
-      if (settingsSnap.exists()) {
-        const settings = settingsSnap.data();
-        setGradesCount(settings.gradesCount || 3);
-        setClassCounts(settings.classCounts || {});
-        const studOUs = settings.ouMapping?.students || {};
+      if (schoolSettings) {
+        const studOUs = schoolSettings.ouMapping?.students || {};
         const paths = Object.values(studOUs) as string[];
         if (paths.length > 0) {
           orgUnitPaths = paths;
@@ -157,15 +149,16 @@ export default function StudentRoster() {
 
   // Compute list of available classes in local state (from settings config first, fallback to scanning)
   const availableClasses = useMemo(() => {
+    const config = schoolSettings?.classCounts || {};
     // 1. If settings classCounts has configuration for selected grade, use it directly
-    if (selectedGrade !== "all" && classCounts[selectedGrade]) {
-      const count = classCounts[selectedGrade];
+    if (selectedGrade !== "all" && config[selectedGrade]) {
+      const count = config[selectedGrade];
       return Array.from({ length: count }, (_, i) => i + 1);
     }
 
     // 2. If grade is "all", compute maximum class count across all configured grades, or default to 10
     if (selectedGrade === "all") {
-      const counts = Object.values(classCounts);
+      const counts = Object.values(config);
       const maxCount = counts.length > 0 ? Math.max(...counts) : 10;
       return Array.from({ length: maxCount }, (_, i) => i + 1);
     }
@@ -184,7 +177,7 @@ export default function StudentRoster() {
     
     const uniqueClasses = Array.from(new Set(classes)).sort((a, b) => a - b);
     return uniqueClasses.length > 0 ? uniqueClasses : Array.from({ length: 10 }, (_, i) => i + 1);
-  }, [students, selectedGrade, classCounts]);
+  }, [students, selectedGrade, schoolSettings?.classCounts]);
 
   // Filter students based on selection controls
   const filteredStudents = useMemo(() => {
@@ -500,7 +493,7 @@ export default function StudentRoster() {
               className="w-full px-3 py-2 border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
             >
               <option value="all">전체 학년</option>
-              {Array.from({ length: gradesCount }).map((_, i) => (
+              {Array.from({ length: schoolSettings?.gradesCount || 3 }).map((_, i) => (
                 <option key={i + 1} value={i + 1}>
                   {i + 1}학년
                 </option>

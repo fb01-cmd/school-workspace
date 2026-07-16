@@ -35,7 +35,7 @@ interface SyncLog {
 }
 
 export default function ClassroomPage() {
-  const { user, userData } = useAuth();
+  const { user, userData, schoolSettings } = useAuth();
   const domain = userData?.domain || "";
 
   // UI Modes
@@ -56,12 +56,6 @@ export default function ClassroomPage() {
   // Student Selection Basket
   const [studentBasket, setStudentBasket] = useState<string[]>([]);
   const [autoCompleteValue, setAutoCompleteValue] = useState("");
-
-  // Grade/Class settings loaded from Firestore
-  const [gradesCount, setGradesCount] = useState(3);
-  const [studentOUs, setStudentOUs] = useState<Record<string, string>>({});
-  const [classCounts, setClassCounts] = useState<Record<string, number>>({});
-  const [loadingSettings, setLoadingSettings] = useState(false);
 
   // Class selection for batch insert
   const [batchGrade, setBatchGrade] = useState("1");
@@ -84,11 +78,10 @@ export default function ClassroomPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // 1. Initial Load of Courses & Settings
+  // 1. Initial Load of Courses
   useEffect(() => {
     if (!domain) return;
     loadCoursesList();
-    loadSchoolSettings();
   }, [domain]);
 
   useEffect(() => {
@@ -109,16 +102,18 @@ export default function ClassroomPage() {
   // Dynamically compute available classes in the selected grade (respecting classCounts first, fallback to user list cache)
   useEffect(() => {
     if (!domain) return;
+    const config = schoolSettings?.classCounts || {};
     
     // 1. Check if classCounts has configuration for selected grade
-    if (classCounts[batchGrade]) {
-      const count = classCounts[batchGrade];
+    if (config[batchGrade]) {
+      const count = config[batchGrade];
       setAvailableClasses(Array.from({ length: count }).map((_, i) => String(i + 1)));
       return;
     }
 
     // 2. Fallback to scanning cache if settings are not available
-    const ouPath = studentOUs[String(batchGrade)];
+    const studOUs = schoolSettings?.ouMapping?.students || {};
+    const ouPath = studOUs[String(batchGrade)];
     if (!ouPath) {
       setAvailableClasses([]);
       return;
@@ -157,7 +152,7 @@ export default function ClassroomPage() {
     } else {
       setAvailableClasses(uniqueClasses);
     }
-  }, [batchGrade, studentOUs, classCounts, domain]);
+  }, [batchGrade, schoolSettings?.ouMapping?.students, schoolSettings?.classCounts, domain]);
 
   // Adjust selected batchClass when availableClasses change
   useEffect(() => {
@@ -187,23 +182,7 @@ export default function ClassroomPage() {
     }
   };
 
-  const loadSchoolSettings = async () => {
-    setLoadingSettings(true);
-    try {
-      const settingsRef = doc(db, "settings", domain);
-      const settingsSnap = await getDoc(settingsRef);
-      if (settingsSnap.exists()) {
-        const data = settingsSnap.data();
-        setGradesCount(data.gradesCount || 3);
-        setStudentOUs(data.ouMapping?.students || {});
-        setClassCounts(data.classCounts || {});
-      }
-    } catch (err) {
-      console.error("Failed to load school settings", err);
-    } finally {
-      setLoadingSettings(false);
-    }
-  };
+  // loadSchoolSettings is no longer needed since it's loaded in AuthContext
 
   const loadCourseStudents = async (courseId: string) => {
     setLoadingStudents(true);
@@ -267,7 +246,8 @@ export default function ClassroomPage() {
     try {
       // Find the corresponding OU Path from mappings
       // Keys are stored as grade numbers: "1", "2", "3" (not "grade_1")
-      const ouPath = studentOUs[String(batchGrade)];
+      const studOUs = schoolSettings?.ouMapping?.students || {};
+      const ouPath = studOUs[String(batchGrade)];
       if (!ouPath) {
         throw new Error(`${batchGrade}학년의 매핑된 조직단위(OU)가 없습니다. (OU 구성 탭에서 학년별 OU를 설정해주세요)`);
       }
@@ -592,7 +572,7 @@ export default function ClassroomPage() {
                     onChange={(e) => setBatchGrade(e.target.value)}
                     className="border border-gray-300 rounded px-2 py-1 text-xs text-gray-800 bg-white"
                   >
-                    {Array.from({ length: gradesCount }).map((_, i) => (
+                    {Array.from({ length: schoolSettings?.gradesCount || 3 }).map((_, i) => (
                       <option key={i} value={String(i + 1)}>{i + 1}학년</option>
                     ))}
                   </select>

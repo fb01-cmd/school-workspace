@@ -14,7 +14,7 @@ interface OU {
 }
 
 export default function OUConfiguration() {
-  const { userData } = useAuth();
+  const { userData, schoolSettings } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isMock, setIsMock] = useState(false);
@@ -70,38 +70,34 @@ export default function OUConfiguration() {
         throw new Error(data.error);
       }
 
-      // 2. Fetch existing settings from Firestore
-      if (domain) {
-        const settingsRef = doc(db, "settings", domain);
-        const settingsSnap = await getDoc(settingsRef);
+      // 2. Initialize settings from context
+      if (domain && schoolSettings) {
         const defaultClassroomGroup = `classroom_teachers@${domain}`;
-        if (settingsSnap.exists()) {
-          const settings = settingsSnap.data();
-          setGradesCount(settings.gradesCount || 6);
-          setClassCounts(settings.classCounts || {});
-          setTeacherOU(settings.ouMapping?.teachers || "");
-          setStudentOUMappings(settings.ouMapping?.students || {});
-          setGraduatesOU(settings.ouMapping?.graduates || "");
-          setTransferOutOU(settings.ouMapping?.transferOut || "");
-          setTeachersOB(settings.ouMapping?.teachersOB || "");
-          
-          let loadedGroups = settings.teacherSettings?.autoJoinGroups || [];
-          if (!loadedGroups.includes(defaultClassroomGroup)) {
-            loadedGroups = [defaultClassroomGroup, ...loadedGroups];
-          }
-          setAutoJoinGroups(loadedGroups);
-          checkSecurityForGroups(loadedGroups);
-        } else {
-          // 기본값 설정 (도메인 포함)
-          const defaultGroups = [
-            `ts@${domain}`,
-            defaultClassroomGroup,
-            `hmhteacher@${domain}`,
-            `hmh_teachers@${domain}`,
-          ];
-          setAutoJoinGroups(defaultGroups);
-          checkSecurityForGroups(defaultGroups);
+        setGradesCount(schoolSettings.gradesCount || 6);
+        setClassCounts(schoolSettings.classCounts || {});
+        setTeacherOU(schoolSettings.ouMapping?.teachers || "");
+        setStudentOUMappings(schoolSettings.ouMapping?.students || {});
+        setGraduatesOU(schoolSettings.ouMapping?.graduates || "");
+        setTransferOutOU(schoolSettings.ouMapping?.transferOut || "");
+        setTeachersOB(schoolSettings.ouMapping?.teachersOB || "");
+        
+        let loadedGroups = schoolSettings.teacherSettings?.autoJoinGroups || [];
+        if (!loadedGroups.includes(defaultClassroomGroup)) {
+          loadedGroups = [defaultClassroomGroup, ...loadedGroups];
         }
+        setAutoJoinGroups(loadedGroups);
+        checkSecurityForGroups(loadedGroups);
+      } else if (domain) {
+        // Fallback default setup
+        const defaultClassroomGroup = `classroom_teachers@${domain}`;
+        const defaultGroups = [
+          `ts@${domain}`,
+          defaultClassroomGroup,
+          `hmhteacher@${domain}`,
+          `hmh_teachers@${domain}`,
+        ];
+        setAutoJoinGroups(defaultGroups);
+        checkSecurityForGroups(defaultGroups);
       }
     } catch (error) {
       console.error("Failed to load settings data", error);

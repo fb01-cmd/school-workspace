@@ -6,15 +6,32 @@ import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
 import { UserData, handleUserRoles } from "@/lib/firebase/auth";
 
+export interface SchoolSettings {
+  gradesCount: number;
+  classCounts: Record<string, number>;
+  ouMapping?: {
+    teachers?: string;
+    students?: Record<string, string>;
+    graduates?: string;
+    transferOut?: string;
+    teachersOB?: string;
+  };
+  teacherSettings?: {
+    autoJoinGroups?: string[];
+  };
+}
+
 interface AuthContextType {
   user: User | null;
   userData: UserData | null;
+  schoolSettings: SchoolSettings | null;
   loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   userData: null,
+  schoolSettings: null,
   loading: true,
 });
 
@@ -23,10 +40,12 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [schoolSettings, setSchoolSettings] = useState<SchoolSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let unsubscribeDoc: (() => void) | null = null;
+    let unsubscribeSettings: (() => void) | null = null;
 
     const unsubscribeAuth = onIdTokenChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -46,12 +65,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (userSnap.exists()) {
             const data = userSnap.data() as UserData;
             setUserData(data);
-            setLoading(false);
+
+            // Listen to school settings from Firestore in real-time
+            if (data.domain) {
+              if (unsubscribeSettings) unsubscribeSettings();
+              const settingsRef = doc(db, "settings", data.domain);
+              unsubscribeSettings = onSnapshot(settingsRef, (settingsSnap) => {
+                if (settingsSnap.exists()) {
+                  const sData = settingsSnap.data();
+                  setSchoolSettings({
+                    gradesCount: sData.gradesCount || 3,
+                    classCounts: sData.classCounts || {},
+                    ouMapping: sData.ouMapping || {},
+                    teacherSettings: sData.teacherSettings || {},
+                  });
+                } else {
+                  setSchoolSettings({
+                    gradesCount: 3,
+                    classCounts: {},
+                    ouMapping: {},
+                    teacherSettings: {},
+                  });
+                }
+                setLoading(false);
+              }, (err) => {
+                console.error("Error listening to settings:", err);
+                setLoading(false);
+              });
+            } else {
+              setLoading(false);
+            }
 
             // 로그인 성공 시 백그라운드 프리페칭 실행 (교사 및 어드민만)
             if (data.domain && (data.role === "super_admin" || data.role === "teacher")) {
               const domain = data.domain;
-              const role = data.role;
               setTimeout(() => {
                 // 1. OUs 로드
                 fetch("/api/workspace/ou")
@@ -111,19 +158,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           invalidateClientCache();
         } catch (cacheErr) {}
         setUserData(null);
+        setSchoolSettings(null);
         setLoading(false);
         if (unsubscribeDoc) unsubscribeDoc();
+        if (unsubscribeSettings) unsubscribeSettings();
       }
     });
 
     return () => {
       unsubscribeAuth();
       if (unsubscribeDoc) unsubscribeDoc();
+      if (unsubscribeSettings) unsubscribeSettings();
     };
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, userData, loading }}>
+    <AuthContext.Provider value={{ user, userData, schoolSettings, loading }}>
       {children}
     </AuthContext.Provider>
   );

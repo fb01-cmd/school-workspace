@@ -54,24 +54,13 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
 // Main Component
 // ─────────────────────────────────────────────────────
 export default function TeacherLifecycle() {
-  const { userData } = useAuth();
+  const { userData, schoolSettings } = useAuth();
   const domain = userData?.domain || "";
   const operatorEmail = userData?.email || "";
   const operatorName = userData?.email || "관리자";
 
   const [section, setSection] = useState<SectionId>("enroll");
-  const [settingsOBPath, setSettingsOBPath] = useState("");
-
-  // Load teachersOB OU path from settings
-  useEffect(() => {
-    if (!domain) return;
-    getDoc(doc(db, "settings", domain)).then((snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        setSettingsOBPath(data?.ouMapping?.teachersOB || "");
-      }
-    });
-  }, [domain]);
+  const settingsOBPath = schoolSettings?.ouMapping?.teachersOB || "";
 
   return (
     <div className="space-y-6">
