@@ -28,7 +28,10 @@ const getOrgUnitIdFromPath = async (orgUnitPath: string): Promise<string> => {
   if (!match) {
     throw new Error(`조직단위 경로 [${orgUnitPath}]를 구글 워크스페이스에서 찾을 수 없습니다.`);
   }
-  return match.orgUnitId || "";
+  // Admin Directory API returns orgUnitId as "id:xxxxxxxx".
+  // Chrome Policy API targetResource requires the raw ID without "id:" prefix.
+  const rawId: string = match.orgUnitId || "";
+  return rawId.startsWith("id:") ? rawId.slice(3) : rawId;
 };
 
 export interface BookmarkItem {
