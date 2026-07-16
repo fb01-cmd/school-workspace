@@ -9,6 +9,7 @@ import { UserData, handleUserRoles } from "@/lib/firebase/auth";
 export interface SchoolSettings {
   gradesCount: number;
   classCounts: Record<string, number>;
+  allowedBookmarkOUs?: string[];
   ouMapping?: {
     teachers?: string;
     students?: Record<string, string>;
@@ -76,6 +77,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                   setSchoolSettings({
                     gradesCount: sData.gradesCount || 3,
                     classCounts: sData.classCounts || {},
+                    allowedBookmarkOUs: sData.allowedBookmarkOUs || [],
                     ouMapping: sData.ouMapping || {},
                     teacherSettings: sData.teacherSettings || {},
                   });
@@ -83,6 +85,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                   setSchoolSettings({
                     gradesCount: 3,
                     classCounts: {},
+                    allowedBookmarkOUs: [],
                     ouMapping: {},
                     teacherSettings: {},
                   });

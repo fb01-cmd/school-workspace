@@ -23,6 +23,7 @@ export default function OUConfiguration() {
   // Settings State
   const [gradesCount, setGradesCount] = useState<number>(6);
   const [classCounts, setClassCounts] = useState<Record<number, number>>({});
+  const [allowedBookmarkOUs, setAllowedBookmarkOUs] = useState<string[]>([]);
   const [teacherOU, setTeacherOU] = useState<string>("");
   const [studentOUMappings, setStudentOUMappings] = useState<Record<number, string>>({});
   const [graduatesOU, setGraduatesOU] = useState<string>("");
@@ -75,6 +76,7 @@ export default function OUConfiguration() {
         const defaultClassroomGroup = `classroom_teachers@${domain}`;
         setGradesCount(schoolSettings.gradesCount || 6);
         setClassCounts(schoolSettings.classCounts || {});
+        setAllowedBookmarkOUs((schoolSettings as any).allowedBookmarkOUs || ["/교직원", "/학생"]);
         setTeacherOU(schoolSettings.ouMapping?.teachers || "");
         setStudentOUMappings(schoolSettings.ouMapping?.students || {});
         setGraduatesOU(schoolSettings.ouMapping?.graduates || "");
@@ -89,6 +91,7 @@ export default function OUConfiguration() {
         checkSecurityForGroups(loadedGroups);
       } else if (domain) {
         // Fallback default setup
+        setAllowedBookmarkOUs(["/교직원", "/학생"]);
         const defaultClassroomGroup = `classroom_teachers@${domain}`;
         const defaultGroups = [
           `ts@${domain}`,
@@ -128,6 +131,7 @@ export default function OUConfiguration() {
       await setDoc(settingsRef, {
         gradesCount,
         classCounts,
+        allowedBookmarkOUs,
         ouMapping: {
           teachers: teacherOU,
           students: studentOUMappings,
@@ -418,6 +422,42 @@ export default function OUConfiguration() {
                   })
                 )}
               </div>
+            </div>
+          </div>
+
+          <hr className="border-gray-200" />
+
+          {/* Chrome Bookmarks allowed OUs configuration */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              8. 교사용 크롬 북마크 배포 권한 OU 설정
+            </label>
+            <p className="text-gray-500 text-xs mb-3">
+              일반 교사들이 학생/교직원 크롬 브라우저에 북마크를 강제 배정할 때, 접근 및 조작을 허용할 조직단위(OU)를 체크해 주세요. 
+              (상위 조직단위 선택 시 하위 조직단위 권한도 자동으로 상속됩니다.)
+            </p>
+            <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-4 bg-gray-50/30 space-y-2.5 max-w-xl">
+              {orgUnits.map((ou) => {
+                const isChecked = allowedBookmarkOUs.includes(ou.orgUnitPath);
+                return (
+                  <label key={ou.orgUnitId} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer hover:bg-gray-100/50 p-1.5 rounded transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setAllowedBookmarkOUs((prev) => [...prev, ou.orgUnitPath]);
+                        } else {
+                          setAllowedBookmarkOUs((prev) => prev.filter((p) => p !== ou.orgUnitPath));
+                        }
+                      }}
+                      className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                    />
+                    <span className="font-mono text-gray-800 font-semibold">{ou.orgUnitPath}</span>
+                    <span className="text-[10px] text-gray-400">({ou.name})</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
