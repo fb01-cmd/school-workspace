@@ -16,6 +16,35 @@ export default function MyProfileCard() {
   }, []);
 
   const isTeacher = userData?.role === "super_admin" || userData?.role === "teacher";
+  const isStudent = userData?.role === "student";
+
+  if (isStudent) {
+    const ou = userData?.orgUnitPath || "";
+    const ouParts = ou.split("/").filter(Boolean);
+    const parsedClass = ouParts.slice(1).join(" ");
+
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+        <div>
+          <span className="bg-indigo-50 text-indigo-700 text-xs px-2.5 py-1 rounded-lg font-bold border border-indigo-100">
+            소속 정보
+          </span>
+        </div>
+        <div className="space-y-2 text-sm text-slate-700">
+          <p className="flex items-center gap-2">
+            <span className="w-5 text-center text-slate-400">📧</span>
+            <span className="font-medium truncate text-slate-600" title={userData?.email}>{userData?.email}</span>
+          </p>
+          {parsedClass && (
+            <p className="flex items-center gap-2">
+              <span className="w-5 text-center text-slate-400">🏫</span>
+              <span className="font-bold text-indigo-600">{parsedClass}</span>
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (!isTeacher) return null;
 

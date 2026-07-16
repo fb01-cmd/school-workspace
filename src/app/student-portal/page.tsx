@@ -7,6 +7,7 @@ import { logOut } from "@/lib/firebase/auth";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc } from "firebase/firestore";
+import MyProfileCard from "@/components/admin/MyProfileCard";
 
 export default function StudentPortal() {
   const { userData } = useAuth();
@@ -238,6 +239,7 @@ export default function StudentPortal() {
 
             {/* Side Graduation Notice Widget (Right side) */}
             <div className="space-y-6">
+              <MyProfileCard />
               {gradTask && (
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
                   <div>

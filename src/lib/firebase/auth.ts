@@ -8,6 +8,7 @@ export interface UserData {
   role: "student" | "teacher" | "super_admin";
   isApproved: boolean;
   isSecurityGroupJoined?: boolean;
+  orgUnitPath?: string;
   createdAt?: any;
 }
 
