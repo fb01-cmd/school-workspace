@@ -32,8 +32,7 @@
 > **⚠️ 이 섹션은 Vercel 정식 배포 시 빠짐없이 확인해야 합니다.**
 > AI 에이전트가 배포 시점에 이 항목들을 꺼내서 안내해 줍니다.
 >
-> 📌 상세한 체크리스트 및 검증 시나리오는 다음 아티팩트 파일을 참고하세요:
-> - [deployment_checklist.md](file:///home/fb01/.gemini/antigravity-ide/brain/df7bb5f4-6ff8-4650-9da8-db5a2dbf44d9/deployment_checklist.md)
+> 📌 상세 체크리스트는 아래 "주요 필수 체크사항" 섹션 및 `CLAUDE.md`의 "정식 배포 시 체크리스트" 섹션을 참고하세요.
 
 ### ✅ 주요 필수 체크사항
 1. **환경 변수 지정**: `GOOGLE_WORKSPACE_SENDER_EMAIL` (알리미 계정: `hmnotice@hmh.or.kr`) 및 `NEXT_PUBLIC_BASE_URL` (배포 사이트 도메인) 등이 누락 없이 설정되어야 합니다.
