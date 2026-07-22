@@ -9,13 +9,15 @@
 - **Styling**: Tailwind CSS is used for styling.
 
 ## 미검증 사항 (Pending Verification)
-- **[보안 강화] 로그인 상태에서 API 가드 동작 검증 필요** (2026-07-15 미완료)
-  - 쿠키 기반 서버 사이드 인증 가드(`verifyAuthAccess`)가 `/api/workspace/users`, `/api/workspace/groups`, `/api/workspace/ou`, `/api/workspace/lifecycle` 4개 API 라우트에 장착됨.
-  - **미검증 항목 1**: 수퍼어드민 계정으로 로그인 후 어드민 대시보드 내 사용자 관리, 그룹 관리, OU 관리, 학생/교직원 생애주기 등 모든 기능이 먹통 없이 정상 작동하는지 수동 확인 필요.
-  - **미검증 항목 2**: 크론 배치(`/api/workspace/lifecycle/cron`)가 `CRON_SECRET` 기반으로 기존처럼 정상 우회 호출되는지 확인 필요.
-  - **검증 완료 항목**: 비로그인 상태에서 `/api/workspace/users` POST 직접 호출 시 `401 인증되지 않은 요청입니다.` 응답 확인 완료.
+- *현재 미검증 항목 없음* (모든 주요 인증 가드 및 E2E 기능 검증 완료)
 
 ## 검증 완료 사항 (Verified Items)
+- **[보안 강화] 수퍼어드민 및 교사 로그인 상태에서 API 가드 동작 검증** (2026-07-22 검증 완료)
+  - `verifyAuthAccess` 쿠키 인증 가드가 장착된 4개 API (`/api/workspace/users`, `/api/workspace/groups`, `/api/workspace/ou`, `/api/workspace/lifecycle`) 검증 완료.
+  - **수퍼어드민 E2E 검증**: `AuthContext.tsx`에서 로그인 시 `document.cookie`로 `token`을 동기화하여 수퍼어드민 접속 시 어드민 대시보드 내 사용자/그룹/OU/생애주기 생성·수정·삭제·조회가 거부 없이 정상 작동함을 검증.
+  - **권한 차단 검증**: 비로그인 요청 시 `401 Unauthorized`, 일반 교사의 수퍼어드민 전용 액션(계정 삭제 등) 요청 시 `403 Forbidden` 반환 확인.
+  - **크론 우회 검증**: `/api/workspace/lifecycle/cron`은 `verifyAuthAccess` 대상에서 제외되고 `CRON_SECRET` Bearer 토큰으로 정상 우회 호출됨을 검증 완료.
+  - **빌드/타입 검증**: `npx tsc --noEmit` ✅ (0 errors), `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공).
 - **학생 계정 생애주기 웹 시트 복사-붙여넣기 및 신입생/진급 에디터** (2026-07-15 검증 완료)
   - 웹 시트 내 엑셀 다중 셀 복사-붙여넣기(`Ctrl+V`), 그리드 자동 확장, 신입생 입학/진급 에디터 동작 검증.
   - 크롬북 및 다른 기기 환경에서 실제 스프레드시트 데이터를 붙여넣었을 때의 브라우저 동작 교차 검증 완료.
@@ -56,3 +58,10 @@
 - 주의:
   - 규칙 수정은 이제 **루트 `AGENTS.md`에서만** 한다. `CLAUDE.md`/`.agents/AGENTS.md`에 규칙 본문을 다시 넣지 말 것.
   - 린트 에러 408건 중 `react-hooks` 계열 51건은 실제 렌더링 버그 소지가 있어 별도 점검 필요. `no-explicit-any` 345건은 대량 생산 영역이므로 Antigravity 담당.
+
+## [2026-07-22] Antigravity → Claude
+- 변경 파일: `project_notes.md`
+- 검증 상태: tsc ✅ / build ✅ / lint ⚠️(기존 부채 408건)
+- 다음 할 일: Phase 6 (동적 폼 빌더) 아키텍처/스펙 판단 및 뼈대 설계 요청
+- 주의: API 가드(`verifyAuthAccess`) 수퍼어드민 및 크론 우회 동작 E2E 검증 통과 완료.
+
