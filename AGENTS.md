@@ -1,3 +1,36 @@
+<!-- BEGIN:single-source-notice -->
+# ⚠️ 이 파일이 프로젝트 규칙의 단일 원본이다
+
+Antigravity·Claude 두 에이전트가 따르는 모든 공통 규칙은 **이 파일에만** 기록한다.
+`CLAUDE.md`와 `.agents/AGENTS.md`에는 이 파일을 가리키는 안내만 둔다.
+규칙을 바꿀 때는 반드시 이 파일을 수정한다. (합의: 2026-07-22)
+<!-- END:single-source-notice -->
+
+<!-- BEGIN:project-overview -->
+# 프로젝트 개요
+
+- **스택**: Next.js 16 + React 19 + TypeScript + Tailwind CSS 4 + Firebase (Auth, Firestore) + Google Workspace Admin SDK
+- **용도**: 학교 학적관리, Google Workspace 계정 생애주기, 구글 클래스룸 배정, 크롬 북마크 관리
+- **배포**: Vercel
+- **주요 디렉터리**:
+  - `src/app/` — Next.js App Router 페이지 및 API 라우트
+  - `src/components/admin/` — 관리자 대시보드 컴포넌트 (lifecycle 하위 디렉터리 포함)
+  - `src/context/AuthContext.tsx` — 인증 및 백그라운드 프리페치 데이터 관리
+  - `src/lib/google/workspace.ts` — Google Workspace Admin SDK 헬퍼 함수
+  - `src/lib/firebase/` — Firebase Admin 및 클라이언트 설정
+  - `src/lib/cache/clientCache.ts` — 브라우저 인메모리 캐시 (TTL 5분)
+<!-- END:project-overview -->
+
+<!-- BEGIN:session-start-rules -->
+# 세션 시작 시 필수 읽기
+
+새 세션을 시작할 때 반드시 아래 파일을 읽고 현재 개발 맥락을 파악한다:
+1. `development_roadmap.md` — 전체 개발 로드맵, 완료/미완료 Phase, 아이디어 목록
+2. `project_notes.md` — 미검증 사항, 아키텍처 결정 기록, 핸드오버 누적 기록
+
+> **비용 주의**: Claude가 이 파일들을 직접 훑는 것도 토큰 비용이다. Antigravity가 이미 맥락을 파악하고 있다면 컨텍스트 팩(협업 규칙 ⑦)으로 요약해 넘기는 편이 낫다.
+<!-- END:session-start-rules -->
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
@@ -61,23 +94,106 @@ This version has breaking changes — APIs, conventions, and file structure may 
 <!-- END:git-based-roadmap-rules -->
 
 <!-- BEGIN:dual-agent-collaboration-rules -->
-# Antigravity & Claude AI 에이전트 이중 협업 및 분업 규칙
+# Antigravity & Claude 이중 협업 및 분업 규칙
 
-이 프로젝트는 IDE 기반의 **Antigravity**와 터미널/데스크톱 앱 기반의 **Claude**가 공동으로 개발을 진행한다. 두 에이전트는 서로의 작업 결과와 상태를 존중하며 아래 분업 및 교대 수칙을 준수한다:
+> **개정 2026-07-22** — Claude 제안 + Antigravity 회신 합의로 전면 개편.
+> 협의 전문은 `collaboration_proposal.md` 참조. 이전 기준("일의 크기"로 분담)은 폐기됨.
 
-1. **에이전트별 주 전담 영역**:
-   - **Antigravity (IDE & Agentic Assistant)**: 대규모 아키텍처 및 기획 설계, 브라우저 서브에이전트를 활용한 E2E 화면 검증, 복합 컴포넌트 개발.
-   - **Claude (CLI / Linux Desktop App Assistant)**: 로컬 터미널 빌드(`npm run build`), 타입 검사(`npx tsc`), 린트 및 단위 디버깅, 코드 리뷰, Git 커밋 관리.
+## 0. 대전제 — 두 에이전트의 비용이 다르다
 
-2. **작업 상태 동기화 및 핸드오버 (Context Handover)**:
-   - 주요 기능 개발 완료 시 반드시 프로젝트 루트의 `development_roadmap.md` 또는 `project_notes.md`에 **완료 항목**과 **다음 에이전트를 위한 Next Action**을 명시한다.
-   - 격리된 에이전트 전용 디렉터리가 아닌 프로젝트 루트 파일로 상태를 공유한다.
+| | Claude | Antigravity |
+|---|---|---|
+| 비용 | **비쌈** — 사용량 한도가 5일 주기로 리셋 | 저렴, 사실상 대량 사용 가능 |
+| 한도 소진 시 | **고급 판단 에이전트가 며칠간 사라짐** | 영향 적음 |
 
-3. **공통 규칙 엄수**:
-   - 알림 발신자 `hmnotice@hmh.or.kr` 통일, 프리페치 데이터 우선 사용, AutocompleteInput 사용 등 공통 프로젝트 규칙을 상호 엄격히 준수한다.
+Claude의 토큰은 **회복에 며칠이 걸리는 소모성 자원**이다. 분업의 목표는 "공평한 배분"이 아니라 **"비싼 자원을 그것이 아니면 안 되는 곳에만 쓰기"** 이다.
 
-4. **사용자 대상 차순위 지시 가이드 (Proactive Next-Action Recommendation)**:
-   - 사용자는 비전문가이므로, 작업이 끝나거나 특정 단계가 완료될 때 **반드시** 답변 마무리에 **"다음으로 어느 에이전트에게 무슨 지시를 해야 하는지"** 바로 복사해서 사용할 수 있는 구체적인 프롬프트 예시를 추천한다.
+## 1. 분담 기준 — 판단(judgment) vs 생산(production)
+
+일의 크기가 아니라 **"틀렸을 때 대가가 큰가"** 로 나눈다.
+
+- **Claude = 판단** — 결정·스펙·리뷰. 출력이 짧고, 틀리면 손해가 크다.
+- **Antigravity = 생산** — 코드·문서·탐색. 출력이 길고, 틀려도 다시 만들면 된다.
+
+| 영역 | 담당 |
+|---|---|
+| 되돌릴 수 없는 작업 설계 (계정 삭제·복원, 데이터 마이그레이션, 배포) | **Claude** |
+| 보안·개인정보 결정 (Firestore 규칙, 인증 가드) | **Claude** |
+| 두 번 이상 실패한 버그의 근본 원인 진단 | **Claude** |
+| 아키텍처 갈림길 결정, 스펙 작성 | **Claude** |
+| 위험 지점 표적 코드 리뷰 (전수 아님) | **Claude** |
+| 컴포넌트 구현, UI, 레이아웃, UX 문구 | **Antigravity** |
+| 반복 수정, 대량 파일 편집, 타입 부채 정리 | **Antigravity** |
+| 저장소 탐색·검색·요약 | **Antigravity** |
+| E2E 화면 검증 | **Antigravity** |
+| 문서 초안 살 붙이기 (Claude는 뼈대만) | **Antigravity** |
+
+**Claude는 무엇을 어떻게 만들지 정하고, Antigravity가 만든다.**
+
+## 2. 운영 규칙 7가지
+
+### ① 완료 정의(DoD) — 넘기기 전에 스스로 통과시킨다
+상대에게 넘기기 전 **작성자 본인이** `npx tsc --noEmit`과 `npm run build`를 통과시킨다. 빌드 에러를 Claude에게 고치게 하는 것은 가장 비싼 자원을 가장 기계적인 일에 쓰는 낭비다.
+
+### ② 자기 작업은 자기가 커밋한다
+커밋 독점을 폐지한다. 작성자가 자기 변경을 커밋한다. Claude는 대신 **커밋 규칙**(메시지 형식, 작업 트리 청결)을 관리한다.
+
+### ③ 작성자는 자기 작업의 최종 승인자가 아니다 (교차 검증)
+- Claude가 정한 스펙/백엔드 판단 → Antigravity가 화면에서 확인
+- Antigravity가 쓴 코드 → Claude가 위험 지점 표적 리뷰
+
+### ④ 핸드오버는 고정 양식으로 남긴다
+`project_notes.md` 하단에 누적한다.
+
+```markdown
+## [2026-07-22] Antigravity → Claude
+- 변경 파일: src/components/admin/UserList.tsx
+- 검증 상태: tsc ✅ / build ✅ / lint ⚠️(기존 부채 12건)
+- 다음 할 일: 삭제 복원 로직의 권한 검사 스펙 판단 요청
+- 주의: users:all 캐시 무효화 시점이 바뀌었음
+```
+
+### ⑤ 규칙은 단일 원본을 둔다
+**이 파일(`AGENTS.md`)이 단일 원본(Single Source of Truth)이다.** `CLAUDE.md`와 `.agents/AGENTS.md`에는 이 파일을 가리키는 안내만 둔다. 규칙 변경은 반드시 이 파일에서 한다.
+
+### ⑥ Claude를 부르는 기준 (에스컬레이션)
+
+**부른다**
+- 되돌릴 수 없는 작업: 계정 삭제·복원, 데이터 마이그레이션, 배포 직전 점검
+- 보안·개인정보 결정
+- 같은 버그를 두 번 고쳐도 재발할 때
+- 아키텍처 갈림길에서 방향이 갈릴 때
+
+**부르지 않는다** (Antigravity가 끝낸다)
+- 보일러플레이트, UI 조정, 문구 수정
+- 빌드/타입 에러 중 원인이 명확한 것
+- 단순 반복 수정, 파일 탐색
+
+**안전장치 (Antigravity 제안, 합의됨)**: 단순 오류로 판단해 수정을 시작했더라도 **2회 시도 내에 해결되지 않거나 원인이 아키텍처/스펙 문제로 확장되면 즉시 손을 떼고 Claude에게 에스컬레이션한다.** 막힌 채 혼자 오래 붙잡는 것이 Claude를 부르는 것보다 비싸다.
+
+### ⑦ Claude에게는 "컨텍스트 팩"을 만들어 넘긴다
+Claude는 출력뿐 아니라 **파일을 읽는 입력에도 비용이 든다.** 저장소를 직접 훑게 하면 판단 전에 한도가 깎인다. Antigravity가 아래 4줄로 미리 요약해 넘긴다.
+
+```markdown
+## Claude 요청: (한 줄 제목)
+- 관련 파일: 경로 + 줄 범위
+- 증상: 무엇이 잘못되는가
+- 이미 시도: 무엇을 해봤고 왜 실패했는가
+- 묻고 싶은 것: 판단이 필요한 지점
+```
+
+## 3. 동시 작업 충돌 방지
+
+1. **동시에 같은 파일을 편집하지 않는다.** 작업 시작 시 핸드오버 기록에 "작업 중" 파일을 명시한다.
+2. **상대 영역 파일을 고쳐야 하면, 고치기 전에 핸드오버 기록에 이유를 남긴다.**
+3. **작업 시작 전 `git status`로 상대의 미커밋 변경이 있는지 확인한다.** 있으면 먼저 정리하거나 사용자에게 묻는다.
+
+## 4. 사용자 대상 차순위 지시 가이드
+
+사용자는 비전문가이므로, 작업이 끝나거나 단계가 완료될 때 **반드시** 답변 마무리에 **"다음으로 어느 에이전트에게 무슨 지시를 해야 하는지"** 복사해서 쓸 수 있는 구체적 프롬프트를 추천한다.
+
+- **Antigravity가 구현을 마쳤을 때** → 💡 *"Claude에게 '방금 구현한 기능의 위험 지점을 표적 리뷰해줘'라고 지시하세요."*
+- **Claude가 스펙/판단을 내렸을 때** → 💡 *"Antigravity에게 'Claude가 정한 스펙대로 구현하고 E2E로 화면 검증해줘'라고 지시하세요."*
 <!-- END:dual-agent-collaboration-rules -->
 
 <!-- BEGIN:prefetch-first-rules -->
@@ -168,3 +284,38 @@ Firebase 콘솔 → Firestore → **규칙** 탭 → 위 내용으로 교체 →
 - 클라이언트는 로그인 후 실시간 구독(`onSnapshot`)만 사용하므로 `request.auth != null` 조건이 충분
 - 학생 개인정보 보호를 위해 공개 규칙 상태로 배포하는 것은 절대 금지
 <!-- END:firestore-security-rules -->
+
+<!-- BEGIN:autocomplete-input-rules -->
+# 계정 및 그룹 입력 필드 자동완성(Autocomplete) 규칙
+
+사용자 계정(이메일, 아이디) 혹은 구글 워크스페이스 그룹 메일 주소를 텍스트로 직접 입력하거나 검색해야 하는 새로운 입력창을 개발할 때:
+
+1. **공통 AutocompleteInput 컴포넌트 사용**:
+   - 직접 텍스트 인풋창을 설계하지 않고, `AutocompleteInput` (`src/components/admin/AutocompleteInput.tsx`)을 공용으로 사용하여 이메일, 성, 이름 기반의 통합 검색 및 드롭다운 선택을 구현한다.
+
+2. **성능 최적화 필수**:
+   - 자동완성 검색 구현 시 **디바운스(200~300ms)**를 필수 적용한다.
+   - 그룹 메일 등 데이터 용량이 고정적이고 작은 정보는 페이지 로드 시 1회만 fetch하여 **로컬 메모리 필터링**을 적용하고, 사용자 계정 등 가변적인 대량 정보는 입력에 따라 API를 **온디맨드 호출**한다.
+
+3. **성/이름 검색 지원**:
+   - 일반 계정 검색의 경우, 사용자가 이메일 아이디 외에도 성(Family Name) 또는 이름(Given Name)을 입력해도 검색이 지원되도록 API 쿼리를 연동한다.
+<!-- END:autocomplete-input-rules -->
+
+<!-- BEGIN:deployment-checklist-rules -->
+# 정식 배포(Deployment) 시 체크리스트 규칙
+
+정식 상용 배포 요청 시, 에이전트는 다음을 반드시 이행한다:
+
+1. **배포 체크리스트 파일 사전 로드**:
+   - 배포 지원을 시작하기 전에 반드시 저장소 루트의 [`deployment_checklist.md`](./deployment_checklist.md)를 읽고 점검 사항 및 검증 시나리오를 숙지한다.
+   - (2026-07-22 이전에는 이 문서가 `~/.gemini/antigravity-ide/brain/` 아래 Git 밖에 고립되어 있었다. 저장소 루트로 이동 완료.)
+
+2. **환경 변수 가이드**:
+   - 배포 플랫폼에 입력할 환경 변수를 안내할 때, 알리미 계정(`GOOGLE_WORKSPACE_SENDER_EMAIL="hmnotice@hmh.or.kr"`)과 배포 도메인(`NEXT_PUBLIC_BASE_URL`), 크론 토큰(`CRON_SECRET`)이 누락되지 않도록 강조한다.
+
+3. **서비스 계정 역할(IAM) 검증 안내**:
+   - 도메인 전체 위임(Domain-wide delegation) 셋업과 더불어 서비스 계정에 **`Firebase 인증 관리자`** 역할이 부여되었는지 검사 단계를 안내한다.
+
+4. **배포 전 필수 조치**:
+   - Firestore 보안 규칙을 공개(`if true`)에서 인증 필수(`if request.auth != null`)로 반드시 변경한다. 상세는 아래 firestore-security-rules 섹션 참조.
+<!-- END:deployment-checklist-rules -->

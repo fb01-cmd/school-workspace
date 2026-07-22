@@ -1,60 +1,15 @@
-<!-- BEGIN:autocomplete-input-rules -->
-# 계정 및 그룹 입력 필드 자동완성(Autocomplete) 의존 규칙
+# ⚠️ 규칙의 단일 원본은 저장소 루트의 AGENTS.md 이다
 
-이 프로젝트에서 사용자 계정(이메일, 아이디) 혹은 구글 워크스페이스 그룹 메일 주소를 텍스트로 직접 입력하거나 검색해야 하는 새로운 입력창을 개발할 때, 다음 개발 수명 주기를 준수해야 한다:
+이 프로젝트의 모든 공통 규칙은 저장소 루트의 **[`AGENTS.md`](../AGENTS.md)** 한 곳에만 기록한다.
 
-1. **공통 AutocompleteInput 컴포넌트 사용**:
-   - 직접 텍스트 인풋창을 설계하지 않고, `AutocompleteInput` (또는 이를 래핑한 자동완성 전용 컴포넌트)을 공용으로 사용하여 이메일, 성, 이름 기반의 통합 검색 및 드롭다운 선택을 구현한다.
-   
-2. **성능 최적화 필수**:
-   - 자동완성 검색 기능 구현 시 **디바운스(Debounce, 200~300ms)**를 필수 적용하여 사용자가 타이핑하는 동안 서버 요청이 몰리지 않도록 보호한다.
-   - 그룹 메일 등 데이터 용량이 고정적이고 작은 정보는 페이지 로드 시 1회만 fetch하여 **로컬 메모리 필터링**을 적용하고, 사용자 계정 등 가변적인 대량 정보는 입력에 따라 API를 **온디맨드 호출**한다.
+이 파일에는 규칙 본문을 두지 않는다. 규칙을 읽거나 수정할 때는 루트의 `AGENTS.md`를 사용한다.
 
-3. **성/이름 검색 지원**:
-   - 일반 계정 검색의 경우, 사용자가 이메일 아이디 외에도 성(Family Name) 또는 이름(Given Name)을 입력해도 검색이 지원되도록 API 쿼리를 연동한다.
-<!-- END:autocomplete-input-rules -->
+## 배경 (2026-07-22)
 
-<!-- BEGIN:deployment-checklist-rules -->
-# 정식 배포(Deployment) 시 체크리스트 점검 의존 규칙
+같은 규칙이 `CLAUDE.md` / `AGENTS.md` / `.agents/AGENTS.md` 세 파일에 **서로 다른 버전**으로 존재해, 한쪽만 고치면 두 에이전트가 다른 규칙을 따르게 되는 문제가 있었다. Claude 제안과 Antigravity 회신 합의(`collaboration_proposal.md`)에 따라 루트 `AGENTS.md`를 단일 원본으로 정하고 나머지는 안내만 남긴다.
 
-이 프로젝트의 정식 상용 배포(Deployment) 요청 시, AI 코딩 에이전트는 다음 사항을 반드시 이행해야 한다:
+이 파일에 있던 규칙 두 건은 루트 `AGENTS.md`로 이관되었다.
 
-1. **배포 체크리스트 파일 사전 로드**:
-   - 배포 지원을 시작하기 전에 반드시 아래 아티팩트 파일을 로드하여 점검 사항 및 검증 시나리오를 숙지한다:
-     - [deployment_checklist.md](file:///home/fb01/.gemini/antigravity-ide/brain/df7bb5f4-6ff8-4650-9da8-db5a2dbf44d9/deployment_checklist.md)
-
-2. **환경 변수 가이드**:
-   - Vercel 등 배포 플랫폼에 입력할 환경 변수를 안내할 때, 이메일 발신 전용 알리미 계정(`GOOGLE_WORKSPACE_SENDER_EMAIL="hmnotice@hmh.or.kr"`) 및 실제 배포 도메인 주소(`NEXT_PUBLIC_BASE_URL`)가 누락되지 않도록 강조하여 사용자에게 알린다.
-
-3. **서비스 계정 역할(IAM) 검증 안내**:
-   - 배포 후 Firebase 인증 동기화가 에러 없이 작동할 수 있도록, 최고관리자 위임(Domain-wide delegation) 셋업과 더불어 서비스 계정에 **`Firebase 인증 관리자`** 역할이 정상적으로 부여되었는지 검사 단계를 안내한다.
-<!-- END:deployment-checklist-rules -->
-
-<!-- BEGIN:git-based-roadmap-rules -->
-# 개발 로드맵 및 기획 문서 Git 연동 의존 규칙
-
-이 프로젝트에서 개발 관련 기획 문서, 진행 상태 보고서(Status Report), 구현 계획서(Implementation Plan), 할 일 목록(Task) 등을 에이전트가 작성할 때 다음 규칙을 따른다:
-
-1. 에이전트 전용 격리 공간(예: C:\Users\...\.gemini\antigravity-ide\brain)에만 마크다운 문서를 작성하여 격리시키지 않는다.
-2. 모든 기획, 계획, 진행 현황 문서는 프로젝트 루트에 파일(예: development_roadmap.md)로 작성하고 Git 추적 대상에 포함되게 한다. 이를 통해 기기 전환이나 대화 세션 만료 시에도 기획 맥락이 끊기지 않도록 방지한다.
-<!-- END:git-based-roadmap-rules -->
-
-<!-- BEGIN:dual-agent-collaboration-rules -->
-# Antigravity & Claude AI 에이전트 이중 협업 및 분업 규칙
-
-이 프로젝트는 IDE 기반의 **Antigravity**와 터미널/데스크톱 앱 기반의 **Claude**가 공동으로 개발을 진행한다. 두 에이전트는 서로의 작업 결과와 상태를 존중하며 아래 분업 및 교대 수칙을 준수한다:
-
-1. **에이전트별 주 전담 영역**:
-   - **Antigravity (IDE & Agentic Assistant)**: 대규모 아키텍처 및 기획 설계, 브라우저 서브에이전트를 활용한 E2E 화면 검증, 복합 컴포넌트 개발.
-   - **Claude (CLI / Linux Desktop App Assistant)**: 로컬 터미널 빌드(`npm run build`), 타입 검사(`npx tsc`), 린트 및 단위 디버깅, 코드 리뷰, Git 커밋 관리.
-
-2. **작업 상태 동기화 및 핸드오버 (Context Handover)**:
-   - 주요 기능 개발 완료 시 반드시 프로젝트 루트의 `development_roadmap.md` 또는 `project_notes.md`에 **완료 항목**과 **다음 에이전트를 위한 Next Action**을 명시한다.
-   - 격리된 에이전트 전용 디렉터리가 아닌 프로젝트 루트 파일로 상태를 공유한다.
-
-3. **공통 규칙 엄수**:
-   - 알림 발신자 `hmnotice@hmh.or.kr` 통일, 프리페치 데이터 우선 사용, AutocompleteInput 사용 등 공통 프로젝트 규칙을 상호 엄격히 준수한다.
-
-4. **사용자 대상 차순위 지시 가이드 (Proactive Next-Action Recommendation)**:
-   - 사용자는 비전문가이므로, 작업이 끝나거나 특정 단계가 완료될 때 **반드시** 답변 마무리에 **"다음으로 어느 에이전트에게 무슨 지시를 해야 하는지"** 바로 복사해서 사용할 수 있는 구체적인 프롬프트 예시를 추천한다.
-<!-- END:dual-agent-collaboration-rules -->
+- 계정·그룹 자동완성 규칙 → `autocomplete-input-rules` 섹션
+- 배포 체크리스트 규칙 → `deployment-checklist-rules` 섹션
+  (참조 대상 문서도 Git 밖 `~/.gemini/antigravity-ide/brain/`에서 저장소 루트 [`deployment_checklist.md`](../deployment_checklist.md)로 이동 완료)
