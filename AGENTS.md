@@ -60,6 +60,26 @@ This version has breaking changes — APIs, conventions, and file structure may 
 2. 모든 기획, 계획, 진행 현황 문서는 프로젝트 루트에 파일(예: development_roadmap.md)로 작성하고 Git 추적 대상에 포함되게 한다. 이를 통해 기기 전환이나 대화 세션 만료 시에도 기획 맥락이 끊기지 않도록 방지한다.
 <!-- END:git-based-roadmap-rules -->
 
+<!-- BEGIN:dual-agent-collaboration-rules -->
+# Antigravity & Claude AI 에이전트 이중 협업 및 분업 규칙
+
+이 프로젝트는 IDE 기반의 **Antigravity**와 터미널/데스크톱 앱 기반의 **Claude**가 공동으로 개발을 진행한다. 두 에이전트는 서로의 작업 결과와 상태를 존중하며 아래 분업 및 교대 수칙을 준수한다:
+
+1. **에이전트별 주 전담 영역**:
+   - **Antigravity (IDE & Agentic Assistant)**: 대규모 아키텍처 및 기획 설계, 브라우저 서브에이전트를 활용한 E2E 화면 검증, 복합 컴포넌트 개발.
+   - **Claude (CLI / Linux Desktop App Assistant)**: 로컬 터미널 빌드(`npm run build`), 타입 검사(`npx tsc`), 린트 및 단위 디버깅, 코드 리뷰, Git 커밋 관리.
+
+2. **작업 상태 동기화 및 핸드오버 (Context Handover)**:
+   - 주요 기능 개발 완료 시 반드시 프로젝트 루트의 `development_roadmap.md` 또는 `project_notes.md`에 **완료 항목**과 **다음 에이전트를 위한 Next Action**을 명시한다.
+   - 격리된 에이전트 전용 디렉터리가 아닌 프로젝트 루트 파일로 상태를 공유한다.
+
+3. **공통 규칙 엄수**:
+   - 알림 발신자 `hmnotice@hmh.or.kr` 통일, 프리페치 데이터 우선 사용, AutocompleteInput 사용 등 공통 프로젝트 규칙을 상호 엄격히 준수한다.
+
+4. **사용자 대상 차순위 지시 가이드 (Proactive Next-Action Recommendation)**:
+   - 사용자는 비전문가이므로, 작업이 끝나거나 특정 단계가 완료될 때 **반드시** 답변 마무리에 **"다음으로 어느 에이전트에게 무슨 지시를 해야 하는지"** 바로 복사해서 사용할 수 있는 구체적인 프롬프트 예시를 추천한다.
+<!-- END:dual-agent-collaboration-rules -->
+
 <!-- BEGIN:prefetch-first-rules -->
 # 백그라운드 프리페치 데이터 우선 사용 규칙
 
