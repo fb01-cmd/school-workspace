@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     // 🔐 서버 사이드 인증 가드
     // 전출 교사가 본인 데드라인을 제출하는 액션은 일반 교사도 허용, 나머지는 수퍼어드민 전용
     // ─────────────────────────────────────────
-    const TEACHER_ALLOWED_ACTIONS = ["submit_teacher_deadline", "get_teacher_transfer_status"];
+    const TEACHER_ALLOWED_ACTIONS = ["submit_teacher_deadline", "get_teacher_transfer_status", "join_security_group"];
     const authUser = await verifyAuthAccess(req);
     if (!authUser) {
       return NextResponse.json({ error: "인증되지 않은 요청입니다." }, { status: 401 });
@@ -41,6 +41,15 @@ export async function POST(req: NextRequest) {
       !TEACHER_ALLOWED_ACTIONS.includes(action)
     ) {
       return NextResponse.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
+    }
+    // join_security_group: 로그인한 교사 본인의 셀프 가입 전용.
+    // 학생 역할은 차단하고, 대상 이메일은 토큰의 본인 이메일로 강제해
+    // 임의 이메일을 교사 보안그룹에 넣는 권한 상승을 막는다.
+    if (action === "join_security_group" && authUser.role !== "super_admin") {
+      if (authUser.role !== "teacher") {
+        return NextResponse.json({ error: "교사 계정만 사용할 수 있는 기능입니다." }, { status: 403 });
+      }
+      body.teacherEmail = authUser.email;
     }
 
     const adminEmail = operatorEmail || authUser.email || "unknown@domain.com";
