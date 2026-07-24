@@ -1693,7 +1693,7 @@ export const moveDriveFolderToArchive = async (
   targetParentFolderId: string
 ) => {
   if (isMock) {
-    return { id: fileId, parents: [targetParentFolderId] };
+    return { id: fileId, parents: [targetParentFolderId], originalParentFolderId: null, alreadyMoved: false };
   }
 
   const drive = getDriveClient(teacherEmail);
@@ -1704,17 +1704,28 @@ export const moveDriveFolderToArchive = async (
     fileId,
     fields: "id, parents",
   });
-  const currentParents = (fileRes.data.parents || []).join(",");
+  const existingParents = fileRes.data.parents || [];
+
+  // idempotent 재실행 방어: 이미 목표 폴더로 이동 완료된 상태라면 재이동 시도를 건너뛴다.
+  // addParents와 removeParents에 동일 ID를 동시에 넣으면 Drive API 동작이 보장되지 않아
+  // 최악의 경우 폴더가 부모 없이 고아 상태가 될 수 있다.
+  if (existingParents.length === 1 && existingParents[0] === targetParentFolderId) {
+    return { id: fileId, parents: existingParents, originalParentFolderId: null, alreadyMoved: true };
+  }
+
+  // 원래 부모(복원 시 되돌아갈 곳)를 보존하되, 목표 폴더가 이미 부모 중 하나라면 제거 대상에서 제외한다.
+  const parentsToRemove = existingParents.filter((p) => p !== targetParentFolderId);
+  const originalParentFolderId = existingParents[0] || null;
 
   // 폴더 이동 (removeParents & addParents)
   const res = await drive.files.update({
     fileId,
     addParents: targetParentFolderId,
-    removeParents: currentParents,
+    removeParents: parentsToRemove.join(","),
     fields: "id, parents",
   });
 
-  return res.data;
+  return { ...res.data, originalParentFolderId, alreadyMoved: false };
 };
 
 /**
