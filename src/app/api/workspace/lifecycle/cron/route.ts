@@ -20,6 +20,13 @@ import {
 const CRON_SECRET = process.env.CRON_SECRET;
 
 export async function GET(req: NextRequest) {
+  // 프로덕션에서 CRON_SECRET 미설정 시 실행 자체를 거부 (fail-closed).
+  // 이 크론은 계정 일시정지·영구삭제를 실행하고 mockToday로 기준 날짜까지 바꿀 수 있으므로,
+  // 시크릿 없이 열려 있으면 외부인이 삭제를 조기 발동시킬 수 있다.
+  if (process.env.NODE_ENV === "production" && !CRON_SECRET) {
+    console.error("[Cron] CRON_SECRET이 설정되지 않아 실행을 거부합니다.");
+    return NextResponse.json({ error: "CRON_SECRET is not configured" }, { status: 503 });
+  }
   // 인증 확인 (CRON_SECRET 설정이 없는 개발 환경에서는 허용)
   if (CRON_SECRET) {
     const authHeader = req.headers.get("authorization");
