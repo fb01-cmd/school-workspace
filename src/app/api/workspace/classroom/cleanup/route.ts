@@ -39,14 +39,25 @@ export async function GET(req: NextRequest) {
     if (action === "logs") {
       try {
         const logsRef = collection(db, "classroom_cleanup_logs");
-        const q = query(
-          logsRef,
-          where("teacherEmail", "==", teacherEmail),
-          orderBy("timestamp", "desc"),
-          limit(30)
-        );
-        const snap = await getDocs(q);
-        const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        let logs: any[] = [];
+        try {
+          const q = query(
+            logsRef,
+            where("teacherEmail", "==", teacherEmail),
+            orderBy("timestamp", "desc"),
+            limit(30)
+          );
+          const snap = await getDocs(q);
+          logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (idxErr) {
+          // Fallback if composite index is building or missing
+          console.warn("Index query failed, falling back to in-memory filter & sort:", idxErr);
+          const qFallback = query(logsRef, where("teacherEmail", "==", teacherEmail));
+          const snapFallback = await getDocs(qFallback);
+          logs = snapFallback.docs.map(d => ({ id: d.id, ...d.data() }));
+          logs.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+          logs = logs.slice(0, 30);
+        }
         return NextResponse.json({ logs });
       } catch (err: any) {
         console.error("Failed to query classroom_cleanup_logs:", err);
@@ -62,8 +73,8 @@ export async function GET(req: NextRequest) {
       const schoolYear = creationTime ? getSchoolYearFromCreationTime(creationTime) : currentSchoolYear;
       const isTarget = isCleanupTargetCourse(c);
       
-      // 연도 접두어 여부 검사 (예: 2025 수학 또는 2025-수학 [2025] 수학 등)
-      const hasYearPrefix = /^20\d{2}[\s\-\[]/.test(c.name || "");
+      // 연도 접두어 여부 검사 (예: "2025 수학", "2025-수학", "[2025] 수학" 등)
+      const hasYearPrefix = /^(20\d{2}[\s\-\[]|\[20\d{2}\])/.test(c.name || "");
       const suggestedName = !hasYearPrefix && schoolYear ? `${schoolYear} ${c.name}` : c.name;
 
       return {
@@ -164,7 +175,7 @@ export async function POST(req: NextRequest) {
         rename?: { success: boolean; name?: string; error?: string };
         archive?: { success: boolean; state?: string; error?: string };
         calendar?: { success: boolean; error?: string };
-        drive?: { success: boolean; error?: string };
+        drive?: { success: boolean; error?: string; originalParentFolderId?: string | null };
       } = {};
 
       // 1단계: 이름 변경 (선택 또는 제안된 연도 접두어 이름)
@@ -196,16 +207,21 @@ export async function POST(req: NextRequest) {
       }
 
       // 4단계: 드라이브 폴더 이동 (선택)
+      let driveOriginalParentFolderId: string | null = null;
       if (driveFolderId && targetParentFolderId) {
         try {
-          await moveDriveFolderToArchive(teacherEmail, driveFolderId, targetParentFolderId);
-          pipelineResults.drive = { success: true };
+          const moveResult = await moveDriveFolderToArchive(teacherEmail, driveFolderId, targetParentFolderId);
+          driveOriginalParentFolderId = moveResult.originalParentFolderId ?? null;
+          pipelineResults.drive = { success: true, originalParentFolderId: driveOriginalParentFolderId };
         } catch (err: any) {
           pipelineResults.drive = { success: false, error: err.message };
         }
       }
 
       // Firestore 감사/원복 로그 저장
+      // 캘린더/드라이브 원복 기능은 아직 restore 액션에 구현되지 않았지만,
+      // 나중에 추가할 수 있도록 원래 드라이브 부모 폴더 ID는 지금 시점에 반드시 남겨둔다
+      // (이동 성공 후에는 Drive API로 다시 조회할 방법이 없음).
       const logData = {
         teacherEmail,
         courseId,
@@ -213,6 +229,7 @@ export async function POST(req: NextRequest) {
         newName: newName || originalName || "",
         calendarId: calendarId || null,
         driveFolderId: driveFolderId || null,
+        driveOriginalParentFolderId,
         results: pipelineResults,
         timestamp: new Date().toISOString(),
         restored: false,
