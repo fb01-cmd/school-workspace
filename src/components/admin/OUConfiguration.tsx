@@ -66,6 +66,60 @@ export default function OUConfiguration() {
   const [positions, setPositions] = useState<string[]>(DEFAULT_POSITIONS);
   const [newDeptInput, setNewDeptInput] = useState("");
   const [newPosInput, setNewPosInput] = useState("");
+  const [draggedDeptIdx, setDraggedDeptIdx] = useState<number | null>(null);
+  const [draggedPosIdx, setDraggedPosIdx] = useState<number | null>(null);
+
+  const moveDepartment = (index: number, direction: "up" | "down") => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= departments.length) return;
+    const newDepts = [...departments];
+    const [movedItem] = newDepts.splice(index, 1);
+    newDepts.splice(targetIndex, 0, movedItem);
+    setDepartments(newDepts);
+  };
+
+  const handleDeptDragStart = (index: number) => {
+    setDraggedDeptIdx(index);
+  };
+
+  const handleDeptDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+  };
+
+  const handleDeptDrop = (index: number) => {
+    if (draggedDeptIdx === null || draggedDeptIdx === index) return;
+    const newDepts = [...departments];
+    const [draggedItem] = newDepts.splice(draggedDeptIdx, 1);
+    newDepts.splice(index, 0, draggedItem);
+    setDepartments(newDepts);
+    setDraggedDeptIdx(null);
+  };
+
+  const movePosition = (index: number, direction: "up" | "down") => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= positions.length) return;
+    const newPositions = [...positions];
+    const [movedItem] = newPositions.splice(index, 1);
+    newPositions.splice(targetIndex, 0, movedItem);
+    setPositions(newPositions);
+  };
+
+  const handlePosDragStart = (index: number) => {
+    setDraggedPosIdx(index);
+  };
+
+  const handlePosDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+  };
+
+  const handlePosDrop = (index: number) => {
+    if (draggedPosIdx === null || draggedPosIdx === index) return;
+    const newPositions = [...positions];
+    const [draggedItem] = newPositions.splice(draggedPosIdx, 1);
+    newPositions.splice(index, 0, draggedItem);
+    setPositions(newPositions);
+    setDraggedPosIdx(null);
+  };
 
   const domain = userData?.domain || "";
 
@@ -522,7 +576,7 @@ export default function OUConfiguration() {
             {/* 부서 목록 */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">10. 부서 목록 관리</label>
-              <p className="text-gray-500 text-xs mb-3">교직원이 조직 정보 신청 시 선택할 수 있는 부서 목록입니다.</p>
+              <p className="text-gray-500 text-xs mb-3">교직원이 조직 정보 신청 시 선택할 수 있는 부서 목록입니다. 행을 드래그하거나 위/아래 화살표(▲ ▼) 버튼으로 우선순위를 변경하세요.</p>
               <div className="flex gap-2 mb-3">
                 <input
                   type="text"
@@ -546,17 +600,65 @@ export default function OUConfiguration() {
                     if (v && !departments.includes(v)) setDepartments(prev => [...prev, v]);
                     setNewDeptInput("");
                   }}
-                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium transition-colors"
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium transition-colors shrink-0"
                 >
                   추가
                 </button>
               </div>
-              <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
-                {departments.map(dept => (
-                  <span key={dept} className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-semibold border border-indigo-100">
-                    {dept}
-                    <button onClick={() => setDepartments(prev => prev.filter(d => d !== dept))} className="text-indigo-300 hover:text-indigo-600 leading-none">✕</button>
-                  </span>
+              <div className="space-y-1.5 max-h-80 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50/50">
+                {departments.map((dept, index) => (
+                  <div
+                    key={dept}
+                    draggable
+                    onDragStart={() => handleDeptDragStart(index)}
+                    onDragOver={(e) => handleDeptDragOver(e, index)}
+                    onDrop={() => handleDeptDrop(index)}
+                    onDragEnd={() => setDraggedDeptIdx(null)}
+                    className={`flex items-center justify-between px-3 py-2 bg-white rounded-lg border text-sm font-medium transition-all shadow-xs select-none ${
+                      draggedDeptIdx === index
+                        ? "opacity-40 border-dashed border-indigo-400 bg-indigo-50/40"
+                        : "border-gray-200 hover:border-indigo-200 hover:bg-indigo-50/20"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-indigo-600 font-bold text-base leading-none">
+                        ⠿
+                      </span>
+                      <span className="text-xs font-bold text-indigo-400 w-5 text-right shrink-0">
+                        {index + 1}.
+                      </span>
+                      <span className="text-gray-800 font-semibold truncate">{dept}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      <button
+                        type="button"
+                        disabled={index === 0}
+                        onClick={() => moveDepartment(index, "up")}
+                        className="p-1 text-gray-400 hover:text-indigo-600 disabled:opacity-20 transition-colors cursor-pointer rounded hover:bg-gray-100"
+                        title="위로 이동"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        disabled={index === departments.length - 1}
+                        onClick={() => moveDepartment(index, "down")}
+                        className="p-1 text-gray-400 hover:text-indigo-600 disabled:opacity-20 transition-colors cursor-pointer rounded hover:bg-gray-100"
+                        title="아래로 이동"
+                      >
+                        ▼
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDepartments(prev => prev.filter(d => d !== dept))}
+                        className="p-1 text-gray-300 hover:text-red-500 transition-colors cursor-pointer rounded hover:bg-red-50 ml-1"
+                        title="삭제"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -564,7 +666,7 @@ export default function OUConfiguration() {
             {/* 직책 목록 */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">11. 직책 목록 관리</label>
-              <p className="text-gray-500 text-xs mb-3">교직원이 선택할 수 있는 직책 목록입니다.</p>
+              <p className="text-gray-500 text-xs mb-3">교직원이 선택할 수 있는 직책 목록입니다. 행을 드래그하거나 위/아래 화살표(▲ ▼) 버튼으로 우선순위를 변경하세요.</p>
               <div className="flex gap-2 mb-3">
                 <input
                   type="text"
@@ -579,7 +681,7 @@ export default function OUConfiguration() {
                     }
                   }}
                   placeholder="직책명 입력 후 Enter"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-900"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 text-gray-900"
                 />
                 <button
                   type="button"
@@ -588,17 +690,65 @@ export default function OUConfiguration() {
                     if (v && !positions.includes(v)) setPositions(prev => [...prev, v]);
                     setNewPosInput("");
                   }}
-                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-sm font-medium transition-colors"
+                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-sm font-medium transition-colors shrink-0"
                 >
                   추가
                 </button>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {positions.map(pos => (
-                  <span key={pos} className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-100">
-                    {pos}
-                    <button onClick={() => setPositions(prev => prev.filter(p => p !== pos))} className="text-emerald-300 hover:text-emerald-600 leading-none">✕</button>
-                  </span>
+              <div className="space-y-1.5 max-h-80 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50/50">
+                {positions.map((pos, index) => (
+                  <div
+                    key={pos}
+                    draggable
+                    onDragStart={() => handlePosDragStart(index)}
+                    onDragOver={(e) => handlePosDragOver(e, index)}
+                    onDrop={() => handlePosDrop(index)}
+                    onDragEnd={() => setDraggedPosIdx(null)}
+                    className={`flex items-center justify-between px-3 py-2 bg-white rounded-lg border text-sm font-medium transition-all shadow-xs select-none ${
+                      draggedPosIdx === index
+                        ? "opacity-40 border-dashed border-emerald-400 bg-emerald-50/40"
+                        : "border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/20"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-emerald-600 font-bold text-base leading-none">
+                        ⠿
+                      </span>
+                      <span className="text-xs font-bold text-emerald-500 w-5 text-right shrink-0">
+                        {index + 1}.
+                      </span>
+                      <span className="text-gray-800 font-semibold truncate">{pos}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      <button
+                        type="button"
+                        disabled={index === 0}
+                        onClick={() => movePosition(index, "up")}
+                        className="p-1 text-gray-400 hover:text-emerald-600 disabled:opacity-20 transition-colors cursor-pointer rounded hover:bg-gray-100"
+                        title="위로 이동"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        disabled={index === positions.length - 1}
+                        onClick={() => movePosition(index, "down")}
+                        className="p-1 text-gray-400 hover:text-emerald-600 disabled:opacity-20 transition-colors cursor-pointer rounded hover:bg-gray-100"
+                        title="아래로 이동"
+                      >
+                        ▼
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPositions(prev => prev.filter(p => p !== pos))}
+                        className="p-1 text-gray-300 hover:text-red-500 transition-colors cursor-pointer rounded hover:bg-red-50 ml-1"
+                        title="삭제"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

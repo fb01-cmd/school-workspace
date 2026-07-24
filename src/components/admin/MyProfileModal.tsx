@@ -72,6 +72,10 @@ export default function MyProfileModal({ onClose }: Props) {
   };
 
   const handleNoDeptToggle = () => {
+    if (noDept) {
+      setNoDept(false);
+      return;
+    }
     setNoDept(true);
     setSelectedDepts([]);
     setDeptHeadMap({});

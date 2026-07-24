@@ -107,6 +107,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 | 한도 소진 시 | **고급 판단 에이전트가 며칠간 사라짐** | 영향 적음 |
 
 Claude의 토큰은 **회복에 며칠이 걸리는 소모성 자원**이다. 분업의 목표는 "공평한 배분"이 아니라 **"비싼 자원을 그것이 아니면 안 되는 곳에만 쓰기"** 이다.
+> 💡 **한시적 예외 (2026-07-24 ~ 2026-08-24)**: 사용자의 Claude Max20 구독에 따른 한시적 분업 확장 적용 중. 상세 내용은 [`collaboration_proposal_2026-07-24_max20.md`](./collaboration_proposal_2026-07-24_max20.md) 참조.
 
 ## 1. 분담 기준 — 판단(judgment) vs 생산(production)
 
