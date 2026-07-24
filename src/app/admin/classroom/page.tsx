@@ -7,6 +7,8 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { getClientCache } from "@/lib/cache/clientCache";
 
+import ClassroomCleanupTab from "@/components/admin/ClassroomCleanupTab";
+
 interface ClassroomCourse {
   id: string;
   name: string;
@@ -39,7 +41,7 @@ export default function ClassroomPage() {
   const domain = userData?.domain || "";
 
   // UI Modes
-  const [tabMode, setTabMode] = useState<"sync" | "manage" | "logs">("sync");
+  const [tabMode, setTabMode] = useState<"sync" | "manage" | "logs" | "cleanup">("sync");
   const [createMode, setCreateMode] = useState<"existing" | "new">("existing");
 
   // Classroom States
@@ -452,7 +454,17 @@ export default function ClassroomPage() {
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
             }`}
           >
-            📋 실행 이력 로그
+            📜 배정 작업 이력
+          </button>
+          <button
+            onClick={() => setTabMode("cleanup")}
+            className={`pb-3 px-1 border-b-2 font-bold text-sm transition-all ${
+              tabMode === "cleanup"
+                ? "border-indigo-600 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            📦 학기말 일괄 정리 (보관·캘린더)
           </button>
         </nav>
       </div>
@@ -887,6 +899,9 @@ export default function ClassroomPage() {
           )}
         </div>
       )}
+
+      {/* Tab 4: Classroom Cleanup & Restore */}
+      {tabMode === "cleanup" && <ClassroomCleanupTab />}
     </div>
   );
 }

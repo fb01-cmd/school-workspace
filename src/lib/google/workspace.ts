@@ -1297,10 +1297,10 @@ export const restoreDeletedUser = async (userKey: string, orgUnitPath: string) =
 // ─────────────────────────────────────────
 
 // Mock data for classroom simulation
-let mockCourses = [
-  { id: "course_1", name: "1학년 1학기 수학", section: "1반", ownerId: "teacher01@hmh.or.kr" },
-  { id: "course_2", name: "1학년 1학기 국어", section: "2반", ownerId: "teacher01@hmh.or.kr" },
-  { id: "course_3", name: "2학년 1학기 물리", section: "기초", ownerId: "teacher02@hmh.or.kr" }
+let mockCourses: { id: string; name: string; section: string; ownerId: string; courseState?: string; creationTime?: string }[] = [
+  { id: "course_1", name: "1학년 1학기 수학", section: "1반", ownerId: "teacher01@hmh.or.kr", courseState: "ACTIVE", creationTime: "2025-03-02T01:00:00.000Z" },
+  { id: "course_2", name: "1학년 1학기 국어", section: "2반", ownerId: "teacher01@hmh.or.kr", courseState: "ACTIVE", creationTime: "2025-03-02T01:00:00.000Z" },
+  { id: "course_3", name: "2학년 1학기 물리", section: "기초", ownerId: "teacher02@hmh.or.kr", courseState: "ACTIVE", creationTime: "2025-03-02T01:00:00.000Z" }
 ];
 
 let mockCourseStudents: Record<string, string[]> = {
@@ -1513,3 +1513,243 @@ export const getUser = async (email: string): Promise<any | null> => {
   }
 };
 
+// ==========================================
+// Phase 5.8: 학기말 클래스룸·캘린더·드라이브 일괄 정리 유틸 & 헬퍼
+// ==========================================
+
+/**
+ * creationTime (ISO String) 기반 학년도(School Year) 계산 유틸
+ * - M(월, KST 기준): 3~12월 -> Y학년도
+ * - M: 1월 -> Y-1 학년도 (아직 진행 중인 학년도)
+ * - M: 2월 -> Y 학년도 (다음 학년도 신학기 사전 준비 코스로 당겨서 간주)
+ */
+export const getSchoolYearFromCreationTime = (creationTime: string): number => {
+  const date = new Date(creationTime);
+  // Convert to KST (UTC + 9 hours)
+  const kstMs = date.getTime() + 9 * 60 * 60 * 1000;
+  const kstDate = new Date(kstMs);
+  const Y = kstDate.getUTCFullYear();
+  const M = kstDate.getUTCMonth() + 1; // 1-12
+
+  if (M >= 3 && M <= 12) {
+    return Y;
+  } else if (M === 1) {
+    return Y - 1;
+  } else {
+    // M === 2
+    return Y;
+  }
+};
+
+/**
+ * 현재 학사력 기준 현재 학년도 반환
+ * - 3월~12월: 해당 연도(Y) 학년도
+ * - 1월~2월: 직전 연도(Y-1) 학년도 (새 학기 3월 개학 전)
+ */
+export const getCurrentSchoolYear = (refDate: Date = new Date()): number => {
+  const kstMs = refDate.getTime() + 9 * 60 * 60 * 1000;
+  const kstDate = new Date(kstMs);
+  const Y = kstDate.getUTCFullYear();
+  const M = kstDate.getUTCMonth() + 1;
+
+  if (M >= 3 && M <= 12) {
+    return Y;
+  }
+  return Y - 1;
+};
+
+/**
+ * 특정 클래스룸 코스가 현재 기준 "정리 대상(과거 학년도 미보관 코스)"인지 판별
+ */
+export const isCleanupTargetCourse = (
+  course: { creationTime?: string | null; courseState?: string | null },
+  refDate: Date = new Date()
+): boolean => {
+  if (!course || course.courseState !== "ACTIVE" || !course.creationTime) {
+    return false;
+  }
+  const courseSchoolYear = getSchoolYearFromCreationTime(course.creationTime);
+  const currentSchoolYear = getCurrentSchoolYear(refDate);
+
+  return courseSchoolYear < currentSchoolYear;
+};
+
+/**
+ * Google Calendar API Client 생성 (도메인 위임 및 교사 사칭)
+ */
+export const getCalendarClient = (impersonatedEmail: string) => {
+  if (isMock) return null;
+
+  const privateKey = process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY!.replace(/\\n/g, "\n");
+  const auth = new google.auth.JWT({
+    email: process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL,
+    key: privateKey,
+    scopes: ["https://www.googleapis.com/auth/calendar"],
+    subject: impersonatedEmail,
+  });
+
+  return google.calendar({ version: "v3", auth });
+};
+
+/**
+ * Google Drive API Client 생성 (도메인 위임 및 교사 사칭)
+ */
+export const getDriveClient = (impersonatedEmail: string) => {
+  if (isMock) return null;
+
+  const privateKey = process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY!.replace(/\\n/g, "\n");
+  const auth = new google.auth.JWT({
+    email: process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL,
+    key: privateKey,
+    scopes: ["https://www.googleapis.com/auth/drive"],
+    subject: impersonatedEmail,
+  });
+
+  return google.drive({ version: "v3", auth });
+};
+
+/**
+ * 1단계 파이프라인: 클래스룸 이름 변경 (연도 접두어 추가 등)
+ */
+export const renameClassroomCourse = async (
+  teacherEmail: string,
+  courseId: string,
+  newName: string
+) => {
+  if (isMock) {
+    const c = mockCourses.find(x => x.id === courseId);
+    if (c) c.name = newName;
+    return { id: courseId, name: newName };
+  }
+
+  const classroom = getClassroomClient(teacherEmail);
+  if (!classroom) throw new Error("Classroom client not initialized.");
+
+  const res = await classroom.courses.patch({
+    id: courseId,
+    updateMask: "name",
+    requestBody: { name: newName },
+  });
+  return res.data;
+};
+
+/**
+ * 2단계 파이프라인: 클래스룸 보관 처리 (ARCHIVED)
+ */
+export const archiveClassroomCourse = async (
+  teacherEmail: string,
+  courseId: string
+) => {
+  if (isMock) {
+    const c = mockCourses.find(x => x.id === courseId);
+    if (c) c.courseState = "ARCHIVED";
+    return { id: courseId, courseState: "ARCHIVED" };
+  }
+
+  const classroom = getClassroomClient(teacherEmail);
+  if (!classroom) throw new Error("Classroom client not initialized.");
+
+  const res = await classroom.courses.patch({
+    id: courseId,
+    updateMask: "courseState",
+    requestBody: { courseState: "ARCHIVED" },
+  });
+  return res.data;
+};
+
+/**
+ * 3단계 파이프라인: 교사 캘린더 목록에서 클래스룸 캘린더 구독 취소(삭제)
+ */
+export const unsubscribeClassroomCalendar = async (
+  teacherEmail: string,
+  calendarId: string
+) => {
+  if (isMock) {
+    return { success: true, calendarId };
+  }
+
+  const calendar = getCalendarClient(teacherEmail);
+  if (!calendar) throw new Error("Calendar client not initialized.");
+
+  try {
+    await calendar.calendarList.delete({ calendarId });
+    return { success: true, calendarId };
+  } catch (error: any) {
+    // 이미 삭제되었거나 존재하지 않는 경우 404/410은 성공으로 취급 (idempotent)
+    if (error?.code === 404 || error?.code === 410) {
+      return { success: true, calendarId, alreadyUnsubscribed: true };
+    }
+    console.error(`Error unsubscribing calendar ${calendarId} for ${teacherEmail}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * 4단계 파이프라인: 드라이브 내 클래스룸 폴더를 아카이브(이전년도) 상위 폴더로 이동
+ */
+export const moveDriveFolderToArchive = async (
+  teacherEmail: string,
+  fileId: string,
+  targetParentFolderId: string
+) => {
+  if (isMock) {
+    return { id: fileId, parents: [targetParentFolderId] };
+  }
+
+  const drive = getDriveClient(teacherEmail);
+  if (!drive) throw new Error("Drive client not initialized.");
+
+  // 현재 parents 조회
+  const fileRes = await drive.files.get({
+    fileId,
+    fields: "id, parents",
+  });
+  const currentParents = (fileRes.data.parents || []).join(",");
+
+  // 폴더 이동 (removeParents & addParents)
+  const res = await drive.files.update({
+    fileId,
+    addParents: targetParentFolderId,
+    removeParents: currentParents,
+    fields: "id, parents",
+  });
+
+  return res.data;
+};
+
+/**
+ * 보관 처리 원복(Restore) 헬퍼: ARCHIVED -> ACTIVE 변경 및 이름 복원
+ */
+export const restoreClassroomCourse = async (
+  teacherEmail: string,
+  courseId: string,
+  originalName?: string
+) => {
+  if (isMock) {
+    const c = mockCourses.find(x => x.id === courseId);
+    if (c) {
+      c.courseState = "ACTIVE";
+      if (originalName) c.name = originalName;
+    }
+    return { id: courseId, courseState: "ACTIVE", name: originalName };
+  }
+
+  const classroom = getClassroomClient(teacherEmail);
+  if (!classroom) throw new Error("Classroom client not initialized.");
+
+  const requestBody: any = { courseState: "ACTIVE" };
+  let updateMask = "courseState";
+
+  if (originalName) {
+    requestBody.name = originalName;
+    updateMask += ",name";
+  }
+
+  const res = await classroom.courses.patch({
+    id: courseId,
+    updateMask,
+    requestBody,
+  });
+
+  return res.data;
+};
