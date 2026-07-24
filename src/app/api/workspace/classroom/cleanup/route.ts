@@ -9,6 +9,7 @@ import {
   archiveClassroomCourse,
   unsubscribeClassroomCalendar,
   moveDriveFolderToArchive,
+  findOrCreateArchiveFolder,
   restoreClassroomCourse,
   isMock
 } from "@/lib/google/workspace";
@@ -131,7 +132,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { action, courseId, newName, originalName, calendarId, driveFolderId, targetParentFolderId, logId } = body;
+    const { action, courseId, schoolYear, newName, originalName, calendarId, driveFolderId, targetParentFolderId, logId } = body;
 
     // 1. 원복 (Restore) 처리
     if (action === "restore") {
@@ -139,8 +140,39 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "courseId가 누락되었습니다." }, { status: 400 });
       }
 
+      // 로그 문서 소유자 검증
+      let logDocData: any = null;
+      if (logId) {
+        try {
+          const logRef = doc(db, "classroom_cleanup_logs", logId);
+          const snap = await getDoc(logRef);
+          if (snap.exists()) {
+            logDocData = snap.data();
+            if (logDocData.teacherEmail && logDocData.teacherEmail !== teacherEmail && role !== "super_admin") {
+              return NextResponse.json({ error: "본인의 정리 기록만 원복할 수 있습니다." }, { status: 403 });
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch cleanup log for restore verification:", e);
+        }
+      }
+
       const restoredCourse = await restoreClassroomCourse(teacherEmail, courseId, originalName);
       
+      // 드라이브 폴더 원래 위치 원복 시도 (driveFolderId & driveOriginalParentFolderId)
+      const targetDriveId = driveFolderId || logDocData?.driveFolderId;
+      const originalDriveParentId = logDocData?.driveOriginalParentFolderId;
+      let driveRestored = false;
+
+      if (targetDriveId && originalDriveParentId) {
+        try {
+          await moveDriveFolderToArchive(teacherEmail, targetDriveId, originalDriveParentId);
+          driveRestored = true;
+        } catch (dErr) {
+          console.error("Failed to restore drive folder location:", dErr);
+        }
+      }
+
       // 로그 상태 업데이트
       if (logId) {
         try {
@@ -148,6 +180,7 @@ export async function POST(req: NextRequest) {
           await updateDoc(logRef, {
             restored: true,
             restoredAt: new Date().toISOString(),
+            driveRestored,
           });
         } catch (e) {
           console.error("Failed to update cleanup log restore status:", e);
@@ -162,7 +195,7 @@ export async function POST(req: NextRequest) {
         status: "success",
       });
 
-      return NextResponse.json({ success: true, restoredCourse });
+      return NextResponse.json({ success: true, restoredCourse, driveRestored });
     }
 
     // 2. 정리 (Cleanup) 4단계 파이프라인 처리
@@ -175,7 +208,7 @@ export async function POST(req: NextRequest) {
         rename?: { success: boolean; name?: string; error?: string };
         archive?: { success: boolean; state?: string; error?: string };
         calendar?: { success: boolean; error?: string };
-        drive?: { success: boolean; error?: string; originalParentFolderId?: string | null };
+        drive?: { success: boolean; error?: string; targetParentFolderId?: string; originalParentFolderId?: string | null };
       } = {};
 
       // 1단계: 이름 변경 (선택 또는 제안된 연도 접두어 이름)
@@ -206,22 +239,29 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 4단계: 드라이브 폴더 이동 (선택)
+      // 4단계: 드라이브 폴더 이동 ("이전년도 클래스룸/<schoolYear>학년도" 상위 폴더 찾기/생성 후 이동)
       let driveOriginalParentFolderId: string | null = null;
-      if (driveFolderId && targetParentFolderId) {
+      if (driveFolderId) {
         try {
-          const moveResult = await moveDriveFolderToArchive(teacherEmail, driveFolderId, targetParentFolderId);
+          let parentId = targetParentFolderId;
+          if (!parentId) {
+            const sYear = schoolYear || getCurrentSchoolYear() - 1;
+            parentId = await findOrCreateArchiveFolder(teacherEmail, sYear);
+          }
+
+          const moveResult = await moveDriveFolderToArchive(teacherEmail, driveFolderId, parentId);
           driveOriginalParentFolderId = moveResult.originalParentFolderId ?? null;
-          pipelineResults.drive = { success: true, originalParentFolderId: driveOriginalParentFolderId };
+          pipelineResults.drive = {
+            success: true,
+            targetParentFolderId: parentId,
+            originalParentFolderId: driveOriginalParentFolderId,
+          };
         } catch (err: any) {
           pipelineResults.drive = { success: false, error: err.message };
         }
       }
 
       // Firestore 감사/원복 로그 저장
-      // 캘린더/드라이브 원복 기능은 아직 restore 액션에 구현되지 않았지만,
-      // 나중에 추가할 수 있도록 원래 드라이브 부모 폴더 ID는 지금 시점에 반드시 남겨둔다
-      // (이동 성공 후에는 Drive API로 다시 조회할 방법이 없음).
       const logData = {
         teacherEmail,
         courseId,

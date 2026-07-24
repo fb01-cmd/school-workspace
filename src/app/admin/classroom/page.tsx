@@ -8,6 +8,7 @@ import { db } from "@/lib/firebase/config";
 import { getClientCache } from "@/lib/cache/clientCache";
 
 import ClassroomCleanupTab from "@/components/admin/ClassroomCleanupTab";
+import ClassroomCleanupBanner from "@/components/admin/ClassroomCleanupBanner";
 
 interface ClassroomCourse {
   id: string;
@@ -415,13 +416,15 @@ export default function ClassroomPage() {
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900">구글 클래스룸 학생 강제 배정 (즉시 가입)</h2>
-        <p className="text-gray-500 text-xs mt-1">
-          학생이 개별적으로 클래스룸 초대장을 수락하는 대기 과정 없이, 교사가 실시간으로 수업을 개설하고 학생들을 즉시 강제 가입(배정)시킵니다.
-        </p>
-      </div>
+    <div className="space-y-4">
+      <ClassroomCleanupBanner />
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">구글 클래스룸 학생 강제 배정 (즉시 가입)</h2>
+          <p className="text-gray-500 text-xs mt-1">
+            학생이 개별적으로 클래스룸 초대장을 수락하는 대기 과정 없이, 교사가 실시간으로 수업을 개설하고 학생들을 즉시 강제 가입(배정)시킵니다.
+          </p>
+        </div>
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
@@ -902,6 +905,7 @@ export default function ClassroomPage() {
 
       {/* Tab 4: Classroom Cleanup & Restore */}
       {tabMode === "cleanup" && <ClassroomCleanupTab />}
+    </div>
     </div>
   );
 }

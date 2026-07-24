@@ -44,11 +44,17 @@ export default function ClassroomCleanupTab() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [subTab, setSubTab] = useState<"targets" | "logs">("targets");
 
+  const [isSnoozed, setIsSnoozed] = useState(false);
+
   useEffect(() => {
-    // Load stored excluded IDs from localStorage
+    // Load stored excluded IDs and snooze status from localStorage
     const savedExcludes = localStorage.getItem("classroom_cleanup_excluded_ids");
     if (savedExcludes) {
       try { setExcludedIds(JSON.parse(savedExcludes)); } catch (e) {}
+    }
+    const snoozeUntil = localStorage.getItem("classroom_cleanup_snooze_until");
+    if (snoozeUntil && Date.now() < Number(snoozeUntil)) {
+      setIsSnoozed(true);
     }
     loadData();
   }, []);
@@ -123,6 +129,7 @@ export default function ClassroomCleanupTab() {
   const handleSnooze = () => {
     const snoozeUntil = Date.now() + 7 * 24 * 60 * 60 * 1000; // 1 week
     localStorage.setItem("classroom_cleanup_snooze_until", String(snoozeUntil));
+    setIsSnoozed(true);
     setMessage({ type: "success", text: "일주일 동안 학기말 정리 알림이 일시 중단(스누즈)됩니다." });
   };
 
@@ -153,6 +160,7 @@ export default function ClassroomCleanupTab() {
           body: JSON.stringify({
             action: "cleanup",
             courseId: targetCourse.id,
+            schoolYear: targetCourse.schoolYear,
             originalName: targetCourse.name,
             newName: editedNames[courseId] || targetCourse.suggestedName,
             calendarId: targetCourse.calendarId,

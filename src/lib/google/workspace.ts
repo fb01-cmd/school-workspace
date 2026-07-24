@@ -1764,3 +1764,64 @@ export const restoreClassroomCourse = async (
 
   return res.data;
 };
+
+/**
+ * 드라이브 상위 아카이브 폴더("이전년도 클래스룸/<schoolYear>학년도") 자동 찾기 및 생성 헬퍼
+ */
+export const findOrCreateArchiveFolder = async (
+  teacherEmail: string,
+  schoolYear: number
+): Promise<string> => {
+  if (isMock) {
+    return `mock_archive_folder_${schoolYear}`;
+  }
+
+  const drive = getDriveClient(teacherEmail);
+  if (!drive) throw new Error("Drive client not initialized.");
+
+  // 1. "이전년도 클래스룸" 루트 폴더 찾기/생성
+  const rootFolderName = "이전년도 클래스룸";
+  const rootRes = await drive.files.list({
+    q: `name = '${rootFolderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id, name)",
+  });
+
+  let rootFolderId: string;
+  if (rootRes.data.files && rootRes.data.files.length > 0) {
+    rootFolderId = rootRes.data.files[0].id!;
+  } else {
+    const createRootRes = await drive.files.create({
+      requestBody: {
+        name: rootFolderName,
+        mimeType: "application/vnd.google-apps.folder",
+      },
+      fields: "id",
+    });
+    rootFolderId = createRootRes.data.id!;
+  }
+
+  // 2. "이전년도 클래스룸/<schoolYear>학년도" 하위 폴더 찾기/생성
+  const subFolderName = `${schoolYear}학년도`;
+  const subRes = await drive.files.list({
+    q: `'${rootFolderId}' in parents and name = '${subFolderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id, name)",
+  });
+
+  let subFolderId: string;
+  if (subRes.data.files && subRes.data.files.length > 0) {
+    subFolderId = subRes.data.files[0].id!;
+  } else {
+    const createSubRes = await drive.files.create({
+      requestBody: {
+        name: subFolderName,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [rootFolderId],
+      },
+      fields: "id",
+    });
+    subFolderId = createSubRes.data.id!;
+  }
+
+  return subFolderId;
+};
+
