@@ -65,6 +65,9 @@
     - `https://www.googleapis.com/auth/chat.spaces` 및 `https://www.googleapis.com/auth/chat.messages.create` (구글 챗 메시지 전송)
 - [ ] **Firebase Authentication Admin API 권한 부여**
   - **[규칙 확인]** 서비스 계정이 파이어베이스 인증 DB 내의 구버전 UID 충돌을 자동 해결(`deleteAuthUserByEmail`)할 수 있도록, GCP IAM 관리 화면 또는 Firebase Console을 통해 **`Firebase 인증 관리자 (Firebase Authentication Admin)`** 역할(Role)이 반드시 이 계정에 부여되어 있어야 합니다.
+- [x] **Cloud Datastore 사용자(Cloud Datastore User) 역할 부여** *(2026-07-24 admin SDK 전환으로 신규 필수, 효명고 프로젝트에는 부여 완료)*
+  - 서버 API와 크론이 Firestore를 **admin SDK**로 접근하므로, 서비스 계정에 GCP IAM에서 **`Cloud Datastore 사용자`** 역할이 반드시 있어야 합니다. 없으면 로그인 포함 **DB를 쓰는 모든 기능이 `PERMISSION_DENIED`로 죽습니다** (실제 발생했던 장애 — 인증 관리자 역할만으로는 부족).
+  - 화이트라벨로 다른 학교에 세울 때 반드시 걸리는 지점이므로 초기 세팅 시 함께 부여할 것.
 - [ ] **보안 그룹(Security Group) 활성화 여부 확인**
   - 환경설정에서 지정해 둔 그룹 중 `ts@`, `tc@` 도메인을 가진 그룹이나 이름/설명에 "보안그룹" 텍스트를 포함하고 있는 그룹들이 실제 구글 워크스페이스 상에서 정상적으로 조회되는지 확인합니다.
 
