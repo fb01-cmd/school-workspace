@@ -88,6 +88,20 @@
 
 ---
 
+## 2.7 ⚠️ 의존성/런타임 함정 — Vercel에서만 전 API 500 (2026-07-24 실사고)
+
+> 배포 당일 밤, 프로덕션에서만 `/api/workspace/*` 전 엔드포인트가 500으로 죽고 로컬은 멀쩡했던 사고.
+> **원인**: `firebase-admin@14 → jwks-rsa@4 → jose@6(ESM 전용)` 체인이 Vercel Node 런타임의
+> `require()`에서 `ERR_REQUIRE_ESM`으로 실패 → `firebase-admin/auth` 모듈 로드 자체가 불가.
+> 로컬 Node(20.19+)는 require(esm)을 허용해서 재현되지 않음. ([auth0/node-jwks-rsa#493](https://github.com/auth0/node-jwks-rsa/issues/493))
+
+- **해결**: `package.json`에 `"overrides": { "jwks-rsa": "^3.2.2" }` (CJS 호환 jose@4 사용). 커밋 `9edf4dd`.
+- **주의**: `firebase-admin`을 메이저 업그레이드하거나 이 override를 제거하면 재발한다.
+  변경 시 반드시 로컬에서 `node --no-experimental-require-module -e "require('firebase-admin/auth')"` 로 프로덕션 조건을 흉내 내 검증할 것.
+- **진단 요령**: 비로그인 상태로 `POST /api/workspace/users`를 쏴서 **401이면 정상, 500이면 모듈 로드 단계 사망**. 서버 로그는 `npx vercel logs school-workspace-eight.vercel.app`.
+
+---
+
 ## 3. 🧪 배포 전 최종 검증 시나리오 (Vercel 배포 후)
 
 상용 배포 직후 아래 시나리오들을 순서대로 수동 작동하여 오작동 여부를 검사하는 것을 강력히 권장합니다.
