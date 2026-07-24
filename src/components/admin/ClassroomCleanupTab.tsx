@@ -23,6 +23,14 @@ interface CleanupLog {
   courseId: string;
   originalName: string;
   newName: string;
+  calendarId?: string | null;
+  driveFolderId?: string | null;
+  results?: {
+    rename?: { success: boolean; name?: string; error?: string };
+    archive?: { success: boolean; state?: string; error?: string };
+    calendar?: { success: boolean; error?: string; hiddenInsteadOfUnsubscribed?: boolean };
+    drive?: { success: boolean; error?: string; targetParentFolderId?: string; originalParentFolderId?: string | null };
+  };
   timestamp: string;
   restored: boolean;
 }
@@ -146,8 +154,10 @@ export default function ClassroomCleanupTab() {
 
     setSubmitting(true);
     setMessage(null);
-    let successCount = 0;
+    let fullSuccessCount = 0;
+    let partialFailCount = 0;
     let failCount = 0;
+    const failureMessages: string[] = [];
 
     for (const courseId of selectedIds) {
       const targetCourse = courses.find(c => c.id === courseId);
@@ -170,20 +180,54 @@ export default function ClassroomCleanupTab() {
 
         const data = await res.json();
         if (res.ok && data.success) {
-          successCount++;
+          const results = data.pipelineResults || {};
+          const failedSteps: string[] = [];
+
+          if (results.rename && results.rename.success === false) {
+            failedSteps.push(`이름변경(${results.rename.error || "실패"})`);
+          }
+          if (results.archive && results.archive.success === false) {
+            failedSteps.push(`보관(${results.archive.error || "실패"})`);
+          }
+          if (results.calendar && results.calendar.success === false) {
+            failedSteps.push(`캘린더 해제(${results.calendar.error || "실패"})`);
+          }
+          if (results.drive && results.drive.success === false) {
+            failedSteps.push(`드라이브 이동(${results.drive.error || "실패"})`);
+          }
+
+          if (failedSteps.length > 0) {
+            partialFailCount++;
+            failureMessages.push(`[${targetCourse.name}] ${failedSteps.join(", ")}`);
+          } else {
+            fullSuccessCount++;
+          }
         } else {
           failCount++;
+          failureMessages.push(`[${targetCourse.name}] ${data.error || "서버 응답 오류"}`);
         }
-      } catch (err) {
+      } catch (err: any) {
         failCount++;
+        failureMessages.push(`[${targetCourse.name}] 네트워크 오류 (${err.message})`);
       }
     }
 
     setSubmitting(false);
-    setMessage({
-      type: failCount === 0 ? "success" : "error",
-      text: `학기말 정리 완료: 성공 ${successCount}건 ${failCount > 0 ? `, 실패 ${failCount}건` : ""}`,
-    });
+
+    if (partialFailCount === 0 && failCount === 0) {
+      setMessage({
+        type: "success",
+        text: `학기말 정리 완료: 선택한 ${fullSuccessCount}개 클래스룸이 모두 완벽하게 보관·정리되었습니다.`,
+      });
+    } else {
+      const summaryText = `학기말 정리 완료 (완전 성공 ${fullSuccessCount}건 / 부분 실패 ${partialFailCount}건 / 실패 ${failCount}건)`;
+      const detailText = failureMessages.length > 0 ? ` — 상세 사유: ${failureMessages.join(" | ")}` : "";
+      // 실패가 한 건이라도 있으면 항상 error 스타일로 — 성공 배너에 실패 사유가 묻히면 이 기능의 존재 이유가 없음
+      setMessage({
+        type: "error",
+        text: `${summaryText}${detailText}`,
+      });
+    }
 
     loadData();
   };
@@ -203,6 +247,8 @@ export default function ClassroomCleanupTab() {
           action: "restore",
           courseId: log.courseId,
           originalName: log.originalName,
+          calendarId: log.calendarId,
+          driveFolderId: log.driveFolderId,
           logId: log.id,
         }),
       });
@@ -210,7 +256,12 @@ export default function ClassroomCleanupTab() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "복원 실패");
 
-      setMessage({ type: "success", text: `'${log.originalName}' 클래스룸이 복원되었습니다.` });
+      const restoredDetails: string[] = [];
+      if (data.calendarRestored) restoredDetails.push("캘린더 복원");
+      if (data.driveRestored) restoredDetails.push("드라이브 위치 원복");
+      const detailStr = restoredDetails.length > 0 ? ` (${restoredDetails.join(", ")})` : "";
+
+      setMessage({ type: "success", text: `'${log.originalName}' 클래스룸이 복원되었습니다.${detailStr}` });
       loadData();
     } catch (err: any) {
       setMessage({ type: "error", text: err.message });
@@ -463,7 +514,28 @@ export default function ClassroomCleanupTab() {
                     <td className="p-3.5 text-xs text-gray-500 font-mono">
                       {new Date(log.timestamp).toLocaleString("ko-KR")}
                     </td>
-                    <td className="p-3.5 font-medium text-gray-900">{log.originalName}</td>
+                    <td className="p-3.5 font-medium text-gray-900">
+                      <div>{log.originalName}</div>
+                      {log.results && (
+                        <div className="flex flex-wrap gap-1 mt-1 text-[10px] font-medium">
+                          {log.results.archive && (
+                            <span className={log.results.archive.success ? "text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60" : "text-red-800 bg-red-50 px-1.5 py-0.5 rounded border border-red-200/60"}>
+                              보관 {log.results.archive.success ? "성공" : "실패"}
+                            </span>
+                          )}
+                          {log.results.calendar && (
+                            <span className={log.results.calendar.success ? "text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/60" : "text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/60"}>
+                              캘린더 {log.results.calendar.success ? (log.results.calendar.hiddenInsteadOfUnsubscribed ? "숨김" : "해제") : "실패"}
+                            </span>
+                          )}
+                          {log.results.drive && (
+                            <span className={log.results.drive.success ? "text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/60" : "text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/60"}>
+                              드라이브 {log.results.drive.success ? "이동" : "실패"}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </td>
                     <td className="p-3.5 text-xs font-semibold text-indigo-600">{log.newName}</td>
                     <td className="p-3.5 text-center">
                       {log.restored ? (

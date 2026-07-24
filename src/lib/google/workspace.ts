@@ -1713,6 +1713,51 @@ export const unsubscribeClassroomCalendar = async (
 };
 
 /**
+ * 클래스룸 원복(Restore) 시 캘린더 되돌리기:
+ * - 숨김(hidden: true) 처리되었던 소유자 캘린더는 hidden: false, selected: true로 패치
+ * - 구독 취소(delete)되었던 공동교사 캘린더는 calendarList.insert로 다시 추가
+ */
+export const restoreClassroomCalendar = async (
+  teacherEmail: string,
+  calendarId: string,
+  hiddenInsteadOfUnsubscribed?: boolean
+) => {
+  if (isMock) {
+    return { success: true, calendarId };
+  }
+
+  const calendar = getCalendarClient(teacherEmail);
+  if (!calendar) throw new Error("Calendar client not initialized.");
+
+  try {
+    if (hiddenInsteadOfUnsubscribed) {
+      await calendar.calendarList.patch({
+        calendarId,
+        requestBody: { hidden: false, selected: true },
+      });
+      return { success: true, calendarId, action: "unhidden" };
+    } else {
+      try {
+        await calendar.calendarList.insert({
+          requestBody: { id: calendarId },
+        });
+        return { success: true, calendarId, action: "reinserted" };
+      } catch (insertErr: any) {
+        // 이미 목록에 남아있는 경우 패치로 숨김해제 시도
+        await calendar.calendarList.patch({
+          calendarId,
+          requestBody: { hidden: false, selected: true },
+        });
+        return { success: true, calendarId, action: "unhidden_fallback" };
+      }
+    }
+  } catch (error: any) {
+    console.error(`Error restoring calendar ${calendarId} for ${teacherEmail}:`, error);
+    throw error;
+  }
+};
+
+/**
  * 4단계 파이프라인: 드라이브 내 클래스룸 폴더를 아카이브(이전년도) 상위 폴더로 이동
  */
 export const moveDriveFolderToArchive = async (

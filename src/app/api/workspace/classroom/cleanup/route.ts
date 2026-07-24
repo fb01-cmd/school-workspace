@@ -9,6 +9,7 @@ import {
   renameClassroomCourse,
   archiveClassroomCourse,
   unsubscribeClassroomCalendar,
+  restoreClassroomCalendar,
   moveDriveFolderToArchive,
   findOrCreateArchiveFolder,
   restoreClassroomCourse,
@@ -169,6 +170,20 @@ export async function POST(req: NextRequest) {
 
       const restoredCourse = await restoreClassroomCourse(teacherEmail, courseId, originalName);
       
+      // 캘린더 되돌리기 시도 (숨김 해제 또는 재구독)
+      const targetCalendarId = calendarId || logDocData?.calendarId;
+      const hiddenInsteadOfUnsubscribed = logDocData?.results?.calendar?.hiddenInsteadOfUnsubscribed;
+      let calendarRestored = false;
+
+      if (targetCalendarId) {
+        try {
+          await restoreClassroomCalendar(teacherEmail, targetCalendarId, hiddenInsteadOfUnsubscribed);
+          calendarRestored = true;
+        } catch (cErr) {
+          console.error("Failed to restore calendar:", cErr);
+        }
+      }
+
       // 드라이브 폴더 원래 위치 원복 시도 (driveFolderId & driveOriginalParentFolderId)
       const targetDriveId = driveFolderId || logDocData?.driveFolderId;
       const originalDriveParentId = logDocData?.driveOriginalParentFolderId;
@@ -191,6 +206,7 @@ export async function POST(req: NextRequest) {
             restored: true,
             restoredAt: new Date().toISOString(),
             driveRestored,
+            calendarRestored,
           });
         } catch (e) {
           console.error("Failed to update cleanup log restore status:", e);
@@ -205,7 +221,7 @@ export async function POST(req: NextRequest) {
         status: "success",
       });
 
-      return NextResponse.json({ success: true, restoredCourse, driveRestored });
+      return NextResponse.json({ success: true, restoredCourse, driveRestored, calendarRestored });
     }
 
     // 2. 정리 (Cleanup) 4단계 파이프라인 처리
