@@ -13,9 +13,6 @@ export interface AuditLog {
   error?: string;
 }
 
-/**
- * Write a new audit log record to Firestore 'audit_logs' collection.
- */
 export async function writeAuditLog(payload: Omit<AuditLog, "timestamp">) {
   try {
     await addDoc(collection(db, "audit_logs"), {

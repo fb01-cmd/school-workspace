@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuthAccess } from "@/lib/firebase/admin";
+import { verifyAuthAccess, adminDb } from "@/lib/firebase/admin";
+import { FieldValue } from "firebase-admin/firestore";
 import {
   listClassroomCourses,
   getClassroomUserId,
@@ -15,9 +16,7 @@ import {
   restoreClassroomCourse,
   isMock
 } from "@/lib/google/workspace";
-import { db } from "@/lib/firebase/config";
-import { collection, addDoc, doc, updateDoc, getDoc, getDocs, query, where, orderBy, limit } from "firebase/firestore";
-import { writeAuditLog } from "@/lib/firebase/audit";
+import { writeAuditLog } from "@/lib/firebase/audit-server";
 
 /**
  * GET /api/workspace/classroom/cleanup
@@ -41,22 +40,19 @@ export async function GET(req: NextRequest) {
     // 정리 작업 이력 조회
     if (action === "logs") {
       try {
-        const logsRef = collection(db, "classroom_cleanup_logs");
+        const logsRef = adminDb.collection("classroom_cleanup_logs");
         let logs: any[] = [];
         try {
-          const q = query(
-            logsRef,
-            where("teacherEmail", "==", teacherEmail),
-            orderBy("timestamp", "desc"),
-            limit(30)
-          );
-          const snap = await getDocs(q);
+          const snap = await logsRef
+            .where("teacherEmail", "==", teacherEmail)
+            .orderBy("timestamp", "desc")
+            .limit(30)
+            .get();
           logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         } catch (idxErr) {
           // Fallback if composite index is building or missing
           console.warn("Index query failed, falling back to in-memory filter & sort:", idxErr);
-          const qFallback = query(logsRef, where("teacherEmail", "==", teacherEmail));
-          const snapFallback = await getDocs(qFallback);
+          const snapFallback = await logsRef.where("teacherEmail", "==", teacherEmail).get();
           logs = snapFallback.docs.map(d => ({ id: d.id, ...d.data() }));
           logs.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
           logs = logs.slice(0, 30);
@@ -155,10 +151,10 @@ export async function POST(req: NextRequest) {
       let logDocData: any = null;
       if (logId) {
         try {
-          const logRef = doc(db, "classroom_cleanup_logs", logId);
-          const snap = await getDoc(logRef);
-          if (snap.exists()) {
-            logDocData = snap.data();
+          const logRef = adminDb.collection("classroom_cleanup_logs").doc(logId);
+          const snap = await logRef.get();
+          if (snap.exists) {
+            logDocData = snap.data() || {};
             if (logDocData.teacherEmail && logDocData.teacherEmail !== teacherEmail && role !== "super_admin") {
               return NextResponse.json({ error: "본인의 정리 기록만 원복할 수 있습니다." }, { status: 403 });
             }
@@ -201,8 +197,8 @@ export async function POST(req: NextRequest) {
       // 로그 상태 업데이트
       if (logId) {
         try {
-          const logRef = doc(db, "classroom_cleanup_logs", logId);
-          await updateDoc(logRef, {
+          const logRef = adminDb.collection("classroom_cleanup_logs").doc(logId);
+          await logRef.update({
             restored: true,
             restoredAt: new Date().toISOString(),
             driveRestored,
@@ -306,7 +302,7 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        const docRef = await addDoc(collection(db, "classroom_cleanup_logs"), logData);
+        const docRef = await adminDb.collection("classroom_cleanup_logs").add(logData);
         await writeAuditLog({
           operatorEmail: teacherEmail,
           action: "CLASSROOM_CLEANUP_EXECUTE",

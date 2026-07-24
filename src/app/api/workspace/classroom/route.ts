@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuthAccess } from "@/lib/firebase/admin";
+import { verifyAuthAccess, adminDb } from "@/lib/firebase/admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { 
   listClassroomCourses, 
   createClassroomCourse, 
@@ -8,9 +9,7 @@ import {
   listClassroomStudents,
   isMock
 } from "@/lib/google/workspace";
-import { db } from "@/lib/firebase/config";
-import { collection, addDoc, getDocs, query, where, orderBy, limit } from "firebase/firestore";
-import { writeAuditLog } from "@/lib/firebase/audit";
+import { writeAuditLog } from "@/lib/firebase/audit-server";
 
 // GET handler
 export async function GET(req: NextRequest) {
@@ -57,14 +56,11 @@ export async function GET(req: NextRequest) {
     // C. Fetch historical classroom sync logs for the teacher
     if (action === "logs") {
       try {
-        const logsRef = collection(db, "classroom_sync_logs");
-        const q = query(
-          logsRef,
-          where("teacherEmail", "==", email),
-          orderBy("timestamp", "desc"),
-          limit(20)
-        );
-        const snap = await getDocs(q);
+        const snap = await adminDb.collection("classroom_sync_logs")
+          .where("teacherEmail", "==", email)
+          .orderBy("timestamp", "desc")
+          .limit(20)
+          .get();
         const logs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         return NextResponse.json({ logs });
       } catch (err: any) {
@@ -147,9 +143,9 @@ export async function POST(req: NextRequest) {
           studentEmails,
           successCount,
           failures,
-          timestamp: new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
+          timestamp: FieldValue.serverTimestamp()
         };
-        await addDoc(collection(db, "classroom_sync_logs"), logData);
+        await adminDb.collection("classroom_sync_logs").add(logData);
 
         // Audit Log
         await writeAuditLog({
@@ -211,9 +207,9 @@ export async function POST(req: NextRequest) {
           studentEmails,
           successCount,
           failures,
-          timestamp: new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
+          timestamp: FieldValue.serverTimestamp()
         };
-        await addDoc(collection(db, "classroom_sync_logs"), logData);
+        await adminDb.collection("classroom_sync_logs").add(logData);
 
         // Audit Log
         await writeAuditLog({

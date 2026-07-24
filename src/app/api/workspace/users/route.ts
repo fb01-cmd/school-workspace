@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAlias, invalidateUserCache, isMock, listDeletedUsers, restoreDeletedUser, resetStudentPassword, mockUsers, getUser } from "@/lib/google/workspace";
-import { writeAuditLog } from "@/lib/firebase/audit";
-import { db } from "@/lib/firebase/config";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { deleteAuthUserByEmail, verifyAuthAccess } from "@/lib/firebase/admin";
+import { writeAuditLog } from "@/lib/firebase/audit-server";
+import { deleteAuthUserByEmail, verifyAuthAccess, adminDb } from "@/lib/firebase/admin";
 
 async function syncUserSuspensionToLifecycle(email: string, suspended: boolean) {
   try {
@@ -11,13 +9,13 @@ async function syncUserSuspensionToLifecycle(email: string, suspended: boolean) 
     if (!domain) return;
 
     // 1. 졸업생 태스크 일시정지 상태 동기화
-    const gradTaskRef = doc(db, "graduation_tasks", domain, "students", email);
-    const gradTaskSnap = await getDoc(gradTaskRef);
-    if (gradTaskSnap.exists()) {
-      const task = gradTaskSnap.data();
+    const gradTaskRef = adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email);
+    const gradTaskSnap = await gradTaskRef.get();
+    if (gradTaskSnap.exists) {
+      const task = gradTaskSnap.data() || {};
       if (suspended) {
         if (task.status === "PENDING" || task.status === "CONSENTED") {
-          await updateDoc(gradTaskRef, {
+          await gradTaskRef.update({
             status: "SUSPENDED",
             suspendedAt: new Date(),
           });
@@ -25,7 +23,7 @@ async function syncUserSuspensionToLifecycle(email: string, suspended: boolean) 
       } else {
         if (task.status === "SUSPENDED") {
           const originalStatus = task.consentSubmitted ? "CONSENTED" : "PENDING";
-          await updateDoc(gradTaskRef, {
+          await gradTaskRef.update({
             status: originalStatus,
             suspendedAt: null,
           });
@@ -34,20 +32,20 @@ async function syncUserSuspensionToLifecycle(email: string, suspended: boolean) 
     }
 
     // 2. 전출/자퇴 태스크 일시정지 상태 동기화
-    const transferTaskRef = doc(db, "transfer_out_tasks", domain, "students", email);
-    const transferTaskSnap = await getDoc(transferTaskRef);
-    if (transferTaskSnap.exists()) {
-      const task = transferTaskSnap.data();
+    const transferTaskRef = adminDb.collection("transfer_out_tasks").doc(domain).collection("students").doc(email);
+    const transferTaskSnap = await transferTaskRef.get();
+    if (transferTaskSnap.exists) {
+      const task = transferTaskSnap.data() || {};
       if (suspended) {
         if (task.status === "OU_MOVED") {
-          await updateDoc(transferTaskRef, {
+          await transferTaskRef.update({
             status: "SUSPENDED",
             suspendedAt: new Date(),
           });
         }
       } else {
         if (task.status === "SUSPENDED") {
-          await updateDoc(transferTaskRef, {
+          await transferTaskRef.update({
             status: "OU_MOVED",
             suspendedAt: null,
           });
@@ -121,12 +119,11 @@ export async function POST(req: NextRequest) {
 
         // 2. If general teacher, verify target user is in the student OUs
         if (authUser.role !== "super_admin") {
-          const settingsRef = doc(db, "settings", domain);
-          const settingsSnap = await getDoc(settingsRef);
-          if (!settingsSnap.exists()) {
+          const settingsSnap = await adminDb.collection("settings").doc(domain).get();
+          if (!settingsSnap.exists) {
             return NextResponse.json({ error: "학교 조직단위 설정 정보가 없습니다. Workspace 환경 설정을 완료해 주세요." }, { status: 400 });
           }
-          const sData = settingsSnap.data();
+          const sData = settingsSnap.data() || {};
           const studentOUMappings: Record<string, string> = sData?.ouMapping?.students || {};
           const studentOUPaths = Object.values(studentOUMappings).map(p => p.toLowerCase().trim());
 

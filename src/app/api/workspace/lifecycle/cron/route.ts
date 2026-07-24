@@ -1,17 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateUser, deleteUser, invalidateUserCache, listUsersInOUs, sendGmail, sendGoogleChat } from "@/lib/google/workspace";
-import { writeAuditLog } from "@/lib/firebase/audit";
-import { deleteAuthUserByEmail } from "@/lib/firebase/admin";
-import { db } from "@/lib/firebase/config";
-import {
-  collection,
-  getDocs,
-  doc,
-  updateDoc,
-  deleteDoc,
-  getDoc,
-  setDoc,
-} from "firebase/firestore";
+import { writeAuditLog } from "@/lib/firebase/audit-server";
+import { deleteAuthUserByEmail, adminDb } from "@/lib/firebase/admin";
 
 // 이 크론 API는 Vercel Cron 또는 외부 스케줄러(예: Cloud Scheduler)에서
 // 매일 0시경 자동으로 호출해야 합니다.
@@ -66,15 +56,11 @@ export async function GET(req: NextRequest) {
 
   try {
     // 모든 도메인의 전출 태스크를 순회
-    // transfer_out_tasks/{domain}/students 구조에서 getDocs로 조회
-    // 주의: collectionGroup은 Firebase Admin SDK에서만 완전 지원
-    // 클라이언트 SDK 방식으로 구현 (도메인 목록은 settings 컬렉션에서 가져옴)
-    const settingsSnap = await getDocs(collection(db, "settings"));
+    const settingsSnap = await adminDb.collection("settings").get();
     const domains = settingsSnap.docs.map((d) => d.id);
 
     for (const domain of domains) {
-      const studentsCol = collection(db, "transfer_out_tasks", domain, "students");
-      const studentsSnap = await getDocs(studentsCol);
+      const studentsSnap = await adminDb.collection("transfer_out_tasks").doc(domain).collection("students").get();
 
       for (const studentDoc of studentsSnap.docs) {
         const task = studentDoc.data();
@@ -91,7 +77,7 @@ export async function GET(req: NextRequest) {
           if (suspendDueStr <= todayKSTStr) {
             try {
               await updateUser(email, { suspended: true });
-              await updateDoc(doc(db, "transfer_out_tasks", domain, "students", email), {
+              await adminDb.collection("transfer_out_tasks").doc(domain).collection("students").doc(email).update({
                 status: "SUSPENDED",
                 suspendedAt: new Date(),
               });
@@ -121,7 +107,7 @@ export async function GET(req: NextRequest) {
             try {
               await deleteUser(email);
               // 삭제 완료 태스크는 Firestore에서 제거 (감사 로그에 기록되므로 이력 보존 OK)
-              await deleteDoc(doc(db, "transfer_out_tasks", domain, "students", email));
+              await adminDb.collection("transfer_out_tasks").doc(domain).collection("students").doc(email).delete();
               invalidateUserCache();
               await writeAuditLog({
                 operatorEmail: "system@cron",
@@ -140,7 +126,7 @@ export async function GET(req: NextRequest) {
         // ── 레거시 정리: 이미 DELETED 상태로 저장된 구버전 문서 삭제
         else if ((task.status as string) === "DELETED") {
           try {
-            await deleteDoc(doc(db, "transfer_out_tasks", domain, "students", email));
+            await adminDb.collection("transfer_out_tasks").doc(domain).collection("students").doc(email).delete();
             console.log(`[Cron] 레거시 DELETED 문서 정리: ${email}`);
           } catch (err: any) {
             console.warn(`[Cron] 레거시 문서 정리 실패 (${email}):`, err.message);
@@ -152,12 +138,11 @@ export async function GET(req: NextRequest) {
       // [졸업생 생애주기 스케줄링 및 알림 처리]
       // ─────────────────────────────────────────────────────────────
       try {
-        const settingsRef = doc(db, "settings", domain);
-        const settingsSnap = await getDoc(settingsRef);
-        dbg(`[Grad] settings 로드: exists=${settingsSnap.exists()}, domain=${domain}`);
+        const settingsSnap = await adminDb.collection("settings").doc(domain).get();
+        dbg(`[Grad] settings 로드: exists=${settingsSnap.exists}, domain=${domain}`);
         
-        if (settingsSnap.exists()) {
-          const sData = settingsSnap.data();
+        if (settingsSnap.exists) {
+          const sData = settingsSnap.data() || {};
           const gradSettings = sData.graduationSettings;
           const studentOUMappings = sData.ouMapping?.students || {};
           const grade3OU = studentOUMappings[3] || studentOUMappings["3"] || "";
@@ -186,14 +171,14 @@ export async function GET(req: NextRequest) {
                 }
                 dbg(`[Grad] 동기화 대상: ${email}`);
                 
-                const taskRef = doc(db, "graduation_tasks", domain, "students", email);
-                const taskSnap = await getDoc(taskRef);
+                const taskRef = adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email);
+                const taskSnap = await taskRef.get();
                 
-                if (!taskSnap.exists()) {
+                if (!taskSnap.exists) {
                   const name = student.name?.givenName || student.name || "학생";
                   const studentId = student.name?.familyName || "";
                   
-                  await setDoc(taskRef, {
+                  await taskRef.set({
                     email,
                     name,
                     studentId,
@@ -277,8 +262,7 @@ export async function GET(req: NextRequest) {
             }
 
             const isMonday = now.getDay() === 1;
-            const gradTasksCol = collection(db, "graduation_tasks", domain, "students");
-            const gradTasksSnap = await getDocs(gradTasksCol);
+            const gradTasksSnap = await adminDb.collection("graduation_tasks").doc(domain).collection("students").get();
             dbg(`[Grad] graduation_tasks 총 ${gradTasksSnap.size}개, isMonday=${isMonday}`);
 
             for (const sDoc of gradTasksSnap.docs) {
@@ -402,7 +386,7 @@ export async function GET(req: NextRequest) {
                     }
 
                     // DB 알림 카운트 업데이트
-                    await updateDoc(doc(db, "graduation_tasks", domain, "students", email), {
+                    await adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email).update({
                       warnedCount: (task.warnedCount || 0) + 1,
                       lastWarnedAt: new Date(),
                     });
@@ -421,7 +405,7 @@ export async function GET(req: NextRequest) {
                 try {
                   const suspendFmt = suspendDue ? suspendDue.toLocaleDateString("ko-KR") : "";
                   await updateUser(email, { suspended: true });
-                  await updateDoc(doc(db, "graduation_tasks", domain, "students", email), {
+                  await adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email).update({
                     status: "SUSPENDED",
                     suspendedAt: new Date(),
                   });
@@ -449,7 +433,7 @@ export async function GET(req: NextRequest) {
                   await deleteAuthUserByEmail(email);
 
                   await deleteUser(email);
-                  await updateDoc(doc(db, "graduation_tasks", domain, "students", email), {
+                  await adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email).update({
                     status: "DELETED",
                     deletedAt: new Date(),
                   });
@@ -480,8 +464,7 @@ export async function GET(req: NextRequest) {
     // ─────────────────────────────────────────────
     try {
       for (const domain of domains) {
-        const teachersCol = collection(db, "teacher_transfer_tasks", domain, "teachers");
-        const teachersSnap = await getDocs(teachersCol);
+        const teachersSnap = await adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").get();
 
         for (const teacherDoc of teachersSnap.docs) {
           const task = teacherDoc.data();
@@ -506,7 +489,7 @@ export async function GET(req: NextRequest) {
                 const warnedCount = (task.warnedCount || 0) + 1;
                 const chatBody = `📢 *[효명고등학교 - 데이터 백업 기한 설정 안내 ${warnedCount}차]*\n\n안녕하세요, *${task.name}*님.\n아직 데이터 백업 기한을 설정하지 않으셨습니다.\n\n아래 주소에서 기한을 직접 설정해 주세요:\n→ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-deadline\n\n설정 기한은 최대 1년 이내로 지정 가능합니다.`;
                 await sendGoogleChat(email, chatBody);
-                await updateDoc(doc(db, "teacher_transfer_tasks", domain, "teachers", email), {
+                await adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(email).update({
                   warnedCount,
                   lastWarnedAt: new Date(),
                 });
@@ -528,7 +511,7 @@ export async function GET(req: NextRequest) {
             if (deadlineStr <= todayKSTStr) {
               try {
                 await updateUser(email, { suspended: true });
-                await updateDoc(doc(db, "teacher_transfer_tasks", domain, "teachers", email), {
+                await adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(email).update({
                   status: "SUSPENDED",
                   suspendedAt: new Date(),
                 });
@@ -560,7 +543,7 @@ export async function GET(req: NextRequest) {
               try {
                 await deleteAuthUserByEmail(email);
                 await deleteUser(email);
-                await updateDoc(doc(db, "teacher_transfer_tasks", domain, "teachers", email), {
+                await adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(email).update({
                   status: "DELETED",
                   deletedAt: new Date(),
                 });

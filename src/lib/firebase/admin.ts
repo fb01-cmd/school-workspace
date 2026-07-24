@@ -1,8 +1,7 @@
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getFirestore } from "firebase-admin/firestore";
 import { NextRequest } from "next/server";
-import { db } from "@/lib/firebase/config";
-import { doc, getDoc } from "firebase/firestore";
 
 // Initialize Firebase Admin SDK once
 if (!getApps().length) {
@@ -14,6 +13,8 @@ if (!getApps().length) {
     }),
   });
 }
+
+export const adminDb = getFirestore();
 
 /**
  * 이메일을 기준으로 Firebase Authentication 내 사용자 계정을 조회하여 삭제합니다.
@@ -61,16 +62,16 @@ export const verifyAuthAccess = async (req: NextRequest): Promise<DecodedAuthAcc
     const { uid, email } = decodedToken;
     if (!email) return null;
 
-    // Firestore에서 유저 권한 조회
-    const userSnap = await getDoc(doc(db, "users", uid));
-    if (!userSnap.exists()) {
+    // Firestore에서 유저 권한 조회 (Admin SDK 사용)
+    const userSnap = await adminDb.collection("users").doc(uid).get();
+    if (!userSnap.exists) {
       // 동기화 딜레이 등으로 Firestore 문서가 아직 생성되지 않은 경우
       // 이메일 주소 패턴 기반으로 임시 권한 판별 (학생 vs 교사)
       const isStudent = /^\d{5}@hmh\.or\.kr$/.test(email);
       return { uid, email, role: isStudent ? "student" : "teacher" };
     }
 
-    const userData = userSnap.data();
+    const userData = userSnap.data() || {};
     return {
       uid,
       email,

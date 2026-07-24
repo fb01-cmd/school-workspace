@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuthAccess } from "@/lib/firebase/admin";
-import { db } from "@/lib/firebase/config";
-import { doc, getDoc, collection, addDoc, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { verifyAuthAccess, adminDb } from "@/lib/firebase/admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { getChromeManagedBookmarks, updateChromeManagedBookmarks, ManagedBookmarksConfig } from "@/lib/google/bookmarks";
-import { writeAuditLog } from "@/lib/firebase/audit";
+import { writeAuditLog } from "@/lib/firebase/audit-server";
 
 // GET Handler
 export async function GET(req: NextRequest) {
@@ -43,9 +42,10 @@ export async function GET(req: NextRequest) {
     // B. Fetch bookmark edit history logs
     if (action === "logs") {
       try {
-        const logsRef = collection(db, "chrome_bookmark_logs");
-        const q = query(logsRef, orderBy("timestamp", "desc"), limit(50));
-        const snap = await getDocs(q);
+        const snap = await adminDb.collection("chrome_bookmark_logs")
+          .orderBy("timestamp", "desc")
+          .limit(50)
+          .get();
         const logs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         return NextResponse.json({ logs });
       } catch (err: any) {
@@ -99,12 +99,11 @@ export async function POST(req: NextRequest) {
 
       // 1. Security Check: For regular teachers, verify against allowedBookmarkOUs in Firestore settings
       if (role !== "super_admin") {
-        const settingsRef = doc(db, "settings", domain);
-        const settingsSnap = await getDoc(settingsRef);
+        const settingsSnap = await adminDb.collection("settings").doc(domain).get();
         
         let allowedBookmarkOUs: string[] = ["/교직원", "/학생"]; // Fallback defaults
-        if (settingsSnap.exists()) {
-          const settingsData = settingsSnap.data();
+        if (settingsSnap.exists) {
+          const settingsData = settingsSnap.data() || {};
           if (Array.isArray(settingsData.allowedBookmarkOUs)) {
             allowedBookmarkOUs = settingsData.allowedBookmarkOUs;
           }
@@ -144,9 +143,9 @@ export async function POST(req: NextRequest) {
           bookmarks
         },
         isLocalFallback: isFallback,
-        timestamp: new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
+        timestamp: FieldValue.serverTimestamp()
       };
-      await addDoc(collection(db, "chrome_bookmark_logs"), logData);
+      await adminDb.collection("chrome_bookmark_logs").add(logData);
 
       // 5. System wide Audit Log
       await writeAuditLog({

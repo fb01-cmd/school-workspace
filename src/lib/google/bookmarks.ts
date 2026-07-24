@@ -1,6 +1,5 @@
 import { google } from "googleapis";
-import { db } from "@/lib/firebase/config";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { adminDb } from "@/lib/firebase/admin";
 import { listOrgunits, isMock } from "./workspace";
 
 // Scope for managing Chrome policies
@@ -141,10 +140,10 @@ export const getChromeManagedBookmarks = async (orgUnitPath: string): Promise<Ma
   // MOCK MODE: Fetch from Firestore mock collection
   if (isMock) {
     console.log(`[Mock] Resolving bookmarks for OU: ${cleanPath}`);
-    const mockRef = doc(db, "chrome_bookmarks_mock", encodeURIComponent(cleanPath));
-    const snap = await getDoc(mockRef);
-    if (snap.exists()) {
-      const data = snap.data();
+    const mockRef = adminDb.collection("chrome_bookmarks_mock").doc(encodeURIComponent(cleanPath));
+    const snap = await mockRef.get();
+    if (snap.exists) {
+      const data = snap.data() || {};
       return {
         toplevel_name: data.toplevel_name || "효명고등학교",
         bookmarks: data.bookmarks || []
@@ -194,10 +193,10 @@ export const getChromeManagedBookmarks = async (orgUnitPath: string): Promise<Ma
     console.warn(`[GWS Policy API] Failed to resolve from GWS. Falling back to local Firestore. Reason: ${error.message}`);
     
     try {
-      const localRef = doc(db, "chrome_bookmarks_local", encodeURIComponent(cleanPath));
-      const snap = await getDoc(localRef);
-      if (snap.exists()) {
-        const data = snap.data();
+      const localRef = adminDb.collection("chrome_bookmarks_local").doc(encodeURIComponent(cleanPath));
+      const snap = await localRef.get();
+      if (snap.exists) {
+        const data = snap.data() || {};
         return {
           toplevel_name: data.toplevel_name || "효명고등학교",
           bookmarks: data.bookmarks || [],
@@ -230,8 +229,8 @@ export const updateChromeManagedBookmarks = async (
   // MOCK MODE: Write to Firestore mock collection
   if (isMock) {
     console.log(`[Mock] Updating bookmarks for OU: ${cleanPath}`, { toplevel_name, bookmarks });
-    const mockRef = doc(db, "chrome_bookmarks_mock", encodeURIComponent(cleanPath));
-    await setDoc(mockRef, { toplevel_name, bookmarks, updatedAt: new Date() });
+    const mockRef = adminDb.collection("chrome_bookmarks_mock").doc(encodeURIComponent(cleanPath));
+    await mockRef.set({ toplevel_name, bookmarks, updatedAt: new Date() });
     return { success: true };
   }
 
@@ -268,16 +267,16 @@ export const updateChromeManagedBookmarks = async (
     console.log(`[ChromePolicy] batchModify success for OU: ${cleanPath}, ${bookmarks.length} bookmarks`);
 
     // Mirror to local Firestore for fast fallback reads
-    const localRef = doc(db, "chrome_bookmarks_local", encodeURIComponent(cleanPath));
-    await setDoc(localRef, { toplevel_name, bookmarks, updatedAt: new Date() });
+    const localRef = adminDb.collection("chrome_bookmarks_local").doc(encodeURIComponent(cleanPath));
+    await localRef.set({ toplevel_name, bookmarks, updatedAt: new Date() });
 
     return { success: true };
   } catch (error: any) {
     console.warn(`[GWS Policy API] Failed to update bookmarks on GWS. Saving to local Firestore only. Reason: ${error.message}`);
     
     try {
-      const localRef = doc(db, "chrome_bookmarks_local", encodeURIComponent(cleanPath));
-      await setDoc(localRef, { toplevel_name, bookmarks, updatedAt: new Date() });
+      const localRef = adminDb.collection("chrome_bookmarks_local").doc(encodeURIComponent(cleanPath));
+      await localRef.set({ toplevel_name, bookmarks, updatedAt: new Date() });
       return { success: true, isLocalFallback: true, error: error.message };
     } catch (fsErr: any) {
       console.error("Firestore local fallback save failed:", fsErr);

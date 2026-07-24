@@ -18,20 +18,9 @@ import {
   isMock,
   checkIsSecurityGroup,
 } from "@/lib/google/workspace";
-import { writeAuditLog } from "@/lib/firebase/audit";
-import { deleteAuthUserByEmail, verifyAuthAccess } from "@/lib/firebase/admin";
-import { db } from "@/lib/firebase/config";
-import {
-  collection,
-  addDoc,
-  serverTimestamp,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-} from "firebase/firestore";
+import { writeAuditLog } from "@/lib/firebase/audit-server";
+import { deleteAuthUserByEmail, verifyAuthAccess, adminDb } from "@/lib/firebase/admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 export async function POST(req: NextRequest) {
   try {
@@ -281,9 +270,8 @@ export async function POST(req: NextRequest) {
       // Firestore 진급 로그 저장
       if (domain && promotions.length > 0) {
         try {
-          const logsCol = collection(db, "promotion_logs", domain, "batches");
-          await addDoc(logsCol, {
-            createdAt: serverTimestamp(),
+          await adminDb.collection("promotion_logs").doc(domain).collection("batches").add({
+            createdAt: FieldValue.serverTimestamp(),
             appliedBy: adminEmail,
             totalCount: promotions.length,
             succeededCount: succeeded.length,
@@ -375,9 +363,9 @@ export async function POST(req: NextRequest) {
       let deleteGraceDays = 30;
 
       if (domain) {
-        const settingsSnap = await getDoc(doc(db, "settings", domain));
-        if (settingsSnap.exists()) {
-          const sData = settingsSnap.data();
+        const settingsSnap = await adminDb.collection("settings").doc(domain).get();
+        if (settingsSnap.exists) {
+          const sData = settingsSnap.data() || {};
           if (sData.ouMapping?.transferOut) {
             transferOutOU = sData.ouMapping.transferOut;
           }
@@ -417,7 +405,7 @@ export async function POST(req: NextRequest) {
       const suspendDueDate = new Date(now.getTime() + suspendGraceDays * 24 * 60 * 60 * 1000);
       const deleteDueDate = new Date(suspendDueDate.getTime() + deleteGraceDays * 24 * 60 * 60 * 1000);
 
-      const taskRef = doc(db, "transfer_out_tasks", domain || "mock-domain", "students", email);
+      const taskRef = adminDb.collection("transfer_out_tasks").doc(domain || "mock-domain").collection("students").doc(email);
       const taskData = {
         email,
         name: studentName || "학생",
@@ -431,7 +419,7 @@ export async function POST(req: NextRequest) {
         suspendedAt: null,
         deletedAt: null,
       };
-      await setDoc(taskRef, taskData);
+      await taskRef.set(taskData);
 
       // 5. Gmail 발송 (설정에 저장된 템플릿 사용)
       try {
@@ -440,9 +428,9 @@ export async function POST(req: NextRequest) {
         let emailBody = `[효명고등학교 계정관리시스템]\n\n${studentName}님의 전출/자퇴 처리에 따른 구글 워크스페이스 계정 정지 및 데이터 백업 안내입니다.\n\n■ 계정 일시정지 예정일: ${suspendDueDate.toLocaleDateString("ko-KR")}\n■ 계정 영구삭제 예정일: ${deleteDueDate.toLocaleDateString("ko-KR")}\n\n계정이 일시정지되면 모든 구글 서비스 이용이 차단되므로, 정지 예정일 전까지 중요 데이터를 반드시 백업해 주세요.\n\n- 개인 기기로 데이터 다운로드 가이드: https://www.iorad.com/player/1765417/--------------#trysteps-1\n- 타 구글 계정으로 데이터 전송 가이드: https://www.iorad.com/player/1813583/GW---------------------#trysteps-1\n- 구글 테이크아웃 바로가기: https://takeout.google.com\n\n감사합니다.`;
 
         if (domain) {
-          const settingsSnap = await getDoc(doc(db, "settings", domain));
-          if (settingsSnap.exists()) {
-            const sData = settingsSnap.data();
+          const settingsSnap = await adminDb.collection("settings").doc(domain).get();
+          if (settingsSnap.exists) {
+            const sData = settingsSnap.data() || {};
             if (sData.transferOutSettings?.emailTemplateSubject) {
               emailSubject = sData.transferOutSettings.emailTemplateSubject;
             }
@@ -471,9 +459,9 @@ export async function POST(req: NextRequest) {
         let chatBody = `📢 [효명고등학교 계정관리시스템]\n${studentName || "학생"}님의 전출/자퇴 처리에 따라 사용 중이던 학교 계정(${email})이 ${suspendDueDate.toLocaleDateString("ko-KR")}에 일시정지 및 ${deleteDueDate.toLocaleDateString("ko-KR")}에 영구 삭제될 예정입니다.\n\n아래 튜토리얼 가이드를 참고하여 중요한 자료는 그 전까지 반드시 개인 기기로 다운로드하거나 타 계정으로 전송하여 백업해 주시기 바랍니다.\n- 데이터 다운로드 가이드: https://www.iorad.com/player/1765417/--------------#trysteps-1\n- 타 계정 전송 가이드: https://www.iorad.com/player/1813583/GW---------------------#trysteps-1\n- 구글 테이크아웃: https://takeout.google.com`;
 
         if (domain) {
-          const settingsSnap2 = await getDoc(doc(db, "settings", domain));
-          if (settingsSnap2.exists()) {
-            const sData2 = settingsSnap2.data();
+          const settingsSnap2 = await adminDb.collection("settings").doc(domain).get();
+          if (settingsSnap2.exists) {
+            const sData2 = settingsSnap2.data() || {};
             if (sData2.transferOutSettings?.chatTemplateBody) {
               chatBody = sData2.transferOutSettings.chatTemplateBody
                 .replace(/\{name\}/g, studentName || "학생")
@@ -519,8 +507,8 @@ export async function POST(req: NextRequest) {
       try {
         await updateUser(email, { suspended: true });
         
-        const taskRef = doc(db, "transfer_out_tasks", domain || "mock-domain", "students", email);
-        await updateDoc(taskRef, {
+        const taskRef = adminDb.collection("transfer_out_tasks").doc(domain || "mock-domain").collection("students").doc(email);
+        await taskRef.update({
           status: "SUSPENDED",
           suspendedAt: new Date(),
         });
@@ -558,8 +546,8 @@ export async function POST(req: NextRequest) {
         await deleteUser(email);
 
         // 삭제 완료된 태스크는 Firestore에서도 제거 (감사 로그에 기록되므로 이력 보존 OK)
-        const taskRef = doc(db, "transfer_out_tasks", domain || "mock-domain", "students", email);
-        await deleteDoc(taskRef);
+        const taskRef = adminDb.collection("transfer_out_tasks").doc(domain || "mock-domain").collection("students").doc(email);
+        await taskRef.delete();
 
         invalidateUserCache();
 
@@ -588,14 +576,14 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const taskRef = doc(db, "transfer_out_tasks", domain || "mock-domain", "students", email);
-        const taskSnap = await getDoc(taskRef);
+        const taskRef = adminDb.collection("transfer_out_tasks").doc(domain || "mock-domain").collection("students").doc(email);
+        const taskSnap = await taskRef.get();
         
-        if (!taskSnap.exists()) {
+        if (!taskSnap.exists) {
           return NextResponse.json({ error: "해당 학생의 전출 처리 기록이 존재하지 않습니다." }, { status: 404 });
         }
 
-        const taskData = taskSnap.data();
+        const taskData = taskSnap.data() || {};
         const { originalOU, originalGroups } = taskData;
 
         // 1. 구글 워크스페이스에서 계정 활성화 및 이전 OU로 이동
@@ -616,7 +604,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 3. Firestore에서 전출 태스크 레코드 삭제
-        await deleteDoc(taskRef);
+        await taskRef.delete();
 
         invalidateUserCache();
 
@@ -647,9 +635,9 @@ export async function POST(req: NextRequest) {
         // 1. 설정에서 3학년 및 졸업생 OU 경로 조회
         let grade3OU = "";
         let graduatesOU = "";
-        const settingsSnap = await getDoc(doc(db, "settings", domain));
-        if (settingsSnap.exists()) {
-          const sData = settingsSnap.data();
+        const settingsSnap = await adminDb.collection("settings").doc(domain).get();
+        if (settingsSnap.exists) {
+          const sData = settingsSnap.data() || {};
           if (sData.ouMapping?.students) {
             grade3OU = sData.ouMapping.students[3] || sData.ouMapping.students["3"] || "";
           }
@@ -674,15 +662,15 @@ export async function POST(req: NextRequest) {
           if (!email) continue;
 
           try {
-            const taskRef = doc(db, "graduation_tasks", domain, "students", email);
-            const taskSnap = await getDoc(taskRef);
+            const taskRef = adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email);
+            const taskSnap = await taskRef.get();
 
             const name = student.name?.givenName || student.name || "학생";
             const studentId = student.name?.familyName || ""; // familyName에 학번 저장 관례
 
-            if (!taskSnap.exists()) {
+            if (!taskSnap.exists) {
               // 최초 등록 시 구글 계정 일시정지 상태에 따라 초기 상태 지정
-              await setDoc(taskRef, {
+              await taskRef.set({
                 email,
                 name,
                 studentId,
@@ -701,21 +689,21 @@ export async function POST(req: NextRequest) {
               results.added++;
             } else {
               // 이미 존재하는 졸업생 태스크의 경우, 구글의 일시정지 상태와 동기화
-              const task = taskSnap.data();
+              const task = taskSnap.data() || {};
               const isGwsSuspended = !!student.suspended;
               const isDbSuspended = task.status === "SUSPENDED";
 
               if (isGwsSuspended !== isDbSuspended) {
                 if (isGwsSuspended) {
                   // GWS에선 정지되었으나 DB 상태가 정지가 아니면 정지로 변경
-                  await updateDoc(taskRef, {
+                  await taskRef.update({
                     status: "SUSPENDED",
                     suspendedAt: new Date(),
                   });
                 } else {
                   // GWS에선 정지 해제되었으나 DB 상태가 여전히 정지이면 원래 상태로 변경
                   const originalStatus = task.consentSubmitted ? "CONSENTED" : "PENDING";
-                  await updateDoc(taskRef, {
+                  await taskRef.update({
                     status: originalStatus,
                     suspendedAt: null,
                   });
@@ -753,15 +741,14 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "도메인 정보가 누락되었습니다." }, { status: 400 });
         }
 
-        const studentsCol = collection(db, "graduation_tasks", domain, "students");
-        const snap = await getDocs(studentsCol);
+        const snap = await adminDb.collection("graduation_tasks").doc(domain).collection("students").get();
         
         let deletedCount = 0;
         for (const sDoc of snap.docs) {
           const task = sDoc.data();
           // 테스트용 학생은 제외하고 실제 동기화된 일반 학생 데이터만 삭제
           if (!task.isTest && task.originalOU !== "/학생/테스트") {
-            await deleteDoc(doc(db, "graduation_tasks", domain, "students", sDoc.id));
+            await adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(sDoc.id).delete();
             deletedCount++;
           }
         }
@@ -791,16 +778,16 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const settingsRef = doc(db, "settings", domain);
-        const settingsSnap = await getDoc(settingsRef);
-        if (settingsSnap.exists()) {
-          await setDoc(settingsRef, {
+        const settingsRef = adminDb.collection("settings").doc(domain);
+        const settingsSnap = await settingsRef.get();
+        if (settingsSnap.exists) {
+          await settingsRef.set({
             ...settingsSnap.data(),
             graduationSettings,
             updatedAt: new Date(),
           });
         } else {
-          await setDoc(settingsRef, {
+          await settingsRef.set({
             graduationSettings,
             updatedAt: new Date(),
           });
@@ -831,18 +818,18 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
-        const taskSnap = await getDoc(taskRef);
+        const taskRef = adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email);
+        const taskSnap = await taskRef.get();
 
-        if (!taskSnap.exists()) {
+        if (!taskSnap.exists) {
           return NextResponse.json({ error: "졸업 관리 대상자 명단에 이메일이 존재하지 않습니다." }, { status: 404 });
         }
 
-        const taskData = taskSnap.data();
+        const taskData = taskSnap.data() || {};
 
         // 1. 별도 보관용 컬렉션 graduation_consents에 영구 보존용 동의서(서명 포함) 저장
-        const consentRef = doc(db, "graduation_consents", `${domain}_${email}`);
-        await setDoc(consentRef, {
+        const consentRef = adminDb.collection("graduation_consents").doc(`${domain}_${email}`);
+        await consentRef.set({
           email,
           domain,
           name: taskData.name || "학생",
@@ -853,7 +840,7 @@ export async function POST(req: NextRequest) {
         });
 
         // 2. 기존 graduation_tasks의 개별 학생 타스크 상태 업데이트
-        await updateDoc(taskRef, {
+        await taskRef.update({
           status: "CONSENTED",
           consentSubmitted: true,
           consentedAt: new Date(),
@@ -886,20 +873,20 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
-        const taskSnap = await getDoc(taskRef);
+        const taskRef = adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email);
+        const taskSnap = await taskRef.get();
 
-        if (!taskSnap.exists()) {
+        if (!taskSnap.exists) {
           return NextResponse.json({ error: "졸업 대상자 기록이 존재하지 않습니다." }, { status: 404 });
         }
 
-        const taskData = taskSnap.data();
+        const taskData = taskSnap.data() || {};
         const isSubmit = !!consentSubmitted;
 
         // 1. 수동 동의 처리 시 graduation_consents 보존 레코드도 생성/삭제 동기화
-        const consentRef = doc(db, "graduation_consents", `${domain}_${email}`);
+        const consentRef = adminDb.collection("graduation_consents").doc(`${domain}_${email}`);
         if (isSubmit) {
-          await setDoc(consentRef, {
+          await consentRef.set({
             email,
             domain,
             name: taskData.name || "학생",
@@ -909,11 +896,11 @@ export async function POST(req: NextRequest) {
             expiresAt: new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000), // 3년 후 만료
           });
         } else {
-          await deleteDoc(consentRef);
+          await consentRef.delete();
         }
 
         // 2. 태스크 상태 업데이트
-        await updateDoc(taskRef, {
+        await taskRef.update({
           status: isSubmit ? "CONSENTED" : "PENDING",
           consentSubmitted: isSubmit,
           consentedAt: isSubmit ? new Date() : null,
@@ -944,8 +931,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "도메인 정보가 누락되었습니다." }, { status: 400 });
         }
 
-        const studentsCol = collection(db, "graduation_tasks", domain, "students");
-        const snap = await getDocs(studentsCol);
+        const snap = await adminDb.collection("graduation_tasks").doc(domain).collection("students").get();
         const results = { suspended: 0, skipped: 0, errors: 0 };
 
         for (const sDoc of snap.docs) {
@@ -954,7 +940,7 @@ export async function POST(req: NextRequest) {
           if (task.status === "PENDING" || task.status === "CONSENTED") {
             try {
               await updateUser(email, { suspended: true });
-              await updateDoc(doc(db, "graduation_tasks", domain, "students", email), {
+              await adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email).update({
                 status: "SUSPENDED",
                 suspendedAt: new Date(),
               });
@@ -994,8 +980,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "도메인 정보가 누락되었습니다." }, { status: 400 });
         }
 
-        const studentsCol = collection(db, "graduation_tasks", domain, "students");
-        const snap = await getDocs(studentsCol);
+        const snap = await adminDb.collection("graduation_tasks").doc(domain).collection("students").get();
         const results = { deleted: 0, skipped: 0, errors: 0 };
 
         for (const sDoc of snap.docs) {
@@ -1007,7 +992,7 @@ export async function POST(req: NextRequest) {
               await deleteAuthUserByEmail(email);
 
               await deleteUser(email);
-              await updateDoc(doc(db, "graduation_tasks", domain, "students", email), {
+              await adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email).update({
                 status: "DELETED",
                 deletedAt: new Date(),
               });
@@ -1047,8 +1032,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "도메인 정보가 누락되었습니다." }, { status: 400 });
         }
 
-        const studentsCol = collection(db, "graduation_tasks", domain, "students");
-        const snap = await getDocs(studentsCol);
+        const snap = await adminDb.collection("graduation_tasks").doc(domain).collection("students").get();
         const results = { restored: 0, skipped: 0, errors: 0 };
 
         for (const sDoc of snap.docs) {
@@ -1061,7 +1045,7 @@ export async function POST(req: NextRequest) {
               
               // 2. 동의 여부에 따라 상태 원복
               const originalStatus = task.consentSubmitted ? "CONSENTED" : "PENDING";
-              await updateDoc(doc(db, "graduation_tasks", domain, "students", email), {
+              await adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email).update({
                 status: originalStatus,
                 suspendedAt: null,
               });
@@ -1102,20 +1086,20 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
-        const taskSnap = await getDoc(taskRef);
-        if (!taskSnap.exists()) {
+        const taskRef = adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email);
+        const taskSnap = await taskRef.get();
+        if (!taskSnap.exists) {
           return NextResponse.json({ error: "졸업 대상자 기록이 존재하지 않습니다." }, { status: 404 });
         }
 
-        const task = taskSnap.data();
+        const task = taskSnap.data() || {};
 
         // 1. 구글 워크스페이스 상에서 계정 활성화 (정지 해제)
         await updateUser(email, { suspended: false });
 
         // 2. 동의 여부에 따라 Firestore 상태 원복
         const originalStatus = task.consentSubmitted ? "CONSENTED" : "PENDING";
-        await updateDoc(taskRef, {
+        await taskRef.update({
           status: originalStatus,
           suspendedAt: null,
         });
@@ -1147,8 +1131,8 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
-        await setDoc(taskRef, {
+        const taskRef = adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email);
+        await taskRef.set({
           email,
           name,
           studentId: studentId || "테스트",
@@ -1191,12 +1175,12 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
-        await deleteDoc(taskRef);
+        const taskRef = adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email);
+        await taskRef.delete();
 
         // 테스트 유저 삭제 시 보관함에 들어간 테스트용 동의 서명 기록도 동시 영구 삭제
-        const consentRef = doc(db, "graduation_consents", `${domain}_${email}`);
-        await deleteDoc(consentRef);
+        const consentRef = adminDb.collection("graduation_consents").doc(`${domain}_${email}`);
+        await consentRef.delete();
 
         await writeAuditLog({
           operatorEmail: adminEmail,
@@ -1259,12 +1243,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "이메일 또는 도메인이 누락되었습니다." }, { status: 400 });
       }
       try {
-        const taskRef = doc(db, "graduation_tasks", domain, "students", email);
-        const taskSnap = await getDoc(taskRef);
-        if (!taskSnap.exists()) {
+        const taskRef = adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email);
+        const taskSnap = await taskRef.get();
+        if (!taskSnap.exists) {
           return NextResponse.json({ error: "학생 기록을 찾을 수 없습니다." }, { status: 404 });
         }
-        const task = taskSnap.data();
+        const task = taskSnap.data() || {};
         
         let suspendFmt = "지정일";
         let deleteFmt = "지정일";
@@ -1272,9 +1256,9 @@ export async function POST(req: NextRequest) {
         let emailBody = "";
         let chatBody = "";
 
-        const settingsSnap = await getDoc(doc(db, "settings", domain));
-        if (settingsSnap.exists()) {
-          const sData = settingsSnap.data();
+        const settingsSnap = await adminDb.collection("settings").doc(domain).get();
+        if (settingsSnap.exists) {
+          const sData = settingsSnap.data() || {};
           const gradSettings = sData.graduationSettings;
           if (gradSettings) {
             suspendFmt = gradSettings.suspendDate ? new Date(gradSettings.suspendDate).toLocaleDateString("ko-KR") : "지정일";
@@ -1368,7 +1352,7 @@ export async function POST(req: NextRequest) {
         await sendGmail(mailSender, email, emailSubject, emailBody);
         await sendGoogleChat(email, chatBody);
 
-        await updateDoc(taskRef, {
+        await taskRef.update({
           warnedCount: (task.warnedCount || 0) + 1,
           lastWarnedAt: new Date(),
         });
@@ -1402,9 +1386,9 @@ export async function POST(req: NextRequest) {
       const classroomTeachersGroup = `classroom_teachers@${domain || "hmh.or.kr"}`;
       if (!domain) return DEFAULT_TEACHER_GROUPS;
       try {
-        const settingsSnap = await getDoc(doc(db, "settings", domain));
-        if (settingsSnap.exists()) {
-          const settings = settingsSnap.data();
+        const settingsSnap = await adminDb.collection("settings").doc(domain).get();
+        if (settingsSnap.exists) {
+          const settings = settingsSnap.data() || {};
           if (settings.teacherSettings?.autoJoinGroups && Array.isArray(settings.teacherSettings.autoJoinGroups)) {
             const groups = settings.teacherSettings.autoJoinGroups;
             if (!groups.includes(classroomTeachersGroup)) {
@@ -1505,8 +1489,8 @@ export async function POST(req: NextRequest) {
         defaultDeadline.setFullYear(defaultDeadline.getFullYear() + 1);
 
         // Firestore에 전출 작업 등록
-        const taskRef = doc(db, "teacher_transfer_tasks", domain, "teachers", teacherEmail);
-        await setDoc(taskRef, {
+        const taskRef = adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(teacherEmail);
+        await taskRef.set({
           email: teacherEmail,
           name: teacherName || teacherEmail,
           status: "PENDING_DEADLINE",
@@ -1622,8 +1606,8 @@ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-
         }
 
         // 2. Firestore 전출 큐 삭제
-        const taskRef = doc(db, "teacher_transfer_tasks", domain, "teachers", teacherEmail);
-        await deleteDoc(taskRef);
+        const taskRef = adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(teacherEmail);
+        await taskRef.delete();
 
         await writeAuditLog({
           operatorEmail: adminEmail,
@@ -1659,9 +1643,9 @@ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-
       }
 
       try {
-        const taskRef = doc(db, "teacher_transfer_tasks", domain, "teachers", teacherEmail);
-        const taskSnap = await getDoc(taskRef);
-        if (!taskSnap.exists()) {
+        const taskRef = adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(teacherEmail);
+        const taskSnap = await taskRef.get();
+        if (!taskSnap.exists) {
           return NextResponse.json({ error: "해당 교사의 전출 레코드가 없습니다." }, { status: 404 });
         }
 
@@ -1677,7 +1661,7 @@ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-
         if (isDueNow) {
           // 즉시 일시정지 처리 실행!
           await updateUser(teacherEmail, { suspended: true });
-          await updateDoc(taskRef, {
+          await taskRef.update({
             deadlineDate: deadline,
             deadlineSetAt: new Date(),
             status: "SUSPENDED",
@@ -1687,14 +1671,14 @@ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-
 
           await writeAuditLog({
             operatorEmail: teacherEmail,
-            operatorName: taskSnap.data().name || teacherEmail,
+            operatorName: (taskSnap.data() || {}).name || teacherEmail,
             action: "교사 전출 기한 즉시 정지 처리",
             targetEmail: teacherEmail,
             details: `데드라인 즉시 정지 실행 (설정 날짜: ${deadlineKST})`,
             status: "success",
           });
         } else {
-          await updateDoc(taskRef, {
+          await taskRef.update({
             deadlineDate: deadline,
             deadlineSetAt: new Date(),
             status: "DEADLINE_SET",
@@ -1702,7 +1686,7 @@ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-
 
           await writeAuditLog({
             operatorEmail: teacherEmail,
-            operatorName: taskSnap.data().name || teacherEmail,
+            operatorName: (taskSnap.data() || {}).name || teacherEmail,
             action: "교사 전출 기한 설정",
             targetEmail: teacherEmail,
             details: `데드라인 설정: ${deadlineKST}`,

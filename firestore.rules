@@ -53,7 +53,9 @@ service cloud.firestore {
       allow update: if isSuperAdmin()
         || (isSchool() && request.auth.uid == uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isSecurityGroupJoined']));
-      allow create, delete: if isSuperAdmin();
+      // 문서 생성(역할 부여)은 서버 전용(/api/auth/sync-user, admin SDK) — 클라이언트가
+      // role을 쓸 수 있으면 규칙을 잠가도 권한 상승 통로가 되므로 전면 차단
+      allow create, delete: if false;
     }
 
     // ── settings/{domain} — OU 매핑·졸업 일정 등 도메인 설정 ──

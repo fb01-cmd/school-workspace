@@ -1,6 +1,5 @@
 import { signInWithPopup, signInWithCredential, signOut, GoogleAuthProvider, User } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db, googleProvider } from "./config";
+import { auth, googleProvider } from "./config";
 
 export interface UserData {
   email: string;
@@ -11,27 +10,6 @@ export interface UserData {
   orgUnitPath?: string;
   createdAt?: any;
 }
-
-const STUDENT_EMAIL_REGEX = /^\d{5}@hmh\.or\.kr$/;
-
-/**
- * Calls the server-side API to check if the user is a
- * Google Workspace Super Admin. Falls back gracefully to false in mock mode.
- */
-const checkIsWorkspaceAdmin = async (email: string): Promise<boolean> => {
-  try {
-    const res = await fetch("/api/workspace/check-admin", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    if (!res.ok) return false;
-    const data = await res.json();
-    return data.isAdmin === true;
-  } catch {
-    return false;
-  }
-};
 
 export const signInWithGoogle = async () => {
   try {
@@ -53,44 +31,16 @@ export const signInWithGoogle = async () => {
 export const handleUserRoles = async (user: User) => {
   if (!user.email) throw new Error("No email found for user.");
 
-  const userRef = doc(db, "users", user.uid);
-  const userSnap = await getDoc(userRef);
-
-  const emailParts = user.email.split("@");
-  const domain = emailParts.length > 1 ? emailParts[1] : "";
-  const isStudent = STUDENT_EMAIL_REGEX.test(user.email);
-
-  if (isStudent) {
-    // Always write student record (idempotent)
-    await setDoc(userRef, {
-      email: user.email,
-      domain,
-      role: "student",
-      isApproved: true,
-      createdAt: userSnap.exists() ? userSnap.data().createdAt : serverTimestamp(),
-    });
-    return;
-  }
-
-  // --- Teacher path ---
-  // Check Google Workspace admin status on EVERY login to keep in sync
-  const isWorkspaceAdmin = await checkIsWorkspaceAdmin(user.email);
-
-  if (userSnap.exists()) {
-    // User exists: update role dynamically based on current workspace status
-    await updateDoc(userRef, {
-      role: isWorkspaceAdmin ? "super_admin" : "teacher",
-      isApproved: isWorkspaceAdmin,
-    });
-  } else {
-    // New user: create the document
-    await setDoc(userRef, {
-      email: user.email,
-      domain,
-      role: isWorkspaceAdmin ? "super_admin" : "teacher",
-      isApproved: isWorkspaceAdmin,
-      createdAt: serverTimestamp(),
-    });
+  // 역할 판정·기록은 서버(/api/auth/sync-user)가 ID 토큰을 검증해 수행한다.
+  // 클라이언트가 role을 직접 쓰면 보안 규칙을 잠가도 권한 상승 통로가 남기 때문.
+  const idToken = await user.getIdToken();
+  const res = await fetch("/api/auth/sync-user", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "사용자 역할 동기화에 실패했습니다.");
   }
 };
 

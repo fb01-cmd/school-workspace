@@ -12,7 +12,7 @@ import {
   checkIsSecurityGroup,
   isMock,
 } from "@/lib/google/workspace";
-import { writeAuditLog } from "@/lib/firebase/audit";
+import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { verifyAuthAccess } from "@/lib/firebase/admin";
 
 export async function POST(req: NextRequest) {
