@@ -19,7 +19,7 @@
 - **Styling**: Tailwind CSS is used for styling.
 
 ## 미검증 사항 (Pending Verification)
-- **Phase 5.8 — 배포 승인 보류** (2026-07-24, 전체 리뷰 결과 아래 핸드오버 참조) — `classroom_cleanup_logs` Firestore 복합 색인이 실제로 생성되어 있는지만 남은 미검증 항목 (없어도 in-memory 폴백으로 조용히 동작은 하니 급하진 않음). 나머지는 코드 스캔으로 확정된 확실한 갭이라 "미검증"이 아니라 아래 핸드오버의 "미구현/버그" 항목 참조.
+- *(2026-07-24 기준 없음)* — Phase 5.8 관련 미검증 항목은 모두 해소: 사용자 실 E2E 테스트로 전 단계 검증 완료, `classroom_cleanup_logs` Firestore 복합 색인은 **없음이 확정**됨(in-memory 폴백으로 동작 중, 배포 전 생성 권장 — 아래 핸드오버 참조).
 
 ## 검증 완료 사항 (Verified Items)
 - **[보안 강화] 수퍼어드민 및 교사 로그인 상태에서 API 가드 동작 검증** (2026-07-22 검증 완료)
@@ -190,7 +190,7 @@
 ### 아직 열려 있는 질문 / 미해결 사항
 
 - **GitHub PAT 미폐기** — 사용자가 GitHub에서 직접 revoke/재발급 필요, SSH 전환도 고려 중.
-- **"학기말 클래스룸 정리" 메뉴를 독립 사이드바 항목으로 분리** — Antigravity에게 요청함, 아직 착수 확인 안 됨.
+- **"학기말 클래스룸 정리" 메뉴를 독립 사이드바 항목으로 분리** — Antigravity 구현 완료, Claude 재검증(tsc/build) 통과. **커밋만 아직 안 됨** — 사용자 확인 후 커밋 필요.
 - Phase 5.8 후속 과제 4건 (급하지 않음): 이메일/구글챗 알림 에스컬레이션, restore의 캘린더 복원, 관리자 읽기전용 집계 대시보드, restore의 super_admin 소유자 검증 우회 정리.
 - 실제 Vercel 프로덕션 배포는 아직 안 함 — 지금까지는 로컬 테스트만. 사용자가 "아직 실제 배포한 적 없다"고 정정함(터미널 용어 오해 있었음, 위 5번 참조는 `git push`이지 Vercel 배포 확정이 아님 — 배포 여부는 별도 확인 필요).
 
@@ -260,3 +260,37 @@ Antigravity의 메뉴 재배치 결과 확인, 또는 사용자가 지정하는 
 
 Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스펙 판단부터 Claude가 시작.
 새 대화를 열 때: *"project_notes.md의 최신 체크포인트를 읽고 Phase 6 스펙 설계부터 이어가줘"*
+
+---
+
+## [2026-07-24] Antigravity → Claude (핸드오버)
+- **작업 내용**: '학기말 클래스룸 정리' 메뉴를 '클래스룸 학생 강제 배정' 하위 탭에서 '교직원 공통 도구' 섹션 내 독립된 사이드바 메뉴 항목(`📦 학기말 클래스룸 정리`)으로 분리.
+- **변경 파일**: 
+  - [src/app/admin/page.tsx](file:///home/fb01/school/src/app/admin/page.tsx): `MenuType`에 `classroom_cleanup` 추가, 사이드바 버튼 추가, `ClassroomCleanupTab` 렌더링 연결
+  - [src/app/admin/classroom/page.tsx](file:///home/fb01/school/src/app/admin/classroom/page.tsx): 4번째 탭버튼 및 `ClassroomCleanupTab` import/렌더링 제거
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **확인한 AGENTS.md 프로세스 보강사항**:
+  1. 스펙에 정보구조(IA) 및 메뉴 배치 명시 준수 (사이드바 교직원 공통 도구 내 배치)
+  2. `project_notes.md` "🔒 현재 작업 중 파일" 등록 및 작업 완료 후 해제 절차 이행
+  3. 완료 보고 전 Claude 재검증을 위해 확정형 "완료" 전달 보류 및 핸드오버 작성
+
+## [2026-07-24] Claude → 사용자 (메뉴 재배치 재검증 — 통과)
+- 검토 대상: 위 Antigravity 핸드오버(`src/app/admin/page.tsx`, `src/app/admin/classroom/page.tsx`), 아직 미커밋 상태.
+- diff 직접 확인: `ClassroomCleanupTab` import/렌더링이 `classroom/page.tsx`(4번째 탭)에서만 제거되고 `admin/page.tsx`의 독립 사이드바 메뉴(`classroom_cleanup`)로 정확히 옮겨감. `교직원 공통 도구` 섹션 내 "클래스룸 학생 강제 배정" 바로 아래 배치 — 스펙(§핸드오버 원 요청) 그대로 준수.
+- `grep`으로 `ClassroomCleanupTab` 잔존 참조 확인 — 옛 탭 경로에 댕글링 import/사용 없음.
+- `npx tsc --noEmit` ✅ (0 errors), `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 18페이지 정상 생성) — 둘 다 이 작업트리 상태 기준으로 직접 재실행해 확인.
+- **판단**: 문제 없음, 커밋 승인. 아직 로컬에 커밋되지 않은 상태이니 다음 단계로 커밋 여부를 사용자에게 확인 필요.
+
+## [2026-07-24] Claude → Antigravity (실사용 E2E 테스트에서 치명 버그 2건 발견·수정, 전 단계 검증 완료)
+- 변경 파일: `src/lib/google/workspace.ts`(`getClassroomUserId` 신설, `unsubscribeClassroomCalendar` 403 폴백), `src/app/api/workspace/classroom/cleanup/route.ts`(소유자 판정 수정, `asOf` 개발용 파라미터, 캘린더 로그 필드)
+- 검증 상태: `npx tsc --noEmit` ✅ / `npm run build` ✅ / **사용자가 실제 Google Workspace로 E2E 검증 완료** — 보관·이름변경·드라이브 이동·복원·캘린더 숨김 모두 실동작 확인.
+- **버그 1 — 소유자 판정 전면 오류 (치명)**: Classroom API가 `courses.list`의 `ownerId`를 이메일이 아닌 **숫자 사용자 ID**로 반환하는데, 코드가 이메일 비교만 해서 **모든 코스가 본인 소유여도 "공동 교사"로 판정 → 체크박스 전부 비활성화 → 기능 자체를 아무도 못 쓰는 상태**였음. `userProfiles.get({userId:"me"})`으로 본인 숫자 ID를 조회해 비교하도록 수정. 파일럿에서 못 잡힌 이유: 파일럿 계정 시나리오에서 이 화면의 실행까지 안 가봤기 때문으로 추정 — 실사용 테스트에서 즉시 발각.
+- **버그 2 — 소유자 캘린더는 구독 취소가 Google 정책상 불가**: `calendarList.delete`가 소유 교사 본인에게 403("The data owner of a calendar cannot remove such a calendar from their calendar list") 거부. Google Calendar 웹 UI도 동일(소유 캘린더엔 구독 취소 메뉴 자체가 없음). **403 시 `hidden: true` 숨김 처리로 폴백**하도록 수정 — 사용자 체감 효과는 동일, 복원 시 `hidden: false`로 되돌리기 쉬움. 공동 교사는 기존대로 진짜 구독 취소됨. 로그(`results.calendar.hiddenInsteadOfUnsubscribed`)에 구분 저장하므로 추후 캘린더 복원 구현 시 이 필드를 소비할 것.
+- **부수**: `?asOf=YYYY-MM-DD` 개발 환경 전용 날짜 시뮬레이션을 GET에 추가(프로덕션에서는 무시). 2월 예외 포함 학년도 판별 로직은 별도 단위 검증 9케이스 전부 통과.
+- **미검증 사항 해소**: `classroom_cleanup_logs` Firestore 복합 색인은 **실제로 없음이 확인됨** — dev 로그에 "Index query failed, falling back to in-memory filter & sort" 경고가 반복 출력(생성 링크 포함). in-memory 폴백으로 정상 동작 중이라 급하지 않으나, 로그 30건 초과 시 정확도·비용 문제가 생기니 배포 전 색인 생성 권장(생성 URL은 dev 로그 참조).
+- 다음 할 일 (Antigravity):
+  1. **부분 실패 표시 버그**: `ClassroomCleanupTab.tsx`의 `handleExecuteCleanup`이 단계별 결과(`pipelineResults`)를 무시하고 HTTP 성공만 보고 "성공"으로 집계 — 캘린더 단계가 실패했는데 성공 메시지가 떴음. 응답의 `results`를 읽어 단계별 실패를 사용자에게 표시할 것.
+  2. restore에 캘린더 되돌리기 추가(숨김이면 `hidden: false` 패치, 구독 취소였으면 `calendarList.insert`) — 로그의 `hiddenInsteadOfUnsubscribed`로 분기.
+  3. 기존 후속 과제 유지: 관리자 읽기전용 집계 대시보드, `excludedIds` Firestore화, restore의 super_admin 우회 정리, 이메일/구글챗 D-14 에스컬레이션.
+- 주의: GitHub PAT 폐기/재발급은 여전히 미완료(사용자 직접 작업 필요).
+

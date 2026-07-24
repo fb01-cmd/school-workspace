@@ -1327,6 +1327,24 @@ export const getClassroomClient = (impersonatedEmail: string) => {
   return google.classroom({ version: "v1", auth });
 };
 
+// Get the numeric Classroom user id for an email.
+// Classroom API가 courses.list의 ownerId를 이메일이 아닌 숫자 ID로 반환하므로,
+// 소유자 판정 시 이메일과 직접 비교하면 항상 불일치한다. 이 헬퍼로 숫자 ID를 얻어 비교할 것.
+export const getClassroomUserId = async (email: string): Promise<string | null> => {
+  if (isMock) return email;
+
+  const classroom = getClassroomClient(email);
+  if (!classroom) return null;
+
+  try {
+    const res = await classroom.userProfiles.get({ userId: "me" });
+    return res.data.id || null;
+  } catch (error) {
+    console.error(`Error fetching classroom user profile for ${email}:`, error);
+    return null;
+  }
+};
+
 // List Courses owned by a specific teacher
 export const listClassroomCourses = async (teacherEmail: string) => {
   if (isMock) {
@@ -1678,6 +1696,16 @@ export const unsubscribeClassroomCalendar = async (
     // 이미 삭제되었거나 존재하지 않는 경우 404/410은 성공으로 취급 (idempotent)
     if (error?.code === 404 || error?.code === 410) {
       return { success: true, calendarId, alreadyUnsubscribed: true };
+    }
+    // 코스 소유 교사는 클래스룸 캘린더의 데이터 소유자라 Google이 구독 취소를 403으로 거부함
+    // ("The data owner of a calendar cannot remove such a calendar from their calendar list.")
+    // — 이 경우 숨김 처리로 폴백해 목록에서 보이지 않게 한다(복원 시 hidden: false로 되돌릴 수 있음).
+    if (error?.code === 403) {
+      await calendar.calendarList.patch({
+        calendarId,
+        requestBody: { hidden: true, selected: false },
+      });
+      return { success: true, calendarId, hiddenInsteadOfUnsubscribed: true };
     }
     console.error(`Error unsubscribing calendar ${calendarId} for ${teacherEmail}:`, error);
     throw error;

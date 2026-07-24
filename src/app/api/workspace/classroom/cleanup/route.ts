@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuthAccess } from "@/lib/firebase/admin";
 import {
   listClassroomCourses,
+  getClassroomUserId,
   getSchoolYearFromCreationTime,
   getCurrentSchoolYear,
   isCleanupTargetCourse,
@@ -66,13 +67,22 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const courses = await listClassroomCourses(teacherEmail);
-    const currentSchoolYear = getCurrentSchoolYear();
+    // 개발 환경 전용: ?asOf=YYYY-MM-DD 로 "현재 날짜"를 시뮬레이션해 학기말 정리 로직(2월 예외 등)을
+    // 실제 2월/3월을 기다리지 않고도 브라우저에서 눈으로 검증할 수 있게 함. 프로덕션에서는 무시됨.
+    const asOfParam = searchParams.get("asOf");
+    const refDate = process.env.NODE_ENV !== "production" && asOfParam ? new Date(asOfParam) : new Date();
+
+    // ownerId는 이메일이 아닌 Classroom 숫자 사용자 ID로 반환되므로, 본인 숫자 ID를 함께 조회해 비교
+    const [courses, teacherUserId] = await Promise.all([
+      listClassroomCourses(teacherEmail),
+      getClassroomUserId(teacherEmail),
+    ]);
+    const currentSchoolYear = getCurrentSchoolYear(refDate);
 
     const courseDetails = courses.map((c: any) => {
       const creationTime = c.creationTime || null;
       const schoolYear = creationTime ? getSchoolYearFromCreationTime(creationTime) : currentSchoolYear;
-      const isTarget = isCleanupTargetCourse(c);
+      const isTarget = isCleanupTargetCourse(c, refDate);
       
       // 연도 접두어 여부 검사 (예: "2025 수학", "2025-수학", "[2025] 수학" 등)
       const hasYearPrefix = /^(20\d{2}[\s\-\[]|\[20\d{2}\])/.test(c.name || "");
@@ -91,7 +101,7 @@ export async function GET(req: NextRequest) {
         teacherFolder: c.teacherFolder || null,
         calendarId: c.calendarId || null,
         ownerId: c.ownerId,
-        isOwner: c.ownerId === teacherEmail || !c.ownerId,
+        isOwner: !c.ownerId || c.ownerId === teacherEmail || (teacherUserId !== null && c.ownerId === teacherUserId),
       };
     });
 
@@ -207,7 +217,7 @@ export async function POST(req: NextRequest) {
       const pipelineResults: {
         rename?: { success: boolean; name?: string; error?: string };
         archive?: { success: boolean; state?: string; error?: string };
-        calendar?: { success: boolean; error?: string };
+        calendar?: { success: boolean; error?: string; hiddenInsteadOfUnsubscribed?: boolean };
         drive?: { success: boolean; error?: string; targetParentFolderId?: string; originalParentFolderId?: string | null };
       } = {};
 
@@ -232,8 +242,12 @@ export async function POST(req: NextRequest) {
       // 3단계: 캘린더 구독 해제 (선택)
       if (calendarId) {
         try {
-          await unsubscribeClassroomCalendar(teacherEmail, calendarId);
-          pipelineResults.calendar = { success: true };
+          const calResult = await unsubscribeClassroomCalendar(teacherEmail, calendarId);
+          // 소유자 캘린더는 구독 취소 대신 숨김 처리됨 — 추후 캘린더 복원 시 hidden: false로 되돌려야 하므로 로그에 구분 저장
+          pipelineResults.calendar = {
+            success: true,
+            hiddenInsteadOfUnsubscribed: (calResult as any)?.hiddenInsteadOfUnsubscribed || undefined,
+          };
         } catch (err: any) {
           pipelineResults.calendar = { success: false, error: err.message };
         }
