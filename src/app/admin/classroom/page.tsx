@@ -8,7 +8,6 @@ import { db } from "@/lib/firebase/config";
 import { getClientCache } from "@/lib/cache/clientCache";
 
 import ClassroomCleanupTab from "@/components/admin/ClassroomCleanupTab";
-import ClassroomCleanupBanner from "@/components/admin/ClassroomCleanupBanner";
 
 interface ClassroomCourse {
   id: string;
@@ -417,7 +416,6 @@ export default function ClassroomPage() {
 
   return (
     <div className="space-y-4">
-      <ClassroomCleanupBanner />
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6">
         <div>
           <h2 className="text-xl font-bold text-gray-900">구글 클래스룸 학생 강제 배정 (즉시 가입)</h2>
