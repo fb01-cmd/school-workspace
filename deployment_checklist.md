@@ -73,6 +73,21 @@
 
 ---
 
+## 2.5 🌐 커스텀 도메인(예: admin.hmh.or.kr) 붙이는 날 할 일 세트
+
+> 2026-07-24 첫 배포에서 확정된 절차. **도메인이 바뀌면 아래 5개를 전부 반복해야 로그인이 작동한다.**
+> (인증 핸들러가 same-origin 프록시 방식이라 도메인마다 구글 쪽 등록이 필요함)
+
+1. **Vercel**: 프로젝트 Settings → Domains → 새 도메인 추가 → 안내되는 DNS 레코드(CNAME)를 `hmh.or.kr` DNS 관리 화면에 추가
+2. **Firebase 콘솔**: Authentication → Settings → 승인된 도메인 → 새 도메인 추가
+3. **GCP 콘솔**: API 및 서비스 → 사용자 인증 정보 → Web client (auto created by Google Service):
+   - 승인된 자바스크립트 원본에 `https://<새 도메인>` 추가
+   - 승인된 리디렉션 URI에 `https://<새 도메인>/__/auth/handler` 추가
+4. **Vercel 환경변수**: `NEXT_PUBLIC_BASE_URL`을 새 도메인으로 수정 → Redeploy
+5. **검증**: 새 도메인에서 팝업 차단 상태로 로그인 되는지 확인 (redirect 폴백 경로)
+
+---
+
 ## 3. 🧪 배포 전 최종 검증 시나리오 (Vercel 배포 후)
 
 상용 배포 직후 아래 시나리오들을 순서대로 수동 작동하여 오작동 여부를 검사하는 것을 강력히 권장합니다.
