@@ -1,0 +1,135 @@
+rules_version = '2';
+
+// ============================================================================
+// 효명고등학교 관리 시스템 — Firestore 보안 규칙 (2026-07-24 Claude 설계 초안)
+//
+// ⚠️ 적용 순서가 중요합니다. 이 규칙은 "서버 API 라우트의 admin SDK 전환"이
+//    완료된 뒤에 적용해야 합니다. 전환 전에 적용하면 서버 라우트(클라이언트 SDK
+//    사용 중)가 전부 차단되어 앱이 죽습니다. (project_notes.md 핸드오버 참조)
+//
+// 설계 원칙:
+//   1. 기본 전부 거부(deny-by-default). 아래 명시된 경로만 개방.
+//   2. @hmh.or.kr 로그인 계정만 접근 가능 — 일반 Gmail 등 외부 계정은 인증됐어도 차단.
+//   3. 학생은 "자기 것"만 읽기. 교직원 화면용 컬렉션은 교직원 역할만.
+//   4. 서버 전용 컬렉션(각종 로그)은 클라이언트 쓰기 금지 — admin SDK는 규칙을
+//      우회하므로 서버 기록은 영향 없음.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── 공통 헬퍼 ──────────────────────────────────────────────
+    function signedIn() {
+      return request.auth != null;
+    }
+    // 학교 도메인 게이트: @hmh.or.kr 검증된 계정만
+    function isSchool() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.matches('[^@]+@hmh[.]or[.]kr');
+    }
+    function myUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    // 교직원(교사 또는 수퍼어드민) 여부 — users/{uid}.role 기반
+    function isTeacher() {
+      return isSchool() && myUserDoc().role in ['teacher', 'super_admin'];
+    }
+    function isSuperAdmin() {
+      return isSchool() && myUserDoc().role == 'super_admin';
+    }
+    // 문서 키(이메일)가 본인 이메일인지
+    function isSelf(email) {
+      return isSchool() && request.auth.token.email == email;
+    }
+
+    // ── users/{uid} — 계정·역할 정보 ──────────────────────────
+    match /users/{uid} {
+      // 본인 문서는 본인이, 전체는 교직원이 읽음 (승인 대기 화면 등)
+      allow read: if isSchool() && (request.auth.uid == uid || isTeacher());
+      // 승인/거절 등 역할 변경은 수퍼어드민만.
+      // 예외: 본인이 자기 문서의 isSecurityGroupJoined 플래그 하나만 갱신하는 것은 허용
+      //       (RouteGuard의 보안그룹 가입 마킹)
+      allow update: if isSuperAdmin()
+        || (isSchool() && request.auth.uid == uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isSecurityGroupJoined']));
+      allow create, delete: if isSuperAdmin();
+    }
+
+    // ── settings/{domain} — OU 매핑·졸업 일정 등 도메인 설정 ──
+    match /settings/{domain} {
+      // 학생 포털도 설정(포털 안내 문구 등)을 읽으므로 학교 구성원 전체 읽기 허용
+      allow read: if isSchool();
+      // 설정 변경은 교직원 화면(OU 설정, 전출 설정)에서만
+      allow write: if isTeacher();
+    }
+
+    // ── teacher_profiles/{email} — 확정된 교직원 프로필 ────────
+    match /teacher_profiles/{email} {
+      allow read: if isTeacher();
+      // 승인 확정은 수퍼어드민, 본인 문서는 본인도 가능
+      allow write: if isSuperAdmin() || isSelf(email);
+    }
+
+    // ── teacher_profiles_pending/{email} — 프로필 승인 대기 ────
+    match /teacher_profiles_pending/{email} {
+      allow read: if isTeacher();
+      allow create, update: if isSelf(email) || isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── graduation_tasks/{domain}/students/{email} — 졸업 예약장부 ──
+    match /graduation_tasks/{domain}/students/{email} {
+      // 학생은 자기 태스크만 읽음(학생 포털), 교직원은 전체
+      allow read: if isSelf(email) || isTeacher();
+      // 클라이언트 쓰기는 교직원만 (학생 서명 제출은 서버 API 경유)
+      allow write: if isTeacher();
+    }
+
+    // ── graduation_consents — 졸업 안내 확인 서명 원본 ─────────
+    match /graduation_consents/{consentId} {
+      allow read: if isTeacher();
+      // 서명 생성은 서버 API에서만 (위조 방지). 클라이언트 쓰기 전면 금지.
+      allow write: if false;
+    }
+
+    // ── transfer_out_tasks/{domain}/students/{email} — 전출/자퇴 ──
+    match /transfer_out_tasks/{domain}/students/{email} {
+      allow read, write: if isTeacher();
+    }
+
+    // ── teacher_transfer_tasks/{domain}/teachers/{email} — 교직원 전출 ──
+    match /teacher_transfer_tasks/{domain}/teachers/{email} {
+      // 전출 당사자 교사는 자기 태스크 읽기 가능(기한 설정 화면)
+      allow read: if isSelf(email) || isTeacher();
+      allow write: if isTeacher();
+    }
+
+    // ── 로그성 컬렉션 — 클라이언트는 읽기만, 조작 금지 ─────────
+    // (서버가 admin SDK로 기록하므로 클라이언트 쓰기 불필요.
+    //  audit_logs만 예외적으로 클라이언트 create 허용 — 화면에서 직접 기록하는
+    //  기존 코드가 있어, 위·변조 위험이 낮은 '추가'만 열어둠. 수정·삭제는 불가.)
+    match /audit_logs/{logId} {
+      allow read: if isTeacher();
+      allow create: if isTeacher();
+      allow update, delete: if false;
+    }
+    match /classroom_cleanup_logs/{logId} {
+      allow read: if isTeacher();
+      allow write: if false;
+    }
+    match /classroom_sync_logs/{logId} {
+      allow read: if isTeacher();
+      allow write: if false;
+    }
+    match /chrome_bookmark_logs/{logId} {
+      allow read: if isTeacher();
+      allow write: if false;
+    }
+
+    // ── 그 외 전부 차단 (deny-by-default) ─────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
