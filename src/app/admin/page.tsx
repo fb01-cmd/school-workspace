@@ -19,11 +19,12 @@ import PasswordReset from "@/components/admin/PasswordReset";
 import ProfileApprovals from "@/components/admin/ProfileApprovals";
 import MyProfileCard from "@/components/admin/MyProfileCard";
 import ClassroomCleanupBanner from "@/components/admin/ClassroomCleanupBanner";
+import ClassroomCleanupTab from "@/components/admin/ClassroomCleanupTab";
 
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "chrome_bookmarks" | "password_reset" | "profile_approvals";
+type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
@@ -61,6 +62,8 @@ export default function AdminPage() {
         return <ProfileApprovals />;
       case "classroom":
         return <ClassroomPage />;
+      case "classroom_cleanup":
+        return <ClassroomCleanupTab />;
       case "chrome_bookmarks":
         return <ChromeBookmarks />;
       case "password_reset":
@@ -363,6 +366,18 @@ export default function AdminPage() {
                   >
                     <span>🏫</span>
                     <span>클래스룸 학생 강제 배정</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveMenu("classroom_cleanup")}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      activeMenu === "classroom_cleanup"
+                        ? "bg-indigo-800 text-white"
+                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    <span>📦</span>
+                    <span>학기말 클래스룸 정리</span>
                   </button>
 
                   <button
