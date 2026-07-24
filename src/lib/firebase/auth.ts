@@ -1,4 +1,4 @@
-import { signInWithPopup, signInWithCredential, signOut, GoogleAuthProvider, User } from "firebase/auth";
+import { signInWithPopup, signInWithRedirect, signInWithCredential, signOut, GoogleAuthProvider, User } from "firebase/auth";
 import { auth, googleProvider } from "./config";
 
 export interface UserData {
@@ -20,6 +20,17 @@ export const signInWithGoogle = async () => {
     await handleUserRoles(user);
     return user;
   } catch (error: any) {
+    // 팝업이 차단되거나 팝업을 지원하지 않는 환경이면 전체 페이지 이동(redirect)
+    // 방식으로 자동 전환한다. 브라우저가 구글 로그인 페이지로 이동했다가 돌아오고,
+    // 복귀 후에는 AuthContext의 onAuthStateChanged가 handleUserRoles를 호출해
+    // 나머지 흐름(역할 동기화 → 화면 이동)을 그대로 이어간다.
+    if (
+      error?.code === "auth/popup-blocked" ||
+      error?.code === "auth/operation-not-supported-in-this-environment"
+    ) {
+      await signInWithRedirect(auth, googleProvider);
+      return null; // 이 직후 페이지가 이동하므로 반환값은 사용되지 않음
+    }
     console.error("Google Sign-In Error", error);
     throw error;
   }
