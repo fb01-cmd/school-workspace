@@ -1,5 +1,15 @@
 # Project Notes
 
+## 🔒 현재 작업 중 파일
+
+> `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
+
+```markdown
+- [담당: Claude|Antigravity] 파일 경로 — 시작 시각 또는 세션 식별 — 무엇을 하는 중인지 한 줄
+```
+
+*(현재 비어 있음)*
+
 ## Firebase Configuration
 - **Admin/Owner Account**: `fb01@hmh.or.kr`
 - **Status**: The Firebase project is currently being created by the teacher. Waiting for the `firebaseConfig` object.
