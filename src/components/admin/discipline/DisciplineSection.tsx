@@ -35,7 +35,7 @@ export default function DisciplineSection() {
     setLoading(true);
     setError(null);
     try {
-      // 1. 내 권한 조회
+      // 내 권한 + 규정 통합 조회 (my 응답에 config 동봉 — 왕복 1회로 마운트)
       const permRes = await fetch("/api/discipline/permissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -48,17 +48,8 @@ export default function DisciplineSection() {
       }
 
       setPermissions(permData);
-
-      // 2. 규정 데이터 조회
-      const configRes = await fetch("/api/discipline/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get" }),
-      });
-
-      const configData = await configRes.json();
-      if (configRes.ok && configData.config) {
-        setConfig(configData.config);
+      if (permData.config) {
+        setConfig(permData.config);
       }
 
       // 첫 탭 자동 선택

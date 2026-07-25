@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { action } = body;
-    const { ctx } = await loadAuthzContext(domain, auth);
+    const { ctx, config, configSeeded } = await loadAuthzContext(domain, auth);
 
     // ── 내 권한 요약 ──
     if (action === "my") {
@@ -73,6 +73,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         role: ctx.role,
         email: ctx.email,
+        // 권한 판정용으로 이미 로드한 규정을 동봉 — 화면 마운트가 config get 호출 없이
+        // 1회 왕복으로 끝나도록 (2026-07-26 초기 로딩 최적화 A)
+        config,
+        configSeeded,
         homeroomClasses: ctx.homeroomClasses,
         isHomeroom: ctx.homeroomClasses.length > 0,
         grants: ctx.grants,
