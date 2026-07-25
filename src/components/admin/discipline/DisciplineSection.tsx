@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { DisciplineConfig, DisciplineGrant } from "@/lib/discipline/types";
+import { getClientCache, setClientCache, invalidateClientCache } from "@/lib/cache/clientCache";
 import DisciplineRecordTab from "./DisciplineRecordTab";
 import DisciplineStatusTab from "./DisciplineStatusTab";
 import DisciplineStageEventsTab from "./DisciplineStageEventsTab";
@@ -26,14 +27,42 @@ export default function DisciplineSection() {
   const [config, setConfig] = useState<DisciplineConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tabInitialized, setTabInitialized] = useState(false);
 
   const [activeTab, setActiveTab] = useState<
     "record" | "status" | "stage_events" | "config" | "permissions" | "homeroom"
   >("record");
 
-  const fetchData = async () => {
+  const setInitialTabIfNeeded = (permData: UserPermissions) => {
+    if (tabInitialized) return;
+    if (permData.canRecord) setActiveTab("record");
+    else if (permData.canView) setActiveTab("status");
+    else if (permData.canResolve) setActiveTab("stage_events");
+    else if (permData.canManageRules) setActiveTab("config");
+    else if (permData.canManagePermissions) setActiveTab("permissions");
+    setTabInitialized(true);
+  };
+
+  const fetchData = async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
+
+    // forceRefresh가 없으면 인메모리 클라이언트 캐시 우선 사용
+    if (!forceRefresh) {
+      const cached = getClientCache("discipline:my");
+      if (cached) {
+        setPermissions(cached);
+        if (cached.config) {
+          setConfig(cached.config);
+        }
+        setInitialTabIfNeeded(cached);
+        setLoading(false);
+        return;
+      }
+    } else {
+      invalidateClientCache("discipline:my");
+    }
+
     try {
       // 내 권한 + 규정 통합 조회 (my 응답에 config 동봉 — 왕복 1회로 마운트)
       const permRes = await fetch("/api/discipline/permissions", {
@@ -47,17 +76,13 @@ export default function DisciplineSection() {
         throw new Error(permData.error || "생활지도 권한 조회를 실패했습니다.");
       }
 
+      setClientCache("discipline:my", permData);
       setPermissions(permData);
       if (permData.config) {
         setConfig(permData.config);
       }
 
-      // 첫 탭 자동 선택
-      if (permData.canRecord) setActiveTab("record");
-      else if (permData.canView) setActiveTab("status");
-      else if (permData.canResolve) setActiveTab("stage_events");
-      else if (permData.canManageRules) setActiveTab("config");
-      else if (permData.canManagePermissions) setActiveTab("permissions");
+      setInitialTabIfNeeded(permData);
     } catch (err: any) {
       setError(err.message || "데이터 로딩 중 오류가 발생했습니다.");
     } finally {
@@ -206,11 +231,11 @@ export default function DisciplineSection() {
         )}
 
         {activeTab === "config" && permissions.canManageRules && config && (
-          <DisciplineConfigTab initialConfig={config} onConfigUpdated={fetchData} />
+          <DisciplineConfigTab initialConfig={config} onConfigUpdated={() => fetchData(true)} />
         )}
 
         {activeTab === "permissions" && permissions.canManagePermissions && (
-          <DisciplinePermissionsTab domain={domain} />
+          <DisciplinePermissionsTab domain={domain} onPermissionsUpdated={() => fetchData(true)} />
         )}
 
         {activeTab === "homeroom" && permissions.canManagePermissions && (

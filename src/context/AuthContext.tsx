@@ -192,6 +192,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                       setClientCache("groups:all", gData.groups || []);
                     }
                   }).catch(() => {});
+
+                // 4. 생활지도 권한·규정 프리페치 ( discipline:my — 교직원 전용 웜업 & 캐시 적재 )
+                fetch("/api/discipline/permissions", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "my" })
+                })
+                  .then(res => res.ok ? res.json() : null)
+                  .then(dData => {
+                    if (dData) {
+                      const { setClientCache } = require("@/lib/cache/clientCache");
+                      setClientCache("discipline:my", dData);
+                    }
+                  }).catch(() => {});
               }, 100);
             }
           } else {

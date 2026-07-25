@@ -309,6 +309,7 @@ Claude는 세션의 정확한 토큰 사용량을 직접 조회할 수 없다. �
 | **조직단위(OU) 목록** | `useAuth().orgUnits` (React state) | `"ou:all"` | `GET /api/workspace/ou` |
 | **전체 사용자 목록** | `getClientCache("users:all")` | `"users:all"` | `POST /api/workspace/users` |
 | **그룹(메일링리스트) 목록** | `getClientCache("groups:all")` | `"groups:all"` | `POST /api/workspace/groups` |
+| **생활지도 권한·규정** | `getClientCache("discipline:my")` | `"discipline:my"` | `POST /api/discipline/permissions` (`action:"my"`) |
 | **학교 설정** | `useAuth().schoolSettings` (React state) | Firestore 실시간 구독 | — |
 | **로그인 사용자 정보** | `useAuth().userData` (React state) | Firestore 실시간 구독 | — |
 
@@ -318,6 +319,7 @@ Claude는 세션의 정확한 토큰 사용량을 직접 조회할 수 없다. �
 2. **사용자 검색/목록이 필요한가?** → `getClientCache("users:all")`로 로컬 필터링한다. 캐시가 없는 경우에만 API를 온디맨드 호출한다.
 3. **그룹 목록이 필요한가?** → `getClientCache("groups:all")`로 로컬 필터링한다.
 4. **학교 설정(학년 수, OU 매핑 등)이 필요한가?** → `useAuth().schoolSettings`를 사용한다.
+5. **생활지도 권한·규정이 필요한가?** → `getClientCache("discipline:my")`를 우선 확인하고 무효화가 필요할 때만 재조회한다.
 
 ## 구현 패턴 예시
 

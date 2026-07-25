@@ -680,3 +680,24 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
   2. **로그인 프리페치 웜업**: `AuthContext.tsx`의 백그라운드 프리페치 블록(setTimeout 내부)에, 역할이 teacher/super_admin일 때 `POST /api/discipline/permissions {action:"my"}` 1건 추가하고 결과를 위 캐시 키에 저장. 목적 두 가지 — ① 서버리스 함수를 로그인 직후 깨워 콜드 스타트를 백그라운드로 흡수, ② 메뉴 진입 시 캐시 히트로 즉시 렌더. 학생 역할은 호출하지 않는다(403만 남음).
   3. AGENTS.md 프리페치 데이터 목록 표에 새 항목(`discipline:my`) 한 줄 추가.
   - 완료 기준: tsc/build 통과 + "로그인 → 잠시 후 생활지도 진입"이 체감 즉시(캐시 히트)임을 확인, 규정 저장 직후 편집기 값이 구캐시로 되돌아가지 않는지 확인.
+
+## [2026-07-26] Antigravity → Claude/사용자 (초기 로딩 최적화 B 구현 완료)
+
+- **작업 내용**:
+  1. **DisciplineSection 인메모리 캐시 적용 ([DisciplineSection.tsx](file:///home/fb01/school/src/components/admin/discipline/DisciplineSection.tsx))**:
+     - `clientCache`를 연동하여 `discipline:my` 캐시 키(TTL 5분)로 마운트 시 권한·규정 통합 응답을 캐시 히트로 즉시 렌더링.
+     - 규정 저장·리셋(`onConfigUpdated`) 및 생활지도 권한 부여·회수(`onPermissionsUpdated`) 후에는 `fetchData(true)`를 호출하여 `discipline:my` 캐시를 즉시 무효화(`invalidateClientCache`)하고 강제 재조회.
+  2. **DisciplinePermissionsTab 캐시 무효화 추가 ([DisciplinePermissionsTab.tsx](file:///home/fb01/school/src/components/admin/discipline/DisciplinePermissionsTab.tsx))**:
+     - 권한 부여(`create_grant`) 및 회수(`revoke_grant`) 성공 직후 `invalidateClientCache("discipline:my")`를 실행하고 상위 부모 콜백(`onPermissionsUpdated`)을 호출하도록 연동.
+  3. **AuthContext 교직원 전용 로그인 프리페치 & 서버리스 웜업 ([AuthContext.tsx](file:///home/fb01/school/src/context/AuthContext.tsx))**:
+     - `super_admin` 및 `teacher` 교직원 로그인 직후 백그라운드 `setTimeout` 블록에 `POST /api/discipline/permissions` (`action: "my"`) 1건을 추가하여 서버리스 함수 웜업 및 `discipline:my` 캐시 적재 완료. (학생 역할 제외)
+  4. **AGENTS.md 규칙 문서 업데이트 ([AGENTS.md](file:///home/fb01/school/AGENTS.md))**:
+     - 백그라운드 프리페치 데이터 목록 표 및 개발 체크리스트 5번에 `discipline:my` 항목 추가 완료.
+- **변경 파일**:
+  - `src/components/admin/discipline/DisciplineSection.tsx`
+  - `src/components/admin/discipline/DisciplinePermissionsTab.tsx`
+  - `src/context/AuthContext.tsx`
+  - `AGENTS.md`
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+

@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import { DisciplineGrant, DisciplineRight, DisciplineScope, ALL_DISCIPLINE_RIGHTS } from "@/lib/discipline/types";
+import { invalidateClientCache } from "@/lib/cache/clientCache";
 
 interface DisciplinePermissionsTabProps {
   domain: string;
+  onPermissionsUpdated?: () => void;
 }
 
-export default function DisciplinePermissionsTab({ domain }: DisciplinePermissionsTabProps) {
+export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated }: DisciplinePermissionsTabProps) {
   const [grants, setGrants] = useState<DisciplineGrant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +93,8 @@ export default function DisciplinePermissionsTab({ domain }: DisciplinePermissio
       setSelectedTeacherName("");
       setSelectedRights(["view", "record"]);
       setExpiresAtDateStr("");
+      invalidateClientCache("discipline:my");
+      onPermissionsUpdated?.();
       await fetchGrants();
     } catch (err: any) {
       alert(err.message || "오류가 발생했습니다.");
@@ -117,6 +121,8 @@ export default function DisciplinePermissionsTab({ domain }: DisciplinePermissio
         throw new Error(data.error || "권한 회수 실패");
       }
 
+      invalidateClientCache("discipline:my");
+      onPermissionsUpdated?.();
       await fetchGrants();
     } catch (err: any) {
       alert(err.message || "오류가 발생했습니다.");
