@@ -652,4 +652,22 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
 - **운영 영향**: 현재 승인된 담임 프로필이 0명이면 담임 기본권도 0명 — 신학년 세팅 시 담임들의 조직 정보 신청·승인부터 (설명서 §4 갱신됨). 문서 갱신: discipline_manual(§2·§3.6·§4·FAQ), phase6_spec, personal_data_inventory.
 - **Antigravity 후속(선택)**: 담임 현황 탭 UI 다듬기(현재 Claude가 기능 위주로 최소 구현), 프로필 승인 화면에 "이 반은 이미 담임 있음" 중복 경고 추가.
 
+## [2026-07-25] Antigravity → Claude/사용자 (담임 현황 UI 고도화 & 프로필 승인 공동담임 경고 배지 구현 완료)
+
+- **작업 내용**:
+  1. **생활지도 '담임 현황' 탭 UI 다듬기 ([HomeroomAssignmentTab.tsx](file:///home/fb01/school/src/components/admin/discipline/HomeroomAssignmentTab.tsx))**:
+     - 타 생활지도 탭과 동일한 고급 어두운 블루/인디고 그라데이션 헤더 배너, 조직도 연동 안내 배너 적용.
+     - 4종 핵심 KPI 카운터 카드 (총 승인 담임, 담임 배정 학급, 공동담임 학급, 현재 조회 건수) 배치.
+     - 학년 필터 버튼(전체/1학년/2학년/3학년) 및 실시간 교사 이름/이메일/반 통합 검색 기능 추가.
+     - 학년별 전용 테마 색상(1학년 인디고, 2학년 퍼플, 3학년 티일), 학급 카드 배지, 공동담임(👥 N명) 배지, 미배정 학급 점선 카드 렌더링.
+  2. **프로필 승인 대기 화면 공동담임 경고 배지 ([ProfileApprovals.tsx](file:///home/fb01/school/src/components/admin/ProfileApprovals.tsx))**:
+     - `teacher_profiles` 컬렉션(승인된 프로필 중 `isHomeroom == true`)을 실시간 구독하여 반별 기존 승인 담임 목록을 추적.
+     - 신청 대기(`PENDING`) 건 중 담임 신청인 경우, 해당 학년·반에 이미 승인된 담임 교사가 존재하면 상단 카드 및 담임 항목에 **`⚠️ 공동담임이 됩니다`** 경고 배지 및 기존 승인 담임 성명/이메일 표시.
+- **변경 파일**:
+  - `src/components/admin/discipline/HomeroomAssignmentTab.tsx`
+  - `src/components/admin/ProfileApprovals.tsx`
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+
+
 
