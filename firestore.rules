@@ -67,10 +67,12 @@ service cloud.firestore {
     }
 
     // ── teacher_profiles/{email} — 확정된 교직원 프로필 ────────
+    // ⚠️ 2026-07-25 강화: 확정 프로필은 생활지도 담임 권한의 근거가 되므로
+    //    본인 직접 쓰기(isSelf)를 제거 — 변경은 반드시 pending 제출 → 수퍼어드민
+    //    승인 경로만 허용 (앱 흐름은 원래부터 승인제였고, 규칙을 그에 맞춰 잠금)
     match /teacher_profiles/{email} {
       allow read: if isTeacher();
-      // 승인 확정은 수퍼어드민, 본인 문서는 본인도 가능
-      allow write: if isSuperAdmin() || isSelf(email);
+      allow write: if isSuperAdmin();
     }
 
     // ── teacher_profiles_pending/{email} — 프로필 승인 대기 ────
@@ -138,9 +140,6 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /discipline_permissions/{domain}/{document=**} {
-      allow read, write: if false;
-    }
-    match /homeroom_assignments/{domain} {
       allow read, write: if false;
     }
     match /discipline_records/{domain}/{document=**} {

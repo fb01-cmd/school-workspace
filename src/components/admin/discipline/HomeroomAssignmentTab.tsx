@@ -1,37 +1,45 @@
 import { useState, useEffect } from "react";
-import AutocompleteInput from "@/components/admin/AutocompleteInput";
-import { HomeroomAssignmentMap } from "@/lib/discipline/types";
+
+/**
+ * 담임 현황 (읽기 전용)
+ *
+ * 담임 정보의 단일 원본은 승인된 교직원 프로필(조직 정보 신청 → 수퍼어드민 승인)이다.
+ * 이 화면은 그 데이터를 학년·반 순으로 모아 보여주기만 하며, 여기서 편집하지 않는다.
+ * (별도 담임 배정표 편집은 2026-07-25 베이스 데이터 중복 제거로 폐기)
+ */
+
+interface HomeroomEntry {
+  grade: number;
+  classNum: number;
+  email: string;
+  name: string;
+}
 
 interface HomeroomAssignmentTabProps {
   domain: string;
 }
 
-export default function HomeroomAssignmentTab({ domain }: HomeroomAssignmentTabProps) {
-  const [assignments, setAssignments] = useState<HomeroomAssignmentMap>({});
+export default function HomeroomAssignmentTab({ domain: _domain }: HomeroomAssignmentTabProps) {
+  const [entries, setEntries] = useState<HomeroomEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchHomeroom = async () => {
     setLoading(true);
-    setMessage(null);
+    setError(null);
     try {
       const res = await fetch("/api/discipline/permissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get_homeroom" }),
       });
-
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "담임 배정 데이터를 불러오지 못했습니다.");
+        throw new Error(data.error || "담임 현황을 불러오지 못했습니다.");
       }
-
-      setAssignments(data.assignments || {});
-      setHasUnsavedChanges(false);
+      setEntries(data.entries || []);
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message || "오류가 발생했습니다." });
+      setError(err.message || "오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
@@ -41,162 +49,111 @@ export default function HomeroomAssignmentTab({ domain }: HomeroomAssignmentTabP
     fetchHomeroom();
   }, []);
 
-  const handleUpdateAssignment = (classKey: string, email: string) => {
-    setAssignments((prev) => ({
-      ...prev,
-      [classKey]: email,
-    }));
-    setHasUnsavedChanges(true);
-  };
-
-  const handleSave = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-
-    setSaving(true);
-    setMessage(null);
-    try {
-      const res = await fetch("/api/discipline/permissions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "set_homeroom",
-          assignments,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "담임 배정표 저장에 실패했습니다.");
-      }
-
-      setHasUnsavedChanges(false);
-      setMessage({
-        type: "success",
-        text: "담임 배정표가 성공적으로 저장되었습니다. (해당 학반 담임 교사에게 view & record 권한이 자동 부여됩니다)",
-      });
-    } catch (err: any) {
-      setMessage({ type: "error", text: err.message || "저장 중 오류가 발생했습니다." });
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const grades = [1, 2, 3];
-  const maxClassNum = 12;
+  // 같은 반에 복수 담임(공동담임)이 있을 수 있으므로 반 키로 그룹화
+  const byClass = new Map<string, HomeroomEntry[]>();
+  for (const e of entries) {
+    const key = `${e.grade}-${e.classNum}`;
+    const arr = byClass.get(key) || [];
+    arr.push(e);
+    byClass.set(key, arr);
+  }
 
   return (
     <div className="space-y-6 pb-12">
       {/* Top Banner */}
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
-            🏫 학급 담임 배정표 (Homeroom Assignments)
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            각 학년·반별 담임 교사를 지정합니다. 담임 교사에게는 자기 반 학생의 생활지도 기록 작성 및 열람 권한이 자동 부여됩니다.
+          <h2 className="text-xl font-bold text-gray-900 mb-1">🏫 학급 담임 현황 (읽기 전용)</h2>
+          <p className="text-sm text-gray-500">
+            승인된 교직원 프로필(조직도)에서 자동으로 가져온 담임 정보입니다. 담임 교사에게는
+            자기 반 학생의 생활지도 기록 작성·열람 권한이 자동 부여됩니다.
           </p>
         </div>
-
-        <div className="flex items-center space-x-3">
-          {hasUnsavedChanges && (
-            <span className="text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-3 py-1.5 rounded-md animate-pulse border border-amber-200 dark:border-amber-800">
-              ⚠️ 미저장 변경사항 있음
-            </span>
-          )}
-
-          <button
-            onClick={() => handleSave()}
-            disabled={saving || !hasUnsavedChanges}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md disabled:opacity-50 transition-all flex items-center space-x-2"
-          >
-            {saving ? (
-              <span>저장 중...</span>
-            ) : (
-              <span>💾 담임 배정표 저장</span>
-            )}
-          </button>
-
-          <button
-            onClick={fetchHomeroom}
-            className="p-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200"
-          >
-            🔄 새로고침
-          </button>
-        </div>
+        <button
+          onClick={fetchHomeroom}
+          className="p-2.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 self-start md:self-auto"
+        >
+          🔄 새로고침
+        </button>
       </div>
 
-      {message && (
-        <div
-          className={`p-4 rounded-xl text-sm font-medium ${
-            message.type === "success"
-              ? "bg-green-50 text-green-800 border border-green-200 dark:bg-green-900/30 dark:text-green-300"
-              : "bg-red-50 text-red-800 border border-red-200 dark:bg-red-900/30 dark:text-red-300"
-          }`}
-        >
-          {message.text}
-        </div>
-      )}
+      {/* 변경 경로 안내 */}
+      <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-900">
+        ✏️ <strong>담임을 바꾸려면?</strong> 이 화면에서는 편집하지 않습니다. 해당 교사가{" "}
+        <strong>프로필 카드의 [조직 정보 신청]</strong>에서 담임 학년·반을 제출하고, 수퍼어드민이{" "}
+        <strong>[프로필 승인 대기]</strong>에서 승인하면 즉시 여기와 생활지도 권한에 반영됩니다.
+      </div>
 
       {loading ? (
-        <div className="py-20 text-center text-gray-500 dark:text-gray-400">
+        <div className="py-20 text-center text-gray-500">
           <svg className="animate-spin h-8 w-8 mx-auto mb-4 text-blue-600" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          담임 배정 데이터를 로딩하는 중...
+          담임 현황을 불러오는 중...
+        </div>
+      ) : error ? (
+        <div className="p-6 bg-red-50 text-red-700 rounded-xl border border-red-200 text-center">
+          {error}
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="p-12 text-center text-gray-500 bg-white rounded-xl border border-gray-100 space-y-2">
+          <div className="text-3xl">📭</div>
+          <p className="font-medium">승인된 담임 프로필이 아직 없습니다.</p>
+          <p className="text-xs">
+            담임 선생님들에게 [조직 정보 신청]에서 담임 반을 제출하도록 안내하고, 프로필 승인 대기에서 승인해 주세요.
+          </p>
         </div>
       ) : (
         <div className="space-y-8">
-          {grades.map((grade) => (
-            <div
-              key={grade}
-              className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 space-y-4"
-            >
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 pb-3 flex items-center justify-between">
-                <span>{grade}학년 담임 배정</span>
-                <span className="text-xs font-normal text-gray-500">1반 ~ {maxClassNum}반</span>
-              </h3>
+          {grades.map((grade) => {
+            const gradeEntries = entries.filter((e) => e.grade === grade);
+            return (
+              <div
+                key={grade}
+                className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-4"
+              >
+                <h3 className="text-lg font-bold text-gray-900 border-b border-gray-100 pb-3 flex items-center justify-between">
+                  <span>{grade}학년 담임</span>
+                  <span className="text-xs font-normal text-gray-500">{gradeEntries.length}명</span>
+                </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Array.from({ length: maxClassNum }, (_, i) => i + 1).map((classNum) => {
-                  const classKey = `${grade}-${classNum}`;
-                  const currentEmail = assignments[classKey] || "";
-
-                  return (
-                    <div
-                      key={classKey}
-                      className="p-4 bg-gray-50 dark:bg-gray-900/40 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-gray-900 dark:text-white bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 px-2.5 py-1 rounded">
-                          {grade}학년 {classNum}반
-                        </span>
-                        {currentEmail && (
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateAssignment(classKey, "")}
-                            className="text-[11px] text-red-500 hover:underline"
+                {gradeEntries.length === 0 ? (
+                  <p className="text-sm text-gray-400">승인된 담임이 없습니다.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {Array.from(new Set(gradeEntries.map((e) => e.classNum)))
+                      .sort((a, b) => a - b)
+                      .map((classNum) => {
+                        const classTeachers = byClass.get(`${grade}-${classNum}`) || [];
+                        return (
+                          <div
+                            key={classNum}
+                            className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between"
                           >
-                            비우기
-                          </button>
-                        )}
-                      </div>
-
-                      <AutocompleteInput
-                        type="user"
-                        domain={domain}
-                        value={currentEmail}
-                        onChange={(val) => handleUpdateAssignment(classKey, val)}
-                        onSelect={(email) => handleUpdateAssignment(classKey, email)}
-                        placeholder="담임 교사 검색/선택"
-                        className="w-full text-xs"
-                      />
-                    </div>
-                  );
-                })}
+                            <span className="text-xs font-bold bg-blue-100 text-blue-800 px-2.5 py-1 rounded">
+                              {grade}학년 {classNum}반
+                            </span>
+                            <div className="text-right">
+                              {classTeachers.map((t) => (
+                                <div key={t.email}>
+                                  <span className="text-sm font-bold text-gray-900">{t.name || t.email}</span>
+                                  <span className="block text-[11px] text-gray-500">{t.email}</span>
+                                </div>
+                              ))}
+                              {classTeachers.length > 1 && (
+                                <span className="text-[10px] text-amber-600 font-bold">공동담임 {classTeachers.length}명</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

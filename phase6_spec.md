@@ -68,8 +68,10 @@ discipline_permissions/{domain}/grants/{grantId}   ← 개별 권한 부여
     rights: ["view","record","resolve","manage_rules","manage_permissions"],
     grantedBy, grantedAt, expiresAt(선택, 학년도 말 자동 만료용) }
 
-homeroom_assignments/{domain}                  ← 담임 배정표 (연 1회 갱신)
-  { "1-1": "teacher-a@hmh.or.kr", "1-2": ..., updatedAt, updatedBy }
+(폐기 2026-07-25) homeroom_assignments — 담임 단일 원본은 승인된 교직원 프로필
+  teacher_profiles/{email}의 { isHomeroom, homeroom: {grade, class} }로 확정.
+  별도 배정표는 베이스 데이터 중복(사용자 지적)이라 제거. 변경 경로는 조직 정보
+  신청 → 수퍼어드민 승인뿐이며, firestore.rules에서 확정 프로필 본인 쓰기도 차단.
 
 discipline_records/{domain}/records/{recordId} ← 지도 기록 (불변 지향)
   { studentId: "10101", studentEmail, grade, classNum,   ← 기록 시점 스냅샷

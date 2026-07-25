@@ -5,17 +5,15 @@ import { verifyAuthAccess } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import {
   grantsColRef,
-  homeroomDocRef,
+  loadHomeroomEntries,
   loadAllGrants,
   loadAuthzContext,
-  loadHomeroomAssignments,
 } from "@/lib/discipline/server";
 import { computeAccessTargets, judgeDiscipline } from "@/lib/discipline/authz";
 import {
   ALL_DISCIPLINE_RIGHTS,
   DisciplineRight,
   DisciplineScope,
-  HomeroomAssignmentMap,
 } from "@/lib/discipline/types";
 
 /**
@@ -207,59 +205,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, grantId });
     }
 
-    // ── 담임 배정표 조회 ──
+    // ── 담임 현황 조회 (읽기 전용 — 단일 원본은 승인된 교직원 프로필) ──
     if (action === "get_homeroom") {
-      const homeroom = await loadHomeroomAssignments(domain);
-      return NextResponse.json(homeroom);
+      const entries = await loadHomeroomEntries(domain);
+      return NextResponse.json({
+        entries,
+        readOnly: true,
+        source: "teacher_profiles",
+      });
     }
 
-    // ── 담임 배정표 저장 ──
+    // ── 담임 배정표 저장은 폐지됨 (2026-07-25 베이스 데이터 중복 제거) ──
     if (action === "set_homeroom") {
-      const judgment = judgeDiscipline(ctx, "manage_permissions");
-      if (!judgment.allowed)
-        return NextResponse.json({ error: "담임 배정표 편집 권한이 없습니다." }, { status: 403 });
-
-      const raw = body.assignments;
-      if (!raw || typeof raw !== "object" || Array.isArray(raw))
-        return NextResponse.json({ error: "배정표 형식이 올바르지 않습니다." }, { status: 400 });
-
-      const entries = Object.entries(raw as Record<string, unknown>);
-      if (entries.length > 100)
-        return NextResponse.json({ error: "배정 항목이 너무 많습니다." }, { status: 400 });
-
-      const assignments: HomeroomAssignmentMap = {};
-      for (const [key, value] of entries) {
-        const keyMatch = key.match(/^([1-3])-(\d{1,2})$/);
-        if (!keyMatch)
-          return NextResponse.json(
-            { error: `반 키 형식 오류: "${key}" (예: "1-1")` },
-            { status: 400 }
-          );
-        if (typeof value !== "string" || !value.trim()) continue; // 빈 값 = 미배정
-        const email = value.trim().toLowerCase();
-        if (!email.endsWith(`@${domain}`) || /^\d{5}@/.test(email))
-          return NextResponse.json(
-            { error: `"${key}"의 담임 계정이 올바르지 않습니다: ${email}` },
-            { status: 400 }
-          );
-        assignments[key] = email;
-      }
-
-      await homeroomDocRef(domain).set({
-        assignments,
-        updatedAt: Timestamp.now(),
-        updatedBy: auth.email,
-      });
-
-      await writeAuditLog({
-        operatorEmail: auth.email,
-        operatorName: "생활지도 권한 관리자",
-        action: "담임 배정표 저장",
-        targetEmail: domain,
-        details: `배정 ${Object.keys(assignments).length}건 저장 (판정 근거: ${judgment.basis})`,
-        status: "success",
-      });
-      return NextResponse.json({ success: true, count: Object.keys(assignments).length });
+      return NextResponse.json(
+        {
+          error:
+            "담임 배정표 직접 편집은 폐지되었습니다. 담임 지정은 [조직 정보 신청 → 수퍼어드민 프로필 승인] 경로로만 변경됩니다.",
+        },
+        { status: 410 }
+      );
     }
 
     return NextResponse.json({ error: "지원하지 않는 action 입니다." }, { status: 400 });

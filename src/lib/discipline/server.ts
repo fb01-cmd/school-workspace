@@ -16,9 +16,9 @@ import {
   DisciplineRecord,
   DisciplineStageEvent,
   DisciplineVisibility,
-  HomeroomAssignmentMap,
+  HomeroomClass,
 } from "./types";
-import { DisciplineAuthzContext, findHomeroomClasses } from "./authz";
+import { DisciplineAuthzContext } from "./authz";
 
 // ── 경로 헬퍼 ──────────────────────────────────────────────────
 
@@ -28,8 +28,11 @@ export const configDocRef = (domain: string) =>
 export const grantsColRef = (domain: string) =>
   adminDb.collection("discipline_permissions").doc(domain).collection("grants");
 
-export const homeroomDocRef = (domain: string) =>
-  adminDb.collection("homeroom_assignments").doc(domain);
+// 담임 정보의 단일 원본은 승인된 교직원 프로필(teacher_profiles/{email})이다.
+// 조직 정보 신청 → 수퍼어드민 승인 흐름으로만 확정되며, 생활지도 전용 배정표를
+// 따로 두지 않는다(2026-07-25 사용자 지적: 베이스 데이터 중복 제거).
+// teacher_profiles/{email}: { email, isHomeroom, homeroom: { grade, class } | null }
+export const teacherProfilesColRef = () => adminDb.collection("teacher_profiles");
 
 export const recordsColRef = (domain: string) =>
   adminDb.collection("discipline_records").doc(domain).collection("records");
@@ -146,21 +149,46 @@ export async function loadAllGrants(domain: string): Promise<DisciplineGrant[]> 
   return snap.docs.map((d) => grantFromDoc(d.id, d.data()));
 }
 
-export async function loadHomeroomAssignments(
-  domain: string
-): Promise<{ assignments: HomeroomAssignmentMap; updatedAt: number | null; updatedBy: string }> {
-  const snap = await homeroomDocRef(domain).get();
-  const data = snap.data() || {};
-  const assignments: HomeroomAssignmentMap = {};
-  const raw = (data.assignments || {}) as Record<string, unknown>;
-  for (const [k, v] of Object.entries(raw)) {
-    if (typeof v === "string") assignments[k] = v;
+/** 승인된 프로필 문서에서 담임 반을 추출 (isHomeroom + homeroom: {grade, class}) */
+function homeroomClassesFromProfile(
+  data: FirebaseFirestore.DocumentData | undefined
+): HomeroomClass[] {
+  if (!data || data.isHomeroom !== true || !data.homeroom) return [];
+  const grade = Number(data.homeroom.grade);
+  const classNum = Number(data.homeroom.class);
+  if (!Number.isInteger(grade) || grade < 1 || grade > 3) return [];
+  if (!Number.isInteger(classNum) || classNum < 1 || classNum > 30) return [];
+  return [{ grade, classNum }];
+}
+
+/** 내 담임 반 조회 (권한 판정용) — 승인된 프로필 단일 문서 읽기 */
+export async function loadMyHomeroomClasses(email: string): Promise<HomeroomClass[]> {
+  const snap = await teacherProfilesColRef().doc(email.toLowerCase()).get();
+  if (!snap.exists) return [];
+  return homeroomClassesFromProfile(snap.data());
+}
+
+export interface HomeroomEntry {
+  grade: number;
+  classNum: number;
+  email: string;
+  name: string;
+}
+
+/** 전체 담임 현황 (읽기 전용 파생 뷰) — 승인된 프로필에서 집계. 공동담임(같은 반 복수)도 그대로 노출 */
+export async function loadHomeroomEntries(domain: string): Promise<HomeroomEntry[]> {
+  const snap = await teacherProfilesColRef().where("isHomeroom", "==", true).get();
+  const out: HomeroomEntry[] = [];
+  for (const d of snap.docs) {
+    const data = d.data();
+    const email = String(data.email || d.id).toLowerCase();
+    if (!email.endsWith(`@${domain}`)) continue; // 방어적 도메인 필터
+    for (const hc of homeroomClassesFromProfile(data)) {
+      out.push({ grade: hc.grade, classNum: hc.classNum, email, name: data.name || "" });
+    }
   }
-  return {
-    assignments,
-    updatedAt: toMillis(data.updatedAt),
-    updatedBy: data.updatedBy || "",
-  };
+  out.sort((a, b) => a.grade - b.grade || a.classNum - b.classNum || a.email.localeCompare(b.email));
+  return out;
 }
 
 /**
@@ -171,18 +199,18 @@ export async function loadAuthzContext(
   domain: string,
   auth: DecodedAuthAccess
 ): Promise<{ ctx: DisciplineAuthzContext; config: DisciplineConfig; configSeeded: boolean }> {
-  const [{ config, seeded }, grants, homeroom] = await Promise.all([
+  const [{ config, seeded }, grants, homeroomClasses] = await Promise.all([
     loadDisciplineConfig(domain),
-    // 학생 역할이면 grant 조회 자체가 불필요하지만, 판정 엔진이 0순위로 거부하므로 안전
+    // 학생 역할이면 grant/담임 조회 자체가 불필요하지만, 판정 엔진이 0순위로 거부하므로 안전
     auth.role === "student" ? Promise.resolve([]) : loadGrantsForTeacher(domain, auth.email),
-    loadHomeroomAssignments(domain),
+    auth.role === "student" ? Promise.resolve([]) : loadMyHomeroomClasses(auth.email),
   ]);
 
   const ctx: DisciplineAuthzContext = {
     role: auth.role,
     email: auth.email.toLowerCase(),
     grants,
-    homeroomClasses: findHomeroomClasses(homeroom.assignments, auth.email),
+    homeroomClasses,
     visibility: config.visibility,
     nowMs: Date.now(),
   };

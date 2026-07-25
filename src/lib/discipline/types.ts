@@ -79,10 +79,9 @@ export interface DisciplineGrant {
   expiresAt: number | null;  // 학년도 말 자동 만료용 (선택)
 }
 
-// ── 담임 배정 (homeroom_assignments/{domain}) ─────────────────
-
-/** { "1-1": "teacher-a@hmh.or.kr", ... } */
-export type HomeroomAssignmentMap = Record<string, string>;
+// ── 담임 반 ────────────────────────────────────────────────────
+// 단일 원본: 승인된 교직원 프로필 teacher_profiles/{email}의 { isHomeroom, homeroom }.
+// (별도 담임 배정표 컬렉션은 2026-07-25 베이스 데이터 중복 제거로 폐기)
 
 export interface HomeroomClass {
   grade: number;

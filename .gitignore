@@ -41,4 +41,4 @@ yarn-error.log*
 next-env.d.ts
 
 # Claude Code 로컬 세션 설정 (개인 환경 전용)
-.claude/settings.local.json
+.claude/

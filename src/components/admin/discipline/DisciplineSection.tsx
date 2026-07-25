@@ -194,7 +194,7 @@ export default function DisciplineSection() {
                   : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
               }`}
             >
-              <span>🏫 담임 배정표</span>
+              <span>🏫 담임 현황</span>
             </button>
           </>
         )}

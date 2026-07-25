@@ -167,19 +167,5 @@ export function computeAccessTargets(
   return out;
 }
 
-/** 담임 배정표 맵("1-1": email)에서 특정 교사의 담임 반 목록을 추출 */
-export function findHomeroomClasses(
-  assignments: Record<string, string> | undefined | null,
-  teacherEmail: string
-): HomeroomClass[] {
-  if (!assignments) return [];
-  const out: HomeroomClass[] = [];
-  const email = teacherEmail.toLowerCase();
-  for (const [key, value] of Object.entries(assignments)) {
-    if (typeof value !== "string" || value.toLowerCase() !== email) continue;
-    const m = key.match(/^(\d)-(\d{1,2})$/);
-    if (!m) continue;
-    out.push({ grade: parseInt(m[1], 10), classNum: parseInt(m[2], 10) });
-  }
-  return out;
-}
+// (담임 반 정보는 승인된 교직원 프로필 teacher_profiles/{email}에서 로드한다 —
+//  server.ts의 loadMyHomeroomClasses 참조. 2026-07-25 담임 배정표 중복 제거)
