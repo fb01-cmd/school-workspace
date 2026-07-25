@@ -622,4 +622,13 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
   - [project_notes.md](file:///home/fb01/school/project_notes.md)
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 26/26 라우트 성공)
 
+## [2026-07-25] Claude → 기록 (Phase 6b 프로덕션 E2E 25/25 통과 — 잔여 1건: Firestore 규칙 게시)
+
+- **잔여 2건 diff 리뷰 승인 후 커밋·push** (`3680ee2`): 레거시 폼 빌더 카드 → 생활지도 카드 교체(forms 경로도 DisciplineSection으로 통합), 무효화 버튼 조건부 노출(작성자 본인 ∨ canManageRules ∨ super_admin — 서버 판정과 일치).
+- **프로덕션 E2E (Claude 실행, admin@hmh.or.kr 수퍼어드민 토큰으로 실서버 API 검증) — 25케이스 전부 통과**:
+  비로그인 401 / 규정 시드 조회·저장(→ 이 시점부터 discipline_config 문서 영속화됨) / my 전권 요약 / 담임 배정 set·get·원상복구 / grant 부여·목록·회수(만료일 포함) / 기록 입력 → 흡연 1회차 자동 1단계 도달 + 처리함 이벤트 생성 / 현황 students[] 계약 / 전체 학년 조회 / 조치 완료 처리 / 무효화 → 단계 해제 / **학생 토큰 403** / 테스트 데이터(가상 학번 19901) 완전 삭제 확인.
+- **발견 사항(버그 아님, 운영 참고)**: `fb01@hmh.or.kr`는 Firestore users에서 `role: teacher, isApproved: false`. 수퍼어드민은 `admin@hmh.or.kr` 단일. → 생활지도 관리 화면 확인은 admin 계정으로 할 것. fb01로 접속하면 "권한 없음" 안내가 뜨는 것이 정상 동작.
+- **잔여 1건**: firestore.rules 콘솔 게시. Claude가 Rules API로 자동 게시 시도 → 서비스 계정(`school-sync-hub-admin@school-sync-hub.iam.gserviceaccount.com`)에 `roles/firebaserules.admin` 없어 403. 사용자가 GCP IAM에서 해당 서비스 계정에 **"Firebase Rules 관리자"** 역할 추가하면 Claude가 스크립트(`scratchpad/publish_rules.js` 패턴)로 게시 가능. 또는 종전대로 콘솔에 수동 붙여넣기. (현재도 deny-by-default라 생활지도 컬렉션은 차단 상태 — 긴급 아님)
+- Phase 6b 종결. 다음 후보: 졸업/제적 시 생활지도 기록 파기의 lifecycle 크론 연동 (Claude 담당, phase6_spec 파기 정책).
+
 
