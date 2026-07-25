@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import OUTreeSelector from "@/components/admin/OUTreeSelector";
 import OUCheckboxTree from "@/components/admin/OUCheckboxTree";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
+import RosterApiKeyManager from "@/components/admin/RosterApiKeyManager";
 import { SchedulePeriod } from "@/context/AuthContext";
 
 interface OU {
@@ -17,6 +18,7 @@ interface OU {
 
 export default function OUConfiguration() {
   const { userData, schoolSettings } = useAuth();
+  const [activeTab, setActiveTab] = useState<"ou" | "roster_keys">("ou");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isMock, setIsMock] = useState(false);
@@ -259,15 +261,47 @@ export default function OUConfiguration() {
   }
 
   return (
-    <div className="space-y-8">
-      {isMock && (
-        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md p-4 mb-4 text-sm">
-          💡 <strong>안내:</strong> 현재 구글 워크스페이스 연동 변수(GCP Credentials)가 설정되지 않아 <strong>가짜 데이터 모드(Mock Mode)</strong>로 작동 중입니다. 자유롭게 가상의 조직단위를 생성하고 매핑을 테스트해 보실 수 있습니다.
-        </div>
-      )}
+    <div className="space-y-6">
+      {/* Sub-tab Navigation */}
+      <div className="flex border border-gray-200 bg-white rounded-lg p-1.5 shadow-sm gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab("ou")}
+          className={`flex-1 py-2.5 px-4 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+            activeTab === "ou"
+              ? "bg-indigo-600 text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+          }`}
+        >
+          <span>🛠️</span>
+          <span>학교 학년 및 조직단위(OU) 매핑 설정</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("roster_keys")}
+          className={`flex-1 py-2.5 px-4 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+            activeTab === "roster_keys"
+              ? "bg-indigo-600 text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+          }`}
+        >
+          <span>🔑</span>
+          <span>명단 API 키 관리 (6a-1)</span>
+        </button>
+      </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-6">학교 학년 및 조직단위 매핑 설정</h2>
+      {activeTab === "roster_keys" ? (
+        <RosterApiKeyManager />
+      ) : (
+        <>
+          {isMock && (
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md p-4 mb-4 text-sm">
+              💡 <strong>안내:</strong> 현재 구글 워크스페이스 연동 변수(GCP Credentials)가 설정되지 않아 <strong>가짜 데이터 모드(Mock Mode)</strong>로 작동 중입니다. 자유롭게 가상의 조직단위를 생성하고 매핑을 테스트해 보실 수 있습니다.
+            </div>
+          )}
+
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-6">학교 학년 및 조직단위 매핑 설정</h2>
         
         <div className="space-y-6">
           {/* Grade count setup */}
@@ -765,10 +799,8 @@ export default function OUConfiguration() {
           </div>
         </div>
       </div>
-
-
-
-
-    </div>
+    </>
+  )}
+</div>
   );
 }

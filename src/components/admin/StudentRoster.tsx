@@ -5,6 +5,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/context/AuthContext";
 import { getClientCache } from "@/lib/cache/clientCache";
+import { parseStudentUser, ParsedStudent } from "@/lib/roster";
 
 interface GoogleUser {
   id: string;
@@ -14,20 +15,6 @@ interface GoogleUser {
     givenName: string;
   };
   orgUnitPath: string;
-  suspended: boolean;
-}
-
-interface ParsedStudent {
-  id: string;
-  email: string;
-  name: string;
-  familyName: string;
-  givenName: string;
-  grade: number;      // e.g. 1
-  classNum: number;   // e.g. 1
-  studentNum: number; // e.g. 1
-  rawStudentId: string; // "10101"
-  isParsed: boolean;
   suspended: boolean;
 }
 
@@ -98,45 +85,8 @@ export default function StudentRoster() {
         }
       }
 
-      // Parse student info from familyName
-        const parsed: ParsedStudent[] = rawUsers.map((u) => {
-          const familyName = u.name.familyName || "";
-          const givenName = u.name.givenName || "";
-          
-          // Regex match: e.g. 10101 (5 digits) -> Grade 1, Class 01, Number 01
-          const match = familyName.trim().match(/^(\d)(\d{2})(\d{2})$/);
-          
-          if (match) {
-            return {
-              id: u.id,
-              email: u.primaryEmail,
-              name: givenName.trim(), // Extracted givenName strictly so that familyName (student num) is not prefixed
-              familyName,
-              givenName,
-              grade: parseInt(match[1]),
-              classNum: parseInt(match[2]),
-              studentNum: parseInt(match[3]),
-              rawStudentId: familyName.trim(),
-              isParsed: true,
-              suspended: u.suspended,
-            };
-          } else {
-            // Fallback for students with unformatted familyName
-            return {
-              id: u.id,
-              email: u.primaryEmail,
-              name: `${familyName}${givenName}`.trim(),
-              familyName,
-              givenName,
-              grade: 0,
-              classNum: 0,
-              studentNum: 99,
-              rawStudentId: familyName,
-              isParsed: false,
-              suspended: u.suspended,
-            };
-          }
-        });
+      // Parse student info from familyName using server utility
+      const parsed: ParsedStudent[] = rawUsers.map(parseStudentUser);
 
         setStudents(parsed);
     } catch (error: any) {

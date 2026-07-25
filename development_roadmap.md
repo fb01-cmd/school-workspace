@@ -138,9 +138,16 @@
 | 6 | 표적 리스크 리뷰 (2번 함수군 + 학년도 매핑 로직 엣지케이스) | **Claude** | 실제 교사 계정 테스트 전, 더미 클래스룸으로 먼저 검증 |
 | 7 | 실제 교사 계정 소규모 파일럿 → 전체 배포 | 공동 | 파일럿 결과 보고 후 Claude가 배포 승인 판단 |
 
-### Phase 6. 동적 폼 빌더 및 생활지도 기록 (미구현 📋)
-* **마스터 폼 빌더**: 매년 달라지는 학생 상담 및 생활지도 양식을 코딩 없이 관리자가 필드(날짜, 텍스트, 체크박스 등)를 조합해 동적으로 설계.
-* **학급별 배포**: 설계된 폼을 담임 교사에게 배정하여 학생별로 관찰 기록을 누적 입력 및 조회할 수 있는 환경 제공.
+### Phase 6a. 명단 공급 허브 & 6b. 생활지도 기록 모듈
+
+* **Phase 6a-1. 읽기 전용 명단 API 및 키 관리 UI (완료 ✅) — 2026-07-25**:
+  - `src/lib/roster.ts`: `StudentRoster.tsx`의 5자리 학번 파싱 규칙(`/^(\d)(\d{2})(\d{2})$/`)을 서버 유틸 함수 `parseStudentUser`로 추출해 단일 원본(SSOT) 재사용 구조 구축.
+  - `GET /api/roster/feed`: 외부 서비스(지필평가, 교육과정 선택 웹앱, 구글 시트 등)에 학생 명단을 자동 공급하는 읽기 전용 명단 피드 API. `Authorization: Bearer <API키>` 헤더 인증, `?grade=1` 학년 필터, `?includeSuspended=true` 정지 계정 옵션, `?format=csv` (UTF-8 BOM 포함) 지원.
+  - `POST /api/workspace/roster-keys`: 수퍼어드민 전용 API 키 발급/조회/폐기 API. 키 생성 시 SHA-256 해시만 Firestore(`roster_api_keys/{domain}/keys/{keyId}`)에 보관하고, 평문 키는 발급 순간 1회만 표시. 키 발급/폐기 시 감사 로그 기록.
+  - `RosterApiKeyManager.tsx` & `OUConfiguration.tsx`: 수퍼어드민 설정 화면 내 "명단 API 키 관리" 서브 탭 신설 및 API 이용 가이드 / 키 발급 및 1회 복사 모달 / 키 폐기 관리 UI 구현.
+
+* **Phase 6b. 생활지도 기록 모듈 (미구현 📋)**:
+  - 규정 문서(`discipline_config`), 개별 권한 테이블(`discipline_permissions`), 담임 배정표(`homeroom_assignments`), 무효화(void) 방식 지도의 기록 컬렉션 설계 및 6개 화면 구현 예정.
 
 ### Phase 7. 카카오톡 알림톡 연동 (미구현 💬)
 * **카카오 비즈니스 API**: 학생/학부모에게 계정 삭제 D-Day 알림, 학교 공지 등을 카카오톡 채널로 자동 발송.

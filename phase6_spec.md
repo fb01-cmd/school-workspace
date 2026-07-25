@@ -14,7 +14,8 @@
 
 - **엔드포인트**: `GET /api/roster/feed`
 - **인증**: `Authorization: Bearer <API키>`. API 키는 소비자(앱)별로 발급.
-  - Firestore `roster_api_keys/{domain}/keys/{keyId}`: `{ name(용도 라벨), hashedKey(SHA-256), createdAt, lastUsedAt, revoked }`
+  - Firestore `roster_api_keys/{keyId}` (플랫 최상위 컬렉션): `{ domain, name(용도 라벨), hashedKey(SHA-256), keyPrefix, createdAt, lastUsedAt, revoked, createdBy }`
+    - ⚠️ 서브컬렉션 + collectionGroup 조회 구조 금지 — 컬렉션 그룹 색인 수동 생성이 필요해 배포에서만 죽고, 동명("keys") 서브컬렉션과 충돌 위험 (2026-07-25 표적 리뷰에서 교정). 폐기 시 domain 일치 검증 필수.
   - **평문 키는 발급 순간 1회만 표시**하고 해시만 저장. 검증은 해시 비교.
 - **응답(JSON)**: `{ students: [{ studentId: "10101", grade: 1, classNum: 1, number: 1, name: "고보경", email: "10101@hmh.or.kr", suspended: false }], generatedAt }`
   - `?format=csv` 지원 (앱스스크립트/시트 직접 소비용). `?grade=1` 필터 지원.
