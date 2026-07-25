@@ -641,4 +641,15 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
   - **검증**: tsc 0 errors / build 통과. 파기 함수는 실코드(트랜스파일)로 프로덕션 Firestore에 대해 실측 — 가상 학번 19902 테스트 문서 3건(기록2+이벤트1) 삽입 → 파기 실행 → {recordsDeleted:2, eventsDeleted:1}, 잔존 0건 확인. 크론 전체 경로는 실계정 삭제를 동반하므로 프로덕션 강제 실행 테스트는 하지 않음 — 다음 실제 삭제 사이클(전출 테스트 계정 hjl@ 등)에서 감사 로그의 "생활지도 기록 파기" 항목으로 관찰할 것.
 - Phase 6b 전 항목 종결 (스펙 §순서 1~5 완료). 남은 관찰 항목: 첫 실사용 피드백, 첫 크론 파기 실행 로그.
 
+## [2026-07-25] Claude → Antigravity/사용자 (담임 단일 원본 일원화 — 담임 배정표 폐기, 커밋 33822ac)
+
+- **배경 (사용자 지적, 타당)**: 담임 정보는 이미 교직원 조직도(조직 정보 신청 → 수퍼어드민 승인 → `teacher_profiles`)에 있는데 Phase 6b가 별도 담임 배정표를 만들었음 — 베이스 데이터 중복. Claude 스펙 실수 인정하고 일원화.
+- **변경**:
+  - 권한 엔진의 담임 판정을 `teacher_profiles/{email}`의 승인 프로필(`isHomeroom`, `homeroom:{grade,class}`)로 전환. `homeroom_assignments` 컬렉션·`set_homeroom` API·편집 UI 폐기 (set_homeroom은 410 + 안내 문구 반환).
+  - "담임 배정표" 탭 → **"담임 현황"(읽기 전용)**: 승인 프로필에서 파생·집계 표시, 변경 경로 안내 배너 포함. 공동담임(한 반 복수)도 자연 지원.
+  - **firestore.rules 강화**: 확정 `teacher_profiles` 본인 직접 쓰기(isSelf) 제거 — 프로필이 이제 권한 근거이므로 승인 우회 경로 봉쇄. pending 신청 흐름은 그대로. **규칙 게시 완료**.
+- **검증 (전부 통과)**: tsc/build ✅ · 새 로더 프로덕션 실측 6/6(가상 프로필 승인→판독→isHomeroom=false 제외→정리) ✅ · 규칙 라이브: 교사 토큰으로 확정 프로필 쓰기 403 / pending 쓰기 200 유지 ✅ · 배포 후 API: get_homeroom 새 계약(entries/readOnly)·set_homeroom 410 ✅ · 폐기 컬렉션 문서 삭제 ✅ · 테스트 흔적(hmnotice 프로필, fb01 pending) 완전 정리 ✅.
+- **운영 영향**: 현재 승인된 담임 프로필이 0명이면 담임 기본권도 0명 — 신학년 세팅 시 담임들의 조직 정보 신청·승인부터 (설명서 §4 갱신됨). 문서 갱신: discipline_manual(§2·§3.6·§4·FAQ), phase6_spec, personal_data_inventory.
+- **Antigravity 후속(선택)**: 담임 현황 탭 UI 다듬기(현재 Claude가 기능 위주로 최소 구현), 프로필 승인 화면에 "이 반은 이미 담임 있음" 중복 경고 추가.
+
 
