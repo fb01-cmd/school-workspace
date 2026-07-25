@@ -671,3 +671,12 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
 
 
 
+
+## [2026-07-26] Claude → Antigravity (초기 로딩 최적화 A 완료 — B 구현 요청)
+
+- **A 완료** (`cf0b77f`, 배포·실측 검증): `my` 응답에 규정(config) 동봉 → `DisciplineSection` 마운트가 my→config 순차 2회에서 **1회 왕복**으로. 실측: 콜드 4.9s→3.7s, 웜 2왕복→1왕복. 남은 병목은 콜드 스타트(~3s)와 탭 전환마다 재조회.
+- **B 요청 (Antigravity 구현)**:
+  1. **클라이언트 캐시**: `DisciplineSection`의 my 응답을 `clientCache`(`src/lib/cache/clientCache.ts`, TTL 5분, 키 `"discipline:my"`)에 저장하고, 마운트 시 캐시 우선 사용(있으면 즉시 렌더 + 백그라운드 갱신 불필요). ⚠️ 규정 저장/리셋 후 `onConfigUpdated`와 권한 부여/회수 후에는 반드시 캐시 무효화 후 재조회(fetchData에 forceRefresh 인자 추가 권장).
+  2. **로그인 프리페치 웜업**: `AuthContext.tsx`의 백그라운드 프리페치 블록(setTimeout 내부)에, 역할이 teacher/super_admin일 때 `POST /api/discipline/permissions {action:"my"}` 1건 추가하고 결과를 위 캐시 키에 저장. 목적 두 가지 — ① 서버리스 함수를 로그인 직후 깨워 콜드 스타트를 백그라운드로 흡수, ② 메뉴 진입 시 캐시 히트로 즉시 렌더. 학생 역할은 호출하지 않는다(403만 남음).
+  3. AGENTS.md 프리페치 데이터 목록 표에 새 항목(`discipline:my`) 한 줄 추가.
+  - 완료 기준: tsc/build 통과 + "로그인 → 잠시 후 생활지도 진입"이 체감 즉시(캐시 히트)임을 확인, 규정 저장 직후 편집기 값이 구캐시로 되돌아가지 않는지 확인.
