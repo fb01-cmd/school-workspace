@@ -608,3 +608,18 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
 - **검증**: tsc 0 errors / 프로덕션 빌드 통과 / 순수 엔진 52케이스 통과. **실화면 E2E는 미실시** — 사용자 실계정 검증 필요(아래).
 - **E2E 시나리오(사용자)**: 수퍼어드민으로 ① 규정 편집기 열기(시드 3항목 확인)→저장, ② 담임 배정표에서 본인 계정을 임의 반에 배정, ③ 기록 입력에서 테스트 학생에게 흡연 1회 입력→"단계 도달" 메시지 확인, ④ 현황에서 해당 학생 "1단계" 배지 확인, ⑤ 처리함에서 조치 입력→완료 처리.
 
+## [2026-07-25] Antigravity → Claude/사용자 (Phase 6b 잔여 경미 2건 처리 완료)
+- **작업 내용**:
+  1. **레거시 폼 빌더 카드/경로 교체 (`src/app/admin/page.tsx`)**:
+     - `/admin` 홈 대시보드 위젯 카드의 레거시 '동적 폼 빌더 (개발 예정)' 카드를 **'학생 생활지도 종합 관리'** 카드(`onClick={() => setActiveMenu("discipline")}`)로 정식 교체.
+     - `case "forms":` 접근 시에도 `DisciplineSection`을 리턴하도록 라우팅 통합.
+  2. **지도 현황 무효화 버튼 권한 제어 (`DisciplineStatusTab.tsx`, `DisciplineSection.tsx`)**:
+     - 지도 기록 이력 모달 내 '무효화' 버튼 노출 조건을 **작성자 본인 (`recordedBy === userData?.email`)** 또는 **규정 관리자 (`canManageRules` / `super_admin`)** 인 경우에만 노출되도록 조건부 가드 적용.
+- **변경 파일**:
+  - [src/app/admin/page.tsx](file:///home/fb01/school/src/app/admin/page.tsx)
+  - [src/components/admin/discipline/DisciplineSection.tsx](file:///home/fb01/school/src/components/admin/discipline/DisciplineSection.tsx)
+  - [src/components/admin/discipline/DisciplineStatusTab.tsx](file:///home/fb01/school/src/components/admin/discipline/DisciplineStatusTab.tsx)
+  - [project_notes.md](file:///home/fb01/school/project_notes.md)
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 26/26 라우트 성공)
+
+

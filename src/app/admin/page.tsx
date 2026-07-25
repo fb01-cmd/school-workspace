@@ -86,13 +86,8 @@ export default function AdminPage() {
           </div>
         );
       case "forms":
-        return (
-          <div className="bg-white rounded-lg border border-gray-200 p-8 text-center shadow-sm">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">📝 동적 생활지도 기록 폼 빌더</h3>
-            <p className="text-gray-600 mb-4">매년 양식이 달라지는 학생 관찰 및 생활지도 기록 폼을 코딩 없이 마우스 클릭으로 빌드합니다.</p>
-            <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">개발 예정</span>
-          </div>
-        );
+      case "discipline":
+        return <DisciplineSection />;
       case "logs":
         return <AuditLogViewer />;
       case "roster":
@@ -280,30 +275,28 @@ export default function AdminPage() {
               </div>
               )}
 
-              {/* Form Builder Widget - Super Admin Only */}
-              {isSuperAdmin && (
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow opacity-75">
+              {/* Student Discipline Widget */}
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-gray-900">동적 폼 빌더</h3>
-                    <span className="p-2 rounded-lg bg-pink-50 text-pink-600">
+                    <h3 className="text-lg font-bold text-gray-900">학생 생활지도</h3>
+                    <span className="p-2 rounded-lg bg-blue-50 text-blue-600">
                       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
                       </svg>
                     </span>
                   </div>
-                  <p className="text-gray-500 text-sm mb-6">생활지도 관찰지나 상담 일지 폼을 자유롭게 직접 만들고 답변 데이터를 기록합니다.</p>
+                  <p className="text-gray-500 text-sm mb-6">학생 생활지도 기록 입력, 단계 자동 계산 현황, 단계 처리함 및 학급 담임 배정을 종합 관리합니다.</p>
                 </div>
                 <div>
                   <button
-                    onClick={() => setActiveMenu("forms")}
-                    className="w-full text-left text-sm text-pink-700 hover:text-pink-950 font-semibold py-1.5"
+                    onClick={() => setActiveMenu("discipline")}
+                    className="w-full text-left text-sm text-blue-600 hover:text-blue-800 font-semibold py-1.5"
                   >
-                    생활지도 폼 만들기 →
+                    생활지도 종합 관리 바로가기 →
                   </button>
                 </div>
               </div>
-              )}
             </div>
           </div>
         );

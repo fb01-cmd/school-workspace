@@ -207,7 +207,7 @@ export default function DisciplineSection() {
         )}
 
         {activeTab === "status" && permissions.canView && config && (
-          <DisciplineStatusTab config={config} />
+          <DisciplineStatusTab config={config} canManageRules={permissions.canManageRules} />
         )}
 
         {activeTab === "stage_events" && permissions.canResolve && config && (

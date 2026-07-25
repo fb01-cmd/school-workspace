@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { DisciplineConfig, DisciplineRecord, DisciplineStageEvent, StudentDisciplineStatus } from "@/lib/discipline/types";
 
 interface StudentItem {
@@ -14,9 +15,11 @@ interface StudentItem {
 
 interface DisciplineStatusTabProps {
   config: DisciplineConfig;
+  canManageRules?: boolean;
 }
 
-export default function DisciplineStatusTab({ config }: DisciplineStatusTabProps) {
+export default function DisciplineStatusTab({ config, canManageRules }: DisciplineStatusTabProps) {
+  const { userData } = useAuth();
   const [gradeFilter, setGradeFilter] = useState<number | "all">("all");
   const [classFilter, setClassFilter] = useState<number | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -332,14 +335,18 @@ export default function DisciplineStatusTab({ config }: DisciplineStatusTabProps
                             </div>
                           </div>
 
-                          {!rec.voided && (
-                            <button
-                              onClick={() => setVoidModalRecord(rec)}
-                              className="text-xs text-red-600 dark:text-red-400 hover:underline font-medium px-2 py-1 bg-red-50 dark:bg-red-900/20 rounded"
-                            >
-                              무효화
-                            </button>
-                          )}
+                          {(() => {
+                            const isOwner = rec.recordedBy === userData?.email;
+                            const canVoid = !rec.voided && (isOwner || canManageRules || userData?.role === "super_admin");
+                            return canVoid ? (
+                              <button
+                                onClick={() => setVoidModalRecord(rec)}
+                                className="text-xs text-red-600 dark:text-red-400 hover:underline font-medium px-2 py-1 bg-red-50 dark:bg-red-900/20 rounded"
+                              >
+                                무효화
+                              </button>
+                            ) : null;
+                          })()}
                         </div>
 
                         {rec.note && (
