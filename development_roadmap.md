@@ -143,8 +143,15 @@
 * **Phase 6a-1. 읽기 전용 명단 API 및 키 관리 UI (완료 ✅) — 2026-07-25**:
   - `src/lib/roster.ts`: `StudentRoster.tsx`의 5자리 학번 파싱 규칙(`/^(\d)(\d{2})(\d{2})$/`)을 서버 유틸 함수 `parseStudentUser`로 추출해 단일 원본(SSOT) 재사용 구조 구축.
   - `GET /api/roster/feed`: 외부 서비스(지필평가, 교육과정 선택 웹앱, 구글 시트 등)에 학생 명단을 자동 공급하는 읽기 전용 명단 피드 API. `Authorization: Bearer <API키>` 헤더 인증, `?grade=1` 학년 필터, `?includeSuspended=true` 정지 계정 옵션, `?format=csv` (UTF-8 BOM 포함) 지원.
-  - `POST /api/workspace/roster-keys`: 수퍼어드민 전용 API 키 발급/조회/폐기 API. 키 생성 시 SHA-256 해시만 Firestore(`roster_api_keys/{domain}/keys/{keyId}`)에 보관하고, 평문 키는 발급 순간 1회만 표시. 키 발급/폐기 시 감사 로그 기록.
+  - `POST /api/workspace/roster-keys`: 수퍼어드민 전용 API 키 발급/조회/폐기 API. 키 생성 시 SHA-256 해시만 Firestore(`roster_api_keys/{keyId}`)에 보관하고, 평문 키는 발급 순간 1회만 표시. 키 발급/폐기 시 감사 로그 기록.
   - `RosterApiKeyManager.tsx` & `OUConfiguration.tsx`: 수퍼어드민 설정 화면 내 "명단 API 키 관리" 서브 탭 신설 및 API 이용 가이드 / 키 발급 및 1회 복사 모달 / 키 폐기 관리 UI 구현.
+
+* **Phase 6a-2. 명렬표 마스터 시트 자동 갱신 (완료 ✅) — 2026-07-25**:
+  - `src/lib/google/sheets.ts`: 서비스 계정 사칭(`subject: GOOGLE_WORKSPACE_ADMIN_EMAIL`) 기반 Google Sheets API 유틸리티 구현. 지정된 마스터 스프레드시트의 학년별 탭(`1학년`, `2학년`, `3학년`)을 생성 및 전체 초기화(clear) 후 학번/반/번호/성명/이메일 자동 작성. `403` / `insufficientPermissions` / `API Not Enabled` 시 친절한 안내 메시지 반환.
+  - `POST /api/workspace/roster-sheet`: 마스터 시트 ID 설정 조회/저장 및 "지금 갱신" 수동 실행 백엔드 API (수퍼어드민 전용, 감사 로그 적재).
+  - `src/app/api/workspace/lifecycle/cron/route.ts`: 매일 자정 크론에 마스터 시트 자동 갱신 스텝 추가. 독립 `try/catch` 블록으로 차단 감싸 시트 오류가 계정 생애주기 처리를 차단하지 않도록 안전 방어.
+  - `RosterApiKeyManager.tsx`: 수퍼어드민 화면 내 마스터 시트 URL/ID 입력 폼, `💾 시트 ID 저장`, `🔄 지금 갱신` 버튼, `🔗 마스터 시트 바로가기` 및 OAuth 스코프/API 미등록 시 친절한 안내 경고 카드 구현.
+  - `deployment_checklist.md`: §2에 `https://www.googleapis.com/auth/spreadsheets` 도메인 위임 스코프 및 GCP Console Google Sheets API 활성화 필수 절차 기록.
 
 * **Phase 6b. 생활지도 기록 모듈 (미구현 📋)**:
   - 규정 문서(`discipline_config`), 개별 권한 테이블(`discipline_permissions`), 담임 배정표(`homeroom_assignments`), 무효화(void) 방식 지도의 기록 컬렉션 설계 및 6개 화면 구현 예정.

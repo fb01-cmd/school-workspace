@@ -63,6 +63,9 @@
     - `https://www.googleapis.com/auth/admin.directory.group` (그룹 가입/탈퇴/조회)
     - `https://www.googleapis.com/auth/gmail.send` (알림 메일 대리 발송)
     - `https://www.googleapis.com/auth/chat.spaces` 및 `https://www.googleapis.com/auth/chat.messages.create` (구글 챗 메시지 전송)
+    - `https://www.googleapis.com/auth/spreadsheets` (**[Phase 6a-2 신규]** 명렬표 마스터 시트 자동 갱신용 — Google Sheets API)
+- [ ] **GCP Console API 및 서비스 라이브러리 활성화 (Google Sheets API)**
+  - GCP Console (`console.cloud.google.com`)의 `[API 및 서비스] > [라이브러리]`에서 **`Google Sheets API`**를 찾아서 **`[사용(ENABLE)]`** 상태로 설정해야 합니다. (도메인 위임 스코프 등록과 항상 한 세트로 동시 작업 필요)
 - [ ] **Firebase Authentication Admin API 권한 부여**
   - **[규칙 확인]** 서비스 계정이 파이어베이스 인증 DB 내의 구버전 UID 충돌을 자동 해결(`deleteAuthUserByEmail`)할 수 있도록, GCP IAM 관리 화면 또는 Firebase Console을 통해 **`Firebase 인증 관리자 (Firebase Authentication Admin)`** 역할(Role)이 반드시 이 계정에 부여되어 있어야 합니다.
 - [x] **Cloud Datastore 사용자(Cloud Datastore User) 역할 부여** *(2026-07-24 admin SDK 전환으로 신규 필수, 효명고 프로젝트에는 부여 완료)*

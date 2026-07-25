@@ -2,9 +2,9 @@
 
 ## 🔒 현재 작업 중 파일
 
-> `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
-
 *(현재 비어 있음)*
+
+> `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
 - **Admin/Owner Account**: `fb01@hmh.or.kr`
@@ -508,3 +508,26 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
 - **F3(보안·경미, 직접 수정)**: 플랫 전환에 따라 폐기(revoke)에 domain 일치 검증 추가(타 도메인 키 폐기 차단). keyId에 랜덤 접미사(동시 발급 충돌 방지), 감사 로그 operatorName 보강, 오타 1건.
 - 그 외 통과: 키 엔트로피(192bit) 적정, 평문 키는 발급 응답 1회 + React 상태에만 존재(저장·로깅 없음), 수퍼어드민 가드 정상, 감사 로그에 평문 미포함.
 - 검증: tsc 0 errors, 프로덕션 빌드 통과. phase6_spec.md 데이터 모델 플랫 구조로 갱신.
+
+## [2026-07-25] Antigravity → Claude (Phase 6a-2 명렬표 마스터 시트 자동 갱신 구현 완료)
+- **변경 파일**:
+  - `src/lib/google/sheets.ts` (신규 서버 유틸 — Google Sheets API `getSheetsClient`, 마스터 시트 ID 파싱 및 학년별 탭 전체 클리어/재작성 `updateMasterRosterSheet`)
+  - `src/app/api/workspace/roster-sheet/route.ts` (신규 API — `POST /api/workspace/roster-sheet`, 수퍼어드민 전용 시트 ID 저장, 조회 및 "지금 갱신" 수동 버튼 실행, 감사 로그 작성)
+  - `src/app/api/workspace/lifecycle/cron/route.ts` (크론 연동 — 매일 자정 크론에 `updateMasterRosterSheet` 갱신 스텝 추가. 독립 `try/catch` 블록으로 차단 감싸 시트 오작동이 계정 생애주기 처리를 차단하지 않도록 안전 방어)
+  - `src/components/admin/RosterApiKeyManager.tsx` (수퍼어드민 UI — 명렬표 마스터 시트 URL/ID 입력 폼, `💾 시트 ID 저장`, `🔄 지금 갱신` 수동 버튼, `🔗 마스터 시트 바로가기` 및 OAuth 스코프/API 미등록 시 친절한 안내 경고 카드)
+  - `deployment_checklist.md` (§2에 `https://www.googleapis.com/auth/spreadsheets` 도메인 위임 스코프 및 GCP Console Google Sheets API 활성화 필수 절차 기록)
+  - `development_roadmap.md` (Phase 6a-2 완료 상태 업데이트)
+  - `project_notes.md` (본 핸드오버 기록)
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공 — `/api/workspace/roster-sheet` 포함 21개 라우트 전원 컴파일 및 static/dynamic 렌더링 확인)
+- **다음 할 일 / 요청 사항**:
+  - Claude의 6a-2 마스터 시트 갱신 로직 및 스코프 처리 리뷰
+  - Phase 6b (생활지도 기록 모듈) 데이터 모델 및 권한 엔진 스펙 판단 요청
+
+## [2026-07-25] Claude → Antigravity/사용자 (6a-2 표적 리뷰 결과 — 승인, 경미 2건 직접 수정)
+
+- **통과**: 스코프/권한 예외 처리(403·scope 감지 → 관리콘솔 안내 문구), 크론 격리(결과 객체 + try/catch 이중 방어로 시트 실패가 생애주기 처리를 못 막음), 관리자 사칭 JWT 패턴 재사용, 수퍼어드민 가드, 시트 ID URL 파싱 — 모두 스펙 준수.
+- **경미 수정 2건(직접)**: ① 탭 클리어 범위 `A1:Z1000` 고정 → 탭 전체 클리어로 변경(잔여 데이터 위험 제거), ② 감사 로그 3건 operatorName 보강.
+- **사전 작업 실측 검증 완료**: 서비스 계정+admin 사칭+spreadsheets 스코프로 실제 마스터 시트(데이터베이스1) 읽기·쓰기 성공 — GCP Sheets API 활성화, 도메인 위임 스코프, 공유 드라이브 멤버십 모두 정상 (사용자 완료 확인).
+- **남은 실사용 검증(사용자)**: 설정 화면에서 시트 URL 저장 → "지금 갱신" 클릭 → 학년 탭 3개에 명단 채워지는지 확인.

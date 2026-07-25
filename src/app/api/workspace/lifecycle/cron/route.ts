@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { updateUser, deleteUser, invalidateUserCache, listUsersInOUs, sendGmail, sendGoogleChat } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { deleteAuthUserByEmail, adminDb } from "@/lib/firebase/admin";
+import { updateMasterRosterSheet } from "@/lib/google/sheets";
 
 // 이 크론 API는 Vercel Cron 또는 외부 스케줄러(예: Cloud Scheduler)에서
 // 매일 0시경 자동으로 호출해야 합니다.
@@ -456,6 +457,22 @@ export async function GET(req: NextRequest) {
         }
       } catch (gradErr: any) {
         console.error(`[Cron] 졸업생 생애주기 스케줄링 실패 (${domain}):`, gradErr.message);
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // [명렬표 마스터 시트 자동 갱신 (Phase 6a-2)]
+      // ─────────────────────────────────────────────────────────────
+      try {
+        const sheetResult = await updateMasterRosterSheet(domain);
+        if (sheetResult.success) {
+          dbg(`[MasterSheet] ${domain} 명렬표 마스터 시트 갱신 성공: ${sheetResult.totalStudentsCount}명`);
+        } else {
+          dbg(`[MasterSheet] ${domain} 명렬표 마스터 시트 갱신 건너뜀/실패: ${sheetResult.error}`);
+        }
+      } catch (sheetErr: any) {
+        // 필수: try/catch로 감싸서 시트 갱신 실패가 계정 생애주기 크론을 중단시키지 않게 방어
+        console.error(`[Cron] 명렬표 마스터 시트 자동 갱신 에러 (${domain}):`, sheetErr.message);
+        dbg(`[MasterSheet] ❌ 마스터 시트 갱신 에러 (${domain}): ${sheetErr.message}`);
       }
     }
 
