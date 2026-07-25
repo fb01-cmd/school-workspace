@@ -68,6 +68,8 @@
   - GCP Console (`console.cloud.google.com`)의 `[API 및 서비스] > [라이브러리]`에서 **`Google Sheets API`**를 찾아서 **`[사용(ENABLE)]`** 상태로 설정해야 합니다. (도메인 위임 스코프 등록과 항상 한 세트로 동시 작업 필요)
 - [ ] **Firebase Authentication Admin API 권한 부여**
   - **[규칙 확인]** 서비스 계정이 파이어베이스 인증 DB 내의 구버전 UID 충돌을 자동 해결(`deleteAuthUserByEmail`)할 수 있도록, GCP IAM 관리 화면 또는 Firebase Console을 통해 **`Firebase 인증 관리자 (Firebase Authentication Admin)`** 역할(Role)이 반드시 이 계정에 부여되어 있어야 합니다.
+- [x] **Firebase 규칙 관리(Firebase Rules Admin) 역할 부여** *(2026-07-25 부여 완료 — 선택이지만 권장)*
+  - 이 역할이 있으면 Firestore 보안 규칙을 콘솔 수동 붙여넣기 대신 **Rules API로 자동 게시**할 수 있습니다 (저장소 `firestore.rules` → ruleset 생성 → release 전환). 게시 절차는 project_notes.md 2026-07-25 기록 참조. 없으면 종전대로 Firebase Console 규칙 탭에서 수동 게시.
 - [x] **Cloud Datastore 사용자(Cloud Datastore User) 역할 부여** *(2026-07-24 admin SDK 전환으로 신규 필수, 효명고 프로젝트에는 부여 완료)*
   - 서버 API와 크론이 Firestore를 **admin SDK**로 접근하므로, 서비스 계정에 GCP IAM에서 **`Cloud Datastore 사용자`** 역할이 반드시 있어야 합니다. 없으면 로그인 포함 **DB를 쓰는 모든 기능이 `PERMISSION_DENIED`로 죽습니다** (실제 발생했던 장애 — 인증 관리자 역할만으로는 부족).
   - 화이트라벨로 다른 학교에 세울 때 반드시 걸리는 지점이므로 초기 세팅 시 함께 부여할 것.

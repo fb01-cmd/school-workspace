@@ -238,6 +238,31 @@ export function stageEventFromDoc(
   };
 }
 
+// ── 파기 정책 (phase6_spec.md — 2026-07-25 사용자 확정) ───────
+
+/**
+ * 졸업/제적 파기: 계정 영구삭제 시점에 해당 학생의 생활지도 기록·단계 이력을 삭제한다.
+ * 호출자는 감사 로그에 "파기 실행" 사실(건수)만 남기고 내용은 보존하지 않는다.
+ */
+export async function purgeDisciplineDataForStudent(
+  domain: string,
+  studentEmail: string
+): Promise<{ recordsDeleted: number; eventsDeleted: number }> {
+  const email = studentEmail.trim().toLowerCase();
+  const [recSnap, evtSnap] = await Promise.all([
+    recordsColRef(domain).where("studentEmail", "==", email).get(),
+    stageEventsColRef(domain).where("studentEmail", "==", email).get(),
+  ]);
+  const docs = [...recSnap.docs, ...evtSnap.docs];
+  // Firestore batch 한도(500) 아래인 400개 단위로 삭제
+  for (let i = 0; i < docs.length; i += 400) {
+    const batch = adminDb.batch();
+    for (const d of docs.slice(i, i + 400)) batch.delete(d.ref);
+    await batch.commit();
+  }
+  return { recordsDeleted: recSnap.size, eventsDeleted: evtSnap.size };
+}
+
 // ── 학번 파싱 (서버 강제 — 클라이언트의 grade/classNum을 신뢰하지 않음) ─
 
 /** "10101" → { grade: 1, classNum: 1, number: 1 } — 실패 시 null */

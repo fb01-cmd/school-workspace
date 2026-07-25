@@ -631,4 +631,14 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
 - **잔여 1건**: firestore.rules 콘솔 게시. Claude가 Rules API로 자동 게시 시도 → 서비스 계정(`school-sync-hub-admin@school-sync-hub.iam.gserviceaccount.com`)에 `roles/firebaserules.admin` 없어 403. 사용자가 GCP IAM에서 해당 서비스 계정에 **"Firebase Rules 관리자"** 역할 추가하면 Claude가 스크립트(`scratchpad/publish_rules.js` 패턴)로 게시 가능. 또는 종전대로 콘솔에 수동 붙여넣기. (현재도 deny-by-default라 생활지도 컬렉션은 차단 상태 — 긴급 아님)
 - Phase 6b 종결. 다음 후보: 졸업/제적 시 생활지도 기록 파기의 lifecycle 크론 연동 (Claude 담당, phase6_spec 파기 정책).
 
+## [2026-07-25] Claude → 기록 (Firestore 규칙 게시 완료 + 파기 정책 크론 연동 — Phase 6b 완전 종결)
+
+- **Firestore 규칙 게시 완료 (Rules API 자동 게시)**: 사용자가 서비스 계정에 "Firebase 규칙 관리" IAM 역할 부여 → Claude가 Rules API로 ruleset 생성(문법 서버 검증)·release 전환·게시본 내용 재확인. **라이브 차단 검증**: 수퍼어드민 idToken(클라이언트 경로)으로 discipline_config/records/permissions/homeroom 4종 읽기 모두 403, 대조군 settings는 200 — 규칙이 의도대로 동작. 절차는 `deployment_checklist.md` §2에 기록.
+- **파기 정책 크론 연동** (phase6_spec 확정 사항: 졸업/제적 시 파기):
+  - `src/lib/discipline/server.ts`에 `purgeDisciplineDataForStudent(domain, email)` 추가 — studentEmail 등호 쿼리 2건 + 400단위 배치 삭제.
+  - 크론의 학생 영구삭제 2지점(전출/자퇴 + 졸업생) 모두에 연동. 파기 실패는 자체 try/catch로 격리(계정 삭제 크론을 못 막음, errors에 남겨 수동 재파기 가능). 감사 로그에는 "파기 실행 사실 + 건수"만 기록(내용 미보존 — 스펙 준수).
+  - **부수 수정**: 전출/자퇴 크론 삭제 경로에 `deleteAuthUserByEmail` 누락 발견(AGENTS.md UID 동기화 규칙 위반) → 추가. 졸업 경로는 원래 있었음.
+  - **검증**: tsc 0 errors / build 통과. 파기 함수는 실코드(트랜스파일)로 프로덕션 Firestore에 대해 실측 — 가상 학번 19902 테스트 문서 3건(기록2+이벤트1) 삽입 → 파기 실행 → {recordsDeleted:2, eventsDeleted:1}, 잔존 0건 확인. 크론 전체 경로는 실계정 삭제를 동반하므로 프로덕션 강제 실행 테스트는 하지 않음 — 다음 실제 삭제 사이클(전출 테스트 계정 hjl@ 등)에서 감사 로그의 "생활지도 기록 파기" 항목으로 관찰할 것.
+- Phase 6b 전 항목 종결 (스펙 §순서 1~5 완료). 남은 관찰 항목: 첫 실사용 피드백, 첫 크론 파기 실행 로그.
+
 

@@ -3,6 +3,7 @@ import { updateUser, deleteUser, invalidateUserCache, listUsersInOUs, sendGmail,
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { deleteAuthUserByEmail, adminDb } from "@/lib/firebase/admin";
 import { updateMasterRosterSheet } from "@/lib/google/sheets";
+import { purgeDisciplineDataForStudent } from "@/lib/discipline/server";
 
 // 이 크론 API는 Vercel Cron 또는 외부 스케줄러(예: Cloud Scheduler)에서
 // 매일 0시경 자동으로 호출해야 합니다.
@@ -106,6 +107,8 @@ export async function GET(req: NextRequest) {
 
           if (deleteDueStr <= todayKSTStr) {
             try {
+              // GWS UID 충돌 방지 규칙(AGENTS.md): GWS 삭제 전 Firebase Auth 레코드 동기화 삭제
+              await deleteAuthUserByEmail(email);
               await deleteUser(email);
               // 삭제 완료 태스크는 Firestore에서 제거 (감사 로그에 기록되므로 이력 보존 OK)
               await adminDb.collection("transfer_out_tasks").doc(domain).collection("students").doc(email).delete();
@@ -119,6 +122,26 @@ export async function GET(req: NextRequest) {
                 status: "success",
               });
               results.deleted.push(email);
+
+              // 생활지도 기록 파기 (phase6_spec.md 파기 정책: 졸업/제적 시 파기 —
+              // 감사 로그에는 파기 실행 사실·건수만 남기고 내용은 미보존)
+              try {
+                const purged = await purgeDisciplineDataForStudent(domain, email);
+                if (purged.recordsDeleted + purged.eventsDeleted > 0) {
+                  await writeAuditLog({
+                    operatorEmail: "system@cron",
+                    operatorName: "[자동 처리] 크론 스케줄러",
+                    action: "생활지도 기록 파기",
+                    targetEmail: email,
+                    details: `계정 영구삭제에 따른 파기 실행 (기록 ${purged.recordsDeleted}건, 단계 이력 ${purged.eventsDeleted}건)`,
+                    status: "success",
+                  });
+                  dbg(`[Discipline] ${email} 생활지도 기록 파기: 기록 ${purged.recordsDeleted}건, 이력 ${purged.eventsDeleted}건`);
+                }
+              } catch (purgeErr: any) {
+                // 파기 실패가 크론을 중단시키지 않도록 격리 — 에러 목록에 남겨 수동 재파기 가능하게
+                results.errors.push({ email, error: `생활지도 기록 파기 실패: ${purgeErr.message}` });
+              }
             } catch (err: any) {
               results.errors.push({ email, error: `삭제 실패: ${err.message}` });
             }
@@ -448,6 +471,26 @@ export async function GET(req: NextRequest) {
                     details: `유예 기간 만료로 계정 자동 영구삭제 처리 (예정일: ${deleteFmt})`,
                     status: "success",
                   });
+
+                  // 생활지도 기록 파기 (phase6_spec.md 파기 정책: 졸업 시 파기 —
+                  // 감사 로그에는 파기 실행 사실·건수만 남기고 내용은 미보존)
+                  try {
+                    const purged = await purgeDisciplineDataForStudent(domain, email);
+                    if (purged.recordsDeleted + purged.eventsDeleted > 0) {
+                      await writeAuditLog({
+                        operatorEmail: "system@cron",
+                        operatorName: "[자동 처리] 크론 스케줄러",
+                        action: "생활지도 기록 파기",
+                        targetEmail: email,
+                        details: `계정 영구삭제에 따른 파기 실행 (기록 ${purged.recordsDeleted}건, 단계 이력 ${purged.eventsDeleted}건)`,
+                        status: "success",
+                      });
+                      dbg(`[Discipline] ${email} 생활지도 기록 파기: 기록 ${purged.recordsDeleted}건, 이력 ${purged.eventsDeleted}건`);
+                    }
+                  } catch (purgeErr: any) {
+                    // 파기 실패가 크론을 중단시키지 않도록 격리 — 에러 목록에 남겨 수동 재파기 가능하게
+                    results.errors.push({ email, error: `생활지도 기록 파기 실패: ${purgeErr.message}` });
+                  }
                 } catch (err: any) {
                   results.errors.push({ email, error: `졸업생 자동 삭제 실패: ${err.message}` });
                 }
