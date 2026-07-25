@@ -11,7 +11,11 @@ import {
   stageEventFromDoc,
   stageEventsColRef,
 } from "@/lib/discipline/server";
-import { judgeDiscipline } from "@/lib/discipline/authz";
+import {
+  computeAccessTargets,
+  GradeAccessTarget,
+  judgeDiscipline,
+} from "@/lib/discipline/authz";
 import {
   computeStatusesForStudents,
   computeStudentStatus,
@@ -43,6 +47,45 @@ async function loadStudentHistory(domain: string, studentId: string) {
   const records = recSnap.docs.map((d) => recordFromDoc(d.id, d.data()));
   const events = evtSnap.docs.map((d) => stageEventFromDoc(d.id, d.data()));
   return { records, events };
+}
+
+/**
+ * 접근 허용 범위(targets)별로 기록·이벤트를 조회.
+ * 반 목록은 where-in(10개 단위 청크)으로 조회 — 등호 계열 필터라 복합 색인 불필요.
+ */
+async function fetchByTargets(domain: string, targets: GradeAccessTarget[]) {
+  const recQueries: Promise<FirebaseFirestore.QuerySnapshot>[] = [];
+  const evtQueries: Promise<FirebaseFirestore.QuerySnapshot>[] = [];
+  for (const t of targets) {
+    if (t.classNums === "all") {
+      recQueries.push(recordsColRef(domain).where("grade", "==", t.grade).get());
+      evtQueries.push(stageEventsColRef(domain).where("grade", "==", t.grade).get());
+    } else {
+      for (let i = 0; i < t.classNums.length; i += 10) {
+        const chunk = t.classNums.slice(i, i + 10);
+        recQueries.push(
+          recordsColRef(domain)
+            .where("grade", "==", t.grade)
+            .where("classNum", "in", chunk)
+            .get()
+        );
+        evtQueries.push(
+          stageEventsColRef(domain)
+            .where("grade", "==", t.grade)
+            .where("classNum", "in", chunk)
+            .get()
+        );
+      }
+    }
+  }
+  const [recSnaps, evtSnaps] = await Promise.all([
+    Promise.all(recQueries),
+    Promise.all(evtQueries),
+  ]);
+  return {
+    records: recSnaps.flatMap((s) => s.docs.map((d) => recordFromDoc(d.id, d.data()))),
+    events: evtSnaps.flatMap((s) => s.docs.map((d) => stageEventFromDoc(d.id, d.data()))),
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -85,7 +128,9 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
 
-      const occurredAtMs = Date.parse(body.occurredAt);
+      // 발생 일시: ISO 문자열 또는 epoch millis 숫자 모두 허용
+      const occurredAtMs =
+        typeof body.occurredAt === "number" ? body.occurredAt : Date.parse(body.occurredAt);
       if (!Number.isFinite(occurredAtMs))
         return NextResponse.json({ error: "발생 일시 형식이 올바르지 않습니다." }, { status: 400 });
       const nowMs = Date.now();
@@ -231,7 +276,6 @@ export async function POST(req: NextRequest) {
       const includeVoided = body.includeVoided === true;
       let records: DisciplineRecord[] = [];
       let events: DisciplineStageEvent[] = [];
-      let targetGrade: number;
 
       if (body.studentId) {
         // 학생 1명 조회 — 범위는 학번에서 서버가 도출
@@ -248,11 +292,14 @@ export async function POST(req: NextRequest) {
         const history = await loadStudentHistory(domain, String(body.studentId).trim());
         records = history.records;
         events = history.events;
-        targetGrade = parsed.grade;
       } else {
-        // 반/학년 조회
-        const grade = Number(body.grade);
-        if (!Number.isInteger(grade) || grade < 1 || grade > 3)
+        // 반/학년 조회 — grade 생략 시 전체 학년 요청으로 보고, 허용된 범위만 자동 축소
+        // (담임은 "전체" 조회 시 자기 반만 반환됨 — computeAccessTargets 참조)
+        const requestedGrades: number[] =
+          body.grade !== undefined && body.grade !== null && body.grade !== ""
+            ? [Number(body.grade)]
+            : [1, 2, 3];
+        if (requestedGrades.some((g) => !Number.isInteger(g) || g < 1 || g > 3))
           return NextResponse.json({ error: "학년은 1~3 사이여야 합니다." }, { status: 400 });
         const classNum =
           body.classNum !== undefined && body.classNum !== null && body.classNum !== ""
@@ -261,44 +308,68 @@ export async function POST(req: NextRequest) {
         if (classNum !== undefined && (!Number.isInteger(classNum) || classNum < 1 || classNum > 30))
           return NextResponse.json({ error: "반 번호가 올바르지 않습니다." }, { status: 400 });
 
-        const judgment = judgeDiscipline(ctx, "view", { grade, classNum });
-        if (!judgment.allowed)
+        const targets = computeAccessTargets(ctx, "view", requestedGrades, classNum);
+        if (targets.length === 0)
           return NextResponse.json(
             { error: "요청한 범위에 대한 열람 권한이 없습니다." },
             { status: 403 }
           );
 
-        // 등호 필터만 조합 (grade [+ classNum]) — 복합 색인 불필요
-        let recQuery = recordsColRef(domain).where("grade", "==", grade);
-        let evtQuery = stageEventsColRef(domain).where("grade", "==", grade);
-        if (classNum !== undefined) {
-          recQuery = recQuery.where("classNum", "==", classNum);
-          evtQuery = evtQuery.where("classNum", "==", classNum);
-        }
-        const [recSnap, evtSnap] = await Promise.all([recQuery.get(), evtQuery.get()]);
-        records = recSnap.docs.map((d) => recordFromDoc(d.id, d.data()));
-        events = evtSnap.docs.map((d) => stageEventFromDoc(d.id, d.data()));
-        targetGrade = grade;
+        const { records: fetchedRecords, events: fetchedEvents } = await fetchByTargets(
+          domain,
+          targets
+        );
+        records = fetchedRecords;
+        events = fetchedEvents;
       }
 
-      // 학생별 현재 단계 계산 (회차 집계는 현재 학년 기록만 — 진급 전 기록 혼입 방지)
-      const gradeRecords = records.filter((r) => r.grade === targetGrade);
-      const studentIds = Array.from(new Set(gradeRecords.map((r) => r.studentId)));
-      const statuses = computeStatusesForStudents(
-        config,
-        studentIds.map((id) => ({ studentId: id, grade: targetGrade })),
-        gradeRecords,
-        events
-      );
+      // 학생별 현재 단계 계산 — 학번이 학년을 내포하므로(진급 시 학번 변경) 학생별 grade는
+      // 그 학생 기록의 스냅샷 grade와 동일하다. 학생 단위로 묶어 계산한다.
+      const byStudent = new Map<string, DisciplineRecord[]>();
+      for (const r of records) {
+        const arr = byStudent.get(r.studentId) || [];
+        arr.push(r);
+        byStudent.set(r.studentId, arr);
+      }
+      const studentInputs = Array.from(byStudent.entries()).map(([id, recs]) => ({
+        studentId: id,
+        grade: recs[0].grade,
+      }));
+      const statuses = computeStatusesForStudents(config, studentInputs, records, events);
+
+      // 화면(현황 탭)용 학생별 그룹 — 이름/이메일은 최신 기록 스냅샷 기준
+      const students = studentInputs
+        .map(({ studentId, grade }) => {
+          const recs = (byStudent.get(studentId) || []).sort((a, b) => b.occurredAt - a.occurredAt);
+          const latest = recs[0];
+          return {
+            studentId,
+            studentEmail: latest.studentEmail,
+            studentName: latest.studentName,
+            grade,
+            classNum: latest.classNum,
+            status: statuses[studentId],
+            // 무효화 기록 포함 — 타임라인 화면이 [무효화됨] 배지로 직접 표시·필터한다
+            records: recs,
+            stageEvents: events
+              .filter((e) => e.studentId === studentId)
+              .sort((a, b) => b.enteredAt - a.enteredAt),
+          };
+        })
+        .sort((a, b) => a.studentId.localeCompare(b.studentId));
 
       const visibleRecords = (includeVoided ? records : records.filter((r) => !r.voided)).sort(
         (a, b) => b.occurredAt - a.occurredAt
       );
 
+      const resetMarkers: Record<string, number | null> = {};
+      for (const g of [1, 2, 3]) resetMarkers[String(g)] = getResetMarkerMs(config, g) || null;
+
       return NextResponse.json({
         records: visibleRecords,
         statuses,
-        resetMarker: getResetMarkerMs(config, targetGrade) || null,
+        students,
+        resetMarkers,
       });
     }
 

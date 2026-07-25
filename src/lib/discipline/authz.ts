@@ -116,6 +116,57 @@ export function judgeDiscipline(
   return { allowed: false, basis: "denied:no_matching_rule" };
 }
 
+/** 학년별 접근 가능 범위: 학년 전체("all") 또는 허용된 반 번호 목록 */
+export interface GradeAccessTarget {
+  grade: number;
+  classNums: number[] | "all";
+}
+
+/**
+ * 목록 조회용 접근 범위 산출 — "요청 범위 중 허용된 부분만" 자동 축소.
+ *
+ * 학년 전체 판정이 거부돼도, 담임 반·반 단위 grant로 접근 가능한 반이 있으면
+ * 그 반들만 목록에 포함시킨다 (담임이 "전체" 조회 시 자기 반만 반환되는 근거).
+ * 후보 반은 ctx의 담임 배정 + class scope grant에서만 나오므로 전수 탐색이 없다.
+ */
+export function computeAccessTargets(
+  ctx: DisciplineAuthzContext,
+  right: DisciplineRight,
+  grades: number[],
+  classNum?: number
+): GradeAccessTarget[] {
+  const out: GradeAccessTarget[] = [];
+  for (const grade of grades) {
+    // 반이 특정된 요청은 그 반만 판정
+    if (classNum !== undefined) {
+      if (judgeDiscipline(ctx, right, { grade, classNum }).allowed) {
+        out.push({ grade, classNums: [classNum] });
+      }
+      continue;
+    }
+    // 학년 전체 허용 여부
+    if (judgeDiscipline(ctx, right, { grade }).allowed) {
+      out.push({ grade, classNums: "all" });
+      continue;
+    }
+    // 반 단위 후보 수집 → 개별 재판정 (만료·rights 검사는 judge가 수행)
+    const candidates = new Set<number>();
+    for (const h of ctx.homeroomClasses) {
+      if (h.grade === grade) candidates.add(h.classNum);
+    }
+    for (const g of ctx.grants) {
+      if (g.scope && g.scope.type === "class" && g.scope.grade === grade) {
+        candidates.add(g.scope.classNum);
+      }
+    }
+    const allowed = Array.from(candidates)
+      .filter((c) => judgeDiscipline(ctx, right, { grade, classNum: c }).allowed)
+      .sort((a, b) => a - b);
+    if (allowed.length > 0) out.push({ grade, classNums: allowed });
+  }
+  return out;
+}
+
 /** 담임 배정표 맵("1-1": email)에서 특정 교사의 담임 반 목록을 추출 */
 export function findHomeroomClasses(
   assignments: Record<string, string> | undefined | null,

@@ -9,7 +9,7 @@ import {
   stageEventFromDoc,
   stageEventsColRef,
 } from "@/lib/discipline/server";
-import { judgeDiscipline } from "@/lib/discipline/authz";
+import { computeAccessTargets, judgeDiscipline } from "@/lib/discipline/authz";
 import { DisciplineStageEvent } from "@/lib/discipline/types";
 
 /**
@@ -57,12 +57,14 @@ export async function POST(req: NextRequest) {
         events = snap.docs.map((d) => stageEventFromDoc(d.id, d.data()));
         if (onlyPending) events = events.filter((e) => !e.resolved);
       } else {
-        // 학년별 열람 권한을 개별 판정해 허용된 학년만 반환
-        // (⚠️ target 없이 view를 판정하면 반 단위 grant도 전역 통과되므로 반드시 학년 단위로 나눠 판정)
+        // 요청 범위 중 허용된 부분만 자동 축소 — 담임/반 단위 grant는 자기 반만 반환
+        // (⚠️ target 없이 view를 판정하면 반 단위 grant도 전역 통과되므로 반드시 범위 단위로 판정)
         const requestedGrades: number[] =
-          Number.isInteger(Number(body.grade)) && Number(body.grade) >= 1 && Number(body.grade) <= 3
+          body.grade !== undefined && body.grade !== null && body.grade !== ""
             ? [Number(body.grade)]
             : [1, 2, 3];
+        if (requestedGrades.some((g) => !Number.isInteger(g) || g < 1 || g > 3))
+          return NextResponse.json({ error: "학년은 1~3 사이여야 합니다." }, { status: 400 });
         const classNum =
           body.classNum !== undefined && body.classNum !== null && body.classNum !== ""
             ? Number(body.classNum)
@@ -70,24 +72,30 @@ export async function POST(req: NextRequest) {
         if (classNum !== undefined && (!Number.isInteger(classNum) || classNum < 1 || classNum > 30))
           return NextResponse.json({ error: "반 번호가 올바르지 않습니다." }, { status: 400 });
 
-        const allowedGrades = requestedGrades.filter(
-          (g) => judgeDiscipline(ctx, "view", { grade: g, classNum }).allowed
-        );
-        if (allowedGrades.length === 0)
+        const targets = computeAccessTargets(ctx, "view", requestedGrades, classNum);
+        if (targets.length === 0)
           return NextResponse.json(
             { error: "요청한 범위에 대한 열람 권한이 없습니다." },
             { status: 403 }
           );
 
-        // 학년별 등호 쿼리 (최대 3개) — 복합 색인 불필요
-        const snaps = await Promise.all(
-          allowedGrades.map((g) => {
-            let q = stageEventsColRef(domain).where("grade", "==", g);
-            if (classNum !== undefined) q = q.where("classNum", "==", classNum);
+        // 등호 계열 필터만 조합 (grade == / classNum in / resolved ==) — 복합 색인 불필요
+        const queries: Promise<FirebaseFirestore.QuerySnapshot>[] = [];
+        for (const t of targets) {
+          const classChunks: (number[] | null)[] =
+            t.classNums === "all"
+              ? [null]
+              : Array.from({ length: Math.ceil(t.classNums.length / 10) }, (_, i) =>
+                  (t.classNums as number[]).slice(i * 10, i * 10 + 10)
+                );
+          for (const chunk of classChunks) {
+            let q = stageEventsColRef(domain).where("grade", "==", t.grade);
+            if (chunk) q = q.where("classNum", "in", chunk);
             if (onlyPending) q = q.where("resolved", "==", false);
-            return q.get();
-          })
-        );
+            queries.push(q.get());
+          }
+        }
+        const snaps = await Promise.all(queries);
         events = snaps.flatMap((s) => s.docs.map((d) => stageEventFromDoc(d.id, d.data())));
       }
 

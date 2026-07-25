@@ -10,7 +10,7 @@ import {
   loadAuthzContext,
   loadHomeroomAssignments,
 } from "@/lib/discipline/server";
-import { judgeDiscipline } from "@/lib/discipline/authz";
+import { computeAccessTargets, judgeDiscipline } from "@/lib/discipline/authz";
 import {
   ALL_DISCIPLINE_RIGHTS,
   DisciplineRight,
@@ -67,20 +67,30 @@ export async function POST(req: NextRequest) {
 
     // ── 내 권한 요약 ──
     if (action === "my") {
+      // 메뉴/탭 노출 판단용 요약 불리언 — "어느 범위든 하나라도" 접근 가능하면 true.
+      // (참고용일 뿐이며 실제 데이터 접근은 매 요청 서버가 범위 단위로 재판정한다)
+      const hasAnyTarget = (right: "view" | "record" | "resolve") =>
+        computeAccessTargets(ctx, right, [1, 2, 3]).length > 0;
+
       return NextResponse.json({
         role: ctx.role,
         email: ctx.email,
         homeroomClasses: ctx.homeroomClasses,
+        isHomeroom: ctx.homeroomClasses.length > 0,
         grants: ctx.grants,
+        myGrants: ctx.grants,
         visibility: ctx.visibility,
+        canView: hasAnyTarget("view"),
+        canRecord: hasAnyTarget("record"),
+        canResolve: hasAnyTarget("resolve"),
         canManageRules: judgeDiscipline(ctx, "manage_rules").allowed,
         canManagePermissions: judgeDiscipline(ctx, "manage_permissions").allowed,
-        // 학년별 판정 요약 (메뉴/탭 노출 판단용)
+        // 학년별 판정 요약
         viewableGrades: [1, 2, 3].filter(
-          (g) => judgeDiscipline(ctx, "view", { grade: g }).allowed
+          (g) => computeAccessTargets(ctx, "view", [g]).length > 0
         ),
         resolvableGrades: [1, 2, 3].filter(
-          (g) => judgeDiscipline(ctx, "resolve", { grade: g }).allowed
+          (g) => computeAccessTargets(ctx, "resolve", [g]).length > 0
         ),
       });
     }
@@ -135,7 +145,9 @@ export async function POST(req: NextRequest) {
 
       let expiresAt: Timestamp | null = null;
       if (body.expiresAt !== undefined && body.expiresAt !== null && body.expiresAt !== "") {
-        const ms = Date.parse(body.expiresAt);
+        // ISO 문자열 또는 epoch millis 숫자 모두 허용
+        const ms =
+          typeof body.expiresAt === "number" ? body.expiresAt : Date.parse(body.expiresAt);
         if (!Number.isFinite(ms))
           return NextResponse.json({ error: "만료일 형식이 올바르지 않습니다." }, { status: 400 });
         if (ms <= Date.now())

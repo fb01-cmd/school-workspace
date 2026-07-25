@@ -20,11 +20,12 @@ import ProfileApprovals from "@/components/admin/ProfileApprovals";
 import MyProfileCard from "@/components/admin/MyProfileCard";
 import ClassroomCleanupBanner from "@/components/admin/ClassroomCleanupBanner";
 import ClassroomCleanupTab from "@/components/admin/ClassroomCleanupTab";
+import DisciplineSection from "@/components/admin/discipline/DisciplineSection";
 
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals";
+type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
@@ -64,6 +65,8 @@ export default function AdminPage() {
         return <ClassroomPage />;
       case "classroom_cleanup":
         return <ClassroomCleanupTab />;
+      case "discipline":
+        return <DisciplineSection />;
       case "chrome_bookmarks":
         return <ChromeBookmarks />;
       case "password_reset":
@@ -404,18 +407,6 @@ export default function AdminPage() {
                     <span>학생 비밀번호 초기화</span>
                   </button>
 
-                  <button
-                    onClick={() => setActiveMenu("forms")}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeMenu === "forms"
-                        ? "bg-indigo-800 text-white"
-                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    <span>📝</span>
-                    <span>생활지도 기록 작성</span>
-                  </button>
-
                   {/* 조직 정보 신청 (교사 본인) */}
                   {!isSuperAdmin && (
                     <button
@@ -429,6 +420,26 @@ export default function AdminPage() {
                       )}
                     </button>
                   )}
+                </div>
+              </div>
+
+              {/* 학생 생활지도 독립 섹션 */}
+              <div>
+                <div className="px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                  학생 생활지도
+                </div>
+                <div className="space-y-1">
+                  <button
+                    onClick={() => setActiveMenu("discipline")}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      activeMenu === "discipline"
+                        ? "bg-indigo-800 text-white font-bold shadow-sm"
+                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    <span>⚖️</span>
+                    <span>생활지도 종합 관리</span>
+                  </button>
                 </div>
               </div>
 

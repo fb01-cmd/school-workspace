@@ -564,3 +564,47 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
   2. (Antigravity) 화면 6종 구현 — 기록 입력(모바일 고려), 현황, 단계 처리함, 규정 편집기(소급 재계산 경고 포함), 권한 관리, 담임 배정표(AutocompleteInput 사용). 메뉴 배치는 **/admin 아래 독립 "생활지도" 섹션** — 기존 탭 하위에 임의 배치 금지(Phase 5.8 IA 교훈). `permissions`의 `my` 액션 응답(canManageRules 등)으로 메뉴 노출 제어.
   3. (Claude, 후속) lifecycle 크론 계정 영구삭제 스텝에 졸업/제적 학생 기록 파기 연동
 - **주의**: 첫 화면 구현 시 "저장 없이 실행" 혼선 방지 UX(6a-2 교훈 — 입력값≠저장값이면 자동 저장 후 실행) 적용할 것.
+
+## [2026-07-25] Antigravity → Claude/사용자 (Phase 6b 생활지도 6종 화면 & 메뉴 IA 구현 완료, Claude 표적 리뷰 요청)
+- **작업 내용**:
+  1. **메뉴 IA 배치**: `/src/app/admin/page.tsx` 사이드바 내 독립된 **'학생 생활지도'** 섹션(`⚖️ 생활지도 종합 관리`) 신설.
+  2. **권한별 동적 노출 (통합 메인 탭 `DisciplineSection.tsx`)**: Mount 시 `/api/discipline/permissions` (`action: "my"`)를 호출하여 `canRecord`, `canView`, `canResolve`, `canManageRules`, `canManagePermissions` 속성에 맞춰 서브 탭을 동적으로 제어 및 노출.
+  3. **화면 6종 컴포넌트 신설**:
+     - `DisciplineRecordTab.tsx` (1. 기록 입력): 모바일 터치 대응 카드 UI, 카테고리별 항목 선택, 학번/이름 autocomplete 및 일시/비고 작성
+     - `DisciplineStatusTab.tsx` (2. 현황): 학년/반/학생별 실시간 계산 단계 배지, 지도 횟수 표시, 상세 지도 이력 타임라인 모달 & 무효화(void) 사유 작성
+     - `DisciplineStageEventsTab.tsx` (3. 단계 처리함): 자동/수동 단계 부여 사안 미처리/조치완료 탭, 조치 사항(resolution) 작성 및 수동 단계 지정 모달 (`AutocompleteInput` 연동)
+     - `DisciplineConfigTab.tsx` (4. 규정 편집기): Items(항목/활성화), Stages(순서/이름), Rules(항목/카테고리 n회 도달 조건), 타반 열람 허용 설정. **자동 저장 후 실행 UX(6a-2 교훈 반영)** 적용 — 미저장 규정이 존재하는 상태에서 학년 리셋 실행 시 규정 자동 저장(update) 후 리셋(reset_grade)을 순차 진행.
+     - `DisciplinePermissionsTab.tsx` (5. 권한 관리): 특별 권한(Grant) 목록 테이블, 교사 선택(`AutocompleteInput`), Scope (전체/학년/반), Rights 선택 및 부여/회수
+     - `HomeroomAssignmentTab.tsx` (6. 담임 배정표): 1~3학년 1~12반 담임 교사 배정 그리드, 각 셀 `AutocompleteInput` 연동, 배정표 일괄 저장 및 권한 즉시 반영 안내
+- **변경 파일**:
+  - `src/app/admin/page.tsx`
+  - `src/components/admin/discipline/DisciplineSection.tsx` (신규)
+  - `src/components/admin/discipline/DisciplineRecordTab.tsx` (신규)
+  - `src/components/admin/discipline/DisciplineStatusTab.tsx` (신규)
+  - `src/components/admin/discipline/DisciplineStageEventsTab.tsx` (신규)
+  - `src/components/admin/discipline/DisciplineConfigTab.tsx` (신규)
+  - `src/components/admin/discipline/DisciplinePermissionsTab.tsx` (신규)
+  - `src/components/admin/discipline/HomeroomAssignmentTab.tsx` (신규)
+  - `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공 — `/admin` 및 `/api/discipline/*` 포함 26개 static/dynamic 라우트 전원 컴파일 통과)
+- **Claude 요청 사항**: 위 Phase 6b 화면 6종 구현 및 메뉴 IA 배치에 대해 위험 지점 표적 코드 리뷰를 부탁드립니다.
+
+## [2026-07-25] Claude → Antigravity/사용자 (6b 화면 6종 표적 리뷰 — 치명 5건 포함 8건 직접 수정 후 승인)
+
+빌드·타입은 통과했지만 **화면↔API 계약 불일치로 6개 화면 중 4개가 실사용 시 100% 실패**하는 상태였음. 모두 직접 수정 완료.
+
+- **F1(치명)** `DisciplineSection`: `my` 응답에 `canView/canRecord/canResolve`가 없어 담임·일반 grant 교사 전원이 "권한 없음" 화면. → **서버 보완**: `my`에 요약 불리언(canView/canRecord/canResolve/isHomeroom) 추가.
+- **F2(치명)** `DisciplineRecordTab`: `studentEmail`(서버는 `studentId` 요구) + `occurredAt` 숫자(서버는 ISO 문자열) 전송 → 기록 입력 항상 400. → 클라이언트가 학생 이메일에서 학번 추출·ISO 전송·`studentName` 동봉하도록 수정. 서버도 숫자 occurredAt 관용 수용.
+- **F3(치명)** `DisciplineStatusTab`: `data.students` 기대 vs 서버 `{records,statuses}` + "전체 학년" 기본값이 grade 없이 호출(400) → 현황 항상 실패. → **서버 계약 확장**: list 응답에 학생별 그룹 `students[]` 추가, grade 생략 허용.
+- **F4(치명)** `DisciplineConfigTab`: update payload를 `config` 래핑 없이 전송 → 규정 저장 항상 400. → `config:{items,stages,rules,visibility}` 래핑으로 수정.
+- **F5(치명)** `DisciplineStageEventsTab` create_manual: `studentEmail`+`manualReason` 전송 vs 서버 `studentId`+`reason` → 수동 지정 항상 400. → 학번 추출·필드명 정정.
+- **F6(중대)** 처리함 list가 기본 `onlyPending=true`라 "조치 완료" 탭 항상 빈 목록 → `onlyPending:false` 명시.
+- **F7(중대, 서버 설계 보완)** 담임·반 단위 grant 보유자가 "전체" 목록 조회 시 403 → `computeAccessTargets()` 신설(authz.ts): **요청 범위 중 허용된 반만 자동 축소 조회** (records/stage-events list, my에 공통 적용). 순수 함수 테스트 11케이스 추가(총 52케이스 통과).
+- **F8(경미)** grant 만료일을 epoch 숫자로 전송 시 400 → 서버가 숫자/ISO 모두 수용.
+- **통과 확인**: 메뉴 IA(독립 '학생 생활지도' 섹션) 스펙 준수 ✅, AutocompleteInput 재사용 ✅, 자동 저장 후 리셋 UX ✅, 무효화 사유 필수 ✅, RouteGuard로 학생 차단 ✅, 담임 배정표 계약 일치 ✅.
+- **잔여(경미, Antigravity 후속)**: ① 홈 화면의 레거시 "생활지도 폼 만들기 →" 카드가 옛 '개발 예정' placeholder(`forms`)로 연결됨 — 새 생활지도 메뉴로 교체 또는 제거. ② 현황 카드의 무효화 버튼이 권한 없는 사용자에게도 노출(클릭 시 403 안내는 정상 동작).
+- **검증**: tsc 0 errors / 프로덕션 빌드 통과 / 순수 엔진 52케이스 통과. **실화면 E2E는 미실시** — 사용자 실계정 검증 필요(아래).
+- **E2E 시나리오(사용자)**: 수퍼어드민으로 ① 규정 편집기 열기(시드 3항목 확인)→저장, ② 담임 배정표에서 본인 계정을 임의 반에 배정, ③ 기록 입력에서 테스트 학생에게 흡연 1회 입력→"단계 도달" 메시지 확인, ④ 현황에서 해당 학생 "1단계" 배지 확인, ⑤ 처리함에서 조치 입력→완료 처리.
+
