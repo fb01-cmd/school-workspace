@@ -13,6 +13,7 @@
 - **로그인**: Firebase Auth — `@hmh.or.kr` 구글 계정만 허용
 - **실제 데이터 원본**: Google Workspace (계정·클래스룸·캘린더·드라이브)
 - **소스 코드**: GitHub `fb01-cmd/school-workspace` (main 브랜치 push 시 Vercel 자동 배포)
+- **기능별 사용 설명서**: 생활지도 모듈은 [`discipline_manual.md`](./discipline_manual.md) 참조 (메뉴별 사용법·권한 체계·FAQ — 비개발자용)
 
 ## 2. 핵심 계정과 열쇠 (값이 아니라 위치)
 
