@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* 전역 라이트 강제 (프로젝트 결정 — project_notes 2026-07-24):
+   Tailwind 4의 dark: 변형은 기본적으로 시스템 다크 테마(prefers-color-scheme)를 따라
+   자동 활성화된다. 아래 한 줄로 dark:를 ".dark 클래스가 있을 때만"으로 재정의하는데,
+   이 앱은 .dark를 어디에도 붙이지 않으므로 dark: 스타일 전체가 비활성화되어
+   시스템 테마와 무관하게 항상 라이트로 렌더링된다. (color-scheme 강제만으로는
+   폼 컨트롤·스크롤바만 라이트가 되고 dark: 클래스는 못 막는다 — 2026-07-25 생활지도
+   화면 저대비 사고의 원인) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   color-scheme: light;
   --background: #ffffff;
