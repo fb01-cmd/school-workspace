@@ -153,8 +153,13 @@
   - `RosterApiKeyManager.tsx`: 수퍼어드민 화면 내 마스터 시트 URL/ID 입력 폼, `💾 시트 ID 저장`, `🔄 지금 갱신` 버튼, `🔗 마스터 시트 바로가기` 및 OAuth 스코프/API 미등록 시 친절한 안내 경고 카드 구현.
   - `deployment_checklist.md`: §2에 `https://www.googleapis.com/auth/spreadsheets` 도메인 위임 스코프 및 GCP Console Google Sheets API 활성화 필수 절차 기록.
 
-* **Phase 6b. 생활지도 기록 모듈 (미구현 📋)**:
-  - 규정 문서(`discipline_config`), 개별 권한 테이블(`discipline_permissions`), 담임 배정표(`homeroom_assignments`), 무효화(void) 방식 지도의 기록 컬렉션 설계 및 6개 화면 구현 예정.
+* **Phase 6b. 생활지도 기록 모듈 — 보안 핵심부 완료 ✅ / 화면 6종 미구현 📋**:
+  - **보안 핵심부 (완료 ✅ 2026-07-25, Claude 직접 구현)**:
+    - `src/lib/discipline/types.ts` · `engine.ts` · `authz.ts` · `server.ts`: 데이터 모델, 단계 계산 엔진(현재 단계는 저장하지 않고 계산 — 리셋 마커·무효화·manual 우선 규칙 반영), 권한 판정 엔진(학생 차단 → 수퍼어드민 → grant → 담임 기본권 → visibility → 거부), Firestore 로더(등호 필터만 사용, collectionGroup·복합 색인 금지).
+    - 판정 API 4종: `POST /api/discipline/config`(규정 get/update/학년별 리셋), `/records`(입력·무효화·현황 계산), `/stage-events`(처리함 큐·조치 완료·수동 단계 지정), `/permissions`(내 권한·grant 부여/회수·담임 배정표).
+    - 초기 규정 시드(교복/흡연/휴대폰 — 현행 시트 규칙) 내장, `firestore.rules`에 생활지도 5개 컬렉션 클라이언트 전면 차단 명시, `personal_data_inventory.md` 민감도 최상 등재.
+    - 순수 엔진 검증 41케이스 통과 (권한 판정 경계·리셋·무효화·manual 우선 케이스 포함).
+  - **화면 6종 (미구현 📋 — Antigravity 담당)**: 기록 입력, 우리 반/학년 현황, 단계 처리함, 규정 편집기, 권한 관리, 담임 배정표.
 
 ### Phase 7. 카카오톡 알림톡 연동 (미구현 💬)
 * **카카오 비즈니스 API**: 학생/학부모에게 계정 삭제 D-Day 알림, 학교 공지 등을 카카오톡 채널로 자동 발송.

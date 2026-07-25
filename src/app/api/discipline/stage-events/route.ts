@@ -1,0 +1,200 @@
+import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
+import { Timestamp } from "firebase-admin/firestore";
+import { verifyAuthAccess } from "@/lib/firebase/admin";
+import { writeAuditLog } from "@/lib/firebase/audit-server";
+import {
+  loadAuthzContext,
+  parseStudentIdStrict,
+  stageEventFromDoc,
+  stageEventsColRef,
+} from "@/lib/discipline/server";
+import { judgeDiscipline } from "@/lib/discipline/authz";
+import { DisciplineStageEvent } from "@/lib/discipline/types";
+
+/**
+ * Phase 6b: 생활지도 단계 이벤트(처리함) API
+ *
+ * POST /api/discipline/stage-events
+ * - action: "list"          → 단계 도달 이벤트 조회 (view 권한 — 기본은 미처리 큐)
+ * - action: "resolve"       → 조치 입력·처리 완료 (resolve 권한, 해당 반)
+ * - action: "create_manual" → 수동 단계 지정 (resolve 권한) — 계산 결과보다 우선 적용됨
+ */
+
+export async function POST(req: NextRequest) {
+  try {
+    const auth = await verifyAuthAccess(req);
+    if (!auth) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    if (auth.role === "student")
+      return NextResponse.json({ error: "접근 권한이 없습니다." }, { status: 403 });
+
+    const domain = auth.email.split("@")[1];
+    if (!domain)
+      return NextResponse.json({ error: "도메인 정보를 확인할 수 없습니다." }, { status: 400 });
+
+    const body = await req.json();
+    const { action } = body;
+    const { ctx, config } = await loadAuthzContext(domain, auth);
+
+    // ── 이벤트 조회 (처리함/이력) ──
+    if (action === "list") {
+      const onlyPending = body.onlyPending !== false; // 기본: 미처리만
+      let events: DisciplineStageEvent[] = [];
+
+      if (body.studentId) {
+        const parsed = parseStudentIdStrict(body.studentId);
+        if (!parsed)
+          return NextResponse.json({ error: "학번 형식이 올바르지 않습니다." }, { status: 400 });
+        const judgment = judgeDiscipline(ctx, "view", {
+          grade: parsed.grade,
+          classNum: parsed.classNum,
+        });
+        if (!judgment.allowed)
+          return NextResponse.json({ error: "해당 학생에 대한 열람 권한이 없습니다." }, { status: 403 });
+        const snap = await stageEventsColRef(domain)
+          .where("studentId", "==", String(body.studentId).trim())
+          .get();
+        events = snap.docs.map((d) => stageEventFromDoc(d.id, d.data()));
+        if (onlyPending) events = events.filter((e) => !e.resolved);
+      } else {
+        // 학년별 열람 권한을 개별 판정해 허용된 학년만 반환
+        // (⚠️ target 없이 view를 판정하면 반 단위 grant도 전역 통과되므로 반드시 학년 단위로 나눠 판정)
+        const requestedGrades: number[] =
+          Number.isInteger(Number(body.grade)) && Number(body.grade) >= 1 && Number(body.grade) <= 3
+            ? [Number(body.grade)]
+            : [1, 2, 3];
+        const classNum =
+          body.classNum !== undefined && body.classNum !== null && body.classNum !== ""
+            ? Number(body.classNum)
+            : undefined;
+        if (classNum !== undefined && (!Number.isInteger(classNum) || classNum < 1 || classNum > 30))
+          return NextResponse.json({ error: "반 번호가 올바르지 않습니다." }, { status: 400 });
+
+        const allowedGrades = requestedGrades.filter(
+          (g) => judgeDiscipline(ctx, "view", { grade: g, classNum }).allowed
+        );
+        if (allowedGrades.length === 0)
+          return NextResponse.json(
+            { error: "요청한 범위에 대한 열람 권한이 없습니다." },
+            { status: 403 }
+          );
+
+        // 학년별 등호 쿼리 (최대 3개) — 복합 색인 불필요
+        const snaps = await Promise.all(
+          allowedGrades.map((g) => {
+            let q = stageEventsColRef(domain).where("grade", "==", g);
+            if (classNum !== undefined) q = q.where("classNum", "==", classNum);
+            if (onlyPending) q = q.where("resolved", "==", false);
+            return q.get();
+          })
+        );
+        events = snaps.flatMap((s) => s.docs.map((d) => stageEventFromDoc(d.id, d.data())));
+      }
+
+      events.sort((a, b) => b.enteredAt - a.enteredAt);
+      return NextResponse.json({ events });
+    }
+
+    // ── 조치 입력·처리 완료 ──
+    if (action === "resolve") {
+      const eventId = body.eventId;
+      if (!eventId || typeof eventId !== "string")
+        return NextResponse.json({ error: "처리할 이벤트 id가 없습니다." }, { status: 400 });
+      const resolution =
+        typeof body.resolution === "string" ? body.resolution.trim().slice(0, 2000) : "";
+      if (!resolution)
+        return NextResponse.json({ error: "조치 내용을 입력해야 합니다." }, { status: 400 });
+
+      const snap = await stageEventsColRef(domain).doc(eventId).get();
+      if (!snap.exists)
+        return NextResponse.json({ error: "이벤트를 찾을 수 없습니다." }, { status: 404 });
+      const event = stageEventFromDoc(snap.id, snap.data()!);
+      if (event.resolved)
+        return NextResponse.json({ error: "이미 처리 완료된 이벤트입니다." }, { status: 400 });
+
+      const judgment = judgeDiscipline(ctx, "resolve", {
+        grade: event.grade,
+        classNum: event.classNum,
+      });
+      if (!judgment.allowed)
+        return NextResponse.json({ error: "단계 처리 권한이 없습니다." }, { status: 403 });
+
+      await stageEventsColRef(domain).doc(eventId).update({
+        resolved: true,
+        resolvedAt: Timestamp.now(),
+        resolvedBy: auth.email,
+        resolution,
+      });
+
+      const stageLabel =
+        config.stages.find((s) => s.id === event.stageId)?.label || event.stageId;
+      await writeAuditLog({
+        operatorEmail: auth.email,
+        operatorName: "생활지도 단계 처리자",
+        action: "생활지도 단계 처리",
+        targetEmail: event.studentEmail,
+        details: `${event.grade}학년 ${event.classNum}반 ${event.studentId} — ${stageLabel} 처리 완료 (판정 근거: ${judgment.basis})`,
+        status: "success",
+      });
+      return NextResponse.json({ success: true, eventId });
+    }
+
+    // ── 수동 단계 지정 ──
+    if (action === "create_manual") {
+      const parsed = parseStudentIdStrict(body.studentId);
+      if (!parsed)
+        return NextResponse.json({ error: "학번 형식이 올바르지 않습니다." }, { status: 400 });
+      const studentId = String(body.studentId).trim();
+      const { grade, classNum } = parsed;
+
+      const judgment = judgeDiscipline(ctx, "resolve", { grade, classNum });
+      if (!judgment.allowed)
+        return NextResponse.json({ error: "수동 단계 지정 권한이 없습니다." }, { status: 403 });
+
+      const stage = config.stages.find((s) => s.id === body.stageId);
+      if (!stage)
+        return NextResponse.json({ error: "존재하지 않는 단계입니다." }, { status: 400 });
+
+      const manualReason =
+        typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
+      if (!manualReason)
+        return NextResponse.json({ error: "수동 지정 사유를 입력해야 합니다." }, { status: 400 });
+      const studentName =
+        typeof body.studentName === "string" ? body.studentName.trim().slice(0, 50) : "";
+
+      const eventId = "evt_" + Date.now() + "_" + crypto.randomBytes(4).toString("hex");
+      await stageEventsColRef(domain).doc(eventId).set({
+        studentId,
+        studentEmail: `${studentId}@${domain}`,
+        studentName,
+        grade,
+        classNum,
+        stageId: stage.id,
+        enteredAt: Timestamp.now(),
+        cause: "manual",
+        causeRecordIds: [],
+        manualReason,
+        createdBy: auth.email,
+        resolved: false,
+      });
+
+      await writeAuditLog({
+        operatorEmail: auth.email,
+        operatorName: "생활지도 단계 처리자",
+        action: "생활지도 수동 단계 지정",
+        targetEmail: `${studentId}@${domain}`,
+        details: `${grade}학년 ${classNum}반 ${studentId} → ${stage.label} 수동 지정 — 사유: ${manualReason} (판정 근거: ${judgment.basis})`,
+        status: "success",
+      });
+      return NextResponse.json({ success: true, eventId });
+    }
+
+    return NextResponse.json({ error: "지원하지 않는 action 입니다." }, { status: 400 });
+  } catch (error: any) {
+    console.error("[Discipline Stage Events API Error]:", error);
+    return NextResponse.json(
+      { error: `단계 이벤트 처리 중 오류가 발생했습니다: ${error.message}` },
+      { status: 500 }
+    );
+  }
+}

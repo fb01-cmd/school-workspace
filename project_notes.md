@@ -538,3 +538,29 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
 - 첫 시도에서 "저장 없이 갱신 클릭" 혼선 발생 → 6b 화면 작업 시 Antigravity에게 "입력값≠저장값이면 갱신 버튼이 자동 저장 후 실행" UX 개선 지시 예정.
 - 명단 API(6a-1)는 키 발급 후 외부 앱(교육과정 선택·현황판) 연결만 남음 — 플랫폼 쪽 작업은 없음.
 - 다음: Claude가 6b 보안 핵심부(데이터 모델·권한 판정 엔진·판정 API) 직접 구현.
+
+## [2026-07-25] Claude → Antigravity/사용자 (Phase 6b 보안 핵심부 구현 완료 — 화면 6종 착수 가능)
+
+- **변경 파일**:
+  - `src/lib/discipline/types.ts` — 데이터 모델 타입 (서버/클라 공용, firebase-admin 미의존)
+  - `src/lib/discipline/engine.ts` — 단계 계산 엔진 (순수 함수): 리셋 마커 이후·무효화 제외 회차 집계 → 규칙 매칭 → 최상위 단계. manual 이벤트 우선 적용(단, manual 이후 새 기록이 더 높은 단계면 상향).
+  - `src/lib/discipline/authz.ts` — 권한 판정 엔진 (순수 함수): 학생 차단 → 수퍼어드민 → grant(만료 검사·scope 포괄 판정) → 담임 기본권(자기 반 view+record) → visibility(타반 열람 설정) → 거부. 판정 근거(basis)를 반환해 감사 로그에 기록.
+  - `src/lib/discipline/server.ts` — Firestore 로더/시드/직렬화 (admin SDK 전용). **collectionGroup 금지·등호 필터만 사용**(6a-1 교훈), 정렬은 메모리에서.
+  - API 4종 (모두 POST, action 방식, `verifyAuthAccess` + 학생 역할 즉시 403):
+    - `/api/discipline/config` — get / update(manage_rules) / reset_grade(manage_rules, 마커 갱신 — 기록 삭제 아님)
+    - `/api/discipline/records` — create(record) / void(본인 또는 manage_rules, 사유 필수) / list(view, 학생별 현재 단계 계산 결과 포함)
+    - `/api/discipline/stage-events` — list(view) / resolve(resolve, 조치 필수) / create_manual(resolve, 사유 필수)
+    - `/api/discipline/permissions` — my / list_grants·create_grant·revoke_grant(manage_permissions) / get_homeroom / set_homeroom(manage_permissions)
+  - `firestore.rules` — 생활지도 5개 컬렉션 클라이언트 전면 차단 명시 블록 추가 (콘솔 재게시 필요!)
+  - `personal_data_inventory.md` — 민감도 최상 항목 등재, `development_roadmap.md` 상태 갱신
+- **검증 상태**: tsc ✅ (0 errors) / build ✅ (26 라우트) / 순수 엔진 단위 검증 41케이스 통과 (권한 경계·만료 grant·타인 grant·리셋·무효화·manual 우선·카테고리 규칙 등)
+- **보안 설계 요점 (화면 구현 시 반드시 유지)**:
+  1. grade/classNum은 **클라이언트 값을 절대 신뢰하지 않고 서버가 학번(5자리)에서 파싱**해 강제. 화면은 표시용으로만 사용.
+  2. 초기 규정 시드는 문서가 없을 때 get 응답으로만 제공(`seeded: true`) — 첫 저장/리셋 시 영속화.
+  3. update로는 resetMarkers를 못 건드림(merge 보존) — 리셋은 reset_grade 전용.
+  4. 기록 삭제 API는 존재하지 않음 — void만. grant 회수는 삭제 + 감사 로그.
+- **다음 할 일**:
+  1. (사용자) Firebase 콘솔 → Firestore 규칙 탭에 갱신된 `firestore.rules` 재게시
+  2. (Antigravity) 화면 6종 구현 — 기록 입력(모바일 고려), 현황, 단계 처리함, 규정 편집기(소급 재계산 경고 포함), 권한 관리, 담임 배정표(AutocompleteInput 사용). 메뉴 배치는 **/admin 아래 독립 "생활지도" 섹션** — 기존 탭 하위에 임의 배치 금지(Phase 5.8 IA 교훈). `permissions`의 `my` 액션 응답(canManageRules 등)으로 메뉴 노출 제어.
+  3. (Claude, 후속) lifecycle 크론 계정 영구삭제 스텝에 졸업/제적 학생 기록 파기 연동
+- **주의**: 첫 화면 구현 시 "저장 없이 실행" 혼선 방지 UX(6a-2 교훈 — 입력값≠저장값이면 자동 저장 후 실행) 적용할 것.
