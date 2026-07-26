@@ -1551,3 +1551,4 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - 사용자 검증 결과: ① 일과계 관리자 추가/삭제 즉시 반영 ✅, ② 강제배정 명단이 "20101 20101강민우"로 학번 중복 표시 ❌.
 - **원인**: AutocompleteInput의 onSelect가 `familyName+givenName`을 **공백 없이** 연결해 전달("20101강민우") — 6d0b16d의 파싱은 공백 분리 전제라 학번 분리 실패, 통째로 givenName에 저장됨.
 - **수정 (Claude 직접, 표적 1건)**: handleSelectStudent 파싱을 정규식 `/^(\d+)\s*(\D.*)$/`로 교체 — 공백 유무 모두 학번/이름 분리. AutocompleteInput은 8곳 이상 공용이라 불변 유지. 케이스 테스트 6종 + tsc ✅.
+- **✅ 종결 (2026-07-26 밤)**: 사용자 재검증 — 재검색 담기 시 "20101 강민우" 정상 표시 확인. 🟡 잔여 2건(캐시 즉시 갱신 + 강제배정 이름 포맷) 모두 종결. 다음: Phase 9a-1 5단계 컴시간 엑셀 샘플 2종(사용자 준비) → 9b 스펙(교체 수업 신청, phase9a_spec §8-2) Claude 작성.
