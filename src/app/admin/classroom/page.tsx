@@ -238,13 +238,15 @@ export default function ClassroomPage() {
       return;
     }
     if (name) {
-      const parts = name.trim().split(/\s+/);
+      const trimmed = name.trim();
       let parsedStudentId = "";
-      let parsedGivenName = name.trim();
+      let parsedGivenName = trimmed;
 
-      if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
-        parsedStudentId = parts[0];
-        parsedGivenName = parts.slice(1).join(" ");
+      // AutocompleteInput은 familyName(학번)+givenName을 공백 없이 붙여 넘기므로("20101강민우") 공백 유무 모두 처리
+      const m = trimmed.match(/^(\d+)\s*(\D.*)$/);
+      if (m) {
+        parsedStudentId = m[1];
+        parsedGivenName = m[2].trim();
       }
 
       setStudentInfoMap(prev => ({

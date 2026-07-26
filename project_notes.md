@@ -1545,3 +1545,9 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - **② 강제배정 이름 포맷**: getUserInfo의 필드별 폴백 병합(studentInfoMap → users:all familyName), "학번 이름" 파싱(숫자 접두 검사, 미해당 시 기존 studentId 보존), 표시부 조건 포맷 모두 정확.
 - 독립 검증: tsc ✅ (Claude 재확인). **6d0b16d가 로컬에만 있고 미push 상태였음** — push는 Claude가 리뷰 승인과 함께 실행(반복되는 패턴이니 Antigravity는 커밋 후 push까지 완료할 것). 배포 Claude 실행.
 - 배포 후 확인 포인트: super_admin이 일과계 관리자 추가/삭제 시 새로고침 없이 사이드바 메뉴 즉시 반영, 강제배정 대기 명단 "10325 홍길동" 포맷 표시.
+
+## [2026-07-26] Claude (사용자 실서버 검증 후속 — 강제배정 이름 중복 표시 수정)
+
+- 사용자 검증 결과: ① 일과계 관리자 추가/삭제 즉시 반영 ✅, ② 강제배정 명단이 "20101 20101강민우"로 학번 중복 표시 ❌.
+- **원인**: AutocompleteInput의 onSelect가 `familyName+givenName`을 **공백 없이** 연결해 전달("20101강민우") — 6d0b16d의 파싱은 공백 분리 전제라 학번 분리 실패, 통째로 givenName에 저장됨.
+- **수정 (Claude 직접, 표적 1건)**: handleSelectStudent 파싱을 정규식 `/^(\d+)\s*(\D.*)$/`로 교체 — 공백 유무 모두 학번/이름 분리. AutocompleteInput은 8곳 이상 공용이라 불변 유지. 케이스 테스트 6종 + tsc ✅.
