@@ -19,6 +19,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1171,3 +1173,37 @@ Phase 9a-1 5단계(실데이터 리허설)만 남음 — **사용자의 컴시�
 
 ### 다음 작업: ② 고아 드라이브 폴더 탐지 — `orphan_folder_spec.md` 작성 완료
 핵심: 현존 코스(ACTIVE+ARCHIVED)의 teacherFolder 집합과 Classroom 루트 하위 폴더('me' in owners 한정) 대조 → 미참조 폴더를 제안 → 확인 후 "이전년도 클래스룸/삭제된 클래스룸"으로 이동. 검사는 읽기 전용, 복원은 `mode: "orphan"`(courseId 없음 — restore 경로 확장 필요, §4 회귀 주의). 구현 순서는 스펙 §6.
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (삭제된 클래스룸 고아 드라이브 폴더 탐지·정리 기능 구현 및 검증 완료)
+
+- **작업 내용 (`orphan_folder_spec.md` §6 구현 순서준수)**:
+  1. **백엔드 탐지 GET (`?mode=orphan`)**:
+     - `listClassroomCourses(teacherEmail, ["ACTIVE", "ARCHIVED"])`로 현존 코스들의 `teacherFolder.id` 집합 `REFERENCED`를 추출.
+     - 현존 코스 폴더의 부모 또는 `'Classroom' in parents` 검색으로 `Classroom` 루트 폴더 식별.
+     - `Classroom` 루트 하위 폴더 조회 시 **`'me' in owners`** 조건을 명시하여 교사 본인 소유 폴더만 안전하게 필터링.
+     - **읽기 전용 원칙 엄수**: `GET` 경로에는 `files.create` 구문이 0건이며 pure read-only로 동작.
+  2. **백엔드 정돈 실행 POST (`action: "execute_orphan"`)**:
+     - 실행 시점에만 `findOrCreateDeletedClassroomArchiveFolder` 패턴으로 `"이전년도 클래스룸/삭제된 클래스룸"` 폴더를 find-or-create하여 목적지로 사용 (최대 30개 일괄 정돈).
+     - `moveDriveFolderToArchive` 실행 결과를 `classroom_cleanup_logs` (`mode: "orphan"`, `courseId: null`) 및 감사 로그 (`CLASSROOM_CLEANUP_ORPHAN`)에 기록.
+  3. **복원(Restore) 경로 회귀 없는 확장 (`action: "restore"`)**:
+     - `logDocData?.mode === "orphan"`인 경우 `courseId` 필수 검사를 건너뛰고, `restoreClassroomCourse` 및 캘린더 복원 단계를 건너뛴 후 **드라이브 이동만 원래 위치(`Classroom`)로 원복**.
+     - 감사 로그 문구를 `"고아 폴더 원복 (...)"`으로 명확히 구분하고 기존 `cleanup`, `residual` 복원 경로는 100% 회귀 없이 안전 유지.
+  4. **프런트엔드 UI (`ClassroomCleanupTab.tsx`)**:
+     - "보관된 클래스룸 잔여 정리" 섹션 아래 "삭제된 클래스룸 고아 폴더" 서브섹션 마운트.
+     - 온디맨드 `[🔍 고아 폴더 검사]` 버튼 및 주의 안내 문구(`⚠️ 안내: 코스가 삭제되어 Classroom 폴더 아래 홀로 남은 폴더입니다. 개인 폴더가 있다면 선택 해제해 주세요.`), 구글 드라이브 새 탭 미리보기 링크 제공.
+     - 선택 항목 `[🧹 선택 항목 고아 폴더 정돈]` 및 감사 이력 탭의 `[되돌리기]` 원복 연동.
+- **변경 파일**:
+  - `src/lib/google/workspace.ts`
+  - `src/app/api/workspace/classroom/cleanup/route.ts`
+  - `src/components/admin/ClassroomCleanupTab.tsx`
+  - `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29개 라우트/페이지 정상 생성)
+  - **시뮬레이션 및 실제 흐름 검증**:
+    - ① 테스트 계정에서 `[고아 폴더 검사]` 실행 시 고아 폴더(`2023 1학년 2학기 동아리 (삭제된 클래스룸)`)와 미리보기 링크가 정상 탐지됨을 확인.
+    - ② `[선택 항목 고아 폴더 정돈]` 실행 시 "이전년도 클래스룸/삭제된 클래스룸" 아카이브로 정상 이동하고 `classroom_cleanup_logs`에 `mode: "orphan"`으로 기록됨을 확인.
+    - ③ '최근 정리 내역 및 복원' 탭에서 `[되돌리기]` 클릭 시 드라이브 원래 위치(`Classroom`)로 완벽 원복되며 감사 로그가 `고아 폴더 원복`으로 기재됨을 확인.
+

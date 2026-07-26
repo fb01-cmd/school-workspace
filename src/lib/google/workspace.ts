@@ -1313,6 +1313,16 @@ let mockCourseStudents: Record<string, string[]> = {
   "course_3": ["24001@hmh.or.kr"]
 };
 
+export let mockOrphanFolders: { folderId: string; name: string; webViewLink: string; modifiedTime: string; ownerEmail: string }[] = [
+  {
+    folderId: "mock_orphan_folder_1",
+    name: "2023 1학년 2학기 동아리 (삭제된 클래스룸)",
+    webViewLink: "https://drive.google.com/drive/folders/mock_orphan_folder_1",
+    modifiedTime: "2024-02-15T09:00:00.000Z",
+    ownerEmail: "teacher01@hmh.or.kr",
+  },
+];
+
 // Helper to get Google Classroom API Client with Impersonation
 export const getClassroomClient = (impersonatedEmail: string) => {
   if (isMock) return null;
@@ -2091,6 +2101,66 @@ export const checkDriveFolderResidual = async (
     console.warn(`Drive folder residual check failed for ${folderId}:`, error?.message || error);
     return false;
   }
+};
+
+/**
+ * 고아 폴더 정돈용 아카이브 상위 폴더("이전년도 클래스룸/삭제된 클래스룸") 찾기 및 생성 헬퍼
+ * - 실행(POST) 시점에만 호출되며, 고아 폴더를 이동할 목적지 폴더 ID를 반환합니다.
+ */
+export const findOrCreateDeletedClassroomArchiveFolder = async (
+  teacherEmail: string
+): Promise<string> => {
+  if (isMock) {
+    return "mock_archive_folder_deleted";
+  }
+
+  const drive = getDriveClient(teacherEmail);
+  if (!drive) throw new Error("Drive client not initialized.");
+
+  // 1. "이전년도 클래스룸" 루트 폴더 찾기/생성
+  const rootFolderName = "이전년도 클래스룸";
+  const rootRes = await drive.files.list({
+    q: `name = '${rootFolderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id, name)",
+  });
+
+  let rootFolderId: string;
+  if (rootRes.data.files && rootRes.data.files.length > 0) {
+    rootFolderId = rootRes.data.files[0].id!;
+  } else {
+    const createRootRes = await drive.files.create({
+      requestBody: {
+        name: rootFolderName,
+        mimeType: "application/vnd.google-apps.folder",
+      },
+      fields: "id",
+    });
+    rootFolderId = createRootRes.data.id!;
+  }
+
+  // 2. "이전년도 클래스룸/삭제된 클래스룸" 하위 폴더 찾기/생성
+  const subFolderName = "삭제된 클래스룸";
+  const subRes = await drive.files.list({
+    q: `'${rootFolderId}' in parents and name = '${subFolderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id, name)",
+  });
+
+  let subFolderId: string;
+  if (subRes.data.files && subRes.data.files.length > 0) {
+    subFolderId = subRes.data.files[0].id!;
+  } else {
+    const createSubRes = await drive.files.create({
+      requestBody: {
+        name: subFolderName,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [rootFolderId],
+      },
+      fields: "id",
+    });
+    subFolderId = createSubRes.data.id!;
+  }
+
+  return subFolderId;
 };
 
 

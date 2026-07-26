@@ -39,17 +39,24 @@ interface CleanupLog {
 interface ResidualCourse {
   id: string;
   name: string;
-  section?: string;
+  section: string;
   courseState: string;
   creationTime: string | null;
   schoolYear: number;
-  teacherFolder: { id: string; alternateLink?: string } | null;
+  teacherFolder: { id: string } | null;
   calendarId: string | null;
   ownerId: string;
   isOwner: boolean;
   calendarResidual: boolean;
   driveResidual: boolean;
   hasResidual: boolean;
+}
+
+interface OrphanFolder {
+  folderId: string;
+  name: string;
+  webViewLink: string;
+  modifiedTime: string;
 }
 
 export default function ClassroomCleanupTab() {
@@ -78,6 +85,71 @@ export default function ClassroomCleanupTab() {
   const [selectedResidualIds, setSelectedResidualIds] = useState<string[]>([]);
   const [executingResidual, setExecutingResidual] = useState(false);
   const [residualMessage, setResidualMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // 삭제된 클래스룸 고아 드라이브 폴더 상태
+  const [orphanFolders, setOrphanFolders] = useState<OrphanFolder[]>([]);
+  const [selectedOrphanIds, setSelectedOrphanIds] = useState<string[]>([]);
+  const [orphanLoading, setOrphanLoading] = useState(false);
+  const [orphanSearched, setOrphanSearched] = useState(false);
+  const [executingOrphan, setExecutingOrphan] = useState(false);
+  const [orphanMessage, setOrphanMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const fetchOrphanFolders = async () => {
+    setOrphanLoading(true);
+    setOrphanMessage(null);
+    try {
+      const res = await fetch("/api/workspace/classroom/cleanup?mode=orphan");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "고아 폴더 목록을 불러올 수 없습니다.");
+
+      const list: OrphanFolder[] = data.folders || [];
+      setOrphanFolders(list);
+      setSelectedOrphanIds(list.map(f => f.folderId));
+      setOrphanSearched(true);
+    } catch (err: any) {
+      setOrphanMessage({ type: "error", text: err.message || "고아 폴더 조회 중 오류가 발생했습니다." });
+    } finally {
+      setOrphanLoading(false);
+    }
+  };
+
+  const handleExecuteOrphan = async () => {
+    const targets = orphanFolders.filter(f => selectedOrphanIds.includes(f.folderId));
+    if (targets.length === 0) {
+      alert("정돈할 고아 폴더를 1개 이상 선택해 주세요.");
+      return;
+    }
+
+    if (!confirm(`선택한 ${targets.length}개 고아 폴더를 '이전년도 클래스룸/삭제된 클래스룸' 아카이브로 이동하시겠습니까?`)) {
+      return;
+    }
+
+    setExecutingOrphan(true);
+    setOrphanMessage(null);
+    try {
+      const res = await fetch("/api/workspace/classroom/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "execute_orphan",
+          folderIds: targets.map(t => ({ folderId: t.folderId, name: t.name })),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const succCount = (data.results || []).filter((r: any) => r.success).length;
+        setOrphanMessage({ type: "success", text: `고아 폴더 정돈 완료: ${succCount}개 성공` });
+      } else {
+        throw new Error(data.error || "고아 폴더 정돈 중 오류가 발생했습니다.");
+      }
+    } catch (err: any) {
+      setOrphanMessage({ type: "error", text: err.message || "고아 폴더 정돈 실행 실패" });
+    } finally {
+      setExecutingOrphan(false);
+      fetchOrphanFolders();
+      loadData();
+    }
+  };
 
   useEffect(() => {
     // Load stored excluded IDs and snooze status from localStorage
@@ -747,6 +819,154 @@ export default function ClassroomCleanupTab() {
                                     </span>
                                   )}
                                 </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 삭제된 클래스룸 고아 드라이브 폴더 정리 섹션 */}
+          <div className="mt-10 border-t border-gray-200 pt-6 space-y-4">
+            <div className="bg-slate-900 text-white rounded-xl p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2.5 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-400/30 rounded-full text-xs font-bold">
+                    고아 폴더 정리
+                  </span>
+                  <h3 className="text-base font-bold">삭제된 클래스룸 고아 폴더</h3>
+                </div>
+                <p className="text-xs text-slate-300">
+                  교사가 클래스룸을 직접 삭제하여 드라이브('Classroom' 폴더)에 남아있는 고아 폴더를 탐지하여 '이전년도 클래스룸/삭제된 클래스룸'으로 정돈합니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fetchOrphanFolders}
+                disabled={orphanLoading}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors shadow-xs shrink-0 cursor-pointer flex items-center gap-1.5"
+              >
+                {orphanLoading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>검사 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔍</span>
+                    <span>고아 폴더 검사</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {orphanMessage && (
+              <div className={`p-3 rounded-lg text-xs font-semibold ${
+                orphanMessage.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
+              }`}>
+                {orphanMessage.text}
+              </div>
+            )}
+
+            {orphanSearched && (
+              <div className="space-y-3">
+                {orphanFolders.length === 0 ? (
+                  <div className="p-8 text-center bg-white border border-gray-200 rounded-xl text-gray-500 text-xs font-medium">
+                    ✅ 정리할 고아 폴더가 없습니다. (Classroom 폴더 하위에 방치된 고아 드라이브 폴더가 없습니다)
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden shadow-xs bg-white space-y-3 p-4">
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 font-medium">
+                      ⚠️ <strong>안내</strong>: 코스가 삭제되어 Classroom 폴더 아래 홀로 남은 폴더입니다. 만약 Classroom 폴더 안에 직접 만든 개인 폴더가 있다면 선택 해제해 주세요.
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-1">
+                      <div className="text-xs text-gray-600 font-medium">
+                        탐지된 고아 폴더: <strong className="text-indigo-600 font-bold">{orphanFolders.length}개</strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleExecuteOrphan}
+                        disabled={executingOrphan || selectedOrphanIds.length === 0}
+                        className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        {executingOrphan ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>이동 중...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>🧹</span>
+                            <span>선택 항목 고아 폴더 정돈 ({selectedOrphanIds.length}개)</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                      <table className="w-full text-left text-xs text-gray-700">
+                        <thead className="bg-gray-50 uppercase font-bold text-gray-600 border-b border-gray-200">
+                          <tr>
+                            <th className="p-3 text-center w-10">
+                              <input
+                                type="checkbox"
+                                checked={orphanFolders.length > 0 && orphanFolders.every(f => selectedOrphanIds.includes(f.folderId))}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedOrphanIds(orphanFolders.map(f => f.folderId));
+                                  } else {
+                                    setSelectedOrphanIds([]);
+                                  }
+                                }}
+                                className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                              />
+                            </th>
+                            <th className="p-3">고아 드라이브 폴더명</th>
+                            <th className="p-3 text-center w-36">최종 수정일</th>
+                            <th className="p-3 text-center w-24">미리보기</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {orphanFolders.map(f => (
+                            <tr key={f.folderId} className="hover:bg-gray-50">
+                              <td className="p-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedOrphanIds.includes(f.folderId)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedOrphanIds([...selectedOrphanIds, f.folderId]);
+                                    } else {
+                                      setSelectedOrphanIds(selectedOrphanIds.filter(id => id !== f.folderId));
+                                    }
+                                  }}
+                                  className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                                />
+                              </td>
+                              <td className="p-3 font-semibold text-gray-900">
+                                📁 {f.name}
+                              </td>
+                              <td className="p-3 text-center font-mono text-gray-500">
+                                {f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString("ko-KR") : "—"}
+                              </td>
+                              <td className="p-3 text-center">
+                                {f.webViewLink ? (
+                                  <a
+                                    href={f.webViewLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-[11px] font-semibold inline-flex items-center gap-1"
+                                  >
+                                    <span>열기</span>
+                                    <span>↗</span>
+                                  </a>
+                                ) : "—"}
                               </td>
                             </tr>
                           ))}

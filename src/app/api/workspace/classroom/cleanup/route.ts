@@ -14,9 +14,12 @@ import {
   moveDriveFolderToArchive,
   findOrCreateArchiveFolder,
   findArchiveFolder,
+  findOrCreateDeletedClassroomArchiveFolder,
   restoreClassroomCourse,
   checkCalendarResidual,
   checkDriveFolderResidual,
+  getDriveClient,
+  mockOrphanFolders,
   isMock
 } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
@@ -138,6 +141,106 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // 삭제된 클래스룸 고아 드라이브 폴더 탐지 (§2)
+    if (mode === "orphan") {
+      if (isMock) {
+        const mockFolders = mockOrphanFolders.filter(f => f.ownerEmail === teacherEmail || f.ownerEmail === "teacher01@hmh.or.kr");
+        return NextResponse.json({
+          success: true,
+          teacherEmail,
+          folders: mockFolders,
+          isMock: true,
+        });
+      }
+
+      // 1. 모든 현존 코스(ACTIVE & ARCHIVED) 조회
+      const courses = await listClassroomCourses(teacherEmail, ["ACTIVE", "ARCHIVED"]);
+      const referencedFolderIds = new Set(courses.map((c: any) => c.teacherFolder?.id).filter(Boolean));
+
+      // 2. Classroom 루트 폴더 식별
+      let classroomRootId: string | null = null;
+      const sampleCourseFolder = courses.find((c: any) => c.teacherFolder?.id);
+
+      const drive = getDriveClient(teacherEmail);
+      if (!drive) {
+        return NextResponse.json({ error: "Drive client initialization failed." }, { status: 500 });
+      }
+
+      if (sampleCourseFolder?.teacherFolder?.id) {
+        try {
+          const fileRes = await drive.files.get({
+            fileId: sampleCourseFolder.teacherFolder.id,
+            fields: "parents",
+          });
+          if (fileRes.data.parents && fileRes.data.parents.length > 0) {
+            classroomRootId = fileRes.data.parents[0];
+          }
+        } catch (e) {
+          console.warn("Failed to get parent folder for sample course folder:", e);
+        }
+      }
+
+      // 샘플 코스 폴더에서 부모를 못 구한 경우 'Classroom' 루트 폴더 직접 조회 폴백
+      if (!classroomRootId) {
+        try {
+          const rootRes = await drive.files.list({
+            q: "name = 'Classroom' and 'root' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+            fields: "files(id)",
+          });
+          if (rootRes.data.files && rootRes.data.files.length > 0) {
+            classroomRootId = rootRes.data.files[0].id!;
+          }
+        } catch (e) {
+          console.warn("Failed to search Classroom root folder:", e);
+        }
+      }
+
+      // 루트 폴더를 식별하지 못한 경우 안내 응답 반환 (신규 교사이거나 클래스룸 폴더가 없는 경우)
+      if (!classroomRootId) {
+        return NextResponse.json({
+          success: true,
+          teacherEmail,
+          folders: [],
+          message: "Classroom 루트 폴더를 찾지 못했습니다.",
+          isMock: false,
+        });
+      }
+
+      // 3. 루트 하위 폴더 목록 조회 (순수 읽기 전용 — files.create 없음!)
+      // 'me' in owners 조건 필수: 교사 본인 소유 폴더만 탐지
+      const allSubFolders: any[] = [];
+      let pageToken: string | undefined = undefined;
+      do {
+        const res: any = await drive.files.list({
+          q: `'${classroomRootId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false and 'me' in owners`,
+          fields: "nextPageToken, files(id, name, webViewLink, modifiedTime)",
+          pageSize: 100,
+          pageToken,
+        });
+        if (res.data.files) {
+          allSubFolders.push(...res.data.files);
+        }
+        pageToken = res.data.nextPageToken || undefined;
+      } while (pageToken);
+
+      // 4. 현존 코스가 참조하지 않는 고아 폴더 필터링
+      const orphanFolders = allSubFolders
+        .filter(f => !referencedFolderIds.has(f.id))
+        .map(f => ({
+          folderId: f.id,
+          name: f.name,
+          webViewLink: f.webViewLink || "",
+          modifiedTime: f.modifiedTime || "",
+        }));
+
+      return NextResponse.json({
+        success: true,
+        teacherEmail,
+        folders: orphanFolders,
+        isMock: false,
+      });
+    }
+
     // ownerId는 이메일이 아닌 Classroom 숫자 사용자 ID로 반환되므로, 본인 숫자 ID를 함께 조회해 비교
     const [courses, teacherUserId] = await Promise.all([
       listClassroomCourses(teacherEmail),
@@ -210,12 +313,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action, courseId, schoolYear, newName, originalName, calendarId, driveFolderId, targetParentFolderId, logId } = body;
 
-    // 1. 원복 (Restore) 처리
+    // 1. 원복 (Restore) 처리 (cleanup / residual / orphan 3종 지원)
     if (action === "restore") {
-      if (!courseId) {
-        return NextResponse.json({ error: "courseId가 누락되었습니다." }, { status: 400 });
-      }
-
       // 로그 문서 소유자 검증
       let logDocData: any = null;
       if (logId) {
@@ -233,21 +332,28 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // residual 모드 로그인지 판별: 교사가 직접 보관(ARCHIVED)했던 코스의 잔여 정리 로그면 코스 보관 해제를 건너뛴다
+      const isOrphan = logDocData?.mode === "orphan" || (!courseId && (driveFolderId || logDocData?.driveFolderId));
       const isResidual = logDocData?.mode === "residual";
+
+      if (!isOrphan && !courseId) {
+        return NextResponse.json({ error: "courseId가 누락되었습니다." }, { status: 400 });
+      }
+
       let restoredCourse: any = null;
-      if (!isResidual) {
-        restoredCourse = await restoreClassroomCourse(teacherEmail, courseId, originalName);
-      } else {
+      if (isOrphan) {
+        restoredCourse = null; // 고아 폴더 원복 시 코스 객체는 없음
+      } else if (isResidual) {
         restoredCourse = { id: courseId, courseState: "ARCHIVED", name: originalName, isResidual: true };
+      } else {
+        restoredCourse = await restoreClassroomCourse(teacherEmail, courseId!, originalName);
       }
       
-      // 캘린더 되돌리기 시도 (숨김 해제 또는 재구독)
+      // 캘린더 되돌리기 시도 (고아 폴더는 캘린더 제외)
       const targetCalendarId = calendarId || logDocData?.calendarId;
       const hiddenInsteadOfUnsubscribed = logDocData?.results?.calendar?.hiddenInsteadOfUnsubscribed;
       let calendarRestored = false;
 
-      if (targetCalendarId) {
+      if (!isOrphan && targetCalendarId) {
         try {
           await restoreClassroomCalendar(teacherEmail, targetCalendarId, hiddenInsteadOfUnsubscribed);
           calendarRestored = true;
@@ -258,7 +364,7 @@ export async function POST(req: NextRequest) {
 
       // 드라이브 폴더 원래 위치 원복 시도 (driveFolderId & driveOriginalParentFolderId)
       const targetDriveId = driveFolderId || logDocData?.driveFolderId;
-      const originalDriveParentId = logDocData?.driveOriginalParentFolderId;
+      const originalDriveParentId = targetParentFolderId || logDocData?.driveOriginalParentFolderId;
       let driveRestored = false;
 
       if (targetDriveId && originalDriveParentId) {
@@ -288,14 +394,72 @@ export async function POST(req: NextRequest) {
       await writeAuditLog({
         operatorEmail: teacherEmail,
         action: "CLASSROOM_CLEANUP_RESTORE",
-        targetEmail: courseId,
-        details: isResidual
+        targetEmail: courseId || targetDriveId || "-",
+        details: isOrphan
+          ? `고아 폴더 원복 (${originalName || logDocData?.courseName || targetDriveId})`
+          : isResidual
           ? `잔여 정돈 원복(보관 유지) (${originalName || courseId})`
           : `클래스룸 보관 해제 및 복원 (${originalName || courseId})`,
         status: "success",
       });
 
-      return NextResponse.json({ success: true, restoredCourse, driveRestored, calendarRestored });
+      return NextResponse.json({ success: true, restoredCourse, driveRestored, calendarRestored, isOrphan });
+    }
+
+    // 2. 삭제된 클래스룸 고아 드라이브 폴더 일괄 정돈 실행 (§3)
+    if (action === "execute_orphan") {
+      const { folderIds } = body;
+      if (!folderIds || !Array.isArray(folderIds) || folderIds.length === 0) {
+        return NextResponse.json({ error: "folderIds 목록이 누락되었습니다." }, { status: 400 });
+      }
+
+      if (folderIds.length > 30) {
+        return NextResponse.json({ error: "한 번에 최대 30개 고아 폴더까지만 정돈할 수 있습니다." }, { status: 400 });
+      }
+
+      const targetArchiveFolderId = await findOrCreateDeletedClassroomArchiveFolder(teacherEmail);
+      const results: any[] = [];
+
+      for (const item of folderIds) {
+        const fId = typeof item === "string" ? item : item.folderId;
+        const fName = typeof item === "string" ? fId : item.name || fId;
+
+        try {
+          const moveRes = await moveDriveFolderToArchive(teacherEmail, fId, targetArchiveFolderId);
+
+          const logRef = adminDb.collection("classroom_cleanup_logs").doc();
+          await logRef.set({
+            logId: logRef.id,
+            teacherEmail,
+            mode: "orphan",
+            courseId: null,
+            courseName: fName,
+            schoolYear: null,
+            driveFolderId: fId,
+            driveOriginalParentFolderId: moveRes.originalParentFolderId || null,
+            cleanedAt: new Date().toISOString(),
+            restored: false,
+            results: {
+              drive: moveRes,
+            },
+          });
+
+          await writeAuditLog({
+            operatorEmail: teacherEmail,
+            action: "CLASSROOM_CLEANUP_ORPHAN",
+            targetEmail: fId,
+            details: `삭제된 클래스룸 고아 폴더 정돈 (${fName})`,
+            status: "success",
+          });
+
+          results.push({ folderId: fId, name: fName, success: true, logId: logRef.id });
+        } catch (err: any) {
+          console.error(`Failed to move orphan folder ${fId}:`, err);
+          results.push({ folderId: fId, name: fName, success: false, error: err?.message || "이동 실패" });
+        }
+      }
+
+      return NextResponse.json({ success: true, teacherEmail, results });
     }
 
     // 2. 정리 (Cleanup) 4단계 파이프라인 처리
