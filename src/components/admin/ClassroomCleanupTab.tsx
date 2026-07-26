@@ -36,6 +36,22 @@ interface CleanupLog {
   restored: boolean;
 }
 
+interface ResidualCourse {
+  id: string;
+  name: string;
+  section?: string;
+  courseState: string;
+  creationTime: string | null;
+  schoolYear: number;
+  teacherFolder: { id: string; alternateLink?: string } | null;
+  calendarId: string | null;
+  ownerId: string;
+  isOwner: boolean;
+  calendarResidual: boolean;
+  driveResidual: boolean;
+  hasResidual: boolean;
+}
+
 export default function ClassroomCleanupTab() {
   const [loading, setLoading] = useState(true);
   const [currentSchoolYear, setCurrentSchoolYear] = useState<number>(new Date().getFullYear());
@@ -54,6 +70,14 @@ export default function ClassroomCleanupTab() {
   const [subTab, setSubTab] = useState<"targets" | "logs">("targets");
 
   const [isSnoozed, setIsSnoozed] = useState(false);
+
+  // 역방향 잔여 정리 상태
+  const [residualCourses, setResidualCourses] = useState<ResidualCourse[]>([]);
+  const [residualLoading, setResidualLoading] = useState(false);
+  const [residualSearched, setResidualSearched] = useState(false);
+  const [selectedResidualIds, setSelectedResidualIds] = useState<string[]>([]);
+  const [executingResidual, setExecutingResidual] = useState(false);
+  const [residualMessage, setResidualMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     // Load stored excluded IDs and snooze status from localStorage
@@ -264,11 +288,85 @@ export default function ClassroomCleanupTab() {
 
       setMessage({ type: "success", text: `'${log.originalName}' 클래스룸이 복원되었습니다.${detailStr}` });
       loadData();
+      if (residualSearched) fetchResidualCourses();
     } catch (err: any) {
       setMessage({ type: "error", text: err.message });
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // 역방향 잔여 정리 대상 조회
+  const fetchResidualCourses = async () => {
+    setResidualLoading(true);
+    setResidualMessage(null);
+    try {
+      const res = await fetch("/api/workspace/classroom/cleanup?mode=residual");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "잔여 정리 항목을 불러올 수 없습니다.");
+
+      const list: ResidualCourse[] = data.courses || [];
+      setResidualCourses(list);
+      setSelectedResidualIds(list.map(c => c.id));
+      setResidualSearched(true);
+    } catch (err: any) {
+      setResidualMessage({ type: "error", text: err.message || "잔여 정리 조회 중 오류가 발생했습니다." });
+    } finally {
+      setResidualLoading(false);
+    }
+  };
+
+  // 역방향 잔여 정리 실행
+  const handleExecuteResidual = async () => {
+    const targets = residualCourses.filter(c => selectedResidualIds.includes(c.id));
+    if (targets.length === 0) {
+      alert("정리할 잔여 항목을 1개 이상 선택해 주세요.");
+      return;
+    }
+
+    if (!confirm(`선택한 ${targets.length}개 보관 코스의 잔여물(캘린더 구독 및 드라이브 폴더)을 정리하시겠습니까?`)) {
+      return;
+    }
+
+    setExecutingResidual(true);
+    setResidualMessage(null);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const c of targets) {
+      try {
+        const res = await fetch("/api/workspace/classroom/cleanup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "execute_residual",
+            courseId: c.id,
+            originalName: c.name,
+            schoolYear: c.schoolYear,
+            calendarId: c.calendarResidual ? c.calendarId : null,
+            driveFolderId: c.driveResidual && c.isOwner ? c.teacherFolder?.id : null,
+            isOwner: c.isOwner,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (err) {
+        failCount++;
+      }
+    }
+
+    setExecutingResidual(false);
+    setResidualMessage({
+      type: failCount === 0 ? "success" : "error",
+      text: `잔여 정리 완료: ${successCount}개 성공${failCount > 0 ? `, ${failCount}개 실패` : ""}`,
+    });
+
+    fetchResidualCourses();
+    loadData();
   };
 
   const targetCourses = courses.filter(c => c.isTarget && !excludedIds.includes(c.id));
@@ -502,6 +600,163 @@ export default function ClassroomCleanupTab() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* 보관된 클래스룸 잔여 정리 (역방향 정리) 섹션 */}
+          <div className="mt-10 border-t border-gray-200 pt-6 space-y-4">
+            <div className="bg-slate-900 text-white rounded-xl p-5 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-400/30 rounded-full text-xs font-bold">
+                    역방향 정리
+                  </span>
+                  <h3 className="text-base font-bold">보관된 클래스룸 잔여 정리</h3>
+                </div>
+                <p className="text-xs text-slate-300">
+                  교사가 클래스룸 앱에서 직접 보관(Archive)하여 캘린더 구독이나 드라이브 폴더가 방치된 잔여 항목을 탐지하여 정돈합니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fetchResidualCourses}
+                disabled={residualLoading}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors shadow-xs shrink-0 cursor-pointer flex items-center gap-1.5"
+              >
+                {residualLoading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>검사 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔍</span>
+                    <span>잔여 정리 검사</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {residualMessage && (
+              <div className={`p-3 rounded-lg text-xs font-semibold ${
+                residualMessage.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
+              }`}>
+                {residualMessage.text}
+              </div>
+            )}
+
+            {residualSearched && (
+              <div className="space-y-3">
+                {residualCourses.length === 0 ? (
+                  <div className="p-8 text-center bg-white border border-gray-200 rounded-xl text-gray-500 text-xs font-medium">
+                    ✅ 정리할 잔여 항목이 없습니다. (모든 보관 코스의 캘린더 및 드라이브 폴더가 완전히 정돈되었습니다)
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden shadow-xs bg-white space-y-3 p-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                      <div className="text-xs text-gray-600 font-medium">
+                        탐지된 잔여 항목: <strong className="text-indigo-600 font-bold">{residualCourses.length}개</strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleExecuteResidual}
+                        disabled={executingResidual || selectedResidualIds.length === 0}
+                        className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        {executingResidual ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>정리 중...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>🧹</span>
+                            <span>선택 항목 잔여 정리 실행 ({selectedResidualIds.length}개)</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                      <table className="w-full text-left text-xs text-gray-700">
+                        <thead className="bg-gray-50 uppercase font-bold text-gray-600 border-b border-gray-200">
+                          <tr>
+                            <th className="p-3 text-center w-10">
+                              <input
+                                type="checkbox"
+                                checked={residualCourses.length > 0 && residualCourses.every(c => selectedResidualIds.includes(c.id))}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedResidualIds(residualCourses.map(c => c.id));
+                                  } else {
+                                    setSelectedResidualIds([]);
+                                  }
+                                }}
+                                className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                              />
+                            </th>
+                            <th className="p-3">보관된 클래스룸 이름</th>
+                            <th className="p-3 text-center w-24">생성 학년도</th>
+                            <th className="p-3 text-center w-24">소유 권한</th>
+                            <th className="p-3">잔여 상태 배지</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {residualCourses.map(c => (
+                            <tr key={c.id} className="hover:bg-gray-50">
+                              <td className="p-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedResidualIds.includes(c.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedResidualIds([...selectedResidualIds, c.id]);
+                                    } else {
+                                      setSelectedResidualIds(selectedResidualIds.filter(id => id !== c.id));
+                                    }
+                                  }}
+                                  className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                                />
+                              </td>
+                              <td className="p-3 font-semibold text-gray-900">
+                                <div>{c.name} {c.section ? `(${c.section})` : ""}</div>
+                              </td>
+                              <td className="p-3 text-center font-mono font-medium text-gray-600">
+                                {c.schoolYear}학년도
+                              </td>
+                              <td className="p-3 text-center">
+                                {c.isOwner ? (
+                                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded text-[10px] font-bold">
+                                    소유자
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 border border-gray-200 rounded text-[10px] font-medium">
+                                    공동 교사
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {c.calendarResidual && (
+                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded text-[11px] font-bold">
+                                      📅 캘린더 구독 잔존
+                                    </span>
+                                  )}
+                                  {c.driveResidual && (
+                                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-900 border border-indigo-300 rounded text-[11px] font-bold">
+                                      📁 폴더 미이동
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

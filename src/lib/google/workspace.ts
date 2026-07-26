@@ -1297,10 +1297,11 @@ export const restoreDeletedUser = async (userKey: string, orgUnitPath: string) =
 // ─────────────────────────────────────────
 
 // Mock data for classroom simulation
-let mockCourses: { id: string; name: string; section: string; ownerId: string; courseState?: string; creationTime?: string }[] = [
+let mockCourses: { id: string; name: string; section: string; ownerId: string; courseState?: string; creationTime?: string; calendarId?: string; teacherFolder?: { id: string } }[] = [
   { id: "course_1", name: "1학년 1학기 수학", section: "1반", ownerId: "teacher01@hmh.or.kr", courseState: "ACTIVE", creationTime: "2025-03-02T01:00:00.000Z" },
   { id: "course_2", name: "1학년 1학기 국어", section: "2반", ownerId: "teacher01@hmh.or.kr", courseState: "ACTIVE", creationTime: "2025-03-02T01:00:00.000Z" },
-  { id: "course_3", name: "2학년 1학기 물리", section: "기초", ownerId: "teacher02@hmh.or.kr", courseState: "ACTIVE", creationTime: "2025-03-02T01:00:00.000Z" }
+  { id: "course_3", name: "2학년 1학기 물리", section: "기초", ownerId: "teacher02@hmh.or.kr", courseState: "ACTIVE", creationTime: "2025-03-02T01:00:00.000Z" },
+  { id: "course_archived_1", name: "2024 1학년 2학기 수학 (교사 직접 보관)", section: "1반", ownerId: "teacher01@hmh.or.kr", courseState: "ARCHIVED", creationTime: "2024-09-01T01:00:00.000Z", calendarId: "mock_cal_archived_1", teacherFolder: { id: "mock_folder_archived_1" } }
 ];
 
 let mockCourseStudents: Record<string, string[]> = {
@@ -1346,9 +1347,12 @@ export const getClassroomUserId = async (email: string): Promise<string | null> 
 };
 
 // List Courses owned by a specific teacher
-export const listClassroomCourses = async (teacherEmail: string) => {
+export const listClassroomCourses = async (
+  teacherEmail: string,
+  courseStates: string[] = ["ACTIVE"]
+) => {
   if (isMock) {
-    return mockCourses.filter(c => c.ownerId === teacherEmail);
+    return mockCourses.filter(c => c.ownerId === teacherEmail && courseStates.includes(c.courseState || "ACTIVE"));
   }
 
   const classroom = getClassroomClient(teacherEmail);
@@ -1357,7 +1361,7 @@ export const listClassroomCourses = async (teacherEmail: string) => {
   try {
     const res = await classroom.courses.list({
       teacherId: teacherEmail,
-      courseStates: ["ACTIVE"]
+      courseStates: courseStates
     });
     return res.data.courses || [];
   } catch (error) {
@@ -1897,4 +1901,71 @@ export const findOrCreateArchiveFolder = async (
 
   return subFolderId;
 };
+
+/**
+ * 캘린더 구독 잔존 여부 판정 헬퍼
+ * - calendarList.get(calendarId) 성공 시 hidden/selected 여부 확인
+ * - 404 에러나 존재하지 않는 경우는 "이미 정리됨" (false)으로 처리
+ */
+export const checkCalendarResidual = async (
+  teacherEmail: string,
+  calendarId: string
+): Promise<boolean> => {
+  if (!calendarId) return false;
+  if (isMock) {
+    return calendarId.startsWith("mock_cal_archived");
+  }
+
+  const calendar = getCalendarClient(teacherEmail);
+  if (!calendar) return false;
+
+  try {
+    const res = await calendar.calendarList.get({ calendarId });
+    if (!res.data) return false;
+    if (res.data.hidden) return false;
+    return true;
+  } catch (error: any) {
+    if (error?.code === 404 || error?.status === 404 || error?.message?.includes("Not Found")) {
+      return false;
+    }
+    console.warn(`Calendar get failed for ${calendarId}:`, error?.message || error);
+    return false;
+  }
+};
+
+/**
+ * 드라이브 폴더 미이동 잔여 여부 판정 헬퍼
+ * - teacherFolderId의 parents를 조회하고 findOrCreateArchiveFolder 결과와 비교
+ * - 이미 아카이브 상위 폴더에 들어있으면 false (정리 완료), 아니면 true (미이동 잔여)
+ */
+export const checkDriveFolderResidual = async (
+  teacherEmail: string,
+  folderId: string,
+  schoolYear: number
+): Promise<boolean> => {
+  if (!folderId) return false;
+  if (isMock) {
+    return folderId.startsWith("mock_folder_archived");
+  }
+
+  const drive = getDriveClient(teacherEmail);
+  if (!drive) return false;
+
+  try {
+    const [fileRes, targetArchiveFolderId] = await Promise.all([
+      drive.files.get({ fileId: folderId, fields: "id, parents" }),
+      findOrCreateArchiveFolder(teacherEmail, schoolYear),
+    ]);
+
+    const parents = fileRes.data.parents || [];
+    if (parents.includes(targetArchiveFolderId)) {
+      return false; // 이미 아카이브 폴더 내에 위치함
+    }
+    return true; // 미이동 잔여
+  } catch (error: any) {
+    console.warn(`Drive folder residual check failed for ${folderId}:`, error?.message || error);
+    return false;
+  }
+};
+
 

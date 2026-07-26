@@ -14,6 +14,8 @@ import {
   moveDriveFolderToArchive,
   findOrCreateArchiveFolder,
   restoreClassroomCourse,
+  checkCalendarResidual,
+  checkDriveFolderResidual,
   isMock
 } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
@@ -68,6 +70,62 @@ export async function GET(req: NextRequest) {
     // 실제 2월/3월을 기다리지 않고도 브라우저에서 눈으로 검증할 수 있게 함. 프로덕션에서는 무시됨.
     const asOfParam = searchParams.get("asOf");
     const refDate = process.env.NODE_ENV !== "production" && asOfParam ? new Date(asOfParam) : new Date();
+    const mode = searchParams.get("mode");
+
+    // 역방향 잔여 정리 대상 조회: 교사가 직접 ARCHIVED 처리한 코스 중 캘린더 잔존 또는 드라이브 미이동 항목 탐지
+    if (mode === "residual") {
+      const currentSchoolYear = getCurrentSchoolYear(refDate);
+      const [archivedCourses, teacherUserId] = await Promise.all([
+        listClassroomCourses(teacherEmail, ["ARCHIVED"]),
+        getClassroomUserId(teacherEmail),
+      ]);
+
+      // 최근 2개 학년도 생성분만 검사 (currentSchoolYear - 1 이상)
+      const recentArchived = archivedCourses.filter((c: any) => {
+        if (!c.creationTime) return true;
+        const sYear = getSchoolYearFromCreationTime(c.creationTime);
+        return sYear >= currentSchoolYear - 1;
+      });
+
+      const residualCourseDetails = await Promise.all(
+        recentArchived.map(async (c: any) => {
+          const creationTime = c.creationTime || null;
+          const schoolYear = creationTime ? getSchoolYearFromCreationTime(creationTime) : currentSchoolYear;
+          const isOwner = !c.ownerId || c.ownerId === teacherEmail || (teacherUserId !== null && c.ownerId === teacherUserId);
+
+          const [calendarResidual, driveResidual] = await Promise.all([
+            c.calendarId ? checkCalendarResidual(teacherEmail, c.calendarId) : Promise.resolve(false),
+            c.teacherFolder?.id ? checkDriveFolderResidual(teacherEmail, c.teacherFolder.id, schoolYear) : Promise.resolve(false),
+          ]);
+
+          return {
+            id: c.id,
+            name: c.name,
+            section: c.section,
+            courseState: c.courseState,
+            creationTime,
+            schoolYear,
+            teacherFolder: c.teacherFolder || null,
+            calendarId: c.calendarId || null,
+            ownerId: c.ownerId,
+            isOwner,
+            calendarResidual,
+            driveResidual,
+            hasResidual: calendarResidual || driveResidual,
+          };
+        })
+      );
+
+      const residualCourses = residualCourseDetails.filter(c => c.hasResidual);
+
+      return NextResponse.json({
+        success: true,
+        currentSchoolYear,
+        teacherEmail,
+        courses: residualCourses,
+        isMock,
+      });
+    }
 
     // ownerId는 이메일이 아닌 Classroom 숫자 사용자 ID로 반환되므로, 본인 숫자 ID를 함께 조회해 비교
     const [courses, teacherUserId] = await Promise.all([
@@ -318,6 +376,102 @@ export async function POST(req: NextRequest) {
         });
       } catch (err: any) {
         console.error("Failed to save cleanup log:", err);
+        return NextResponse.json({
+          success: true,
+          pipelineResults,
+          logSaveError: err.message,
+        });
+      }
+    }
+
+    // 3. 역방향 잔여 정리 (execute_residual) 처리: 이미 ARCHIVED된 코스의 캘린더 구독 해제 & 드라이브 폴더 이동만 실행 (rename/archive 건너뜀)
+    if (action === "execute_residual") {
+      if (!courseId) {
+        return NextResponse.json({ error: "courseId가 누락되었습니다." }, { status: 400 });
+      }
+
+      const pipelineResults: {
+        rename?: { success: boolean; skipped: boolean };
+        archive?: { success: boolean; skipped: boolean };
+        calendar?: { success: boolean; error?: string; hiddenInsteadOfUnsubscribed?: boolean };
+        drive?: { success: boolean; error?: string; targetParentFolderId?: string; originalParentFolderId?: string | null };
+      } = {
+        rename: { success: true, skipped: true },
+        archive: { success: true, skipped: true },
+      };
+
+      // 캘린더 구독 해제 (본인 것이므로 공동 교사도 허용)
+      if (calendarId) {
+        try {
+          const calResult = await unsubscribeClassroomCalendar(teacherEmail, calendarId);
+          pipelineResults.calendar = {
+            success: true,
+            hiddenInsteadOfUnsubscribed: (calResult as any)?.hiddenInsteadOfUnsubscribed || undefined,
+          };
+        } catch (err: any) {
+          pipelineResults.calendar = { success: false, error: err.message };
+        }
+      }
+
+      // 드라이브 폴더 이동 (isOwner만)
+      let driveOriginalParentFolderId: string | null = null;
+      if (driveFolderId) {
+        const isOwner = body.isOwner !== false;
+        if (!isOwner) {
+          pipelineResults.drive = { success: false, error: "공동 교사는 드라이브 폴더 이동 권한이 없습니다." };
+        } else {
+          try {
+            let parentId = targetParentFolderId;
+            if (!parentId) {
+              const sYear = schoolYear || getCurrentSchoolYear() - 1;
+              parentId = await findOrCreateArchiveFolder(teacherEmail, sYear);
+            }
+
+            const moveResult = await moveDriveFolderToArchive(teacherEmail, driveFolderId, parentId);
+            driveOriginalParentFolderId = moveResult.originalParentFolderId ?? null;
+            pipelineResults.drive = {
+              success: true,
+              targetParentFolderId: parentId,
+              originalParentFolderId: driveOriginalParentFolderId,
+            };
+          } catch (err: any) {
+            pipelineResults.drive = { success: false, error: err.message };
+          }
+        }
+      }
+
+      // Firestore 감사/원복 로그 저장 (mode: "residual" 필드 포함해 기존 복원 기능 호환)
+      const logData = {
+        teacherEmail,
+        courseId,
+        originalName: originalName || "",
+        newName: originalName || "",
+        calendarId: calendarId || null,
+        driveFolderId: driveFolderId || null,
+        driveOriginalParentFolderId,
+        results: pipelineResults,
+        timestamp: new Date().toISOString(),
+        restored: false,
+        mode: "residual",
+      };
+
+      try {
+        const docRef = await adminDb.collection("classroom_cleanup_logs").add(logData);
+        await writeAuditLog({
+          operatorEmail: teacherEmail,
+          action: "CLASSROOM_CLEANUP_RESIDUAL",
+          targetEmail: courseId,
+          details: `보관된 클래스룸 잔여 정돈 (${logData.originalName})`,
+          status: "success",
+        });
+
+        return NextResponse.json({
+          success: true,
+          logId: docRef.id,
+          pipelineResults,
+        });
+      } catch (err: any) {
+        console.error("Failed to save residual cleanup log:", err);
         return NextResponse.json({
           success: true,
           pipelineResults,
