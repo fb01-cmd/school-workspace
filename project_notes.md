@@ -2,7 +2,11 @@
 
 ## 🔒 현재 작업 중 파일
 
-*(현재 비어 있음)*
+- `src/app/api/workspace/classroom/transfer-enroll/route.ts`
+- `src/components/admin/lifecycle/TransferInTab.tsx`
+- `src/lib/google/workspace.ts`
+
+
 
 
 
@@ -1334,3 +1338,9 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - **조치**: `transfer_classroom_spec.md` **§5 v2.0 개정** — 로스터 방식 전면 폐기, **역방향 멤버십 집계**로 재설계 (`scan_members`: 반원별 `courses.list(studentId)` 동시성 3 집계 → 상위 후보만 `students.list` 인원 카운트 → 판정). 1,257개 로스터 조회 → **~30여 회 호출**로 대체, 이메일 스코프 불필요, 배치 루프·진행률 UI 제거. 회귀 판정 기준(위 4개 코스 실측값)을 스펙에 명기.
 - **별도 트랙 (사용자 작업 선행 필수)**: 강제 배정 페이지의 학생 이메일 표시·제거와 후보 담당교사 이메일 표시가 같은 스코프 공백으로 프로덕션에서 깨져 있음. 관리 콘솔 DWD 허용 목록에 `classroom.profile.emails` 추가 → 확인 후 → `getClassroomClient` 스코프 추가·배포. **순서 역전 시 모든 Classroom 호출 즉사 — 코드 선배포 금지.**
 - **참고**: 도메인 코스 실측 ACTIVE 1,257 / ARCHIVED 2,518 — 스캔 풀 자체를 줄이는 학기말 정리 캠페인 권장(별건).
+
+## [2026-07-26] Claude → 기록 (고아 폴더 실서버 스모크 테스트 완료 + DWD 스코프 전파 실측 확인)
+
+- **고아 폴더 최종 잔여 검증 완료 (사용자 실서버 수행)**: playviolin 계정에서 검사→후보 2건 탐지(진단 예측과 일치)→정돈→이력 탭 "고아 폴더" 배지 표시→[되돌리기] confirm 문구 확인까지 ①~④ 전부 통과. Firestore 실측: orphan 로그 2건("그래픽 계산기 마스터", "2025.2.8~양평 강의") timestamp/originalName 정상 기록, **인덱스 정상 경로 쿼리에 2/2건 포함**. 두 폴더는 실제 정리 대상이라 원복하지 않고 아카이브 유지(restored:false). → **고아 폴더 기능 검증 전부 종결.**
+- **DWD `classroom.profile.emails` 스코프**: 사용자가 관리 콘솔 추가 완료, **토큰 발급·emailAddress 수신 실측 확인**(학생 이메일 정상 반환). 이제 `getClassroomClient` scopes 배열에 해당 스코프 추가·배포 가능 (선배포 금지 조건 해소됨). 이 수정으로 강제 배정 페이지(admin/classroom)의 학생 이메일 표시·제거와 스캔 후보 ownerEmail 표시가 회복된다.
+- **대기**: Antigravity 스캔 v2.0(scan_members) 재구현 진행 중 — 완료 시 표적 리뷰 예정(회귀 기준: 1학년 10반에서 4개 코스 후보).
