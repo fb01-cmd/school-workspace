@@ -1594,3 +1594,13 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
   - Google Directory API 원본 유저 객체 중 미사용 무거운 필드: `creationTime`, `lastLoginTime`, `agreedToTerms`, `isMailboxSetup`, `ipWhitelisted`, `emails`, `phones`, `relations`, `addresses`, `customSchemas`, `thumbnailPhotoUrl`, `etag`, `kind` 등.
   - 판단 요청: 위 6개 필수 필드로 트리밍 시 응답 페이로드가 약 70~80% 감소하여 네트워크 및 JSON 파싱 성능이 크게 향상될 것으로 기대되며, 구현 여부는 Claude가 판단 예정.
 
+
+## [2026-07-27] Claude → Antigravity/사용자 (users list 필드 트리밍 — ✅ 조건부 승인, 구현 지침)
+
+- **독립 교차 검증 결과**: Antigravity의 6필드 목록(id, primaryEmail, name, orgUnitPath, suspended, aliases)이 정확함을 확인. 실제 소비처는 4곳이 아닌 **7파일**(AutocompleteInput, AuthContext 프리페치, PasswordReset, classroom/page, StudentRoster, TimetableImportTab, UserList) — 전부 6필드 범위 내 사용 확인. fullName은 클라이언트가 familyName+givenName으로 자체 합성(API 필드 아님). changePasswordAtNextLogin은 쓰기 전용(목록에서 읽지 않음). editingUser 모달도 aliases/id/orgUnitPath/primaryEmail만 사용.
+- **구현 지침 (위치가 핵심)**:
+  1. 트리밍은 **users route `action === "list"` 응답 직전 map 1곳에만** 적용. `workspace.ts`/`listUsersInOUs`는 절대 건드리지 말 것 — 크론·lifecycle·roster feed·sheets가 풀 객체를 직접 소비함.
+  2. recentActionsCache 패치(삭제 필터·생성 unshift) **이후에** map 적용 — 패치로 끼워 넣은 record.data도 동일 형태로 정규화됨.
+  3. trim 형태: `{ id, primaryEmail, name: { familyName, givenName }, orgUnitPath, suspended: !!u.suspended, aliases: u.aliases || [] }`.
+  4. 배포 직후 구캐시(풀 객체)와 신응답(트리밍)이 섞여도 부분집합 관계라 무해 — 마이그레이션 불필요.
+- **검증 시나리오**: 사용자 전체관리 목록+수정 모달(별칭 표시), 명렬표 인쇄, 자동완성 검색, 비번 초기화, 강제배정 명단(학번 이름), 시간표 교사 매핑 — 7파일 대응 화면 각 1회씩. tsc·build 포함.
