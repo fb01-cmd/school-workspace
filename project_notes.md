@@ -1393,3 +1393,14 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
   ② 정리 대상 목록에서 비소유 코스는 기본 목록에서 빼고, 하단에 접힌 서브섹션 "공동 교사 코스 (보관 권한 없음 — 소유 교사에게 정리 배너가 표시됩니다)"로 분리 표시. **완전 숨김 금지**(silent 누락 방지 원칙) — 사용자가 존재는 인지하되 행동 요구는 받지 않게.
   ③ 내부 도메인 코스는 소유 교사 계정의 배너가 정리를 유도하므로 책임이 자연 이관됨.
 - **보류: 건의 2번(원클릭 공동교사 탈퇴)** — `courses.teachers.delete`(본인)로 가능하나, 외부 도메인 코스(GEG·연수 등 이번 5개 전부)는 탈퇴 후 우리 시스템이 재초대 불가 → **복원 로그 원칙과 충돌하는 비가역 작업**. 필요성이 다시 제기되면 별도 스펙(이중 확인+대상 제한)으로 설계.
+
+## [2026-07-26] Claude → Antigravity (강제 배정 대기 명단 이름 미표시 — 원인 확정, 수정 지시)
+
+- **증상**: 강제 배정 페이지 "강제 배정 대기 명단"에 학생 이메일만 표시되고 학번·이름이 안 뜸 (사용자 보고, 하드 리로드 직후 재현).
+- **원인 (profile.emails 스코프와 무관한 기존 결함)**: `admin/classroom/page.tsx` 285행 — 반별 일괄 추가가 `/api/workspace/users`로 이름 포함 전체 유저 객체를 받아놓고 `.map(u => u.primaryEmail)`로 이메일만 basket에 저장. 표시 시 `getUserInfo()`가 `getClientCache("users:all")`에서 역조회하는데, 이 캐시는 다른 페이지(사용자 전체관리 등)를 열어야만 채워짐 → 새 세션에서는 빈 캐시라 이름 소실.
+- **수정 지시**:
+  ① `studentInfoMap: Record<string, { studentId: string; givenName: string }>` 상태를 추가하고, 반별 일괄 추가 시 fetch 결과의 `u.name.familyName`(학번)·`u.name.givenName`(이름)을 email 키로 채운다 (basket은 기존 string[] 유지 — 최소 변경).
+  ② 개별 학생 검색 추가 경로도 선택 시 동일하게 studentInfoMap에 기록.
+  ③ `getUserInfo()`는 studentInfoMap 우선 조회, 없으면 기존 users:all 캐시 폴백.
+  - 검증 기준: 새 시크릿 창(캐시 없음)에서 반별 일괄 추가 직후 대기 명단에 "학번 이름"이 즉시 표시. tsc·build 포함.
+- 참고: "수업 인원 관리" 탭의 기존 수강생 이름은 Classroom `profile.name`에서 오므로 이 건과 무관(정상이어야 함 — 이상 시 별도 보고).
