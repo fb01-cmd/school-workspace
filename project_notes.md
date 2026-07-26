@@ -1376,3 +1376,20 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
   - `npx tsc --noEmit` ✅ (0 errors)
   - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29개 라우트 정상 생성)
 
+
+## [2026-07-26] Claude → Antigravity/사용자 (스캔 v2.0+스코프 9003158 표적 리뷰 — ✅ 승인·배포 / 공동교사 정리 알림 건의 설계 결정)
+
+### ✅ 9003158 표적 리뷰 승인 (push·배포 Claude가 실행)
+- 백엔드: 스펙 §5 v2.0 완전 일치 — scan_init 코스 목록 제거, scan_members(3~40명 검증, 동시성 3, 멤버별 실패 `failedMemberEmails` 명시 반환+전원 실패 시 500, 멤버 내 중복 코스 dedup, coverage 분모=유효 멤버 수, 1차 후보만 students.list 인원 카운트로 purity/size 판정, alreadyEnrolled는 전입생 본인 코스 1회 조회), scan_batch 삭제. `listStudentCourses` 헬퍼 pageToken 루프 포함.
+- `getClassroomClient`에 `classroom.profile.emails` 추가 — DWD 전파 실측 확인(58fd519) 후 배포라 순서 안전.
+- UI: 배치 루프·진행률 제거 → 단일 호출+1회 재시도, 실패 멤버 경고 문구. mock에 1-10반 실측 시나리오(4개 코스+공통영어 탈락 케이스) 재현 — mock-only 함정 보완으로 적절.
+- 독립 검증: `npx tsc --noEmit` ✅ (Claude 재확인). 커밋 메시지의 "실서버 E2E"는 로컬 서버+실 API 검증으로 이해 — **배포 후 UI에서 1학년 10반 재스캔으로 최종 확인 필요** (회귀 기준: 통합사회·한국사·공통수학1·과학탐구실험 4개 후보, 공통영어 탈락).
+- 사소(비차단): `listStudentCourses`의 `adminEmail` 파라미터가 env 우선이라 사실상 미사용 — 정리 선택사항.
+
+### 공동교사 정리 알림 건의 (사용자 제기) — 설계 결정
+증상: 학기말 정리 배너가 "정리 필요한 코스 5개"로 잡은 것이 전부 공동 교사(소유자만 보관 가능) 코스 — 사용자가 보관 실행 불가한 코스로 잔소리함. 원인: `stats.targetCount = courseDetails.filter(c => c.isTarget)` — **isOwner 필터 없음** (route.ts 291행). 목록 기본선택·실행버튼은 이미 isOwner를 거르므로 배너 카운트와 목록 표시만 불일치.
+- **채택: 건의 1번(비소유 코스 알림 제외 + 목록 분리)**
+  ① `targetCourses` 필터를 `c.isTarget && c.isOwner`로 수정 (배너 카운트에서 제외).
+  ② 정리 대상 목록에서 비소유 코스는 기본 목록에서 빼고, 하단에 접힌 서브섹션 "공동 교사 코스 (보관 권한 없음 — 소유 교사에게 정리 배너가 표시됩니다)"로 분리 표시. **완전 숨김 금지**(silent 누락 방지 원칙) — 사용자가 존재는 인지하되 행동 요구는 받지 않게.
+  ③ 내부 도메인 코스는 소유 교사 계정의 배너가 정리를 유도하므로 책임이 자연 이관됨.
+- **보류: 건의 2번(원클릭 공동교사 탈퇴)** — `courses.teachers.delete`(본인)로 가능하나, 외부 도메인 코스(GEG·연수 등 이번 5개 전부)는 탈퇴 후 우리 시스템이 재초대 불가 → **복원 로그 원칙과 충돌하는 비가역 작업**. 필요성이 다시 제기되면 별도 스펙(이중 확인+대상 제한)으로 설계.
