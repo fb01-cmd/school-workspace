@@ -447,8 +447,10 @@ export default function ClassroomCleanupTab() {
     loadData();
   };
 
-  const targetCourses = courses.filter(c => c.isTarget && !excludedIds.includes(c.id));
-  const selectableCourses = courses.filter(c => c.isOwner && !excludedIds.includes(c.id) && c.courseState !== "ARCHIVED");
+  const targetCourses = courses.filter(c => c.isTarget && c.isOwner && !excludedIds.includes(c.id));
+  const ownerCourses = courses.filter(c => c.isOwner);
+  const coTeacherCourses = courses.filter(c => !c.isOwner);
+  const selectableCourses = ownerCourses.filter(c => !excludedIds.includes(c.id) && c.courseState !== "ARCHIVED");
 
   if (loading) {
     return (
@@ -592,7 +594,7 @@ export default function ClassroomCleanupTab() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {courses.map(course => {
+                  {ownerCourses.map(course => {
                     const isExcluded = excludedIds.includes(course.id);
                     const isSelected = selectedIds.includes(course.id);
 
@@ -619,11 +621,6 @@ export default function ClassroomCleanupTab() {
                         <td className="p-3.5 font-medium text-gray-900">
                           <div>{course.name}</div>
                           {course.section && <div className="text-xs text-gray-400 font-normal">{course.section}</div>}
-                          {!course.isOwner && (
-                            <span className="inline-block px-1.5 py-0.5 bg-gray-200 text-gray-700 text-[10px] font-semibold rounded mt-1">
-                              공동 교사 (소유자만 보관 가능)
-                            </span>
-                          )}
                         </td>
                         <td className="p-3.5">
                           <input
@@ -668,7 +665,7 @@ export default function ClassroomCleanupTab() {
                       </tr>
                     );
                   })}
-                  {courses.length === 0 && (
+                  {ownerCourses.length === 0 && (
                     <tr>
                       <td colSpan={6} className="p-8 text-center text-gray-400 text-sm">
                         소유한 클래스룸 코스가 없습니다.
@@ -679,6 +676,62 @@ export default function ClassroomCleanupTab() {
               </table>
             </div>
           </div>
+
+          {/* 공동 교사 코스 서브섹션 (보관 권한 없음) */}
+          {coTeacherCourses.length > 0 && (
+            <div className="border border-gray-200 rounded-xl overflow-hidden bg-gray-50/50">
+              <details className="group">
+                <summary className="p-3.5 flex items-center justify-between font-semibold text-xs text-gray-700 cursor-pointer hover:bg-gray-100/60 select-none">
+                  <div className="flex items-center gap-2">
+                    <span>👥</span>
+                    <span>공동 교사 코스 ({coTeacherCourses.length}개 — 보관 권한 없음, 소유 교사에게 정리 배너가 표시됩니다)</span>
+                  </div>
+                  <span className="text-gray-400 group-open:rotate-180 transition-transform">▼</span>
+                </summary>
+                <div className="border-t border-gray-200 bg-white overflow-x-auto">
+                  <table className="w-full text-left text-sm text-gray-700">
+                    <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500 border-b border-gray-200">
+                      <tr>
+                        <th className="p-3 w-10 text-center"></th>
+                        <th className="p-3">클래스룸 이름</th>
+                        <th className="p-3 w-28">생성 연도</th>
+                        <th className="p-3 w-24">상태</th>
+                        <th className="p-3 text-right pr-4">비고</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {coTeacherCourses.map(course => (
+                        <tr key={course.id} className="hover:bg-gray-50/80">
+                          <td className="p-3 text-center">
+                            <input type="checkbox" disabled checked={false} className="rounded border-gray-300 opacity-40 cursor-not-allowed" />
+                          </td>
+                          <td className="p-3 font-medium text-gray-900">
+                            <div>{course.name}</div>
+                            {course.section && <div className="text-xs text-gray-400 font-normal">{course.section}</div>}
+                          </td>
+                          <td className="p-3 text-xs text-gray-600 font-semibold">{course.schoolYear}학년도</td>
+                          <td className="p-3">
+                            {course.courseState === "ARCHIVED" ? (
+                              <span className="px-2 py-0.5 bg-gray-200 text-gray-700 rounded-full text-xs font-semibold">보관됨</span>
+                            ) : course.isTarget ? (
+                              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-bold">정리 권장</span>
+                            ) : (
+                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold">현재 학년도</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-right pr-4">
+                            <span className="inline-block px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded">
+                              공동 교사 (소유자만 보관 가능)
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            </div>
+          )}
 
           {/* 보관된 클래스룸 잔여 정리 (역방향 정리) 섹션 */}
           <div className="mt-10 border-t border-gray-200 pt-6 space-y-4">

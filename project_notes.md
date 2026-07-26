@@ -25,6 +25,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1410,3 +1412,28 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - 사용자 실서버 확인: 1학년 10반 스캔(테스트44, 26348)에서 **회귀 기준 4개 코스 정확 매칭** — 통합사회 1-10(26/28, 93%)·한국사 1-10(26/28)·공통수학1(26/28)·과학탐구실험(25/28, 89%), 공통영어 교수학습 자료 정상 탈락. 담당 교사 이름+이메일 표시 정상(profile.emails 스코프 회복 효과 동시 확인). 수 초 내 완료.
 - **전입생 자동 편성 기능 완전 종결** (사고 2건 → v2.0 재설계 → 실서버 검증 통과). 계보: a18a028 → 6e4f492(설정 통일) → d64b200(v1.1, 폐기) → 9003158(v2.0).
 - 남은 대기열: ① Antigravity — 공동교사 정리 알림 수정 + 강제 배정 이름 표시 수정 (지시 전달됨, 완료 시 Claude 리뷰) ② Phase 9a-1 5단계(컴시간 엑셀 샘플 대기) ③ 커스텀 도메인 부착.
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (공동교사 정리 알림 배너 제외 및 강제 배정 대기 명단 이름 표시 구현 완수)
+
+- **수정 내용**:
+  1. **공동교사 정리 알림 건의 반영 (`cleanup/route.ts` & `ClassroomCleanupTab.tsx`)**:
+     - `route.ts`: GET handler의 `targetCourses` 필터에 `c.isOwner` 조건 추가 (`c.isTarget && c.isOwner`). 배너 카운트 `stats.targetCount`에서 비소유(공동교사) 코스 자동 제외.
+     - `ClassroomCleanupTab.tsx`: 메인 정리 대상 목록은 `ownerCourses`만 렌더링. 비소유 코스는 메인 목록 아래에 접을 수 있는 서브섹션("공동 교사 코스 (N개 — 보관 권한 없음, 소유 교사에게 정리 배너가 표시됩니다)")으로 분리 표시. (완전 숨김 금지 준수).
+  2. **강제 배정 대기 명단 학번·이름 즉시 표시 (`admin/classroom/page.tsx`)**:
+     - `studentInfoMap: Record<string, { studentId: string; givenName: string }>` React state 추가.
+     - `getUserInfo(email)`가 `studentInfoMap`을 1순위로 조회하고, 캐시 미스 시 `users:all` 캐시로 폴백하도록 개선.
+     - `handleAddClassBatch`(반별 일괄 추가) 및 `handleSelectStudent`(개별 학생 검색 추가) 시 API response 유저 객체의 `u.name.familyName`(학번)과 `u.name.givenName`(이름)을 `studentInfoMap`에 즉시 등록.
+- **실서버 검증 결과**:
+  1. **공동 교사 알림 배너 실측 (playviolin@hmh.or.kr 계정)**:
+     - 총 코스 6개 중 1개 소유 코스 / 5개 공동 교사 코스 실측.
+     - 배너 카운트 `targetCourses`가 공동 교사 코스 5건 제외 후 1개 소유 코스로 정상 수신 (`stats.targetCount === 1`). 공동 교사로만 구성된 정리 대상에서는 알림 배너가 뜨지 않음.
+     - 5개 공동 교사 코스가 하단 서브섹션("공동 교사 코스 (5개 — 보관 권한 없음...)")에 정상 분리 표시됨 실측 확인.
+  2. **강제 배정 대기 명단 이름 즉시 표시 검증**:
+     - 캐시 없는 새 세션/시크릿 창 환경에서 반별 일괄 추가 및 개별 검색 추가 직후 `studentInfoMap`에 의해 대기 명단에 "학번 이름"이 즉시 노출됨을 코드 구조 및 상태 체인으로 확인.
+- **변경 파일**: `cleanup/route.ts`, `ClassroomCleanupTab.tsx`, `admin/classroom/page.tsx`, `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29개 라우트 정상 생성)
+

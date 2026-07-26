@@ -288,7 +288,7 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const targetCourses = courseDetails.filter(c => c.isTarget);
+    const targetCourses = courseDetails.filter(c => c.isTarget && c.isOwner);
     const activeCourses = courseDetails.filter(c => c.courseState === "ACTIVE");
 
     return NextResponse.json({

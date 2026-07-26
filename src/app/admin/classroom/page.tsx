@@ -55,6 +55,7 @@ export default function ClassroomPage() {
 
   // Student Selection Basket
   const [studentBasket, setStudentBasket] = useState<string[]>([]);
+  const [studentInfoMap, setStudentInfoMap] = useState<Record<string, { studentId: string; givenName: string }>>({});
   const [autoCompleteValue, setAutoCompleteValue] = useState("");
 
   // Class selection for batch insert
@@ -217,8 +218,11 @@ export default function ClassroomPage() {
     }
   };
 
-  // Helper: lookup display info from users:all cache
+  // Helper: lookup display info from studentInfoMap state or users:all cache
   const getUserInfo = (email: string): { studentId: string; givenName: string } => {
+    if (studentInfoMap[email]) {
+      return studentInfoMap[email];
+    }
     const cached: any[] = getClientCache("users:all") || [];
     const u = cached.find((u: any) => u.primaryEmail === email);
     if (!u) return { studentId: "", givenName: "" };
@@ -229,11 +233,20 @@ export default function ClassroomPage() {
   };
 
   // 2. Student Selection Management
-  const handleSelectStudent = (email: string) => {
+  const handleSelectStudent = (email: string, name?: string) => {
     if (!email) return;
     if (studentBasket.includes(email)) {
       alert("이미 바구니에 담긴 학생입니다.");
       return;
+    }
+    if (name) {
+      setStudentInfoMap(prev => ({
+        ...prev,
+        [email]: {
+          studentId: prev[email]?.studentId || "",
+          givenName: name,
+        },
+      }));
     }
     setStudentBasket(prev => [...prev, email]);
     setAutoCompleteValue("");
@@ -279,15 +292,31 @@ export default function ClassroomPage() {
       const allUsers = data.users || [];
       const classPattern = `${batchGrade}${String(batchClass).padStart(2, "0")}`;
       
-      const classStudents = allUsers.filter((u: any) => {
+      const matchedUsers = allUsers.filter((u: any) => {
         const familyName = (u.name?.familyName || "").trim();
         return familyName.startsWith(classPattern);
-      }).map((u: any) => u.primaryEmail);
+      });
 
-      if (classStudents.length === 0) {
+      if (matchedUsers.length === 0) {
         alert(`${batchGrade}학년 ${batchClass}반 학생을 찾을 수 없습니다. (학번이 학년/반 포맷에 맞게 입력되었는지 확인하세요)`);
         return;
       }
+
+      // Record student info in studentInfoMap
+      setStudentInfoMap(prev => {
+        const next = { ...prev };
+        matchedUsers.forEach((u: any) => {
+          if (u.primaryEmail) {
+            next[u.primaryEmail] = {
+              studentId: u.name?.familyName || "",
+              givenName: u.name?.givenName || "",
+            };
+          }
+        });
+        return next;
+      });
+
+      const classStudents = matchedUsers.map((u: any) => u.primaryEmail);
 
       // Add to queue, avoiding duplicates
       setStudentBasket(prev => {
@@ -615,7 +644,7 @@ export default function ClassroomPage() {
               <AutocompleteInput
                 value={autoCompleteValue}
                 onChange={setAutoCompleteValue}
-                onSelect={(email) => handleSelectStudent(email)}
+                onSelect={(email, name) => handleSelectStudent(email, name)}
                 placeholder="추가할 학생 이름 또는 이메일 검색..."
                 type="user"
                 domain={domain}
