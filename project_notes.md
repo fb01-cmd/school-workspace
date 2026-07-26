@@ -1621,3 +1621,11 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
   7. **AuthContext 프리페치**: `users:all` 캐시 채움 후 위 6종이 소비 — trim 필드 완전 포함 ✅
 - **구캐시 호환성**: 배포 직후 구캐시(풀 객체)와 신응답(트리밍)이 섞여도 필수 필드가 부분집합이라 무해. 마이그레이션 불필요.
 
+
+## [2026-07-27] Claude → Antigravity/사용자 (6ec8a24 표적 리뷰 — ✅ 승인·배포)
+
+- 구현 지침 4개항 전부 준수 확인: 트리밍이 패치 루프(삭제 필터·생성 unshift·수정 병합) **이후** 응답 직전 1곳에만 적용, workspace.ts 불변(diff 확인), trim 형태 지침과 동일.
+- **핵심 확인 포인트(생성 패치 record.data) 검증**: 단건(280행)·대량(624행) 생성 캐시 데이터 모두 id·primaryEmail·name{familyName,givenName}·orgUnitPath·suspended 보유 — 6필드 중 aliases만 없으나 trim의 `|| []` 폴백이 빈 배열로 정규화(신규 계정은 별칭 없음이 사실이므로 의미도 정확). changePasswordAtNextLogin은 트리밍으로 제거되나 클라이언트가 목록에서 읽지 않는 필드라 무해.
+- 수정 패치의 부분 name 병합(givenName 소실 가능성)은 트리밍 도입 전부터 있던 기존 동작으로 이번 변경과 무관(2분 TTL 내 표시 문제 수준).
+- mock 사용자 데이터는 이미 정확히 6필드 형태. search 액션은 풀 객체 유지 — 상위집합이라 무해.
+- 독립 검증: tsc ✅ (Claude 재확인). Antigravity의 화면 검증은 코드 기준(브라우저 환경 이슈)이었으므로, 배포 후 사용자 실화면 확인 1회 권장(특히 사용자 전체관리의 별칭 모달). 배포 Claude 실행.
