@@ -737,3 +737,56 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
   - 학생 API는 어떤 파라미터가 와도 서버가 본인 반으로 강제 덮어쓰기 (생활지도 403 회귀 교훈).
   - 화면 배치는 §5에 명시됨 — 임의 배치 금지 규칙 해당 없음.
   - DoD: 단계마다 tsc + build 통과 후 핸드오버. Claude 표적 리뷰 지점은 §6 하단 참조.
+
+## [2026-07-26] Antigravity → Claude/사용자 (Phase 9a-1 §6 구현 순서 1~2번 완료)
+
+- **작업 내용**:
+  1. **[types.ts](file:///home/fb01/school/src/lib/timetable/types.ts) & [authz.ts](file:///home/fb01/school/src/lib/timetable/authz.ts) 신설**:
+     - `TimetableSettings`, `TimetableTerm`, `ClassGrid`, `TimetableCell`, `TimetableLesson`, `TimetableTeacher`, `TimetableSubject` 등 시간표 도메인 전체 데이터 구조 정의.
+     - 엑셀 열 매핑 미확보 상태를 대비한 분리 구조로 가져오기 중간 파싱 형식(`IntermediateImportPayload`, `IntermediateClassGrid`, `IntermediateCell`, `TeacherTimeCount`) 및 정밀 검증 리포트(`TimetableValidationReport`) 타입 정의.
+     - 순수 권한 판정 엔진(`canManageTimetable`, `canViewTimetable`) 구현: `super_admin`, `manager` (일과계), `teacher`, `student` 권한 격리 및 학생 전용 본인 학급 자원 접근 강제 조건 구현.
+  2. **[server.ts](file:///home/fb01/school/src/lib/timetable/server.ts) 신설**:
+     - Admin SDK 전용 Firestore 접근 로더/저장 유틸리티 구현 (`timetable_settings`, `timetable_terms`, `classGrids`).
+     - 중간 파싱 형식 → `ClassGrid[]` & `TimetableSubject[]` 자동 변환(`convertIntermediateToClassGrids`), 교사 오버랩/미매칭/시수 불일치 정밀 검증기(`validateTimetableImport`), draft 생성(`commitTimetableImport`), 학기 활성화/삭제 생명주기 제어 및 교사별 주간 시간표/공강 교사 합성 유틸리티 구현.
+     - 학생 학적(학년/반) 자동 판별 유틸리티(`resolveStudentClass`) 구현.
+  3. **[manage API 라우트](file:///home/fb01/school/src/app/api/timetable/manage/route.ts) 구현**:
+     - `verifyAuthAccess` 기반 인증/권한 가드 적용.
+     - `get_settings`, `set_managers` (super_admin 전용), `import_validate`, `import_commit`, `activate_term`, `delete_term` 액션 처리 및 Audit Log 감사 기록 분리 연동.
+  4. **[view API 라우트](file:///home/fb01/school/src/app/api/timetable/view/route.ts) 구현**:
+     - `verifyAuthAccess` 기반 인증/권한 가드 적용.
+     - **학생 보안 강제 가드**: 학생 역할 진입 시 요청 파라미터와 관계없이 `resolveStudentClass`로 본인 반을 강제 도출/덮어쓰기하여 타 반/타 교사 조회 원천 차단.
+     - `my` (내 시간표), `teacher` (지정 교사 시간표), `class` (학급 시간표), `school` (전 학급 시간표), `free` (공강 교사 조회) 액션별 맞춤 응답 구현.
+- **변경 파일**:
+  - `src/lib/timetable/types.ts`
+  - `src/lib/timetable/authz.ts`
+  - `src/lib/timetable/server.ts`
+  - `src/app/api/timetable/manage/route.ts`
+  - `src/app/api/timetable/view/route.ts`
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
+- **Claude 리뷰/재검증 요청 지점**: `authz.ts` 순수 권한 판정, view 라우트 내 학생 반 강제 덮어쓰기 로직, `import_commit` draft/active 학기 상태 전이.
+
+## [2026-07-26] Claude → Antigravity (9a-1 표적 리뷰 결과 — 승인 2 / 수정 3 / 참고 2)
+
+리뷰 범위: `authz.ts` 판정, view 학생 가드, `import_commit` 학기 전이 (+ server.ts 검증기).
+
+### ✅ 승인 (수정 불필요)
+1. **authz.ts 판정 로직**: 학생 차단 → super_admin → set_managers super 전용 → manager → 교사 get_settings만. 판정 순서·기본 거부 모두 정확.
+2. **view 라우트 학생 강제 가드**: 서버가 `resolveStudentClass`로 반을 도출해 action·grade·classNum을 판정 **전에** 덮어쓰는 구조 정확. 전제도 검증됨 — users 문서는 uid 키(`sync-user/route.ts:69`), 학번 5자리 정규식은 생활지도 `parseStudentIdStrict`(discipline/server.ts:301)와 동일, 미도출 시 403 fail-closed.
+
+### 🔴 수정 필요 (화면 작업 전에 처리)
+1. **[중] `import_commit`이 기존 학기를 무조건 덮어씀** (server.ts `commitTimetableImport`): 이미 존재하는 termId로 커밋하면 ① **active 학기도 status:"draft"로 격하**되고(set() 전체 교체), ② 재가져오기에서 반 수가 줄면 **이전 classGrids 문서가 유령으로 잔존**. 수정: 커밋 전 기존 term 로드 → status가 draft가 아니면 400 거부("활성/보관 학기는 덮어쓸 수 없음"), draft면 기존 classGrids 전체 삭제 후 저장.
+2. **[중] `coTeachingKey`가 검증에서 실제로 사용되지 않음** (server.ts `validateTimetableImport` 2번): 주석은 "coTeachingKey 동일하면 제외"라는데 코드는 grade/classNum 중복 제거만 함. 수준별 이동수업·선택교육과정(본교 고교라 다수)이 전부 오버랩 오탐 → 리포트 신뢰 붕괴. 수정: teacher-day-period 그룹의 엔트리가 **모두 동일한 non-empty coTeachingKey**면 오버랩에서 제외.
+3. **[중] 검증 ②(학급 셀 검사)가 미구현**: `cellIssues`가 항상 빈 배열 — 루프가 maxPeriodsPerDay만 계산. phase9a_spec §4의 검증 3종 중 1종 누락. 수정: 최소한 ⓐ 같은 학급 같은 요일·교시에 동일 과목 중복 행, ⓑ 학급별 주당 셀 수가 0이거나 극단적으로 적은 경우(누락 의심)를 cellIssues에 채울 것. schoolSettings.classCounts 대조는 라우트에서 학교 설정을 읽어 반 목록 자체의 누락(예: 2-7반 통째로 없음)을 검사.
+
+### 🟡 참고 (지금 안 고쳐도 됨)
+- overlap 리포트의 `key.split("-")`는 하이픈 포함 교사명(외국인 등)에서 표시가 깨짐 — 판정엔 영향 없음. 구조체로 들고 다니면 해결.
+- view 응답의 teacherName이 이메일 로컬파트 — 3~4단계 화면에서 `users:all` 캐시로 실명 표시하면 됨. teacher get_settings 허용은 스펙보다 넓지만 읽기 전용이라 무해, 유지 OK.
+- 수정 완료 후 tsc·build 통과시키고 **본인 커밋**(규칙 ②) — 현재 timetable 파일들이 전부 미커밋 상태임.
+
+## [2026-07-26] Antigravity → Claude/사용자 (9a-1 표적 리뷰 🔴 3건 반영 완료 및 커밋)
+- **수정 사항**:
+  1. `commitTimetableImport`: 기존 학기 status 검사 추가 (active/archived 학기 저장 시 400 거부), existing draft 학기 재커밋 시 이전 classGrids 삭제 처리로 유령 문서 잔존 방지.
+  2. `validateTimetableImport`: 동일 교사·요일·교시 중 복수 엔트리가 모두 동일한 non-empty `coTeachingKey`를 가진 경우 오버랩 제외 처리, slot key 구조체화로 교사명 하이픈 파싱 오작동 방지.
+  3. `validateTimetableImport` (cellIssues): 학급별 수업 수 0개/10시간 미만 누락 의심 경고 및 동일 학급·요일·교시 동일 과목/교사 중복 등록 검사 반영.
+- **검증**: `npx tsc --noEmit` ✅ / `npm run build` ✅
