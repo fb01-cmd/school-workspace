@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { User, onIdTokenChanged } from "firebase/auth";
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
@@ -79,6 +79,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 프리페치는 uid당 1회만 실행 (user 문서 스냅샷이 다시 발화할 때마다
+  // 대용량 프리페치 4종이 반복 실행되던 문제 방지)
+  const prefetchedUidRef = useRef<string | null>(null);
 
   useEffect(() => {
     let unsubscribeDoc: (() => void) | null = null;
@@ -98,6 +101,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         // Listen to user data from Firestore in real-time
+        // onIdTokenChanged는 토큰 갱신(약 1시간)마다 재호출되므로,
+        // 기존 리스너를 해제하지 않으면 장시간 세션에서 리스너가 누적된다
+        if (unsubscribeDoc) unsubscribeDoc();
         const userRef = doc(db, "users", currentUser.uid);
         unsubscribeDoc = onSnapshot(userRef, (userSnap) => {
           if (userSnap.exists()) {
@@ -149,8 +155,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               });
             }
 
-            // 로그인 성공 시 백그라운드 프리페칭 실행 (교사 및 어드민만)
-            if (data.domain && (data.role === "super_admin" || data.role === "teacher")) {
+            // 로그인 성공 시 백그라운드 프리페칭 실행 (교사 및 어드민만, uid당 1회)
+            if (data.domain && (data.role === "super_admin" || data.role === "teacher") && prefetchedUidRef.current !== currentUser.uid) {
+              prefetchedUidRef.current = currentUser.uid;
               const domain = data.domain;
               setTimeout(() => {
                 // 1. OUs 로드
@@ -230,6 +237,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setSchoolSettings(null);
         setOrgUnits([]);
         setTeacherProfile(null);
+        prefetchedUidRef.current = null; // 재로그인 시 프리페치 다시 실행되도록
         setLoading(false);
         if (unsubscribeDoc) unsubscribeDoc();
         if (unsubscribeSettings) unsubscribeSettings();

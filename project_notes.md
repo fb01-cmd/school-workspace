@@ -1559,3 +1559,9 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - 무엇: Fable5 최적화 감사 결과 이행 (성능 P1 4건). ① 크론·lifecycle·users 라우트에 maxDuration=60 명시, ② 크론 졸업생 처리를 mapConcurrent(동시성 5) 병렬화 + 동기화 N+1 제거(전체 1회 read + batch 쓰기), ③ 무제한 Promise.allSettled 대량 작업 전부 mapConcurrentSettled(5~10)로 교체(429 부분 실패 방지), ④ listUsersInOUs를 단일 캐시 키(전체 목록) + 메모리 OU 필터로 재구성(도메인 풀스캔 반복 제거). mapConcurrent는 transfer-enroll의 검증된 구현을 src/lib/concurrency.ts로 공용화(원본 파일은 미변경).
 - 다음 할 일: 다음 크론 실행(자정) 결과의 suspended/deleted/warned/errors 확인. mockToday+testEmailFilter로 사전 리허설 권장. transfer-enroll의 로컬 mapConcurrent를 공용 모듈로 전환하는 정리는 Antigravity 몫.
 - 주의: listUsersInOUs 반환 시맨틱(OU 정확일치 필터) 불변. 졸업생 알림 학생 1명 내 단계 순서(알림→정지→삭제)는 유지, 학생 간 순서만 병렬화됨.
+
+## [2026-07-27] Claude → Antigravity (2차)
+- 변경 파일: src/context/AuthContext.tsx, src/components/RouteGuard.tsx
+- 검증 상태: tsc ✅ / build ✅ (화면 동작 검증은 Antigravity 몫 — 로그인/로그아웃/재로그인, 메뉴 전환, 전출 대기 교사 리다이렉트 확인 요망)
+- 무엇: ① onIdTokenChanged 재발화 시 기존 user 문서 onSnapshot 미해제로 리스너 누적되던 것 해제 추가, ② 프리페치 4종을 uid당 1회로 가드(스냅샷 재발화마다 반복 실행 방지, 로그아웃 시 리셋), ③ RouteGuard의 allowedRoles 인라인 배열 deps → rolesKey 문자열로 교체 + 검사 완료 플래그로 Firestore 재조회 차단.
+- 남긴 것 (Antigravity 작업 후보, Fable5 감사 P2): UserSheetEditor 행 memo/uncontrolled 전환, /admin 탭 next/dynamic 분할, users list 응답 필드 트리밍(클라이언트 4곳 사용 필드 조사 선행 필요), ClassroomCleanupBanner 시즌 외 선차단.

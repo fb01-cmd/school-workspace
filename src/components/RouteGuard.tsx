@@ -21,6 +21,11 @@ export default function RouteGuard({
   const [transferCheckDone, setTransferCheckDone] = useState(false);
   const [securityGroupCheckDone, setSecurityGroupCheckDone] = useState(false);
 
+  // allowedRoles는 호출부에서 인라인 배열로 넘어와 렌더마다 참조가 바뀌므로,
+  // 문자열 키로 변환해 deps에 사용 (메뉴 전환 등 부모 리렌더마다 effect가
+  // 재실행되며 Firestore 재조회하던 문제 방지)
+  const rolesKey = allowedRoles.join(",");
+
   useEffect(() => {
     if (loading) return;
 
@@ -39,8 +44,11 @@ export default function RouteGuard({
     }
 
     // 1. GWS 보안그룹(ts@hmh.or.kr) 가입 유예 여부 감지 및 연동 처리
+    // (완료 플래그가 서 있으면 재검사하지 않음 — 세션당 1회)
     const isTeacher = userData.role === "teacher" || userData.role === "super_admin";
-    if (isTeacher && !userData.isSecurityGroupJoined && userData.email && userData.domain) {
+    if (securityGroupCheckDone) {
+      // 이미 확인 완료 — 재실행 불필요
+    } else if (isTeacher && !userData.isSecurityGroupJoined && userData.email && userData.domain) {
       const userRef = doc(db, "users", user.uid);
       
       // 백그라운드 API 호출로 보안그룹 가입
@@ -71,8 +79,11 @@ export default function RouteGuard({
 
     // 2. 전출 대기 교사 강제 리다이렉트 체크
     // /admin/transfer-deadline 페이지 자체는 예외 처리
+    // (완료 플래그가 서 있으면 재조회하지 않음 — 세션당 1회)
     const isTransferPage = pathname?.startsWith("/admin/transfer-deadline");
-    if (!isTransferPage && userData.domain && userData.email) {
+    if (transferCheckDone) {
+      // 이미 확인 완료 — 재조회 불필요
+    } else if (!isTransferPage && userData.domain && userData.email) {
       const domain = userData.domain;
       const email = userData.email;
       getDoc(doc(db, "teacher_transfer_tasks", domain, "teachers", email))
@@ -95,7 +106,8 @@ export default function RouteGuard({
     } else {
       setTransferCheckDone(true);
     }
-  }, [user, userData, loading, allowedRoles, router, pathname]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, userData, loading, rolesKey, router, pathname]);
 
   if (loading || !user || !userData || !allowedRoles.includes(userData.role)) {
     return (
