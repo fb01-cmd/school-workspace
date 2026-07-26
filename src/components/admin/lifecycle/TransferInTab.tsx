@@ -74,7 +74,7 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
     setScanLoading(true);
     setScanErr("");
     setScanWarning("");
-    setScanProgressText("학급 재적 명단 및 도메인 코스 목록을 조회하는 중...");
+    setScanProgressText("학급 재적 명단을 조회하는 중...");
     setEnrollResults(null);
     setScanCandidates([]);
     setSelectedCourseIds(new Set());
@@ -88,114 +88,53 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
       });
 
       const classEmails: string[] = initData.classEmails || [];
-      const courses: { id: string; name: string; section: string; ownerId: string }[] = initData.courses || [];
-
-      if (courses.length === 0) {
+      if (classEmails.length === 0) {
         setScanCandidates([]);
         return;
       }
 
-      // Step 2: 15개씩 순차 배치 루프 (1차 시도)
-      const BATCH_SIZE = 15;
-      const batches: (typeof courses)[] = [];
-      for (let i = 0; i < courses.length; i += BATCH_SIZE) {
-        batches.push(courses.slice(i, i + BATCH_SIZE));
-      }
+      // Step 2: scan_members (단일 호출 + 실패 시 1회 재시도)
+      setScanProgressText(`학급 멤버십 역방향 집계 중 (${classEmails.length}명)...`);
 
-      const candidateMap = new Map<string, any>();
-      const failedCourseIdSet = new Set<string>();
-
-      for (let i = 0; i < batches.length; i++) {
-        const batchCourses = batches[i];
-        const processedCount = Math.min((i + 1) * BATCH_SIZE, courses.length);
-        const percent = Math.round((processedCount / courses.length) * 100);
-        setScanProgressText(`코스 로스터 검사 중 ${processedCount}/${courses.length}개 (${percent}%)...`);
-
-        const batchRes = await safeFetchJson("/api/workspace/classroom/transfer-enroll", {
+      let membersRes: any = null;
+      try {
+        membersRes = await safeFetchJson("/api/workspace/classroom/transfer-enroll", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: "scan_batch",
+            action: "scan_members",
             studentEmail: email,
             classEmails,
-            courses: batchCourses,
           }),
         });
-
-        (batchRes.candidates || []).forEach((c: any) => {
-          candidateMap.set(c.courseId, c);
-        });
-
-        (batchRes.failedCourseIds || []).forEach((id: string) => {
-          failedCourseIdSet.add(id);
-        });
-
-        // UI 실시간 업데이트
-        const currentCandidates = Array.from(candidateMap.values()).sort((a, b) => b.coverage - a.coverage);
-        setScanCandidates(currentCandidates);
-
-        // 배치 간 500ms 대기 (마지막 배치 제외)
-        if (i < batches.length - 1) {
-          await new Promise(r => setTimeout(r, 500));
-        }
-      }
-
-      // Step 3: 1회 일괄 재시도 (실패한 코스가 있을 경우)
-      if (failedCourseIdSet.size > 0) {
-        const failedIds = Array.from(failedCourseIdSet);
-        setScanProgressText(`쿼터 초과 코스 ${failedIds.length}개 1초 후 재시도 중...`);
+      } catch (firstErr) {
+        console.warn("[runScan] 1st scan_members attempt failed, retrying in 1s...", firstErr);
+        setScanProgressText("네트워크/쿼터 오류로 1초 후 1회 재시도 중...");
         await new Promise(r => setTimeout(r, 1000));
 
-        const failedCourses = courses.filter(c => failedCourseIdSet.has(c.id));
-        const retryBatches: (typeof courses)[] = [];
-        for (let i = 0; i < failedCourses.length; i += BATCH_SIZE) {
-          retryBatches.push(failedCourses.slice(i, i + BATCH_SIZE));
-        }
-
-        const stillFailedSet = new Set<string>();
-
-        for (let i = 0; i < retryBatches.length; i++) {
-          const batchCourses = retryBatches[i];
-          setScanProgressText(`실패분 재시도 중 ${i + 1}/${retryBatches.length} 배치...`);
-
-          try {
-            const batchRes = await safeFetchJson("/api/workspace/classroom/transfer-enroll", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "scan_batch",
-                studentEmail: email,
-                classEmails,
-                courses: batchCourses,
-              }),
-            });
-
-            (batchRes.candidates || []).forEach((c: any) => {
-              candidateMap.set(c.courseId, c);
-            });
-
-            (batchRes.failedCourseIds || []).forEach((id: string) => {
-              stillFailedSet.add(id);
-            });
-          } catch (retryErr) {
-            batchCourses.forEach(c => stillFailedSet.add(c.id));
-          }
-
-          if (i < retryBatches.length - 1) {
-            await new Promise(r => setTimeout(r, 500));
-          }
-        }
-
-        if (stillFailedSet.size > 0) {
-          setScanWarning(`⚠️ ${stillFailedSet.size}개 코스 검사 실패(API 쿼터 초과) — 잠시 후 재스캔을 권장합니다.`);
-        }
+        // 1회 일괄 재시도
+        membersRes = await safeFetchJson("/api/workspace/classroom/transfer-enroll", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "scan_members",
+            studentEmail: email,
+            classEmails,
+          }),
+        });
       }
 
-      const finalCandidates = Array.from(candidateMap.values()).sort((a, b) => b.coverage - a.coverage);
-      setScanCandidates(finalCandidates);
+      const candidates: any[] = membersRes.candidates || [];
+      const failedMemberEmails: string[] = membersRes.failedMemberEmails || [];
+
+      if (failedMemberEmails.length > 0) {
+        setScanWarning(`⚠️ ${failedMemberEmails.length}명 명단 대조 실패 — 결과가 불완전할 수 있습니다.`);
+      }
+
+      setScanCandidates(candidates);
 
       // 자동 선택: 이미 가입된 코스 제외
-      const autoSelected = new Set(finalCandidates.filter((c: any) => !c.alreadyEnrolled).map((c: any) => c.courseId));
+      const autoSelected = new Set(candidates.filter((c: any) => !c.alreadyEnrolled).map((c: any) => c.courseId));
       setSelectedCourseIds(autoSelected);
     } catch (e: any) {
       setScanErr(e.message || "스캔 중 오류가 발생했습니다.");
@@ -588,7 +527,7 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
                 <div className="py-16 text-center space-y-3">
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
                   <p className="text-sm font-bold text-gray-700">{scanProgressText || "도메인 전체 클래스룸 코스 및 로스터를 스캔하고 있습니다..."}</p>
-                  <p className="text-xs text-gray-400">Google API 쿼터 보호 및 Vercel 타임아웃 방지를 위해 15개 코스 단위로 순차 배치 스캔합니다.</p>
+                  <p className="text-xs text-gray-400">배정 반 학생들이 가입한 코스를 역으로 집계하여 도메인 전체 코스를 검색합니다.</p>
                 </div>
               ) : scanErr ? (
                 <div className="p-5 bg-red-50 border border-red-200 rounded-xl text-center space-y-3">

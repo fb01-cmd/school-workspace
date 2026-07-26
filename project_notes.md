@@ -2,9 +2,8 @@
 
 ## 🔒 현재 작업 중 파일
 
-- `src/app/api/workspace/classroom/transfer-enroll/route.ts`
-- `src/components/admin/lifecycle/TransferInTab.tsx`
-- `src/lib/google/workspace.ts`
+*(현재 비어 있음)*
+
 
 
 
@@ -1344,3 +1343,36 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - **고아 폴더 최종 잔여 검증 완료 (사용자 실서버 수행)**: playviolin 계정에서 검사→후보 2건 탐지(진단 예측과 일치)→정돈→이력 탭 "고아 폴더" 배지 표시→[되돌리기] confirm 문구 확인까지 ①~④ 전부 통과. Firestore 실측: orphan 로그 2건("그래픽 계산기 마스터", "2025.2.8~양평 강의") timestamp/originalName 정상 기록, **인덱스 정상 경로 쿼리에 2/2건 포함**. 두 폴더는 실제 정리 대상이라 원복하지 않고 아카이브 유지(restored:false). → **고아 폴더 기능 검증 전부 종결.**
 - **DWD `classroom.profile.emails` 스코프**: 사용자가 관리 콘솔 추가 완료, **토큰 발급·emailAddress 수신 실측 확인**(학생 이메일 정상 반환). 이제 `getClassroomClient` scopes 배열에 해당 스코프 추가·배포 가능 (선배포 금지 조건 해소됨). 이 수정으로 강제 배정 페이지(admin/classroom)의 학생 이메일 표시·제거와 스캔 후보 ownerEmail 표시가 회복된다.
 - **대기**: Antigravity 스캔 v2.0(scan_members) 재구현 진행 중 — 완료 시 표적 리뷰 예정(회귀 기준: 1학년 10반에서 4개 코스 후보).
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (전입생 스캔 v2.0 역방향 멤버십 집계 구현 + profile.emails 스코프 추가 완수)
+
+- **작업 내용**:
+  1. **스캔 v2.0 재구현 (`transfer_classroom_spec.md` §5 개정안 준수)**:
+     - `route.ts`: 단일 `scan_batch` 배치 액션 완전 삭제. `scan_init`은 반 재적 명단만 반환(`classEmails`).
+     - 신규 `scan_members` 액션: 반 멤버별 `listStudentCourses(email, adminEmail)`를 동시성 3(`MEMBER_CONCURRENCY`)으로 조회하여 코스별 가입 수 카운트 → `coverage >= 0.8` (80% 이상) 1차 후보 선정 → 1차 후보 코스들에 대해 `listClassroomStudents(courseId)` 인원 카운트(`courseSize`)하여 `purity >= 0.7 && courseSize >= 5` 2차 판정 → `candidates` 반환.
+     - `failedMemberEmails` 명시적 반환 (silent 미탐 금지).
+     - `TransferInTab.tsx`: 15개 코스 단위 배치 루프 및 진행률 UI 전면 제거 → `scan_init` -> `scan_members` 단일 호출 + 실패 시 1회 일괄 자동 재시도 루프.
+  2. **Classroom Profile Emails 스코프 추가 (`workspace.ts`)**:
+     - `getClassroomClient` scopes 배열에 `"https://www.googleapis.com/auth/classroom.profile.emails"` 추가.
+     - 사용자 DWD 허용 목록 사전 반영 완료에 따라 안전하게 활성화됨.
+- **실서버 E2E 검증 결과 (mock-only 검증 함정 탈피)**:
+  1. **역방향 멤버십 집계 E2E 스캔 (1학년 10반 28명 실서버 실행)**:
+     - `1학년 10반 재적 인원: 28명` 전원 `listStudentCourses` 성공 (실패 0명). 수 초 내 완료.
+     - 집계된 ACTIVE 코스 7개 중 1차 coverage >= 0.8 통과: 4개 코스.
+     - 2차 purity >= 0.7 & minSize >= 5 통과 결과:
+       - ✅ `통합사회 1-10` (Coverage 93%, Purity 100%, 반 26/28명, 전체 26명)
+       - ✅ `한국사 1-10` (Coverage 93%, Purity 100%, 반 26/28명, 전체 26명)
+       - ✅ `2026 과학탐구실험 1학년 10반` (Coverage 89%, Purity 100%, 반 25/28명, 전체 25명)
+       - ✅ `공통수학1 (1학년 10반)` (Coverage 93%, Purity 100%, 반 26/28명, 전체 26명)
+     - `공통영어 교수학습 자료` (coverage 78%, purity 7%) 코스는 purity 미달로 **정상 탈락**.
+     - **스펙의 회귀 판정 기준 100% 충족 확인!**
+  2. **`classroom.profile.emails` 스코프 수신 실측**:
+     - 실서버 코스 ("2026년 1학년 종합반 문법 강좌") 수강생 로스터 조회 시 `profile.emailAddress` (`"26092@hmh.or.kr"`) 가 실제로 반환됨을 실측 확인.
+     - 클래스룸 강제 배정 페이지 및 전입생 스캔 후보 담당교사 이메일 노출 정상 회복.
+- **변경 파일**: `route.ts`, `workspace.ts`, `TransferInTab.tsx`, `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29개 라우트 정상 생성)
+

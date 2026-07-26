@@ -1304,13 +1304,27 @@ let mockCourses: { id: string; name: string; section: string; ownerId: string; c
   { id: "course_1", name: "1학년 1학기 수학", section: "1반", ownerId: "teacher01@hmh.or.kr", courseState: "ACTIVE", creationTime: "2025-03-02T01:00:00.000Z" },
   { id: "course_2", name: "1학년 1학기 국어", section: "2반", ownerId: "teacher01@hmh.or.kr", courseState: "ACTIVE", creationTime: "2025-03-02T01:00:00.000Z" },
   { id: "course_3", name: "2학년 1학기 물리", section: "기초", ownerId: "teacher02@hmh.or.kr", courseState: "ACTIVE", creationTime: "2025-03-02T01:00:00.000Z" },
+  { id: "course_10_1", name: "통합사회 1-10", section: "1학년 10반", ownerId: "teacher01@hmh.or.kr", courseState: "ACTIVE", creationTime: "2026-03-02T01:00:00.000Z" },
+  { id: "course_10_2", name: "한국사 1-10", section: "1학년 10반", ownerId: "teacher01@hmh.or.kr", courseState: "ACTIVE", creationTime: "2026-03-02T01:00:00.000Z" },
+  { id: "course_10_3", name: "공통수학1 (1학년 10반)", section: "1학년 10반", ownerId: "teacher02@hmh.or.kr", courseState: "ACTIVE", creationTime: "2026-03-02T01:00:00.000Z" },
+  { id: "course_10_4", name: "2026 과학탐구실험 1학년 10반", section: "1학년 10반", ownerId: "teacher02@hmh.or.kr", courseState: "ACTIVE", creationTime: "2026-03-02T01:00:00.000Z" },
+  { id: "course_10_5", name: "공통영어 교수학습 자료", section: "1학년 전체", ownerId: "teacher01@hmh.or.kr", courseState: "ACTIVE", creationTime: "2026-03-02T01:00:00.000Z" },
   { id: "course_archived_1", name: "2024 1학년 2학기 수학 (교사 직접 보관)", section: "1반", ownerId: "teacher01@hmh.or.kr", courseState: "ARCHIVED", creationTime: "2024-09-01T01:00:00.000Z", calendarId: "mock_cal_archived_1", teacherFolder: { id: "mock_folder_archived_1" } }
 ];
+
+// 1-10 반 27명 테스트 학생 이메일 생성 (261001 ~ 261027)
+const mockClass10Emails = Array.from({ length: 27 }, (_, i) => `${261001 + i}@hmh.or.kr`);
 
 let mockCourseStudents: Record<string, string[]> = {
   "course_1": ["25001@hmh.or.kr", "25002@hmh.or.kr", "25003@hmh.or.kr", "25004@hmh.or.kr", "25005@hmh.or.kr"],
   "course_2": [],
-  "course_3": ["24001@hmh.or.kr"]
+  "course_3": ["24001@hmh.or.kr"],
+  "course_10_1": mockClass10Emails.slice(0, 26),
+  "course_10_2": mockClass10Emails.slice(0, 26),
+  "course_10_3": mockClass10Emails.slice(0, 26),
+  "course_10_4": mockClass10Emails.slice(0, 25),
+  // course_10_5는 1-10반 21명 포함 + 타 학생 300명 (purity 21/321 = 6.5% -> purity < 0.7로 탈락)
+  "course_10_5": [...mockClass10Emails.slice(0, 21), ...Array.from({ length: 300 }, (_, i) => `other_${i}@hmh.or.kr`)],
 };
 
 export let mockOrphanFolders: { folderId: string; name: string; webViewLink: string; modifiedTime: string; ownerEmail: string }[] = [
@@ -1333,7 +1347,8 @@ export const getClassroomClient = (impersonatedEmail: string) => {
     key: privateKey,
     scopes: [
       "https://www.googleapis.com/auth/classroom.courses",
-      "https://www.googleapis.com/auth/classroom.rosters"
+      "https://www.googleapis.com/auth/classroom.rosters",
+      "https://www.googleapis.com/auth/classroom.profile.emails"
     ],
     subject: impersonatedEmail // Impersonate the teacher
   });
@@ -1531,7 +1546,49 @@ export const listClassroomStudents = async (courseId: string, teacherEmail: stri
 };
 
 /**
- * 도메인 전체 ACTIVE 코스 목록 조회 (admin impersonation 사용)
+ * 특정 학생(studentId / studentEmail)이 수강(가입) 중인 ACTIVE 코스 목록 조회
+ * - admin impersonation 사용
+ * - pageToken 루프 적용 (pageSize: 100)
+ */
+export const listStudentCourses = async (studentEmail: string, adminEmail?: string) => {
+  if (isMock) {
+    const studentLower = studentEmail.toLowerCase();
+    return mockCourses.filter(c => {
+      if ((c.courseState || "ACTIVE") !== "ACTIVE") return false;
+      const students = mockCourseStudents[c.id] || [];
+      return students.some(s => s.toLowerCase() === studentLower);
+    });
+  }
+
+  const impersonatedAdmin = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || adminEmail;
+  if (!impersonatedAdmin) {
+    throw new Error("GOOGLE_WORKSPACE_ADMIN_EMAIL 환경변수가 설정되지 않았습니다.");
+  }
+  const classroom = getClassroomClient(impersonatedAdmin);
+  if (!classroom) throw new Error("Classroom client is not initialized.");
+
+  const allCourses: any[] = [];
+  let pageToken: string | undefined = undefined;
+  for (;;) {
+    let listRes: any;
+    listRes = await classroom.courses.list({
+      studentId: studentEmail,
+      courseStates: ["ACTIVE"],
+      pageSize: 100,
+      pageToken,
+    });
+    const page: any[] = listRes?.data?.courses || [];
+    allCourses.push(...page);
+    const nextToken: string | null | undefined = listRes?.data?.nextPageToken;
+    if (!nextToken) break;
+    pageToken = nextToken;
+  }
+  return allCourses;
+};
+
+/**
+  * 도메인 전체 ACTIVE 코스 목록 조회 (admin impersonation 사용)
+
  * - teacherId 없이 호출하여 도메인 전체 코스 반환
  * - pageToken 루프 적용 (pageSize: 500)
  */

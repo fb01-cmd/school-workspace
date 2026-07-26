@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuthAccess, getStudentOUPaths } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import {
-  listAllDomainCourses,
+  listStudentCourses,
   listClassroomStudents,
   getClassroomUserProfile,
   addStudentToClassroom,
@@ -15,14 +15,13 @@ import { parseStudentUser } from "@/lib/roster";
 export const maxDuration = 60;
 
 // ==========================================
-// 학급 클래스룸 매칭 판정 알고리즘 상수
+// 학급 클래스룸 매칭 판정 알고리즘 상수 (v2.0)
 // ==========================================
 const MIN_CLASS_SIZE = 3;         // 신뢰할 수 있는 매칭을 위한 학급 재적 최소 인원 (3명 이상)
 const COVERAGE_THRESHOLD = 0.8;   // 우리 반 학생 중 코스 가입 비율 (80% 이상)
 const PURITY_THRESHOLD = 0.7;     // 코스 수강생 중 우리 반 학생 비율 (70% 이상)
 const MIN_COURSE_SIZE = 5;        // 소규모 특강/소그룹 배제를 위한 코스 최소 수강생 (5명 이상)
-const BATCH_COURSE_LIMIT = 15;    // scan_batch 1회당 최대 코스 수 (쿼터 및 Vercel 타임아웃 방지)
-const ROSTER_CONCURRENCY = 3;     // Google API per-minute 쿼터 보호를 위한 배치 내 동시성 제한
+const MEMBER_CONCURRENCY = 3;     // Google API 쿼터 보호를 위한 멤버별 코스 조회 동시성 제한
 
 /**
  * 제한된 동시성(limit)으로 비동기 함수 매핑 실행 헬퍼
@@ -45,8 +44,8 @@ async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => P
 
 /**
  * POST /api/workspace/classroom/transfer-enroll
- * action: "scan_init" — 반 재적 명단 및 ACTIVE 코스 목록 초기화
- * action: "scan_batch" — 코스 로스터 배치 스캔 (≤15개 코스, 동시성 3)
+ * action: "scan_init" — 반 재적 명단 초기화 (v2.0)
+ * action: "scan_members" — 역방향 멤버십 집계 스캔 (v2.0)
  * action: "enroll" — 선택한 학급 클래스룸 일괄 수강 등록
  */
 export async function POST(req: NextRequest) {
@@ -66,7 +65,7 @@ export async function POST(req: NextRequest) {
     const { action } = body;
 
     // ==========================================
-    // Action 1: "scan_init" — 학급 명단 및 코스 목록 초기화 (v1.1)
+    // Action 1: "scan_init" — 학급 명단 초기화 (v2.0)
     // ==========================================
     if (action === "scan_init") {
       const { grade, classNum, studentEmail } = body;
@@ -101,133 +100,166 @@ export async function POST(req: NextRequest) {
         }, { status: 400 });
       }
 
-      // 2. 도메인 전체 ACTIVE 코스 목록 조회 (로스터 조회 없음 — 빠름)
-      const activeCourses = await listAllDomainCourses();
-      const courses = activeCourses.map((c: any) => ({
-        id: String(c.id),
-        name: String(c.name || ""),
-        section: String(c.section || ""),
-        ownerId: String(c.ownerId || "")
-      }));
-
       return NextResponse.json({
         success: true,
         grade: targetGrade,
         classNum: targetClassNum,
         studentEmail: targetStudentEmail,
         classEmails,
-        courses,
         totalClassCount: classEmails.length,
         isMock,
       });
     }
 
     // ==========================================
-    // Action 2: "scan_batch" — 코스 로스터 동시성 3 배치 스캔 (v1.1)
+    // Action 2: "scan_members" — 역방향 멤버십 집계 스캔 (v2.0)
     // ==========================================
-    if (action === "scan_batch") {
-      const { studentEmail, classEmails, courses } = body;
-      if (!studentEmail || !Array.isArray(classEmails) || !Array.isArray(courses)) {
-        return NextResponse.json({ error: "studentEmail, classEmails, courses 배열이 누락되었습니다." }, { status: 400 });
+    if (action === "scan_members") {
+      const { studentEmail, classEmails } = body;
+      if (!studentEmail || !Array.isArray(classEmails)) {
+        return NextResponse.json({ error: "studentEmail 및 classEmails 배열이 누락되었습니다." }, { status: 400 });
       }
 
-      if (courses.length > BATCH_COURSE_LIMIT) {
+      if (classEmails.length < MIN_CLASS_SIZE || classEmails.length > 40) {
         return NextResponse.json({
-          error: `1회 배치당 최대 ${BATCH_COURSE_LIMIT}개 코스까지만 검사할 수 있습니다.`,
+          error: `classEmails 수량 오류 (${classEmails.length}명). 3명 이상 40명 이하만 지원됩니다.`,
         }, { status: 400 });
       }
 
       const targetStudentEmail = String(studentEmail).toLowerCase().trim();
-      const classEmailSet = new Set(classEmails.map((e: any) => String(e).toLowerCase().trim()));
-      const totalClassCount = classEmailSet.size;
-
+      const cleanClassEmails = Array.from(new Set(classEmails.map((e: any) => String(e).toLowerCase().trim())));
       const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || operatorEmail;
 
-      // 동시성 3으로 로스터 조회 및 판정 실행
-      const batchResults = await mapConcurrent(courses, ROSTER_CONCURRENCY, async (course: any) => {
+      const failedMemberEmails: string[] = [];
+
+      // 1. 멤버별 수강 코스 목록을 동시성 3으로 조회
+      const memberCoursesResults = await mapConcurrent(cleanClassEmails, MEMBER_CONCURRENCY, async (email: string) => {
         try {
-          const students = await listClassroomStudents(course.id, adminEmail);
-          const courseEmails = students
-            .map((s: any) => s.profile?.emailAddress?.toLowerCase())
-            .filter(Boolean) as string[];
+          const courses = await listStudentCourses(email, adminEmail);
+          return { email, courses, success: true };
+        } catch (err: any) {
+          console.warn(`[scan_members] Failed to list courses for member ${email}:`, err?.message || err);
+          failedMemberEmails.push(email);
+          return { email, courses: [], success: false };
+        }
+      });
 
-          const courseEmailSet = new Set(courseEmails);
+      const successfulResults = memberCoursesResults.filter(r => r.success);
+      const checkedMemberCount = successfulResults.length;
 
-          // 교집합 (|COURSE ∩ CLASS|) 계산
-          let inBothCount = 0;
-          classEmailSet.forEach(email => {
-            if (courseEmailSet.has(email)) {
-              inBothCount++;
-            }
+      if (checkedMemberCount === 0) {
+        return NextResponse.json({
+          error: "학급 멤버의 클래스룸 수강 정보 조회가 모두 실패하였습니다.",
+          failedMemberEmails,
+        }, { status: 500 });
+      }
+
+      // 2. 코스별 가입 멤버 수 집계
+      const courseMap = new Map<string, { count: number; courseInfo: any }>();
+      for (const res of successfulResults) {
+        // 한 멤버가 같은 코스에 중복 등록되어 있을 경우 1회만 카운트
+        const seenCourseIds = new Set<string>();
+        for (const c of res.courses) {
+          const cId = String(c.id);
+          if (seenCourseIds.has(cId)) continue;
+          seenCourseIds.add(cId);
+
+          const existing = courseMap.get(cId);
+          if (existing) {
+            existing.count += 1;
+          } else {
+            courseMap.set(cId, {
+              count: 1,
+              courseInfo: {
+                id: cId,
+                name: String(c.name || ""),
+                section: String(c.section || ""),
+                ownerId: String(c.ownerId || ""),
+              },
+            });
+          }
+        }
+      }
+
+      // 3. 1차 후보 선정: coverage >= 0.8 (가입수 / checkedMemberCount >= 0.8)
+      const primaryCandidates: { courseId: string; count: number; courseInfo: any; coverage: number }[] = [];
+      courseMap.forEach((val, courseId) => {
+        const coverage = val.count / checkedMemberCount;
+        if (coverage >= COVERAGE_THRESHOLD) {
+          primaryCandidates.push({
+            courseId,
+            count: val.count,
+            courseInfo: val.courseInfo,
+            coverage,
           });
+        }
+      });
 
-          const courseSize = courseEmailSet.size;
-          const coverage = totalClassCount > 0 ? inBothCount / totalClassCount : 0;
-          const purity = courseSize > 0 ? inBothCount / courseSize : 0;
+      // 4. 전입생 본인 가입 코스 목록 1회 조회 (alreadyEnrolled 판정용)
+      let enrolledCourseSet = new Set<string>();
+      try {
+        const targetCourses = await listStudentCourses(targetStudentEmail, adminEmail);
+        enrolledCourseSet = new Set(targetCourses.map((c: any) => String(c.id)));
+      } catch (e) {
+        console.warn(`[scan_members] Failed to check enrollment for target student ${targetStudentEmail}:`, e);
+      }
 
-          // 매칭 판정 조건: coverage >= 0.8 && purity >= 0.7 && courseSize >= 5
-          const isMatch = coverage >= COVERAGE_THRESHOLD && purity >= PURITY_THRESHOLD && courseSize >= MIN_COURSE_SIZE;
+      // 5. 1차 후보 코스들에 대해 전체 수강생 수(courseSize), purity >= 0.7, minSize >= 5 판정 및 교사 프로필 해석
+      const candidates: any[] = [];
 
-          if (!isMatch) {
-            return { candidate: null, failedCourseId: null };
-          }
+      for (const item of primaryCandidates) {
+        const { courseId, count, courseInfo, coverage } = item;
+        try {
+          const students = await listClassroomStudents(courseId, adminEmail);
+          const courseSize = students.length;
+          const purity = courseSize > 0 ? count / courseSize : 0;
 
-          // 이미 전입생이 가입되어 있는지 여부
-          const alreadyEnrolled = courseEmailSet.has(targetStudentEmail);
+          if (purity >= PURITY_THRESHOLD && courseSize >= MIN_COURSE_SIZE) {
+            const alreadyEnrolled = enrolledCourseSet.has(courseId);
 
-          // 코스 소유 교사 프로필 해석
-          let ownerName = course.ownerId;
-          let ownerEmail = course.ownerId;
-          if (course.ownerId) {
-            try {
-              const ownerProfile = await getClassroomUserProfile(course.ownerId);
-              if (ownerProfile) {
-                ownerEmail = ownerProfile.emailAddress || course.ownerId;
-                if (ownerProfile.name) {
-                  const fName = ownerProfile.name.familyName || "";
-                  const gName = ownerProfile.name.givenName || "";
-                  ownerName = `${fName}${gName}`.trim() || ownerEmail;
+            // 소유 교사 프로필 해석
+            let ownerName = courseInfo.ownerId;
+            let ownerEmail = courseInfo.ownerId;
+            if (courseInfo.ownerId) {
+              try {
+                const ownerProfile = await getClassroomUserProfile(courseInfo.ownerId);
+                if (ownerProfile) {
+                  ownerEmail = ownerProfile.emailAddress || courseInfo.ownerId;
+                  if (ownerProfile.name) {
+                    const fName = ownerProfile.name.familyName || "";
+                    const gName = ownerProfile.name.givenName || "";
+                    ownerName = `${fName}${gName}`.trim() || ownerEmail;
+                  }
                 }
-              }
-            } catch (e) {}
-          }
+              } catch (e) {}
+            }
 
-          return {
-            candidate: {
-              courseId: course.id,
-              name: course.name,
-              section: course.section || "",
+            candidates.push({
+              courseId,
+              name: courseInfo.name,
+              section: courseInfo.section,
               ownerName,
               ownerEmail,
               coverage: Math.round(coverage * 100) / 100,
               purity: Math.round(purity * 100) / 100,
-              classMemberCount: inBothCount,
-              totalClassCount,
+              classMemberCount: count,
+              totalClassCount: checkedMemberCount,
               courseSize,
               alreadyEnrolled,
-            },
-            failedCourseId: null,
-          };
-        } catch (err: any) {
-          console.warn(`[scan_batch] Error scanning roster for course ${course.id}:`, err?.message || err);
-          // 429/오류 코스를 버리지 않고 failedCourseId로 반환
-          return { candidate: null, failedCourseId: String(course.id) };
+            });
+          }
+        } catch (cErr) {
+          console.warn(`[scan_members] Failed to fetch student list for course ${courseId}:`, cErr);
         }
-      });
+      }
 
-      const candidates = batchResults
-        .map(r => r.candidate)
-        .filter(Boolean)
-        .sort((a: any, b: any) => b.coverage - a.coverage);
-
-      const failedCourseIds = batchResults
-        .map(r => r.failedCourseId)
-        .filter(Boolean) as string[];
+      candidates.sort((a, b) => b.coverage - a.coverage);
 
       return NextResponse.json({
         success: true,
         candidates,
-        failedCourseIds,
+        failedMemberEmails,
+        checkedMemberCount,
       });
     }
 
