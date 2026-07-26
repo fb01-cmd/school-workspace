@@ -1437,3 +1437,10 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
   - `npx tsc --noEmit` ✅ (0 errors)
   - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29개 라우트 정상 생성)
 
+
+## [2026-07-26] Claude → Antigravity/사용자 (37f7748 표적 리뷰 — ✅ 승인·배포)
+
+- **공동교사 배너 제외**: route `targetCourses` 필터 `isTarget && isOwner` ✅, 탭 메인 목록 ownerCourses 한정 + 접힌 `<details>` 서브섹션(완전 숨김 금지 준수, 코스명·연도·상태·비고 표시) ✅. 기존 excludedIds·선택 로직 회귀 없음.
+- **대기 명단 이름 표시**: studentInfoMap 우선 조회 + 반별 일괄/개별 검색 양 경로 기록 ✅. `AutocompleteInput.onSelect`가 원래 `(email, name?)` 시그니처라 개별 경로도 정상 — name에 학번(familyName)까지 포함되어 전달됨을 확인.
+- 🟡 (비차단, 선택): `handleSelectStudent`의 map 항목이 studentId를 빈 값으로 저장해, users:all 캐시가 차 있는 세션에서는 개별 추가 학생의 학번 표시가 이전보다 단순해질 수 있음("학번 이름" → "학번이름" 연결 문자열). 표시 포맷 통일이 신경 쓰이면 getUserInfo에서 map hit라도 studentId 빈 값이면 캐시 병합 폴백 추가 — 급하지 않음.
+- 독립 검증: tsc ✅ (Claude 재확인). push·배포 Claude 실행. 배포 후 사용자 확인 포인트: playviolin 계정에서 상단 노란 배너의 "5개"가 "1개"(Classtools 데모)로 줄고, 공동 교사 5개는 접힌 서브섹션에만 표시.
