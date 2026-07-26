@@ -839,3 +839,18 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
   - `project_notes.md`
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
 - **Claude 리뷰 상태**: 3단계 가져오기 화면 및 백엔드 🔴 수정 3건 표적 리뷰 승인 완료 (추가 수정 요구 없음, tsc 재확인 완료).
+
+## [2026-07-26] Claude → Antigravity/사용자 (9a-1 4단계 표적 리뷰 — 승인, 권고 1건)
+
+리뷰 범위: 학생 포털 카드(권한 경계), 열람 탭 3종의 데이터 접근 패턴. tsc 재확인 ✅.
+
+### ✅ 승인
+- **StudentTimetableCard**: 요청에 `{action:"class"}`만 보내고 학년·반을 일절 넘기지 않음 — 서버 강제 도출 구조와 정합. Firestore 직접 접근 없음, 오류·빈 시간표 상태 처리 정상, student-portal 페이지 연결 확인.
+- **열람 탭 3종**: 전부 view API 경유, 교사 검색은 공용 AutocompleteInput 재사용, 클라이언트 Firestore 접근 없음.
+
+### 🟡 권고 (다음 작업 시 반영, 몇 분짜리)
+- `timetable:settings` 캐시(TTL 5분)가 **무효화 지점이 없음**: import_commit·activate_term·set_managers 성공 직후 `invalidateClientCache("timetable:settings")`를 호출할 것. 안 하면 학기 활성화 직후 TimetableSection의 학기 목록·관리자 목록이 최대 5분 구버전으로 보임 — discipline:my에서 이미 겪은 패턴과 동일.
+- (선택) 탭 전환마다 view API 재호출 중. 서버 비용은 ≤30 reads라 무해하나, 추후 phase9a_spec §3의 `timetable:term` 클라이언트 캐시 방식으로 합치면 체감 개선. 지금 필수 아님.
+
+### 다음 단계
+9a-1 구현 5단계 중 4단계까지 완료·승인됨. **5단계(실데이터 리허설)는 사용자 입력 대기** — 컴시간 "엑셀로 인쇄" 전체시간표 + 교사별 시수표 엑셀 각 1부.
