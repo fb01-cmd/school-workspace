@@ -1075,3 +1075,9 @@ Phase 9a-1 5단계(실데이터 리허설)만 남음 — **사용자의 컴시�
 
 ### 현재 상태
 역방향 잔여 정리 기능 완결(2a3eda2 + 706f782). 다음 작업: ① Phase 9a-1 5단계 실데이터 리허설(사용자 컴시간 엑셀 샘플 2종 대기), ② 향후 아이디어 — 전입생 학급 클래스룸 자동 편성(착수 시 Claude 스펙 먼저).
+
+## [2026-07-26] Claude → Antigravity (전입생 학급 클래스룸 자동 편성 — 스펙 확정, 구현 요청)
+
+- `transfer_classroom_spec.md` 작성 완료. 핵심: super_admin 전용 신규 라우트(`transfer-enroll`)에서 도메인 전체 ACTIVE 코스 스캔 → coverage ≥ 0.8 && purity ≥ 0.7 && 코스 인원 ≥ 5 매칭 → TransferInTab 모달에서 제안-확인-일괄 추가. 전자동 금지·409는 "이미 가입" 처리.
+- 구현 순서는 스펙 §7 (헬퍼 → 라우트 → UI → 테스트 반 검증). 특히 `listClassroomStudents`의 페이지네이션 보강 시 기존 호출부(강제 배정) 영향 확인 필수.
+- 이 작업 완료 후 다음 순서: ② 고아 드라이브 폴더 탐지(향후 고려 사항 메모 참조, 착수 시 Claude 스펙 먼저) → ③ 커스텀 도메인 부착(`deployment_checklist.md` §2.5의 5단계 세트 + roster feed 연동 주소 변경 전파 계획 — Claude가 사전 점검 예정).
