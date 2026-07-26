@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc } from "firebase/firestore";
 import MyProfileCard from "@/components/admin/MyProfileCard";
+import StudentTimetableCard from "@/components/student/StudentTimetableCard";
 
 export default function StudentPortal() {
   const { userData } = useAuth();
@@ -225,16 +226,7 @@ export default function StudentPortal() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main Services (Left side) */}
             <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
-                <h2 className="text-lg font-bold text-slate-800 mb-4">🎓 학생 서비스</h2>
-                <div className="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center text-slate-500">
-                  <div className="text-3xl mb-2">📁</div>
-                  <p className="font-semibold text-sm">서비스 준비 중</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    현재 활성화된 서비스가 없습니다. 학교의 안내가 있을 경우 추가 메뉴가 오픈됩니다.
-                  </p>
-                </div>
-              </div>
+              <StudentTimetableCard />
             </div>
 
             {/* Side Graduation Notice Widget (Right side) */}

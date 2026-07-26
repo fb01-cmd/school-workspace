@@ -5,6 +5,9 @@ import { useAuth } from "@/context/AuthContext";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { TimetableSettings, TimetableTerm } from "@/lib/timetable/types";
 import TimetableImportTab from "./TimetableImportTab";
+import TeacherTimetableTab from "./TeacherTimetableTab";
+import ClassTimetableTab from "./ClassTimetableTab";
+import FreeTeacherTab from "./FreeTeacherTab";
 
 export default function TimetableSection() {
   const { userData } = useAuth();
@@ -16,7 +19,7 @@ export default function TimetableSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"view" | "class" | "free" | "import">("import");
+  const [activeTab, setActiveTab] = useState<"view" | "class" | "free" | "import">("view");
 
   const fetchSettingsAndTerms = async (forceRefresh = false) => {
     setLoading(true);
@@ -62,6 +65,8 @@ export default function TimetableSection() {
   const isManager =
     isSuperAdmin ||
     (settings?.managerEmails || []).some((m) => m.toLowerCase() === userEmail);
+
+  const periodsPerDay = settings?.periodsPerDay || 7;
 
   if (loading) {
     return (
@@ -139,39 +144,18 @@ export default function TimetableSection() {
       </div>
 
       {/* 탭 액티브 뷰 */}
+      {activeTab === "view" && <TeacherTimetableTab periodsPerDay={periodsPerDay} />}
+
+      {activeTab === "class" && <ClassTimetableTab periodsPerDay={periodsPerDay} />}
+
+      {activeTab === "free" && <FreeTeacherTab periodsPerDay={periodsPerDay} />}
+
       {activeTab === "import" && isManager && (
         <TimetableImportTab
           settings={settings}
           terms={terms}
           onRefreshData={() => fetchSettingsAndTerms(true)}
         />
-      )}
-
-      {activeTab === "view" && (
-        <div className="bg-white rounded-xl p-12 text-center border border-gray-200 shadow-sm">
-          <h3 className="text-base font-bold text-gray-900 mb-1">🗓️ 시간표 열람 (준비 중)</h3>
-          <p className="text-xs text-gray-500">
-            Phase 9a-1 구현 순서 4번(열람 화면 3종)에서 구현될 예정입니다.
-          </p>
-        </div>
-      )}
-
-      {activeTab === "class" && (
-        <div className="bg-white rounded-xl p-12 text-center border border-gray-200 shadow-sm">
-          <h3 className="text-base font-bold text-gray-900 mb-1">🏫 학급별 시간표 (준비 중)</h3>
-          <p className="text-xs text-gray-500">
-            Phase 9a-1 구현 순서 4번(열람 화면 3종)에서 구현될 예정입니다.
-          </p>
-        </div>
-      )}
-
-      {activeTab === "free" && (
-        <div className="bg-white rounded-xl p-12 text-center border border-gray-200 shadow-sm">
-          <h3 className="text-base font-bold text-gray-900 mb-1">☕ 공강 교사 조회 (준비 중)</h3>
-          <p className="text-xs text-gray-500">
-            Phase 9a-1 구현 순서 4번(열람 화면 3종)에서 구현될 예정입니다.
-          </p>
-        </div>
       )}
     </div>
   );

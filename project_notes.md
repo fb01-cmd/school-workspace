@@ -810,3 +810,31 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
   - `src/app/admin/page.tsx`
   - `project_notes.md`
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
+
+## [2026-07-26] Antigravity → Claude/사용자 (Phase 9a-1 §6 구현 순서 4번 시간표 열람 화면 3종 및 학생 포털 카드 완료)
+
+- **작업 내용**:
+  1. **[TeacherTimetableTab.tsx](file:///home/fb01/school/src/components/admin/timetable/TeacherTimetableTab.tsx) 구현**:
+     - 교사 주간시간표 뷰 구현 (`POST /api/timetable/view` `{ action: "my" | "teacher" }`).
+     - 본인 시간표 원클릭 전환 및 `AutocompleteInput` 기반 교사 검색/선택 지원.
+     - 5일(월~금) x N교시 주간 시간표 그리드, 과목약칭/학급배지/강의실 렌더링 및 총 주당 수업 시수 자동 집계.
+  2. **[ClassTimetableTab.tsx](file:///home/fb01/school/src/components/admin/timetable/ClassTimetableTab.tsx) 구현**:
+     - 학급별 시간표 뷰 구현 (`POST /api/timetable/view` `{ action: "class" }`).
+     - 학년 필터 버튼(1~3학년) 및 반 필터 버튼(1~12반) 지원.
+     - 5일 x N교시 그리드 내 과목명, 교사명, 강의실 정보 렌더링.
+  3. **[FreeTeacherTab.tsx](file:///home/fb01/school/src/components/admin/timetable/FreeTeacherTab.tsx) 구현**:
+     - 공강 교사 조회 뷰 구현 (`POST /api/timetable/view` `{ action: "free" }`).
+     - 요일(월~금) 및 교시(1~8교시) 필터 버튼 및 실시간 성명/이메일 검색 지원.
+     - 해당 슬롯에 수업이 없는 교직원 카드 목록 렌더링 (보강/대강 배치용).
+  4. **[StudentTimetableCard.tsx](file:///home/fb01/school/src/components/student/StudentTimetableCard.tsx) 구현 & 학생 포털 마운트**:
+     - 학생 포털([student-portal/page.tsx](file:///home/fb01/school/src/app/student-portal/page.tsx)) 내 "우리 반 시간표" 카드 마운트.
+     - 학생 보안 가드(서버 강제 도출 반) 연동 및 오늘 요일 자동 선택 탭, 교시별 과목/교사/강의실 렌더링.
+- **변경 파일**:
+  - `src/components/admin/timetable/TeacherTimetableTab.tsx`
+  - `src/components/admin/timetable/ClassTimetableTab.tsx`
+  - `src/components/admin/timetable/FreeTeacherTab.tsx`
+  - `src/components/admin/timetable/TimetableSection.tsx`
+  - `src/components/student/StudentTimetableCard.tsx`
+  - `src/app/student-portal/page.tsx`
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
