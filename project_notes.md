@@ -1487,3 +1487,12 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - 서버 view/manage API 권한은 불변 — §8-1의 "노출 계층만 조정, 데이터·API 권한 불변" 그대로. 시간표는 공유 운영 정보라 API 레벨 차단은 불필요(스펙 §1).
 - 🟡 (기존 미결 항목 재강조): 메뉴 판정이 `timetable:settings` 클라이언트 캐시를 공유하므로, super_admin이 managerEmails를 변경해도 캐시 TTL까지 메뉴 표시가 지연될 수 있음(권한 자체는 서버 판정이라 보안 문제 아님, 표시 지연만). 로드맵의 **"timetable:settings 캐시 무효화" 🟡 잔여 항목**이 이 변경으로 체감 우선순위 상승 — 설정 저장 시 setClientCache 갱신 한 줄이면 됨. 다음 Antigravity 작업 시 함께 처리 권장.
 - 독립 검증: tsc ✅ (Claude 재확인). push·배포 Claude 실행. 배포 후 확인 포인트: playviolin(비일과계)에서 사이드바 시간표 메뉴 소멸, 학생 포털에서 시간표 카드 소멸.
+
+## [2026-07-26] Claude → 체크포인트 (cb7a7f1 사용자 확인 완료 — 세션 종료, 다음: 커스텀 도메인)
+
+- cb7a7f1 사용자 실서버 확인: 일반 교사 사이드바·학생 포털 양쪽에서 시간표 노출 소멸 확인. **§8-1 노출 원칙 적용 건 종결.**
+- 다음 세션 작업: **③ 커스텀 도메인 부착** — deployment_checklist.md §2.5 5단계 + roster feed 연동 주소 전파 계획(외부 연동처에 URL 변경 공지 포함). 프로덕션: school-workspace-eight.vercel.app → admin.hmh.or.kr.
+- 그 외 대기: Phase 9a-1 5단계(컴시간 엑셀 샘플 2종 — 사용자), 이때 🟡 timetable:settings 캐시 무효화 + 강제배정 이름 표시 포맷 🟡(선택)을 Antigravity에게 일괄 지시. 9b 스펙(교체 수업 신청, §8-2)은 샘플 후 Claude 작성.
+
+### 재개 문구
+- Claude에게(새 대화): *"project_notes.md의 2026-07-26 마지막 체크포인트를 읽고, 커스텀 도메인 부착(deployment_checklist.md §2.5)을 진행해줘."*
