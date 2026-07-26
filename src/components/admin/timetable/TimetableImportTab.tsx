@@ -382,7 +382,11 @@ export default function TimetableImportTab({
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        invalidateClientCache("timetable:settings");
+        setClientCache("timetable:settings", {
+          settings: { ...(settings || {}), managerEmails: updated, activeTermId: settings?.activeTermId || null, days: settings?.days || 5, periodsPerDay: settings?.periodsPerDay || 7 },
+          terms,
+        });
+        window.dispatchEvent(new CustomEvent("timetableSettingsUpdated", { detail: { managerEmails: updated } }));
         setNewManagerEmail("");
         onRefreshData();
       } else {
@@ -407,7 +411,11 @@ export default function TimetableImportTab({
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        invalidateClientCache("timetable:settings");
+        setClientCache("timetable:settings", {
+          settings: { ...(settings || {}), managerEmails: updated, activeTermId: settings?.activeTermId || null, days: settings?.days || 5, periodsPerDay: settings?.periodsPerDay || 7 },
+          terms,
+        });
+        window.dispatchEvent(new CustomEvent("timetableSettingsUpdated", { detail: { managerEmails: updated } }));
         onRefreshData();
       } else {
         alert(`관리자 삭제 실패: ${data.error}`);

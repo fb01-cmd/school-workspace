@@ -29,6 +29,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1487,6 +1489,24 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - 서버 view/manage API 권한은 불변 — §8-1의 "노출 계층만 조정, 데이터·API 권한 불변" 그대로. 시간표는 공유 운영 정보라 API 레벨 차단은 불필요(스펙 §1).
 - 🟡 (기존 미결 항목 재강조): 메뉴 판정이 `timetable:settings` 클라이언트 캐시를 공유하므로, super_admin이 managerEmails를 변경해도 캐시 TTL까지 메뉴 표시가 지연될 수 있음(권한 자체는 서버 판정이라 보안 문제 아님, 표시 지연만). 로드맵의 **"timetable:settings 캐시 무효화" 🟡 잔여 항목**이 이 변경으로 체감 우선순위 상승 — 설정 저장 시 setClientCache 갱신 한 줄이면 됨. 다음 Antigravity 작업 시 함께 처리 권장.
 - 독립 검증: tsc ✅ (Claude 재확인). push·배포 Claude 실행. 배포 후 확인 포인트: playviolin(비일과계)에서 사이드바 시간표 메뉴 소멸, 학생 포털에서 시간표 카드 소멸.
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (🟡 잔여 2건 구현 완수)
+
+- **수정 내용**:
+  1. **시간표 설정 저장 시 클라이언트 캐시 즉시 갱신 및 이벤트 전파 (`TimetableImportTab.tsx` & `admin/page.tsx`)**:
+     - `TimetableImportTab.tsx`에서 일과계 관리자(`set_managers`) 추가/삭제 성공 시 `setClientCache("timetable:settings", ...)`를 즉시 갱신하고 `timetableSettingsUpdated` 이벤트를 뷰포트에 전파.
+     - `admin/page.tsx`에서 해당 이벤트를 수신하여 `timetableSettings` 및 `isTimetableManager` 상태를 0ms 즉시 업데이트함. super_admin이 일과계 교직원을 지정하는 순간 사이드바에 시간표 메뉴가 실시간으로 나타남을 확인.
+  2. **강제배정 대기 명단 이름 표시 포맷 및 캐시 폴백 개선 (`admin/classroom/page.tsx`)**:
+     - `getUserInfo(email)`에서 `studentInfoMap`에 `studentId`가 비어있더라도 `users:all` 인메모리 캐시의 `familyName`(학번)과 병합(폴백)하여 `"10325 홍길동"` 포맷으로 온전히 복원하도록 개선.
+     - `handleSelectStudent`에서 검색 입력명에 `"10325 홍길동"` 형태로 전달된 경우 학번과 이름을 나누어 보관하도록 파싱 보강.
+- **변경 파일**: `TimetableImportTab.tsx`, `admin/page.tsx`, `admin/classroom/page.tsx`, `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29개 라우트 정상 생성)
+  - 실측 검증 스크립트 통과 (`10325 홍길동` 포맷 100% 정상 수신 확인)
+
 
 ## [2026-07-26] Claude → 체크포인트 (cb7a7f1 사용자 확인 완료 — 세션 종료, 다음: 커스텀 도메인)
 

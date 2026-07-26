@@ -220,16 +220,14 @@ export default function ClassroomPage() {
 
   // Helper: lookup display info from studentInfoMap state or users:all cache
   const getUserInfo = (email: string): { studentId: string; givenName: string } => {
-    if (studentInfoMap[email]) {
-      return studentInfoMap[email];
-    }
+    const mapInfo = studentInfoMap[email];
     const cached: any[] = getClientCache("users:all") || [];
-    const u = cached.find((u: any) => u.primaryEmail === email);
-    if (!u) return { studentId: "", givenName: "" };
-    return {
-      studentId: u.name?.familyName || "",
-      givenName: u.name?.givenName || "",
-    };
+    const cachedUser = cached.find((u: any) => u.primaryEmail === email);
+
+    const studentId = mapInfo?.studentId || cachedUser?.name?.familyName || "";
+    const givenName = mapInfo?.givenName || cachedUser?.name?.givenName || "";
+
+    return { studentId, givenName };
   };
 
   // 2. Student Selection Management
@@ -240,11 +238,20 @@ export default function ClassroomPage() {
       return;
     }
     if (name) {
+      const parts = name.trim().split(/\s+/);
+      let parsedStudentId = "";
+      let parsedGivenName = name.trim();
+
+      if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
+        parsedStudentId = parts[0];
+        parsedGivenName = parts.slice(1).join(" ");
+      }
+
       setStudentInfoMap(prev => ({
         ...prev,
         [email]: {
-          studentId: prev[email]?.studentId || "",
-          givenName: name,
+          studentId: parsedStudentId || prev[email]?.studentId || "",
+          givenName: parsedGivenName || prev[email]?.givenName || "",
         },
       }));
     }
@@ -739,7 +746,7 @@ export default function ClassroomPage() {
                             {hasInfo ? (
                               <>
                                 <span className="font-semibold text-gray-800">
-                                  {info.studentId} {info.givenName}
+                                  {info.studentId ? `${info.studentId} ${info.givenName}`.trim() : info.givenName}
                                 </span>
                                 <span className="ml-1.5 text-[10px] text-gray-400 font-mono truncate">{email}</span>
                               </>

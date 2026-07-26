@@ -60,6 +60,18 @@ export default function AdminPage() {
         })
         .catch(() => {});
     }
+
+    const handleSettingsUpdate = (e: any) => {
+      if (e.detail?.managerEmails) {
+        setTimetableSettings((prev) =>
+          prev
+            ? { ...prev, managerEmails: e.detail.managerEmails }
+            : { managerEmails: e.detail.managerEmails, activeTermId: null, days: 5, periodsPerDay: 7 }
+        );
+      }
+    };
+    window.addEventListener("timetableSettingsUpdated", handleSettingsUpdate);
+    return () => window.removeEventListener("timetableSettingsUpdated", handleSettingsUpdate);
   }, [userData]);
 
   // Real-time pending profile approvals count
