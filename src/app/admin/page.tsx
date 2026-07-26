@@ -123,7 +123,7 @@ export default function AdminPage() {
             <div className="bg-gradient-to-r from-indigo-800 to-blue-900 rounded-lg text-white p-6 shadow-md">
               <h2 className="text-xl font-bold mb-2">효명고등학교 관리 시스템</h2>
               <p className="text-blue-100 text-sm">
-                구글 워크스페이스와 실시간 연동되어 학교 도리인 계정 및 학적을 안전하게 관리합니다.
+                Google Workspace 계정과 학적 데이터를 관리합니다.
               </p>
             </div>
 

@@ -5,6 +5,8 @@
 *(현재 비어 있음)*
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -885,4 +887,24 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
   - `project_notes.md`
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
 - **비고**: 9a-1 구현은 사용자의 컴시간 엑셀 샘플 2종 대기(5단계 실데이터 리허설)만 남음.
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (버그 수정, UI 문구 전면 정비, 테스트 도구 분리 완료)
+
+- **작업 내용**:
+  1. **학기말 정리 버그 수정 (`ClassroomCleanupTab.tsx`)**: 헤더 체크박스 선택 기준을 `selectableCourses`(isOwner && !excluded && courseState !== "ARCHIVED")로 변경, `indeterminate` 상태 표시 추가, ARCHIVED 코스 행 체크박스 `disabled` 처리.
+  2. **UI 문구 전면 정비**: 자명한 제목의 설명 제거 및 간결한 문구 정돈, UI 내 로드맵 태그(`Phase 6a-1`, `6a-2`, `Phase 9a-1` 등) 제거, 개발 용어를 사용자 친화적 언어로 교체, 명단 API 연동 상세 규격 `<details>` 접기 적용, 학기말 정리 및 시간표 가져오기 화면에 공용 `HelpTip` 컴포넌트 마운트, `src/app/admin/page.tsx` 오타("도리인"→"도메인") 수정 및 배너 정돈.
+  3. **개발자 테스트 도구 분리 (`GraduationTab.tsx`)**: "개발자 시뮬레이션 및 테스트 도구" 섹션을 `super_admin` 전용 및 기본 접힘(`false`)으로 격리.
+- **변경 파일**:
+  - `src/components/common/HelpTip.tsx`
+  - `src/components/admin/ClassroomCleanupTab.tsx`
+  - `src/components/admin/RosterApiKeyManager.tsx`
+  - `src/components/admin/OUConfiguration.tsx`
+  - `src/components/admin/timetable/TimetableImportTab.tsx`
+  - `src/components/admin/lifecycle/GraduationTab.tsx`
+  - `src/app/admin/page.tsx`
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
+
 

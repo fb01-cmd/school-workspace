@@ -286,7 +286,7 @@ export default function OUConfiguration() {
           }`}
         >
           <span>🔑</span>
-          <span>명단 API 키 관리 (6a-1)</span>
+          <span>명단 API 키 관리</span>
         </button>
       </div>
 

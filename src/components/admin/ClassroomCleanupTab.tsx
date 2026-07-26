@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import HelpTip from "@/components/common/HelpTip";
 
 interface CourseTarget {
   id: string;
@@ -86,7 +87,7 @@ export default function ClassroomCleanupTab() {
 
       fetchedCourses.forEach(c => {
         initialNames[c.id] = c.suggestedName;
-        if (c.isTarget && c.isOwner) {
+        if (c.isTarget && c.isOwner && c.courseState !== "ARCHIVED") {
           initialSelected.push(c.id);
         }
       });
@@ -271,6 +272,7 @@ export default function ClassroomCleanupTab() {
   };
 
   const targetCourses = courses.filter(c => c.isTarget && !excludedIds.includes(c.id));
+  const selectableCourses = courses.filter(c => c.isOwner && !excludedIds.includes(c.id) && c.courseState !== "ARCHIVED");
 
   if (loading) {
     return (
@@ -287,12 +289,19 @@ export default function ClassroomCleanupTab() {
       <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-700 text-white rounded-xl p-6 shadow-lg relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-500/30 backdrop-blur-md rounded-full text-xs font-bold text-indigo-200 border border-indigo-400/30 mb-2">
-              <span>📅 {currentSchoolYear}학년도 학기말 정리</span>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-500/30 backdrop-blur-md rounded-full text-xs font-bold text-indigo-200 border border-indigo-400/30">
+                📅 {currentSchoolYear}학년도 학기말 정리
+              </span>
+              <HelpTip title="학기말 정리 상세 안내" variant="dark">
+                <p>지난 학년도 클래스룸을 연도 접두어(`2025 클래스명`)와 함께 보관 처리하고 캘린더 구독을 정돈합니다.</p>
+                <p>언제든지 '최근 정리 내역 및 복원' 탭에서 원클릭으로 복원할 수 있습니다.</p>
+                <p>공동 교사는 소유 권한이 없어 직접 보관할 수 없으며, 동아리 등 정리가 불필요한 클래스룸은 '정리 제외' 버튼으로 제외할 수 있습니다.</p>
+              </HelpTip>
             </div>
             <h2 className="text-xl font-bold">클래스룸·캘린더 학기말 일괄 정리</h2>
             <p className="text-indigo-200 text-sm mt-1 max-w-2xl">
-              지난 학년도 클래스룸을 연도 접두어(`2025 클래스명`)와 함께 보관 처리하고 캘린더 구독을 정돈합니다. 언제든지 원클릭으로 복원할 수 있습니다.
+              지난 학년도 클래스룸 및 캘린더를 정돈하고 보관 처리합니다.
             </p>
           </div>
           <div className="flex gap-2 shrink-0">
@@ -381,15 +390,22 @@ export default function ClassroomCleanupTab() {
                     <th className="p-3.5 w-10 text-center">
                       <input
                         type="checkbox"
-                        checked={selectedIds.length > 0 && selectedIds.length === targetCourses.length}
+                        ref={el => {
+                          if (el) {
+                            el.indeterminate =
+                              selectableCourses.some(c => selectedIds.includes(c.id)) &&
+                              !selectableCourses.every(c => selectedIds.includes(c.id));
+                          }
+                        }}
+                        checked={selectableCourses.length > 0 && selectableCourses.every(c => selectedIds.includes(c.id))}
                         onChange={e => {
                           if (e.target.checked) {
-                            setSelectedIds(targetCourses.map(c => c.id));
+                            setSelectedIds(selectableCourses.map(c => c.id));
                           } else {
                             setSelectedIds([]);
                           }
                         }}
-                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                       />
                     </th>
                     <th className="p-3.5">클래스룸 이름 (기존)</th>
@@ -418,10 +434,10 @@ export default function ClassroomCleanupTab() {
                         <td className="p-3.5 text-center">
                           <input
                             type="checkbox"
-                            disabled={isExcluded || !course.isOwner}
-                            checked={isSelected}
+                            disabled={isExcluded || !course.isOwner || course.courseState === "ARCHIVED"}
+                            checked={isSelected && course.courseState !== "ARCHIVED"}
                             onChange={() => toggleSelect(course.id)}
-                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer disabled:cursor-not-allowed"
                           />
                         </td>
                         <td className="p-3.5 font-medium text-gray-900">

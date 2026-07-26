@@ -88,6 +88,7 @@ const DEFAULT_CHAT_BODY = `📢 *[효명고등학교 구글 계정 삭제 사전
 
 export default function GraduationTab({ s, ud }: any) {
   const domain = ud?.domain || "";
+  const isSuperAdmin = ud?.role === "super_admin";
 
   // Data states
   const [candidates, setCandidates] = useState<StudentGradTask[]>([]);
@@ -923,19 +924,20 @@ export default function GraduationTab({ s, ud }: any) {
         </div>
       </div>
 
-      {/* 🛠️ Developer Test & Simulation Collapsible Card */}
-      <div className="bg-white border rounded-2xl shadow-xs overflow-hidden mt-6">
-        <button
-          type="button"
-          onClick={() => setShowDevTools(!showDevTools)}
-          className="w-full flex items-center justify-between p-4 bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-colors focus:outline-none"
-        >
-          <span className="flex items-center gap-1.5">
-            <span>🛠️</span>
-            <span>개발자 시뮬레이션 및 테스트 도구 (테스트 완료 후 운영 시 접어두세요)</span>
-          </span>
-          <span>{showDevTools ? "🔼 접기" : "🔽 펼치기"}</span>
-        </button>
+      {/* 🛠️ Developer Test & Simulation Collapsible Card (super_admin 전용) */}
+      {isSuperAdmin && (
+        <div className="bg-white border rounded-2xl shadow-xs overflow-hidden mt-6">
+          <button
+            type="button"
+            onClick={() => setShowDevTools(!showDevTools)}
+            className="w-full flex items-center justify-between p-4 bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-colors focus:outline-none"
+          >
+            <span className="flex items-center gap-1.5">
+              <span>🛠️</span>
+              <span>개발자 시뮬레이션 및 테스트 도구</span>
+            </span>
+            <span>{showDevTools ? "🔼 접기" : "🔽 펼치기"}</span>
+          </button>
 
         {showDevTools && (
           <div className="p-5 border-t space-y-5 bg-slate-50/50">
@@ -1073,6 +1075,7 @@ export default function GraduationTab({ s, ud }: any) {
           </div>
         )}
       </div>
+      )}
       {/* Signature & Consent Viewer Modal */}
       {showConsentModal && selectedConsent && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">

@@ -231,10 +231,10 @@ export default function RosterApiKeyManager() {
           <div>
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <span>🌐</span>
-              <span>명단 자동 공급 허브 (API 키 & 마스터 시트)</span>
+              <span>명단 자동 연동 관리</span>
             </h2>
             <p className="text-slate-500 text-xs mt-1">
-              외부 서비스(지필평가·모의고사 현황판, 교육과정 선택 플랫폼, 공유 드라이브 시트 등)에 수동 업로드 없이 최신 학생 명단을 자동 공급합니다.
+              외부 서비스 및 스프레드시트에 최신 학생 명단을 공급합니다.
             </p>
           </div>
           <button
@@ -249,53 +249,55 @@ export default function RosterApiKeyManager() {
           </button>
         </div>
 
-        {/* API Specification Info Box */}
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs space-y-3 text-slate-700">
-          <div className="font-bold text-slate-900 flex items-center gap-1.5">
-            <span>📡 명단 피드 API 규격 (Phase 6a-1)</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <span className="font-semibold text-slate-500 block mb-1">엔드포인트 URL</span>
-              <code className="bg-white border border-slate-200 px-2 py-1 rounded font-mono text-indigo-600 block truncate">
-                {apiBaseUrl}/api/roster/feed
-              </code>
+        {/* Technical API Specification Collapsible Box */}
+        <details className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-xs text-slate-700 space-y-3">
+          <summary className="font-bold text-slate-800 cursor-pointer hover:text-indigo-600 select-none">
+            📡 연동 API 상세 규격 보기
+          </summary>
+          <div className="pt-3 border-t border-slate-200/60 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <span className="font-semibold text-slate-500 block mb-1">연동 주소 (URL)</span>
+                <code className="bg-white border border-slate-200 px-2 py-1 rounded font-mono text-indigo-600 block truncate">
+                  {apiBaseUrl}/api/roster/feed
+                </code>
+              </div>
+              <div>
+                <span className="font-semibold text-slate-500 block mb-1">인증 방식 (HTTP Header)</span>
+                <code className="bg-white border border-slate-200 px-2 py-1 rounded font-mono text-emerald-600 block truncate">
+                  Authorization: Bearer &lt;API키&gt;
+                </code>
+              </div>
             </div>
-            <div>
-              <span className="font-semibold text-slate-500 block mb-1">인증 방식 (HTTP Header)</span>
-              <code className="bg-white border border-slate-200 px-2 py-1 rounded font-mono text-emerald-600 block truncate">
-                Authorization: Bearer &lt;API키&gt;
-              </code>
-            </div>
-          </div>
 
-          <div className="pt-2 border-t border-slate-200">
-            <span className="font-semibold text-slate-800 block mb-1">지원 쿼리 파라미터</span>
-            <ul className="list-disc pl-5 space-y-1 text-slate-600 text-[11px]">
-              <li>
-                <code className="font-mono bg-white px-1 border rounded">?grade=1</code> — 특정 학년만 필터링 (예: 1학년 명단만)
-              </li>
-              <li>
-                <code className="font-mono bg-white px-1 border rounded">?format=csv</code> — 앱스스크립트/구글 시트 IMPORTRANGE 직접 소비용 UTF-8 BOM CSV 출력
-              </li>
-              <li>
-                <code className="font-mono bg-white px-1 border rounded">?includeSuspended=true</code> — 정지(학업중단/휴학) 계정 포함 (기본값: false 미포함)
-              </li>
-            </ul>
+            <div className="pt-2 border-t border-slate-200">
+              <span className="font-semibold text-slate-800 block mb-1">옵션 파라미터</span>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 text-[11px]">
+                <li>
+                  <code className="font-mono bg-white px-1 border rounded">?grade=1</code> — 특정 학년만 필터링 (예: 1학년 명단만)
+                </li>
+                <li>
+                  <code className="font-mono bg-white px-1 border rounded">?format=csv</code> — 스프레드시트 직접 소비용 UTF-8 BOM CSV 출력
+                </li>
+                <li>
+                  <code className="font-mono bg-white px-1 border rounded">?includeSuspended=true</code> — 정지 계정 포함 (기본값: false 미포함)
+                </li>
+              </ul>
+            </div>
           </div>
-        </div>
+        </details>
       </div>
 
-      {/* 2. Master Spreadsheet Auto Sync Section (Phase 6a-2) */}
+      {/* 2. Master Spreadsheet Auto Sync Section */}
       <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <span>📊</span>
-              <span>명렬표 마스터 시트 자동 갱신 (6a-2)</span>
+              <span>명렬표 마스터 시트 자동 갱신</span>
             </h3>
             <p className="text-slate-500 text-xs mt-1">
-              구글 공유 드라이브의 스프레드시트에 매일 자정 크론으로 학년별 탭(1학년/2학년/3학년)을 자동 생성하고 최신 명단을 재작성합니다.
+              구글 공유 드라이브의 스프레드시트에 매일 자정 학년별 탭(1~3학년)을 최신 명단으로 작성합니다.
             </p>
           </div>
           {cleanSheetId && (

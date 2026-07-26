@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { getClientCache, invalidateClientCache, setClientCache } from "@/lib/cache/clientCache";
+import HelpTip from "@/components/common/HelpTip";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import {
   IntermediateClassGrid,
@@ -427,14 +428,20 @@ export default function TimetableImportTab({
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white rounded-xl p-6 shadow-md border border-indigo-800/40">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-500/20 text-indigo-200 border border-indigo-400/30 mb-2">
-              Phase 9a-1 • 일과계 전용 관리자
-            </span>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-500/20 text-indigo-200 border border-indigo-400/30">
+                일과계 전용 관리자
+              </span>
+              <HelpTip title="시간표 가져오기 상세 안내" variant="dark">
+                <p>컴시간알리미 등 엑셀 인쇄 데이터를 복사-붙여넣기하여 교사 매핑 및 검증 후 기초시간표 학기를 생성합니다.</p>
+                <p>초안(Draft) 상태로 먼저 저장한 후 무결성 검증을 거쳐 정식 학기로 활성화할 수 있습니다.</p>
+              </HelpTip>
+            </div>
             <h2 className="text-xl font-bold text-white tracking-tight">
               📦 2학기 기초시간표 가져오기 & 학기 관리
             </h2>
             <p className="text-sm text-indigo-200/80 mt-1 max-w-2xl">
-              컴시간알리미 등 엑셀 인쇄 데이터를 웹시트로 복사-붙여넣기하여 교사 매핑 및 검증 후 기초시간표 학기를 생성합니다.
+              컴시간 엑셀 인쇄 데이터를 붙여넣어 기초시간표 학기를 등록합니다.
             </p>
           </div>
           <button
