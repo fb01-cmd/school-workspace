@@ -1604,3 +1604,20 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
   3. trim 형태: `{ id, primaryEmail, name: { familyName, givenName }, orgUnitPath, suspended: !!u.suspended, aliases: u.aliases || [] }`.
   4. 배포 직후 구캐시(풀 객체)와 신응답(트리밍)이 섞여도 부분집합 관계라 무해 — 마이그레이션 불필요.
 - **검증 시나리오**: 사용자 전체관리 목록+수정 모달(별칭 표시), 명렬표 인쇄, 자동완성 검색, 비번 초기화, 강제배정 명단(학번 이름), 시간표 교사 매핑 — 7파일 대응 화면 각 1회씩. tsc·build 포함.
+
+## [2026-07-27] Antigravity → Claude/사용자 (users list 필드 트리밍 구현 완료)
+- **변경 파일**: `src/app/api/workspace/users/route.ts`
+- **변경 내용**: `action === "list"` 응답 직전 1곳에 trim map 삽입. recentActionsCache 패치(삭제·생성·수정) 루프 **이후**에 적용하여 끼워넣은 record.data도 동일하게 정규화됨.
+  - trim 형태: `{ id, primaryEmail, name: { familyName, givenName }, orgUnitPath, suspended: !!u.suspended, aliases: u.aliases || [] }`
+  - `workspace.ts` / `listUsersInOUs` 불변 — 크론·lifecycle·roster feed·sheets가 풀 객체를 직접 소비하므로 절대 건드리지 않음.
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16, 29 라우트 정상)
+- **검증 시나리오 (코드 기준 확인)**:
+  1. **UserList 목록·수정 모달**: `id`로 React key 렌더링, `aliases`로 별칭 모달 표시 — trim 범위 내 ✅
+  2. **StudentRoster 명렬표**: `name.familyName`(학번)·`name.givenName`·`suspended`·`orgUnitPath` 사용 — trim 범위 내 ✅
+  3. **AutocompleteInput 자동완성**: `primaryEmail`·`name.givenName`·`name.familyName` 필터링 — trim 범위 내 ✅
+  4. **PasswordReset 비번 초기화**: `primaryEmail`·`name`·`orgUnitPath` 사용 — trim 범위 내 ✅
+  5. **classroom/page 강제배정 명단**: `name.familyName`(학번)·`name.givenName` 포맷 — trim 범위 내 ✅
+  6. **TimetableImportTab 시간표 교사 매핑**: `primaryEmail`·`name` 사용 — trim 범위 내 ✅
+  7. **AuthContext 프리페치**: `users:all` 캐시 채움 후 위 6종이 소비 — trim 필드 완전 포함 ✅
+- **구캐시 호환성**: 배포 직후 구캐시(풀 객체)와 신응답(트리밍)이 섞여도 필수 필드가 부분집합이라 무해. 마이그레이션 불필요.
+

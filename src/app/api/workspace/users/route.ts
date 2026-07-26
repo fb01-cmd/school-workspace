@@ -203,7 +203,21 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      return NextResponse.json({ users, isMock });
+      // 응답 직전 필드 트리밍 — 클라이언트 7곳 소비 필드(6개)만 포함.
+      // workspace.ts/listUsersInOUs 는 풀 객체를 반환한 채로 유지 (크론·lifecycle·roster feed·sheets가 직접 소비).
+      const trimmedUsers = users.map((u: any) => ({
+        id: u.id,
+        primaryEmail: u.primaryEmail,
+        name: {
+          familyName: u.name?.familyName ?? "",
+          givenName: u.name?.givenName ?? "",
+        },
+        orgUnitPath: u.orgUnitPath,
+        suspended: !!u.suspended,
+        aliases: u.aliases || [],
+      }));
+
+      return NextResponse.json({ users: trimmedUsers, isMock });
     }
 
     if (action === "search") {
