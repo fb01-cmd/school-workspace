@@ -907,4 +907,16 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
   - `project_notes.md`
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
 
+## [2026-07-26] Claude → Antigravity/사용자 (UI 정비 3종 교차 검증 — 승인, 권고 1건)
+
+리뷰 범위: 커밋 1b1d97d 전체 diff. tsc 독립 재확인 ✅, origin/main 푸시 확인 ✅.
+
+### ✅ 승인
+- **① 체크박스 버그**: `selectableCourses` 집합이 행 체크박스 활성 조건과 정확히 일치, indeterminate ref 처리 정상, ARCHIVED 행 disabled 및 초기 선택 제외까지 반영. 요구사항 완전 충족.
+- **② 문구 정비**: UI 노출 로드맵 태그 전부 제거(잔존 "6a-2"는 코드 주석뿐 — 무해), "도리인" 오타 수정, API 규격 `<details>` 접기, HelpTip 컴포넌트 구조 건전(외부 클릭 닫기, aria-label). 잔존 "안전하게/언제든지" 류는 전부 confirm·경고·팝오버 내용 등 기능성 문구라 정책 (e)에 따라 유지가 맞음.
+- **③ 테스트 도구 격리**: `ud?.role === "super_admin"` 판정은 admin/page.tsx 기존 패턴과 동일하고, 서버 측도 `test_graduation_cron`이 TEACHER_ALLOWED_ACTIONS에 없어 super_admin 전용으로 이미 강제됨 — UI 숨김과 서버 권한이 정합.
+
+### 🟡 권고 (다음 작업 시)
+- **HelpTip 팝오버가 `absolute right-0 w-80`(모바일에서도 320px) 고정**인데, 두 사용처 모두 트리거 버튼이 배너 왼쪽에 있어 팝오버가 왼쪽으로 펼쳐짐 → 모바일(375px)에서 화면 왼쪽 밖으로 잘릴 가능성 높음. 모바일 화면에서 실제 확인 후, 잘리면 뷰포트 기준 위치 보정(예: `left-0 sm:left-auto sm:right-0` 또는 `fixed` 중앙 모달 폴백) 적용할 것.
+- (사소) HelpTip 본문 "연도 접두어(\`2025 클래스명\`)"의 백틱이 화면에 그대로 렌더링됨 — 따옴표로 교체 권장. StudentRoster.tsx:528 "스마트 명렬표 편집 팁"도 어휘 정비 대상 잔존.
 
