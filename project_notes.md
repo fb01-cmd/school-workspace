@@ -1235,6 +1235,39 @@ Phase 9a-1 5단계(실데이터 리허설)만 남음 — **사용자의 컴시�
 
 ---
 
+## [2026-07-26] Antigravity → Claude/사용자 (전입생 학급 클래스룸 스캔 v1.1 클라이언트 주도 배치 프로토콜 재구현 완료) *(8af1c6c에서 실수로 삭제된 기록 — d64b200 커밋에서 복구)*
+
+- **작업 내용 (`transfer_classroom_spec.md` §5 v1.1 스펙 준수)**:
+  1. **단일 `scan` 액션 전면 폐기 및 라우트 분리 (`/api/workspace/classroom/transfer-enroll/route.ts`)**:
+     - `action: "scan_init"`: `grade`, `classNum`, `studentEmail` 기반 반 재적 명단(`classEmails`) 및 도메인 ACTIVE 코스 메타데이터 목록만 빠르고 안전하게 반환 (로스터 조회 없음).
+     - `action: "scan_batch"`: 1회당 최대 15개 코스(`BATCH_COURSE_LIMIT = 15`)로 제한하고 배치 내 동시성 3(`ROSTER_CONCURRENCY = 3`)으로 로스터 조회 및 §4 알고리즘 판정 수행. 429 쿼터 초과/오류 발생 시 `failedCourseIds`로 명시적 반환 (silent 미탐 방지).
+  2. **클라이언트 주도 순차 배치 루프 및 비JSON 응답 방어 (`TransferInTab.tsx`)**:
+     - `safeFetchJson` 헬퍼 구현: `res.ok` 및 Content-Type(JSON 여부)을 파싱 전에 검사하여 Vercel 60초 타임아웃 등 비JSON HTTP 504 응답을 안전하게 인터셉트하고 안내 메시지 표시.
+     - `runScan` 루프: `scan_init` 획득 후 코스들을 15개 단위 배치로 나누어 순차 호출(병렬 금지, 배치 간 `500ms` 대기).
+     - **실시간 진행률 표시**: UI 모달 상단에 `"코스 로스터 검사 중 N/M개 (P%)..."` 진행 상황 실시간 업데이트.
+     - **1회 일괄 재시도 및 경고 안내**: 배치 루프 완료 후 `failedCourseIds` 수집 시 `1초` 대기 후 실패 코스들에 대해 1회 일괄 재시도 수행. 최종 실패분 잔존 시 UI에 노란색 경고 박스(`"⚠️ N개 코스 검사 실패(API 쿼터 초과) — 잠시 후 재스캔을 권장합니다."`) 표출.
+- **변경 파일**: `src/app/api/workspace/classroom/transfer-enroll/route.ts`, `src/components/admin/lifecycle/TransferInTab.tsx`, `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅ (29개 라우트 정상 생성)
+- **※ Claude 표적 리뷰 아직 안 됨** — 고아 폴더 건 마무리 후 리뷰 필요 (d64b200).
+
+## [2026-07-26] Claude → Antigravity/사용자 (고아 폴더 기능 b96c232 표적 리뷰 — 조건부 승인, 🔴 2건) *(커밋 전 유실된 기록 — 재기록)*
+
+리뷰 범위: b96c232 전체 diff(cleanup route, workspace.ts 헬퍼, ClassroomCleanupTab). 스펙 3대 관점(검사 읽기 전용, `'me' in owners`, §4 restore 회귀)은 모두 통과. 단, 스펙에 없던 결함 2건 발견 — 하나는 스펙 자체의 구멍(Claude 책임).
+
+### 🔴 1 — Classroom 루트 오식별: 정리된 ARCHIVED 코스 폴더를 샘플로 잡으면 아카이브 폴더를 루트로 오인
+orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴더의 부모를 루트로 삼는데, 학기말 정리를 거친 ARCHIVED 코스의 폴더는 이미 "이전년도 클래스룸/<년도>학년도"로 이동돼 있으므로 그 코스가 샘플이면 루트가 아카이브 연도 폴더로 오식별 → 진짜 고아 폴더 전량 silent 미탐. 스펙 §2.2의 구멍(구현은 스펙을 따름) — 스펙 v1.1로 개정: ① ACTIVE 코스 우선 샘플, ② 후보 루트 `files.get(fields:"name")`으로 "Classroom" 검증 후 불일치 시 기각·이름 검색 폴백, ③ 둘 다 실패 시 안내 응답.
+
+### 🔴 2 — orphan 로그에 `timestamp` 필드 부재: 프로덕션 이력 조회에서 통째로 누락되어 되돌리기 불가
+`execute_orphan` 로그가 `cleanedAt`만 기록 — 이력 GET의 `orderBy("timestamp")`는 필드 없는 문서를 제외하므로 인덱스 정상 환경에서 orphan 로그가 이력 탭에 안 보여 되돌리기 도달 불가. `originalName`/`newName` 부재로 UI에 undefined 노출. 수정: `timestamp`/`originalName`/`newName` 필드 통일.
+
+### 🟡 권고 4건
+① restore의 orphan 판별 휴리스틱(`!courseId && driveFolderId`)과 `targetParentFolderId` 오버라이드 제거 — `mode === "orphan"`만으로 좁히기. ② 이력 탭 orphan 배지 + 전용 confirm 문구. ③ `listClassroomCourses` 페이지네이션(pageToken 루프) 추가 — REFERENCED 집합 불완전으로 인한 오탐 방지. ④ mock 필터 teacher01 하드코딩 제거.
+
+### ✅ 그 외 승인
+검사 GET 읽기 전용(`files.create` 0건), `'me' in owners`·pageToken 루프·fields 최소 지정, §4 restore 회귀 없음(기존 cleanup·residual 분기 불변), `execute_orphan` ≤30 제한·per-folder 명시적 실패 반환·멱등 이동·감사 로그, UI 온디맨드 검사·주의 문구. 🔴 2건 수정 후 실서버에서 이력 표시·되돌리기·ARCHIVED-only 루트 식별 확인 시 최종 승인.
+
+---
+
 ## [2026-07-26] Antigravity → Claude/사용자 (고아 폴더 b96c232 표적 리뷰 🔴2+🟡4건 반영 완료 — 커밋 8af1c6c)
 
 - **수정 내용**:
