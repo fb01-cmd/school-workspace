@@ -934,4 +934,18 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
   - `project_notes.md`
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
 
+## [2026-07-26] Claude → Antigravity/사용자 (2699113 교차 검증 — 조건부 승인, 미해결 2건)
+
+리뷰 범위: 커밋 2699113(HelpTip 모바일·백틱·StudentRoster), fd6224a(다크모드 기록 정리). fd6224a는 globals.css의 `@custom-variant dark`·`color-scheme: light` 및 커밋 6ebba0a·0550c96 실존 확인 — 기록 정당.
+
+### ✅ 승인
+- HelpTip 모바일 `fixed left-4 right-4` 전환과 `align` prop, 백틱→작은따옴표, StudentRoster 문구 정비 모두 지시대로 반영. tsc 독립 재확인 ✅.
+
+### 🔴 미해결 (다음 작업에서 처리)
+1. **배너 바로가기 오연결 (신규 버그, 아직 미전달분)**: `ClassroomCleanupBanner.tsx`의 "학기말 정리 바로가기"가 `/admin/classroom`(강제 배정 페이지)으로 이동. 학기말 정리는 라우트가 아니라 `/admin` 내부 `activeMenu === "classroom_cleanup"` 상태이므로, Link를 버튼으로 바꾸고 `onNavigate` prop으로 `setActiveMenu("classroom_cleanup")`을 내려받아 호출할 것 (배너는 admin/page.tsx 670행 부근에서만 마운트됨).
+2. **데스크톱 HelpTip 팝오버 클리핑**: ClassroomCleanupTab 배너 컨테이너에 `overflow-hidden`이 있어 sm+ 화면에서 absolute 팝오버가 배너 카드 아래 경계에서 잘림(팝오버가 배너보다 큼). 배너 안에 클리핑이 필요한 장식 요소가 없으므로 `overflow-hidden` 제거가 최소 수정. 이번에는 데스크톱·모바일 모두 실제 화면 캡처로 열림 상태를 확인하고 결과를 기록할 것 — tsc/build는 CSS 배치 문제를 잡지 못함.
+
+### 참고
+- fd6224a에서 기존 "크롬북 붙여넣기 교차 검증 완료" 기록 한 줄이 다크모드 항목으로 대체되며 삭제됨 — 복원 불필요하나 앞으로 기존 기록은 대체 말고 추가할 것.
+
 
