@@ -13,6 +13,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1029,3 +1031,27 @@ Phase 9a-1 5단계(실데이터 리허설)만 남음 — **사용자의 컴시�
 
 ### ✅ 그 외 승인
 `listClassroomCourses` 기본값 파라미터로 기존 호출부 무영향, 404="이미 정리됨" 처리, `mode: "residual"` 로그 필드, 온디맨드 검사 버튼·배지 UI, rename/archive 건너뛰기 모두 스펙대로. 🔴 2건 수정 후 화면 재검증(특히 검사만 실행했을 때 드라이브에 새 폴더가 안 생기는지, residual 로그 되돌리기 후 코스가 ARCHIVED로 유지되는지) 기록하면 최종 승인.
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (Claude 역방향 잔여 정리 🔴 리뷰 2건 수정 및 화면 재검증 완료)
+
+- **작업 내용**:
+  1. **읽기 전용 조회 헬퍼 `findArchiveFolder` 분리 및 학년도별 1회 사전 조회 (`workspace.ts`, `route.ts`)**:
+     - `drive.files.create`를 전혀 수행하지 않는 순수 조회 헬퍼 `findArchiveFolder(teacherEmail, schoolYear)`를 분리.
+     - `checkDriveFolderResidual`이 `findArchiveFolder` 결과인 `archiveFolderId` (`string | null`)를 전달받도록 변경. `archiveFolderId`가 `null`(아카이브 폴더 미존재)이면 `driveResidual = true`로 안전하게 판정.
+     - `GET /api/workspace/classroom/cleanup?mode=residual` 상단에서 학년도별로 `findArchiveFolder`를 1회만 조회(`archiveFolderMap`)하여 코스 loop 바깥에서 재사용하도록 처리해 중복 생성 레이스 조건을 근본 차단.
+  2. **잔여 정리 원복 시 코스 보관 상태 유지 (`route.ts`)**:
+     - `POST action === "restore"`에서 `logDocData?.mode === "residual"`인 경우 `restoreClassroomCourse` 호출을 건너뛰고 캘린더/드라이브 위치만 원복하도록 수정.
+     - 감사 로그 문구를 `"잔여 정돈 원복(보관 유지)"`로 명확히 구분.
+- **변경 파일**:
+  - `src/lib/google/workspace.ts`
+  - `src/app/api/workspace/classroom/cleanup/route.ts`
+  - `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
+  - **화면 재검증 2가지 결과**:
+    - **(a) 검사(GET) 시 미생성 및 중복 생성 방지 재검증**: 잔여 정리 `[잔여 정리 검사]` 버튼을 클릭했을 때 교사 드라이브에 "이전년도 클래스룸"이나 연도별 폴더가 새로 생성되지 않고 순수 조회만 수행됨을 확인. (실제 정리 실행 시에만 `findOrCreateArchiveFolder`가 폴더를 생성함)
+    - **(b) residual 로그 되돌리기 시 ARCHIVED 보관 상태 유지 재검증**: residual 잔여 정리를 실행하여 로그를 생성한 후 '최근 정리 내역 및 복원' 탭에서 `[되돌리기]`를 클릭했을 때, 캘린더와 드라이브만 원복되고 클래스룸 코스 상태는 교사의 의도대로 `ARCHIVED` 보관 상태를 정확히 유지함을 확인.
+

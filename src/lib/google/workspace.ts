@@ -1903,6 +1903,51 @@ export const findOrCreateArchiveFolder = async (
 };
 
 /**
+ * 드라이브 상위 아카이브 폴더("이전년도 클래스룸/<schoolYear>학년도") 순수 조회 헬퍼 (생성 없음)
+ * - 읽기 전용 검사 용도로 사용되며, 아카이브 폴더가 존재하지 않으면 null을 반환합니다.
+ */
+export const findArchiveFolder = async (
+  teacherEmail: string,
+  schoolYear: number
+): Promise<string | null> => {
+  if (isMock) {
+    return `mock_archive_folder_${schoolYear}`;
+  }
+
+  const drive = getDriveClient(teacherEmail);
+  if (!drive) return null;
+
+  try {
+    // 1. "이전년도 클래스룸" 루트 폴더 조회
+    const rootFolderName = "이전년도 클래스룸";
+    const rootRes = await drive.files.list({
+      q: `name = '${rootFolderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+      fields: "files(id, name)",
+    });
+
+    if (!rootRes.data.files || rootRes.data.files.length === 0) {
+      return null; // 아카이브 루트 폴더가 미생성 상태임
+    }
+    const rootFolderId = rootRes.data.files[0].id!;
+
+    // 2. "이전년도 클래스룸/<schoolYear>학년도" 하위 폴더 조회
+    const subFolderName = `${schoolYear}학년도`;
+    const subRes = await drive.files.list({
+      q: `'${rootFolderId}' in parents and name = '${subFolderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+      fields: "files(id, name)",
+    });
+
+    if (!subRes.data.files || subRes.data.files.length === 0) {
+      return null; // 연도별 하위 아카이브 폴더가 미생성 상태임
+    }
+    return subRes.data.files[0].id!;
+  } catch (error) {
+    console.warn(`findArchiveFolder failed for ${teacherEmail} / ${schoolYear}:`, error);
+    return null;
+  }
+};
+
+/**
  * 캘린더 구독 잔존 여부 판정 헬퍼
  * - calendarList.get(calendarId) 성공 시 hidden/selected 여부 확인
  * - 404 에러나 존재하지 않는 경우는 "이미 정리됨" (false)으로 처리
@@ -1935,30 +1980,32 @@ export const checkCalendarResidual = async (
 
 /**
  * 드라이브 폴더 미이동 잔여 여부 판정 헬퍼
- * - teacherFolderId의 parents를 조회하고 findOrCreateArchiveFolder 결과와 비교
- * - 이미 아카이브 상위 폴더에 들어있으면 false (정리 완료), 아니면 true (미이동 잔여)
+ * - 미리 조회된 archiveFolderId (findArchiveFolder 결과)를 넘겨받아 비교합니다.
+ * - archiveFolderId가 null인 경우(아카이브 폴더 미존재) 코스 폴더는 아카이브 폴더에 포함될 수 없으므로 driveResidual = true로 판정합니다.
+ * - archiveFolderId가 존재하고 parents에 해당 ID가 포함되어 있으면 false(정리 완료), 포함되어 있지 않으면 true(미이동 잔여)로 판정합니다.
  */
 export const checkDriveFolderResidual = async (
   teacherEmail: string,
   folderId: string,
-  schoolYear: number
+  archiveFolderId: string | null
 ): Promise<boolean> => {
   if (!folderId) return false;
   if (isMock) {
     return folderId.startsWith("mock_folder_archived");
   }
 
+  // 아카이브 상위 폴더가 아예 존재하지 않는다면 아직 이동되지 않은 상태(잔여)임
+  if (!archiveFolderId) {
+    return true;
+  }
+
   const drive = getDriveClient(teacherEmail);
   if (!drive) return false;
 
   try {
-    const [fileRes, targetArchiveFolderId] = await Promise.all([
-      drive.files.get({ fileId: folderId, fields: "id, parents" }),
-      findOrCreateArchiveFolder(teacherEmail, schoolYear),
-    ]);
-
+    const fileRes = await drive.files.get({ fileId: folderId, fields: "id, parents" });
     const parents = fileRes.data.parents || [];
-    if (parents.includes(targetArchiveFolderId)) {
+    if (parents.includes(archiveFolderId)) {
       return false; // 이미 아카이브 폴더 내에 위치함
     }
     return true; // 미이동 잔여

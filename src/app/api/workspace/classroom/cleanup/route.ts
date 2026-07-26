@@ -13,6 +13,7 @@ import {
   restoreClassroomCalendar,
   moveDriveFolderToArchive,
   findOrCreateArchiveFolder,
+  findArchiveFolder,
   restoreClassroomCourse,
   checkCalendarResidual,
   checkDriveFolderResidual,
@@ -87,15 +88,25 @@ export async function GET(req: NextRequest) {
         return sYear >= currentSchoolYear - 1;
       });
 
+      // 학년도별 상위 아카이브 폴더 ID를 사전 1회 순수 조회 (생성 없음 — 중복 생성 및 미생성 시 드라이브 자동 생성 방지)
+      const uniqueSchoolYears = Array.from(
+        new Set(recentArchived.map((c: any) => (c.creationTime ? getSchoolYearFromCreationTime(c.creationTime) : currentSchoolYear)))
+      );
+      const archiveFolderMap: Record<number, string | null> = {};
+      for (const sYear of uniqueSchoolYears) {
+        archiveFolderMap[sYear] = await findArchiveFolder(teacherEmail, sYear);
+      }
+
       const residualCourseDetails = await Promise.all(
         recentArchived.map(async (c: any) => {
           const creationTime = c.creationTime || null;
           const schoolYear = creationTime ? getSchoolYearFromCreationTime(creationTime) : currentSchoolYear;
           const isOwner = !c.ownerId || c.ownerId === teacherEmail || (teacherUserId !== null && c.ownerId === teacherUserId);
+          const archiveFolderId = archiveFolderMap[schoolYear] ?? null;
 
           const [calendarResidual, driveResidual] = await Promise.all([
             c.calendarId ? checkCalendarResidual(teacherEmail, c.calendarId) : Promise.resolve(false),
-            c.teacherFolder?.id ? checkDriveFolderResidual(teacherEmail, c.teacherFolder.id, schoolYear) : Promise.resolve(false),
+            c.teacherFolder?.id ? checkDriveFolderResidual(teacherEmail, c.teacherFolder.id, archiveFolderId) : Promise.resolve(false),
           ]);
 
           return {
@@ -222,7 +233,14 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const restoredCourse = await restoreClassroomCourse(teacherEmail, courseId, originalName);
+      // residual 모드 로그인지 판별: 교사가 직접 보관(ARCHIVED)했던 코스의 잔여 정리 로그면 코스 보관 해제를 건너뛴다
+      const isResidual = logDocData?.mode === "residual";
+      let restoredCourse: any = null;
+      if (!isResidual) {
+        restoredCourse = await restoreClassroomCourse(teacherEmail, courseId, originalName);
+      } else {
+        restoredCourse = { id: courseId, courseState: "ARCHIVED", name: originalName, isResidual: true };
+      }
       
       // 캘린더 되돌리기 시도 (숨김 해제 또는 재구독)
       const targetCalendarId = calendarId || logDocData?.calendarId;
@@ -271,7 +289,9 @@ export async function POST(req: NextRequest) {
         operatorEmail: teacherEmail,
         action: "CLASSROOM_CLEANUP_RESTORE",
         targetEmail: courseId,
-        details: `클래스룸 보관 해제 및 복원 (${originalName || courseId})`,
+        details: isResidual
+          ? `잔여 정돈 원복(보관 유지) (${originalName || courseId})`
+          : `클래스룸 보관 해제 및 복원 (${originalName || courseId})`,
         status: "success",
       });
 
