@@ -21,11 +21,12 @@ import MyProfileCard from "@/components/admin/MyProfileCard";
 import ClassroomCleanupBanner from "@/components/admin/ClassroomCleanupBanner";
 import ClassroomCleanupTab from "@/components/admin/ClassroomCleanupTab";
 import DisciplineSection from "@/components/admin/discipline/DisciplineSection";
+import TimetableSection from "@/components/admin/timetable/TimetableSection";
 
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline";
+type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
@@ -88,6 +89,8 @@ export default function AdminPage() {
       case "forms":
       case "discipline":
         return <DisciplineSection />;
+      case "timetable":
+        return <TimetableSection />;
       case "logs":
         return <AuditLogViewer />;
       case "roster":
@@ -413,6 +416,26 @@ export default function AdminPage() {
                       )}
                     </button>
                   )}
+                </div>
+              </div>
+
+              {/* 시간표 독립 섹션 */}
+              <div>
+                <div className="px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                  시간표 관리
+                </div>
+                <div className="space-y-1">
+                  <button
+                    onClick={() => setActiveMenu("timetable")}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      activeMenu === "timetable"
+                        ? "bg-indigo-800 text-white font-bold shadow-sm"
+                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    <span>📦</span>
+                    <span>시간표 (기초시간표)</span>
+                  </button>
                 </div>
               </div>
 

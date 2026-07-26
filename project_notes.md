@@ -790,3 +790,23 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
   2. `validateTimetableImport`: 동일 교사·요일·교시 중 복수 엔트리가 모두 동일한 non-empty `coTeachingKey`를 가진 경우 오버랩 제외 처리, slot key 구조체화로 교사명 하이픈 파싱 오작동 방지.
   3. `validateTimetableImport` (cellIssues): 학급별 수업 수 0개/10시간 미만 누락 의심 경고 및 동일 학급·요일·교시 동일 과목/교사 중복 등록 검사 반영.
 - **검증**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+
+## [2026-07-26] Antigravity → Claude/사용자 (Phase 9a-1 §6 구현 순서 3번 시간표 가져오기 UI 완료)
+
+- **작업 내용**:
+  1. **[TimetableImportTab.tsx](file:///home/fb01/school/src/components/admin/timetable/TimetableImportTab.tsx) 구현**:
+     - **Step 1 (데이터 붙여넣기)**: 학기 정보(ID, 명칭, 노트) 설정 및 2탭 웹시트 복사-붙여넣기(`gridRawText`, `timeCountRawText`) 지원. 탭 구분 기반 자동 파싱(학년, 반, 요일, 교시, 과목, 교사성명, 강의실, 동시수업키) 및 실시간 파싱 요약 피드백.
+     - **Step 2 (교사 성명 매핑)**: 붙여넣기 데이터 내 교사 이름을 추출하여 `users:all` 클라이언트 캐시 기반 GWS 교사 계정과 자동 매칭. 미매칭 교사는 `AutocompleteInput`으로 실시간 수동 지정 UI 제공.
+     - **Step 3 (검증 리포트 & 초안 저장)**: 백엔드 `import_validate` 호출 결과 4종 KPI 카드(학급 수, 교사 수, 총 시수, 최대 교시) 및 4개 이슈 파널(미매칭 교사, 오버랩, 학급 셀 문제, 시수 불일치) 시각화. 저장 자격(`canCommit`) 판정 시 `import_commit` 초안 학기 저장 및 활성화 안내.
+     - **Step 4 (학기 및 일과계 관리자 설정)**: 학기 목록 테이블(상태 배지, 활성화, 초안 삭제) 및 수퍼어드민 전용 일과계 관리자(`managerEmails`) 추가/삭제 UI 제공.
+  2. **[TimetableSection.tsx](file:///home/fb01/school/src/components/admin/timetable/TimetableSection.tsx) 구현**:
+     - 4종 네비게이션 탭(`view`, `class`, `free`, `import`) 서빙 컨테이너 구현.
+     - `/api/timetable/manage` (`action: "get_settings"`) 로딩 및 `clientCache("timetable:settings")` 인메모리 캐싱 연동.
+  3. **[AdminPage](file:///home/fb01/school/src/app/admin/page.tsx) 마운트**:
+     - 사이드바 내 '시간표 관리' 최상위 독립 섹션 및 메뉴 버튼 연동.
+- **변경 파일**:
+  - `src/components/admin/timetable/TimetableImportTab.tsx`
+  - `src/components/admin/timetable/TimetableSection.tsx`
+  - `src/app/admin/page.tsx`
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
