@@ -1480,3 +1480,10 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
   - `npx tsc --noEmit` ✅ (0 errors)
   - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29개 라우트 정상 생성)
 
+
+## [2026-07-26] Claude → Antigravity/사용자 (cb7a7f1 표적 리뷰 — ✅ 승인·배포)
+
+- §8-1 지시 3건 모두 정확 구현: ① 메뉴·라우트 이중 가드(isTimetableManager = super_admin || managerEmails, 사이드바 렌더 + renderContent 차단), ② 메뉴명 "시간표 관리 (일과계)", ③ 학생 카드 unmount(컴포넌트 파일은 9b 재도입 대비 보존 — 적절). TimetableSection의 !isManager 가드 메시지도 §8-1 취지에 부합.
+- 서버 view/manage API 권한은 불변 — §8-1의 "노출 계층만 조정, 데이터·API 권한 불변" 그대로. 시간표는 공유 운영 정보라 API 레벨 차단은 불필요(스펙 §1).
+- 🟡 (기존 미결 항목 재강조): 메뉴 판정이 `timetable:settings` 클라이언트 캐시를 공유하므로, super_admin이 managerEmails를 변경해도 캐시 TTL까지 메뉴 표시가 지연될 수 있음(권한 자체는 서버 판정이라 보안 문제 아님, 표시 지연만). 로드맵의 **"timetable:settings 캐시 무효화" 🟡 잔여 항목**이 이 변경으로 체감 우선순위 상승 — 설정 저장 시 setClientCache 갱신 한 줄이면 됨. 다음 Antigravity 작업 시 함께 처리 권장.
+- 독립 검증: tsc ✅ (Claude 재확인). push·배포 Claude 실행. 배포 후 확인 포인트: playviolin(비일과계)에서 사이드바 시간표 메뉴 소멸, 학생 포털에서 시간표 카드 소멸.
