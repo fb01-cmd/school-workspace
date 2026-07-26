@@ -30,9 +30,12 @@ export let mockUsers: {
 }[] = [
   { id: "u1", primaryEmail: "teacher01@hmh.or.kr", name: { familyName: "김", givenName: "민수" }, orgUnitPath: "/교직원", suspended: false, aliases: [] },
   { id: "u2", primaryEmail: "teacher02@hmh.or.kr", name: { familyName: "이", givenName: "영희" }, orgUnitPath: "/교직원", suspended: false, aliases: [] },
-  { id: "u3", primaryEmail: "25001@hmh.or.kr", name: { familyName: "박", givenName: "철수" }, orgUnitPath: "/학생/1학년", suspended: false, aliases: [] },
-  { id: "u4", primaryEmail: "25002@hmh.or.kr", name: { familyName: "최", givenName: "지우" }, orgUnitPath: "/학생/1학년", suspended: false, aliases: [] },
-  { id: "u5", primaryEmail: "24001@hmh.or.kr", name: { familyName: "한", givenName: "재민" }, orgUnitPath: "/학생/2학년", suspended: false, aliases: [] },
+  { id: "u3", primaryEmail: "25001@hmh.or.kr", name: { familyName: "10101", givenName: "박철수" }, orgUnitPath: "/학생/1학년", suspended: false, aliases: [] },
+  { id: "u4", primaryEmail: "25002@hmh.or.kr", name: { familyName: "10102", givenName: "최지우" }, orgUnitPath: "/학생/1학년", suspended: false, aliases: [] },
+  { id: "u6", primaryEmail: "25003@hmh.or.kr", name: { familyName: "10103", givenName: "김다은" }, orgUnitPath: "/학생/1학년", suspended: false, aliases: [] },
+  { id: "u7", primaryEmail: "25004@hmh.or.kr", name: { familyName: "10104", givenName: "이준서" }, orgUnitPath: "/학생/1학년", suspended: false, aliases: [] },
+  { id: "u8", primaryEmail: "25005@hmh.or.kr", name: { familyName: "10105", givenName: "정민재" }, orgUnitPath: "/학생/1학년", suspended: false, aliases: [] },
+  { id: "u5", primaryEmail: "24001@hmh.or.kr", name: { familyName: "20101", givenName: "한재민" }, orgUnitPath: "/학생/2학년", suspended: false, aliases: [] },
 ];
 
 let mockGroups: { id: string; email: string; name: string; description: string }[] = [
@@ -1305,7 +1308,7 @@ let mockCourses: { id: string; name: string; section: string; ownerId: string; c
 ];
 
 let mockCourseStudents: Record<string, string[]> = {
-  "course_1": ["25001@hmh.or.kr"],
+  "course_1": ["25001@hmh.or.kr", "25002@hmh.or.kr", "25003@hmh.or.kr", "25004@hmh.or.kr", "25005@hmh.or.kr"],
   "course_2": [],
   "course_3": ["24001@hmh.or.kr"]
 };
@@ -1460,7 +1463,7 @@ export const removeStudentFromClassroom = async (courseId: string, studentEmail:
   }
 };
 
-// List students registered in a Classroom Course
+// List students registered in a Classroom Course (with pageToken pagination)
 export const listClassroomStudents = async (courseId: string, teacherEmail: string) => {
   if (isMock) {
     const studentEmails = mockCourseStudents[courseId] || [];
@@ -1481,13 +1484,82 @@ export const listClassroomStudents = async (courseId: string, teacherEmail: stri
   if (!classroom) throw new Error("Classroom client not initialized.");
 
   try {
-    const res = await classroom.courses.students.list({
-      courseId: courseId
-    });
-    return res.data.students || [];
+    const allStudents: any[] = [];
+    let pageToken: string | undefined = undefined;
+    do {
+      const res: any = await classroom.courses.students.list({
+        courseId: courseId,
+        pageSize: 100,
+        pageToken: pageToken,
+      });
+      if (res.data.students) {
+        allStudents.push(...res.data.students);
+      }
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
+
+    return allStudents;
   } catch (error) {
     console.error(`Error listing students for course ${courseId}:`, error);
     throw error;
+  }
+};
+
+/**
+ * 도메인 전체 ACTIVE 코스 목록 조회 (admin impersonation 사용)
+ * - teacherId 없이 호출하여 도메인 전체 코스 반환
+ * - pageToken 루프 적용 (pageSize: 500)
+ */
+export const listAllDomainCourses = async () => {
+  if (isMock) {
+    return mockCourses.filter(c => (c.courseState || "ACTIVE") === "ACTIVE");
+  }
+
+  const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || "admin@hmh.or.kr";
+  const classroom = getClassroomClient(adminEmail);
+  if (!classroom) throw new Error("Classroom client is not initialized.");
+
+  const allCourses: any[] = [];
+  let pageToken: string | undefined = undefined;
+  do {
+    const res: any = await classroom.courses.list({
+      courseStates: ["ACTIVE"],
+      pageSize: 500,
+      pageToken: pageToken,
+    });
+    if (res.data.courses) {
+      allCourses.push(...res.data.courses);
+    }
+    pageToken = res.data.nextPageToken || undefined;
+  } while (pageToken);
+
+  return allCourses;
+};
+
+/**
+ * Classroom 사용자 프로필 조회 헬퍼 (ownerId -> name/email 해석)
+ * - admin impersonation 사용
+ */
+export const getClassroomUserProfile = async (userId: string) => {
+  if (isMock) {
+    const mockUser = mockUsers.find(u => u.primaryEmail.toLowerCase() === userId.toLowerCase() || u.id === userId);
+    return {
+      id: userId,
+      name: mockUser?.name || { familyName: "김", givenName: "민수" },
+      emailAddress: mockUser?.primaryEmail || (userId.includes("@") ? userId : `${userId}@hmh.or.kr`),
+    };
+  }
+
+  const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || "admin@hmh.or.kr";
+  const classroom = getClassroomClient(adminEmail);
+  if (!classroom) return null;
+
+  try {
+    const res = await classroom.userProfiles.get({ userId });
+    return res.data;
+  } catch (error) {
+    console.warn(`Error fetching classroom user profile for ${userId}:`, error);
+    return null;
   }
 };
 

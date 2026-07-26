@@ -15,6 +15,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1081,3 +1083,34 @@ Phase 9a-1 5단계(실데이터 리허설)만 남음 — **사용자의 컴시�
 - `transfer_classroom_spec.md` 작성 완료. 핵심: super_admin 전용 신규 라우트(`transfer-enroll`)에서 도메인 전체 ACTIVE 코스 스캔 → coverage ≥ 0.8 && purity ≥ 0.7 && 코스 인원 ≥ 5 매칭 → TransferInTab 모달에서 제안-확인-일괄 추가. 전자동 금지·409는 "이미 가입" 처리.
 - 구현 순서는 스펙 §7 (헬퍼 → 라우트 → UI → 테스트 반 검증). 특히 `listClassroomStudents`의 페이지네이션 보강 시 기존 호출부(강제 배정) 영향 확인 필수.
 - 이 작업 완료 후 다음 순서: ② 고아 드라이브 폴더 탐지(향후 고려 사항 메모 참조, 착수 시 Claude 스펙 먼저) → ③ 커스텀 도메인 부착(`deployment_checklist.md` §2.5의 5단계 세트 + roster feed 연동 주소 변경 전파 계획 — Claude가 사전 점검 예정).
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (전입생 학급 클래스룸 자동 편성 기능 구현 및 검증 완료)
+
+- **작업 내용 (`transfer_classroom_spec.md` §7 구현 순서준수)**:
+  1. **Workspace 헬퍼 보강 (`src/lib/google/workspace.ts`)**:
+     - `listClassroomStudents`: Google Classroom API `students.list`에 `pageToken` 루프 및 `pageSize: 100`을 적용하여 100명 초과 수강생 전체 로스터를 누락 없이 가져오도록 보강 (기존 반환 배열 구조 유지로 기존 강제 배정 호출부에 영향 0%).
+     - `listAllDomainCourses`: admin impersonation으로 `courses.list`를 호출하여 도메인 전체 ACTIVE 코스 목록을 `pageToken` 루프(`pageSize: 500`)로 안전하게 조회하는 헬퍼 추가.
+     - `getClassroomUserProfile`: `ownerId`를 `userProfiles.get` (admin impersonation)으로 조회해 교사 이름 및 이메일을 해석하는 헬퍼 추가.
+     - `isMock` mockUsers 및 mockCourseStudents 데이터 보강 (테스트 반 1학년 1반 5명 수강 코스 샘플 포함).
+  2. **신규 API 라우트 (`src/app/api/workspace/classroom/transfer-enroll/route.ts`)**:
+     - `export const maxDuration = 60;` (Vercel 서벌리스 최대 실행 시간 설정).
+     - `POST { action: "scan" }`: `super_admin` 권한 검증 → 해당 학년·반 재적생(미정지 및 전입생 본인 제외) 집합 `CLASS` 구성 (`|CLASS| < 3` 시 400 반환) → 도메인 ACTIVE 코스 스캔 → 동시성 5 제한(`mapConcurrent`)으로 코스 수강생 `COURSE` 조회 → `coverage ≥ 0.8 && purity >= 0.7 && courseSize >= 5` 학급 코스 매칭 판정 → coverage 내림차순 후보 반환.
+     - `POST { action: "enroll" }`: `super_admin` 권한 검증 → 선택한 코스(최대 30개) 순차 배정 (`addStudentToClassroom`) → **409 (ALREADY_EXISTS)는 성공("이미 가입")으로 분류** → 계정 전파 지연 404 시 친절 안내 메시지 반환 → 감사 로그 (`CLASSROOM_TRANSFER_ENROLL`) 작성.
+  3. **프런트엔드 UI (`src/components/admin/lifecycle/TransferInTab.tsx`)**:
+     - 전입생 계정 생성 완료 카드 하단에 `[🏫 전입생 학급 클래스룸 자동 배정 스캔]` 버튼 추가.
+     - 클릭 시 모달이 열리며 스캔 로딩/오류/매칭 결과 테이블(체크박스, 코스명, 담당 교사, 우리 반 가입률 %, 가입 상태) 표시.
+     - 선택 항목 `[선택 N개 클래스룸에 학생 추가]` 일괄 실행 및 추가 완료 / 이미 가입됨 / 실패 사유 실시간 업데이트.
+- **변경 파일**:
+  - `src/lib/google/workspace.ts`
+  - `src/app/api/workspace/classroom/transfer-enroll/route.ts`
+  - `src/components/admin/lifecycle/TransferInTab.tsx`
+  - `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, `/api/workspace/classroom/transfer-enroll` 포함 29개 라우트/페이지 정상 생성)
+  - **테스트 반 검증**:
+    - mock/테스트 계정 1학년 1반 전입 처리 후 `[전입생 학급 클래스룸 자동 배정 스캔]` 실행 시 1학년 1반 학생 가입률 100% 코스(`1학년 1학기 수학`)가 정확히 후보 1순위로 매칭됨을 확인.
+    - 선택 후 `[선택 1개 클래스룸에 학생 추가]` 실행 시 가입 성공 및 `🎉 추가 완료` 배지로 상태가 갱신되고 감사 로그가 작성됨을 확인.
+
