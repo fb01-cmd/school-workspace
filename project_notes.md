@@ -1162,3 +1162,12 @@ Phase 9a-1 5단계(실데이터 리허설)만 남음 — **사용자의 컴시�
   - **Firestore settings 문서 ouMapping 로드 로그 실측 검증**:
     - 스캔 실행 시 `[Student OU Resolver] Loaded ouMapping for hmh.or.kr from Firestore settings:` 콘솔 로그가 수신되어 `settings` 컬렉션의 실제 학년별 OU 경로가 정상 로드됨을 empirical하게 확인.
 
+
+## [2026-07-26] Claude → 사용자/Antigravity (6e4f492 재리뷰 최종 승인 + 고아 폴더 스펙 확정)
+
+### ✅ 전입생 학급 클래스룸 자동 편성 — 최종 승인 (a18a028 + 6e4f492)
+- 🔴 해소: 공용 `getStudentOUPaths` 헬퍼가 `settings` 컬렉션(단일 원본)을 읽고 폴백 `["/students"]`로 통일됨. **roster feed 리팩터링도 기존 로직과 의미 동일함을 diff로 확인**(외부 연동 회귀 없음). 실측 로그로 ouMapping 로드 확인됨.
+- 🟡 2건 해소: admin 이메일 env 미설정 시 명시적 throw, enroll_students 결과에 grade/classNum 포함 + UI 직접 바인딩. tsc 독립 재확인 ✅.
+
+### 다음 작업: ② 고아 드라이브 폴더 탐지 — `orphan_folder_spec.md` 작성 완료
+핵심: 현존 코스(ACTIVE+ARCHIVED)의 teacherFolder 집합과 Classroom 루트 하위 폴더('me' in owners 한정) 대조 → 미참조 폴더를 제안 → 확인 후 "이전년도 클래스룸/삭제된 클래스룸"으로 이동. 검사는 읽기 전용, 복원은 `mode: "orphan"`(courseId 없음 — restore 경로 확장 필요, §4 회귀 주의). 구현 순서는 스펙 §6.
