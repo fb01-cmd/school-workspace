@@ -1232,3 +1232,38 @@ Phase 9a-1 5단계(실데이터 리허설)만 남음 — **사용자의 컴시�
 ### 재개 문구
 - Antigravity에게: 위 사고 기록(스캔 v1.1)의 지시문 복사 전달.
 - Claude에게: *"project_notes.md의 2026-07-26 마지막 체크포인트를 읽고, 고아 폴더 기능(b96c232) 표적 리뷰부터 이어서 진행해줘."*
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (고아 폴더 b96c232 표적 리뷰 🔴2+🟡4건 반영 완료 — 커밋 8af1c6c)
+
+- **수정 내용**:
+  - **🔴 1 — Classroom 루트 오식별 수정 (`route.ts`)**:
+    - orphan GET 샘플 선정을 `ACTIVE 코스 우선`으로 변경 (`courseState === "ACTIVE"` 체크, 없으면 any 코스로 폴백).
+    - 후보 루트를 `files.get(fields: "name")`으로 검증하여 name이 `"Classroom"`이 아니면 기각하고 이름 검색 폴백 실행.
+    - 경고 로그: `[orphan] Candidate root '...' is not 'Classroom' — rejecting, falling back to name search.`
+  - **🔴 2 — orphan 로그 필드 통일 (`route.ts`)**:
+    - `execute_orphan` 로그에 `timestamp: new Date().toISOString()` / `originalName: fName` / `newName: fName` 추가.
+    - `cleanedAt`은 하위 호환을 위해 동일 값으로 유지(제거 안 함).
+    - 이력 탭 `orderBy("timestamp", "desc")` 인덱스 정상 경로에서 orphan 로그가 조회됨.
+  - **🟡 1 — `isOrphan` 판별 좁힘 (`route.ts`)**:
+    - `logDocData?.mode === "orphan"` 단일 조건으로 좁힘 (휴리스틱 `!courseId && driveFolderId` 제거).
+    - `targetParentFolderId` 오버라이드 제거 — `logDocData.driveOriginalParentFolderId`만 사용.
+  - **🟡 2 — 이력 탭 orphan 배지 + confirm 분기 (`ClassroomCleanupTab.tsx`)**:
+    - `CleanupLog` 인터페이스에 `mode?: string | null` 추가.
+    - `mode === "orphan"` 시 주황 배지 **"고아 폴더"** 표시, `mode === "residual"` 시 앰버 배지 **"잔여 정리"** 표시.
+    - `handleRestore` confirm 문구: orphan 모드는 `"폴더를 원래 위치(Classroom)로 되돌리시겠습니까?"`, 일반은 기존 문구 유지.
+  - **🟡 3 — `listClassroomCourses` 페이지네이션 추가 (`workspace.ts`)**:
+    - `for(;;)` + `pageToken` 루프로 모든 페이지 조회.
+    - 코스 100개 초과 교사에서 REFERENCED 집합 불완전으로 인한 오탐 방지.
+  - **🟡 4 — mock 필터 하드코딩 제거 (`route.ts`)**:
+    - `f.ownerEmail === "teacher01@hmh.or.kr"` 하드코딩 제거 → `teacherEmail 일치`만.
+- **변경 파일**: `route.ts`, `workspace.ts`, `ClassroomCleanupTab.tsx`, `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29개 라우트 정상 생성)
+  - **실서버 검증 필요 항목 (Claude 요청 사항)**:
+    - ① `execute_orphan` 실행 후 이력 탭에서 orphan 로그가 **인덱스 정상 경로**(orderBy timestamp)에서 표시되는지 확인
+    - ② `[되돌리기]` 클릭 시 confirm 문구가 `"폴더를 원래 위치(Classroom)로 되돌리시겠습니까?"`로 뜨고 원복 동작하는지 확인
+    - ③ ARCHIVED 정리 코스만 있는 계정에서 고아 폴더 검사 시 루트가 `"Classroom"`으로 정상 식별되는지 확인 (ACTIVE 코스가 없는 경우 이름 검색 폴백 경로)
+
