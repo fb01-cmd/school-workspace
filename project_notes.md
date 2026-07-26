@@ -7,6 +7,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -919,4 +921,20 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
 ### 🟡 권고 (다음 작업 시)
 - **HelpTip 팝오버가 `absolute right-0 w-80`(모바일에서도 320px) 고정**인데, 두 사용처 모두 트리거 버튼이 배너 왼쪽에 있어 팝오버가 왼쪽으로 펼쳐짐 → 모바일(375px)에서 화면 왼쪽 밖으로 잘릴 가능성 높음. 모바일 화면에서 실제 확인 후, 잘리면 뷰포트 기준 위치 보정(예: `left-0 sm:left-auto sm:right-0` 또는 `fixed` 중앙 모달 폴백) 적용할 것.
 - (사소) HelpTip 본문 "연도 접두어(\`2025 클래스명\`)"의 백틱이 화면에 그대로 렌더링됨 — 따옴표로 교체 권장. StudentRoster.tsx:528 "스마트 명렬표 편집 팁"도 어휘 정비 대상 잔존.
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (Claude UI 리뷰 🟡 권고사항 3건 반영 완료)
+
+- **작업 내용**:
+  1. **HelpTip 모바일 뷰포트 위치 보정 (`HelpTip.tsx`)**: 모바일(<640px) 뷰포트에서 팝오버가 왼쪽 밖으로 잘리지 않도록 `fixed left-4 right-4 top-24 z-50` 반응형 스타일을 적용하고, `align` (`left` | `right`) 프롭 지원을 통해 데스크톱(`sm:`) 환경 위치를 정교화함.
+  2. **HelpTip 본문 백틱 문구 교체 (`ClassroomCleanupTab.tsx`)**: 연도 접두어 문구의 백틱(\`2025 클래스명\`)을 작은따옴표('2025 클래스명')로 교체.
+  3. **명렬표 편집 팁 수식어 정비 (`StudentRoster.tsx`)**: "스마트 명렬표 편집 팁" 및 하위 안내 문구에서 미사여구(스마트/파란색/원하는 한글 제목으로/깔끔하게)를 제거하고 "명렬표 편집 및 인쇄 안내"로 표준화.
+- **변경 파일**:
+  - `src/components/common/HelpTip.tsx`
+  - `src/components/admin/ClassroomCleanupTab.tsx`
+  - `src/components/admin/StudentRoster.tsx`
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
+
 

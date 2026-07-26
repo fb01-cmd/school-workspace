@@ -525,11 +525,11 @@ export default function StudentRoster() {
             <div className="no-print mb-6 bg-indigo-50 border border-indigo-100 rounded-lg p-3.5 flex items-start gap-2.5 animate-fade-in">
               <span className="text-lg leading-none mt-0.5">💡</span>
               <div className="text-xs text-indigo-950 leading-relaxed">
-                <p className="font-bold">스마트 명렬표 편집 팁</p>
+                <p className="font-bold">명렬표 편집 및 인쇄 안내</p>
                 <ul className="list-disc pl-4 mt-1 space-y-0.5 text-indigo-800">
-                  <li><strong>열 너비 조정:</strong> 헤더 경계선에 마우스를 올리면 나타나는 파란색 구분선을 드래그(<span className="font-mono">↔</span>)하여 간격을 조정합니다.</li>
-                  <li><strong>비고/열 이름 수정:</strong> 열 이름(예: 비고 ✏️)을 <strong>더블클릭</strong>하면 원하는 한글 제목으로 변경할 수 있습니다.</li>
-                  <li><strong>학반별 페이지 분할 인쇄:</strong> 여러 학반을 한 번에 인쇄할 때, <strong>각 반별로 페이지가 자동으로 나뉘어 깔끔하게 인쇄</strong>됩니다.</li>
+                  <li><strong>열 너비 조정:</strong> 헤더 경계선의 구분선을 드래그(<span className="font-mono">↔</span>)하여 넓이를 조절합니다.</li>
+                  <li><strong>열 이름 변경:</strong> 열 이름(예: 비고 ✏️)을 <strong>더블클릭</strong>하여 제목을 변경합니다.</li>
+                  <li><strong>반별 분할 인쇄:</strong> 여러 학반을 한 번에 인쇄할 때 각 반별로 페이지가 자동 구분되어 인쇄됩니다.</li>
                 </ul>
               </div>
             </div>

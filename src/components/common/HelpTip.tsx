@@ -6,6 +6,7 @@ interface HelpTipProps {
   title?: string;
   children: React.ReactNode;
   variant?: "dark" | "light" | "indigo";
+  align?: "left" | "right";
   className?: string;
 }
 
@@ -13,6 +14,7 @@ export default function HelpTip({
   title = "도움말 및 상세 안내",
   children,
   variant = "dark",
+  align = "left",
   className = "",
 }: HelpTipProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -39,6 +41,11 @@ export default function HelpTip({
       ? "bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border-indigo-200"
       : "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300";
 
+  const alignStyle =
+    align === "right"
+      ? "sm:right-0 sm:left-auto"
+      : "sm:left-0 sm:right-auto";
+
   return (
     <div className={`relative inline-block ${className}`} ref={containerRef}>
       <button
@@ -52,7 +59,9 @@ export default function HelpTip({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-7 w-80 sm:w-96 p-4 bg-white text-gray-800 rounded-xl shadow-xl border border-gray-200 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+        <div
+          className={`fixed left-4 right-4 top-24 z-50 sm:absolute sm:top-7 sm:w-96 p-4 bg-white text-gray-800 rounded-xl shadow-xl border border-gray-200 text-xs animate-in fade-in zoom-in-95 duration-100 ${alignStyle}`}
+        >
           <div className="flex justify-between items-center pb-2 mb-2 border-b border-gray-100 font-bold text-gray-900">
             <span className="flex items-center gap-1.5 text-indigo-600">
               <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px]">
