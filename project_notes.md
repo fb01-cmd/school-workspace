@@ -27,6 +27,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1455,3 +1457,26 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - **피드백 1**: "기초시간표"는 일과계 전용 용어 + 교사·학생은 최종 조율된 시간표 단일 버전만 봐야 함(두 버전 공존 = 잘못된 시간표 보고 수업 가는 사고 위험). → **결정: 9b(일일 조정 반영) 완성 전까지 일반 교사·학생에게 시간표 화면 전체 비노출.** 메뉴는 일과계 전용 "시간표 관리 (일과계)"로. §6 "2학기 개학 오픈"은 "9b 완성 후 오픈"으로 전제 변경. 상세: phase9a_spec.md §8-1.
 - **피드백 2**: 공강 교사 '조회'는 교사에게 무의미 — 9b 교사 진입점은 **"교체 수업 신청"**(컴시간알리미 방식: 내 수업 셀 → 내 공강 셀 클릭 → 직접 교체 + 징검다리 2~3인 체인 제시(기본 접힘), 신청 → 실무사 승인+교무부장 알림). FreeTeacherTab은 일과계 보조 도구로 강등. 상세: phase9a_spec.md §8-2 (구현은 9b, 로직 상세는 샘플 엑셀 후 스펙 확정).
 - **Antigravity 즉시 실행분 (§8-1)**: ① 사이드바 시간표 메뉴+탭 3종을 super_admin+managerEmails만 렌더(TimetableSection의 기존 isManager 패턴을 메뉴 레벨로), ② 메뉴명 "시간표 관리 (일과계)", ③ student-portal의 StudentTimetableCard 마운트 제거. 검증: 일반 교사(playviolin, managerEmails 미등록)에서 메뉴 미표시 + super_admin에서 정상 표시, tsc·build.
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (시간표 노출 원칙 개정 §8-1 구현 완수)
+
+- **수정 내용**:
+  1. **사이드바 시간표 메뉴 권한 승격 & 메뉴명 변경 (`admin/page.tsx`)**:
+     - `timetableSettings` state 및 `managerEmails` 기반 `isTimetableManager` 권한 판정 로직 추가 (`super_admin` || `timetableSettings.managerEmails` 등록 사용자).
+     - 사이드바 시간표 메뉴 렌더링을 `{isTimetableManager && (...)}` 로 감싸 managerEmails 미등록 일반 교사에게 메뉴 완전 미노출.
+     - 메뉴명을 `"시간표 (기초시간표)"` → **`"시간표 관리 (일과계)"`** 로 변경.
+     - `renderContent`의 `case "timetable"` 라우트도 `isTimetableManager` 미권한자 진입 차단.
+  2. **`TimetableSection.tsx` 접근 권한 가드 보강**:
+     - `!isManager` 인 경우 접근 제한 가드 안내 메시지("🔒 시간표 관리 접근 제한 — 일과계 담당 교직원 및 super_admin만 접근할 수 있습니다.") 노출.
+  3. **학생 포털 시간표 카드 unmount (`student-portal/page.tsx`)**:
+     - `StudentTimetableCard` 마운트 제거 (9b 일일 교체시간표 완공 시 재도입 예정).
+- **실서버/데이터 권한 검증 결과**:
+  - `super_admin` 계정 (`admin@hmh.or.kr`) -> `isTimetableManager === true` -> 사이드바 메뉴 `"시간표 관리 (일과계)"` 정상 노출 및 시간표 관리 화면 진입 허용 ✅
+  - 일반 교사 계정 (`playviolin@hmh.or.kr`, managerEmails 미등록) -> `isTimetableManager === false` -> 사이드바 메뉴 완전 미노출 & `TimetableSection` 접근 차단 ✅
+- **변경 파일**: `admin/page.tsx`, `TimetableSection.tsx`, `student-portal/page.tsx`, `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29개 라우트 정상 생성)
+

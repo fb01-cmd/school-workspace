@@ -92,6 +92,17 @@ export default function TimetableSection() {
     );
   }
 
+  if (!isManager) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center text-amber-900 space-y-2">
+        <h3 className="text-base font-bold">🔒 시간표 관리 접근 제한</h3>
+        <p className="text-xs text-amber-800">
+          시간표 기능은 일과계 담당 교직원 및 최고 관리자(super_admin)만 접근할 수 있습니다.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* 4종 네비게이션 탭 (phase9a_spec.md §5 명시) */}

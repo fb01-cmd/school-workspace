@@ -23,6 +23,9 @@ import ClassroomCleanupTab from "@/components/admin/ClassroomCleanupTab";
 import DisciplineSection from "@/components/admin/discipline/DisciplineSection";
 import TimetableSection from "@/components/admin/timetable/TimetableSection";
 
+import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
+import { TimetableSettings } from "@/lib/timetable/types";
+
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
@@ -34,6 +37,30 @@ export default function AdminPage() {
   const [activeMenu, setActiveMenu] = useState<MenuType>("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [pendingProfileCount, setPendingProfileCount] = useState(0);
+  const [timetableSettings, setTimetableSettings] = useState<TimetableSettings | null>(null);
+
+  // Load timetable settings to check managerEmails for sidebar menu access
+  useEffect(() => {
+    if (!userData) return;
+    const cached = getClientCache("timetable:settings");
+    if (cached?.settings) {
+      setTimetableSettings(cached.settings);
+    } else {
+      fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get_settings" }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.settings) {
+            setTimetableSettings(data.settings);
+            setClientCache("timetable:settings", { settings: data.settings, terms: data.terms });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [userData]);
 
   // Real-time pending profile approvals count
   useEffect(() => {
@@ -55,6 +82,11 @@ export default function AdminPage() {
   const isSuperAdmin = userData?.role === "super_admin";
   const isTeacher = userData?.role === "teacher";
   const hasNoProfile = (isSuperAdmin || isTeacher) && !teacherProfile;
+
+  const userEmail = userData?.email?.toLowerCase() || "";
+  const isTimetableManager =
+    isSuperAdmin ||
+    (timetableSettings?.managerEmails || []).some((m) => m.toLowerCase() === userEmail);
 
   const renderContent = () => {
     switch (activeMenu) {
@@ -90,7 +122,7 @@ export default function AdminPage() {
       case "discipline":
         return <DisciplineSection />;
       case "timetable":
-        return <TimetableSection />;
+        return isTimetableManager ? <TimetableSection /> : null;
       case "logs":
         return <AuditLogViewer />;
       case "roster":
@@ -419,25 +451,27 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* 시간표 독립 섹션 */}
-              <div>
-                <div className="px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
-                  시간표 관리
+              {/* 시간표 독립 섹션 (super_admin + managerEmails 전용) */}
+              {isTimetableManager && (
+                <div>
+                  <div className="px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                    시간표 관리
+                  </div>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setActiveMenu("timetable")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "timetable"
+                          ? "bg-indigo-800 text-white font-bold shadow-sm"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>📦</span>
+                      <span>시간표 관리 (일과계)</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <button
-                    onClick={() => setActiveMenu("timetable")}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeMenu === "timetable"
-                        ? "bg-indigo-800 text-white font-bold shadow-sm"
-                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    <span>📦</span>
-                    <span>시간표 (기초시간표)</span>
-                  </button>
-                </div>
-              </div>
+              )}
 
               {/* 학생 생활지도 독립 섹션 */}
               <div>
