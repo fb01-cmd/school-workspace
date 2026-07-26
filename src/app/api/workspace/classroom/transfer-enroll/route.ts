@@ -10,6 +10,7 @@ import {
   isMock
 } from "@/lib/google/workspace";
 import { parseStudentUser } from "@/lib/roster";
+import { mapConcurrent } from "@/lib/concurrency";
 
 // Vercel serverless function max duration (60 seconds)
 export const maxDuration = 60;
@@ -22,25 +23,6 @@ const COVERAGE_THRESHOLD = 0.8;   // 우리 반 학생 중 코스 가입 비율 
 const PURITY_THRESHOLD = 0.7;     // 코스 수강생 중 우리 반 학생 비율 (70% 이상)
 const MIN_COURSE_SIZE = 5;        // 소규모 특강/소그룹 배제를 위한 코스 최소 수강생 (5명 이상)
 const MEMBER_CONCURRENCY = 3;     // Google API 쿼터 보호를 위한 멤버별 코스 조회 동시성 제한
-
-/**
- * 제한된 동시성(limit)으로 비동기 함수 매핑 실행 헬퍼
- */
-async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let index = 0;
-
-  async function worker() {
-    while (index < items.length) {
-      const currentIndex = index++;
-      results[currentIndex] = await fn(items[currentIndex]);
-    }
-  }
-
-  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
-  await Promise.all(workers);
-  return results;
-}
 
 /**
  * POST /api/workspace/classroom/transfer-enroll

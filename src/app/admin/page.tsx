@@ -5,23 +5,34 @@ import { useAuth } from "@/context/AuthContext";
 import RouteGuard from "@/components/RouteGuard";
 import { logOut } from "@/lib/firebase/auth";
 import { useRouter } from "next/navigation";
-import UserList from "@/components/admin/UserList";
-import OUConfiguration from "@/components/admin/OUConfiguration";
-import OUManager from "@/components/admin/OUManager";
-import AuditLogViewer from "@/components/admin/AuditLogViewer";
-import StudentRoster from "@/components/admin/StudentRoster";
-import StudentLifecycle from "@/components/admin/lifecycle/StudentLifecycle";
-import TeacherLifecycle from "@/components/admin/lifecycle/TeacherLifecycle";
-import GroupList from "@/components/admin/GroupList";
-import ClassroomPage from "@/app/admin/classroom/page";
-import ChromeBookmarks from "@/components/admin/ChromeBookmarks";
-import PasswordReset from "@/components/admin/PasswordReset";
-import ProfileApprovals from "@/components/admin/ProfileApprovals";
+import dynamic from "next/dynamic";
 import MyProfileCard from "@/components/admin/MyProfileCard";
 import ClassroomCleanupBanner from "@/components/admin/ClassroomCleanupBanner";
-import ClassroomCleanupTab from "@/components/admin/ClassroomCleanupTab";
-import DisciplineSection from "@/components/admin/discipline/DisciplineSection";
-import TimetableSection from "@/components/admin/timetable/TimetableSection";
+
+const TabLoading = () => (
+  <div className="p-8 text-center text-slate-500 font-medium">
+    <div className="animate-pulse flex items-center justify-center gap-2">
+      <span className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce"></span>
+      <span>메뉴 탭을 로딩 중입니다...</span>
+    </div>
+  </div>
+);
+
+const UserList = dynamic(() => import("@/components/admin/UserList"), { loading: TabLoading });
+const OUConfiguration = dynamic(() => import("@/components/admin/OUConfiguration"), { loading: TabLoading });
+const OUManager = dynamic(() => import("@/components/admin/OUManager"), { loading: TabLoading });
+const AuditLogViewer = dynamic(() => import("@/components/admin/AuditLogViewer"), { loading: TabLoading });
+const StudentRoster = dynamic(() => import("@/components/admin/StudentRoster"), { loading: TabLoading });
+const StudentLifecycle = dynamic(() => import("@/components/admin/lifecycle/StudentLifecycle"), { loading: TabLoading });
+const TeacherLifecycle = dynamic(() => import("@/components/admin/lifecycle/TeacherLifecycle"), { loading: TabLoading });
+const GroupList = dynamic(() => import("@/components/admin/GroupList"), { loading: TabLoading });
+const ClassroomPage = dynamic(() => import("@/app/admin/classroom/page"), { loading: TabLoading });
+const ChromeBookmarks = dynamic(() => import("@/components/admin/ChromeBookmarks"), { loading: TabLoading });
+const PasswordReset = dynamic(() => import("@/components/admin/PasswordReset"), { loading: TabLoading });
+const ProfileApprovals = dynamic(() => import("@/components/admin/ProfileApprovals"), { loading: TabLoading });
+const ClassroomCleanupTab = dynamic(() => import("@/components/admin/ClassroomCleanupTab"), { loading: TabLoading });
+const DisciplineSection = dynamic(() => import("@/components/admin/discipline/DisciplineSection"), { loading: TabLoading });
+const TimetableSection = dynamic(() => import("@/components/admin/timetable/TimetableSection"), { loading: TabLoading });
 
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { TimetableSettings } from "@/lib/timetable/types";

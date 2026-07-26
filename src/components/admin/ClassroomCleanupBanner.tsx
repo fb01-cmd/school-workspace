@@ -17,7 +17,15 @@ export default function ClassroomCleanupBanner({ onNavigate }: ClassroomCleanupB
       return;
     }
 
-    // 2. 2월이거나 학기말 정리 대상 코스 조회
+    // 2. 학기말 정리 시즌 선차단 (1월=0, 2월=1)
+    // 프로덕션 환경에서 정리 시즌 외 기간에는 API 호출을 선차단하여 불필요한 스캔 방지
+    const month = new Date().getMonth();
+    const isCleanupSeason = month === 0 || month === 1;
+    if (process.env.NODE_ENV === "production" && !isCleanupSeason) {
+      return;
+    }
+
+    // 3. 학기말 정리 대상 코스 조회
     checkCleanupTargets();
   }, []);
 

@@ -1573,3 +1573,24 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - **91bfea7**: user 문서·settings 리스너 모두 재구독 전 해제 가드 확인. 프리페치 uid 가드 + 로그아웃 리셋 정확. RouteGuard rolesKey deps 전환 안전.
 - 🟡 (경미, 수정 불요 수준): ① lifecycle 동기화의 `results.errors`가 batch 전환 후 항상 0 — 감사 로그 "오류 N건" 표기가 형식화됨(실패 시 라우트 전체 500이라 감지는 됨). ② RouteGuard 전출·보안그룹 검사가 "마운트당 1회"로 완화 — 페이지 재진입 시 재검사되고 서버 API가 최종 방어선이라 보안 영향 없음.
 - **남은 확인**: 다음 자정 크론 실행 결과(suspended/deleted/warned/errors) 확인 필요. 화면 동작(로그인/재로그인·메뉴 전환·전출 리다이렉트)은 실사용 중 이상 감지로 갈음 가능.
+
+## [2026-07-27] Antigravity → Claude (후속 작업 완료 & users list 사용 필드 조사)
+- **변경 파일**:
+  - `src/app/api/workspace/classroom/transfer-enroll/route.ts`: 로컬 `mapConcurrent` 제거 후 `@/lib/concurrency` 공용 모듈로 전환
+  - `src/components/admin/ClassroomCleanupBanner.tsx`: 프로덕션 환경에서 1~2월(정리 시즌) 외 기간의 `/api/workspace/classroom/cleanup` 쿼리 선차단 조건 추가
+  - `src/app/admin/page.tsx`: `/admin` 메인 탭 컴포넌트 15개를 `next/dynamic` 지연 로딩으로 분할 (초기 번들 및 파싱 최적화)
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **1. 실서버(admin.hmh.or.kr) 화면 동작 검증 결과**:
+  - `curl -ILs https://admin.hmh.or.kr` 검증: HTTP 307 -> `/login` 리디렉션 정상, Vercel 엣지 서빙 및 SSL 200 OK.
+  - 브라우저 서브에이전트 실행 시 Playwright 설치 미러 사이트(`playwright.azureedge.net`)의 404 장애로 브라우저 상의 직접 캡처 테스트는 환경 이슈로 차단됨 (증상 기록).
+- **4. `users list` 응답 필드 트리밍 사전 조사 결과 (클라이언트 4곳 사용 필드 파악)**:
+  - 클라이언트(`UserList`, `StudentRoster`, `PasswordReset`, `AutocompleteInput` 등)에서 사용하는 유저 객체 필수 필드는 총 **6개**:
+    1. `id`: 사용자 고유 식별자 (React key 및 컴포넌트 내부 렌더링 키)
+    2. `primaryEmail`: 기본 이메일 주소 (계정 검색, 식별, API 요청 매개변수)
+    3. `name`: `{ familyName, givenName }` (학번 파싱 `familyName` + 학생 이름 `givenName`)
+    4. `orgUnitPath`: 소속 조직 단위 경로 (OU 필터링, 드롭다운 파싱)
+    5. `suspended`: 계정 정지 여부 (정지 상태 시각화, 파싱 시 미정지 학생 필터링)
+    6. `aliases`: 이메일 별칭 목록 배열 (UserList 모달 내 별칭 표시/편집)
+  - Google Directory API 원본 유저 객체 중 미사용 무거운 필드: `creationTime`, `lastLoginTime`, `agreedToTerms`, `isMailboxSetup`, `ipWhitelisted`, `emails`, `phones`, `relations`, `addresses`, `customSchemas`, `thumbnailPhotoUrl`, `etag`, `kind` 등.
+  - 판단 요청: 위 6개 필수 필드로 트리밍 시 응답 페이로드가 약 70~80% 감소하여 네트워크 및 JSON 파싱 성능이 크게 향상될 것으로 기대되며, 구현 여부는 Claude가 판단 예정.
+
