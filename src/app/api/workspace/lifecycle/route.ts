@@ -200,6 +200,10 @@ export async function POST(req: NextRequest) {
             groupEmail,
             groupAdded,
             name: `${s.familyName || ""}${s.givenName || s.name || ""}`,
+            givenName: s.givenName || s.name || "",
+            grade: Number(grade),
+            classNum: Number(s.classNum),
+            studentNum: Number(s.studentNum),
           };
         })
       );

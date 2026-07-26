@@ -312,7 +312,7 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
               <div className="mt-3 pt-3 border-t border-green-200">
                 <button
                   type="button"
-                  onClick={() => openScanModal(st.email, String(st.grade || form.grade), String(st.classNum || form.classNum), st.givenName || form.fullName)}
+                  onClick={() => openScanModal(st.email, String(st.grade), String(st.classNum), st.givenName || st.name || form.fullName)}
                   className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                 >
                   <span>🏫</span>

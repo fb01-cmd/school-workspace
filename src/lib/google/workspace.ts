@@ -1515,7 +1515,10 @@ export const listAllDomainCourses = async () => {
     return mockCourses.filter(c => (c.courseState || "ACTIVE") === "ACTIVE");
   }
 
-  const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || "admin@hmh.or.kr";
+  const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL;
+  if (!adminEmail) {
+    throw new Error("GOOGLE_WORKSPACE_ADMIN_EMAIL 환경변수가 설정되지 않았습니다.");
+  }
   const classroom = getClassroomClient(adminEmail);
   if (!classroom) throw new Error("Classroom client is not initialized.");
 
@@ -1550,7 +1553,10 @@ export const getClassroomUserProfile = async (userId: string) => {
     };
   }
 
-  const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL || "admin@hmh.or.kr";
+  const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL;
+  if (!adminEmail) {
+    throw new Error("GOOGLE_WORKSPACE_ADMIN_EMAIL 환경변수가 설정되지 않았습니다.");
+  }
   const classroom = getClassroomClient(adminEmail);
   if (!classroom) return null;
 

@@ -82,3 +82,28 @@ export const verifyAuthAccess = async (req: NextRequest): Promise<DecodedAuthAcc
     return null;
   }
 };
+
+/**
+ * 학교 설정(settings 컬렉션)에서 학생 OU 경로 목록을 조회하는 공통 헬퍼
+ * - Firestore settings/{domain} 문서의 ouMapping.students를 파싱
+ * - 문서가 없거나 매핑이 비어있으면 기본값 ["/students"] 반환
+ */
+export const getStudentOUPaths = async (domain: string): Promise<string[]> => {
+  try {
+    const settingsSnap = await adminDb.collection("settings").doc(domain).get();
+    if (settingsSnap.exists) {
+      const data = settingsSnap.data();
+      const ouMap = data?.ouMapping?.students || {};
+      const paths = (Object.values(ouMap) as string[]).filter(Boolean);
+      if (paths.length > 0) {
+        console.log(`[Student OU Resolver] Loaded ouMapping for ${domain} from Firestore settings:`, paths);
+        return paths;
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[Student OU Resolver] Failed to fetch settings for ${domain}:`, e?.message || e);
+  }
+  console.log(`[Student OU Resolver] Fallback student OU paths used for ${domain}: ["/students"]`);
+  return ["/students"];
+};
+

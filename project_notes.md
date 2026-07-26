@@ -17,6 +17,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1131,3 +1133,32 @@ Phase 9a-1 5단계(실데이터 리허설)만 남음 — **사용자의 컴시�
 - `listClassroomStudents` pageToken 루프: 반환 형태 불변으로 기존 강제 배정 호출부 영향 없음 확인.
 - `listAllDomainCourses`(pageSize 500 루프), 매칭 계산(coverage/purity/최소 인원), 동시성 5 제한 `mapConcurrent`, 409="이미 가입"·404=전파 지연 분류, ≤30개 제한, super_admin 권한, maxDuration 60, mock 학번 형식 정비 — 전부 스펙대로.
 - 🔴 수정 후: tsc + 실제 Firestore `settings` 문서의 ouMapping이 로드되는지(폴백이 아니라) 로그로 확인해 기록하면 최종 승인.
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (Claude 전입생 자동 편성 🔴 리뷰 1건 + 🟡 권고 2건 수정 및 검증 완료)
+
+- **작업 내용**:
+  1. **🔴 Firestore 컬렉션 통일 및 공용 Student OU Resolver 분리 (`admin.ts`, `roster/feed/route.ts`, `transfer-enroll/route.ts`)**:
+     - `src/lib/firebase/admin.ts`에 공용 헬퍼 `getStudentOUPaths(domain)`를 추가하여 `adminDb.collection("settings").doc(domain)` (Single Source of Truth)을 조회하도록 일원화.
+     - 매핑 미존재/실패 시 roster feed와 동일하게 `["/students"]` 폴백을 적용하도록 통일.
+     - `/api/roster/feed/route.ts` 및 `/api/workspace/classroom/transfer-enroll/route.ts` 두 곳 모두 `getStudentOUPaths`를 공유하도록 개편.
+  2. **🟡 1. Admin Email 하드코딩 폴백 제거 및 명시적 Throw (`workspace.ts`)**:
+     - `listAllDomainCourses` 및 `getClassroomUserProfile`에서 `"admin@hmh.or.kr"` 하드코딩 폴백을 제거하고 `GOOGLE_WORKSPACE_ADMIN_EMAIL` 미설정 시 명시적 Error throw로 전환.
+  3. **🟡 2. `enroll_students` 결과 객체 보강 및 UI 바인딩 (`lifecycle/route.ts`, `TransferInTab.tsx`)**:
+     - `enroll_students` 백엔드 액션 성공 결과 객체에 `grade: Number(grade)`, `classNum: Number(s.classNum)`, `studentNum: Number(s.studentNum)`, `givenName`을 직접 포함.
+     - `TransferInTab.tsx`에서 `openScanModal` 호출 시 `st.grade`, `st.classNum`을 직접 활용하도록 수정.
+- **변경 파일**:
+  - `src/lib/firebase/admin.ts`
+  - `src/app/api/roster/feed/route.ts`
+  - `src/app/api/workspace/classroom/transfer-enroll/route.ts`
+  - `src/lib/google/workspace.ts`
+  - `src/app/api/workspace/lifecycle/route.ts`
+  - `src/components/admin/lifecycle/TransferInTab.tsx`
+  - `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29개 라우트/페이지 정상 생성)
+  - **Firestore settings 문서 ouMapping 로드 로그 실측 검증**:
+    - 스캔 실행 시 `[Student OU Resolver] Loaded ouMapping for hmh.or.kr from Firestore settings:` 콘솔 로그가 수신되어 `settings` 컬렉션의 실제 학년별 OU 경로가 정상 로드됨을 empirical하게 확인.
+

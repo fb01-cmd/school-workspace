@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuthAccess, adminDb } from "@/lib/firebase/admin";
+import { verifyAuthAccess, getStudentOUPaths } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import {
   listAllDomainCourses,
@@ -77,19 +77,8 @@ export async function POST(req: NextRequest) {
       const targetClassNum = Number(classNum);
       const targetStudentEmail = String(studentEmail).toLowerCase().trim();
 
-      // 1. 반 재적 명단 집합 구성 (§3)
-      let studentOUs: string[] = ["/학생", "/학생/1학년", "/학생/2학년", "/학생/3학년"];
-      try {
-        const settingsSnap = await adminDb.collection("school_settings").doc(domain).get();
-        if (settingsSnap.exists) {
-          const sData = settingsSnap.data();
-          const ouMap = sData?.ouMapping?.students || {};
-          const paths = Object.values(ouMap) as string[];
-          if (paths.length > 0) studentOUs = paths;
-        }
-      } catch (e) {
-        console.warn("Failed to fetch school settings for OU mapping, using fallback student OUs:", e);
-      }
+      // 1. 반 재적 명단 집합 구성 (Firestore settings 컬렉션의 ouMapping 조회)
+      const studentOUs = await getStudentOUPaths(domain);
 
       const rawUsers = await listUsersInOUs(studentOUs);
       const parsedStudents = rawUsers.map(parseStudentUser);

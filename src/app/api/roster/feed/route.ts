@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { adminDb } from "@/lib/firebase/admin";
+import { adminDb, getStudentOUPaths } from "@/lib/firebase/admin";
 import { listUsersInOUs } from "@/lib/google/workspace";
 import { parseStudentUser, RosterFeedStudent, RosterFeedUnparsed } from "@/lib/roster";
 
@@ -75,17 +75,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 4. 학교 설정(OU 매핑) 조회
-    const settingsSnap = await adminDb.collection("settings").doc(domain).get();
-    const schoolSettings = settingsSnap.exists ? settingsSnap.data() : null;
-
-    let orgUnitPaths: string[] = ["/students"];
-    if (schoolSettings?.ouMapping?.students) {
-      const paths = Object.values(schoolSettings.ouMapping.students) as string[];
-      if (paths.length > 0) {
-        orgUnitPaths = paths;
-      }
-    }
+    // 4. 학교 설정(OU 매핑) 조회 (공통 getStudentOUPaths 헬퍼 사용)
+    const orgUnitPaths = await getStudentOUPaths(domain);
 
     // 5. GWS에서 학생 사용자 데이터 조회 및 학번 파싱
     const rawUsers = await listUsersInOUs(orgUnitPaths);
