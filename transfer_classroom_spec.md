@@ -48,12 +48,28 @@ purity   = |COURSE ∩ CLASS| / |COURSE|     // 이 코스 인원 중 우리 반
 
 ## 5. API 설계 — 신규 라우트 `/api/workspace/classroom/transfer-enroll/route.ts`
 
-### `POST { action: "scan", grade, classNum, studentEmail }`
+> **[v1.1 개정, 2026-07-26]** 단일 요청 `action: "scan"`은 실서버에서 **폐기**한다.
+> 운영 사고: 실제 규모(수백 코스)에서 Classroom API 분당 사용자별 쿼터 429 폭주 + gaxios 내부 재시도 증폭 → Vercel 60초 타임아웃 → 비JSON 응답으로 프런트 파싱 실패 (Vercel 로그로 확정).
+> 아래 **클라이언트 주도 배치 프로토콜**로 대체한다.
+
+### `POST { action: "scan_init", grade, classNum, studentEmail }`
 1. `verifyAuthAccess` + `super_admin` 검사.
-2. 반 재적 집합 구성 (§3). `|CLASS| < 3`이면 400 (신뢰할 매칭 불가).
-3. 도메인 ACTIVE 코스 전체 조회 — **pageToken 루프 필수** (`pageSize: 500`, 새 헬퍼 `listAllDomainCourses`).
-4. 각 코스 로스터 조회 — **pageToken 루프 필수** + **동시성 제한 5** (배치 단위 Promise.all; 코스 수백 개 대비 per-minute 쿼터 보호).
-5. §4 판정 후 후보 배열 반환. 후보 0개면 빈 배열 (UI가 "해당 반의 학급 단위 클래스룸을 찾지 못했습니다" 표시).
+2. 반 재적 집합 구성 (§3). `|CLASS| < 3`이면 400.
+3. `listAllDomainCourses`로 ACTIVE 코스 목록만 조회 (로스터 조회 없음 — 빠름).
+4. 반환: `{ classEmails: string[], courses: [{id, name, section, ownerId}] }`.
+
+### `POST { action: "scan_batch", studentEmail, classEmails, courses: [{id,...}] }` (코스 ≤ **15개**)
+1. 동일 권한 검사. `classEmails`는 scan_init 결과를 그대로 되돌려 받는다(super_admin 전용이므로 신뢰 가능, 재조회 비용 절약).
+2. 배치 내 로스터 조회 **동시성 3**으로 §4 판정 → `{ candidates: [...], failedCourseIds: [...] }` 반환.
+3. **429/오류 코스를 조용히 버리지 말 것** — `failedCourseIds`로 반드시 노출한다 (silent 미탐 금지).
+
+### 클라이언트 루프 (TransferInTab)
+- scan_init → 코스 목록을 15개씩 순차 배치 호출(병렬 금지, 배치 간 500ms 대기) → 진행률 표시 "코스 검사 중 N/M".
+- 전 배치 종료 후 `failedCourseIds` 합집합이 있으면 1초 대기 후 **1회 일괄 재시도**, 그래도 실패분은 "⚠️ N개 코스 검사 실패(쿼터) — 잠시 후 재스캔 권장"으로 표시.
+- 후보 0개면 "해당 반의 학급 단위 클래스룸을 찾지 못했습니다" 표시.
+- **fetch 응답 방어**: `res.json()` 전에 `res.ok`와 Content-Type 확인, 비JSON이면 상태코드 포함 안내 메시지 표시 (타임아웃 등 인프라 오류 대비).
+
+### `POST { action: "enroll", ... }` — 변경 없음 (기존 유지)
 
 ### `POST { action: "enroll", studentEmail, courseIds: string[] }`
 1. 동일 권한 검사. `courseIds` 1~30개 제한.

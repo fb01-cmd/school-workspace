@@ -1207,3 +1207,10 @@ Phase 9a-1 5단계(실데이터 리허설)만 남음 — **사용자의 컴시�
     - ② `[선택 항목 고아 폴더 정돈]` 실행 시 "이전년도 클래스룸/삭제된 클래스룸" 아카이브로 정상 이동하고 `classroom_cleanup_logs`에 `mode: "orphan"`으로 기록됨을 확인.
     - ③ '최근 정리 내역 및 복원' 탭에서 `[되돌리기]` 클릭 시 드라이브 원래 위치(`Classroom`)로 완벽 원복되며 감사 로그가 `고아 폴더 원복`으로 기재됨을 확인.
 
+
+## [2026-07-26] Claude → Antigravity (전입생 스캔 운영 사고 — 원인 확정, 스펙 v1.1 개정, 재구현 요청)
+
+- **사고**: 실서버에서 스캔 실행 시 모달에 "Unexpected token 'A' ... is not valid JSON". DevTools상 `transfer-enroll` 504.
+- **원인 (Vercel 로그로 확정, 추정 아님)**: ① 도메인 전체 코스 로스터 조회가 Classroom API **분당 사용자별 쿼터 초과(429 RESOURCE_EXHAUSTED)** — 모든 호출이 admin 1계정 impersonation이라 per-user 한도에 집중 + gaxios 내부 재시도 3회가 증폭. ② 그 지연으로 **Vercel 60초 함수 타임아웃** → 504 텍스트 응답 → 프런트 JSON 파싱 실패. ③ 부수 결함: per-course 오류를 null로 조용히 버려 **silent 미탐** 구조였음.
+- **참고**: 로그에 `[Student OU Resolver] Loaded ouMapping ... ['/학생/1학년','/학생/2학년','/학생/3학년']` 확인 — 6e4f492 settings 수정은 정상 동작.
+- **조치**: `transfer_classroom_spec.md` **§5 v1.1 개정** — 단일 요청 scan 폐기, `scan_init`(반 명단+코스 목록만) → `scan_batch`(15코스씩, 동시성 3, 실패 코스 `failedCourseIds`로 명시 반환) 클라이언트 순차 루프(배치 간 500ms, 진행률 표시, 실패분 1회 일괄 재시도) + fetch 비JSON 응답 방어. enroll 액션은 변경 없음.
