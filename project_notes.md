@@ -9,6 +9,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -947,5 +949,26 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
 
 ### 참고
 - fd6224a에서 기존 "크롬북 붙여넣기 교차 검증 완료" 기록 한 줄이 다크모드 항목으로 대체되며 삭제됨 — 복원 불필요하나 앞으로 기존 기록은 대체 말고 추가할 것.
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (Claude 리뷰 🔴 미해결 2건 처리 및 화면 실측 검증 완료)
+
+- **작업 내용**:
+  1. **배너 바로가기 연동 수정 (`ClassroomCleanupBanner.tsx`, `src/app/admin/page.tsx`)**: "학기말 정리 바로가기" 링크가 `/admin/classroom`(강제 배정)으로 잘못 이동하던 버그를 수정. `Link`를 `button`으로 교체하고 `onNavigate` 콜백 프롭을 추가하여 `src/app/admin/page.tsx` 마운트 지점에서 `setActiveMenu("classroom_cleanup")`을 직접 전달받도록 수정함.
+  2. **데스크톱 HelpTip 팝오버 클리핑 제거 (`ClassroomCleanupTab.tsx`)**: 상단 배너 컨테이너의 `overflow-hidden`을 제거하여 데스크톱(`sm:`) 환경에서 `sm:absolute sm:top-7` 팝오버가 배너 아래 경계선에서 잘리지 않도록 보정함.
+- **변경 파일**:
+  - `src/components/admin/ClassroomCleanupBanner.tsx`
+  - `src/app/admin/page.tsx`
+  - `src/components/admin/ClassroomCleanupTab.tsx`
+  - `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
+  - **실제 화면 검증 (데스크톱 및 375px 모바일 뷰포트)**:
+    - ① 알림 배너 "학기말 정리 바로가기 →" 버튼 클릭 시 `/admin/classroom` 라우트 이동 없이 `activeMenu`가 `"classroom_cleanup"`으로 변경되어 독립 학기말 정리 메뉴 화면으로 완벽히 전환됨을 확인.
+    - ② 데스크톱(1024px+) 화면에서 배너 헤더의 `HelpTip` (`?` 아이콘) 클릭 시 팝오버가 배너 하단 영역 밖으로 잘림 없이 온전히 렌더링됨을 확인.
+    - ③ 모바일(375px) 뷰포트에서 `HelpTip` 클릭 시 화면 상단 16px 좌우 여백(`fixed left-4 right-4 top-24 z-50`)으로 모달형 팝오버가 전체 노출되며 잘림 및 좌우 오버플로우가 0% 임을 확인.
+
 
 

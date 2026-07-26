@@ -667,7 +667,7 @@ export default function AdminPage() {
           <main className="flex-1 overflow-auto p-8">
             <div className="max-w-6xl mx-auto space-y-4">
               {/* 학기말 정리 알림 배너: 어느 메뉴에 있든(홈 포함) 항상 노출 — 클래스룸 메뉴에 직접 들어가야만 보이면 결정 #5의 "안 가본 사람도 알게 한다"는 목적이 무력화됨 */}
-              <ClassroomCleanupBanner />
+              <ClassroomCleanupBanner onNavigate={() => setActiveMenu("classroom_cleanup")} />
               {renderContent()}
             </div>
           </main>

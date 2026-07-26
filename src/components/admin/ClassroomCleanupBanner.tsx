@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+interface ClassroomCleanupBannerProps {
+  onNavigate?: () => void;
+}
 
-export default function ClassroomCleanupBanner() {
+export default function ClassroomCleanupBanner({ onNavigate }: ClassroomCleanupBannerProps) {
   const [showBanner, setShowBanner] = useState(false);
   const [targetCount, setTargetCount] = useState(0);
   const [currentSchoolYear, setCurrentSchoolYear] = useState<number>(new Date().getFullYear());
@@ -53,12 +55,13 @@ export default function ClassroomCleanupBanner() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0 text-xs">
-          <Link
-            href="/admin/classroom"
-            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-bold transition-colors shadow-2xs"
+          <button
+            type="button"
+            onClick={onNavigate}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-bold transition-colors shadow-2xs cursor-pointer"
           >
             학기말 정리 바로가기 →
-          </Link>
+          </button>
           <button
             onClick={handleSnooze}
             className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-md font-semibold transition-colors"
