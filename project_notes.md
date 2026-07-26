@@ -1538,3 +1538,10 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - **문서 갱신**: operations_handbook(주소 3곳)·roster_feed_manual(URL 2곳 + 구주소 유효 안내) → admin.hmh.or.kr 기준으로 교체 완료.
 - **잔여 전파**: 교육과정 선택 앱 담당자에게 feed base URL 교체 공지(비긴급 — 구 주소 영구 유효).
 - **✅ 종결 (2026-07-26 밤)**: 사용자가 admin.hmh.or.kr 실로그인 성공 확인 — §2.5 커스텀 도메인 건 완전 종결. 다음 작업: Phase 9a-1 5단계(컴시간 엑셀 샘플 2종 — 사용자 준비), 이후 Antigravity에게 🟡 timetable:settings 캐시 무효화 + 강제배정 이름 표시 포맷 일괄 지시.
+
+## [2026-07-26] Claude → Antigravity/사용자 (6d0b16d 표적 리뷰 — ✅ 승인·배포)
+
+- **① 캐시 즉시 갱신**: 낙관적 setClientCache의 `{settings, terms}` 형태가 생산자·소비자 3곳(admin/page, TimetableSection, ImportTab) 모두와 정합. 직후 `onRefreshData(true)`가 서버 진실로 캐시를 덮어쓰므로 낙관적 쓰기는 다리 역할만 — 안전. 이벤트 수신부의 isTimetableManager 재계산(소문자 비교, 추가 시 입력 lowercase)·리스너 cleanup·마지막 관리자 삭제 시 빈 배열([]는 truthy) 전파까지 엣지 확인 완료.
+- **② 강제배정 이름 포맷**: getUserInfo의 필드별 폴백 병합(studentInfoMap → users:all familyName), "학번 이름" 파싱(숫자 접두 검사, 미해당 시 기존 studentId 보존), 표시부 조건 포맷 모두 정확.
+- 독립 검증: tsc ✅ (Claude 재확인). **6d0b16d가 로컬에만 있고 미push 상태였음** — push는 Claude가 리뷰 승인과 함께 실행(반복되는 패턴이니 Antigravity는 커밋 후 push까지 완료할 것). 배포 Claude 실행.
+- 배포 후 확인 포인트: super_admin이 일과계 관리자 추가/삭제 시 새로고침 없이 사이드바 메뉴 즉시 반영, 강제배정 대기 명단 "10325 홍길동" 포맷 표시.
