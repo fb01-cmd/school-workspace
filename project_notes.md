@@ -1444,3 +1444,8 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - **대기 명단 이름 표시**: studentInfoMap 우선 조회 + 반별 일괄/개별 검색 양 경로 기록 ✅. `AutocompleteInput.onSelect`가 원래 `(email, name?)` 시그니처라 개별 경로도 정상 — name에 학번(familyName)까지 포함되어 전달됨을 확인.
 - 🟡 (비차단, 선택): `handleSelectStudent`의 map 항목이 studentId를 빈 값으로 저장해, users:all 캐시가 차 있는 세션에서는 개별 추가 학생의 학번 표시가 이전보다 단순해질 수 있음("학번 이름" → "학번이름" 연결 문자열). 표시 포맷 통일이 신경 쓰이면 getUserInfo에서 map hit라도 studentId 빈 값이면 캐시 병합 폴백 추가 — 급하지 않음.
 - 독립 검증: tsc ✅ (Claude 재확인). push·배포 Claude 실행. 배포 후 사용자 확인 포인트: playviolin 계정에서 상단 노란 배너의 "5개"가 "1개"(Classtools 데모)로 줄고, 공동 교사 5개는 접힌 서브섹션에만 표시.
+
+## [2026-07-26] Claude → 기록 (37f7748 사용자 실서버 확인 완료 — UI 정비 2건 종결)
+
+- 사용자 확인: 배너 카운트 5개→1개(Classtools 데모, 소유 정리 대상) 정상, 공동 교사 코스 5개 접힌 서브섹션 표시 정상. **공동교사 정리 알림 + 대기 명단 이름 표시 건 종결.**
+- 오늘(7/26) 세션 전체 종결 항목: 고아 폴더 기능, 전입생 자동 편성(v2.0), profile.emails 스코프, 공동교사 배너·이름 표시. 잔여 대기: Phase 9a-1 5단계(컴시간 엑셀 샘플 대기), 커스텀 도메인 부착.
