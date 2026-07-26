@@ -1516,4 +1516,5 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - **네이키드/www 리디렉션 (사용자 추가 요청)**: `hmh.or.kr`·`www.hmh.or.kr`을 프로젝트에 추가 + API로 308 리디렉션 설정. uhost에서 두 A 레코드를 `220.78.188.171`(사멸한 구 홈페이지 서버, 무응답 확인) → `76.76.21.21` 교체. MX 5줄·SPF TXT 불변 — 메일 무영향. 구글 관리 콘솔의 네이키드 리디렉션 기능은 **사용하지 않기로** 결정(충돌 방지, Vercel 전담).
 - **함정 기록**: Vercel 도메인 추가를 DNS 레코드보다 먼저 하면 NXDOMAIN 네거티브 캐시(24h)로 검증이 장기 지연 — `vercel domains add` 재실행으로 즉시 해소. deployment_checklist §2.5에 영구 기록.
 - **문서 갱신**: operations_handbook(주소 3곳)·roster_feed_manual(URL 2곳 + 구주소 유효 안내) → admin.hmh.or.kr 기준으로 교체 완료.
-- **잔여 전파**: 교육과정 선택 앱 담당자에게 feed base URL 교체 공지(비긴급 — 구 주소 영구 유효). 사용자 로그인 확인 후 이 건 완전 종결.
+- **잔여 전파**: 교육과정 선택 앱 담당자에게 feed base URL 교체 공지(비긴급 — 구 주소 영구 유효).
+- **✅ 종결 (2026-07-26 밤)**: 사용자가 admin.hmh.or.kr 실로그인 성공 확인 — §2.5 커스텀 도메인 건 완전 종결. 다음 작업: Phase 9a-1 5단계(컴시간 엑셀 샘플 2종 — 사용자 준비), 이후 Antigravity에게 🟡 timetable:settings 캐시 무효화 + 강제배정 이름 표시 포맷 일괄 지시.
