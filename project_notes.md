@@ -1214,3 +1214,20 @@ Phase 9a-1 5단계(실데이터 리허설)만 남음 — **사용자의 컴시�
 - **원인 (Vercel 로그로 확정, 추정 아님)**: ① 도메인 전체 코스 로스터 조회가 Classroom API **분당 사용자별 쿼터 초과(429 RESOURCE_EXHAUSTED)** — 모든 호출이 admin 1계정 impersonation이라 per-user 한도에 집중 + gaxios 내부 재시도 3회가 증폭. ② 그 지연으로 **Vercel 60초 함수 타임아웃** → 504 텍스트 응답 → 프런트 JSON 파싱 실패. ③ 부수 결함: per-course 오류를 null로 조용히 버려 **silent 미탐** 구조였음.
 - **참고**: 로그에 `[Student OU Resolver] Loaded ouMapping ... ['/학생/1학년','/학생/2학년','/학생/3학년']` 확인 — 6e4f492 settings 수정은 정상 동작.
 - **조치**: `transfer_classroom_spec.md` **§5 v1.1 개정** — 단일 요청 scan 폐기, `scan_init`(반 명단+코스 목록만) → `scan_batch`(15코스씩, 동시성 3, 실패 코스 `failedCourseIds`로 명시 반환) 클라이언트 순차 루프(배치 간 500ms, 진행률 표시, 실패분 1회 일괄 재시도) + fetch 비JSON 응답 방어. enroll 액션은 변경 없음.
+
+## [2026-07-26] Claude → 체크포인트 (버그 정비·신기능 세션 일시 중단 — 이어서 할 것)
+
+### 완결된 것
+- UI 정비 사이클(체크박스·문구·테스트도구·배너 오연결·HelpTip) 최종 승인 완료.
+- 역방향 잔여 정리(2a3eda2+706f782) 최종 승인 완료.
+- 전입생 학급 클래스룸 자동 편성: 구현+리뷰 승인됐으나 **실서버 스캔 사고 발생** — 아래 참조.
+
+### 진행 중 / 대기
+1. **전입생 스캔 v1.1 재구현 — Antigravity 지시 대기** (사용자가 아직 지시 전달 전): 429 쿼터+60s 타임아웃 사고로 스펙 §5를 scan_init/scan_batch 배치 프로토콜로 개정함(5b1aad0). 지시문은 이 파일 바로 위 사고 기록 참조.
+2. **고아 폴더 기능(b96c232) Claude 표적 리뷰 대기**: Antigravity가 구현 완료·푸시했으나 아직 미리뷰. 리뷰 관점: orphan_folder_spec.md §4 restore 회귀(기존 cleanup·residual 로그 동작 불변), 검사 경로 읽기 전용(files.create 부재), 'me' in owners 조건.
+3. **Phase 9a-1 5단계**: 사용자 컴시간 엑셀 샘플 2종 대기 (변동 없음).
+4. **③ 커스텀 도메인 부착**: deployment_checklist.md §2.5 5단계 + roster feed 연동 주소 전파 계획. 스캔·고아 건 마무리 후.
+
+### 재개 문구
+- Antigravity에게: 위 사고 기록(스캔 v1.1)의 지시문 복사 전달.
+- Claude에게: *"project_notes.md의 2026-07-26 마지막 체크포인트를 읽고, 고아 폴더 기능(b96c232) 표적 리뷰부터 이어서 진행해줘."*
