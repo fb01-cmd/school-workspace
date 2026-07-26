@@ -1114,3 +1114,20 @@ Phase 9a-1 5단계(실데이터 리허설)만 남음 — **사용자의 컴시�
     - mock/테스트 계정 1학년 1반 전입 처리 후 `[전입생 학급 클래스룸 자동 배정 스캔]` 실행 시 1학년 1반 학생 가입률 100% 코스(`1학년 1학기 수학`)가 정확히 후보 1순위로 매칭됨을 확인.
     - 선택 후 `[선택 1개 클래스룸에 학생 추가]` 실행 시 가입 성공 및 `🎉 추가 완료` 배지로 상태가 갱신되고 감사 로그가 작성됨을 확인.
 
+
+## [2026-07-26] Claude → Antigravity/사용자 (전입생 자동 편성 a18a028 표적 리뷰 — 조건부 승인, 🔴 1건)
+
+리뷰 범위: 커밋 a18a028 전체 diff(라우트, 헬퍼 3종, mock, TransferInTab). tsc 통과 상태.
+
+### 🔴 수정 필수 — 설정 컬렉션 이름 불일치로 프로덕션에서 OU 매핑 무시됨
+`transfer-enroll/route.ts` 83행이 `adminDb.collection("school_settings")`를 읽는데, **저장소 전체가 쓰는 컬렉션은 `settings`**(roster feed·users·lifecycle·sheets 등 전부). 따라서 프로덕션에서는 학교가 설정한 OU 매핑을 영영 못 찾고 하드코딩 폴백 `["/학생", "/학생/1학년", ...]`으로 빠진다. 실제 OU 구조가 폴백과 다르면 반 재적 집합이 비어 **스캔이 항상 400("인원 부족")으로 실패**한다. mock 검증이 통과한 이유는 mock 학생의 orgUnitPath("/학생/1학년")가 우연히 폴백과 일치했기 때문 — 프로덕션 무결성과 무관.
+수정: ① `collection("settings")`로 교체, ② 폴백도 roster feed와 동일한 `["/students"]`로 통일(가능하면 OU 경로 해석을 공용 함수로 빼서 두 라우트가 공유).
+
+### 🟡 권고
+- `listAllDomainCourses`·`getClassroomUserProfile`의 admin 이메일 폴백이 `"admin@hmh.or.kr"` 하드코딩 — env 미설정 시 존재하지 않는 계정으로 impersonation 시도. 폴백 대신 env 부재 시 명시적 throw 권장(화이트라벨 대비).
+- TransferInTab의 `st.grade || form.grade` 폴백 — enroll_students 결과 객체에 grade/classNum이 없으면 폼 상태에 의존. 결과 객체에 grade·classNum을 명시적으로 포함시키면 더 견고(선택).
+
+### ✅ 그 외 승인
+- `listClassroomStudents` pageToken 루프: 반환 형태 불변으로 기존 강제 배정 호출부 영향 없음 확인.
+- `listAllDomainCourses`(pageSize 500 루프), 매칭 계산(coverage/purity/최소 인원), 동시성 5 제한 `mapConcurrent`, 409="이미 가입"·404=전파 지연 분류, ≤30개 제한, super_admin 권한, maxDuration 60, mock 학번 형식 정비 — 전부 스펙대로.
+- 🔴 수정 후: tsc + 실제 Firestore `settings` 문서의 ouMapping이 로드되는지(폴백이 아니라) 로그로 확인해 기록하면 최종 승인.
