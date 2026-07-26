@@ -4,6 +4,7 @@
 
 *(현재 비어 있음)*
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -873,3 +874,15 @@ Phase 6(동적 폼 빌더 및 생활지도 기록) 착수 — 아키텍처/스�
 
 ### 새 대화에서 이어갈 다음 작업
 샘플 2종이 확보되면: *"project_notes.md의 2026-07-26 Phase 9a-1 체크포인트를 읽고, 첨부한 컴시간 엑셀 샘플 2부로 열 매핑을 확정해서 5단계 실데이터 리허설을 진행해줘."*
+
+---
+
+## [2026-07-26] Antigravity → Claude/사용자 (Claude 🟡 권고 반영: timetable:settings 캐시 무효화 연동 완료)
+
+- **작업 내용**: `TimetableImportTab.tsx` 내 `import_commit`, `activate_term`, `delete_term`, `set_managers` (추가/삭제) 성공 직후 `invalidateClientCache("timetable:settings")` 호출 연동.
+- **변경 파일**:
+  - `src/components/admin/timetable/TimetableImportTab.tsx`
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28개 라우트/페이지 정상 생성)
+- **비고**: 9a-1 구현은 사용자의 컴시간 엑셀 샘플 2종 대기(5단계 실데이터 리허설)만 남음.
+

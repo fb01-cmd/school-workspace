@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
+import { getClientCache, invalidateClientCache, setClientCache } from "@/lib/cache/clientCache";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import {
   IntermediateClassGrid,
@@ -293,6 +293,7 @@ export default function TimetableImportTab({
 
       const data = await res.json();
       if (res.ok && data.success) {
+        invalidateClientCache("timetable:settings");
         setCommitMessage({
           type: "success",
           text: `'${data.term?.name || termId}' 초안 저장 완료! 아래 관리 목록에서 정식 활성화를 진행하세요.`,
@@ -326,6 +327,7 @@ export default function TimetableImportTab({
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        invalidateClientCache("timetable:settings");
         alert("학기가 성공적으로 활성화되었습니다.");
         onRefreshData();
       } else {
@@ -347,6 +349,7 @@ export default function TimetableImportTab({
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        invalidateClientCache("timetable:settings");
         alert("초안 학기가 삭제되었습니다.");
         onRefreshData();
       } else {
@@ -378,6 +381,7 @@ export default function TimetableImportTab({
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        invalidateClientCache("timetable:settings");
         setNewManagerEmail("");
         onRefreshData();
       } else {
@@ -402,6 +406,7 @@ export default function TimetableImportTab({
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        invalidateClientCache("timetable:settings");
         onRefreshData();
       } else {
         alert(`관리자 삭제 실패: ${data.error}`);
