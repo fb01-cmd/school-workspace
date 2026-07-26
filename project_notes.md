@@ -1496,3 +1496,16 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 
 ### 재개 문구
 - Claude에게(새 대화): *"project_notes.md의 2026-07-26 마지막 체크포인트를 읽고, 커스텀 도메인 부착(deployment_checklist.md §2.5)을 진행해줘."*
+
+---
+
+## [2026-07-26] Claude → 사용자 (커스텀 도메인 부착 §2.5 — 1·2단계 완료, DNS·GCP 사용자 액션 대기)
+
+- **완료 (Claude 실행)**:
+  - §2.5-1(Vercel 측): `admin.hmh.or.kr`을 `school-workspace` 프로젝트에 추가 완료 (`vercel domains add`).
+  - §2.5-2(Firebase 승인 도메인): 콘솔 대신 서비스 계정 + identitytoolkit Admin API PATCH로 `admin.hmh.or.kr` 등록 완료. 갱신 후 목록: localhost, school-sync-hub.firebaseapp.com, school-sync-hub.web.app, school-workspace-eight.vercel.app, admin.hmh.or.kr.
+- **사용자 액션 대기 2건**:
+  1. **DNS (uhost)**: hmh.or.kr 네임서버가 `ns1/ns2.uhost.co.kr` — uhost DNS 관리 화면에서 CNAME `admin` → `b2ae0bdef4531cfe.vercel-dns-017.com` 추가 (CNAME 불가 시 A 레코드 `admin` → `76.76.21.21`).
+  2. **GCP OAuth 클라이언트 (§2.5-3)**: https://console.cloud.google.com/apis/credentials → "Web client (auto created by Google Service)" → 승인된 자바스크립트 원본에 `https://admin.hmh.or.kr`, 승인된 리디렉션 URI에 `https://admin.hmh.or.kr/__/auth/handler` 추가.
+- **잔여 (DNS 반영 후 Claude 실행)**: `vercel domains verify` → `NEXT_PUBLIC_BASE_URL`을 `https://admin.hmh.or.kr`로 교체 → 프로덕션 재배포 → 새 도메인 로그인 검증(§2.5-5, 팝업 차단 redirect 폴백 포함). 링크 깨짐 방지를 위해 env 교체·재배포는 DNS 살아난 뒤에만 한다.
+- **roster feed 주소 전파 계획**: 기존 `school-workspace-eight.vercel.app`은 도메인 부착 후에도 계속 유효(영구 별칭) → 외부 연동 즉시 장애 없음. 전파 대상: ① 교육과정 선택 앱 서버의 feed base URL(담당자에게 여유 있게 교체 공지), ② Apps Script `명단가져오기` 사용 시트(있다면), ③ 문서 3종(roster_feed_manual.md·operations_handbook.md·deployment_checklist.md)의 URL 표기 — 문서 갱신은 새 도메인 검증 완료 후 일괄 처리. 마스터 시트(통로 A)는 서버 push 방식이라 URL 무관.

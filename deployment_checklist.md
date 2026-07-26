@@ -85,6 +85,7 @@
 
 1. **Vercel**: 프로젝트 Settings → Domains → 새 도메인 추가 → 안내되는 DNS 레코드(CNAME)를 `hmh.or.kr` DNS 관리 화면에 추가
 2. **Firebase 콘솔**: Authentication → Settings → 승인된 도메인 → 새 도메인 추가
+   - 콘솔 없이도 가능: 서비스 계정으로 `identitytoolkit.googleapis.com/admin/v2/projects/<id>/config?updateMask=authorizedDomains` PATCH (2026-07-26 admin.hmh.or.kr 등록을 이 방식으로 처리 — 기존 목록 GET 후 추가분만 덧붙일 것)
 3. **GCP 콘솔**: API 및 서비스 → 사용자 인증 정보 → Web client (auto created by Google Service):
    - 승인된 자바스크립트 원본에 `https://<새 도메인>` 추가
    - 승인된 리디렉션 URI에 `https://<새 도메인>/__/auth/handler` 추가
