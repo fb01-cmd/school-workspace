@@ -1372,16 +1372,31 @@ export const listClassroomCourses = async (
   if (!classroom) throw new Error("Classroom client not initialized.");
 
   try {
-    const res = await classroom.courses.list({
-      teacherId: teacherEmail,
-      courseStates: courseStates
-    });
-    return res.data.courses || [];
+    // 🟡 3 수정: pageToken 루프로 모든 페이지 조회 — 코스 100개 초과 교사에서 REFERENCED 집합 불완전 방지
+    const allCourses: any[] = [];
+    let pageToken: string | undefined = undefined;
+    for (;;) {
+      // eslint-disable-next-line no-await-in-loop
+      let listRes: any;
+      listRes = await classroom.courses.list({
+        teacherId: teacherEmail,
+        courseStates,
+        pageToken,
+      });
+      const page: any[] = listRes?.data?.courses || [];
+      allCourses.push(...page);
+      const nextToken: string | null | undefined = listRes?.data?.nextPageToken;
+      if (!nextToken) break;
+      pageToken = nextToken;
+    }
+    return allCourses;
   } catch (error) {
     console.error(`Error listing classroom courses for ${teacherEmail}:`, error);
     throw error;
   }
 };
+
+
 
 // Create a new Classroom Course
 export const createClassroomCourse = async (courseName: string, sectionName: string, teacherEmail: string) => {

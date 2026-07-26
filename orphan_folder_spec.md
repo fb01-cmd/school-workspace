@@ -14,8 +14,9 @@
 ## 2. 탐지 알고리즘 (교사 본인 드라이브 기준)
 
 1. `listClassroomCourses(teacherEmail, ["ACTIVE", "ARCHIVED"])` → 모든 현존 코스의 `teacherFolder.id` 집합 `REFERENCED` 구성.
-2. **Classroom 루트 폴더 식별**: 현존 코스 중 하나의 `teacherFolder`를 `files.get(fields: "parents")`으로 조회해 부모를 루트로 삼는다(권위적).
-   코스가 하나도 없으면 `files.list(q: name = 'Classroom' and 'root' in parents and mimeType = folder and trashed = false)`로 폴백. 둘 다 실패하면 "탐지 불가" 응답(에러 아님).
+2. **Classroom 루트 폴더 식별** (v1.1 개정 — b96c232 리뷰에서 구멍 확인): 샘플은 **ACTIVE 코스의 `teacherFolder`만** 사용해 `files.get(fields: "parents")`으로 부모를 얻는다. ARCHIVED 코스는 샘플 금지 — 학기말 정리를 거친 ARCHIVED 코스의 폴더는 이미 "이전년도 클래스룸/<년도>학년도"로 이동돼 있어, 그 부모를 루트로 삼으면 아카이브 폴더에서 고아를 찾는 silent 미탐이 된다.
+   어떤 경로로 얻었든 **후보 루트를 `files.get(fields: "name")`으로 검증해 name이 "Classroom"이 아니면 기각**한다(교사가 ACTIVE 폴더를 수동 이동한 경우 방어).
+   샘플이 없거나 기각되면 `files.list(q: name = 'Classroom' and 'root' in parents and mimeType = folder and trashed = false)`로 폴백. 둘 다 실패하면 "탐지 불가" 응답(에러 아님).
 3. 루트 하위 폴더 목록 조회 — **`'루트ID' in parents and mimeType = folder and trashed = false and 'me' in owners`** (pageToken 루프 필수).
    `'me' in owners` 조건이 핵심: 공동 교사였던 코스의 폴더(소유자가 타인)는 이동 시 권한 문제가 생기므로 **본인 소유 폴더만** 후보로 삼는다.
 4. `REFERENCED`에 없는 폴더 = 고아 후보. 각 후보에 `{folderId, name, webViewLink, modifiedTime}` 반환.

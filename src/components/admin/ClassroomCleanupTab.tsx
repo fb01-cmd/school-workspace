@@ -26,6 +26,7 @@ interface CleanupLog {
   newName: string;
   calendarId?: string | null;
   driveFolderId?: string | null;
+  mode?: string | null;   // "orphan" | "residual" | undefined(cleanup)
   results?: {
     rename?: { success: boolean; name?: string; error?: string };
     archive?: { success: boolean; state?: string; error?: string };
@@ -331,7 +332,12 @@ export default function ClassroomCleanupTab() {
 
   // Restore an archived course
   const handleRestore = async (log: CleanupLog) => {
-    if (!confirm(`'${log.newName || log.originalName}' 클래스룸을 다시 활성화(ACTIVE) 상태로 복원하시겠습니까?`)) {
+    const isOrphanLog = log.mode === "orphan";
+    // 🟡 2 수정: orphan 모드는 클래스룸 복원이 아닌 폴더 위치 원복 — confirm 문구 분기
+    const confirmMsg = isOrphanLog
+      ? `'${log.originalName}' 폴더를 원래 위치(Classroom)로 되돌리시겠습니까?`
+      : `'${log.newName || log.originalName}' 클래스룸을 다시 활성화(ACTIVE) 상태로 복원하시겠습니까?`;
+    if (!confirm(confirmMsg)) {
       return;
     }
 
@@ -991,9 +997,9 @@ export default function ClassroomCleanupTab() {
           <div className="border border-gray-200 rounded-xl overflow-hidden shadow-xs bg-white">
             <table className="w-full text-left text-sm text-gray-700">
               <thead className="bg-gray-100/80 text-xs uppercase font-bold text-gray-600 border-b border-gray-200">
-                <tr>
+              <tr>
                   <th className="p-3.5">정리 일시</th>
-                  <th className="p-3.5">원래 클래스룸 이름</th>
+                  <th className="p-3.5">원래 이름 / 종류</th>
                   <th className="p-3.5">보관 시 적용된 이름</th>
                   <th className="p-3.5 text-center w-28">복원 상태</th>
                   <th className="p-3.5 text-center w-28">복원 실행</th>
@@ -1006,7 +1012,20 @@ export default function ClassroomCleanupTab() {
                       {new Date(log.timestamp).toLocaleString("ko-KR")}
                     </td>
                     <td className="p-3.5 font-medium text-gray-900">
-                      <div>{log.originalName}</div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{log.originalName}</span>
+                        {/* 🟡 2 수정: orphan 모드 전용 배지 */}
+                        {log.mode === "orphan" && (
+                          <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded border border-orange-200">
+                            고아 폴더
+                          </span>
+                        )}
+                        {log.mode === "residual" && (
+                          <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-semibold rounded border border-amber-200">
+                            잔여 정리
+                          </span>
+                        )}
+                      </div>
                       {log.results && (
                         <div className="flex flex-wrap gap-1 mt-1 text-[10px] font-medium">
                           {log.results.archive && (

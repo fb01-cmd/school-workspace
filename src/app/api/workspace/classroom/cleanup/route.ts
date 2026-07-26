@@ -143,8 +143,9 @@ export async function GET(req: NextRequest) {
 
     // 삭제된 클래스룸 고아 드라이브 폴더 탐지 (§2)
     if (mode === "orphan") {
+      // 🟡 mock 필터: teacherEmail 일치만 (하드코딩 제거)
       if (isMock) {
-        const mockFolders = mockOrphanFolders.filter(f => f.ownerEmail === teacherEmail || f.ownerEmail === "teacher01@hmh.or.kr");
+        const mockFolders = mockOrphanFolders.filter(f => f.ownerEmail === teacherEmail);
         return NextResponse.json({
           success: true,
           teacherEmail,
@@ -153,34 +154,47 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      // 1. 모든 현존 코스(ACTIVE & ARCHIVED) 조회
+      // 1. 모든 현존 코스(ACTIVE & ARCHIVED) 조회 — REFERENCED 집합 구성
       const courses = await listClassroomCourses(teacherEmail, ["ACTIVE", "ARCHIVED"]);
       const referencedFolderIds = new Set(courses.map((c: any) => c.teacherFolder?.id).filter(Boolean));
-
-      // 2. Classroom 루트 폴더 식별
-      let classroomRootId: string | null = null;
-      const sampleCourseFolder = courses.find((c: any) => c.teacherFolder?.id);
 
       const drive = getDriveClient(teacherEmail);
       if (!drive) {
         return NextResponse.json({ error: "Drive client initialization failed." }, { status: 500 });
       }
 
-      if (sampleCourseFolder?.teacherFolder?.id) {
+      // 2. Classroom 루트 폴더 식별 (v1.1 개정 — §2.2)
+      // 🔴 1 수정: 샘플은 ACTIVE 코스 우선 선정 (ARCHIVED 코스는 정리 후 폴더가 이미 이동돼 있을 수 있음)
+      let classroomRootId: string | null = null;
+      const activeSample = courses.find((c: any) => (c.courseState === "ACTIVE" || c.courseState === undefined) && c.teacherFolder?.id);
+      const anySample = activeSample || courses.find((c: any) => c.teacherFolder?.id);
+
+      if (anySample?.teacherFolder?.id) {
         try {
           const fileRes = await drive.files.get({
-            fileId: sampleCourseFolder.teacherFolder.id,
+            fileId: anySample.teacherFolder.id,
             fields: "parents",
           });
-          if (fileRes.data.parents && fileRes.data.parents.length > 0) {
-            classroomRootId = fileRes.data.parents[0];
+          const candidateParentId = fileRes.data.parents?.[0];
+          if (candidateParentId) {
+            // 후보 루트를 files.get(name)으로 검증: name이 'Classroom'이 아니면 기각
+            try {
+              const parentMeta = await drive.files.get({ fileId: candidateParentId, fields: "name" });
+              if (parentMeta.data.name === "Classroom") {
+                classroomRootId = candidateParentId;
+              } else {
+                console.warn(`[orphan] Candidate root '${parentMeta.data.name}' is not 'Classroom' — rejecting, falling back to name search.`);
+              }
+            } catch (e) {
+              console.warn("Failed to verify candidate root folder name:", e);
+            }
           }
         } catch (e) {
           console.warn("Failed to get parent folder for sample course folder:", e);
         }
       }
 
-      // 샘플 코스 폴더에서 부모를 못 구한 경우 'Classroom' 루트 폴더 직접 조회 폴백
+      // 이름 검증 통과 못한 경우(또는 샘플 없는 경우) 'Classroom' 루트 폴더 이름 검색 폴백
       if (!classroomRootId) {
         try {
           const rootRes = await drive.files.list({
@@ -332,7 +346,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const isOrphan = logDocData?.mode === "orphan" || (!courseId && (driveFolderId || logDocData?.driveFolderId));
+      // 🟡 1 수정: orphan 판별을 mode 필드만으로 좁힘 — 휴리스틱(!courseId && driveFolderId) 제거
+      const isOrphan = logDocData?.mode === "orphan";
       const isResidual = logDocData?.mode === "residual";
 
       if (!isOrphan && !courseId) {
@@ -364,7 +379,8 @@ export async function POST(req: NextRequest) {
 
       // 드라이브 폴더 원래 위치 원복 시도 (driveFolderId & driveOriginalParentFolderId)
       const targetDriveId = driveFolderId || logDocData?.driveFolderId;
-      const originalDriveParentId = targetParentFolderId || logDocData?.driveOriginalParentFolderId;
+      // 🟡 1 수정: targetParentFolderId 오버라이드 제거 — UI는 이 필드를 보내지 않으므로 로그 값만 사용
+      const originalDriveParentId = logDocData?.driveOriginalParentFolderId;
       let driveRestored = false;
 
       if (targetDriveId && originalDriveParentId) {
@@ -428,16 +444,21 @@ export async function POST(req: NextRequest) {
           const moveRes = await moveDriveFolderToArchive(teacherEmail, fId, targetArchiveFolderId);
 
           const logRef = adminDb.collection("classroom_cleanup_logs").doc();
+          const nowIso = new Date().toISOString();
+          // 🔴 2 수정: timestamp/originalName/newName 추가로 이력 조회(orderBy timestamp) 및 UI 표시 통일
           await logRef.set({
             logId: logRef.id,
             teacherEmail,
             mode: "orphan",
             courseId: null,
             courseName: fName,
+            originalName: fName,   // 이력 탭 표시용 — 다른 모드와 동일 필드명
+            newName: fName,        // 이력 탭 표시용 — 폴더명은 이동 후에도 동일
             schoolYear: null,
             driveFolderId: fId,
             driveOriginalParentFolderId: moveRes.originalParentFolderId || null,
-            cleanedAt: new Date().toISOString(),
+            timestamp: nowIso,     // 이력 orderBy("timestamp")에 필수
+            cleanedAt: nowIso,     // 하위 호환 유지
             restored: false,
             results: {
               drive: moveRes,
