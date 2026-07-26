@@ -48,9 +48,45 @@ purity   = |COURSE ∩ CLASS| / |COURSE|     // 이 코스 인원 중 우리 반
 
 ## 5. API 설계 — 신규 라우트 `/api/workspace/classroom/transfer-enroll/route.ts`
 
+> **[v2.0 개정, 2026-07-26] 로스터 방식 전면 폐기 → 역방향 멤버십 집계로 재설계.**
+> **운영 사고 2호(silent 미탐, 실측으로 확정)**: v1.1 배치 스캔이 실서버에서 오류 없이 후보 0건 반환.
+> 원인: `courses.students.list`의 `profile.emailAddress`는 **`classroom.profile.emails` 스코프가 있어야 응답에 포함**되는데,
+> 이 스코프는 코드(`getClassroomClient`)에도 없고 **DWD 허용 목록에도 없다**(토큰 발급 거부 실측). 따라서 모든 코스의
+> 이메일 집합이 빈 값 → 교집합 0 → 무오류 0건. mock은 emailAddress를 스텁으로 채워주기 때문에 mock 검증으로는 절대 못 잡는다.
+> 동시에 확인된 사실: 반 재적 27명에 대해 `courses.list(studentId=이메일)` 27회로 코스별 가입 수를 직접 집계하면
+> **1,257개 로스터 조회가 ~30여 회 호출로 대체**되고, 이메일 스코프 자체가 불필요해진다. (실측: "통합사회 1-10" 26/27,
+> "한국사 1-10" 26/27, "공통수학1 (1학년 10반)" 26/27, "2026 과학탐구실험 1학년 10반" 25/27 — 모두 기준 충족.)
+>
+> ### v2.0 프로토콜
+> - **`scan_init`**: 반 명단(§3)만 구성해 `{ classEmails, totalClassCount }` 반환. `listAllDomainCourses` 호출 삭제 (더 이상 코스 목록 불필요).
+> - **신규 `POST { action: "scan_members", studentEmail, classEmails }`** (v1.1의 scan_batch 대체·삭제):
+>   1. super_admin 검사. `classEmails` 3~40명 검증.
+>   2. 멤버별 `classroom.courses.list({ studentId, courseStates: ["ACTIVE"] })`(pageToken 루프)를 **동시성 3**으로 실행,
+>      코스별 가입 수 집계. 실패 멤버는 버리지 말고 `failedMemberEmails`로 반환 (silent 미탐 금지).
+>   3. `가입수/유효멤버수 >= 0.8` 코스만 후보로 남기고, 각 후보의 `students.list` **인원수만 카운트**(이메일 불필요)하여
+>      purity(가입수/코스인원) ≥ 0.7, size ≥ 5 판정. 후보는 실무상 수 개이므로 추가 호출 부담 없음.
+>   4. `alreadyEnrolled`: 전입생 본인의 `courses.list(studentId=전입생)` 1회로 판정.
+>   5. ownerName/ownerEmail은 기존 `getClassroomUserProfile` 유지 (emailAddress는 DWD 스코프 추가 전까지 ownerId 폴백 허용).
+>   6. 반환: `{ candidates, failedMemberEmails, checkedMemberCount }`.
+> - **클라이언트(TransferInTab)**: 배치 루프·진행률 제거 → `scan_init` → `scan_members` 1회 호출(수 초 내 완료), 실패 시
+>   1회 재시도. `failedMemberEmails` 잔존 시 "⚠️ N명 명단 대조 실패 — 결과가 불완전할 수 있음" 경고 표시. `safeFetchJson` 유지.
+> - **회귀 판정 기준(실서버, 이번 실측값)**: 1학년 10반 스캔 시 위 4개 코스가 후보로 떠야 하며, "공통영어 교수학습 자료"
+>   (coverage 78%, purity 7%)는 탈락해야 한다. mock 검증만으로 완료 처리 금지.
+>
+> ### 별도 트랙 — DWD 스코프 추가 (스캔과 무관하게 필요)
+> `classroom.profile.emails` 부재로 **① 강제 배정 페이지의 학생 이메일 표시·제거, ② 후보 담당교사 이메일 표시**가
+> 프로덕션에서 깨져 있다(이메일 필드 미수신). 수정 순서 엄수: **사용자가 관리 콘솔 DWD 허용 목록에 스코프를 먼저 추가**
+> (admin.google.com → 보안 → API 제어 → 도메인 전체 위임 → 해당 클라이언트 ID 스코프에
+> `https://www.googleapis.com/auth/classroom.profile.emails` 추가) → 검증 후 → `getClassroomClient` scopes에 추가·배포.
+> **코드를 먼저 배포하면 DWD 거부로 모든 Classroom 호출이 즉사하므로 순서 역전 금지.**
+>
+> <details><summary>[폐기] v1.1 배치 프로토콜 (2026-07-26, scan_batch — silent 미탐으로 폐기)</summary>
+>
 > **[v1.1 개정, 2026-07-26]** 단일 요청 `action: "scan"`은 실서버에서 **폐기**한다.
 > 운영 사고: 실제 규모(수백 코스)에서 Classroom API 분당 사용자별 쿼터 429 폭주 + gaxios 내부 재시도 증폭 → Vercel 60초 타임아웃 → 비JSON 응답으로 프런트 파싱 실패 (Vercel 로그로 확정).
 > 아래 **클라이언트 주도 배치 프로토콜**로 대체한다.
+>
+> </details>
 
 ### `POST { action: "scan_init", grade, classNum, studentEmail }`
 1. `verifyAuthAccess` + `super_admin` 검사.
