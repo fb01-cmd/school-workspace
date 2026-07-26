@@ -4,6 +4,11 @@ import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { deleteAuthUserByEmail, adminDb } from "@/lib/firebase/admin";
 import { updateMasterRosterSheet } from "@/lib/google/sheets";
 import { purgeDisciplineDataForStudent } from "@/lib/discipline/server";
+import { mapConcurrent } from "@/lib/concurrency";
+
+// Vercel 함수 실행 시간 한도 명시 (졸업 시즌 피크의 대량 알림·정지·삭제 대비).
+// 미설정 시 플랜 기본값(10초대)이 적용되어 도중에 잘리면 뒷순번 학생이 미처리된다.
+export const maxDuration = 60;
 
 // 이 크론 API는 Vercel Cron 또는 외부 스케줄러(예: Cloud Scheduler)에서
 // 매일 0시경 자동으로 호출해야 합니다.
@@ -184,25 +189,32 @@ export async function GET(req: NextRequest) {
               dbg(`[Grad] 동기화 대상 OUs: ${JSON.stringify(targetOUs)}`);
               const wsStudents = await listUsersInOUs(targetOUs);
               dbg(`[Grad] GWS에서 가져온 학생 수: ${wsStudents.length}`);
-              
-              for (const student of wsStudents) {
+
+              // 기존 태스크 전체를 1회만 읽어 메모리에서 존재 확인
+              // (학생별 get() N+1 제거 — 500명 기준 왕복 500회 → 1회)
+              const tasksCol = adminDb.collection("graduation_tasks").doc(domain).collection("students");
+              const existingTasksSnap = await tasksCol.get();
+              const existingEmails = new Set(existingTasksSnap.docs.map((d) => d.id));
+
+              const newStudents = wsStudents.filter((student) => {
                 const email = student.primaryEmail;
-                if (!email) continue;
-                
+                if (!email) return false;
                 // 테스트용 필터가 지정된 경우, 필터에 부합하는 이메일만 동기화 대상으로 취급
                 if (testEmailFilter && !email.toLowerCase().includes(testEmailFilter.toLowerCase())) {
-                  continue;
+                  return false;
                 }
-                dbg(`[Grad] 동기화 대상: ${email}`);
-                
-                const taskRef = adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email);
-                const taskSnap = await taskRef.get();
-                
-                if (!taskSnap.exists) {
+                return !existingEmails.has(email);
+              });
+              dbg(`[Grad] 동기화: 기존 ${existingEmails.size}명, 신규 등록 대상 ${newStudents.length}명`);
+
+              // 신규 태스크는 batch로 묶어 등록 (한 batch 500건 제한 → 400건 청크)
+              for (let i = 0; i < newStudents.length; i += 400) {
+                const batch = adminDb.batch();
+                for (const student of newStudents.slice(i, i + 400)) {
+                  const email = student.primaryEmail!;
                   const name = student.name?.givenName || student.name || "학생";
                   const studentId = student.name?.familyName || "";
-                  
-                  await taskRef.set({
+                  batch.set(tasksCol.doc(email), {
                     email,
                     name,
                     studentId,
@@ -219,9 +231,8 @@ export async function GET(req: NextRequest) {
                     lastWarnedAt: null,
                   });
                   dbg(`[Grad] 새 태스크 등록: ${email}`);
-                } else {
-                  dbg(`[Grad] 이미 등록됨: ${email}, status=${taskSnap.data()?.status}`);
                 }
+                await batch.commit();
               }
             } catch (syncErr: any) {
               dbg(`[Grad] ❌ 동기화 실패 (${domain}): ${syncErr.message}`);
@@ -289,14 +300,17 @@ export async function GET(req: NextRequest) {
             const gradTasksSnap = await adminDb.collection("graduation_tasks").doc(domain).collection("students").get();
             dbg(`[Grad] graduation_tasks 총 ${gradTasksSnap.size}개, isMonday=${isMonday}`);
 
-            for (const sDoc of gradTasksSnap.docs) {
+            // 학생별 처리(알림→정지→삭제)는 서로 독립이므로 동시성 5로 병렬 실행.
+            // 순차 처리 시 시즌 피크(수백 명 알림)에 함수 시간 한도를 초과해
+            // 뒷순번 학생이 미처리되는 문제를 방지한다. 학생 1명 안에서의 단계 순서는 유지됨.
+            await mapConcurrent(gradTasksSnap.docs, 5, async (sDoc) => {
               const task = sDoc.data();
               const email = task.email;
-              if (!email) continue;
+              if (!email) return;
 
               // 테스트용 필터가 지정된 경우, 필터에 부합하지 않는 계정은 시뮬레이션 및 알림 대상에서 제외
               if (testEmailFilter && !email.toLowerCase().includes(testEmailFilter.toLowerCase())) {
-                continue;
+                return;
               }
 
               const isGraduate = graduatesEmailSet.has(email.toLowerCase());
@@ -495,7 +509,7 @@ export async function GET(req: NextRequest) {
                   results.errors.push({ email, error: `졸업생 자동 삭제 실패: ${err.message}` });
                 }
               }
-            }
+            });
           }
         }
       } catch (gradErr: any) {

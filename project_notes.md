@@ -1552,3 +1552,10 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - **원인**: AutocompleteInput의 onSelect가 `familyName+givenName`을 **공백 없이** 연결해 전달("20101강민우") — 6d0b16d의 파싱은 공백 분리 전제라 학번 분리 실패, 통째로 givenName에 저장됨.
 - **수정 (Claude 직접, 표적 1건)**: handleSelectStudent 파싱을 정규식 `/^(\d+)\s*(\D.*)$/`로 교체 — 공백 유무 모두 학번/이름 분리. AutocompleteInput은 8곳 이상 공용이라 불변 유지. 케이스 테스트 6종 + tsc ✅.
 - **✅ 종결 (2026-07-26 밤)**: 사용자 재검증 — 재검색 담기 시 "20101 강민우" 정상 표시 확인. 🟡 잔여 2건(캐시 즉시 갱신 + 강제배정 이름 포맷) 모두 종결. 다음: Phase 9a-1 5단계 컴시간 엑셀 샘플 2종(사용자 준비) → 9b 스펙(교체 수업 신청, phase9a_spec §8-2) Claude 작성.
+
+## [2026-07-27] Claude → Antigravity
+- 변경 파일: src/lib/concurrency.ts(신설), src/app/api/workspace/lifecycle/cron/route.ts, src/app/api/workspace/lifecycle/route.ts, src/app/api/workspace/users/route.ts, src/lib/google/workspace.ts
+- 검증 상태: tsc ✅ / build ✅ (기능 동작은 미검증 — 아래 참조)
+- 무엇: Fable5 최적화 감사 결과 이행 (성능 P1 4건). ① 크론·lifecycle·users 라우트에 maxDuration=60 명시, ② 크론 졸업생 처리를 mapConcurrent(동시성 5) 병렬화 + 동기화 N+1 제거(전체 1회 read + batch 쓰기), ③ 무제한 Promise.allSettled 대량 작업 전부 mapConcurrentSettled(5~10)로 교체(429 부분 실패 방지), ④ listUsersInOUs를 단일 캐시 키(전체 목록) + 메모리 OU 필터로 재구성(도메인 풀스캔 반복 제거). mapConcurrent는 transfer-enroll의 검증된 구현을 src/lib/concurrency.ts로 공용화(원본 파일은 미변경).
+- 다음 할 일: 다음 크론 실행(자정) 결과의 suspended/deleted/warned/errors 확인. mockToday+testEmailFilter로 사전 리허설 권장. transfer-enroll의 로컬 mapConcurrent를 공용 모듈로 전환하는 정리는 Antigravity 몫.
+- 주의: listUsersInOUs 반환 시맨틱(OU 정확일치 필터) 불변. 졸업생 알림 학생 1명 내 단계 순서(알림→정지→삭제)는 유지, 학생 간 순서만 병렬화됨.

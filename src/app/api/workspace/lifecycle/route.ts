@@ -21,6 +21,11 @@ import {
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { deleteAuthUserByEmail, verifyAuthAccess, adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { mapConcurrent, mapConcurrentSettled } from "@/lib/concurrency";
+
+// Vercel 함수 실행 시간 한도 명시 — 신입생 일괄 생성·졸업생 일괄 정지/삭제 등
+// 수백 명 단위 작업이 플랜 기본값(10초대)에 잘리지 않도록.
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -166,8 +171,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "학생 데이터가 없습니다." }, { status: 400 });
       }
 
-      const results = await Promise.allSettled(
-        students.map(async (s: any) => {
+      // 동시성 5 제한 — 무제한 동시 생성은 Directory API 429로 부분 실패 발생
+      const results = await mapConcurrentSettled(
+        students, 5, async (s: any) => {
           const serialStr = String(s.serialNum).padStart(3, "0");
           const email = `${admissionYear}${serialStr}@${domain}`;
           const classStr = String(s.classNum).padStart(2, "0");
@@ -205,7 +211,7 @@ export async function POST(req: NextRequest) {
             classNum: Number(s.classNum),
             studentNum: Number(s.studentNum),
           };
-        })
+        }
       );
 
       const succeeded = results
@@ -253,12 +259,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "진급 데이터가 없습니다." }, { status: 400 });
       }
 
-      const results = await Promise.allSettled(
-        promotions.map(async (p: any) => {
-          await updateUser(p.email, { lastName: p.newStudentId });
-          return { email: p.email, newStudentId: p.newStudentId };
-        })
-      );
+      const results = await mapConcurrentSettled(promotions, 8, async (p: any) => {
+        await updateUser(p.email, { lastName: p.newStudentId });
+        return { email: p.email, newStudentId: p.newStudentId };
+      });
 
       const succeeded = results
         .filter((r) => r.status === "fulfilled")
@@ -317,10 +321,8 @@ export async function POST(req: NextRequest) {
     if (action === "graduation_warn") {
       const { graduateEmails, warnFamilyName = "6월30일", warnGivenName = "삭제예정" } = body;
 
-      const results = await Promise.allSettled(
-        graduateEmails.map((email: string) =>
-          updateUser(email, { lastName: warnFamilyName, firstName: warnGivenName })
-        )
+      const results = await mapConcurrentSettled(graduateEmails, 8, (email: string) =>
+        updateUser(email, { lastName: warnFamilyName, firstName: warnGivenName })
       );
 
       const succeeded = results.filter((r) => r.status === "fulfilled").length;
@@ -343,9 +345,7 @@ export async function POST(req: NextRequest) {
     if (action === "graduation_delete") {
       const { graduateEmails } = body;
 
-      const results = await Promise.allSettled(
-        graduateEmails.map((email: string) => deleteUser(email))
-      );
+      const results = await mapConcurrentSettled(graduateEmails, 8, (email: string) => deleteUser(email));
 
       const succeeded = results.filter((r) => r.status === "fulfilled").length;
       const failed = results.filter((r) => r.status === "rejected").length;
@@ -670,65 +670,77 @@ export async function POST(req: NextRequest) {
         const results = { added: 0, skipped: 0, errors: 0 };
 
         // 3. 각 학생별로 Firestore에 graduation_tasks 등록 (이메일 기준 고유 보존)
+        // 기존 태스크 전체를 1회만 읽어 메모리에서 비교하고, 쓰기는 batch로 묶는다
+        // (이전: 학생별 get→set 순차 왕복 N+1 — 500명 기준 15~30초 → 왕복 2~3회)
+        const tasksCol = adminDb.collection("graduation_tasks").doc(domain).collection("students");
+        const existingSnap = await tasksCol.get();
+        const existingTasks = new Map(existingSnap.docs.map((d) => [d.id, d.data()]));
+
+        let batch = adminDb.batch();
+        let batchCount = 0;
+        const flushIfFull = async () => {
+          if (batchCount >= 400) {
+            await batch.commit();
+            batch = adminDb.batch();
+            batchCount = 0;
+          }
+        };
+
         for (const student of students) {
           const email = student.primaryEmail;
           if (!email) continue;
 
-          try {
-            const taskRef = adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email);
-            const taskSnap = await taskRef.get();
+          const name = student.name?.givenName || student.name || "학생";
+          const studentId = student.name?.familyName || ""; // familyName에 학번 저장 관례
+          const existing = existingTasks.get(email);
 
-            const name = student.name?.givenName || student.name || "학생";
-            const studentId = student.name?.familyName || ""; // familyName에 학번 저장 관례
+          if (!existing) {
+            // 최초 등록 시 구글 계정 일시정지 상태에 따라 초기 상태 지정
+            batch.set(tasksCol.doc(email), {
+              email,
+              name,
+              studentId,
+              originalOU: student.orgUnitPath || "/학생",
+              status: student.suspended ? "SUSPENDED" : "PENDING",
+              registeredAt: new Date(),
+              consentSubmitted: false,
+              consentedAt: null,
+              acknowledgedDeletion: false,
+              acknowledgedDownload: false,
+              suspendedAt: student.suspended ? new Date() : null,
+              deletedAt: null,
+              warnedCount: 0,
+              lastWarnedAt: null,
+            });
+            batchCount++;
+            results.added++;
+          } else {
+            // 이미 존재하는 졸업생 태스크의 경우, 구글의 일시정지 상태와 동기화
+            const isGwsSuspended = !!student.suspended;
+            const isDbSuspended = existing.status === "SUSPENDED";
 
-            if (!taskSnap.exists) {
-              // 최초 등록 시 구글 계정 일시정지 상태에 따라 초기 상태 지정
-              await taskRef.set({
-                email,
-                name,
-                studentId,
-                originalOU: student.orgUnitPath || "/학생",
-                status: student.suspended ? "SUSPENDED" : "PENDING",
-                registeredAt: new Date(),
-                consentSubmitted: false,
-                consentedAt: null,
-                acknowledgedDeletion: false,
-                acknowledgedDownload: false,
-                suspendedAt: student.suspended ? new Date() : null,
-                deletedAt: null,
-                warnedCount: 0,
-                lastWarnedAt: null,
-              });
-              results.added++;
-            } else {
-              // 이미 존재하는 졸업생 태스크의 경우, 구글의 일시정지 상태와 동기화
-              const task = taskSnap.data() || {};
-              const isGwsSuspended = !!student.suspended;
-              const isDbSuspended = task.status === "SUSPENDED";
-
-              if (isGwsSuspended !== isDbSuspended) {
-                if (isGwsSuspended) {
-                  // GWS에선 정지되었으나 DB 상태가 정지가 아니면 정지로 변경
-                  await taskRef.update({
-                    status: "SUSPENDED",
-                    suspendedAt: new Date(),
-                  });
-                } else {
-                  // GWS에선 정지 해제되었으나 DB 상태가 여전히 정지이면 원래 상태로 변경
-                  const originalStatus = task.consentSubmitted ? "CONSENTED" : "PENDING";
-                  await taskRef.update({
-                    status: originalStatus,
-                    suspendedAt: null,
-                  });
-                }
+            if (isGwsSuspended !== isDbSuspended) {
+              if (isGwsSuspended) {
+                // GWS에선 정지되었으나 DB 상태가 정지가 아니면 정지로 변경
+                batch.update(tasksCol.doc(email), {
+                  status: "SUSPENDED",
+                  suspendedAt: new Date(),
+                });
+              } else {
+                // GWS에선 정지 해제되었으나 DB 상태가 여전히 정지이면 원래 상태로 변경
+                const originalStatus = existing.consentSubmitted ? "CONSENTED" : "PENDING";
+                batch.update(tasksCol.doc(email), {
+                  status: originalStatus,
+                  suspendedAt: null,
+                });
               }
-              results.skipped++;
+              batchCount++;
             }
-          } catch (studentErr) {
-            console.error(`학생 등록 중 오류 (${email}):`, studentErr);
-            results.errors++;
+            results.skipped++;
           }
+          await flushIfFull();
         }
+        if (batchCount > 0) await batch.commit();
 
         await writeAuditLog({
           operatorEmail: adminEmail,
@@ -755,16 +767,19 @@ export async function POST(req: NextRequest) {
         }
 
         const snap = await adminDb.collection("graduation_tasks").doc(domain).collection("students").get();
-        
-        let deletedCount = 0;
-        for (const sDoc of snap.docs) {
+
+        // 테스트용 학생은 제외하고 실제 동기화된 일반 학생 데이터만 삭제
+        // (문서별 순차 delete → 400건 단위 batch 삭제)
+        const toDelete = snap.docs.filter((sDoc) => {
           const task = sDoc.data();
-          // 테스트용 학생은 제외하고 실제 동기화된 일반 학생 데이터만 삭제
-          if (!task.isTest && task.originalOU !== "/학생/테스트") {
-            await adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(sDoc.id).delete();
-            deletedCount++;
-          }
+          return !task.isTest && task.originalOU !== "/학생/테스트";
+        });
+        for (let i = 0; i < toDelete.length; i += 400) {
+          const batch = adminDb.batch();
+          toDelete.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+          await batch.commit();
         }
+        const deletedCount = toDelete.length;
 
         await writeAuditLog({
           operatorEmail: adminEmail,
@@ -947,7 +962,8 @@ export async function POST(req: NextRequest) {
         const snap = await adminDb.collection("graduation_tasks").doc(domain).collection("students").get();
         const results = { suspended: 0, skipped: 0, errors: 0 };
 
-        for (const sDoc of snap.docs) {
+        // 학생별 처리는 독립 — 동시성 5로 병렬 실행 (순차 시 수백 명 규모에서 함수 시간 한도 초과)
+        await mapConcurrent(snap.docs, 5, async (sDoc) => {
           const task = sDoc.data();
           const email = task.email;
           if (task.status === "PENDING" || task.status === "CONSENTED") {
@@ -965,7 +981,7 @@ export async function POST(req: NextRequest) {
           } else {
             results.skipped++;
           }
-        }
+        });
 
         invalidateUserCache();
 
@@ -996,7 +1012,9 @@ export async function POST(req: NextRequest) {
         const snap = await adminDb.collection("graduation_tasks").doc(domain).collection("students").get();
         const results = { deleted: 0, skipped: 0, errors: 0 };
 
-        for (const sDoc of snap.docs) {
+        // 학생별 처리는 독립 — 동시성 5로 병렬 실행. 학생 1명 안에서의
+        // 순서(Firebase Auth 삭제 → GWS 삭제 → 상태 기록)는 그대로 유지됨.
+        await mapConcurrent(snap.docs, 5, async (sDoc) => {
           const task = sDoc.data();
           const email = task.email;
           if (task.status === "SUSPENDED") {
@@ -1017,7 +1035,7 @@ export async function POST(req: NextRequest) {
           } else {
             results.skipped++;
           }
-        }
+        });
 
         invalidateUserCache();
 
@@ -1048,14 +1066,15 @@ export async function POST(req: NextRequest) {
         const snap = await adminDb.collection("graduation_tasks").doc(domain).collection("students").get();
         const results = { restored: 0, skipped: 0, errors: 0 };
 
-        for (const sDoc of snap.docs) {
+        // 학생별 처리는 독립 — 동시성 5로 병렬 실행
+        await mapConcurrent(snap.docs, 5, async (sDoc) => {
           const task = sDoc.data();
           const email = task.email;
           if (task.status === "SUSPENDED") {
             try {
               // 1. 구글 워크스페이스 상에서 계정 활성화
               await updateUser(email, { suspended: false });
-              
+
               // 2. 동의 여부에 따라 상태 원복
               const originalStatus = task.consentSubmitted ? "CONSENTED" : "PENDING";
               await adminDb.collection("graduation_tasks").doc(domain).collection("students").doc(email).update({
@@ -1070,7 +1089,7 @@ export async function POST(req: NextRequest) {
           } else {
             results.skipped++;
           }
-        }
+        });
 
         invalidateUserCache();
 

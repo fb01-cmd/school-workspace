@@ -370,11 +370,48 @@ export const deleteOrgunit = async (orgUnitPath: string) => {
 const USER_CACHE_TTL_MS = 60_000; // 60 seconds
 const userCache = new Map<string, { data: any[]; timestamp: number }>();
 
-const getCacheKey = (paths: string[]) => [...paths].sort().join("|");
+// 도메인 전체 사용자 목록의 단일 캐시 키.
+// 이전에는 "요청 OU 조합"마다 별도 키로 캐시해서, 조합이 다를 때마다
+// 전 도메인 풀스캔이 반복됐다. 이제 전체 목록을 한 번만 받아 이 키로 캐시하고
+// OU 필터는 메모리에서 파생한다.
+const ALL_USERS_CACHE_KEY = "__ALL_DOMAIN_USERS__";
 
 /** Call this after any user mutation (create, update, delete) to force fresh data on next list. */
 export const invalidateUserCache = () => {
   userCache.clear();
+};
+
+// 도메인 전체 사용자 목록 조회 (캐시 우선).
+// Fetch all users in the domain and filter locally in JavaScript afterwards —
+// this bypasses Google's search query indexing lag (query: "orgUnitPath='...'")
+// ensuring newly created or moved users are immediately visible.
+const fetchAllDomainUsers = async (): Promise<any[]> => {
+  const cached = userCache.get(ALL_USERS_CACHE_KEY);
+  if (cached && Date.now() - cached.timestamp < USER_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const admin = getAdminClient();
+  if (!admin) throw new Error("Admin client is not initialized.");
+
+  let allUsers: any[] = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await (admin.users.list as any)({
+      customer: "my_customer",
+      orderBy: "email",
+      maxResults: 500,
+      projection: "basic",
+      pageToken,
+    });
+    if (res.data.users) {
+      allUsers = [...allUsers, ...res.data.users];
+    }
+    pageToken = res.data.nextPageToken || undefined;
+  } while (pageToken);
+
+  userCache.set(ALL_USERS_CACHE_KEY, { data: allUsers, timestamp: Date.now() });
+  return allUsers;
 };
 
 // 3. List Users in specific OUs
@@ -385,63 +422,16 @@ export const listUsersInOUs = async (orgUnitPaths: string[]) => {
     return mockUsers.filter(user => orgUnitPaths.includes(user.orgUnitPath));
   }
 
-  // Check cache first
-  const cacheKey = getCacheKey(orgUnitPaths);
-  const cached = userCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < USER_CACHE_TTL_MS) {
-    return cached.data;
-  }
-
-  const admin = getAdminClient();
-  if (!admin) throw new Error("Admin client is not initialized.");
-
   try {
-    // If 'all' is requested or paths array is empty, fetch all users in the domain
-    if (orgUnitPaths.length === 0 || orgUnitPaths.includes("all")) {
-      let allUsers: any[] = [];
-      let pageToken: string | undefined;
-      do {
-        const res = await (admin.users.list as any)({
-          customer: "my_customer",
-          orderBy: "email",
-          maxResults: 500,
-          projection: "basic",
-          pageToken,
-        });
-        if (res.data.users) {
-          allUsers = [...allUsers, ...res.data.users];
-        }
-        pageToken = res.data.nextPageToken || undefined;
-      } while (pageToken);
+    const allUsers = await fetchAllDomainUsers();
 
-      userCache.set(cacheKey, { data: allUsers, timestamp: Date.now() });
+    // If 'all' is requested or paths array is empty, return all users in the domain
+    if (orgUnitPaths.length === 0 || orgUnitPaths.includes("all")) {
       return allUsers;
     }
 
-    // Fetch all users in the domain and filter locally in JavaScript
-    // This bypasses Google's search query indexing lag (query: "orgUnitPath='...'")
-    // ensuring newly created or moved users are immediately visible.
-    let allUsers: any[] = [];
-    let pageToken: string | undefined;
-    do {
-      const res = await (admin.users.list as any)({
-        customer: "my_customer",
-        orderBy: "email",
-        maxResults: 500,
-        projection: "basic",
-        pageToken,
-      });
-      if (res.data.users) {
-        allUsers = [...allUsers, ...res.data.users];
-      }
-      pageToken = res.data.nextPageToken || undefined;
-    } while (pageToken);
-
     // Filter by requested OUs
-    const filteredUsers = allUsers.filter((u: any) => orgUnitPaths.includes(u.orgUnitPath));
-
-    userCache.set(cacheKey, { data: filteredUsers, timestamp: Date.now() });
-    return filteredUsers;
+    return allUsers.filter((u: any) => orgUnitPaths.includes(u.orgUnitPath));
   } catch (error) {
     console.error("Error fetching users from Google Workspace", error);
     throw error;

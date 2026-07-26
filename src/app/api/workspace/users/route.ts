@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAlias, invalidateUserCache, isMock, listDeletedUsers, restoreDeletedUser, resetStudentPassword, mockUsers, getUser } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { deleteAuthUserByEmail, verifyAuthAccess, adminDb } from "@/lib/firebase/admin";
+import { mapConcurrentSettled } from "@/lib/concurrency";
+
+// Vercel 함수 실행 시간 한도 명시 — 일괄 삭제/정지/저장이 수백 명 단위일 때 대비
+export const maxDuration = 60;
 
 async function syncUserSuspensionToLifecycle(email: string, suspended: boolean) {
   try {
@@ -399,9 +403,10 @@ export async function POST(req: NextRequest) {
       }
       try {
         // Firebase Auth에서도 해당 유저 레코드들을 즉시 일괄 삭제
-        await Promise.allSettled(emails.map(email => deleteAuthUserByEmail(email)));
+        // (동시성 제한 — 무제한 동시 발사는 API 429로 부분 실패 발생)
+        await mapConcurrentSettled(emails, 10, (email: string) => deleteAuthUserByEmail(email));
 
-        const results = await Promise.allSettled(emails.map(email => deleteUser(email)));
+        const results = await mapConcurrentSettled(emails, 8, (email: string) => deleteUser(email));
         
         const failures = results
           .map((res, idx) => (res.status === "rejected" ? { email: emails[idx], reason: res.reason?.message } : null))
@@ -451,9 +456,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "emails and suspended status are required" }, { status: 400 });
       }
       try {
-        const results = await Promise.allSettled(
-          emails.map(email => updateUser(email, { suspended }))
-        );
+        const results = await mapConcurrentSettled(emails, 8, (email: string) => updateUser(email, { suspended }));
         
         const failures = results
           .map((res, idx) => (res.status === "rejected" ? { email: emails[idx], reason: res.reason?.message } : null))
@@ -567,24 +570,21 @@ export async function POST(req: NextRequest) {
       const parsedUpdates = Array.isArray(updates) ? updates : [];
 
       try {
-        const createPromises = parsedCreates.map((u: any) =>
-          createUser(
-            u.email,
-            u.firstName,
-            u.lastName,
-            u.orgUnitPath,
-            u.password,
-            !!u.changePasswordAtNextLogin
-          )
-        );
-
-        const updatePromises = parsedUpdates.map((u: any) =>
-          updateUser(u.email, u.updates)
-        );
-
+        // 생성·수정 각각 동시성 5 제한 (합산 최대 10 동시 호출)
         const [createResults, updateResults] = await Promise.all([
-          Promise.allSettled(createPromises),
-          Promise.allSettled(updatePromises),
+          mapConcurrentSettled(parsedCreates, 5, (u: any) =>
+            createUser(
+              u.email,
+              u.firstName,
+              u.lastName,
+              u.orgUnitPath,
+              u.password,
+              !!u.changePasswordAtNextLogin
+            )
+          ),
+          mapConcurrentSettled(parsedUpdates, 5, (u: any) =>
+            updateUser(u.email, u.updates)
+          ),
         ]);
 
         const createFailures = createResults
