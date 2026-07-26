@@ -1509,3 +1509,11 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
   2. **GCP OAuth 클라이언트 (§2.5-3)**: https://console.cloud.google.com/apis/credentials → "Web client (auto created by Google Service)" → 승인된 자바스크립트 원본에 `https://admin.hmh.or.kr`, 승인된 리디렉션 URI에 `https://admin.hmh.or.kr/__/auth/handler` 추가.
 - **잔여 (DNS 반영 후 Claude 실행)**: `vercel domains verify` → `NEXT_PUBLIC_BASE_URL`을 `https://admin.hmh.or.kr`로 교체 → 프로덕션 재배포 → 새 도메인 로그인 검증(§2.5-5, 팝업 차단 redirect 폴백 포함). 링크 깨짐 방지를 위해 env 교체·재배포는 DNS 살아난 뒤에만 한다.
 - **roster feed 주소 전파 계획**: 기존 `school-workspace-eight.vercel.app`은 도메인 부착 후에도 계속 유효(영구 별칭) → 외부 연동 즉시 장애 없음. 전파 대상: ① 교육과정 선택 앱 서버의 feed base URL(담당자에게 여유 있게 교체 공지), ② Apps Script `명단가져오기` 사용 시트(있다면), ③ 문서 3종(roster_feed_manual.md·operations_handbook.md·deployment_checklist.md)의 URL 표기 — 문서 갱신은 새 도메인 검증 완료 후 일괄 처리. 마스터 시트(통로 A)는 서버 push 방식이라 URL 무관.
+
+## [2026-07-26] Claude → 사용자 (커스텀 도메인 부착 완료 — §2.5 전체 종결, 네이키드/www 리디렉션 포함)
+
+- **§2.5 5단계 전부 완료**: ① Vercel 도메인 추가, ② Firebase 승인 도메인(API), ③ GCP OAuth 원본·리디렉션 URI(사용자, 콘솔), ④ `NEXT_PUBLIC_BASE_URL` → `https://admin.hmh.or.kr` 교체 후 프로덕션 재빌드(`vercel redeploy`, 별칭 자동 부착), ⑤ 엣지 응답 검증 완료 — admin: 307→/login(앱 정상 서빙+TLS 발급), naked/www: 308→admin 리디렉션. **남은 확인 1건: 사용자 실로그인 테스트** (실패 시 GCP OAuth 반영 지연 5분~수시간 가능성 먼저 의심).
+- **네이키드/www 리디렉션 (사용자 추가 요청)**: `hmh.or.kr`·`www.hmh.or.kr`을 프로젝트에 추가 + API로 308 리디렉션 설정. uhost에서 두 A 레코드를 `220.78.188.171`(사멸한 구 홈페이지 서버, 무응답 확인) → `76.76.21.21` 교체. MX 5줄·SPF TXT 불변 — 메일 무영향. 구글 관리 콘솔의 네이키드 리디렉션 기능은 **사용하지 않기로** 결정(충돌 방지, Vercel 전담).
+- **함정 기록**: Vercel 도메인 추가를 DNS 레코드보다 먼저 하면 NXDOMAIN 네거티브 캐시(24h)로 검증이 장기 지연 — `vercel domains add` 재실행으로 즉시 해소. deployment_checklist §2.5에 영구 기록.
+- **문서 갱신**: operations_handbook(주소 3곳)·roster_feed_manual(URL 2곳 + 구주소 유효 안내) → admin.hmh.or.kr 기준으로 교체 완료.
+- **잔여 전파**: 교육과정 선택 앱 담당자에게 feed base URL 교체 공지(비긴급 — 구 주소 영구 유효). 사용자 로그인 확인 후 이 건 완전 종결.

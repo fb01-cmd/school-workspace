@@ -8,7 +8,7 @@
 
 ## 1. 시스템 한눈에 보기
 
-- **웹사이트**: Vercel에서 호스팅되는 Next.js 앱. 주소: [https://school-workspace-eight.vercel.app](https://school-workspace-eight.vercel.app)
+- **웹사이트**: Vercel에서 호스팅되는 Next.js 앱. 주소: [https://admin.hmh.or.kr](https://admin.hmh.or.kr) (구 주소 `school-workspace-eight.vercel.app`도 계속 접속 가능, `hmh.or.kr`·`www.hmh.or.kr`은 여기로 자동 리디렉션)
 - **데이터베이스**: Firebase Firestore (프로젝트: `school-sync-hub`)
 - **로그인**: Firebase Auth — `@hmh.or.kr` 구글 계정만 허용
 - **실제 데이터 원본**: Google Workspace (계정·클래스룸·캘린더·드라이브)
@@ -36,7 +36,7 @@
 | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | 클라이언트 (공개) | Firebase Storage 버킷 URL |
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | 클라이언트 (공개) | Firebase Cloud Messaging 발신자 ID |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | 클라이언트 (공개) | Firebase 웹 앱 식별 ID |
-| `NEXT_PUBLIC_BASE_URL` | 클라이언트/서버 | 서비스의 기본 프로덕션 주소 (`https://school-workspace-eight.vercel.app`) |
+| `NEXT_PUBLIC_BASE_URL` | 클라이언트/서버 | 서비스의 기본 프로덕션 주소 (`https://admin.hmh.or.kr`) |
 | `GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL` | 서버 (비밀) | GCP 서비스 계정 이메일 |
 | `GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY` | 서버 (비밀) | GCP 서비스 계정의 RSA 개인키 (`\n` 줄바꿈 포함 문자열) |
 | `GOOGLE_WORKSPACE_ADMIN_EMAIL` | 서버 (비밀) | Google Workspace 최고관리자 계정 (`admin@hmh.or.kr`) |
@@ -67,7 +67,7 @@
    - **원인**: 브라우저 팝업 차단 또는 OAuth 승인 도메인 누락.
    - **대응**:
      1. 브라우저의 팝업 차단을 해제하거나 리디렉션 로그인(`signInWithRedirect`)으로 자동 전환되도록 사용 안내.
-     2. Google Cloud Console (`console.cloud.google.com`) → [API 및 서비스] → [사용자 인증 정보]에서 OAuth 2.0 클라이언트 ID의 '승인된 JavaScript 원본' 및 '승인된 리디렉션 URI'에 배포 주소(`https://school-workspace-eight.vercel.app` 및 `https://school-workspace-eight.vercel.app/__/auth/handler`)가 포함되어 있는지 확인.
+     2. Google Cloud Console (`console.cloud.google.com`) → [API 및 서비스] → [사용자 인증 정보]에서 OAuth 2.0 클라이언트 ID의 '승인된 JavaScript 원본' 및 '승인된 리디렉션 URI'에 배포 주소(`https://admin.hmh.or.kr` 및 `https://admin.hmh.or.kr/__/auth/handler`)가 포함되어 있는지 확인.
 
 2. **"크론(매일 자정 자동 처리)이 안 돌았거나 실행 오류가 나요"**
    - **원인**: Vercel 환경변수에 `CRON_SECRET` 누락 또는 GCP API 한도 초과/권한 이슈.

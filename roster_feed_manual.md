@@ -61,7 +61,7 @@
 ### 3-2. 호출 방법
 
 ```
-GET https://school-workspace-eight.vercel.app/api/roster/feed
+GET https://admin.hmh.or.kr/api/roster/feed
 Authorization: Bearer hmh_sk_xxxxxxxx...
 ```
 
@@ -71,6 +71,8 @@ Authorization: Bearer hmh_sk_xxxxxxxx...
 | `?grade=1` | 특정 학년만 | 1·2·3 |
 | `?includeSuspended=true` | 정지 계정도 포함 (기본은 재학·활성만) | 결시 처리용 |
 | `?format=csv` | JSON 대신 CSV로 (시트/엑셀 친화) | |
+
+> ℹ️ 구 주소 `https://school-workspace-eight.vercel.app/api/roster/feed`도 영구히 계속 동작합니다. 이미 연동된 앱·스크립트는 당장 바꾸지 않아도 되며, 여유 있을 때 새 주소로 교체하면 됩니다.
 
 응답(JSON): 학생마다 `studentId`(학번 "10101"), `grade`, `classNum`, `number`, `name`, `email`, `suspended`. 학번 형식이 아닌 계정은 `unparsed` 목록으로 분리돼 옵니다.
 
@@ -82,7 +84,7 @@ Authorization: Bearer hmh_sk_xxxxxxxx...
 function 명단가져오기() {
   const KEY = "hmh_sk_여기에_발급받은_키";
   const res = UrlFetchApp.fetch(
-    "https://school-workspace-eight.vercel.app/api/roster/feed?grade=1",
+    "https://admin.hmh.or.kr/api/roster/feed?grade=1",
     { headers: { Authorization: "Bearer " + KEY } }
   );
   const students = JSON.parse(res.getContentText()).students;

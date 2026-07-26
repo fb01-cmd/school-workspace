@@ -92,6 +92,10 @@
 4. **Vercel 환경변수**: `NEXT_PUBLIC_BASE_URL`을 새 도메인으로 수정 → Redeploy
 5. **검증**: 새 도메인에서 팝업 차단 상태로 로그인 되는지 확인 (redirect 폴백 경로)
 
+> ⚠️ **순서 함정 (2026-07-26 실경험)**: DNS 레코드를 넣기 **전에** Vercel에 도메인을 추가하면, Vercel 리졸버가 "레코드 없음(NXDOMAIN)"을 SOA 네거티브 TTL(hmh.or.kr은 24시간)만큼 캐시해서 검증이 한없이 안 떨어진다. **DNS 레코드를 먼저 넣고 전파 확인 후 Vercel에 추가할 것.** 이미 걸렸다면 `vercel domains add`를 다시 실행하는 것만으로 신선한 재검증이 강제되어 즉시 풀린다 (85분 대기 후 재등록으로 즉시 해결됨).
+>
+> 참고: 네이키드/www 리디렉션은 Vercel API `PATCH /v9/projects/<id>/domains/<domain>` body `{"redirect":"admin.hmh.or.kr","redirectStatusCode":308}` + uhost에서 해당 A 레코드를 `76.76.21.21`로 교체 (2026-07-26 적용 완료, MX·TXT 불변).
+
 ---
 
 ## 2.7 ⚠️ 의존성/런타임 함정 — Vercel에서만 전 API 500 (2026-07-24 실사고)
