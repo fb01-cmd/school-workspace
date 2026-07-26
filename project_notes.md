@@ -1565,3 +1565,11 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - 검증 상태: tsc ✅ / build ✅ (화면 동작 검증은 Antigravity 몫 — 로그인/로그아웃/재로그인, 메뉴 전환, 전출 대기 교사 리다이렉트 확인 요망)
 - 무엇: ① onIdTokenChanged 재발화 시 기존 user 문서 onSnapshot 미해제로 리스너 누적되던 것 해제 추가, ② 프리페치 4종을 uid당 1회로 가드(스냅샷 재발화마다 반복 실행 방지, 로그아웃 시 리셋), ③ RouteGuard의 allowedRoles 인라인 배열 deps → rolesKey 문자열로 교체 + 검사 완료 플래그로 Firestore 재조회 차단.
 - 남긴 것 (Antigravity 작업 후보, Fable5 감사 P2): UserSheetEditor 행 memo/uncontrolled 전환, /admin 탭 next/dynamic 분할, users list 응답 필드 트리밍(클라이언트 4곳 사용 필드 조사 선행 필요), ClassroomCleanupBanner 시즌 외 선차단.
+
+## [2026-07-27] Claude → 사용자 (d69ecf8·91bfea7 사후 표적 리뷰 — ✅ 승인)
+
+- 다른 폴더 세션에서 수행된 최적화 2커밋(이미 배포됨)을 위험 지점 중심으로 전수 검토. **큰 문제 없음, 승인.**
+- **d69ecf8**: concurrency.ts 워커풀 구현 정확(결과 인덱스 정렬 보존 → settled 실패 매핑 `emails[idx]` 무결). 크론 학생별 본문 A(알림)/B(정지)/C(삭제) 전 단계 try/catch 격리 확인 — mapConcurrent 전체 reject 위험 사실상 없음. 동기화 batch 카운터·flush 로직 정확. listUsersInOUs 시맨틱 불변 확인.
+- **91bfea7**: user 문서·settings 리스너 모두 재구독 전 해제 가드 확인. 프리페치 uid 가드 + 로그아웃 리셋 정확. RouteGuard rolesKey deps 전환 안전.
+- 🟡 (경미, 수정 불요 수준): ① lifecycle 동기화의 `results.errors`가 batch 전환 후 항상 0 — 감사 로그 "오류 N건" 표기가 형식화됨(실패 시 라우트 전체 500이라 감지는 됨). ② RouteGuard 전출·보안그룹 검사가 "마운트당 1회"로 완화 — 페이지 재진입 시 재검사되고 서버 API가 최종 방어선이라 보안 영향 없음.
+- **남은 확인**: 다음 자정 크론 실행 결과(suspended/deleted/warned/errors) 확인 필요. 화면 동작(로그인/재로그인·메뉴 전환·전출 리다이렉트)은 실사용 중 이상 감지로 갈음 가능.
