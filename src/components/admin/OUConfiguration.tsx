@@ -63,7 +63,7 @@ export default function OUConfiguration() {
     "국어", "수학", "사회", "과학", "외국어", "생활교양", "예술", "체육",
     "진로상담", "행정실", "급식실", "휴직 및 퇴직 교사",
   ];
-  const DEFAULT_POSITIONS = ["교장", "교감", "교목", "부장", "교사", "계원", "영양사", "행정실장", "주무관", "조리사"];
+  const DEFAULT_POSITIONS = ["교장", "교감", "교목", "부장", "교사", "영양사", "행정실장", "주무관", "조리사"];
   const [departments, setDepartments] = useState<string[]>(DEFAULT_DEPARTMENTS);
   const [positions, setPositions] = useState<string[]>(DEFAULT_POSITIONS);
   const [newDeptInput, setNewDeptInput] = useState("");
