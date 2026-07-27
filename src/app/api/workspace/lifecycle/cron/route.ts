@@ -330,7 +330,8 @@ export async function GET(req: NextRequest) {
                     const suspendFmt = suspendDue ? suspendDue.toLocaleDateString("ko-KR") : "지정일";
                     const deleteFmt = deleteDue ? deleteDue.toLocaleDateString("ko-KR") : "지정일";
 
-                    const portalOrigin = new URL(req.url).origin;
+                    // 크론 호출 origin은 vercel.app 내부 주소일 수 있음 — 공식 도메인 우선
+                    const portalOrigin = process.env.NEXT_PUBLIC_BASE_URL || new URL(req.url).origin;
                     const portalUrl = `${portalOrigin}/student-portal`;
 
                     let emailSubject = activeGradSettings.emailTemplateSubject || "[중요] 구글 워크스페이스 계정 삭제 사전 안내 — 안내 확인 서명이 필요합니다";

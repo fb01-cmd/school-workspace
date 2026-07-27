@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
-import { doc, getDoc, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 
 // ─────────────────────────────────────────────────────
@@ -259,6 +259,63 @@ function EnrollTeacherPanel({ domain, operatorEmail, operatorName }: { domain: s
 }
 
 // ─────────────────────────────────────────────────────
+// 교직원 전출 알림 템플릿 기본값 상수
+// ─────────────────────────────────────────────────────
+const DEFAULT_TEACHER_EMAIL_SUBJECT = "[중요] 학교 구글 계정 전출 처리 안내 - 데이터 백업 기한을 설정해 주세요";
+const DEFAULT_TEACHER_EMAIL_BODY = `안녕하세요, {name}님.
+
+학교 행정상 선생님의 구글 워크스페이스 계정이 전출 처리되었습니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📋  조치 사항
+━━━━━━━━━━━━━━━━━━━━━━━━━
+선생님이 가입되어 있던 교사용 연동 그룹에서 즉시 탈퇴 처리되었습니다.
+구글 계정 자체는 아직 유지되고 있으나, 아래 안내에 따라 데이터 백업 기한을 직접 설정하셔야 합니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📅  기한 설정 방법
+━━━━━━━━━━━━━━━━━━━━━━━━━
+학교 어드민 시스템에 접속하시면 데이터 백업 완료 후 계정 삭제를 희망하시는 날짜(최대 1년 이내)를 직접 입력하실 수 있습니다.
+
+👉 어드민 시스템 바로가기:
+{deadlineUrl}
+
+📦  데이터 이전 및 다운로드 방법:
+→ https://gw.googleforeducation.org/%EA%B4%80%EB%A6%AC%ED%95%98%EA%B8%B0/%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%9D%B4%EC%A0%84%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-%EC%95%88%EB%82%B4
+
+궁금하신 점은 학교 정보부에 문의해 주세요. 감사합니다.
+
+효명고등학교 드림`;
+const DEFAULT_TEACHER_CHAT_BODY = `📢 *[효명고등학교 구글 계정 전출 처리 안내]*
+
+안녕하세요, *{name}*님.
+학교 행정상 선생님의 구글 워크스페이스 계정이 전출 처리되었습니다.
+
+*📋  조치 사항*
+선생님이 가입되어 있던 교사용 연동 그룹에서 즉시 탈퇴 처리되었습니다.
+구글 계정 자체는 아직 유지되고 있으나, 아래 안내에 따라 데이터 백업 기한을 직접 설정하셔야 합니다.
+
+*📅  기한 설정 방법*
+학교 어드민 시스템에 접속하시면 데이터 백업 완료 후 계정 삭제를 희망하시는 날짜(최대 1년 이내)를 직접 입력하실 수 있습니다.
+
+👉 어드민 시스템 바로가기:
+{deadlineUrl}
+
+*📦  데이터 이전 및 다운로드 방법:*
+→ https://gw.googleforeducation.org/%EA%B4%80%EB%A6%AC%ED%95%98%EA%B8%B0/%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%9D%B4%EC%A0%84%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-%EC%95%88%EB%82%B4
+
+궁금하신 점은 학교 정보부에 문의해 주세요. 감사합니다.`;
+const DEFAULT_TEACHER_REMINDER_CHAT_BODY = `📢 *[효명고등학교 - 데이터 백업 기한 설정 안내 {warnedCount}차]*
+
+안녕하세요, *{name}*님.
+아직 데이터 백업 기한을 설정하지 않으셨습니다.
+
+아래 주소에서 기한을 직접 설정해 주세요:
+→ {deadlineUrl}
+
+설정 기한은 최대 1년 이내로 지정 가능합니다.`;
+
+// ─────────────────────────────────────────────────────
 // Panel: 교직원 전출 관리
 // ─────────────────────────────────────────────────────
 function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain: string; operatorEmail: string; operatorName: string }) {
@@ -269,6 +326,14 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
   const [queue, setQueue] = useState<TeacherTransferTask[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
+
+  // 템플릿 편집 상태
+  const [showTemplateAccordion, setShowTemplateAccordion] = useState(false);
+  const [emailTemplateSubject, setEmailTemplateSubject] = useState(DEFAULT_TEACHER_EMAIL_SUBJECT);
+  const [emailTemplateBody, setEmailTemplateBody] = useState(DEFAULT_TEACHER_EMAIL_BODY);
+  const [chatTemplateBody, setChatTemplateBody] = useState(DEFAULT_TEACHER_CHAT_BODY);
+  const [reminderChatBody, setReminderChatBody] = useState(DEFAULT_TEACHER_REMINDER_CHAT_BODY);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const handleCancelTransfer = async (email: string, name: string) => {
     if (!confirm(`${name || email} 선생님의 전출 등록을 취소하시겠습니까?\n전출 큐에서 제외되고 지정된 연동 그룹에 다시 가입 처리됩니다.`)) return;
@@ -316,7 +381,47 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
     }
   };
 
-  useEffect(() => { loadQueue(); }, [domain]);
+  const loadSettings = async () => {
+    if (!domain) return;
+    try {
+      const settingsSnap = await getDoc(doc(db, "settings", domain));
+      if (settingsSnap.exists()) {
+        const s = settingsSnap.data()?.teacherTransferSettings;
+        if (s) {
+          if (s.emailTemplateSubject) setEmailTemplateSubject(s.emailTemplateSubject);
+          if (s.emailTemplateBody) setEmailTemplateBody(s.emailTemplateBody);
+          if (s.chatTemplateBody) setChatTemplateBody(s.chatTemplateBody);
+          if (s.reminderChatBody) setReminderChatBody(s.reminderChatBody);
+        }
+      }
+    } catch (err) {
+      console.error("템플릿 설정 로딩 실패:", err);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!domain) return;
+    setSavingSettings(true);
+    try {
+      const settingsRef = doc(db, "settings", domain);
+      await setDoc(settingsRef, {
+        teacherTransferSettings: {
+          emailTemplateSubject,
+          emailTemplateBody,
+          chatTemplateBody,
+          reminderChatBody,
+        },
+        updatedAt: new Date(),
+      }, { merge: true });
+      alert("설정이 성공적으로 저장되었습니다!");
+    } catch (e: any) {
+      alert(`설정 저장 실패: ${e.message}`);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  useEffect(() => { loadQueue(); loadSettings(); }, [domain]);
 
   const handleRegisterTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -353,6 +458,96 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
 
   return (
     <div className="space-y-6">
+      {/* 📩 알림 템플릿 편집 아코디언 */}
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+        <button
+          type="button"
+          onClick={() => setShowTemplateAccordion(!showTemplateAccordion)}
+          className="w-full px-5 py-4 flex items-center justify-between text-left font-bold text-gray-800 bg-slate-50/50 hover:bg-slate-50 transition-colors border-b border-gray-100"
+        >
+          <span className="flex items-center gap-2">📩 알림 템플릿 편집 (전출 등록 안내 · 리마인더)</span>
+          <span className="text-gray-400 text-xs font-semibold">
+            {showTemplateAccordion ? "접기 ▲" : "펼치기 ▼"}
+          </span>
+        </button>
+        {showTemplateAccordion && (
+          <div className="p-5 border-t border-gray-100 bg-white space-y-5">
+            <div>
+              <p className="text-[10px] text-gray-400 leading-relaxed font-medium mb-3">
+                사용 가능한 치환자: <code>{'{name}'}</code> (이름), <code>{'{email}'}</code> (이메일),{" "}
+                <code>{'{deadlineUrl}'}</code> (기한 설정 링크), <code>{'{maxDeadlineDate}'}</code> (최대 기한일),{" "}
+                <code>{'{warnedCount}'}</code> (리마인더 차수)
+              </p>
+              <div className="flex items-center justify-between mb-4">
+                <h5 className="text-xs font-bold text-gray-800">✉️ 전출 등록 안내 메시지</h5>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm("작성 중인 내용을 지우고 기본 템플릿으로 초기화하시겠습니까?")) {
+                      setEmailTemplateSubject(DEFAULT_TEACHER_EMAIL_SUBJECT);
+                      setEmailTemplateBody(DEFAULT_TEACHER_EMAIL_BODY);
+                      setChatTemplateBody(DEFAULT_TEACHER_CHAT_BODY);
+                      setReminderChatBody(DEFAULT_TEACHER_REMINDER_CHAT_BODY);
+                    }
+                  }}
+                  className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold"
+                >
+                  기본 템플릿 불러오기
+                </button>
+              </div>
+              <div className="space-y-3.5">
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-500 mb-1">안내 메일 제목</label>
+                  <input
+                    type="text"
+                    value={emailTemplateSubject}
+                    onChange={(e) => setEmailTemplateSubject(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-500 mb-1">안내 메일 본문</label>
+                  <textarea
+                    rows={7}
+                    value={emailTemplateBody}
+                    onChange={(e) => setEmailTemplateBody(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800 font-mono leading-relaxed"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-500 mb-1">구글 챗 알림 본문 (전출 등록 시)</label>
+                  <textarea
+                    rows={4}
+                    value={chatTemplateBody}
+                    onChange={(e) => setChatTemplateBody(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800 font-mono leading-relaxed"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-500 mb-1">구글 챗 리마인더 본문 (기한 미설정 시 주기적 발송)</label>
+                  <textarea
+                    rows={4}
+                    value={reminderChatBody}
+                    onChange={(e) => setReminderChatBody(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800 font-mono leading-relaxed"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={handleSaveSettings}
+                disabled={savingSettings}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors"
+              >
+                {savingSettings ? "저장 중..." : "설정 저장하기"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* 전출 등록 폼 */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <h3 className="text-lg font-bold text-gray-900 mb-1">전출 교사 등록</h3>

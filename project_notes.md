@@ -2009,3 +2009,13 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - 사용자 기억 검증: 교사 전출 메일 멘트를 실제로 수차례 수정한 이력 확인(f899344 최초, 26707c1 "템플릿 안내 문구/링크 수정") — 단 전부 **에이전트를 통한 코드 수정**이었고 어드민 메뉴는 존재한 적 없음. 템플릿 편집 기능 지시(직전 항목)는 그대로 유효 — 완성되면 화면에서 직접 수정 가능해짐.
 - **지시 보강**: 조사 항목이던 "cron 교사 리마인더 존재 여부"는 Claude가 확인 완료 — cron/route.ts 564행에 기한 미설정 N차 리마인더 챗 존재. **teacherTransferSettings에 `reminderChatBody` 필드를 추가해 이것도 템플릿화**(치환자 {name} + {warnedCount}). 총 4필드: emailTemplateSubject/emailTemplateBody/chatTemplateBody/reminderChatBody.
 - **버그 정리 (Claude 직접)**: 전출 안내 메일·챗 및 크론 리마인더의 포털 링크 폴백이 죽은 admin.hmh.or.kr로 잔존(3곳) → portal.hmh.or.kr 교체. 현재는 env가 있어 실발송 무영향이었음. tsc·build ✅, 배포.
+
+## [2026-07-27] Claude → 기록 (안내 멘트 포털 주소 전수 점검 — 사용자 질문 실측 답변)
+
+- **질문**: 졸업생·전출 교사 안내 멘트의 포털 링크가 현 도메인으로 반영돼 있는가.
+- **실측 결과**:
+  1. 전출 교사(등록 안내 메일·챗 + 크론 N차 리마인더): `NEXT_PUBLIC_BASE_URL`(=portal) + `/admin/transfer-deadline` ✓ — 오늘 폴백 문자열까지 portal로 정리 완료.
+  2. 🔴 **졸업생 안내의 {portalUrl}이 크론 요청 origin 기반** — Vercel 크론 호출 주소에 따라 vercel.app 내부 주소로 발송될 수 있는 구조. `NEXT_PUBLIC_BASE_URL 우선 + req origin 폴백`으로 수정(cron/route.ts 333행).
+  3. 어드민 저장 템플릿(transferOutSettings·graduationSettings): Firestore 실측 — **아직 저장된 것 없음**(전부 코드 기본 멘트 사용 중) → 옛 주소가 데이터에 박제된 건 없음.
+  4. 학생 전출 안내는 플랫폼 링크 자체가 없음(iorad·테이크아웃 외부 가이드만) — 정상.
+- 참고: 네이키드 hmh.or.kr → portal 308 리디렉션이라, 향후 멘트에 hmh.or.kr로 안내해도 도달함. tsc·build ✅, 배포.
