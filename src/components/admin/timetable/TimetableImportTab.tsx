@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { getClientCache, invalidateClientCache, setClientCache } from "@/lib/cache/clientCache";
 import HelpTip from "@/components/common/HelpTip";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
+import * as XLSX from "xlsx";
 import {
   IntermediateClassGrid,
   IntermediateImportPayload,
@@ -34,7 +35,27 @@ export default function TimetableImportTab({
   // 학기 기본 정보
   const [termId, setTermId] = useState("2026-2");
   const [termName, setTermName] = useState("2026학년도 2학기");
-  const [sourceNote, setSourceNote] = useState("컴시간 엑셀 인쇄 붙여넣기");
+  const [sourceNote, setSourceNote] = useState("컴시간 엑셀 전체시간표 업로드");
+
+  // 가져오기 방식 (excel: 파일 업로드 추천, paste: TSV 붙여넣기 폴백)
+  const [importMode, setImportMode] = useState<"excel" | "paste">("excel");
+
+  // 엑셀 파일 상태
+  const [fullScheduleFileName, setFullScheduleFileName] = useState("");
+  const [weeklyScheduleFileName, setWeeklyScheduleFileName] = useState("");
+  const [fullScheduleSummary, setFullScheduleSummary] = useState("");
+  const [weeklyScheduleSummary, setWeeklyScheduleSummary] = useState("");
+
+  // 교차 검증 리포트
+  const [crossValidation, setCrossValidation] = useState<{
+    matchCount: number;
+    mismatchList: string[];
+    duplicateWarnings: { name: string; seq: number; prevSeq: number }[];
+    occupiedCells: number;
+    freeCells: number;
+    realTeacherCount: number;
+    virtualTeacherCount: number;
+  } | null>(null);
 
   // 붙여넣기 원본 텍스트 및 탭 상태 (1: 전체시간표, 2: 시수표)
   const [pasteTab, setPasteTab] = useState<"grid" | "timeCount">("grid");
@@ -92,7 +113,313 @@ export default function TimetableImportTab({
     return 1;
   };
 
-  // 2. 전체시간표 붙여넣기 텍스트 파싱
+  // ─── §9-2 엑셀 파일 파서 1: 전체시간표.xlsx ──────────────────────────────
+  const parseFullScheduleBuffer = (arrayBuffer: ArrayBuffer) => {
+    const wb = XLSX.read(arrayBuffer, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
+
+    let headerRowIdx = -1;
+    for (let i = 0; i < rows.length; i++) {
+      const c0 = String(rows[i][0] || "").trim();
+      const c1 = String(rows[i][1] || "").trim();
+      if (c0 === "학년" || c1 === "반" || (c0.includes("학년") && c1.includes("반"))) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+
+    if (headerRowIdx === -1) {
+      throw new Error("전체시간표.xlsx 헤더 행('학년', '반')을 찾을 수 없습니다.");
+    }
+
+    const dayRow = rows[headerRowIdx];
+    const periodRow = rows[headerRowIdx + 1];
+
+    const colMap: { colIndex: number; day: number; period: number; dayLabel: string }[] = [];
+    let currentDayLabel = "";
+    let dayIndex = 0;
+
+    for (let col = 2; col < dayRow.length; col++) {
+      const dayLabel = String(dayRow[col] || "").trim();
+      if (dayLabel) {
+        currentDayLabel = dayLabel;
+        dayIndex++;
+      }
+      const periodNum = parseInt(String(periodRow[col] || "").trim(), 10);
+      if (currentDayLabel && !isNaN(periodNum)) {
+        colMap.push({ colIndex: col, day: dayIndex, period: periodNum, dayLabel: currentDayLabel });
+      }
+    }
+
+    const gridMap = new Map<string, IntermediateClassGrid>();
+    let lastGrade = 1;
+    let occupiedCount = 0;
+
+    for (let i = headerRowIdx + 2; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.length === 0) continue;
+
+      const rawGrade = String(row[0] || "").trim();
+      if (rawGrade) {
+        const g = parseInt(rawGrade, 10);
+        if (!isNaN(g)) lastGrade = g;
+      }
+
+      const rawClass = String(row[1] || "").trim();
+      const classNum = parseInt(rawClass, 10);
+      if (isNaN(classNum)) continue;
+
+      const key = `${lastGrade}-${classNum}`;
+      const existing = gridMap.get(key) || { grade: lastGrade, classNum, cells: [] };
+
+      colMap.forEach(({ colIndex, day, period }) => {
+        const cellVal = String(row[colIndex] || "").trim();
+        if (!cellVal) return;
+
+        occupiedCount++;
+        const parts = cellVal.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+        let subjectName = "";
+        let teacherName = "";
+
+        if (parts.length >= 2) {
+          subjectName = parts[0];
+          teacherName = parts[1];
+        } else if (parts.length === 1) {
+          subjectName = parts[0];
+          teacherName = parts[0]; // 가상 교사 (SLAT, 창체 등)
+        }
+
+        existing.cells.push({
+          day,
+          period,
+          subjectName,
+          teacherName,
+        });
+      });
+
+      gridMap.set(key, existing);
+    }
+
+    const grids = Array.from(gridMap.values()).sort((a, b) => a.grade - b.grade || a.classNum - b.classNum);
+    return { grids, totalOccupiedCells: occupiedCount, colMap };
+  };
+
+  // ─── §9-2 엑셀 파일 파서 2: 주간시간표.xlsx ──────────────────────────────
+  const parseWeeklyScheduleBuffer = (arrayBuffer: ArrayBuffer) => {
+    const wb = XLSX.read(arrayBuffer, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
+
+    let headerRowIdx = -1;
+    for (let i = 0; i < rows.length; i++) {
+      const c0 = String(rows[i][0] || "").trim();
+      if (c0 === "교사" || c0.includes("교사")) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+
+    if (headerRowIdx === -1) {
+      throw new Error("주간시간표.xlsx 헤더 행('교사')을 찾을 수 없습니다.");
+    }
+
+    const dayRow = rows[headerRowIdx];
+    const periodRow = rows[headerRowIdx + 1];
+
+    const colMap: { colIndex: number; day: number; period: number }[] = [];
+    let currentDayLabel = "";
+    let dayIndex = 0;
+
+    for (let col = 1; col < dayRow.length; col++) {
+      const dayLabel = String(dayRow[col] || "").trim();
+      if (dayLabel) {
+        currentDayLabel = dayLabel;
+        dayIndex++;
+      }
+      const periodNum = parseInt(String(periodRow[col] || "").trim(), 10);
+      if (currentDayLabel && !isNaN(periodNum)) {
+        colMap.push({ colIndex: col, day: dayIndex, period: periodNum });
+      }
+    }
+
+    let occupiedCells = 0;
+    let freeCells = 0;
+    const duplicateWarnings: { name: string; seq: number; prevSeq: number }[] = [];
+    const seenNames = new Map<string, number>();
+    const teacherList: { seq: number; name: string; teacherRaw: string; lessons: any[] }[] = [];
+    const tcMap = new Map<string, { teacherName: string; subjectName: string; targetHours: number }>();
+
+    for (let i = headerRowIdx + 2; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.length === 0) continue;
+
+      const teacherRaw = String(row[0] || "").trim();
+      if (!teacherRaw) continue;
+
+      const match = teacherRaw.match(/^\((\d+)\)\s*(.+)$/);
+      let seq = 0;
+      let name = teacherRaw;
+
+      if (match) {
+        seq = parseInt(match[1], 10);
+        name = match[2].trim();
+      }
+
+      if (seenNames.has(name)) {
+        duplicateWarnings.push({ name, seq, prevSeq: seenNames.get(name)! });
+      } else {
+        seenNames.set(name, seq);
+      }
+
+      const lessons: any[] = [];
+
+      colMap.forEach(({ colIndex, day, period }) => {
+        const cellVal = String(row[colIndex] || "").trim();
+        if (!cellVal) {
+          freeCells++;
+          return;
+        }
+
+        occupiedCells++;
+        const parts = cellVal.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+        const classCode = parts[0] || "";
+        const subjectName = parts[1] || parts[0] || "";
+
+        let grade = 0;
+        let classNum = 0;
+        const codeMatch = classCode.match(/^(\d)(\d{2})$/);
+        if (codeMatch) {
+          grade = parseInt(codeMatch[1], 10);
+          classNum = parseInt(codeMatch[2], 10);
+        }
+
+        lessons.push({ day, period, classCode, grade, classNum, subjectName });
+
+        if (subjectName) {
+          const tcKey = `${name}__${subjectName}`;
+          const existing = tcMap.get(tcKey) || { teacherName: name, subjectName, targetHours: 0 };
+          existing.targetHours += 1;
+          tcMap.set(tcKey, existing);
+        }
+      });
+
+      teacherList.push({ seq, name, teacherRaw, lessons });
+    }
+
+    const teacherTimeCounts = Array.from(tcMap.values()).sort((a, b) =>
+      a.teacherName.localeCompare(b.teacherName, "ko")
+    );
+
+    return {
+      teachers: teacherList,
+      occupiedCells,
+      freeCells,
+      duplicateWarnings,
+      teacherTimeCounts,
+    };
+  };
+
+  // 교차 검증 헬퍼
+  const performCrossValidation = (
+    grids: IntermediateClassGrid[],
+    weeklyTeachers: { seq: number; name: string; teacherRaw: string; lessons: any[] }[],
+    duplicateWarnings: any[],
+    occupiedCells: number,
+    freeCells: number
+  ) => {
+    let matchCount = 0;
+    const mismatchList: string[] = [];
+
+    const fullMap = new Map<string, { subjectName: string; teacherName: string }>();
+    grids.forEach((g) => {
+      g.cells.forEach((c) => {
+        const key = `${g.grade}-${g.classNum}-${c.day}-${c.period}`;
+        fullMap.set(key, { subjectName: c.subjectName, teacherName: c.teacherName });
+      });
+    });
+
+    weeklyTeachers.forEach((t) => {
+      t.lessons.forEach((l) => {
+        if (l.grade && l.classNum) {
+          const key = `${l.grade}-${l.classNum}-${l.day}-${l.period}`;
+          const fullCell = fullMap.get(key);
+          if (!fullCell) {
+            mismatchList.push(`[${l.day}요일 ${l.period}교시] 주간시간표(${t.name}) -> 전체시간표 해당 학급(${l.grade}-${l.classNum}반) 교시 없음`);
+          } else {
+            const fullTeacher = fullCell.teacherName.trim();
+            const fullSubj = fullCell.subjectName.trim();
+            if (fullTeacher === t.name || fullSubj === l.subjectName || fullTeacher === l.subjectName) {
+              matchCount++;
+            } else {
+              mismatchList.push(`[${l.day}요일 ${l.period}교시 ${l.grade}-${l.classNum}반] 전체시간표(${fullSubj}/${fullTeacher}) vs 주간시간표(${l.subjectName}/${t.name})`);
+            }
+          }
+        }
+      });
+    });
+
+    const realTeacherCount = weeklyTeachers.filter((t) => !t.name.includes("SLAT") && !t.name.includes("창체")).length;
+    const virtualTeacherCount = weeklyTeachers.length - realTeacherCount;
+
+    setCrossValidation({
+      matchCount,
+      mismatchList,
+      duplicateWarnings,
+      occupiedCells,
+      freeCells,
+      realTeacherCount,
+      virtualTeacherCount,
+    });
+  };
+
+  // 파일 업로드 핸들러
+  const handleFullFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFullScheduleFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const buffer = evt.target?.result as ArrayBuffer;
+        const { grids, totalOccupiedCells } = parseFullScheduleBuffer(buffer);
+        setParsedGrids(grids);
+        setFullScheduleSummary(`학급 ${grids.length}개, 수업 셀 ${totalOccupiedCells}개 파싱 완료`);
+        setSourceNote(`컴시간 엑셀 업로드 (${file.name})`);
+      } catch (err: any) {
+        alert(`전체시간표.xlsx 파싱 실패: ${err.message}`);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleWeeklyFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setWeeklyScheduleFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const buffer = evt.target?.result as ArrayBuffer;
+        const { teachers, occupiedCells, freeCells, duplicateWarnings, teacherTimeCounts } =
+          parseWeeklyScheduleBuffer(buffer);
+
+        setWeeklyScheduleSummary(`교사 ${teachers.length}명, 수업 셀 ${occupiedCells}개, 공강 ${freeCells}개`);
+        setParsedTimeCounts(teacherTimeCounts);
+
+        if (parsedGrids.length > 0) {
+          performCrossValidation(parsedGrids, teachers, duplicateWarnings, occupiedCells, freeCells);
+        }
+      } catch (err: any) {
+        alert(`주간시간표.xlsx 파싱 실패: ${err.message}`);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // 2. 전체시간표 붙여넣기 텍스트 파싱 (폴백)
   const parseGridText = (text: string) => {
     if (!text.trim()) {
       setParsedGrids([]);
@@ -100,12 +427,11 @@ export default function TimetableImportTab({
     }
 
     const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    const gridMap = new Map<string, IntermediateClassGrid>(); // "grade-classNum" -> grid
+    const gridMap = new Map<string, IntermediateClassGrid>();
 
     for (let i = 0; i < lines.length; i++) {
       const parts = lines[i].split("\t").map((p) => p.trim());
 
-      // 헤더 행 자동 건너뛰기
       if (parts[0].includes("학년") || parts[0].toLowerCase().includes("grade")) continue;
       if (parts.length < 6) continue;
 
@@ -141,7 +467,7 @@ export default function TimetableImportTab({
     setParsedGrids(result);
   };
 
-  // 3. 교사별 시수표 붙여넣기 텍스트 파싱
+  // 3. 교사별 시수표 붙여넣기 텍스트 파싱 (폴백)
   const parseTimeCountText = (text: string) => {
     if (!text.trim()) {
       setParsedTimeCounts([]);
@@ -194,10 +520,9 @@ export default function TimetableImportTab({
     const newMap: Record<string, string> = { ...teacherEmailMap };
 
     for (const name of Array.from(teacherNames)) {
-      if (newMap[name]) continue; // 이미 수동 지정된 경우 유지
+      if (newMap[name]) continue;
 
       const cleanName = name.trim();
-      // GWS 교사 목록에서 이름 매칭
       const matched = gwsTeachers.find((u) => {
         const givenName = u.name?.givenName || "";
         const familyName = u.name?.familyName || "";
@@ -427,7 +752,6 @@ export default function TimetableImportTab({
     }
   };
 
-  // 총 생성될 수업 수 계산
   const totalParsedLessons = parsedGrids.reduce((acc, g) => acc + g.cells.length, 0);
 
   return (
@@ -441,7 +765,7 @@ export default function TimetableImportTab({
                 일과계 전용 관리자
               </span>
               <HelpTip title="시간표 가져오기 상세 안내" variant="dark">
-                <p>컴시간알리미 등 엑셀 인쇄 데이터를 복사-붙여넣기하여 교사 매핑 및 검증 후 기초시간표 학기를 생성합니다.</p>
+                <p>컴시간알리미에서 내보낸 전체시간표.xlsx 및 주간시간표.xlsx 파일을 직접 업로드하여 교사 매핑 및 검증 후 기초시간표 학기를 생성합니다.</p>
                 <p>초안(Draft) 상태로 먼저 저장한 후 무결성 검증을 거쳐 정식 학기로 활성화할 수 있습니다.</p>
               </HelpTip>
             </div>
@@ -449,7 +773,7 @@ export default function TimetableImportTab({
               📦 2학기 기초시간표 가져오기 & 학기 관리
             </h2>
             <p className="text-sm text-indigo-200/80 mt-1 max-w-2xl">
-              컴시간 엑셀 인쇄 데이터를 붙여넣어 기초시간표 학기를 등록합니다.
+              컴시간 엑셀(.xlsx) 파일 업로드로 기초시간표 데이터를 간편하게 등록하고 검증합니다.
             </p>
           </div>
           <button
@@ -475,13 +799,13 @@ export default function TimetableImportTab({
             <span className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-[10px]">
               1
             </span>
-            <span>데이터 붙여넣기</span>
+            <span>데이터 파싱</span>
           </button>
 
           <button
             onClick={() => {
               if (parsedGrids.length > 0) autoMatchTeachers();
-              else alert("먼저 1단계에서 시간표 데이터를 붙여넣어 주세요.");
+              else alert("먼저 1단계에서 엑셀 파일이나 텍스트를 파싱해 주세요.");
             }}
             className={`py-2.5 px-2 rounded-lg transition-all flex items-center justify-center gap-2 ${
               activeStep === 2
@@ -528,16 +852,44 @@ export default function TimetableImportTab({
         </div>
       </div>
 
-      {/* ── 1단계: 엑셀 데이터 붙여넣기 ──────────────────────────── */}
+      {/* ── 1단계: 엑셀 파싱 ──────────────────────────── */}
       {activeStep === 1 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
-          <div className="border-b border-gray-100 pb-4">
-            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-              <span>Step 1. 학기 설정 및 엑셀 데이터 복사-붙여넣기</span>
-            </h3>
-            <p className="text-xs text-gray-500 mt-1">
-              엑셀(Excel) 또는 구글 스프레드시트에서 열 전체를 선택하여 아래 텍스트 상자에 붙여넣으세요 (`Ctrl+V`).
-            </p>
+          <div className="border-b border-gray-100 pb-4 flex justify-between items-center flex-wrap gap-4">
+            <div>
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <span>Step 1. 학기 설정 및 컴시간 엑셀 파싱</span>
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                컴시간에서 내보낸 엑셀(.xlsx) 파일 2종을 업로드하거나, 기존 TSV 텍스트 붙여넣기를 이용하세요.
+              </p>
+            </div>
+
+            {/* 방식 선택 버튼 */}
+            <div className="flex bg-gray-100 p-1 rounded-lg gap-1 border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setImportMode("excel")}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                  importMode === "excel"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                📁 엑셀 업로드 (.xlsx) — 추천
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportMode("paste")}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                  importMode === "paste"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                📋 텍스트 붙여넣기 (폴백)
+              </button>
+            </div>
           </div>
 
           {/* 학기 설정 입력 */}
@@ -574,71 +926,181 @@ export default function TimetableImportTab({
             </div>
           </div>
 
-          {/* 붙여넣기 하위 탭 (전체시간표 / 시수표) */}
-          <div>
-            <div className="flex border-b border-gray-200 mb-4 gap-4">
-              <button
-                onClick={() => setPasteTab("grid")}
-                className={`pb-2 text-xs font-bold border-b-2 transition-all ${
-                  pasteTab === "grid"
-                    ? "border-indigo-600 text-indigo-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                1️⃣ 전체시간표 복사-붙여넣기 ({parsedGrids.length}개 학급, {totalParsedLessons}개 수업 파싱됨)
-              </button>
-              <button
-                onClick={() => setPasteTab("timeCount")}
-                className={`pb-2 text-xs font-bold border-b-2 transition-all ${
-                  pasteTab === "timeCount"
-                    ? "border-indigo-600 text-indigo-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                2️⃣ 교사별 시수표 복사-붙여넣기 ({parsedTimeCounts.length}건 파싱됨)
-              </button>
-            </div>
+          {/* 엑셀 파일 업로드 모드 */}
+          {importMode === "excel" ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Slot 1: 전체시간표.xlsx (필수) */}
+                <div className="border-2 border-dashed border-indigo-200 hover:border-indigo-400 bg-indigo-50/20 rounded-xl p-5 transition-colors">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                      <span>1️⃣</span>
+                      <span>전체시간표.xlsx</span>
+                      <span className="bg-red-100 text-red-700 text-[10px] font-extrabold px-1.5 py-0.5 rounded">필수</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    컴시간에서 내보낸 <code>전체시간표.xlsx</code> 파일 (학급별 전체시간표 그리드).
+                  </p>
 
-            {pasteTab === "grid" ? (
-              <div className="space-y-4">
-                <div className="bg-indigo-50/60 p-3 rounded-md text-xs text-indigo-900 border border-indigo-100 flex items-start gap-2">
-                  <span className="text-base">📌</span>
-                  <div>
-                    <span className="font-bold">엑셀 열 순서 가이드 (Tab 구분):</span>
-                    <p className="mt-0.5 text-indigo-700">
-                      <code>[ 학년 | 반 | 요일(월~금/1~5) | 교시(1~8) | 과목명 | 교사성명 | 강의실(선택) | 동시수업키(선택) ]</code>
-                    </p>
-                  </div>
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls"
+                    onChange={handleFullFileChange}
+                    className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
+                  />
+
+                  {fullScheduleSummary && (
+                    <div className="mt-3 bg-white p-2.5 rounded-lg border border-indigo-100 text-xs text-indigo-900 font-medium">
+                      {fullScheduleSummary}
+                    </div>
+                  )}
                 </div>
-                <textarea
-                  value={gridRawText}
-                  onChange={(e) => handleGridTextChange(e.target.value)}
-                  rows={8}
-                  placeholder={`1\t1\t월\t1\t국어\t김철수\t과학실1\t이동A\n1\t1\t월\t2\t수학\t이영희\n1\t2\t월\t1\t영어\t박민수`}
-                  className="w-full p-3 border border-gray-300 rounded-lg text-xs font-mono text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="bg-indigo-50/60 p-3 rounded-md text-xs text-indigo-900 border border-indigo-100 flex items-start gap-2">
-                  <span className="text-base">📌</span>
-                  <div>
-                    <span className="font-bold">교사별 주당 시수표 열 순서 가이드:</span>
-                    <p className="mt-0.5 text-indigo-700">
-                      <code>[ 교사성명 | 과목명 | 주당 시수(숫자) ]</code>
-                    </p>
+
+                {/* Slot 2: 주간시간표.xlsx (선택) */}
+                <div className="border-2 border-dashed border-slate-200 hover:border-slate-400 bg-slate-50/40 rounded-xl p-5 transition-colors">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <span>2️⃣</span>
+                      <span>주간시간표.xlsx</span>
+                      <span className="bg-slate-200 text-slate-700 text-[10px] font-bold px-1.5 py-0.5 rounded">선택 (교차 검증)</span>
+                    </span>
                   </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    컴시간 <code>주간시간표.xlsx</code> 파일 (교사별 피벗표). 업로드 시 교사 시수표 자동 생성 및 교차 검증이 실행됩니다.
+                  </p>
+
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls"
+                    onChange={handleWeeklyFileChange}
+                    className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-700 file:text-white hover:file:bg-slate-800 cursor-pointer"
+                  />
+
+                  {weeklyScheduleSummary && (
+                    <div className="mt-3 bg-white p-2.5 rounded-lg border border-slate-200 text-xs text-slate-800 font-medium">
+                      {weeklyScheduleSummary}
+                    </div>
+                  )}
                 </div>
-                <textarea
-                  value={timeCountRawText}
-                  onChange={(e) => handleTimeCountTextChange(e.target.value)}
-                  rows={8}
-                  placeholder={`김철수\t국어\t16\n이영희\t수학\t18\n박민수\t영어\t14`}
-                  className="w-full p-3 border border-gray-300 rounded-lg text-xs font-mono text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
               </div>
-            )}
-          </div>
+
+              {/* 교차 검증 결과 배너 */}
+              {crossValidation && (
+                <div className="bg-indigo-900 text-white rounded-xl p-5 space-y-3 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold flex items-center gap-2">
+                      <span>🔍</span>
+                      <span>전체시간표 ↔ 주간시간표 교차 검증 리포트</span>
+                    </h4>
+                    <span className="text-xs bg-emerald-500/30 border border-emerald-400/40 text-emerald-200 font-bold px-2.5 py-0.5 rounded-full">
+                      검증 교시 셀 {crossValidation.occupiedCells}개
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-white/10 p-3 rounded-lg">
+                    <div>
+                      <span className="text-indigo-200 block text-[11px]">일치한 수업 셀</span>
+                      <span className="text-lg font-bold text-emerald-300">{crossValidation.matchCount}개</span>
+                    </div>
+                    <div>
+                      <span className="text-indigo-200 block text-[11px]">교사 수 (실제+가상)</span>
+                      <span className="text-lg font-bold text-white">
+                        {crossValidation.realTeacherCount}명 <span className="text-indigo-300 text-xs">(+가상 {crossValidation.virtualTeacherCount})</span>
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-indigo-200 block text-[11px]">수업 셀 / 공강 셀</span>
+                      <span className="text-lg font-bold text-white">
+                        {crossValidation.occupiedCells} / {crossValidation.freeCells}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-indigo-200 block text-[11px]">불일치 / 동명이인</span>
+                      <span className="text-lg font-bold text-amber-300">
+                        {crossValidation.mismatchList.length}건 / {crossValidation.duplicateWarnings.length}건
+                      </span>
+                    </div>
+                  </div>
+
+                  {crossValidation.mismatchList.length > 0 && (
+                    <div className="bg-amber-950/80 border border-amber-500/50 p-3 rounded-lg text-xs space-y-1 max-h-32 overflow-y-auto">
+                      <p className="font-bold text-amber-300">⚠️ 교차 검증 불일치 항목:</p>
+                      {crossValidation.mismatchList.map((m, idx) => (
+                        <p key={idx} className="text-amber-200/90 leading-tight">• {m}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* 붙여넣기 모드 (폴백) */
+            <div>
+              <div className="flex border-b border-gray-200 mb-4 gap-4">
+                <button
+                  onClick={() => setPasteTab("grid")}
+                  className={`pb-2 text-xs font-bold border-b-2 transition-all ${
+                    pasteTab === "grid"
+                      ? "border-indigo-600 text-indigo-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  1️⃣ 전체시간표 복사-붙여넣기 ({parsedGrids.length}개 학급, {totalParsedLessons}개 수업 파싱됨)
+                </button>
+                <button
+                  onClick={() => setPasteTab("timeCount")}
+                  className={`pb-2 text-xs font-bold border-b-2 transition-all ${
+                    pasteTab === "timeCount"
+                      ? "border-indigo-600 text-indigo-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  2️⃣ 교사별 시수표 복사-붙여넣기 ({parsedTimeCounts.length}건 파싱됨)
+                </button>
+              </div>
+
+              {pasteTab === "grid" ? (
+                <div className="space-y-4">
+                  <div className="bg-indigo-50/60 p-3 rounded-md text-xs text-indigo-900 border border-indigo-100 flex items-start gap-2">
+                    <span className="text-base">📌</span>
+                    <div>
+                      <span className="font-bold">엑셀 열 순서 가이드 (Tab 구분):</span>
+                      <p className="mt-0.5 text-indigo-700">
+                        <code>[ 학년 | 반 | 요일(월~금/1~5) | 교시(1~8) | 과목명 | 교사성명 | 강의실(선택) | 동시수업키(선택) ]</code>
+                      </p>
+                    </div>
+                  </div>
+                  <textarea
+                    value={gridRawText}
+                    onChange={(e) => handleGridTextChange(e.target.value)}
+                    rows={8}
+                    placeholder={`1\t1\t월\t1\t국어\t김철수\t과학실1\t이동A\n1\t1\t월\t2\t수학\t이영희\n1\t2\t월\t1\t영어\t박민수`}
+                    className="w-full p-3 border border-gray-300 rounded-lg text-xs font-mono text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-indigo-50/60 p-3 rounded-md text-xs text-indigo-900 border border-indigo-100 flex items-start gap-2">
+                    <span className="text-base">📌</span>
+                    <div>
+                      <span className="font-bold">교사별 주당 시수표 열 순서 가이드:</span>
+                      <p className="mt-0.5 text-indigo-700">
+                        <code>[ 교사성명 | 과목명 | 주당 시수(숫자) ]</code>
+                      </p>
+                    </div>
+                  </div>
+                  <textarea
+                    value={timeCountRawText}
+                    onChange={(e) => handleTimeCountTextChange(e.target.value)}
+                    rows={8}
+                    placeholder={`김철수\t국어\t16\n이영희\t수학\t18\n박민수\t영어\t14`}
+                    className="w-full p-3 border border-gray-300 rounded-lg text-xs font-mono text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 파싱 미리보기 요약 */}
           {parsedGrids.length > 0 && (
@@ -691,7 +1153,7 @@ export default function TimetableImportTab({
                 {Object.keys(teacherEmailMap).length === 0 ? (
                   <tr>
                     <td colSpan={3} className="px-4 py-8 text-center text-gray-500">
-                      매핑할 교사 목록이 없습니다. 1단계 붙여넣기를 먼저 진행하세요.
+                      매핑할 교사 목록이 없습니다. 1단계 파싱을 먼저 진행하세요.
                     </td>
                   </tr>
                 ) : (
@@ -798,172 +1260,97 @@ export default function TimetableImportTab({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 text-center">
               <span className="text-xs text-indigo-600 font-semibold">총 학급 수</span>
-              <div className="text-2xl font-black text-indigo-900 mt-1">
-                {validationReport.summary.totalClasses}개
-              </div>
+              <p className="text-2xl font-bold text-indigo-950 mt-1">
+                {validationReport.summary?.totalClasses || 0}개
+              </p>
             </div>
-            <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 text-center">
-              <span className="text-xs text-indigo-600 font-semibold">총 교사 수</span>
-              <div className="text-2xl font-black text-indigo-900 mt-1">
-                {validationReport.summary.totalTeachers}명
-              </div>
+            <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-4 text-center">
+              <span className="text-xs text-emerald-600 font-semibold">총 수업 교시 수</span>
+              <p className="text-2xl font-bold text-emerald-950 mt-1">
+                {validationReport.summary?.totalLessons || 0}시간
+              </p>
             </div>
-            <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 text-center">
-              <span className="text-xs text-indigo-600 font-semibold">총 시수</span>
-              <div className="text-2xl font-black text-indigo-900 mt-1">
-                {validationReport.summary.totalLessons}시간
-              </div>
+            <div className="bg-amber-50/50 border border-amber-100 rounded-xl p-4 text-center">
+              <span className="text-xs text-amber-600 font-semibold">교사 중복(오버랩)</span>
+              <p className="text-2xl font-bold text-amber-950 mt-1">
+                {validationReport.overlaps?.length || 0}건
+              </p>
             </div>
-            <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 text-center">
-              <span className="text-xs text-indigo-600 font-semibold">일별 최대 교시</span>
-              <div className="text-2xl font-black text-indigo-900 mt-1">
-                {validationReport.summary.maxPeriodsPerDay}교시
-              </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+              <span className="text-xs text-slate-600 font-semibold">미매칭 교사 수</span>
+              <p className="text-2xl font-bold text-slate-900 mt-1">
+                {validationReport.unmatchedTeachers?.length || 0}명
+              </p>
             </div>
           </div>
-
-          {/* Issue Panel 1: 미매칭 교사 (Unmatched) */}
-          {validationReport.unmatchedTeachers.length > 0 && (
-            <div className="border border-red-200 rounded-xl bg-red-50/30 p-4 space-y-2">
-              <h4 className="text-xs font-bold text-red-900 flex items-center gap-1.5">
-                <span>🔴 미매칭 교사 ({validationReport.unmatchedTeachers.length}명)</span>
-              </h4>
-              <ul className="list-disc list-inside text-xs text-red-800 space-y-1">
-                {validationReport.unmatchedTeachers.map((u) => (
-                  <li key={u.teacherName}>
-                    <span className="font-bold">{u.teacherName}</span> (총 {u.occurrenceCount}회 사용됨) - 2단계에서 GWS 이메일을 지정하세요.
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Issue Panel 2: 교사 오버랩 (Teacher Overlap) */}
-          {validationReport.overlaps.length > 0 && (
-            <div className="border border-amber-200 rounded-xl bg-amber-50/30 p-4 space-y-2">
-              <h4 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                <span>⚠️ 교사 중복 수업 (오버랩 {validationReport.overlaps.length}건)</span>
-              </h4>
-              <div className="space-y-1 max-h-48 overflow-y-auto text-xs text-amber-900">
-                {validationReport.overlaps.map((ov, idx) => (
-                  <div key={idx} className="bg-white p-2.5 rounded border border-amber-200 flex justify-between items-center">
-                    <div>
-                      <span className="font-bold text-amber-950">{ov.teacherName} 교사</span> ({ov.day}요일 {ov.period}교시)
-                    </div>
-                    <div className="text-amber-800">
-                      충돌 학급: {ov.classes.map((c) => `${c.grade}-${c.classNum}(${c.subjectName})`).join(", ")}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Issue Panel 3: 학급 셀 오류 (Class Cell Issues) */}
-          {validationReport.cellIssues.length > 0 && (
-            <div className="border border-amber-200 rounded-xl bg-amber-50/30 p-4 space-y-2">
-              <h4 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                <span>⚠️ 학급 셀 및 수업 이상 ({validationReport.cellIssues.length}건)</span>
-              </h4>
-              <ul className="list-disc list-inside text-xs text-amber-900 space-y-1">
-                {validationReport.cellIssues.map((ci, idx) => (
-                  <li key={idx}>{ci.issue}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Issue Panel 4: 시수표 불일치 (Time Mismatches) */}
-          {validationReport.timeMismatches.length > 0 && (
-            <div className="border border-blue-200 rounded-xl bg-blue-50/30 p-4 space-y-2">
-              <h4 className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                <span>ℹ️ 시수표 대조 불일치 ({validationReport.timeMismatches.length}건)</span>
-              </h4>
-              <div className="space-y-1 max-h-40 overflow-y-auto text-xs text-blue-900">
-                {validationReport.timeMismatches.map((tm, idx) => (
-                  <div key={idx} className="bg-white p-2 rounded border border-blue-200 flex justify-between">
-                    <span>
-                      <span className="font-bold">{tm.teacherName}</span> ({tm.subjectName})
-                    </span>
-                    <span>
-                      시간표 시수: <span className="font-bold">{tm.gridHours}시간</span> / 시수표 목표: <span className="font-bold">{tm.targetHours}시간</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* ── 4단계: 등록된 학기 관리 & 일과계 관리자 설정 ─────────────── */}
+      {/* ── 4단계: 학기 관리 & 일과계 관리자 지정 ──────────────────── */}
       {activeStep === 4 && (
         <div className="space-y-6">
           {/* 학기 목록 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-            <h3 className="text-base font-bold text-gray-900 border-b border-gray-100 pb-3">
-              📋 등록된 시간표 학기 목록 ({terms.length}개)
-            </h3>
+            <h3 className="text-base font-bold text-gray-900">📋 시간표 학기 관리</h3>
+            <p className="text-xs text-gray-500">
+              생성된 기초시간표 학기 목록입니다. 초안(Draft) 학기를 정식 활성(Active) 학기로 전환하세요.
+            </p>
 
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <table className="min-w-full divide-y divide-gray-200 text-xs">
                 <thead className="bg-gray-50 font-bold text-gray-700">
                   <tr>
-                    <th className="px-4 py-3 text-left">학기 ID</th>
-                    <th className="px-4 py-3 text-left">학기명</th>
+                    <th className="px-4 py-3 text-left">학기 명칭 (ID)</th>
                     <th className="px-4 py-3 text-left">상태</th>
-                    <th className="px-4 py-3 text-left">등록자 / 등록일</th>
-                    <th className="px-4 py-3 text-right">제어 액션</th>
+                    <th className="px-4 py-3 text-left">출처 노트</th>
+                    <th className="px-4 py-3 text-right">작업</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {terms.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                        등록된 학기가 없습니다. 상단 '1단계 데이터 붙여넣기'로 새 학기를 생성하세요.
+                      <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
+                        등록된 학기가 없습니다. 1단계 가져오기를 진행하세요.
                       </td>
                     </tr>
                   ) : (
                     terms.map((t) => (
-                      <tr key={t.id} className={t.status === "active" ? "bg-indigo-50/30" : ""}>
-                        <td className="px-4 py-3 font-mono font-bold text-indigo-900">{t.id}</td>
-                        <td className="px-4 py-3 font-bold text-gray-900">{t.name}</td>
+                      <tr key={t.id}>
+                        <td className="px-4 py-3 font-bold text-gray-900">
+                          {t.name} <span className="text-gray-400 font-normal">({t.id})</span>
+                        </td>
                         <td className="px-4 py-3">
-                          {t.status === "active" && (
-                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                              🚀 정식 활성중
+                          {t.status === "active" ? (
+                            <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              🟢 현재 활성 학기
                             </span>
-                          )}
-                          {t.status === "draft" && (
-                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-100 text-yellow-800">
-                              📝 초안(Draft)
+                          ) : t.status === "draft" ? (
+                            <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              🟡 초안 (Draft)
                             </span>
-                          )}
-                          {t.status === "archived" && (
-                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">
-                              📦 과거 보관
+                          ) : (
+                            <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600">
+                              ⚪ 보관됨 (Archived)
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-gray-600">
-                          {t.importedBy} ({new Date(t.importedAt).toLocaleDateString()})
-                        </td>
+                        <td className="px-4 py-3 text-gray-500">{t.sourceNote || "-"}</td>
                         <td className="px-4 py-3 text-right space-x-2">
-                          {t.status !== "active" && (
-                            <button
-                              onClick={() => handleActivateTerm(t.id, t.name)}
-                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-[11px] transition-all"
-                            >
-                              🚀 활성화
-                            </button>
-                          )}
                           {t.status === "draft" && (
-                            <button
-                              onClick={() => handleDeleteTerm(t.id, t.name)}
-                              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded text-[11px] transition-all"
-                            >
-                              🗑️ 삭제
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleActivateTerm(t.id, t.name)}
+                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-[11px] transition-all shadow-xs"
+                              >
+                                활성화
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTerm(t.id, t.name)}
+                                className="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded text-[11px] transition-all"
+                              >
+                                삭제
+                              </button>
+                            </>
                           )}
                         </td>
                       </tr>
@@ -974,15 +1361,16 @@ export default function TimetableImportTab({
             </div>
           </div>
 
-          {/* 일과계 관리자 설정 (super_admin 전용) */}
+          {/* 일과계 관리자 이메일 지정 (super_admin 전용) */}
           {isSuperAdmin && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-              <h3 className="text-base font-bold text-gray-900 border-b border-gray-100 pb-3 flex items-center justify-between">
-                <span>🛡️ 일과계 관리자 권한 지정 (super_admin 전용)</span>
-                <span className="text-xs text-gray-500 font-normal">
-                  지정된 교직원은 시간표 가져오기 및 학기 관리 권한을 가집니다.
-                </span>
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <span>🔑</span>
+                <span>시간표 일과계 관리자 지정</span>
               </h3>
+              <p className="text-xs text-gray-500">
+                시간표 관리 메뉴 접근 및 가져오기 권한을 부여할 일과계 실무 교직원의 이메일을 관리합니다.
+              </p>
 
               <div className="flex gap-2 max-w-md">
                 <AutocompleteInput
@@ -990,32 +1378,32 @@ export default function TimetableImportTab({
                   onChange={setNewManagerEmail}
                   type="user"
                   domain={domain}
-                  placeholder="추가할 일과계 교사 이메일 선택"
+                  placeholder="추가할 일과계 교직원 이메일 검색"
                   onSelect={(email) => setNewManagerEmail(email)}
                 />
                 <button
                   onClick={handleAddManager}
-                  disabled={savingManagers}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs shadow shrink-0"
+                  disabled={savingManagers || !newManagerEmail.trim()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shrink-0 shadow-xs"
                 >
-                  추가
+                  {savingManagers ? "저장 중..." : "관리자 추가"}
                 </button>
               </div>
 
               <div className="flex flex-wrap gap-2 pt-2">
                 {(settings?.managerEmails || []).length === 0 ? (
-                  <p className="text-xs text-gray-400">지정된 일과계 관리자가 없습니다 (super_admin만 관리 가능).</p>
+                  <p className="text-xs text-gray-400">지정된 일과계 관리자가 없습니다. (super_admin만 관리 중)</p>
                 ) : (
-                  (settings?.managerEmails || []).map((mEmail) => (
+                  settings?.managerEmails?.map((m) => (
                     <span
-                      key={mEmail}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-900 border border-indigo-200"
+                      key={m}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-bold"
                     >
-                      <span>{mEmail}</span>
+                      <span>{m}</span>
                       <button
-                        onClick={() => handleRemoveManager(mEmail)}
-                        disabled={savingManagers}
-                        className="hover:text-red-600 font-bold text-indigo-400"
+                        onClick={() => handleRemoveManager(m)}
+                        className="text-indigo-400 hover:text-indigo-600 font-bold ml-1 text-sm leading-none"
+                        title="삭제"
                       >
                         ×
                       </button>

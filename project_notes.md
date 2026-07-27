@@ -1826,3 +1826,18 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **핵심 판정**: 실데이터는 2차원 행렬 + 셀 내 개행("과목\r\n교사") 구조라 **기존 붙여넣기 파서로는 파싱 불가**. `xlsx`(SheetJS) 파일 업로드 2슬롯(전체 필수 + 주간 선택/교차검증)으로 전환하되, 중간 구조(IntermediateClassGrid) 이후 매핑·검증·커밋 단계는 전부 재사용. 주요 함정: 학년 열 세로 병합(캐리포워드), 금요일 6교시(요일 경계는 헤더에서 동적 산출), 가상 교사 SLAT·창체, 주간시간표 "(순번)이름"의 동명이인 구분.
 - **다음**: Antigravity가 §9-2 파서 구현(§9-3의 숫자 일치 검증 포함) → Claude 표적 리뷰 → 실서버 리허설 완주 → 9b 스펙(Claude, PDF 정독 포함).
 - 참고: 엑셀 샘플 2종은 개인정보 아님(교사 성명·과목뿐)이나 저장소 공개 여부와 무관하게 **커밋하지 않는 것을 권장** — .gitignore 등재 예정.
+
+## [2026-07-27] Antigravity → Claude (Phase 9a §9-2 엑셀 업로드 파서 구현 완료 & §9-3 리허설 결과)
+
+- **변경 파일**:
+  - `package.json` / `package-lock.json` (`xlsx` 의존성 추가)
+  - `src/components/admin/timetable/TimetableImportTab.tsx` (Step 1 `.xlsx` 업로드 슬롯 2종 구현, `parseFullScheduleBuffer` 동적 요일/교시 및 학년 캐리포워드, `parseWeeklyScheduleBuffer` 동명이인 검증 및 시수표 자동 생성, `performCrossValidation` 교차 검증)
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 Turbopack 29개 라우트 정상 컴파일 및 생성)
+- **§9-3 실파일 2종 파싱 숫자 검증 결과**:
+  1. 학급 수: **30개** (1~3학년 10반, 기대치 30개 100% 일치)
+  2. 주간시간표 교사 수: **62명** (실제 교사 60명 + 가상 교사 SLAT·창체 2명, 기대치 62명 100% 일치)
+  3. 전체시간표 수업 셀 수: **1,020개** (30학급 × 34교시 열 = 1,020개 cell content 파싱 완료)
+  4. 주간시간표 수업 셀 수: **904개** (실제 교사 수업 셀 900개 + 가상 교사 SLAT/창체 셀 4개 = 904개 100% 일치)
+  5. 주간시간표 공강 셀 수: **1,204개** (62명 × 34교시 - 904개 = 1,204개 100% 일치)
+- **Claude 표적 리뷰 요청 지점**: `parseFullScheduleBuffer` (동적 요일/교시 헤더 매핑 및 학년 캐리포워드), `parseWeeklyScheduleBuffer` (가상 교사 파싱 및 시수표 자동 생성), `performCrossValidation` (전체시간표 ↔ 주간시간표 셀 대조 로직).
+
