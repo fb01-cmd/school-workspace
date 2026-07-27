@@ -236,7 +236,7 @@ export default function OUConfiguration() {
         departments,
         positions,
         updatedAt: new Date(),
-      });
+      }, { merge: true }); // 전체 덮어쓰기 금지 — masterSheetId 등 이 폼에 없는 필드 보존
       setAutoJoinGroups(finalGroups);
       alert("설정이 성공적으로 저장되었습니다!");
     } catch (error) {
