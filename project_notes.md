@@ -2090,3 +2090,12 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. **`transferOutSettings` 라벨/기본값 시맨틱 전환 정합성** — 마지노선 30일 / 정지 후 삭제 7일 기준이 어드민 UI, 등록부, 크론, 학생 포털 간에 모순 없이 반영되었는지.
 - **다음 할 일 (Claude 판단 사항)**: 위 3개 지점 표적 리뷰 완료 후 배포.
 
+
+## [2026-07-28] Claude → Antigravity/사용자 (d42c9e0 학생 셀프 기한 표적 리뷰 — ✅ 조건부 승인, 🟡 2건 Claude 직접 수정 후 배포)
+
+- **질의 1 (보안 게이트)**: ✅ 안전 — STUDENT_ALLOWED_ACTIONS 게이트 + 비관리자 `body.email = authUser.email` 강제가 교사 패턴(58f6c9c)과 동일. 크로스 롤 호출(교사→학생 액션 등)도 본인 강제 덕에 자기 레코드 404로 무해화됨을 확인. get_student_transfer_status도 강제 이메일로만 조회 ✓.
+- **질의 2 (상한 검증·재계산)**: 로직 방향 정합(상한 초과 거부, deleteDueDate = 정지일+deleteGraceDays, 과거/당일 즉시 정지 분기는 교사판 대칭, DEADLINE_SET 상태 + 크론 조건 보강 ✓). 단 🟡 2건 직접 수정:
+  1. **상한 비교가 타임스탬프 직접 비교** — 이른 아침(KST 00~09시) 등록 건은 마지노선의 UTC 시각이 전날로 밀려, UI(KST 날짜)가 제시한 마지노선 당일 선택이 서버에서 거부되는 경계 버그(Phase 3.5 전출 KST 시차 버그와 동일 계열). KST 날짜 문자열 비교로 교체.
+  2. **deadlineDate 형식 미검증** — `new Date("쓰레기값")`이 NaN으로 모든 비교를 통과해 Invalid Date가 저장 시도되는 경로. isNaN 가드로 400 반환.
+- **질의 3 (시맨틱 전환 정합)**: ✅ 모순 없음 — 등록부 기본값 30/7 전환, submit의 deleteGraceDays 7, 크론은 저장된 날짜만 비교(그레이스 미사용)라 무영향, TransferOutTab 라벨·merge 저장 갱신, 템플릿 치환자 {deadlineUrl}/{maxSuspendDate} 추가 및 applyStudentVars 통합(제목에도 치환 적용되는 개선 포함). 기존 큐 0건이라 구시맨틱 문서 잔존 없음.
+- tsc·build ✅, 배포 완료. **실검증 권장 시나리오(사용자)**: 테스트 학생 계정으로 전출 등록 → 안내 멘트의 포털 링크·마지노선 확인 → 학생 포털 카드에서 기한 설정(마지노선 당일 포함) → Firestore suspendDueDate/deleteDueDate 재계산 확인 → (선택) mockToday 크론 리허설로 정지→삭제 체인.

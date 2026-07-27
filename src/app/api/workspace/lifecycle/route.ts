@@ -1773,15 +1773,25 @@ export async function POST(req: NextRequest) {
 
         const taskData = taskSnap.data() || {};
         const deadline = new Date(deadlineDate);
+        if (isNaN(deadline.getTime())) {
+          return NextResponse.json({ error: "날짜 형식이 올바르지 않습니다." }, { status: 400 });
+        }
+
+        const getKSTDateStr = (d: Date): string => {
+          const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+          return kst.toISOString().split("T")[0];
+        };
 
         // maxSuspendDueDate 상한 검증 (없으면 suspendDueDate를 폴백으로)
+        // 비교는 KST 날짜 문자열로 — 타임스탬프 직접 비교 시 이른 아침(KST 00~09시) 등록 건에서
+        // UI가 제시한 마지노선 당일이 UTC 시각 차이로 거부되는 경계 버그 발생 (Phase 3.5 KST 시차 버그와 동일 계열)
         const maxDueDate = taskData.maxSuspendDueDate
           ? (taskData.maxSuspendDueDate.toDate ? taskData.maxSuspendDueDate.toDate() : new Date(taskData.maxSuspendDueDate))
           : taskData.suspendDueDate
           ? (taskData.suspendDueDate.toDate ? taskData.suspendDueDate.toDate() : new Date(taskData.suspendDueDate))
           : null;
 
-        if (maxDueDate && deadline > maxDueDate) {
+        if (maxDueDate && getKSTDateStr(deadline) > getKSTDateStr(maxDueDate)) {
           return NextResponse.json(
             { error: `선택하신 날짜가 최대 마지노선(${maxDueDate.toLocaleDateString("ko-KR")})을 초과할 수 없습니다.` },
             { status: 400 }
