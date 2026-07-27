@@ -56,6 +56,15 @@ export async function POST(req: NextRequest) {
       }
       body.teacherEmail = authUser.email;
     }
+    // submit_teacher_deadline / get_teacher_transfer_status: 본인 레코드 전용.
+    // 대상 이메일을 토큰의 본인 이메일로 강제 — 미강제 시 일반 교사가 타인의 기한을
+    // 과거 날짜로 제출해 동료 전출 계정을 즉시 정지시킬 수 있는 권한 상승 구멍이 된다.
+    if (
+      (action === "submit_teacher_deadline" || action === "get_teacher_transfer_status") &&
+      authUser.role !== "super_admin"
+    ) {
+      body.teacherEmail = authUser.email;
+    }
 
     const adminEmail = operatorEmail || authUser.email || "unknown@domain.com";
     const adminName = operatorName || "관리자";
