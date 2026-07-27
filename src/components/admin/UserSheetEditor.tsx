@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, memo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import OUTreeSelector from "@/components/admin/OUTreeSelector";
 import { useAuth } from "@/context/AuthContext";
 
@@ -41,8 +41,18 @@ interface UserSheetEditorProps {
   onCancel: () => void;
 }
 
+// Module-level field list
+const FIELDS: (keyof SheetRow)[] = [
+  "familyName",
+  "givenName",
+  "emailPrefix",
+  "orgUnitPath",
+  "password",
+  "changePasswordAtNextLogin",
+  "suspended"
+];
+
 // Module-level pure function — no closure over component state.
-// Placed here so useCallback handlers can reference it without deps.
 function validateRow(row: SheetRow) {
   row.error = undefined;
   if (!row.familyName.trim() || !row.givenName.trim()) {
@@ -62,6 +72,94 @@ function validateRow(row: SheetRow) {
     return;
   }
 }
+
+// Helper functions for drag-fill computations
+const parseAndIncrement = (baseVal: any, step: number) => {
+  if (typeof baseVal === "boolean") {
+    return baseVal;
+  }
+  const str = String(baseVal || "");
+  const match = str.match(/(\d+)$/);
+  if (!match) return baseVal;
+
+  const numStr = match[1];
+  const prefix = str.substring(0, str.length - numStr.length);
+  const val = parseInt(numStr, 10) + step;
+  const paddedVal = String(Math.max(0, val)).padStart(numStr.length, "0");
+  return `${prefix}${paddedVal}`;
+};
+
+const getFilledValue = (colIdx: number, t: number, bounds: any, currentRows: SheetRow[]) => {
+  const fieldName = FIELDS[colIdx];
+  const minR = bounds.minRow;
+  const maxR = bounds.maxRow;
+  const L = maxR - minR + 1;
+
+  if (L === 1) {
+    const baseVal = currentRows[minR][fieldName];
+    const step = t - minR;
+    return parseAndIncrement(baseVal, step);
+  } else {
+    const vals = [];
+    for (let r = minR; r <= maxR; r++) {
+      vals.push(currentRows[r][fieldName]);
+    }
+
+    if (typeof vals[0] === "boolean") {
+      const idx = ((t - minR) % L + L) % L;
+      return vals[idx];
+    }
+
+    const parsedSuffixes = vals.map(v => {
+      const match = String(v || "").match(/(\d+)$/);
+      return match ? { prefix: String(v).substring(0, String(v).length - match[1].length), num: parseInt(match[1], 10), padLen: match[1].length } : null;
+    });
+
+    const allHaveNumbers = parsedSuffixes.every(p => p !== null);
+    const samePrefix = allHaveNumbers && parsedSuffixes.every(p => p!.prefix === parsedSuffixes[0]!.prefix);
+
+    if (allHaveNumbers && samePrefix) {
+      const diff = parsedSuffixes[1]!.num - parsedSuffixes[0]!.num;
+      let isArithmetic = true;
+      for (let i = 1; i < L - 1; i++) {
+        if (parsedSuffixes[i+1]!.num - parsedSuffixes[i]!.num !== diff) {
+          isArithmetic = false;
+          break;
+        }
+      }
+
+      if (isArithmetic) {
+        const step = t - minR;
+        const targetNum = parsedSuffixes[0]!.num + step * diff;
+        const prefix = parsedSuffixes[0]!.prefix;
+        const padLen = parsedSuffixes[0]!.padLen;
+        const paddedNum = String(Math.max(0, targetNum)).padStart(padLen, "0");
+        return `${prefix}${paddedNum}`;
+      }
+    }
+
+    const idx = ((t - minR) % L + L) % L;
+    return vals[idx];
+  }
+};
+
+const getHorizontalFilledValue = (r: number, tC: number, bounds: any, currentRows: SheetRow[]) => {
+  const minC = bounds.minCol;
+  const maxC = bounds.maxCol;
+  const L = maxC - minC + 1;
+
+  if (L === 1) {
+    const fieldName = FIELDS[minC];
+    const baseVal = currentRows[r][fieldName];
+    const step = tC - minC;
+    return parseAndIncrement(baseVal, step);
+  } else {
+    const idx = ((tC - minC) % L + L) % L;
+    const srcCol = minC + idx;
+    const srcFieldName = FIELDS[srcCol];
+    return currentRows[r][srcFieldName];
+  }
+};
 
 // ---------------------------------------------------------------------------
 // SheetRowMemo — memoized per-row component
@@ -89,13 +187,12 @@ interface SheetRowProps {
   onFillMouseDown: (e: React.MouseEvent) => void;
   onFillDoubleClick: (e: React.MouseEvent) => void;
   onCellChange: (index: number, field: keyof SheetRow, value: any) => void;
-  onCellFocus: (index: number) => void;
+  onCellFocus: () => void;
   onCellBlur: () => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLElement>, row: number, col: number) => void;
   onPaste: (e: React.ClipboardEvent<HTMLInputElement>, row: number, col: number) => void;
   onRemoveRow: (id: string, index: number) => void;
 }
-
 
 const SheetRowMemo = memo(function SheetRowMemo({
   row,
@@ -203,7 +300,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
           type="text"
           value={row.familyName}
           onChange={(e) => onCellChange(index, "familyName", e.target.value)}
-          onFocus={() => onCellFocus(index)}
+          onFocus={onCellFocus}
           onBlur={onCellBlur}
           onKeyDown={(e) => onKeyDown(e, index, 0)}
           onPaste={(e) => onPaste(e, index, 0)}
@@ -234,7 +331,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
           type="text"
           value={row.givenName}
           onChange={(e) => onCellChange(index, "givenName", e.target.value)}
-          onFocus={() => onCellFocus(index)}
+          onFocus={onCellFocus}
           onBlur={onCellBlur}
           onKeyDown={(e) => onKeyDown(e, index, 1)}
           onPaste={(e) => onPaste(e, index, 1)}
@@ -266,7 +363,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
             type="text"
             value={row.emailPrefix}
             onChange={(e) => onCellChange(index, "emailPrefix", e.target.value.replace(/\s/g, "").toLowerCase())}
-            onFocus={() => onCellFocus(index)}
+            onFocus={onCellFocus}
             onBlur={onCellBlur}
             onKeyDown={(e) => onKeyDown(e, index, 2)}
             onPaste={(e) => onPaste(e, index, 2)}
@@ -326,7 +423,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
           type="text"
           value={row.password || ""}
           onChange={(e) => onCellChange(index, "password", e.target.value)}
-          onFocus={() => onCellFocus(index)}
+          onFocus={onCellFocus}
           onBlur={onCellBlur}
           onKeyDown={(e) => onKeyDown(e, index, 4)}
           onPaste={(e) => onPaste(e, index, 4)}
@@ -357,10 +454,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
           <input
             type="checkbox"
             checked={row.changePasswordAtNextLogin}
-            onChange={(e) => {
-              onCellFocus(index);
-              onCellChange(index, "changePasswordAtNextLogin", e.target.checked);
-            }}
+            onChange={(e) => onCellChange(index, "changePasswordAtNextLogin", e.target.checked)}
             className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
           />
         </div>
@@ -384,10 +478,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
           <input
             type="checkbox"
             checked={row.suspended}
-            onChange={(e) => {
-              onCellFocus(index);
-              onCellChange(index, "suspended", e.target.checked);
-            }}
+            onChange={(e) => onCellChange(index, "suspended", e.target.checked)}
             className="rounded text-red-600 focus:ring-red-500 w-3.5 h-3.5 cursor-pointer"
           />
         </div>
@@ -421,7 +512,6 @@ const SheetRowMemo = memo(function SheetRowMemo({
 
 export default function UserSheetEditor({
   users,
-
   orgUnits,
   domain,
   defaultOrgUnitPath,
@@ -440,30 +530,55 @@ export default function UserSheetEditor({
   const [fillEndCol, setFillEndCol] = useState<number | null>(null);
   const [fillDirection, setFillDirection] = useState<"vertical" | "horizontal" | null>(null);
 
-  // Mirror rows into a ref so useCallback handlers can read latest rows without being
-  // listed as deps (avoids re-creating every callback on every row change).
+  // Spec A: Lazy snapshot arming flag
+  const armedRef = useRef(true);
+
+  // State refs to guarantee stable useCallback identity without stale closures
   const rowsRef = useRef<SheetRow[]>([]);
   useEffect(() => { rowsRef.current = rows; }, [rows]);
 
-  // historyRef mirrors history for the same reason.
   const historyRef = useRef<SheetRow[][]>([]);
   useEffect(() => { historyRef.current = history; }, [history]);
 
+  const selectionStartRef = useRef(selectionStart);
+  useEffect(() => { selectionStartRef.current = selectionStart; }, [selectionStart]);
+
+  const selectionEndRef = useRef(selectionEnd);
+  useEffect(() => { selectionEndRef.current = selectionEnd; }, [selectionEnd]);
+
+  const isDraggingSelectionRef = useRef(isDraggingSelection);
+  useEffect(() => { isDraggingSelectionRef.current = isDraggingSelection; }, [isDraggingSelection]);
+
+  const isDraggingFillRef = useRef(isDraggingFill);
+  useEffect(() => { isDraggingFillRef.current = isDraggingFill; }, [isDraggingFill]);
+
+  const fillEndRowRef = useRef(fillEndRow);
+  useEffect(() => { fillEndRowRef.current = fillEndRow; }, [fillEndRow]);
+
+  const fillEndColRef = useRef(fillEndCol);
+  useEffect(() => { fillEndColRef.current = fillEndCol; }, [fillEndCol]);
+
+  const fillDirectionRef = useRef(fillDirection);
+  useEffect(() => { fillDirectionRef.current = fillDirection; }, [fillDirection]);
+
+  // Push snapshot to history stack
   const pushHistory = useCallback((currentRows: SheetRow[]) => {
     const snapshot = JSON.parse(JSON.stringify(currentRows)) as SheetRow[];
     setHistory((prev) => [...prev.slice(-49), snapshot]);
   }, []);
 
+  // Spec D: handleUndo decoupled from setHistory updater callback + re-arm flag
   const handleUndo = useCallback(() => {
-    setHistory((prevHistory) => {
-      if (prevHistory.length === 0) return prevHistory;
-      const previousState = prevHistory[prevHistory.length - 1];
-      setRows(previousState);
-      return prevHistory.slice(0, -1);
-    });
+    const prevHistory = historyRef.current;
+    if (prevHistory.length === 0) return;
+    const previousState = prevHistory[prevHistory.length - 1];
+    setRows(previousState);
+    setHistory((prev) => prev.slice(0, -1));
+    armedRef.current = true;
   }, []);
 
-  const getSelectionBounds = () => {
+  // Spec C: Memoized selection bounds and fill info
+  const selectionBounds = useMemo(() => {
     if (!selectionStart || !selectionEnd) return null;
     return {
       minRow: Math.min(selectionStart.row, selectionEnd.row),
@@ -471,10 +586,52 @@ export default function UserSheetEditor({
       minCol: Math.min(selectionStart.col, selectionEnd.col),
       maxCol: Math.max(selectionStart.col, selectionEnd.col),
     };
-  };
+  }, [selectionStart, selectionEnd]);
 
+  const fillInfo = useMemo(() => {
+    if (!isDraggingFill) return null;
+    return { fillEndRow, fillEndCol, fillDirection };
+  }, [isDraggingFill, fillEndRow, fillEndCol, fillDirection]);
 
-  const handleMouseDown = (e: React.MouseEvent, r: number, c: number) => {
+  // Helper using refs for stable callbacks
+  const getSelectionBoundsFromRef = useCallback(() => {
+    if (!selectionStartRef.current || !selectionEndRef.current) return null;
+    return {
+      minRow: Math.min(selectionStartRef.current.row, selectionEndRef.current.row),
+      maxRow: Math.max(selectionStartRef.current.row, selectionEndRef.current.row),
+      minCol: Math.min(selectionStartRef.current.col, selectionEndRef.current.col),
+      maxCol: Math.max(selectionStartRef.current.col, selectionEndRef.current.col),
+    };
+  }, []);
+
+  // Spec A: Lazy arming focus/blur handlers (no instant snapshot on focus/blur)
+  const handleCellFocus = useCallback(() => {
+    armedRef.current = true;
+  }, []);
+
+  const handleCellBlur = useCallback(() => {
+    armedRef.current = true;
+  }, []);
+
+  // Spec A: Commit snapshot on actual mutation if armed
+  const handleCellChange = useCallback((index: number, field: keyof SheetRow, value: any) => {
+    if (armedRef.current) {
+      pushHistory(rowsRef.current);
+      armedRef.current = false;
+    }
+    setRows((prev) => {
+      const next = [...prev];
+      const row = { ...next[index] };
+      (row as any)[field] = value;
+      row.isModified = !row.isNew;
+      validateRow(row);
+      next[index] = row;
+      return next;
+    });
+  }, [pushHistory]);
+
+  // Spec B: 7 Handler stabilization with useCallback + refs
+  const handleMouseDown = useCallback((e: React.MouseEvent, r: number, c: number) => {
     if ((e.target as HTMLElement).closest(".fill-handle")) return;
 
     const isInput = (e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "SELECT";
@@ -490,13 +647,13 @@ export default function UserSheetEditor({
         e.preventDefault();
       }
     }
-  };
+  }, []);
 
-  const handleMouseEnter = (r: number, c: number) => {
-    if (isDraggingSelection) {
+  const handleMouseEnter = useCallback((r: number, c: number) => {
+    if (isDraggingSelectionRef.current) {
       setSelectionEnd({ row: r, col: c });
-    } else if (isDraggingFill && selectionStart && selectionEnd) {
-      const bounds = getSelectionBounds();
+    } else if (isDraggingFillRef.current && selectionStartRef.current && selectionEndRef.current) {
+      const bounds = getSelectionBoundsFromRef();
       if (!bounds) return;
 
       const distY = Math.max(0, r - bounds.maxRow) + Math.max(0, bounds.minRow - r);
@@ -516,25 +673,25 @@ export default function UserSheetEditor({
         setFillEndRow(null);
       }
     }
-  };
+  }, [getSelectionBoundsFromRef]);
 
-  const handleFillMouseDown = (e: React.MouseEvent) => {
+  const handleFillMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingFill(true);
-    if (selectionEnd) {
-      setFillEndRow(selectionEnd.row);
-      setFillEndCol(selectionEnd.col);
+    if (selectionEndRef.current) {
+      setFillEndRow(selectionEndRef.current.row);
+      setFillEndCol(selectionEndRef.current.col);
       setFillDirection(null);
     }
-  };
+  }, []);
 
-  const handleFillDoubleClick = (e: React.MouseEvent) => {
+  const handleFillDoubleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!selectionStart || !selectionEnd) return;
-    const bounds = getSelectionBounds();
+    if (!selectionStartRef.current || !selectionEndRef.current) return;
+    const bounds = getSelectionBoundsFromRef();
     if (!bounds) return;
 
     const minR = bounds.minRow;
@@ -542,11 +699,10 @@ export default function UserSheetEditor({
     const minC = bounds.minCol;
     const maxC = bounds.maxCol;
 
-    const maxRows = rows.length;
-    if (maxR >= maxRows - 1) return; // Already at the bottom
+    const currentRows = rowsRef.current;
+    const maxRows = currentRows.length;
+    if (maxR >= maxRows - 1) return;
 
-    // Find neighboring column to match length
-    // We check left neighbor (minC - 1) first, then right neighbor (maxC + 1)
     let neighborCol = -1;
     if (minC > 0) {
       neighborCol = minC - 1;
@@ -554,19 +710,17 @@ export default function UserSheetEditor({
       neighborCol = maxC + 1;
     }
 
-    let fillToRow = maxRows - 1; // Fallback: end of table
+    let fillToRow = maxRows - 1;
 
     if (neighborCol !== -1) {
       const neighborField = FIELDS[neighborCol];
-      // Find the last contiguous non-empty row in the neighbor column starting from maxR
       let lastNonEmpty = maxR;
       for (let r = maxR + 1; r < maxRows; r++) {
-        const val = rows[r][neighborField];
+        const val = currentRows[r][neighborField];
         const isEmpty = val === undefined || val === null || String(val).trim() === "";
         if (!isEmpty) {
           lastNonEmpty = r;
         } else {
-          // Google Sheets double-click fills down to the last non-empty row of the contiguous block
           break;
         }
       }
@@ -576,11 +730,10 @@ export default function UserSheetEditor({
     }
 
     if (fillToRow <= maxR) {
-      // If contiguous search failed to find anything below, check overall last non-empty row in the sheet
       let lastNonEmptyRow = maxR;
       for (let r = maxR + 1; r < maxRows; r++) {
         const hasAnyData = FIELDS.some(f => {
-          const val = rows[r][f];
+          const val = currentRows[r][f];
           return val !== undefined && val !== null && String(val).trim() !== "" && val !== "/";
         });
         if (hasAnyData) {
@@ -596,8 +749,8 @@ export default function UserSheetEditor({
 
     if (fillToRow <= maxR) return;
 
-    // Snapshot for Undo
-    pushHistory(rows);
+    pushHistory(currentRows);
+    armedRef.current = true;
 
     setRows((prevRows) => {
       const nextRows = [...prevRows];
@@ -615,110 +768,12 @@ export default function UserSheetEditor({
       return nextRows;
     });
 
-    // Expand selection to include the filled range
     setSelectionEnd({ row: fillToRow, col: maxC });
-  };
+  }, [getSelectionBoundsFromRef, pushHistory]);
 
-  const FIELDS: (keyof SheetRow)[] = [
-    "familyName",
-    "givenName",
-    "emailPrefix",
-    "orgUnitPath",
-    "password",
-    "changePasswordAtNextLogin",
-    "suspended"
-  ];
-
-  const parseAndIncrement = (baseVal: any, step: number) => {
-    if (typeof baseVal === "boolean") {
-      return baseVal;
-    }
-    const str = String(baseVal || "");
-    const match = str.match(/(\d+)$/);
-    if (!match) return baseVal;
-
-    const numStr = match[1];
-    const prefix = str.substring(0, str.length - numStr.length);
-    const val = parseInt(numStr, 10) + step;
-    const paddedVal = String(Math.max(0, val)).padStart(numStr.length, "0");
-    return `${prefix}${paddedVal}`;
-  };
-
-  const getFilledValue = (colIdx: number, t: number, bounds: any, currentRows: SheetRow[]) => {
-    const fieldName = FIELDS[colIdx];
-    const minR = bounds.minRow;
-    const maxR = bounds.maxRow;
-    const L = maxR - minR + 1;
-
-    if (L === 1) {
-      const baseVal = currentRows[minR][fieldName];
-      const step = t - minR;
-      return parseAndIncrement(baseVal, step);
-    } else {
-      const vals = [];
-      for (let r = minR; r <= maxR; r++) {
-        vals.push(currentRows[r][fieldName]);
-      }
-
-      if (typeof vals[0] === "boolean") {
-        const idx = ((t - minR) % L + L) % L;
-        return vals[idx];
-      }
-
-      const parsedSuffixes = vals.map(v => {
-        const match = String(v || "").match(/(\d+)$/);
-        return match ? { prefix: String(v).substring(0, String(v).length - match[1].length), num: parseInt(match[1], 10), padLen: match[1].length } : null;
-      });
-
-      const allHaveNumbers = parsedSuffixes.every(p => p !== null);
-      const samePrefix = allHaveNumbers && parsedSuffixes.every(p => p!.prefix === parsedSuffixes[0]!.prefix);
-
-      if (allHaveNumbers && samePrefix) {
-        const diff = parsedSuffixes[1]!.num - parsedSuffixes[0]!.num;
-        let isArithmetic = true;
-        for (let i = 1; i < L - 1; i++) {
-          if (parsedSuffixes[i+1]!.num - parsedSuffixes[i]!.num !== diff) {
-            isArithmetic = false;
-            break;
-          }
-        }
-
-        if (isArithmetic) {
-          const step = t - minR;
-          const targetNum = parsedSuffixes[0]!.num + step * diff;
-          const prefix = parsedSuffixes[0]!.prefix;
-          const padLen = parsedSuffixes[0]!.padLen;
-          const paddedNum = String(Math.max(0, targetNum)).padStart(padLen, "0");
-          return `${prefix}${paddedNum}`;
-        }
-      }
-
-      const idx = ((t - minR) % L + L) % L;
-      return vals[idx];
-    }
-  };
-
-  const getHorizontalFilledValue = (r: number, tC: number, bounds: any, currentRows: SheetRow[]) => {
-    const minC = bounds.minCol;
-    const maxC = bounds.maxCol;
-    const L = maxC - minC + 1;
-
-    if (L === 1) {
-      const fieldName = FIELDS[minC];
-      const baseVal = currentRows[r][fieldName];
-      const step = tC - minC;
-      return parseAndIncrement(baseVal, step);
-    } else {
-      const idx = ((tC - minC) % L + L) % L;
-      const srcCol = minC + idx;
-      const srcFieldName = FIELDS[srcCol];
-      return currentRows[r][srcFieldName];
-    }
-  };
-
-  const executeDragFill = () => {
-    if (!selectionStart || !selectionEnd) return;
-    const bounds = getSelectionBounds();
+  const executeDragFill = useCallback(() => {
+    if (!selectionStartRef.current || !selectionEndRef.current) return;
+    const bounds = getSelectionBoundsFromRef();
     if (!bounds) return;
 
     const minR = bounds.minRow;
@@ -726,17 +781,22 @@ export default function UserSheetEditor({
     const minC = bounds.minCol;
     const maxC = bounds.maxCol;
 
-    if (fillDirection === "vertical" && fillEndRow !== null) {
+    const currentFillEndRow = fillEndRowRef.current;
+    const currentFillEndCol = fillEndColRef.current;
+    const currentFillDirection = fillDirectionRef.current;
+
+    if (currentFillDirection === "vertical" && currentFillEndRow !== null) {
       let targetRows: number[] = [];
-      if (fillEndRow > maxR) {
-        for (let r = maxR + 1; r <= fillEndRow; r++) targetRows.push(r);
-      } else if (fillEndRow < minR) {
-        for (let r = fillEndRow; r <= minR - 1; r++) targetRows.push(r);
+      if (currentFillEndRow > maxR) {
+        for (let r = maxR + 1; r <= currentFillEndRow; r++) targetRows.push(r);
+      } else if (currentFillEndRow < minR) {
+        for (let r = currentFillEndRow; r <= minR - 1; r++) targetRows.push(r);
       }
 
       if (targetRows.length === 0) return;
 
-      pushHistory(rows);
+      pushHistory(rowsRef.current);
+      armedRef.current = true;
 
       setRows((prevRows) => {
         const nextRows = [...prevRows];
@@ -754,20 +814,21 @@ export default function UserSheetEditor({
         return nextRows;
       });
 
-      setSelectionStart({ row: Math.min(minR, fillEndRow), col: minC });
-      setSelectionEnd({ row: Math.max(maxR, fillEndRow), col: maxC });
+      setSelectionStart({ row: Math.min(minR, currentFillEndRow), col: minC });
+      setSelectionEnd({ row: Math.max(maxR, currentFillEndRow), col: maxC });
     } 
-    else if (fillDirection === "horizontal" && fillEndCol !== null) {
+    else if (currentFillDirection === "horizontal" && currentFillEndCol !== null) {
       let targetCols: number[] = [];
-      if (fillEndCol > maxC) {
-        for (let c = maxC + 1; c <= fillEndCol; c++) targetCols.push(c);
-      } else if (fillEndCol < minC) {
-        for (let c = fillEndCol; c <= minC - 1; c++) targetCols.push(c);
+      if (currentFillEndCol > maxC) {
+        for (let c = maxC + 1; c <= currentFillEndCol; c++) targetCols.push(c);
+      } else if (currentFillEndCol < minC) {
+        for (let c = currentFillEndCol; c <= minC - 1; c++) targetCols.push(c);
       }
 
       if (targetCols.length === 0) return;
 
-      pushHistory(rows);
+      pushHistory(rowsRef.current);
+      armedRef.current = true;
 
       setRows((prevRows) => {
         const nextRows = [...prevRows];
@@ -785,24 +846,26 @@ export default function UserSheetEditor({
         return nextRows;
       });
 
-      setSelectionStart({ row: minR, col: Math.min(minC, fillEndCol) });
-      setSelectionEnd({ row: maxR, col: Math.max(maxC, fillEndCol) });
+      setSelectionStart({ row: minR, col: Math.min(minC, currentFillEndCol) });
+      setSelectionEnd({ row: maxR, col: Math.max(maxC, currentFillEndCol) });
     }
 
     setFillEndRow(null);
     setFillEndCol(null);
     setFillDirection(null);
-  };
+  }, [getSelectionBoundsFromRef, pushHistory]);
 
-  // Keyboard navigation & Ctrl+Z handler
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>, rowIndex: number, colIndex: number) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+  // Spec B & Spec D: Keydown handler with event propagation stop on Ctrl+Z
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLElement>, rowIndex: number, colIndex: number) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
+      e.stopPropagation();
       handleUndo();
       return;
     }
 
-    const maxRows = rows.length;
+    const currentRows = rowsRef.current;
+    const maxRows = currentRows.length;
     const maxCols = 5;
 
     const focusInput = (r: number, c: number) => {
@@ -822,7 +885,7 @@ export default function UserSheetEditor({
         e.preventDefault();
         focusInput(rowIndex + 1, colIndex);
         if (e.shiftKey) {
-          if (!selectionStart) setSelectionStart({ row: rowIndex, col: colIndex });
+          if (!selectionStartRef.current) setSelectionStart({ row: rowIndex, col: colIndex });
           setSelectionEnd((prev) => prev ? { row: Math.min(maxRows - 1, prev.row + 1), col: prev.col } : { row: rowIndex + 1, col: colIndex });
         } else {
           setSelectionStart({ row: rowIndex + 1, col: colIndex });
@@ -834,7 +897,7 @@ export default function UserSheetEditor({
         e.preventDefault();
         focusInput(rowIndex - 1, colIndex);
         if (e.shiftKey) {
-          if (!selectionStart) setSelectionStart({ row: rowIndex, col: colIndex });
+          if (!selectionStartRef.current) setSelectionStart({ row: rowIndex, col: colIndex });
           setSelectionEnd((prev) => prev ? { row: Math.max(0, prev.row - 1), col: prev.col } : { row: rowIndex - 1, col: colIndex });
         } else {
           setSelectionStart({ row: rowIndex - 1, col: colIndex });
@@ -852,7 +915,7 @@ export default function UserSheetEditor({
           e.preventDefault();
           focusInput(rowIndex, colIndex - 1);
           if (e.shiftKey) {
-            if (!selectionStart) setSelectionStart({ row: rowIndex, col: colIndex });
+            if (!selectionStartRef.current) setSelectionStart({ row: rowIndex, col: colIndex });
             setSelectionEnd((prev) => prev ? { row: prev.row, col: Math.max(0, prev.col - 1) } : { row: rowIndex, col: colIndex - 1 });
           } else {
             setSelectionStart({ row: rowIndex, col: colIndex - 1 });
@@ -871,7 +934,7 @@ export default function UserSheetEditor({
           e.preventDefault();
           focusInput(rowIndex, colIndex + 1);
           if (e.shiftKey) {
-            if (!selectionStart) setSelectionStart({ row: rowIndex, col: colIndex });
+            if (!selectionStartRef.current) setSelectionStart({ row: rowIndex, col: colIndex });
             setSelectionEnd((prev) => prev ? { row: prev.row, col: Math.min(maxCols - 1, prev.col + 1) } : { row: rowIndex, col: colIndex + 1 });
           } else {
             setSelectionStart({ row: rowIndex, col: colIndex + 1 });
@@ -880,17 +943,17 @@ export default function UserSheetEditor({
         }
       }
     }
-  };
+  }, [handleUndo]);
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>, rowIndex: number, colIndex: number) => {
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>, rowIndex: number, colIndex: number) => {
     e.preventDefault();
     const text = e.clipboardData.getData("text");
     if (!text) return;
 
-    // Excel/Google Sheets copy puts tab separated values for columns and newlines for rows
     const pastedRows = text.split(/\r?\n/).map((line) => line.split("\t"));
     
-    pushHistory(rows);
+    pushHistory(rowsRef.current);
+    armedRef.current = true;
 
     let defaultOU = "/";
     if (defaultOrgUnitPath && defaultOrgUnitPath !== "all") {
@@ -948,28 +1011,28 @@ export default function UserSheetEditor({
 
       return nextRows;
     });
-  };
+  }, [defaultOrgUnitPath, orgUnits, pushHistory]);
 
   // Global listeners for mouse move, mouse up, and keyboard Ctrl+Z
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
-      if (isDraggingSelection) {
+      if (isDraggingSelectionRef.current) {
         window.getSelection()?.removeAllRanges();
       }
     };
 
     const handleGlobalMouseUp = () => {
-      if (isDraggingSelection) {
+      if (isDraggingSelectionRef.current) {
         setIsDraggingSelection(false);
       }
-      if (isDraggingFill) {
+      if (isDraggingFillRef.current) {
         setIsDraggingFill(false);
         executeDragFill();
       }
     };
 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         handleUndo();
       }
@@ -984,7 +1047,7 @@ export default function UserSheetEditor({
       window.removeEventListener("mouseup", handleGlobalMouseUp);
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [isDraggingSelection, isDraggingFill, selectionStart, selectionEnd, fillEndRow, fillEndCol, fillDirection, rows, history]);
+  }, [executeDragFill, handleUndo]);
 
   // Initialize sheet rows from props
   useEffect(() => {
@@ -997,7 +1060,7 @@ export default function UserSheetEditor({
       givenName: u.name.givenName || "",
       emailPrefix: u.primaryEmail.split("@")[0] || "",
       orgUnitPath: u.orgUnitPath || "/",
-      password: "", // Optional for existing users
+      password: "",
       changePasswordAtNextLogin: false,
       suspended: !!u.suspended,
     }));
@@ -1005,9 +1068,9 @@ export default function UserSheetEditor({
   }, [users]);
 
   // Add new empty rows for bulk creation
-  const handleAddRow = () => {
+  const handleAddRow = useCallback(() => {
     const input = prompt("추가할 계정 행(Row)의 개수를 입력해 주세요. (예: 10 또는 100)", "1");
-    if (input === null) return; // cancel click
+    if (input === null) return;
     
     let count = parseInt(input.trim(), 10);
     if (isNaN(count) || count <= 0) {
@@ -1040,53 +1103,29 @@ export default function UserSheetEditor({
       changePasswordAtNextLogin: true,
       suspended: false,
     }));
-    pushHistory(rows);
+    pushHistory(rowsRef.current);
+    armedRef.current = true;
     setRows((prev) => [...prev, ...newRows]);
-  };
+  }, [defaultOrgUnitPath, orgUnits, pushHistory]);
 
-  // Remove a row (temporary added rows can be deleted instantly, existing users are locked)
-  const handleRemoveRow = (id: string, index: number) => {
-    const row = rows[index];
-    if (row.isNew) {
-      pushHistory(rows);
+  // Spec B: handleRemoveRow with useCallback
+  const handleRemoveRow = useCallback((id: string, index: number) => {
+    const row = rowsRef.current[index];
+    if (row && row.isNew) {
+      pushHistory(rowsRef.current);
+      armedRef.current = true;
       setRows((prev) => prev.filter((r) => r.id !== id));
     }
-  };
-
-  // Snapshot once when a cell receives focus (not on every keystroke).
-  // Stores the last-focused row index to avoid duplicate snapshots within the same cell edit.
-  const lastSnapshotRowRef = useRef<number>(-1);
-
-  const handleCellFocus = useCallback((index: number) => {
-    if (lastSnapshotRowRef.current === index) return;
-    lastSnapshotRowRef.current = index;
-    pushHistory(rowsRef.current);
   }, [pushHistory]);
 
-  // Reset the snapshot guard when the table loses focus entirely.
-  const handleCellBlur = useCallback(() => {
-    lastSnapshotRowRef.current = -1;
-  }, []);
-
-  // Update a specific cell — no history push here; done via handleCellFocus.
-  const handleCellChange = useCallback((index: number, field: keyof SheetRow, value: any) => {
-    setRows((prev) => {
-      const next = [...prev];
-      const row = { ...next[index] };
-      (row as any)[field] = value;
-      row.isModified = !row.isNew;
-      validateRow(row);
-      next[index] = row;
-      return next;
-    });
-  }, []);
-
   // Fill Down: Copies the target cell value down to all rows below it
-  const handleFillDownFrom = (startIndex: number, field: keyof SheetRow) => {
-    if (rows.length <= startIndex + 1) return;
-    const baseValue = rows[startIndex][field];
+  const handleFillDownFrom = useCallback((startIndex: number, field: keyof SheetRow) => {
+    const currentRows = rowsRef.current;
+    if (currentRows.length <= startIndex + 1) return;
+    const baseValue = currentRows[startIndex][field];
 
-    pushHistory(rows);
+    pushHistory(currentRows);
+    armedRef.current = true;
     setRows((prev) =>
       prev.map((row, idx) => {
         if (idx <= startIndex) return row;
@@ -1099,14 +1138,14 @@ export default function UserSheetEditor({
         return updatedRow;
       })
     );
-  };
+  }, [pushHistory]);
 
   // Auto-increment: Increments numeric suffixes in a text column starting from the target row down
-  const handleAutoIncrementFrom = (startIndex: number, field: keyof SheetRow) => {
-    if (rows.length <= startIndex + 1) return;
-    const baseValue = String(rows[startIndex][field] || "");
+  const handleAutoIncrementFrom = useCallback((startIndex: number, field: keyof SheetRow) => {
+    const currentRows = rowsRef.current;
+    if (currentRows.length <= startIndex + 1) return;
+    const baseValue = String(currentRows[startIndex][field] || "");
     
-    // Find the trailing number group
     const match = baseValue.match(/(\d+)$/);
     if (!match) {
       alert("기준 셀의 값에 숫자가 포함되어 있어야 순차 채우기가 가능합니다. (예: 25001)");
@@ -1118,12 +1157,12 @@ export default function UserSheetEditor({
     const prefix = baseValue.substring(0, baseValue.length - baseNumberStr.length);
     const padLength = baseNumberStr.length;
 
-    pushHistory(rows);
+    pushHistory(currentRows);
+    armedRef.current = true;
     setRows((prev) =>
       prev.map((row, idx) => {
         if (idx <= startIndex) return row;
         
-        // Calculate incremental value based on offset from startIndex
         const offset = idx - startIndex;
         const currentNum = baseNumber + offset;
         const paddedNum = String(currentNum).padStart(padLength, "0");
@@ -1138,11 +1177,10 @@ export default function UserSheetEditor({
         return updatedRow;
       })
     );
-  };
+  }, [pushHistory]);
 
   // Save changes by separating modifications & additions and sending to batch API
   const handleSaveChanges = async () => {
-    // Filter out completely empty new rows silently to avoid validation errors
     const activeRows = rows.filter((r) => {
       if (r.isNew) {
         const isCompletelyEmpty =
@@ -1152,10 +1190,9 @@ export default function UserSheetEditor({
           !r.password?.trim();
         return !isCompletelyEmpty;
       }
-      return true; // Keep all existing users
+      return true;
     });
 
-    // Recheck validations only for non-empty active rows
     const validatedRows = activeRows.map((r) => {
       const copy = { ...r };
       validateRow(copy);
@@ -1164,7 +1201,6 @@ export default function UserSheetEditor({
 
     const hasErrors = validatedRows.some((r) => r.error);
     if (hasErrors) {
-      // Sync errors back to screen rows
       setRows((prev) =>
         prev.map((originalRow) => {
           const matchingValidated = validatedRows.find((v) => v.id === originalRow.id);
@@ -1192,7 +1228,6 @@ export default function UserSheetEditor({
     const updates = validatedRows
       .filter((r) => !r.isNew && (r.isModified || `${r.emailPrefix.trim()}@${domain}` !== r.originalEmail || r.password));
 
-    // Map updates structure
     const mappedUpdates = updates.map((r) => {
       const updatePayload: any = {
         firstName: r.givenName.trim(),
@@ -1262,7 +1297,6 @@ export default function UserSheetEditor({
     }
   };
 
-  // Warning when leaving with unsaved changes
   const handleCancelWithWarning = () => {
     const hasUnsavedChanges = rows.some(
       (r) => r.isNew || r.isModified || (r.password && r.password.trim().length > 0)
@@ -1401,9 +1435,6 @@ export default function UserSheetEditor({
                 </td>
               </tr>
             ) : (
-              // Compute selection bounds once outside the loop.
-              // SheetRowMemo receives stable value props so React.memo can
-              // short-circuit rows whose data AND selection context are unchanged.
               rows.map((row, index) => {
                 return (
                   <SheetRowMemo
@@ -1412,8 +1443,8 @@ export default function UserSheetEditor({
                     index={index}
                     domain={domain}
                     orgUnits={orgUnits}
-                    selectionBounds={getSelectionBounds()}
-                    fillInfo={isDraggingFill ? { fillEndRow, fillEndCol, fillDirection } : null}
+                    selectionBounds={selectionBounds}
+                    fillInfo={fillInfo}
                     onMouseDown={handleMouseDown}
                     onMouseEnter={handleMouseEnter}
                     onFillMouseDown={handleFillMouseDown}
