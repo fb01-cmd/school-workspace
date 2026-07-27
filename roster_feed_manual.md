@@ -61,7 +61,7 @@
 ### 3-2. 호출 방법
 
 ```
-GET https://admin.hmh.or.kr/api/roster/feed
+GET https://portal.hmh.or.kr/api/roster/feed
 Authorization: Bearer hmh_sk_xxxxxxxx...
 ```
 
@@ -84,7 +84,7 @@ Authorization: Bearer hmh_sk_xxxxxxxx...
 function 명단가져오기() {
   const KEY = "hmh_sk_여기에_발급받은_키";
   const res = UrlFetchApp.fetch(
-    "https://admin.hmh.or.kr/api/roster/feed?grade=1",
+    "https://portal.hmh.or.kr/api/roster/feed?grade=1",
     { headers: { Authorization: "Bearer " + KEY } }
   );
   const students = JSON.parse(res.getContentText()).students;

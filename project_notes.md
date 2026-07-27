@@ -1782,3 +1782,10 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   4. **트리 뷰 일반 교사 노출 (스펙 §4 미달)**: 현재 "프로필 승인 대기" 메뉴가 super_admin 전용 섹션이라 일반 교사가 트리 뷰를 못 봄. 스펙은 교직원 전체 조회 — 트리 뷰만 일반 교사 메뉴에도 노출(배치는 Claude 확인 후).
 - 🟡 **보안 부채 기록 (신규 아님, 메신저 전 해결 필수)**: teacher_profiles 쓰기가 클라이언트 직접 setDoc + Firestore 규칙 `auth != null` — 학생 계정도 기술적으로 콘솔에서 조직도 조작 가능. 승인 흐름(기존)과 동일 패턴이라 이번 건 비차단이나, 조직도가 메신저 수신자 라우팅의 원본이 되는 순간 위변조 리스크가 실질화됨. **메신저 착수 전에 teacher_profiles·teacher_profiles_pending 역할 기반 규칙 또는 API 라우트 이관을 선행할 것** (Claude 설계 담당).
 - 배포: 도메인 전환(portal env)과 묶어 Claude가 vercel --prod 1회 실행.
+
+## [2026-07-27] Claude → 사용자 (도메인 전환 admin→portal — 배포 완료, 실로그인 확인 대기)
+
+- **완료**: ① Vercel에 portal.hmh.or.kr 부착(소유권 즉시 검증), ② Firebase 승인 도메인 API 등록, ③ 사용자 — uhost CNAME `portal` 추가 + GCP OAuth 원본/리디렉션 URI 추가, ④ `NEXT_PUBLIC_BASE_URL` → https://portal.hmh.or.kr 교체 후 vercel --prod (770effb+8c80cd8 포함 번들), ⑤ 네이키드/www 308 리디렉션 목적지 admin→portal 전환, ⑥ 문서 3종(operations_handbook·roster_feed_manual·deployment_checklist) URL 갱신.
+- **엣지 검증**: portal 307→/login ✅, hmh.or.kr·www 308→portal ✅, admin 아직 앱 직접 서빙(제거 전 안전망) ✅.
+- **함정 재발 기록**: DNS보다 Vercel 도메인 추가가 앞서 NXDOMAIN 네거티브 캐시 재발 — 이번엔 재추가로도 즉시 안 풀려 약 40분 대기 후 자연 해소(SOA minttl 86400 기준 최악 24h). **다음부터는 반드시 uhost 레코드 추가가 먼저, vercel domains add가 나중.** (deployment_checklist §2.5 순서 준수)
+- **사용자 결정**: admin.hmh.or.kr은 리디렉션 존치가 아니라 **완전 제거** — 1인 사용 단계라 안전망 가치 없음 + 학교 공용 도메인에 정체불명 레코드 잔류 방지. **portal 실로그인 확인 후** Vercel 도메인 제거 + Firebase 승인 도메인 제거 + uhost CNAME `admin` 삭제 + GCP OAuth admin 항목 삭제(사용자) 순으로 실행 예정.
