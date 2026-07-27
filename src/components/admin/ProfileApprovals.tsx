@@ -42,6 +42,12 @@ export default function ProfileApprovals() {
 
   const isSuperAdmin = userData?.role === "super_admin";
 
+  useEffect(() => {
+    if (userData && !isSuperAdmin) {
+      setActiveSubTab("tree");
+    }
+  }, [userData, isSuperAdmin]);
+
   // 이미 승인된 담임 현황 (`${grade}-${classNum}` -> 교사 정보 목록)
   const [approvedHomerooms, setApprovedHomerooms] = useState<
     Map<string, ApprovedTeacherInfo[]>

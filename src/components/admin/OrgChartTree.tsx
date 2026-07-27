@@ -5,6 +5,8 @@ import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
 import { collection, onSnapshot, query } from "firebase/firestore";
 
+import { getClientCache } from "@/lib/cache/clientCache";
+
 const DEFAULT_DEPARTMENTS = [
   "교장", "교감", "교목", "교무기획부", "교육연구부", "학생생활자치부",
   "교육과정부", "과학정보융합부", "건학인성부", "창의적체험활동부", "학력향상부",
@@ -26,6 +28,32 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
 
   const isSuperAdmin = userData?.role === "super_admin";
   const departmentOrder = schoolSettings?.departments || DEFAULT_DEPARTMENTS;
+
+  // GWS real name resolution map from client cache (users:all)
+  const gwsNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    const cachedUsers = getClientCache("users:all");
+    if (Array.isArray(cachedUsers)) {
+      cachedUsers.forEach((u: any) => {
+        const email = (u.primaryEmail || u.email || "").toLowerCase();
+        if (!email) return;
+        const name =
+          u.name?.fullName ||
+          (u.name?.familyName ? `${u.name.familyName}${u.name.givenName || ""}` : null);
+        if (name && typeof name === "string" && name.trim()) {
+          map.set(email, name.trim());
+        }
+      });
+    }
+    return map;
+  }, [profiles]);
+
+  const getDisplayName = (t: TeacherProfile) => {
+    const email = (t.email || "").toLowerCase();
+    const gwsName = gwsNameMap.get(email);
+    if (gwsName) return gwsName;
+    return t.name || email.split("@")[0];
+  };
 
   // Real-time subscription to teacher_profiles collection
   useEffect(() => {
@@ -95,8 +123,9 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
         const gradeNum = Number(gradeMatch[1]);
 
         return [...members].sort((a, b) => {
-          const aIsHead = !!a.deptHeadMap?.[deptName];
-          const bIsHead = !!b.deptHeadMap?.[deptName];
+          // Unified head fallback check
+          const aIsHead = !!a.deptHeadMap?.[deptName] || (a.departments?.length === 1 && a.isDeptHead);
+          const bIsHead = !!b.deptHeadMap?.[deptName] || (b.departments?.length === 1 && b.isDeptHead);
 
           // 1. Department Head first
           if (aIsHead && !bIsHead) return -1;
@@ -115,9 +144,9 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
             if (aClass !== bClass) return aClass - bClass;
           }
 
-          // 3. Remaining non-homeroom members sorted alphabetically by name
-          const aName = a.name || a.email;
-          const bName = b.name || b.email;
+          // 3. Remaining non-homeroom members sorted alphabetically by real name
+          const aName = getDisplayName(a);
+          const bName = getDisplayName(b);
           return aName.localeCompare(bName, "ko");
         });
       } else {
@@ -130,9 +159,9 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
           if (aIsHead && !bIsHead) return -1;
           if (!aIsHead && bIsHead) return 1;
 
-          // 2. Korean alphabetical order
-          const aName = a.name || a.email;
-          const bName = b.name || b.email;
+          // 2. Korean alphabetical order by real name
+          const aName = getDisplayName(a);
+          const bName = getDisplayName(b);
           return aName.localeCompare(bName, "ko");
         });
       }
@@ -141,7 +170,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
     // Filter profiles by search query if present
     const filteredProfiles = profiles.filter((p) => {
       if (!q) return true;
-      const name = (p.name || "").toLowerCase();
+      const name = getDisplayName(p).toLowerCase();
       const email = p.email.toLowerCase();
       const position = (p.position || "").toLowerCase();
       const depts = (p.departments || []).join(" ").toLowerCase();
@@ -282,7 +311,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
                           <div className="flex items-center gap-2.5 min-w-0">
                             <span className="text-slate-400 text-xs">👤</span>
                             <span className="text-sm font-bold text-slate-900">
-                              {teacher.name || teacher.email.split("@")[0]}
+                              {getDisplayName(teacher)}
                             </span>
                             <span className="text-xs text-slate-400 font-mono truncate max-w-[180px]">
                               {teacher.email}
@@ -364,7 +393,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
                     <div className="flex items-center gap-2.5">
                       <span className="text-slate-400 text-xs">👤</span>
                       <span className="text-sm font-bold text-slate-900">
-                        {teacher.name || teacher.email.split("@")[0]}
+                        {getDisplayName(teacher)}
                       </span>
                       <span className="text-xs text-slate-400 font-mono">
                         {teacher.email}

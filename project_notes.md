@@ -2,12 +2,7 @@
 
 ## 🔒 현재 작업 중 파일
 
-- `src/components/admin/OrgChartTree.tsx` (Antigravity - 후속 1/2번 GWS 실명 & 부장 폴백)
-- `src/components/admin/MyProfileModal.tsx` (Antigravity - 후속 1번 프로필 신청 실명 저장)
-- `src/components/admin/AutocompleteInput.tsx` (Antigravity - 후속 3번 inputRef 연결)
-- `src/components/admin/ManualProfileEditor.tsx` (Antigravity - 후속 3번 포커스 복귀)
-- `src/components/admin/ProfileApprovals.tsx` (Antigravity - 후속 4번 일반 교사 탭 기본값)
-- `src/app/admin/page.tsx` (Antigravity - 후속 4번 일반 교사 공통 도구 메뉴 노출)
+*(현재 비어 있음)*
 
 
 
@@ -1800,3 +1795,20 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - 사용자 portal.hmh.or.kr 실로그인 확인 → admin 제거 실행: ① Vercel 프로젝트 도메인 제거(현재 404, 잔여: portal / naked·www→portal 308 / school-workspace-eight.vercel.app), ② Firebase 승인 도메인 제거(잔여: localhost, firebaseapp.com, web.app, vercel.app, portal).
 - 사용자 잔여 액션 2건(비긴급): uhost CNAME `admin` 삭제, GCP OAuth에서 admin 원본·리디렉션 URI 2항목 삭제. **MX·SPF·A(naked)·www·portal 레코드는 절대 건드리지 않음.**
 - 외부 연동(roster feed)은 school-workspace-eight.vercel.app 영구 별칭 사용 중이라 무영향. **플랫폼 공식 주소 = https://portal.hmh.or.kr 확정.**
+
+## [2026-07-27] Antigravity → Claude (Phase 5.9 후속 4건 구현 완료 및 검증 결과)
+
+- **변경 파일**:
+  - `src/components/admin/OrgChartTree.tsx` (후속 1번 GWS 실명 해석/정렬/검색 적용 & 후속 2번 학년부 부장 레거시 폴백 통일)
+  - `src/components/admin/MyProfileModal.tsx` (후속 1번 프로필 신청 시 GWS 실명 결합 저장)
+  - `src/components/admin/AutocompleteInput.tsx` (후속 3번 optional `inputRef` 지원 추가)
+  - `src/components/admin/ManualProfileEditor.tsx` (후속 3번 수동 배치 완료 후 검색창 자동 포커스 복귀 연동)
+  - `src/components/admin/ProfileApprovals.tsx` (후속 4번 일반 교사 접속 시 기본 탭 `tree`로 자동 전환)
+  - `src/app/admin/page.tsx` (후속 4번 교직원 공통 도구에 `🌳 교직원 조직도` 사이드바 메뉴 추가)
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 Turbopack 29개 static/dynamic 라우트 정상 컴파일 및 static page 생성)
+- **후속 4건 구현 내용**:
+  1. **트리 뷰 GWS 실명 해석**: `OrgChartTree.tsx`에서 `getClientCache("users:all")`을 사용하여 이메일 아이디 레거시 명칭을 GWS 실명(`fullName` 또는 `familyName+givenName`)으로 해석하여 렌더링, 한국어 가나다 정렬, 검색 필터링에 우선 적용함. `MyProfileModal.tsx` 신청 시에도 실명을 우선 저장하도록 보완함.
+  2. **학년부 부장 레거시 폴백 통일**: `OrgChartTree.tsx`의 `sortMembersForDept` 학년부 정렬 비교자에 `(a.departments?.length === 1 && a.isDeptHead)` 부장 레거시 폴백 조건을 추가하여 뱃지 렌더링과 최상단 정렬 기준을 100% 동기화함.
+  3. **연속 입력 포커스 복귀 실작동**: `AutocompleteInput.tsx`에 optional `inputRef` prop을 지원하고 `ManualProfileEditor.tsx`에서 `searchInputRef`를 전달하여 배치 저장 완료 시 검색창으로 포커스가 자동 복귀하도록 구현함.
+  4. **트리 뷰 일반 교사 노출**: `src/app/admin/page.tsx` "교직원 공통 도구" 섹션에 `🌳 교직원 조직도` 메뉴를 추가하고, `ProfileApprovals.tsx`에서 일반 교사 로그인 시 기본 활성 탭이 `tree`(조직도 트리 뷰)로 자동 선택되도록 처리함.
+

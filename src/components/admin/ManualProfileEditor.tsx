@@ -276,6 +276,7 @@ export default function ManualProfileEditor({ initialEmail = "", onSuccess }: Pr
             domain={domain}
             onSelect={handleSelectUser}
             placeholder="이름 또는 이메일 검색 (예: 홍길동, teacher@hmh.or.kr)"
+            inputRef={searchInputRef}
           />
         </div>
         {loadingProfile && (

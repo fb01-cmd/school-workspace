@@ -8,6 +8,7 @@ interface AutocompleteInputProps {
   domain: string;
   onSelect: (email: string, name?: string) => void;
   className?: string;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 export default function AutocompleteInput({
@@ -18,6 +19,7 @@ export default function AutocompleteInput({
   domain,
   onSelect,
   className = "",
+  inputRef,
 }: AutocompleteInputProps) {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -182,6 +184,7 @@ export default function AutocompleteInput({
   return (
     <div ref={dropdownRef} className="relative w-full">
       <input
+        ref={inputRef}
         type="text"
         value={value}
         onChange={(e) => {

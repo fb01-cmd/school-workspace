@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
+import { getClientCache } from "@/lib/cache/clientCache";
 
 const DEFAULT_DEPARTMENTS = [
   "교장", "교감", "교목", "교무기획부", "교육연구부", "학생생활자치부",
@@ -96,7 +97,20 @@ export default function MyProfileModal({ onClose }: Props) {
 
     setSaving(true);
     try {
-      const name = userData.email.split("@")[0];
+      let name = (userData as any).name || (userData as any).displayName;
+      if (!name || name.includes("@")) {
+        const cachedUsers = getClientCache("users:all");
+        if (Array.isArray(cachedUsers)) {
+          const userEmail = userData.email.toLowerCase();
+          const found = cachedUsers.find((u: any) => (u.primaryEmail || u.email || "").toLowerCase() === userEmail);
+          if (found?.name) {
+            name = found.name.fullName || (found.name.familyName ? `${found.name.familyName}${found.name.givenName || ""}` : null);
+          }
+        }
+      }
+      if (!name) {
+        name = userData.email.split("@")[0];
+      }
       const isAnyDeptHead = Object.values(deptHeadMap).some(Boolean);
       const pendingRef = doc(db, "teacher_profiles_pending", userData.email);
       await setDoc(pendingRef, {
