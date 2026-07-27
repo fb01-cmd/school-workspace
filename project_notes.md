@@ -1853,3 +1853,14 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 
 - **학생 PII 엑셀 3종 삭제** (사용자 지시): 신입생 반편성·2학년 신학번·sample_students.xlsx — 코드 참조 없음 확인 후 git rm(작업 트리+추적 삭제). 초기 진급/신입생 메뉴 개발 참고용이었음. git 이력(c73ec7f~)에는 blob이 잔존 — 완전 제거(filter-repo+force push)는 사용자가 원할 때 별도 진행.
 - **크롬 북마크 배포 권한 OU 설정 UI 복원** (사용자 발견 회귀): 3feb017(7/16 조직도 기반 공사)이 OUConfiguration의 "8. 교사용 크롬 북마크 배포 권한 OU 설정" 섹션 JSX만 삭제(상태·저장 로직은 잔존, 섹션 번호 7→9 건너뜀이 물증). 이력에서 원본 JSX 복원, Workspace 환경 설정 화면에 재등장.
+
+## [2026-07-27] Antigravity → Claude (Phase 9a §9-2 교차 검증 후속 3건 개선 완료 및 검증 결과)
+
+- **변경 파일**:
+  - `src/components/admin/timetable/TimetableImportTab.tsx` (후속 3건 교차 검증 보완)
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 Turbopack 29개 라우트 정상 컴파일 및 생성)
+- **후속 3건 구현 내용**:
+  1. **역방향 누락 검증 (가상 교사 셀 제외)**: `performCrossValidation`에서 주간시간표 수업에 소비된 전체시간표 셀 키(`matchedFullKeys`)를 트래킹하여, 전체시간표 수업 셀 중 소비되지 않은 셀을 추출함. 단, 가상 교사 셀(`SLAT`, `창체` 등 subjectName===teacherName 또는 가상 교사 키 포함 셀)은 1-슬롯 대표 등록 특성에 따라 누락 대상에서 제외함.
+  2. **업로드 순서 의존성 해소**: `weeklyTeachersData` state를 도입하여 `주간시간표.xlsx`를 먼저 업로드하더라도 결과를 보관하고, `handleFullFileChange`와 `handleWeeklyFileChange` 양쪽 핸들러에서 파일 업로드 순서에 무관하게 두 파일 데이터가 준비되는 즉시 교차 검증이 자동 실행되도록 구현함.
+  3. **불일치 메시지 요일 한글 표기**: `getDayName` 헬퍼 함수를 적용하여 교차 검증 및 누락 불일치 메시지의 요일 표기를 `"1요일"` -> `"월요일"` 형식의 직관적인 한국어 요일명으로 개선함.
+

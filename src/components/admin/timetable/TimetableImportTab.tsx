@@ -46,6 +46,14 @@ export default function TimetableImportTab({
   const [fullScheduleSummary, setFullScheduleSummary] = useState("");
   const [weeklyScheduleSummary, setWeeklyScheduleSummary] = useState("");
 
+  // 주간시간표 파싱 결과 보관 (업로드 순서 독립적 교차 검증용)
+  const [weeklyTeachersData, setWeeklyTeachersData] = useState<{
+    teachers: { seq: number; name: string; teacherRaw: string; lessons: any[] }[];
+    duplicateWarnings: { name: string; seq: number; prevSeq: number }[];
+    occupiedCells: number;
+    freeCells: number;
+  } | null>(null);
+
   // 교차 검증 리포트
   const [crossValidation, setCrossValidation] = useState<{
     matchCount: number;
@@ -320,7 +328,13 @@ export default function TimetableImportTab({
     };
   };
 
-  // 교차 검증 헬퍼
+  // 요일 한글 표기 헬퍼 (1 -> "월", 2 -> "화", ...)
+  const getDayName = (day: number): string => {
+    const dayNames = ["", "월", "화", "수", "목", "금", "토", "일"];
+    return dayNames[day] || `${day}`;
+  };
+
+  // 교차 검증 헬퍼 (순방향 + 역방향 누락 검증)
   const performCrossValidation = (
     grids: IntermediateClassGrid[],
     weeklyTeachers: { seq: number; name: string; teacherRaw: string; lessons: any[] }[],
@@ -330,36 +344,57 @@ export default function TimetableImportTab({
   ) => {
     let matchCount = 0;
     const mismatchList: string[] = [];
+    const matchedFullKeys = new Set<string>();
 
-    const fullMap = new Map<string, { subjectName: string; teacherName: string }>();
+    const fullMap = new Map<string, { subjectName: string; teacherName: string; grade: number; classNum: number; day: number; period: number }>();
     grids.forEach((g) => {
       g.cells.forEach((c) => {
         const key = `${g.grade}-${g.classNum}-${c.day}-${c.period}`;
-        fullMap.set(key, { subjectName: c.subjectName, teacherName: c.teacherName });
+        fullMap.set(key, { subjectName: c.subjectName, teacherName: c.teacherName, grade: g.grade, classNum: g.classNum, day: c.day, period: c.period });
       });
     });
 
+    // 1. 순방향 검증 (주간시간표 -> 전체시간표)
     weeklyTeachers.forEach((t) => {
       t.lessons.forEach((l) => {
         if (l.grade && l.classNum) {
           const key = `${l.grade}-${l.classNum}-${l.day}-${l.period}`;
           const fullCell = fullMap.get(key);
+          const dayStr = getDayName(l.day);
           if (!fullCell) {
-            mismatchList.push(`[${l.day}요일 ${l.period}교시] 주간시간표(${t.name}) -> 전체시간표 해당 학급(${l.grade}-${l.classNum}반) 교시 없음`);
+            mismatchList.push(`[${dayStr}요일 ${l.period}교시] 주간시간표(${t.name}) -> 전체시간표 해당 학급(${l.grade}-${l.classNum}반) 교시 없음`);
           } else {
             const fullTeacher = fullCell.teacherName.trim();
             const fullSubj = fullCell.subjectName.trim();
             // 교사·과목 모두 일치해야 match — 과목만 같은 교사 오배정을 잡는 것이 교차 검증의 목적
             if (fullTeacher === t.name && fullSubj === l.subjectName) {
               matchCount++;
+              matchedFullKeys.add(key);
             } else if (fullTeacher === t.name) {
-              mismatchList.push(`[${l.day}요일 ${l.period}교시 ${l.grade}-${l.classNum}반] 과목 불일치: 전체시간표(${fullSubj}) vs 주간시간표(${l.subjectName}) — 교사 ${t.name}`);
+              mismatchList.push(`[${dayStr}요일 ${l.period}교시 ${l.grade}-${l.classNum}반] 과목 불일치: 전체시간표(${fullSubj}) vs 주간시간표(${l.subjectName}) — 교사 ${t.name}`);
             } else {
-              mismatchList.push(`[${l.day}요일 ${l.period}교시 ${l.grade}-${l.classNum}반] 교사 불일치: 전체시간표(${fullSubj}/${fullTeacher}) vs 주간시간표(${l.subjectName}/${t.name})`);
+              mismatchList.push(`[${dayStr}요일 ${l.period}교시 ${l.grade}-${l.classNum}반] 교사 불일치: 전체시간표(${fullSubj}/${fullTeacher}) vs 주간시간표(${l.subjectName}/${t.name})`);
             }
           }
         }
       });
+    });
+
+    // 2. 역방향 누락 검증 (전체시간표 -> 주간시간표) — 가상 교사 셀 제외
+    fullMap.forEach((cell, key) => {
+      const isVirtualTeacher =
+        cell.teacherName === cell.subjectName ||
+        cell.teacherName.includes("SLAT") ||
+        cell.teacherName.includes("창체") ||
+        cell.subjectName.includes("SLAT") ||
+        cell.subjectName.includes("창체");
+
+      if (!isVirtualTeacher && !matchedFullKeys.has(key)) {
+        const dayStr = getDayName(cell.day);
+        mismatchList.push(
+          `[${dayStr}요일 ${cell.period}교시 ${cell.grade}-${cell.classNum}반] 역방향 누락: 전체시간표 수업(${cell.subjectName}/${cell.teacherName})이 주간시간표에 존재하지 않음`
+        );
+      }
     });
 
     const realTeacherCount = weeklyTeachers.filter((t) => !t.name.includes("SLAT") && !t.name.includes("창체")).length;
@@ -376,7 +411,7 @@ export default function TimetableImportTab({
     });
   };
 
-  // 파일 업로드 핸들러
+  // 파일 업로드 핸들러 (업로드 순서에 구애받지 않고 양방향 트리거)
   const handleFullFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -390,6 +425,16 @@ export default function TimetableImportTab({
         setParsedGrids(grids);
         setFullScheduleSummary(`학급 ${grids.length}개, 수업 셀 ${totalOccupiedCells}개 파싱 완료`);
         setSourceNote(`컴시간 엑셀 업로드 (${file.name})`);
+
+        if (weeklyTeachersData) {
+          performCrossValidation(
+            grids,
+            weeklyTeachersData.teachers,
+            weeklyTeachersData.duplicateWarnings,
+            weeklyTeachersData.occupiedCells,
+            weeklyTeachersData.freeCells
+          );
+        }
       } catch (err: any) {
         alert(`전체시간표.xlsx 파싱 실패: ${err.message}`);
       }
@@ -409,6 +454,8 @@ export default function TimetableImportTab({
         const { teachers, occupiedCells, freeCells, duplicateWarnings, teacherTimeCounts } =
           parseWeeklyScheduleBuffer(buffer);
 
+        const weeklyInfo = { teachers, duplicateWarnings, occupiedCells, freeCells };
+        setWeeklyTeachersData(weeklyInfo);
         setWeeklyScheduleSummary(`교사 ${teachers.length}명, 수업 셀 ${occupiedCells}개, 공강 ${freeCells}개`);
         setParsedTimeCounts(teacherTimeCounts);
 
