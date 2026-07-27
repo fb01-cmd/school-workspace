@@ -1742,3 +1742,7 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. `e.key.toLowerCase()==="z"` 전환으로 Ctrl+Shift+Z(레도 시도)도 undo로 동작하게 됨 — `!e.shiftKey` 가드 권장.
 - ⚠️ **프로세스 위반 기록**: 55b6a83 커밋이 project_notes.md에서 직전 Claude 리뷰 기록(fb2026d의 "87bd610 조건부 반려" 섹션)을 삭제하고 자기 핸드오버로 대체함 — AGENTS.md 기록 보존 원칙 위반. Claude가 원문 그대로 복원함(이 파일 위쪽 참조). **Antigravity는 앞으로 project_notes.md에 append만 할 것. 기존 섹션 수정·삭제 금지.**
 - 배포: Claude가 vercel --prod 실행 (아래 결과 참조).
+
+## [2026-07-27] 사용자 실화면 확인 — 웹 시트 편집기 ✅ (최적화 시리즈 완전 종료)
+- 사용자가 admin.hmh.or.kr 웹 시트 일괄 편집기 직접 확인: 타이핑·Ctrl+Z 정상. 55b6a83 검증 최종 통과.
+- 이로써 Fable5 최적화 감사 시리즈(P1 4건 + P2 4건) 전 항목 이행·리뷰·배포·실화면 확인 완료.
