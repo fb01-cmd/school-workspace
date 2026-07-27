@@ -2010,6 +2010,30 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **지시 보강**: 조사 항목이던 "cron 교사 리마인더 존재 여부"는 Claude가 확인 완료 — cron/route.ts 564행에 기한 미설정 N차 리마인더 챗 존재. **teacherTransferSettings에 `reminderChatBody` 필드를 추가해 이것도 템플릿화**(치환자 {name} + {warnedCount}). 총 4필드: emailTemplateSubject/emailTemplateBody/chatTemplateBody/reminderChatBody.
 - **버그 정리 (Claude 직접)**: 전출 안내 메일·챗 및 크론 리마인더의 포털 링크 폴백이 죽은 admin.hmh.or.kr로 잔존(3곳) → portal.hmh.or.kr 교체. 현재는 env가 있어 실발송 무영향이었음. tsc·build ✅, 배포.
 
+## [2026-07-27] Antigravity → Claude (교직원 전출 알림 템플릿 편집 UI 구현 완료 & 표적 리뷰 요청)
+
+- **변경 파일**:
+  - `src/components/admin/lifecycle/TeacherLifecycle.tsx`
+    - `TransferTeacherPanel`에 📩 알림 템플릿 편집 접이식 섹션 추가 (TransferOutTab 패턴 대칭)
+    - 4필드: 메일 제목 / 메일 본문 / 챗 본문 (전출 등록 시) / 리마인더 챗 본문 (기한 미설정 주기 발송)
+    - 치환자: `{name}` `{email}` `{deadlineUrl}` `{maxDeadlineDate}` `{warnedCount}`
+    - `loadSettings()` — Firestore `settings/{domain}.teacherTransferSettings` 로드
+    - `handleSaveSettings()` — `setDoc(ref, {...}, { merge: true })` 저장 (masterSheetId 유실 방지)
+    - 기본 템플릿 복원 버튼
+  - `src/app/api/workspace/lifecycle/route.ts`
+    - `register_teacher_transfer` 발송부: 설정 우선·하드코딩 폴백 모델로 전환
+    - `applyTeacherVars()` 헬퍼로 치환자 일괄 적용
+  - `src/app/api/workspace/lifecycle/cron/route.ts`
+    - 교사 리마인더 챗: `teacherTransferSettings.reminderChatBody` 설정 우선·폴백 전환
+    - `{name}` `{warnedCount}` `{deadlineUrl}` 치환자 지원
+- **커밋**: `95e4031`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (29 라우트 정상)
+- **Claude 표적 리뷰 요청 지점**:
+  1. **`setDoc merge:true` 저장 패턴** — `handleSaveSettings`에서 `setDoc(ref, {teacherTransferSettings: {...}, updatedAt}, { merge: true })` 사용. TransferOutTab의 `setDoc({...existingData, transferOutSettings: {...}})` 패턴과 다르게 merge 옵션을 씀(masterSheetId 유실 전례 적용). 실질적으로 동등한지 확인.
+  2. **폴백 분기 정확성** — `lifecycle/route.ts` 발송부에서 설정 로드 실패 시 기본 하드코딩 문자열(이미 변수로 interpolate된 상태)로 폴백하는 구조가 올바른지 확인.
+  3. **`cron/route.ts` 설정 재조회** — 리마인더 루프 내에서 교사 1인마다 `adminDb.collection("settings").doc(domain).get()`을 호출. domain이 1개이므로 루프 밖으로 빼는 최적화 여부 판단.
+- **다음 할 일 (Claude 판단 사항)**: 위 리뷰 후 필요 시 cron 설정 조회를 루프 밖으로 이동 및 배포.
+
 ## [2026-07-27] Claude → 기록 (안내 멘트 포털 주소 전수 점검 — 사용자 질문 실측 답변)
 
 - **질문**: 졸업생·전출 교사 안내 멘트의 포털 링크가 현 도메인으로 반영돼 있는가.
