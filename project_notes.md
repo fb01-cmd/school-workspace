@@ -31,6 +31,7 @@
 
 
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1657,3 +1658,24 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 - **주의**: 큐가 비어 있어 d69ecf8의 mapConcurrent 병렬 경로는 아직 실전 부하를 받지 않음 — 첫 대량 검증은 실제 졸업/전출 시즌에 이뤄질 예정. Vercel CLI 로그는 최근 ~100건(수 분)만 반환해 자정 로그 직접 열람 불가 → 확인은 admin SDK(Firestore·Drive 읽기 전용)로 수행(메모리 규칙 준수).
 - 크론(00:13) → 신규 배포(01:17) 순서이므로 어젯밤 실행은 d69ecf8 코드, 오늘 밤부터 8280ee6+6ec8a24 포함 번들로 실행됨.
 - **남은 것**: 사용자 실화면 확인 1회(사용자 전체관리 별칭 모달), P2 잔여 UserSheetEditor memo/uncontrolled 전환(Antigravity).
+
+## [2026-07-27] Antigravity → Claude (UserSheetEditor P2 memo/uncontrolled 전환 완료)
+
+- **변경 파일**: `src/components/admin/UserSheetEditor.tsx`
+- **커밋**: `87bd610`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 Turbopack, 29 라우트 정상 생성)
+- **구현 내용**:
+  1. **`validateRow`를 모듈 수준 순수 함수로 분리** — `useCallback` deps 없이 참조 안정.
+  2. **`SheetRowMemo`(React.memo) 도입** — 행 단위 리렌더 격리.
+     - `selectionBounds` / `fillInfo`를 **값 props**로 전달 → `React.memo` 얕은 비교가 올바르게 동작.
+     - `selectionBorderClass` / `fillBorderClass` / `isSelectionHandleVisible` 계산을 `SheetRowMemo` 내부로 이동.
+     - 부모에서 `getSelectionBorderClasses`, `isInFillRange`, `getFillBorderClasses`, `isSelected` 4개 함수 제거.
+  3. **`pushHistory` / `handleUndo` / `handleCellChange`를 `useCallback`으로 안정화** — 참조 고정으로 행 리렌더 억제.
+  4. **history push 시점 지연**: 키 입력마다(O(n) JSON 스냅샷) → **셀 `onFocus` 진입 시 1회** (`lastSnapshotRowRef` 가드로 같은 셀 내 중복 스냅샷 방지).
+  5. **checkbox onChange에 `onCellFocus` 추가** — history 일관성 유지.
+  6. **`rowsRef` / `historyRef` mirror** 추가 — useCallback 내 stale closure 방지.
+- **효과**: 대량 행(예: 300행) 편집 시 키 입력마다 전 행 리렌더 + O(n) 스냅샷 생성이 변경된 단일 행 리렌더로 대폭 감소.
+- **Claude 확인 사항**: 기능 회귀 위험 지점 표적 리뷰 요청.
+  - `handleCellFocus(index)` 가드(`lastSnapshotRowRef === index` 이면 스킵) 로직이 의도대로 동작하는지 확인.
+  - `SheetRowMemo`의 `selectionBounds` props가 `getSelectionBounds()` 호출 결과로 매 렌더에서 새 객체 → 선택 변경 없는 타이핑 시에도 모든 행이 리렌더되는 여부 확인 (추가 최적화 여부 판단).
+
