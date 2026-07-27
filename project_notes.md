@@ -1643,3 +1643,17 @@ orphan GET이 `courses.find(c => c.teacherFolder?.id)`로 첫 번째 코스 폴�
 
 ### 재개 문구
 - Claude에게(새 대화): *"project_notes.md의 2026-07-27 마지막 체크포인트를 읽고, ① 8280ee6 표적 리뷰와 ② 어젯밤 크론 실행 결과 확인을 진행해줘."*
+## [2026-07-27] Claude → 사용자 (8280ee6 표적 리뷰 — ✅ 승인 & 어젯밤 크론 실행 결과 — ✅ 정상)
+
+### ① 8280ee6 표적 리뷰 (admin dynamic 분할·배너 시즌 차단·mapConcurrent 공용화) — 승인
+- **admin/page.tsx dynamic 분할**: 15개 탭 컴포넌트 전부 default export + switch/case 조건부 렌더 확인 — 분할이 실제로 지연 로딩으로 작동. 초기 마운트 컴포넌트(MyProfileCard, ClassroomCleanupBanner)는 정적 유지로 올바른 선택. 로딩 플래시는 탭 최초 1회만(청크 캐시 후 즉시) + TabLoading UI 제공 — UX 우려 해소. "use client" 페이지라 SSR 이슈 없음(인증 게이트 뒤라 초기 HTML 무의미).
+- **mapConcurrent 공용화**: transfer-enroll의 로컬 정의 제거 후 `@/lib/concurrency` 임포트 — 구현 자구 동일(verbatim move), 호출부 시그니처 불변. 저장소 전체에 로컬 중복 정의 잔재 없음(공용 모듈 1곳 + 소비 4파일).
+- **배너 시즌 차단**: 스누즈 체크 → 시즌 차단(1·2월 외 production 조기 return) → fetch 순서 정확. 🟡 경미: 클라이언트 로컬 시간 기준(기기 시간대 오설정 시 오차)·dev에서는 여전히 조회 — 둘 다 의도된 수준, 수정 불요.
+- 오늘 아침 로그의 `/api/workspace/classroom/cleanup` GET 다수는 ClassroomCleanupTab(탭 직접 열람) 발신으로 배너 차단과 무관 — 차단 코드는 01:17 KST 배포에 포함되어 라이브 상태.
+
+### ② 어젯밤 크론(2026-07-27 00:00 KST, d69ecf8 병렬화 후 첫 실전) — 정상 실행, 처리 0건·오류 0건
+- **실행 양성 증거**: 명렬표 마스터 시트(데이터베이스1)의 Drive modifiedTime = **2026-07-27 00:13:47 KST**, lastModifyingUser = admin@hmh.or.kr(크론의 임퍼소네이션) — 크론이 마스터 시트 갱신 단계까지 완주했음을 확인.
+- **처리 수치**: suspended/deleted/warned/errors = 0/0/0/0. 자정 창(23:30~01:30) audit_logs 0건이며, 이는 정상 — 작업 큐가 비어 있음: graduation_tasks 0건, transfer_out_tasks 0건, teacher_transfer_tasks 1건(hjl@ SUSPENDED 7/24, 영구삭제 기한 8/23이라 미도래). 기한 경과 미처리 항목 없음.
+- **주의**: 큐가 비어 있어 d69ecf8의 mapConcurrent 병렬 경로는 아직 실전 부하를 받지 않음 — 첫 대량 검증은 실제 졸업/전출 시즌에 이뤄질 예정. Vercel CLI 로그는 최근 ~100건(수 분)만 반환해 자정 로그 직접 열람 불가 → 확인은 admin SDK(Firestore·Drive 읽기 전용)로 수행(메모리 규칙 준수).
+- 크론(00:13) → 신규 배포(01:17) 순서이므로 어젯밤 실행은 d69ecf8 코드, 오늘 밤부터 8280ee6+6ec8a24 포함 번들로 실행됨.
+- **남은 것**: 사용자 실화면 확인 1회(사용자 전체관리 별칭 모달), P2 잔여 UserSheetEditor memo/uncontrolled 전환(Antigravity).
