@@ -552,6 +552,26 @@ export default function OUConfiguration() {
 
           <hr className="border-gray-200" />
 
+          {/* Chrome Bookmarks allowed OUs configuration — 3feb017에서 실수 삭제된 섹션 복원 (2026-07-27) */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              8. 교사용 크롬 북마크 배포 권한 OU 설정
+            </label>
+            <p className="text-gray-500 text-xs mb-3">
+              일반 교사들이 학생/교직원 크롬 브라우저에 북마크를 강제 배정할 때, 접근 및 조작을 허용할 조직단위(OU)를 체크해 주세요.
+              (상위 조직단위 선택 시 하위 조직단위 권한도 자동으로 상속됩니다.)
+            </p>
+            <div className="max-w-xl max-h-72 overflow-y-auto">
+              <OUCheckboxTree
+                orgUnits={orgUnits}
+                selected={allowedBookmarkOUs}
+                onChange={setAllowedBookmarkOUs}
+              />
+            </div>
+          </div>
+
+          <hr className="border-gray-200" />
+
           {/* === 일과표 설정 === */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
