@@ -15,6 +15,7 @@ import {
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import ManualProfileEditor from "@/components/admin/ManualProfileEditor";
 import OrgChartTree from "@/components/admin/OrgChartTree";
+import OrgChartBuilder from "@/components/admin/OrgChartBuilder";
 
 interface PendingProfile extends TeacherProfile {
   status: "PENDING" | "APPROVED" | "REJECTED";
@@ -186,8 +187,8 @@ export default function ProfileApprovals() {
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
             }`}
           >
-            <span>✍️</span>
-            <span>어드민 수동 배치</span>
+            <span>🏗️</span>
+            <span>조직도 빌더 (수동 배치)</span>
           </button>
         )}
 
@@ -381,17 +382,33 @@ export default function ProfileApprovals() {
         </div>
       )}
 
-      {/* Sub-tab 2: Super Admin Manual Profile Placement */}
+      {/* Sub-tab 2: Super Admin Org Chart Builder */}
       {activeSubTab === "manual" && isSuperAdmin && (
-        <ManualProfileEditor
-          initialEmail={selectedTeacherForEdit}
-          onSuccess={() => setSelectedTeacherForEdit("")}
-        />
+        <OrgChartBuilder onOpenDetailEdit={handleTriggerEditFromTree} />
       )}
 
       {/* Sub-tab 3: Org Chart Tree View */}
       {activeSubTab === "tree" && (
         <OrgChartTree onEditTeacher={handleTriggerEditFromTree} />
+      )}
+
+      {/* ✏️ 상세 수동 편집 모달 (ManualProfileEditor) */}
+      {selectedTeacherForEdit && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 relative">
+            <button
+              onClick={() => setSelectedTeacherForEdit("")}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold p-1"
+              title="닫기"
+            >
+              ✕
+            </button>
+            <ManualProfileEditor
+              initialEmail={selectedTeacherForEdit}
+              onSuccess={() => setSelectedTeacherForEdit("")}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

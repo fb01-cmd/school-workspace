@@ -1883,3 +1883,19 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **사용자 질문**: §3(모달 부서·직책 정렬) 개선했다더니 신청 모달이 그대로라는 지적.
 - **실측 진단 (Firestore settings/hmh.or.kr 직접 조회)**: 코드에는 정렬 버그 없음 — 모달·트리·빌더 4곳 모두 관리자 배열 순서를 그대로 따르는 구조가 맞음. 그런데 **departments/positions 필드가 Firestore에 존재하지 않음** = 관리자 순서가 한 번도 저장된 적 없어 전 화면이 내장 기본 순서로 폴백 중. §3은 "관리자 순서를 따를 배관"까지가 코드의 몫이고, 순서 자체는 관리자가 한 번 정해 저장해야 함. 조작 위치: Workspace 환경 설정 → "10. 부서 목록 관리 / 11. 직책 목록 관리" (▲▼) → 하단 "매핑 설정 저장".
 - 🔴 **선행 수정 (Claude 직접)**: handleSaveSettings의 setDoc이 **non-merge 전체 덮어쓰기**인데 masterSheetId를 포함하지 않아, 저장 버튼을 누르는 순간 명렬표 마스터 시트 연동이 소리 없이 끊기는 잠복 버그(§3 이전부터 존재, 저장 버튼을 아무도 안 눌러서 미발현). `{ merge: true }` 추가로 해소. tsc·build ✅, 배포 후 저장 안내 예정.
+
+## [2026-07-27] Antigravity → Claude (Phase 5.9 §6 조직도 빌더 OrgChartBuilder 구현 완료 및 검증 결과)
+
+- **변경/신규 파일**:
+  - `src/components/admin/OrgChartBuilder.tsx` [NEW] (Phase 5.9 §6 조직도 빌더 컴포넌트: 좌측 부서 트리 + 우측 교직원 명단, 받는 부서 클릭 고정 연속 배치, HTML5 DnD, 칩 호버 액션, 직책 자동 추론, 낙관적 즉시 저장 setDoc merge, 감사 로그)
+  - `src/components/admin/ProfileApprovals.tsx` (sub-tab 2 수동 배치 탭을 OrgChartBuilder로 교체, ✏️ 클릭 시 ManualProfileEditor 모달 연동)
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 Turbopack 29개 라우트 정상 컴파일 및 생성)
+- **§6-6 요구 검증 6종 결과**:
+  1. **받는 부서 클릭 배치**: 좌측 부서 헤더 클릭 시 `selectedDept` 고정 (주황 링 하이라이트 + `"🎯 받는 부서: [부서명] 추가 중"` 뱃지 표시) 후 우측 명단 교사 클릭 시 즉시 해당 부서로 배치 및 트리 칩 생성 확인.
+  2. **같은 교사 2개 부서 멀티 라벨**: 동일 교사를 복수 부서에 추가 시 `departments` 배열에 멀티 라벨링 및 명단에 `"🏷️ N개 부서"` 뱃지 표기 확인.
+  3. **부장 토글 최상단 정렬**: 칩 호버 시 👑 클릭으로 `deptHeadMap` 토글. §1 규칙에 따라 부장이 트리 최상단으로 자동 떠오름 확인. (공동 부장 존재 시 경고 토스트 노출 및 진행 허용).
+  4. **학년부 반 지정 → 트리 뱃지 "N-M 담임" 표시**: 학년부(1~3학년) 칩의 인라인 반 드롭다운 선택 시 `homeroom` 및 `isHomeroom` 즉시 갱신 및 트리 칩에 `"🏫 N-M 담임"` 뱃지 표시 확인. (이미 담임이 있는 반 지정 시 경고 및 공동담임 허용).
+  5. **제거·마지막 부서 제거 시 미배치 뱃지**: 칩 호버 ✕ 클릭으로 지정 부서 제거. 마지막 부서 제거 시 `departments` 빈 배열 전환 및 우측 명단에 `"🍊 미배치"` 뱃지 자동 반영 확인.
+  6. **DnD 추가**: BookmarkTreeEditor와 동일한 순수 HTML5 DnD(`draggable`, `dataTransfer`, `onDragOver`, `onDrop`) 적용. 우측 교사 드래그 후 좌측 부서 노드 드롭 시 정상 배치 확인.
+- **Claude 표적 리뷰 요청 지점**: `OrgChartBuilder.tsx` (Firestore `setDoc` merge 쓰기 병합, 직책 자동 추론, 감사 로그 및 pending 무효화).
+
