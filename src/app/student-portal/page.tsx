@@ -19,6 +19,11 @@ export default function StudentPortal() {
   const [loadingTask, setLoadingTask] = useState(true);
   const [showModal, setShowModal] = useState(false);
 
+  // Transfer out states
+  const [transferTask, setTransferTask] = useState<any>(null);
+  const [transferDate, setTransferDate] = useState("");
+  const [submittingDeadline, setSubmittingDeadline] = useState(false);
+
   // Form states
   const [checkingDeletion, setCheckingDeletion] = useState(false);
   const [checkingDownload, setCheckingDownload] = useState(false);
@@ -27,6 +32,17 @@ export default function StudentPortal() {
   const handleLogout = async () => {
     await logOut();
     router.push("/login");
+  };
+
+  const getKSTDateString = (d: Date): string => {
+    const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+    return kst.toISOString().split("T")[0];
+  };
+
+  const getTomorrowMinKST = (): string => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return getKSTDateString(tomorrow);
   };
 
   const loadGradTask = async () => {
@@ -57,9 +73,53 @@ export default function StudentPortal() {
     }
   };
 
+  const loadTransferTask = async () => {
+    if (!userData?.email || !userData?.domain) return;
+    try {
+      const snap = await getDoc(doc(db, "transfer_out_tasks", userData.domain, "students", userData.email));
+      if (snap.exists()) {
+        const data = snap.data();
+        setTransferTask(data);
+        if (data.suspendDueDate) {
+          const dl = data.suspendDueDate?.toDate ? data.suspendDueDate.toDate() : new Date(data.suspendDueDate);
+          setTransferDate(getKSTDateString(dl));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load student transfer task status:", err);
+    }
+  };
+
+  const handleSubmitTransferDeadline = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferDate || !userData?.email || !userData?.domain) return;
+    setSubmittingDeadline(true);
+    try {
+      const res = await fetch("/api/workspace/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "submit_student_transfer_deadline",
+          domain: userData.domain,
+          email: userData.email,
+          deadlineDate: transferDate,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "기한 설정 실패");
+      alert("계정 정지 희망일이 성공적으로 설정되었습니다.");
+      await loadTransferTask();
+    } catch (err: any) {
+      alert(`오류: ${err.message}`);
+    } finally {
+      setSubmittingDeadline(false);
+    }
+  };
+
   useEffect(() => {
     if (userData) {
       loadGradTask();
+      loadTransferTask();
     }
   }, [userData]);
 
@@ -286,6 +346,98 @@ export default function StudentPortal() {
                   </div>
                 </div>
               )}
+            {/* 전출/자퇴 계정 정지 희망일 설정 카드 */}
+            {transferTask && (
+              <div className="bg-white rounded-2xl border border-amber-200 p-6 shadow-xs flex flex-col justify-between md:col-span-2">
+                <div>
+                  <div className="flex items-center justify-between mb-3.5">
+                    <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                      <span>🚪</span>
+                      <span>전출/자퇴 계정 백업 및 정지일 설정</span>
+                    </h3>
+                    <span className={`text-xs px-2.5 py-1 rounded-lg font-bold border ${
+                      transferTask.status === "DEADLINE_SET"
+                        ? "bg-blue-50 text-blue-700 border-blue-100"
+                        : transferTask.status === "SUSPENDED"
+                        ? "bg-red-50 text-red-700 border-red-100"
+                        : "bg-amber-50 text-amber-700 border-amber-100 animate-pulse"
+                    }`}>
+                      {transferTask.status === "DEADLINE_SET" ? "기한 설정 완료" : transferTask.status === "SUSPENDED" ? "계정 정지됨" : "기한 미선택 (마지노선 적용)"}
+                    </span>
+                  </div>
+
+                  <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-4 text-xs text-amber-900 leading-relaxed mb-4">
+                    <p className="font-bold text-amber-900 mb-1">📋 계정 정리 안내</p>
+                    <p>전출/자퇴 처리에 따라 교과 클래스룸 및 보안 연동 그룹에서 제외되었습니다.</p>
+                    <p>데이터 백업을 완료하실 <strong>계정 정지 희망 날짜</strong>를 선택해 주세요.</p>
+                    <p className="text-amber-800 mt-1 font-medium">
+                      ▪ 최장 마지노선: <strong>{transferTask.maxSuspendDueDate ? getKSTDateString(transferTask.maxSuspendDueDate.toDate ? transferTask.maxSuspendDueDate.toDate() : new Date(transferTask.maxSuspendDueDate)) : getKSTDateString(transferTask.suspendDueDate?.toDate ? transferTask.suspendDueDate.toDate() : new Date(transferTask.suspendDueDate))}</strong><br />
+                      ▪ 영구 삭제 예정: 계정 일시정지 후 <strong>7일 경과 시</strong>
+                    </p>
+                  </div>
+
+                  {transferTask.status !== "SUSPENDED" && (
+                    <form onSubmit={handleSubmitTransferDeadline} className="space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          📅 계정 정지 희망 날짜 (내일부터 마지노선까지 선택 가능)
+                        </label>
+                        <input
+                          type="date"
+                          value={transferDate}
+                          min={getTomorrowMinKST()}
+                          max={transferTask.maxSuspendDueDate ? getKSTDateString(transferTask.maxSuspendDueDate.toDate ? transferTask.maxSuspendDueDate.toDate() : new Date(transferTask.maxSuspendDueDate)) : getKSTDateString(transferTask.suspendDueDate?.toDate ? transferTask.suspendDueDate.toDate() : new Date(transferTask.suspendDueDate))}
+                          onChange={(e) => setTransferDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          required
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={submittingDeadline}
+                        className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs disabled:opacity-50 transition-colors shadow-sm"
+                      >
+                        {submittingDeadline ? "저장 중..." : "⏰ 계정 정지 희망일 저장하기"}
+                      </button>
+                    </form>
+                  )}
+
+                  {/* 백업 가이드 다운로드 링크 모음 */}
+                  <div className="border-t border-slate-100 mt-4 pt-4 space-y-2">
+                    <p className="text-xs font-bold text-slate-700">💾 데이터 이전/백업 가이드</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <a
+                        href="https://www.iorad.com/player/1813583/GW---------------------#trysteps-1"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 text-xs hover:bg-slate-50 text-slate-600 font-medium transition-colors"
+                      >
+                        <span>타 계정 전송 가이드</span>
+                        <span>↗️</span>
+                      </a>
+                      <a
+                        href="https://www.iorad.com/player/1765417/--------------#trysteps-1"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 text-xs hover:bg-slate-50 text-slate-600 font-medium transition-colors"
+                      >
+                        <span>내 PC 다운로드 가이드</span>
+                        <span>↗️</span>
+                      </a>
+                      <a
+                        href="https://takeout.google.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 text-xs hover:bg-slate-50 text-slate-600 font-medium transition-colors"
+                      >
+                        <span>구글 테이크아웃</span>
+                        <span>↗️</span>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

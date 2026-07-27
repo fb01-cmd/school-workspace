@@ -36,8 +36,11 @@ const DEFAULT_EMAIL_BODY = `[효명고등학교 계정관리시스템]
 {name}님의 전출/자퇴 처리에 따른 구글 워크스페이스 계정 정지 및 데이터 백업 안내입니다.
 학교를 떠나게 됨에 따라 사용 중이던 학교 구글 워크스페이스 계정({email})이 정리될 예정입니다.
 
-■ 계정 일시정지 예정일: {suspendDate} ({suspendGraceDays}일 후)
-■ 계정 영구삭제 예정일: {deleteDate} ({deleteGraceDays}일 후)
+■ 계정 일시정지 마지노선: {maxSuspendDate} ({suspendGraceDays}일 후)
+■ 계정 영구삭제 예정일: 일시정지 후 {deleteGraceDays}일 경과 시
+
+👉 학생 포털에서 계정 정지 희망일 직접 설정하기:
+{deadlineUrl}
 
 계정이 일시정지되면 로그인 및 메일, 드라이브 등의 모든 구글 서비스 이용이 차단되므로, 정지 예정일 전까지 구글 테이크아웃 등을 통해 중요 데이터(과제, 자료 등)를 반드시 백업해 주시기 바랍니다.
 
@@ -49,7 +52,10 @@ const DEFAULT_EMAIL_BODY = `[효명고등학교 계정관리시스템]
 감사합니다.`;
 
 const DEFAULT_CHAT_BODY = `📢 [효명고등학교 계정관리시스템]
-{name}님의 전출/자퇴 처리에 따라 사용 중이던 학교 계정({email})이 {suspendDate}에 일시정지 및 {deleteDate}에 영구 삭제될 예정입니다. 
+{name}님의 전출/자퇴 처리에 따라 사용 중이던 학교 계정({email})이 정리될 예정입니다. 
+
+👉 학생 포털에서 계정 정지 희망일 직접 설정하기:
+{deadlineUrl} (최대 마지노선: {maxSuspendDate})
 
 아래 튜토리얼 가이드를 참고하여 중요한 자료는 그 전까지 반드시 개인 기기로 다운로드하거나 타 계정으로 전송하여 백업해 주시기 바랍니다.
 - 데이터 다운로드 가이드: https://www.iorad.com/player/1765417/--------------#trysteps-1
@@ -71,9 +77,9 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
   const [err, setErr] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  // Settings states
-  const [suspendGraceDays, setSuspendGraceDays] = useState<number>(7);
-  const [deleteGraceDays, setDeleteGraceDays] = useState<number>(30);
+  // Settings states (기본값: 마지노선 30일, 정지 후 삭제 7일)
+  const [suspendGraceDays, setSuspendGraceDays] = useState<number>(30);
+  const [deleteGraceDays, setDeleteGraceDays] = useState<number>(7);
   const [emailTemplateSubject, setEmailTemplateSubject] = useState<string>(DEFAULT_EMAIL_SUBJECT);
   const [emailTemplateBody, setEmailTemplateBody] = useState<string>(DEFAULT_EMAIL_BODY);
   const [chatTemplateBody, setChatTemplateBody] = useState<string>(DEFAULT_CHAT_BODY);
@@ -111,8 +117,8 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
       if (settingsSnap.exists()) {
         const sData = settingsSnap.data();
         if (sData.transferOutSettings) {
-          setSuspendGraceDays(sData.transferOutSettings.suspendGraceDays ?? 7);
-          setDeleteGraceDays(sData.transferOutSettings.deleteGraceDays ?? 30);
+          setSuspendGraceDays(sData.transferOutSettings.suspendGraceDays ?? 30);
+          setDeleteGraceDays(sData.transferOutSettings.deleteGraceDays ?? 7);
           setEmailTemplateSubject(sData.transferOutSettings.emailTemplateSubject || "[안내] 전출/자퇴로 인한 구글 워크스페이스 계정 정지 및 데이터 백업 안내");
           setEmailTemplateBody(sData.transferOutSettings.emailTemplateBody ?? "");
           setChatTemplateBody(sData.transferOutSettings.chatTemplateBody ?? "");
@@ -214,31 +220,16 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
     setErr("");
     try {
       const settingsRef = doc(db, "settings", domain);
-      const settingsSnap = await getDoc(settingsRef);
-      if (settingsSnap.exists()) {
-        await setDoc(settingsRef, {
-          ...settingsSnap.data(),
-          transferOutSettings: {
-            suspendGraceDays,
-            deleteGraceDays,
-            emailTemplateSubject,
-            emailTemplateBody,
-            chatTemplateBody,
-          },
-          updatedAt: new Date(),
-        });
-      } else {
-        await setDoc(settingsRef, {
-          transferOutSettings: {
-            suspendGraceDays,
-            deleteGraceDays,
-            emailTemplateSubject,
-            emailTemplateBody,
-            chatTemplateBody,
-          },
-          updatedAt: new Date(),
-        });
-      }
+      await setDoc(settingsRef, {
+        transferOutSettings: {
+          suspendGraceDays,
+          deleteGraceDays,
+          emailTemplateSubject,
+          emailTemplateBody,
+          chatTemplateBody,
+        },
+        updatedAt: new Date(),
+      }, { merge: true });
       alert("설정이 성공적으로 저장되었습니다!");
     } catch (e: any) {
       setErr(`설정 저장 실패: ${e.message}`);
@@ -292,10 +283,10 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
           1. 학생이 전출 또는 학업중단 처리될 시, <strong>즉시 전출자 전용 격리 OU로 이동</strong>하고 속한 <strong>모든 학급 그룹스에서 즉시 강제 탈퇴</strong>시킵니다. (신학기 진급/그룹 작업에서 원천 차단)
         </p>
         <p>
-          2. 격리 직후 학생의 메일/구글챗 등으로 데이터 다운로드(백업)를 유도하는 <strong>안내 알림이 자동으로 전송</strong>됩니다.
+          2. 격리 직후 학생의 메일/구글챗 등으로 데이터 다운로드(백업) 및 <strong>셀프 정지 희망일 설정 안내 알림이 자동으로 전송</strong>됩니다.
         </p>
         <p>
-          3. 설정된 유예일수 경과 후 <strong>일시정지</strong>, 이후 최종적으로 <strong>계정 영구삭제</strong> 프로세스가 진행됩니다. (어드민 설정에서 기간/문구 커스터마이징 가능)
+          3. 학생 미설정 시 최장 마지노선 경과 후 <strong>일시정지</strong>, 정지 후 설정 유예기간 경과 시 <strong>계정 영구삭제</strong> 프로세스가 진행됩니다.
         </p>
       </div>
 
@@ -305,7 +296,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
           onClick={() => setShowSettingsAccordion(!showSettingsAccordion)}
           className="w-full px-5 py-4 flex items-center justify-between text-left font-bold text-gray-800 bg-slate-50/50 hover:bg-slate-50 transition-colors border-b border-gray-100"
         >
-          <span className="flex items-center gap-2">⚙️ 전출·학업중단 고급 설정 (유예 기간 및 안내 템플릿)</span>
+          <span className="flex items-center gap-2">⚙️ 전출·학업중단 고급 설정 (마지노선 및 안내 템플릿)</span>
           <span className="text-gray-400 text-xs font-semibold">
             {showSettingsAccordion ? "접기 ▲" : "펼치기 ▼"}
           </span>
@@ -316,7 +307,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  일시정지 유예 기간
+                  자동 정지 마지노선 (등록일 기준)
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -327,14 +318,14 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                     onChange={(e) => setSuspendGraceDays(Math.max(0, parseInt(e.target.value) || 0))}
                     className="w-20 px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800 font-medium"
                   />
-                  <span className="text-xs text-gray-600">일 후 계정 정지</span>
+                  <span className="text-xs text-gray-600">일 후 계정 정지 (마지노선)</span>
                 </div>
-                <span className="text-[10px] text-gray-400 mt-1 block font-medium">전출 등록 직후 계정이 정지될 때까지의 자료 백업/이전 유예 기간입니다.</span>
+                <span className="text-[10px] text-gray-400 mt-1 block font-medium">전출 등록 직후 학생이 포털에서 직접 정지 기한을 선택하지 않을 경우 자동 정지되는 최장 마지노선 기간입니다. (기본 30일)</span>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  영구삭제 유예 기간
+                  영구삭제 유예 기간 (정지일 기준)
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -345,9 +336,9 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                     onChange={(e) => setDeleteGraceDays(Math.max(0, parseInt(e.target.value) || 0))}
                     className="w-20 px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800 font-medium"
                   />
-                  <span className="text-xs text-gray-600">일 후 계정 삭제</span>
+                  <span className="text-xs text-gray-600">일 후 계정 영구 삭제</span>
                 </div>
-                <span className="text-[10px] text-gray-400 mt-1 block font-medium">계정이 정지된 시점부터 계정이 영구 삭제(Delete)될 때까지의 유예 기간입니다.</span>
+                <span className="text-[10px] text-gray-400 mt-1 block font-medium">계정이 일시정지(Suspend)된 시점부터 계정이 영구 삭제(Delete)될 때까지의 유예 기간입니다. (기본 7일)</span>
               </div>
             </div>
 
@@ -372,7 +363,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                 </button>
               </div>
               <p className="text-[10px] text-gray-400 leading-relaxed font-medium">
-                사용 가능한 치환자: <code>{"{name}"}</code> (이름), <code>{"{email}"}</code> (이메일), <code>{"{suspendDate}"}</code> (정지예정일), <code>{"{deleteDate}"}</code> (삭제예정일), <code>{"{suspendGraceDays}"}</code> (정지유예일수), <code>{"{deleteGraceDays}"}</code> (삭제유예일수)
+                사용 가능한 치환자: <code>{"{name}"}</code> (이름), <code>{"{email}"}</code> (이메일), <code>{"{suspendDate}"}</code> (정지예정일), <code>{"{deleteDate}"}</code> (삭제예정일), <code>{"{deadlineUrl}"}</code> (포털 기한설정 링크), <code>{"{maxSuspendDate}"}</code> (마지노선일), <code>{"{suspendGraceDays}"}</code> (마지노선일수), <code>{"{deleteGraceDays}"}</code> (삭제유예일수)
               </p>
 
               <div className="space-y-3.5">

@@ -34,36 +34,42 @@ export async function POST(req: NextRequest) {
 
     // ─────────────────────────────────────────
     // 🔐 서버 사이드 인증 가드
-    // 전출 교사가 본인 데드라인을 제출하는 액션은 일반 교사도 허용, 나머지는 수퍼어드민 전용
+    // 교사/학생 셀프 기한 제출 및 상태 조회 액션은 일반 사용자 계정도 허용, 나머지는 수퍼어드민 전용
     // ─────────────────────────────────────────
     const TEACHER_ALLOWED_ACTIONS = ["submit_teacher_deadline", "get_teacher_transfer_status", "join_security_group"];
+    const STUDENT_ALLOWED_ACTIONS = ["submit_student_transfer_deadline", "get_student_transfer_status"];
     const authUser = await verifyAuthAccess(req);
     if (!authUser) {
       return NextResponse.json({ error: "인증되지 않은 요청입니다." }, { status: 401 });
     }
     if (
       authUser.role !== "super_admin" &&
-      !TEACHER_ALLOWED_ACTIONS.includes(action)
+      !TEACHER_ALLOWED_ACTIONS.includes(action) &&
+      !STUDENT_ALLOWED_ACTIONS.includes(action)
     ) {
       return NextResponse.json({ error: "관리자 권한이 필요합니다." }, { status: 403 });
     }
     // join_security_group: 로그인한 교사 본인의 셀프 가입 전용.
-    // 학생 역할은 차단하고, 대상 이메일은 토큰의 본인 이메일로 강제해
-    // 임의 이메일을 교사 보안그룹에 넣는 권한 상승을 막는다.
     if (action === "join_security_group" && authUser.role !== "super_admin") {
       if (authUser.role !== "teacher") {
         return NextResponse.json({ error: "교사 계정만 사용할 수 있는 기능입니다." }, { status: 403 });
       }
       body.teacherEmail = authUser.email;
     }
-    // submit_teacher_deadline / get_teacher_transfer_status: 본인 레코드 전용.
-    // 대상 이메일을 토큰의 본인 이메일로 강제 — 미강제 시 일반 교사가 타인의 기한을
-    // 과거 날짜로 제출해 동료 전출 계정을 즉시 정지시킬 수 있는 권한 상승 구멍이 된다.
+    // submit_teacher_deadline / get_teacher_transfer_status: 교사 본인 레코드 전용.
     if (
       (action === "submit_teacher_deadline" || action === "get_teacher_transfer_status") &&
       authUser.role !== "super_admin"
     ) {
       body.teacherEmail = authUser.email;
+    }
+    // submit_student_transfer_deadline / get_student_transfer_status: 학생 본인 레코드 전용.
+    // 대상 이메일을 토큰의 본인 이메일로 강제 — 타 학생 기한을 악의적으로 변경하는 권한 상승 구멍 차단.
+    if (
+      (action === "submit_student_transfer_deadline" || action === "get_student_transfer_status") &&
+      authUser.role !== "super_admin"
+    ) {
+      body.email = authUser.email;
     }
 
     const adminEmail = operatorEmail || authUser.email || "unknown@domain.com";
@@ -379,10 +385,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "이메일이 누락되었습니다." }, { status: 400 });
       }
 
-      // 1. 설정에서 전출/자퇴자용 OU 경로 조회
+      // 1. 설정에서 전출/자퇴자용 OU 경로 조회 (기본값: 마지노선 30일, 정지 후 삭제 7일)
       let transferOutOU = "/학생/전출및자퇴";
-      let suspendGraceDays = 7;
-      let deleteGraceDays = 30;
+      let suspendGraceDays = 30;
+      let deleteGraceDays = 7;
 
       if (domain) {
         const settingsSnap = await adminDb.collection("settings").doc(domain).get();
@@ -392,8 +398,8 @@ export async function POST(req: NextRequest) {
             transferOutOU = sData.ouMapping.transferOut;
           }
           if (sData.transferOutSettings) {
-            suspendGraceDays = Number(sData.transferOutSettings.suspendGraceDays) || 7;
-            deleteGraceDays = Number(sData.transferOutSettings.deleteGraceDays) || 30;
+            suspendGraceDays = Number(sData.transferOutSettings.suspendGraceDays) || 30;
+            deleteGraceDays = Number(sData.transferOutSettings.deleteGraceDays) || 7;
           }
         }
       }
@@ -422,7 +428,7 @@ export async function POST(req: NextRequest) {
         console.warn("그룹스 목록 조회 실패:", grpListErr);
       }
 
-      // 4. Firestore에 전출 진행 태스크 등록
+      // 4. Firestore에 전출 진행 태스크 등록 (maxSuspendDueDate 상한 고정)
       const now = new Date();
       const suspendDueDate = new Date(now.getTime() + suspendGraceDays * 24 * 60 * 60 * 1000);
       const deleteDueDate = new Date(suspendDueDate.getTime() + deleteGraceDays * 24 * 60 * 60 * 1000);
@@ -437,34 +443,41 @@ export async function POST(req: NextRequest) {
         status: "OU_MOVED",
         registeredAt: now,
         suspendDueDate,
+        maxSuspendDueDate: suspendDueDate, // 학생 셀프 설정 상한일
         deleteDueDate,
         suspendedAt: null,
         deletedAt: null,
       };
       await taskRef.set(taskData);
 
+      // 치환자 공통 헬퍼
+      const studentDeadlineUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/student-portal`;
+      const maxSuspendDateStr = suspendDueDate.toLocaleDateString("ko-KR");
+      const applyStudentVars = (tpl: string) =>
+        tpl
+          .replace(/\{name\}/g, studentName || "학생")
+          .replace(/\{email\}/g, email)
+          .replace(/\{suspendDate\}/g, suspendDueDate.toLocaleDateString("ko-KR"))
+          .replace(/\{deleteDate\}/g, deleteDueDate.toLocaleDateString("ko-KR"))
+          .replace(/\{deadlineUrl\}/g, studentDeadlineUrl)
+          .replace(/\{maxSuspendDate\}/g, maxSuspendDateStr)
+          .replace(/\{suspendGraceDays\}/g, String(suspendGraceDays))
+          .replace(/\{deleteGraceDays\}/g, String(deleteGraceDays));
+
       // 5. Gmail 발송 (설정에 저장된 템플릿 사용)
       try {
-        // 설정에서 이메일 제목/본문 템플릿 로드
         let emailSubject = "[안내] 전출/자퇴로 인한 구글 워크스페이스 계정 정지 및 데이터 백업 안내";
-        let emailBody = `[효명고등학교 계정관리시스템]\n\n${studentName}님의 전출/자퇴 처리에 따른 구글 워크스페이스 계정 정지 및 데이터 백업 안내입니다.\n\n■ 계정 일시정지 예정일: ${suspendDueDate.toLocaleDateString("ko-KR")}\n■ 계정 영구삭제 예정일: ${deleteDueDate.toLocaleDateString("ko-KR")}\n\n계정이 일시정지되면 모든 구글 서비스 이용이 차단되므로, 정지 예정일 전까지 중요 데이터를 반드시 백업해 주세요.\n\n- 개인 기기로 데이터 다운로드 가이드: https://www.iorad.com/player/1765417/--------------#trysteps-1\n- 타 구글 계정으로 데이터 전송 가이드: https://www.iorad.com/player/1813583/GW---------------------#trysteps-1\n- 구글 테이크아웃 바로가기: https://takeout.google.com\n\n감사합니다.`;
+        let emailBody = `[효명고등학교 계정관리시스템]\n\n${studentName || "학생"}님의 전출/자퇴 처리에 따른 구글 워크스페이스 계정 정지 및 데이터 백업 안내입니다.\n\n■ 계정 일시정지 마지노선: ${maxSuspendDateStr} (${suspendGraceDays}일 후)\n■ 계정 영구삭제 예정일: 일시정지 후 ${deleteGraceDays}일 경과 시\n\n👉 학생 포털에서 계정 정지 희망일 직접 설정하기:\n${studentDeadlineUrl}\n\n계정이 일시정지되면 모든 구글 서비스 이용이 차단되므로, 정지 예정일 전까지 중요 데이터를 반드시 백업해 주세요.\n\n- 개인 기기로 데이터 다운로드 가이드: https://www.iorad.com/player/1765417/--------------#trysteps-1\n- 타 구글 계정으로 데이터 전송 가이드: https://www.iorad.com/player/1813583/GW---------------------#trysteps-1\n- 구글 테이크아웃 바로가기: https://takeout.google.com\n\n감사합니다.`;
 
         if (domain) {
           const settingsSnap = await adminDb.collection("settings").doc(domain).get();
           if (settingsSnap.exists) {
             const sData = settingsSnap.data() || {};
             if (sData.transferOutSettings?.emailTemplateSubject) {
-              emailSubject = sData.transferOutSettings.emailTemplateSubject;
+              emailSubject = applyStudentVars(sData.transferOutSettings.emailTemplateSubject);
             }
             if (sData.transferOutSettings?.emailTemplateBody) {
-              // 템플릿 변수 치환
-              emailBody = sData.transferOutSettings.emailTemplateBody
-                .replace(/\{name\}/g, studentName || "학생")
-                .replace(/\{email\}/g, email)
-                .replace(/\{suspendDate\}/g, suspendDueDate.toLocaleDateString("ko-KR"))
-                .replace(/\{deleteDate\}/g, deleteDueDate.toLocaleDateString("ko-KR"))
-                .replace(/\{suspendGraceDays\}/g, String(suspendGraceDays))
-                .replace(/\{deleteGraceDays\}/g, String(deleteGraceDays));
+              emailBody = applyStudentVars(sData.transferOutSettings.emailTemplateBody);
             }
           }
         }
@@ -478,20 +491,14 @@ export async function POST(req: NextRequest) {
 
       // 6. Google Chat DM 발송 (설정에 저장된 챗 템플릿 사용)
       try {
-        let chatBody = `📢 [효명고등학교 계정관리시스템]\n${studentName || "학생"}님의 전출/자퇴 처리에 따라 사용 중이던 학교 계정(${email})이 ${suspendDueDate.toLocaleDateString("ko-KR")}에 일시정지 및 ${deleteDueDate.toLocaleDateString("ko-KR")}에 영구 삭제될 예정입니다.\n\n아래 튜토리얼 가이드를 참고하여 중요한 자료는 그 전까지 반드시 개인 기기로 다운로드하거나 타 계정으로 전송하여 백업해 주시기 바랍니다.\n- 데이터 다운로드 가이드: https://www.iorad.com/player/1765417/--------------#trysteps-1\n- 타 계정 전송 가이드: https://www.iorad.com/player/1813583/GW---------------------#trysteps-1\n- 구글 테이크아웃: https://takeout.google.com`;
+        let chatBody = `📢 [효명고등학교 계정관리시스템]\n${studentName || "학생"}님의 전출/자퇴 처리에 따라 사용 중이던 학교 계정(${email})이 정리될 예정입니다.\n\n👉 학생 포털에서 계정 정지 희망일 직접 설정하기:\n${studentDeadlineUrl} (최대 마지노선: ${maxSuspendDateStr})\n\n아래 튜토리얼 가이드를 참고하여 중요한 자료는 그 전까지 반드시 개인 기기로 다운로드하거나 타 계정으로 전송하여 백업해 주시기 바랍니다.\n- 데이터 다운로드 가이드: https://www.iorad.com/player/1765417/--------------#trysteps-1\n- 타 계정 전송 가이드: https://www.iorad.com/player/1813583/GW---------------------#trysteps-1\n- 구글 테이크아웃: https://takeout.google.com`;
 
         if (domain) {
           const settingsSnap2 = await adminDb.collection("settings").doc(domain).get();
           if (settingsSnap2.exists) {
             const sData2 = settingsSnap2.data() || {};
             if (sData2.transferOutSettings?.chatTemplateBody) {
-              chatBody = sData2.transferOutSettings.chatTemplateBody
-                .replace(/\{name\}/g, studentName || "학생")
-                .replace(/\{email\}/g, email)
-                .replace(/\{suspendDate\}/g, suspendDueDate.toLocaleDateString("ko-KR"))
-                .replace(/\{deleteDate\}/g, deleteDueDate.toLocaleDateString("ko-KR"))
-                .replace(/\{suspendGraceDays\}/g, String(suspendGraceDays))
-                .replace(/\{deleteGraceDays\}/g, String(deleteGraceDays));
+              chatBody = applyStudentVars(sData2.transferOutSettings.chatTemplateBody);
             }
           }
         }
@@ -499,7 +506,6 @@ export async function POST(req: NextRequest) {
         await sendGoogleChat(email, chatBody);
         console.log(`[Chat] 전출/자퇴 안내 챗 DM 발송 완료 → ${email}`);
       } catch (chatErr: any) {
-        // 챗 발송 실패도 전체 프로세스를 중단하지 않음 (경고만 기록)
         console.warn(`[Chat] 챗 DM 발송 실패 (${email}):`, chatErr.message);
       }
 
@@ -1716,6 +1722,126 @@ export async function POST(req: NextRequest) {
             action: "교사 전출 기한 설정",
             targetEmail: teacherEmail,
             details: `데드라인 설정: ${deadlineKST}`,
+            status: "success",
+          });
+        }
+
+        return NextResponse.json({ success: true });
+      } catch (err: any) {
+        return NextResponse.json({ error: `기한 설정 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: get_student_transfer_status
+    // 학생 전출 상태 및 기한 설정 정보 조회
+    // ─────────────────────────────────────────
+    if (action === "get_student_transfer_status") {
+      const { email } = body;
+      if (!email || !domain) {
+        return NextResponse.json({ error: "이메일과 도메인은 필수입니다." }, { status: 400 });
+      }
+
+      try {
+        const taskRef = adminDb.collection("transfer_out_tasks").doc(domain).collection("students").doc(email);
+        const snap = await taskRef.get();
+        if (!snap.exists) {
+          return NextResponse.json({ exists: false });
+        }
+        return NextResponse.json({ exists: true, task: snap.data() });
+      } catch (err: any) {
+        return NextResponse.json({ error: `전출 상태 조회 실패: ${err.message}` }, { status: 500 });
+      }
+    }
+
+    // ─────────────────────────────────────────
+    // ACTION: submit_student_transfer_deadline
+    // 전출/자퇴 학생 본인이 계정 정지 희망 기한 직접 제출
+    // ─────────────────────────────────────────
+    if (action === "submit_student_transfer_deadline") {
+      const { email, deadlineDate } = body;
+      if (!email || !deadlineDate || !domain) {
+        return NextResponse.json({ error: "email, deadlineDate, domain은 필수입니다." }, { status: 400 });
+      }
+
+      try {
+        const taskRef = adminDb.collection("transfer_out_tasks").doc(domain).collection("students").doc(email);
+        const taskSnap = await taskRef.get();
+        if (!taskSnap.exists) {
+          return NextResponse.json({ error: "해당 학생의 전출 레코드가 없습니다." }, { status: 404 });
+        }
+
+        const taskData = taskSnap.data() || {};
+        const deadline = new Date(deadlineDate);
+
+        // maxSuspendDueDate 상한 검증 (없으면 suspendDueDate를 폴백으로)
+        const maxDueDate = taskData.maxSuspendDueDate
+          ? (taskData.maxSuspendDueDate.toDate ? taskData.maxSuspendDueDate.toDate() : new Date(taskData.maxSuspendDueDate))
+          : taskData.suspendDueDate
+          ? (taskData.suspendDueDate.toDate ? taskData.suspendDueDate.toDate() : new Date(taskData.suspendDueDate))
+          : null;
+
+        if (maxDueDate && deadline > maxDueDate) {
+          return NextResponse.json(
+            { error: `선택하신 날짜가 최대 마지노선(${maxDueDate.toLocaleDateString("ko-KR")})을 초과할 수 없습니다.` },
+            { status: 400 }
+          );
+        }
+
+        // 정지 후 삭제 유예기간 (deleteGraceDays) 로드 (기본 7일)
+        let deleteGraceDays = 7;
+        try {
+          const settingsSnap = await adminDb.collection("settings").doc(domain).get();
+          if (settingsSnap.exists) {
+            deleteGraceDays = Number(settingsSnap.data()?.transferOutSettings?.deleteGraceDays) || 7;
+          }
+        } catch (_sErr) { /* 폴백 7일 */ }
+
+        const deleteDueDate = new Date(deadline.getTime() + deleteGraceDays * 24 * 60 * 60 * 1000);
+
+        const getKSTDateString = (d: Date): string => {
+          const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+          return kst.toISOString().split("T")[0];
+        };
+        const deadlineKST = getKSTDateString(deadline);
+        const todayKST = getKSTDateString(new Date());
+
+        const isDueNow = deadlineKST <= todayKST;
+
+        if (isDueNow) {
+          // 과거/당일 제출 시 즉시 일시정지!
+          await updateUser(email, { suspended: true });
+          await taskRef.update({
+            suspendDueDate: deadline,
+            deleteDueDate,
+            deadlineSetAt: new Date(),
+            status: "SUSPENDED",
+            suspendedAt: new Date(),
+          });
+          invalidateUserCache();
+
+          await writeAuditLog({
+            operatorEmail: email,
+            operatorName: taskData.name || email,
+            action: "학생 전출 기한 즉시 정지 처리",
+            targetEmail: email,
+            details: `학생 셀프 데드라인 즉시 정지 실행 (설정 날짜: ${deadlineKST}, 삭제 예정일: ${deleteDueDate.toLocaleDateString("ko-KR")})`,
+            status: "success",
+          });
+        } else {
+          await taskRef.update({
+            suspendDueDate: deadline,
+            deleteDueDate,
+            deadlineSetAt: new Date(),
+            status: "DEADLINE_SET",
+          });
+
+          await writeAuditLog({
+            operatorEmail: email,
+            operatorName: taskData.name || email,
+            action: "학생 전출 기한 설정",
+            targetEmail: email,
+            details: `학생 셀프 데드라인 설정: ${deadlineKST} (삭제 예정일: ${deleteDueDate.toLocaleDateString("ko-KR")})`,
             status: "success",
           });
         }

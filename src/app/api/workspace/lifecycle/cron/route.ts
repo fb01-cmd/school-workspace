@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
 
         if (!email) continue;
 
-        if (task.status === "OU_MOVED" && task.suspendDueDate) {
+        if ((task.status === "OU_MOVED" || task.status === "DEADLINE_SET") && task.suspendDueDate) {
           const suspendDue = task.suspendDueDate.toDate
             ? task.suspendDueDate.toDate()
             : new Date(task.suspendDueDate);
