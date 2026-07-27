@@ -562,7 +562,21 @@ export async function GET(req: NextRequest) {
                   process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL ||
                   "hmnotice@hmh.or.kr";
                 const warnedCount = (task.warnedCount || 0) + 1;
-                const chatBody = `📢 *[효명고등학교 - 데이터 백업 기한 설정 안내 ${warnedCount}차]*\n\n안녕하세요, *${task.name}*님.\n아직 데이터 백업 기한을 설정하지 않으셨습니다.\n\n아래 주소에서 기한을 직접 설정해 주세요:\n→ ${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/admin/transfer-deadline\n\n설정 기한은 최대 1년 이내로 지정 가능합니다.`;
+                const reminderDeadlineUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/admin/transfer-deadline`;
+                const defaultReminderBody = `📢 *[효명고등학교 - 데이터 백업 기한 설정 안내 ${warnedCount}차]*\n\n안녕하세요, *${task.name}*님.\n아직 데이터 백업 기한을 설정하지 않으셨습니다.\n\n아래 주소에서 기한을 직접 설정해 주세요:\n→ ${reminderDeadlineUrl}\n\n설정 기한은 최대 1년 이내로 지정 가능합니다.`;
+                let chatBody = defaultReminderBody;
+                try {
+                  const rSettingsSnap = await adminDb.collection("settings").doc(domain).get();
+                  if (rSettingsSnap.exists) {
+                    const rs = (rSettingsSnap.data() || {}).teacherTransferSettings;
+                    if (rs?.reminderChatBody) {
+                      chatBody = rs.reminderChatBody
+                        .replace(/\{name\}/g, task.name || email)
+                        .replace(/\{warnedCount\}/g, String(warnedCount))
+                        .replace(/\{deadlineUrl\}/g, reminderDeadlineUrl);
+                    }
+                  }
+                } catch (_rErr) { /* 폴백 사용 */ }
                 await sendGoogleChat(email, chatBody);
                 await adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(email).update({
                   warnedCount,

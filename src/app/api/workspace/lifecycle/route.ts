@@ -1542,51 +1542,36 @@ export async function POST(req: NextRequest) {
           process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL ||
           "hmnotice@hmh.or.kr";
 
-        const emailSubject = `[중요] 학교 구글 계정 전출 처리 안내 - 데이터 백업 기한을 설정해 주세요`;
-        const emailBody = `안녕하세요, ${teacherName || teacherEmail}님.
+        // 치환자 공통 값
+        const deadlineUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/admin/transfer-deadline`;
+        const maxDeadline = new Date();
+        maxDeadline.setFullYear(maxDeadline.getFullYear() + 1);
+        const maxDeadlineDateStr = maxDeadline.toLocaleDateString("ko-KR");
+        const applyTeacherVars = (tpl: string) =>
+          tpl
+            .replace(/\{name\}/g, teacherName || teacherEmail)
+            .replace(/\{email\}/g, teacherEmail)
+            .replace(/\{deadlineUrl\}/g, deadlineUrl)
+            .replace(/\{maxDeadlineDate\}/g, maxDeadlineDateStr);
 
-학교 행정상 선생님의 구글 워크스페이스 계정이 전출 처리되었습니다.
+        // 설정 우선·하드코딩 폴백
+        let emailSubject = `[중요] 학교 구글 계정 전출 처리 안내 - 데이터 백업 기한을 설정해 주세요`;
+        let emailBody = `안녕하세요, ${teacherName || teacherEmail}님.\n\n학교 행정상 선생님의 구글 워크스페이스 계정이 전출 처리되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📋  조치 사항\n━━━━━━━━━━━━━━━━━━━━━━━━━\n선생님이 가입되어 있던 교사용 연동 그룹에서 즉시 탈퇴 처리되었습니다.\n구글 계정 자체는 아직 유지되고 있으나, 아래 안내에 따라 데이터 백업 기한을 직접 설정하셔야 합니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📅  기한 설정 방법\n━━━━━━━━━━━━━━━━━━━━━━━━━\n학교 어드민 시스템에 접속하시면 데이터 백업 완료 후 계정 삭제를 희망하시는 날짜(최대 1년 이내)를 직접 입력하실 수 있습니다.\n\n👉 어드민 시스템 바로가기:\n${deadlineUrl}\n\n📦  데이터 이전 및 다운로드 방법:\n→ https://gw.googleforeducation.org/%EA%B4%80%EB%A6%AC%ED%95%98%EA%B8%B0/%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%9D%B4%EC%A0%84%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-%EC%95%88%EB%82%B4\n\n궁금하신 점은 학교 정보부에 문의해 주세요. 감사합니다.\n\n효명고등학교 드림`;
+        let chatBody = `📢 *[효명고등학교 구글 계정 전출 처리 안내]*\n\n안녕하세요, *${teacherName || teacherEmail}*님.\n학교 행정상 선생님의 구글 워크스페이스 계정이 전출 처리되었습니다.\n\n*📋  조치 사항*\n선생님이 가입되어 있던 교사용 연동 그룹에서 즉시 탈퇴 처리되었습니다.\n구글 계정 자체는 아직 유지되고 있으나, 아래 안내에 따라 데이터 백업 기한을 직접 설정하셔야 합니다.\n\n*📅  기한 설정 방법*\n학교 어드민 시스템에 접속하시면 데이터 백업 완료 후 계정 삭제를 희망하시는 날짜(최대 1년 이내)를 직접 입력하실 수 있습니다.\n\n👉 어드민 시스템 바로가기:\n${deadlineUrl}\n\n*📦  데이터 이전 및 다운로드 방법:*\n→ https://gw.googleforeducation.org/%EA%B4%80%EB%A6%AC%ED%95%98%EA%B8%B0/%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%9D%B4%EC%A0%84%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-%EC%95%88%EB%82%B4\n\n궁금하신 점은 학교 정보부에 문의해 주세요. 감사합니다.`;
 
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📋  조치 사항
-━━━━━━━━━━━━━━━━━━━━━━━━━
-선생님이 가입되어 있던 교사용 연동 그룹에서 즉시 탈퇴 처리되었습니다.
-구글 계정 자체는 아직 유지되고 있으나, 아래 안내에 따라 데이터 백업 기한을 직접 설정하셔야 합니다.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📅  기한 설정 방법
-━━━━━━━━━━━━━━━━━━━━━━━━━
-학교 어드민 시스템에 접속하시면 데이터 백업 완료 후 계정 삭제를 희망하시는 날짜(최대 1년 이내)를 직접 입력하실 수 있습니다.
-
-👉 어드민 시스템 바로가기:
-${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/admin/transfer-deadline
-
-📦  데이터 이전 및 다운로드 방법:
-→ https://gw.googleforeducation.org/%EA%B4%80%EB%A6%AC%ED%95%98%EA%B8%B0/%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%9D%B4%EC%A0%84%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-%EC%95%88%EB%82%B4
-
-궁금하신 점은 학교 정보부에 문의해 주세요. 감사합니다.
-
-효명고등학교 드림`;
-
-        const chatBody = `📢 *[효명고등학교 구글 계정 전출 처리 안내]*
-
-안녕하세요, *${teacherName || teacherEmail}*님.
-학교 행정상 선생님의 구글 워크스페이스 계정이 전출 처리되었습니다.
-
-*📋  조치 사항*
-선생님이 가입되어 있던 교사용 연동 그룹에서 즉시 탈퇴 처리되었습니다.
-구글 계정 자체는 아직 유지되고 있으나, 아래 안내에 따라 데이터 백업 기한을 직접 설정하셔야 합니다.
-
-*📅  기한 설정 방법*
-학교 어드민 시스템에 접속하시면 데이터 백업 완료 후 계정 삭제를 희망하시는 날짜(최대 1년 이내)를 직접 입력하실 수 있습니다.
-
-👉 어드민 시스템 바로가기:
-${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/admin/transfer-deadline
-
-*📦  데이터 이전 및 다운로드 방법:*
-→ https://gw.googleforeducation.org/%EA%B4%80%EB%A6%AC%ED%95%98%EA%B8%B0/%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%9D%B4%EC%A0%84%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-%EC%95%88%EB%82%B4
-
-궁금하신 점은 학교 정보부에 문의해 주세요. 감사합니다.`;
+        if (domain) {
+          try {
+            const tSettingsSnap = await adminDb.collection("settings").doc(domain).get();
+            if (tSettingsSnap.exists) {
+              const ts = (tSettingsSnap.data() || {}).teacherTransferSettings;
+              if (ts?.emailTemplateSubject) emailSubject = applyTeacherVars(ts.emailTemplateSubject);
+              if (ts?.emailTemplateBody) emailBody = applyTeacherVars(ts.emailTemplateBody);
+              if (ts?.chatTemplateBody) chatBody = applyTeacherVars(ts.chatTemplateBody);
+            }
+          } catch (settingsErr) {
+            console.warn("교사 전출 알림 템플릿 설정 로드 실패(폴백 사용):", settingsErr);
+          }
+        }
 
         try {
           await sendGmail(mailSender, teacherEmail, emailSubject, emailBody);
