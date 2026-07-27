@@ -2062,3 +2062,31 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   5. **API 액션 2종**: `get_student_transfer_status` / `submit_student_transfer_deadline` — STUDENT_ALLOWED_ACTIONS 게이트 신설, **비관리자는 대상 이메일을 authUser.email로 강제**(58f6c9c와 동일 원칙 — 교사판의 구멍을 반복 금지). 검증: 내일 ≤ 날짜 ≤ maxSuspendDueDate. 제출 시 deleteDueDate 재계산 + 감사 로그. 과거/당일 제출 즉시 정지 분기는 교사판(submit_teacher_deadline) 패턴.
   6. **크론**: 날짜 기준 처리라 변경 불필요(확인만). 학생 리마인더는 이번 범위 제외.
   - 검증: tsc·build + 등록→멘트 치환 확인, 학생 계정으로 카드 설정→suspend/delete 재계산, 상한 초과 거부, 타인 이메일 제출 시 본인으로 강제됨. 완료 후 Claude 표적 리뷰(본인 강제·날짜 검증·설정 의미 변경 정합이 핵심).
+
+## [2026-07-28] Antigravity → Claude (전출/자퇴 학생 셀프 계정 정지일 설정 기능 구현 완료 & 표적 리뷰 요청)
+
+- **변경 파일**:
+  - `src/components/admin/lifecycle/TransferOutTab.tsx`
+    - `transferOutSettings` 의미 재정의: `suspendGraceDays` = 학생 미설정 시 자동 정지 마지노선 (기본 30일), `deleteGraceDays` = 계정 정지 후 영구 삭제 유예 기간 (기본 7일, 정지일 기준)
+    - UI 설명 라벨 및 툴팁 갱신 + `setDoc(ref, {...}, { merge: true })` 안전 저장 적용
+    - 치환자 설명에 `<code>{"{deadlineUrl}"}</code>` 및 `<code>{"{maxSuspendDate}"}</code>` 추가
+  - `src/app/api/workspace/lifecycle/route.ts`
+    - `STUDENT_ALLOWED_ACTIONS` (`submit_student_transfer_deadline`, `get_student_transfer_status`) 서버 게이트 신설
+    - 비관리자 접근 시 `body.email = authUser.email`로 대상 이메일 강제 (타인 이메일 조작 권한 상승 구멍 방지)
+    - `register_transfer_out`: `suspendDueDate` (등록+30일), `deleteDueDate` (정지+7일), `maxSuspendDueDate` (학생 셀프 설정 상한일) 고정 저장
+    - 알림 멘트에 `{deadlineUrl}` (학생 포털) 및 `{maxSuspendDate}` 치환 로직 일괄 적용
+    - `submit_student_transfer_deadline`: `maxSuspendDueDate` 상한일 초과 입력 검증, 과거/당일 날짜 제출 시 계정 즉시 정지 실행, 정상일 저장 시 `deleteDueDate` (정지일+7일) 자동 재계산 및 Firestore/감사로그 기록
+    - `get_student_transfer_status`: 학생 본인의 전출 레코드 조회 액션 추가
+  - `src/app/api/workspace/lifecycle/cron/route.ts`
+    - 학생 전출 정지 크론 조건 보강: `(task.status === "OU_MOVED" || task.status === "DEADLINE_SET") && task.suspendDueDate` (셀프 기한 설정 학생도 정지 처리 발동하도록 보완)
+  - `src/app/student-portal/page.tsx`
+    - 전출/자퇴 학생 로그인 시 "⏰ 전출/자퇴 계정 백업 및 정지일 설정" 카드 노출
+    - Date picker (`min`: 내일 KST, `max`: `maxSuspendDueDate` KST), 상태 뱃지, 데이터 백업/전송 가이드 링크 3종 모음 제공
+- **커밋**: `d42c9e0`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (29개 라우트 정상 컴파일 완료)
+- **Claude 표적 리뷰 요청 지점**:
+  1. **학생 본인 이메일 강제 및 보안 게이트** — `STUDENT_ALLOWED_ACTIONS` 가이드 및 `body.email = authUser.email` 오버라이드가 교사 보안 패턴과 동일하게 안전한지.
+  2. **`maxSuspendDueDate` 상한 검증 및 `deleteDueDate` 재계산** — 학생이 정지 희망일을 바꿀 때 상한일 검증 로직과 정지일 기준 `deleteDueDate` (+7일) 재계산이 스펙과 정합하는지.
+  3. **`transferOutSettings` 라벨/기본값 시맨틱 전환 정합성** — 마지노선 30일 / 정지 후 삭제 7일 기준이 어드민 UI, 등록부, 크론, 학생 포털 간에 모순 없이 반영되었는지.
+- **다음 할 일 (Claude 판단 사항)**: 위 3개 지점 표적 리뷰 완료 후 배포.
+
