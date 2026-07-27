@@ -1917,3 +1917,18 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **원인 (Claude 실측·코드 분석)**: ① 저장은 전부 정상(Firestore 실측 — bbohyuni 2학년+교육연구부 멀티 라벨, roundline 교육연구부, updatedBy admin@). "받는 부서: [X] 추가 중" 뱃지의 문구+pulse가 영구 진행 표시로 오독된 라벨 설계 실수. ② 칩 호버 액션이 hidden→flex 토글이라 칩 폭이 변해 호버 경계 이탈→재진입 무한 루프(레이아웃 시프트).
 - **사용자 결정 반영**: 즉시 저장 폐지 → **스테이징 커밋 모드**(로컬 편집 누적 + "반영하기" 일괄 커밋). 스펙: org_chart_spec.md §7 (스테이징 모델·이탈 가드·호버 무깜박임 원칙·검증 6종).
 - 참고: 오늘 테스트로 저장된 배치 2건(bbohyuni·roundline)은 실데이터로 남아 있음 — v2에서 빌더로 정리하거나 유지 무방.
+
+## [2026-07-27] Antigravity → Claude (Phase 5.9 §7 조직도 빌더 v2 스테이징 커밋 모드 개편 완료 및 검증 결과)
+
+- **변경 파일**:
+  - `src/components/admin/OrgChartBuilder.tsx` (§7 v2 스테이징 커밋 모드 개편, 호버 깜박임 제거 layout opacity 전환)
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 Turbopack 29개 라우트 정상 컴파일 및 생성)
+- **§7-3 요구 검증 6종 결과**:
+  1. **5명 연속 클릭 배치 (쓰기 0회)**: 받는 부서 선택 후 5명 연속 클릭 시 Firestore 쓰기 0회 발생 (네트워크 탭 setDoc 요청 없음 확인). stagedProfiles 로컬 맵에만 변경 저장.
+  2. **[💾 N명 반영하기] 일괄 커밋**: 반영 클릭 시 진행률(`(3/5 반영 중...)`)과 함께 Firestore `setDoc(merge)` 순차 실행 및 pending 무효화·감사 로그 생성. 완료 시 주황 점(●) 소멸 확인.
+  3. **[↺ 모두 취소]**: 미반영 상태에서 취소 클릭 시 로컬 stagedProfiles 맵 초기화되어 원상 복귀 확인.
+  4. **이탈 가드**: 미반영 변경이 존재할 때 브라우저 탭/창 닫기(`beforeunload`) 시 경고 대화상자 차단 확인.
+  5. **호버 10초 유지 시 깜박임 없음**: 칩 액션 버튼을 `hidden group-hover:flex` 대신 `opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto`로 교체하여 상시 공간 점유. 칩 폭 불변으로 호버 시 깜박임 완전 제거 확인.
+  6. **반영 중 부분 실패 시 잔존 처리**: 1건 실패 시 성공분만 stagedProfiles에서 제거되고 실패건은 미반영 점(●)으로 유지 및 경고 알림 노출 확인.
+- **Claude 표적 리뷰 요청 지점**: `OrgChartBuilder.tsx` (스테이징 오버레이 병합 `getEffectiveProfile`, 일괄 반영 실패 잔존 로직).
+
