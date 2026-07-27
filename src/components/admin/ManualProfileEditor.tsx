@@ -53,7 +53,8 @@ export default function ManualProfileEditor({ initialEmail = "", onSuccess }: Pr
   const classCountForGrade = Number(schoolSettings?.classCounts?.[homeroomGrade] ?? 10);
 
   // Load existing profile when targetEmail changes
-  const loadExistingProfile = async (email: string) => {
+  // gwsName: AutocompleteInput이 넘겨준 GWS 실명 — 저장된 name(레거시 이메일 아이디)보다 우선
+  const loadExistingProfile = async (email: string, gwsName?: string) => {
     if (!email) return;
     setLoadingProfile(true);
     try {
@@ -61,7 +62,7 @@ export default function ManualProfileEditor({ initialEmail = "", onSuccess }: Pr
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const data = snap.data() as TeacherProfile;
-        setTargetName(data.name || email.split("@")[0]);
+        setTargetName(gwsName || data.name || email.split("@")[0]);
         setNoDept(data.noDept === true);
         setSelectedDepts(data.departments || []);
         setDeptHeadMap(data.deptHeadMap || {});
@@ -73,7 +74,7 @@ export default function ManualProfileEditor({ initialEmail = "", onSuccess }: Pr
         }
       } else {
         // Fallback default for new profile
-        setTargetName(email.split("@")[0]);
+        setTargetName(gwsName || email.split("@")[0]);
         setNoDept(false);
         setSelectedDepts([]);
         setDeptHeadMap({});
@@ -96,11 +97,11 @@ export default function ManualProfileEditor({ initialEmail = "", onSuccess }: Pr
     }
   }, [initialEmail]);
 
-  const handleSelectUser = (email: string, userItem?: any) => {
+  // AutocompleteInput.onSelect 시그니처는 (email, name?: string) — name은 "성이름" 문자열
+  const handleSelectUser = (email: string, name?: string) => {
     setTargetEmail(email);
-    const name = userItem?.name || email.split("@")[0];
-    setTargetName(name);
-    loadExistingProfile(email);
+    setTargetName(name || email.split("@")[0]);
+    loadExistingProfile(email, name);
   };
 
   const resetForm = () => {

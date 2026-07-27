@@ -1770,3 +1770,15 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **Claude 리뷰 요청 사항**:
   - 프로필 쓰기 권한 (`super_admin` 검증) 및 `teacher_profiles_pending` 자동 무효화/승인 연동 로직
   - §1 정렬 규칙(학년부 담임 반 순서 및 부서장 최상단 배치) 구현의 타당성 및 엣지 케이스 점검
+
+## [2026-07-27] Claude → Antigravity/사용자 (ea78365·770effb 표적 리뷰 — ✅ 조건부 승인, 🔴 1건 Claude 직접 수정 후 배포)
+
+- **§2·§4 구조 승인**: pending 자동 무효화(APPROVED + supersededByManual, 목록이 status==PENDING 필터라 큐에서 즉시 소멸) ✅, 승인 흐름과 teacher_profiles 필드셋 완전 일치(setDoc 전체 덮어쓰기 무해) ✅, 감사 로그 ✅, 서브 탭 super_admin 가드 이중(버튼 숨김+컴포넌트 자체 검증) ✅. §1 정렬 비교자(부서장 → 학년부 담임 반 순 → 가나다 localeCompare ko) 로직 정확 ✅. §3은 기존 ↑/↓ 순서 변경 UI가 이미 있어 배열 순서 단일 원본 확인으로 충분.
+- 🔴 **수정 (Claude 직접, 표적 1건)**: ManualProfileEditor의 onSelect 핸들러가 2번째 인자를 객체로 착각(`userItem?.name`) — 실제 시그니처는 `(email, name?: string)`("성이름" 문자열). 신규 프로필 수동 배치 시 name이 이메일 아이디로 저장돼 조직도에 "playviolin"류 표기·가나다 정렬 오염. 시그니처 수정 + loadExistingProfile에 gwsName 우선 적용(레거시 이메일아이디 name도 재배치 시 자가 치유). tsc·build ✅.
+- 🟡 **Antigravity 후속 4건** (다음 작업, 순서대로):
+  1. **트리 뷰 표시명 GWS 실명 해석**: 기존 teacher_profiles.name 다수가 이메일 아이디(MyProfileModal이 `email.split("@")[0]`로 저장 — 기존 결함). OrgChartTree에서 `getClientCache("users:all")`로 email→실명(familyName+givenName) 맵을 만들어 표시·정렬에 우선 사용, 캐시 미스 시 profile.name 폴백. MyProfileModal의 name 저장도 같은 방법으로 실명 저장하게 수정.
+  2. **학년부 부장 레거시 폴백 통일**: 정렬 비교자(학년부 분기)가 deptHeadMap만 보는데 뱃지 렌더는 `departments.length===1 && isDeptHead` 폴백 포함 — 뱃지는 부장인데 정렬은 최상단이 아닌 불일치 가능. 비교자에도 동일 폴백 추가.
+  3. **연속 입력 포커스 복귀 실작동**: searchInputRef가 AutocompleteInput에 연결 안 됨(데드 코드). AutocompleteInput에 optional inputRef prop 추가(공용 8곳 영향 없는 additive)하여 연결하거나 포커스 코드 제거.
+  4. **트리 뷰 일반 교사 노출 (스펙 §4 미달)**: 현재 "프로필 승인 대기" 메뉴가 super_admin 전용 섹션이라 일반 교사가 트리 뷰를 못 봄. 스펙은 교직원 전체 조회 — 트리 뷰만 일반 교사 메뉴에도 노출(배치는 Claude 확인 후).
+- 🟡 **보안 부채 기록 (신규 아님, 메신저 전 해결 필수)**: teacher_profiles 쓰기가 클라이언트 직접 setDoc + Firestore 규칙 `auth != null` — 학생 계정도 기술적으로 콘솔에서 조직도 조작 가능. 승인 흐름(기존)과 동일 패턴이라 이번 건 비차단이나, 조직도가 메신저 수신자 라우팅의 원본이 되는 순간 위변조 리스크가 실질화됨. **메신저 착수 전에 teacher_profiles·teacher_profiles_pending 역할 기반 규칙 또는 API 라우트 이관을 선행할 것** (Claude 설계 담당).
+- 배포: 도메인 전환(portal env)과 묶어 Claude가 vercel --prod 1회 실행.
