@@ -349,10 +349,13 @@ export default function TimetableImportTab({
           } else {
             const fullTeacher = fullCell.teacherName.trim();
             const fullSubj = fullCell.subjectName.trim();
-            if (fullTeacher === t.name || fullSubj === l.subjectName || fullTeacher === l.subjectName) {
+            // 교사·과목 모두 일치해야 match — 과목만 같은 교사 오배정을 잡는 것이 교차 검증의 목적
+            if (fullTeacher === t.name && fullSubj === l.subjectName) {
               matchCount++;
+            } else if (fullTeacher === t.name) {
+              mismatchList.push(`[${l.day}요일 ${l.period}교시 ${l.grade}-${l.classNum}반] 과목 불일치: 전체시간표(${fullSubj}) vs 주간시간표(${l.subjectName}) — 교사 ${t.name}`);
             } else {
-              mismatchList.push(`[${l.day}요일 ${l.period}교시 ${l.grade}-${l.classNum}반] 전체시간표(${fullSubj}/${fullTeacher}) vs 주간시간표(${l.subjectName}/${t.name})`);
+              mismatchList.push(`[${l.day}요일 ${l.period}교시 ${l.grade}-${l.classNum}반] 교사 불일치: 전체시간표(${fullSubj}/${fullTeacher}) vs 주간시간표(${l.subjectName}/${t.name})`);
             }
           }
         }
