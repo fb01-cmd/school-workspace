@@ -561,7 +561,7 @@ export async function GET(req: NextRequest) {
                   process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL ||
                   "hmnotice@hmh.or.kr";
                 const warnedCount = (task.warnedCount || 0) + 1;
-                const chatBody = `📢 *[효명고등학교 - 데이터 백업 기한 설정 안내 ${warnedCount}차]*\n\n안녕하세요, *${task.name}*님.\n아직 데이터 백업 기한을 설정하지 않으셨습니다.\n\n아래 주소에서 기한을 직접 설정해 주세요:\n→ ${process.env.NEXT_PUBLIC_BASE_URL || "https://admin.hmh.or.kr"}/admin/transfer-deadline\n\n설정 기한은 최대 1년 이내로 지정 가능합니다.`;
+                const chatBody = `📢 *[효명고등학교 - 데이터 백업 기한 설정 안내 ${warnedCount}차]*\n\n안녕하세요, *${task.name}*님.\n아직 데이터 백업 기한을 설정하지 않으셨습니다.\n\n아래 주소에서 기한을 직접 설정해 주세요:\n→ ${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/admin/transfer-deadline\n\n설정 기한은 최대 1년 이내로 지정 가능합니다.`;
                 await sendGoogleChat(email, chatBody);
                 await adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(email).update({
                   warnedCount,

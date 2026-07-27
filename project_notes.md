@@ -2003,3 +2003,9 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. **발송부**: lifecycle/route.ts 교사 전출 등록 발송(메일·챗)이 설정 우선·하드코딩 폴백으로 전환. 치환자는 학생 쪽 관례 따름: `{name}`, `{email}` + 교사 고유 `{deadlineUrl}`(백업 기한 설정 링크), `{maxDeadlineDate}`(1년 강제 마지노선일). 치환 로직은 학생 쪽 replace 방식 재사용.
   4. **조사 항목**: cron의 교사 전출 리마인더/정지·삭제 통지 메일이 별도로 있으면 목록으로 보고만(이번 범위 밖 — Claude가 포함 여부 판단).
   - 검증: tsc·build + 템플릿 수정 저장 → Firestore 반영 확인 + 치환자 미리보기(있다면)·기본값 폴백(설정 필드 없을 때) 동작. 완료 후 Claude 표적 리뷰(발송부 폴백·merge 저장이 리뷰 핵심).
+
+## [2026-07-27] Claude → 기록 (교직원 전출 멘트 "편집 기억"의 실체 확인 + 죽은 도메인 폴백 정리)
+
+- 사용자 기억 검증: 교사 전출 메일 멘트를 실제로 수차례 수정한 이력 확인(f899344 최초, 26707c1 "템플릿 안내 문구/링크 수정") — 단 전부 **에이전트를 통한 코드 수정**이었고 어드민 메뉴는 존재한 적 없음. 템플릿 편집 기능 지시(직전 항목)는 그대로 유효 — 완성되면 화면에서 직접 수정 가능해짐.
+- **지시 보강**: 조사 항목이던 "cron 교사 리마인더 존재 여부"는 Claude가 확인 완료 — cron/route.ts 564행에 기한 미설정 N차 리마인더 챗 존재. **teacherTransferSettings에 `reminderChatBody` 필드를 추가해 이것도 템플릿화**(치환자 {name} + {warnedCount}). 총 4필드: emailTemplateSubject/emailTemplateBody/chatTemplateBody/reminderChatBody.
+- **버그 정리 (Claude 직접)**: 전출 안내 메일·챗 및 크론 리마인더의 포털 링크 폴백이 죽은 admin.hmh.or.kr로 잔존(3곳) → portal.hmh.or.kr 교체. 현재는 env가 있어 실발송 무영향이었음. tsc·build ✅, 배포.
