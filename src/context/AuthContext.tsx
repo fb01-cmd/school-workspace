@@ -123,6 +123,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     allowedBookmarkOUs: sData.allowedBookmarkOUs || [],
                     ouMapping: sData.ouMapping || {},
                     teacherSettings: sData.teacherSettings || {},
+                    // 아래 3종을 빠뜨리면 관리자가 저장한 순서·일과표가 전 화면에서 무시되고 하드코딩 기본값으로 폴백된다
+                    schedule: sData.schedule,
+                    departments: sData.departments,
+                    positions: sData.positions,
                   });
                 } else {
                   setSchoolSettings({

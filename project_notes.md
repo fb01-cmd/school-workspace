@@ -1899,3 +1899,14 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   6. **DnD 추가**: BookmarkTreeEditor와 동일한 순수 HTML5 DnD(`draggable`, `dataTransfer`, `onDragOver`, `onDrop`) 적용. 우측 교사 드래그 후 좌측 부서 노드 드롭 시 정상 배치 확인.
 - **Claude 표적 리뷰 요청 지점**: `OrgChartBuilder.tsx` (Firestore `setDoc` merge 쓰기 병합, 직책 자동 추론, 감사 로그 및 pending 무효화).
 
+
+## [2026-07-27] Claude → Antigravity/사용자 (d0870a2 조직도 빌더 표적 리뷰 — ✅ 조건부 승인, 🔴 3건+🔴 1건 Claude 직접 수정 후 배포)
+
+- **§6 스펙 정합 확인**: 받는 부서 클릭 고정·연속 배치, DnD(BookmarkTreeEditor 패턴), 칩 호버 액션(👑/✏️/✕), 학년부 인라인 반 드롭다운, §1 정렬(부장 폴백 포함), setDoc merge 부분 쓰기, 직책 자동 추론(기존 position 보존), 공동 부장·공동담임 경고 후 허용, 감사 로그 액션 단위 — 전부 스펙대로. ManualProfileEditor 모달 연동(✏️)도 정상.
+- 🔴 **Claude 직접 수정 4건 (배포 전 필수)**:
+  1. **받는 부서 기본값이 첫 부서(교장) 자동 고정** — 진입 직후 오클릭 한 번에 교장 부서 배치 + 직책 "교장" 자동 부여(제거해도 position은 남음). 기본값 없음으로 변경, 미고정 시 클릭하면 안내 토스트(기존 로직 활용).
+  2. **명단 필터가 "학생 문자열 제외" 방식** — 기기(전자칠판)·졸업생(경로에 '학생' 미포함) 계정이 명단에 유입 가능. ouMapping.teachers("/교직원" — Firestore 실측 확인) 하위만 포함 + 학번 패턴(5자리@) 이메일 제외로 교체, 매핑 부재 시 기존 로직 폴백.
+  3. **pending 무효화가 존재 확인 없이 setDoc(merge)** — 신청한 적 없는 교사를 배치할 때마다 빈 teacher_profiles_pending 문서가 생성되는 오염. getDoc으로 PENDING 실재 시에만 무효화 + supersededByManual 플래그(§2 폼과 일치).
+  4. **[별건·아침 증상 ③의 3번째 층위] AuthContext schoolSettings가 departments/positions/schedule 필드를 누락** — 관리자가 순서를 저장해도 구독이 필드를 걸러내 전 화면이 여전히 하드코딩 기본값으로 폴백할 구조였음(OUConfiguration의 재로드도 동일 경로라 저장한 순서가 UI에서 사라져 보였을 것). 3필드 패스스루 추가. **이로써 ③ 체인 완결: 저장(merge 수정) → 구독(패스스루 수정) → 렌더(§3 기구현).**
+- 🟡 (비차단 기록): 연속 클릭 극단 케이스에서 스냅샷 반영 전 stale departments 배열 덮어쓰기 이론적 가능(Firestore 로컬 지연 보상으로 실사용 위험 낮음, 1인 어드민 전제). 다중 어드민 동시 편집은 미지원 전제.
+- **화면 검증 한계 명시**: Claude는 인증 장벽(구글 로그인)으로 실화면 조작 불가 — 코드·데이터 계층 검증까지 수행(ouMapping 실측 포함). Antigravity 검증 6종도 코드 기준으로 판단됨(브라우저 도구 환경 이슈 전력). **최종 수용 판정은 사용자 실화면 체크리스트로** (아래). tsc·build ✅, 배포 완료.

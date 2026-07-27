@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
-import { collection, onSnapshot, query, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { writeAuditLog } from "@/lib/firebase/audit";
 
@@ -121,22 +121,22 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
     return cleanEmail.split("@")[0];
   };
 
-  // 교직원 명단 (학생 OU 제외)
+  // 교직원 명단 — 교직원 OU 매핑이 있으면 그 하위만(기기·졸업생 계정 유입 차단), 없으면 학생 OU 제외 폴백
   const teacherUserList = useMemo(() => {
+    const teacherOU = ((schoolSettings as any)?.ouMapping?.teachers || "").toLowerCase();
     return gwsTeachers.filter((u) => {
+      const email = (u.primaryEmail || u.email || "").toLowerCase();
+      if (/^\d{5}@/.test(email)) return false; // 학번 계정(학생·졸업생) 제외
       const orgPath = (u.orgUnitPath || "").toLowerCase();
-      // 학생 OU 제외 (student / 학생 포함 시 스킵)
+      if (teacherOU) {
+        return orgPath === teacherOU || orgPath.startsWith(teacherOU + "/");
+      }
       if (orgPath.includes("student") || orgPath.includes("학생")) return false;
       return true;
     });
-  }, [gwsTeachers]);
+  }, [gwsTeachers, schoolSettings]);
 
-  // 기본 부서 선택 (첫번째 부서)
-  useEffect(() => {
-    if (!selectedDept && departmentOrder.length > 0) {
-      setSelectedDept(departmentOrder[0]);
-    }
-  }, [departmentOrder, selectedDept]);
+  // 받는 부서 기본값 없음 — 첫 부서(교장) 자동 고정 시 오클릭 한 번에 교장 배치+직책 자동 추론이 걸리는 사고 방지
 
   // ─── §1 정렬 규칙 헬퍼 ──────────────────────────────────────────
   const sortMembersForDept = (deptName: string, members: TeacherProfile[]) => {
@@ -255,13 +255,16 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
         { merge: true }
       );
 
-      // 2) pending 신청 자동 무효화
+      // 2) pending 신청 자동 무효화 — 실재하는 PENDING 신청만 (무조건 setDoc 시 빈 pending 문서가 생성됨)
       const pendingRef = doc(db, "teacher_profiles_pending", cleanEmail);
-      await setDoc(
-        pendingRef,
-        { status: "APPROVED", approvedAt: serverTimestamp() },
-        { merge: true }
-      );
+      const pendingSnap = await getDoc(pendingRef);
+      if (pendingSnap.exists() && pendingSnap.data()?.status === "PENDING") {
+        await setDoc(
+          pendingRef,
+          { status: "APPROVED", approvedAt: serverTimestamp(), supersededByManual: true },
+          { merge: true }
+        );
+      }
 
       // 3) 감사 로그
       await writeAuditLog({
