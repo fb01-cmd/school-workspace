@@ -541,6 +541,15 @@ export async function GET(req: NextRequest) {
       for (const domain of domains) {
         const teachersSnap = await adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").get();
 
+        // 리마인더 템플릿은 도메인당 1회만 조회 (교사별 재조회 N+1 방지)
+        let reminderTemplate: string | null = null;
+        try {
+          const rSettingsSnap = await adminDb.collection("settings").doc(domain).get();
+          reminderTemplate = rSettingsSnap.exists
+            ? ((rSettingsSnap.data() || {}).teacherTransferSettings?.reminderChatBody || null)
+            : null;
+        } catch (_rErr) { /* 폴백(하드코딩) 사용 */ }
+
         for (const teacherDoc of teachersSnap.docs) {
           const task = teacherDoc.data();
           const email = task.email as string;
@@ -565,18 +574,12 @@ export async function GET(req: NextRequest) {
                 const reminderDeadlineUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/admin/transfer-deadline`;
                 const defaultReminderBody = `📢 *[효명고등학교 - 데이터 백업 기한 설정 안내 ${warnedCount}차]*\n\n안녕하세요, *${task.name}*님.\n아직 데이터 백업 기한을 설정하지 않으셨습니다.\n\n아래 주소에서 기한을 직접 설정해 주세요:\n→ ${reminderDeadlineUrl}\n\n설정 기한은 최대 1년 이내로 지정 가능합니다.`;
                 let chatBody = defaultReminderBody;
-                try {
-                  const rSettingsSnap = await adminDb.collection("settings").doc(domain).get();
-                  if (rSettingsSnap.exists) {
-                    const rs = (rSettingsSnap.data() || {}).teacherTransferSettings;
-                    if (rs?.reminderChatBody) {
-                      chatBody = rs.reminderChatBody
-                        .replace(/\{name\}/g, task.name || email)
-                        .replace(/\{warnedCount\}/g, String(warnedCount))
-                        .replace(/\{deadlineUrl\}/g, reminderDeadlineUrl);
-                    }
-                  }
-                } catch (_rErr) { /* 폴백 사용 */ }
+                if (reminderTemplate) {
+                  chatBody = reminderTemplate
+                    .replace(/\{name\}/g, task.name || email)
+                    .replace(/\{warnedCount\}/g, String(warnedCount))
+                    .replace(/\{deadlineUrl\}/g, reminderDeadlineUrl);
+                }
                 await sendGoogleChat(email, chatBody);
                 await adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(email).update({
                   warnedCount,

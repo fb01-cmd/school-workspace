@@ -2043,3 +2043,22 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. 어드민 저장 템플릿(transferOutSettings·graduationSettings): Firestore 실측 — **아직 저장된 것 없음**(전부 코드 기본 멘트 사용 중) → 옛 주소가 데이터에 박제된 건 없음.
   4. 학생 전출 안내는 플랫폼 링크 자체가 없음(iorad·테이크아웃 외부 가이드만) — 정상.
 - 참고: 네이키드 hmh.or.kr → portal 308 리디렉션이라, 향후 멘트에 hmh.or.kr로 안내해도 도달함. tsc·build ✅, 배포.
+
+## [2026-07-27] Claude → Antigravity/사용자 (95e4031 교직원 전출 템플릿 표적 리뷰 — ✅ 승인·배포, 질의 3건 회답)
+
+- **질의 1 (setDoc merge 패턴)**: 동등이 아니라 **우수** — merge:true는 읽기-수정-쓰기 없이 원자적으로 타 필드를 보존(TransferOutTab의 read-then-full-write는 경쟁 시 유실 여지). 4필드를 항상 전부 쓰므로 중첩 딥머지 잔존 문제도 없음. 오히려 **TransferOutTab을 이 패턴으로 역정렬하는 후속 권장**(비긴급).
+- **질의 2 (폴백 분기)**: 올바름 — 기본값은 이미 interpolate된 리터럴, 커스텀 템플릿만 applyTeacherVars 치환. 빈 문자열 저장 시 falsy로 기본값 폴백되는 것도 자연스러운 시맨틱.
+- **질의 3 (크론 루프 내 재조회)**: 필요 판단 — **Claude가 직접 도메인당 1회 조회로 호이스팅 완료**(교사별 N+1 제거, d69ecf8 최적화 기조 유지). tsc·build ✅.
+- **동반 배포**: 58f6c9c 보안 수정 — submit_teacher_deadline·get_teacher_transfer_status가 대상 이메일을 본인으로 강제하지 않아 **일반 교사가 타 교사 기한을 과거 날짜로 제출해 즉시 정지를 발동할 수 있던 권한 상승 구멍**(기존 결함, 학생판 설계 중 발견) 차단.
+
+## [2026-07-27] Claude → Antigravity (전출/자퇴 학생 셀프 기한 설정 — 신규 기능 지시, 사용자 확정 설계)
+
+- **요구(사용자)**: 학생도 교사처럼 포털에서 정지일을 직접 설정. 멘트는 튜토리얼 링크 2개 유지 + 기한 설정 안내. **기간은 어드민 조정 가능, 기본값: 등록 후 1달 내 정지(마지노선), 정지 1주일 후 영구삭제.**
+- **설계 (Claude 확정 — 교사 흐름 대칭)**:
+  1. **설정 의미 재정의**: `transferOutSettings.suspendGraceDays` = "학생 미설정 시 자동 정지 마지노선(등록일 기준)" **기본 30**(현 7), `deleteGraceDays` = "정지 후 삭제 유예" **기본 7**(현 30 — 등록일 기준에서 **정지일 기준으로 변경**). TransferOutTab 편집 UI 라벨·기본값 갱신 + 등록 처리부·크론 계산 일관 변경. 기존 큐 0건 실측 — 마이그레이션 불필요.
+  2. **등록 시**: suspendDueDate = 등록+suspendGraceDays, deleteDueDate = suspendDueDate+deleteGraceDays, `maxSuspendDueDate` = 초기 suspendDueDate 고정 저장(검증 상한).
+  3. **알림 기본 멘트**: iorad 튜토리얼 2링크·테이크아웃 유지 + `{deadlineUrl}`(BASE_URL+/student-portal) + `{maxSuspendDate}` 문구 추가. 학생 템플릿 치환자 목록에도 두 개 추가.
+  4. **학생 포털 카드**: 본인 transfer_out_tasks가 OU_MOVED면 "⏰ 계정 정지일 설정" 카드 — date picker(내일~maxSuspendDueDate), 현 예정일 표시. /admin/transfer-deadline 페이지 UI 참고.
+  5. **API 액션 2종**: `get_student_transfer_status` / `submit_student_transfer_deadline` — STUDENT_ALLOWED_ACTIONS 게이트 신설, **비관리자는 대상 이메일을 authUser.email로 강제**(58f6c9c와 동일 원칙 — 교사판의 구멍을 반복 금지). 검증: 내일 ≤ 날짜 ≤ maxSuspendDueDate. 제출 시 deleteDueDate 재계산 + 감사 로그. 과거/당일 제출 즉시 정지 분기는 교사판(submit_teacher_deadline) 패턴.
+  6. **크론**: 날짜 기준 처리라 변경 불필요(확인만). 학생 리마인더는 이번 범위 제외.
+  - 검증: tsc·build + 등록→멘트 치환 확인, 학생 계정으로 카드 설정→suspend/delete 재계산, 상한 초과 거부, 타인 이메일 제출 시 본인으로 강제됨. 완료 후 Claude 표적 리뷰(본인 강제·날짜 검증·설정 의미 변경 정합이 핵심).
