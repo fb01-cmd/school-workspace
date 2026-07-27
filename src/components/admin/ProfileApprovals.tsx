@@ -53,9 +53,9 @@ export default function ProfileApprovals() {
     Map<string, ApprovedTeacherInfo[]>
   >(new Map());
 
-  // 1. 신청 대기 목록 구독
+  // 1. 신청 대기 목록 구독 — 승인 큐는 super_admin 전용 정보
   useEffect(() => {
-    if (!userData?.domain) return;
+    if (!userData?.domain || userData.role !== "super_admin") return;
     const q = query(
       collection(db, "teacher_profiles_pending"),
       where("status", "==", "PENDING")
@@ -66,11 +66,11 @@ export default function ProfileApprovals() {
       setLoading(false);
     });
     return () => unsub();
-  }, [userData?.domain]);
+  }, [userData?.domain, userData?.role]);
 
-  // 2. 이미 승인된 담임 프로필 실시간 구독 (공동담임 겹침 경고 검출용)
+  // 2. 이미 승인된 담임 프로필 실시간 구독 (공동담임 겹침 경고 검출용 — 승인 탭 전용)
   useEffect(() => {
-    if (!userData?.domain) return;
+    if (!userData?.domain || userData.role !== "super_admin") return;
     const qApproved = query(
       collection(db, "teacher_profiles"),
       where("isHomeroom", "==", true)
@@ -96,7 +96,7 @@ export default function ProfileApprovals() {
       setApprovedHomerooms(map);
     });
     return () => unsubApproved();
-  }, [userData?.domain]);
+  }, [userData?.domain, userData?.role]);
 
   const handleApprove = async (profile: PendingProfile) => {
     if (!profile.email) return;
@@ -154,6 +154,7 @@ export default function ProfileApprovals() {
     <div className="space-y-6">
       {/* Sub-tab Navigation */}
       <div className="flex border border-gray-200 bg-white rounded-lg p-1.5 shadow-sm gap-2 flex-wrap sm:flex-nowrap">
+        {isSuperAdmin && (
         <button
           type="button"
           onClick={() => setActiveSubTab("pending")}
@@ -173,6 +174,7 @@ export default function ProfileApprovals() {
             </span>
           )}
         </button>
+        )}
 
         {isSuperAdmin && (
           <button
@@ -203,8 +205,8 @@ export default function ProfileApprovals() {
         </button>
       </div>
 
-      {/* Sub-tab 1: Pending Approvals */}
-      {activeSubTab === "pending" && (
+      {/* Sub-tab 1: Pending Approvals — super_admin 전용 */}
+      {activeSubTab === "pending" && isSuperAdmin && (
         <div className="space-y-6">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-1">📥 조직 정보 승인 대기</h2>

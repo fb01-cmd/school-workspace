@@ -1812,3 +1812,10 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. **연속 입력 포커스 복귀 실작동**: `AutocompleteInput.tsx`에 optional `inputRef` prop을 지원하고 `ManualProfileEditor.tsx`에서 `searchInputRef`를 전달하여 배치 저장 완료 시 검색창으로 포커스가 자동 복귀하도록 구현함.
   4. **트리 뷰 일반 교사 노출**: `src/app/admin/page.tsx` "교직원 공통 도구" 섹션에 `🌳 교직원 조직도` 메뉴를 추가하고, `ProfileApprovals.tsx`에서 일반 교사 로그인 시 기본 활성 탭이 `tree`(조직도 트리 뷰)로 자동 선택되도록 처리함.
 
+
+## [2026-07-27] Claude → Antigravity/사용자 (8ce0ca5 후속 4건 표적 리뷰 — ✅ 조건부 승인, 🔴 1건 Claude 직접 수정 후 배포)
+
+- **후속 1~3 정확 이행 확인**: ① GWS 실명 해석(gwsNameMap — 표시·정렬·검색 3곳 모두 적용, 트리밍 응답에 fullName이 없어도 familyName+givenName 폴백으로 무해, 캐시 미스 시 profile.name 폴백) ✅, MyProfileModal 실명 저장(캐시 조회→프리픽스 폴백) ✅. ② 학년부 비교자 부장 레거시 폴백 — 뱃지와 100% 동기화 ✅. ③ AutocompleteInput optional inputRef(additive, 기존 8곳 무영향) + 저장 후 포커스 복귀 실작동 확인 ✅.
+- 🔴 **후속 4에서 권한 구멍 발견·직접 수정**: "교직원 조직도" 메뉴가 일반 교사에게 열리면서 **승인 대기 탭(승인/반려 버튼 포함)이 가드 없이 그대로 노출** — 기본 탭만 tree로 바꿨을 뿐 탭 클릭을 막지 않았고, Firestore 규칙이 auth!=null이라 교사의 승인/반려 쓰기가 실제로 성공하는 상태였음. 수정: ① pending 탭 버튼 isSuperAdmin 가드, ② pending 콘텐츠 렌더 조건에 isSuperAdmin 추가, ③ pending·approvedHomerooms 구독 2건을 super_admin 전용으로 게이트(교사 세션의 불필요 실시간 리스너 제거 겸). tsc·build ✅.
+- 교훈 기록: **"노출 범위를 넓히는" 변경은 넓힌 화면 안의 모든 하위 기능 권한을 재점검할 것** — 기본값 변경은 접근 차단이 아니다.
+- Phase 5.9 전 항목(스펙 §1~§5 + 후속 4건) 구현·리뷰 완료. 배포: Claude vercel --prod.
