@@ -366,10 +366,11 @@ export default function TimetableImportTab({
           } else {
             const fullTeacher = fullCell.teacherName.trim();
             const fullSubj = fullCell.subjectName.trim();
+            // 소비된 셀은 일치 여부와 무관하게 기록 — 순방향 불일치가 역방향 누락으로 이중 보고되는 것 방지
+            matchedFullKeys.add(key);
             // 교사·과목 모두 일치해야 match — 과목만 같은 교사 오배정을 잡는 것이 교차 검증의 목적
             if (fullTeacher === t.name && fullSubj === l.subjectName) {
               matchCount++;
-              matchedFullKeys.add(key);
             } else if (fullTeacher === t.name) {
               mismatchList.push(`[${dayStr}요일 ${l.period}교시 ${l.grade}-${l.classNum}반] 과목 불일치: 전체시간표(${fullSubj}) vs 주간시간표(${l.subjectName}) — 교사 ${t.name}`);
             } else {
