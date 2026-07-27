@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import OUTreeSelector from "@/components/admin/OUTreeSelector";
 import { useAuth } from "@/context/AuthContext";
 
@@ -41,8 +41,387 @@ interface UserSheetEditorProps {
   onCancel: () => void;
 }
 
+// Module-level pure function — no closure over component state.
+// Placed here so useCallback handlers can reference it without deps.
+function validateRow(row: SheetRow) {
+  row.error = undefined;
+  if (!row.familyName.trim() || !row.givenName.trim()) {
+    row.error = "성 및 이름은 필수입니다.";
+    return;
+  }
+  if (!row.emailPrefix.trim()) {
+    row.error = "이메일 아이디는 필수입니다.";
+    return;
+  }
+  if (row.isNew && (!row.password || row.password.length < 8)) {
+    row.error = "새 계정은 8자 이상의 비밀번호가 필수입니다.";
+    return;
+  }
+  if (row.password && row.password.length > 0 && row.password.length < 8) {
+    row.error = "비밀번호는 최소 8자 이상이어야 합니다.";
+    return;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SheetRowMemo — memoized per-row component
+// Prevents the entire table from re-rendering on every keystroke; only the
+// changed row (whose SheetRow reference changed) will re-render.
+// Selection state is passed as primitive/struct values so React.memo's
+// shallow comparison correctly short-circuits unchanged rows.
+// ---------------------------------------------------------------------------
+type SelectionBounds = { minRow: number; maxRow: number; minCol: number; maxCol: number } | null;
+type FillInfo = {
+  fillEndRow: number | null;
+  fillEndCol: number | null;
+  fillDirection: "vertical" | "horizontal" | null;
+} | null;
+
+interface SheetRowProps {
+  row: SheetRow;
+  index: number;
+  domain: string;
+  orgUnits: { orgUnitId: string; orgUnitPath: string; name: string }[];
+  selectionBounds: SelectionBounds;
+  fillInfo: FillInfo;
+  onMouseDown: (e: React.MouseEvent, row: number, col: number) => void;
+  onMouseEnter: (row: number, col: number) => void;
+  onFillMouseDown: (e: React.MouseEvent) => void;
+  onFillDoubleClick: (e: React.MouseEvent) => void;
+  onCellChange: (index: number, field: keyof SheetRow, value: any) => void;
+  onCellFocus: (index: number) => void;
+  onCellBlur: () => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLElement>, row: number, col: number) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLInputElement>, row: number, col: number) => void;
+  onRemoveRow: (id: string, index: number) => void;
+}
+
+
+const SheetRowMemo = memo(function SheetRowMemo({
+  row,
+  index,
+  domain,
+  orgUnits,
+  selectionBounds,
+  fillInfo,
+  onMouseDown,
+  onMouseEnter,
+  onFillMouseDown,
+  onFillDoubleClick,
+  onCellChange,
+  onCellFocus,
+  onCellBlur,
+  onKeyDown,
+  onPaste,
+  onRemoveRow,
+}: SheetRowProps) {
+  const hasError = !!row.error;
+
+  // Compute selection/fill border classes inline from stable value props.
+  const isSelected = (c: number) =>
+    selectionBounds !== null &&
+    index >= selectionBounds.minRow && index <= selectionBounds.maxRow &&
+    c >= selectionBounds.minCol && c <= selectionBounds.maxCol;
+
+  const selectionBorderClass = (c: number): string => {
+    if (!selectionBounds || !isSelected(c)) return "";
+    let cls = "bg-indigo-50/20 ";
+    if (index === selectionBounds.minRow) cls += "border-t-2 border-t-indigo-600 ";
+    if (index === selectionBounds.maxRow) cls += "border-b-2 border-b-indigo-600 ";
+    if (c === selectionBounds.minCol) cls += "border-l-2 border-l-indigo-600 ";
+    if (c === selectionBounds.maxCol) cls += "border-r-2 border-r-indigo-600 ";
+    return cls;
+  };
+
+  const isInFillRange = (c: number): boolean => {
+    if (!fillInfo || !selectionBounds) return false;
+    const { fillEndRow, fillEndCol, fillDirection } = fillInfo;
+    const { minRow, maxRow, minCol, maxCol } = selectionBounds;
+    if (fillDirection === "vertical" && fillEndRow !== null) {
+      if (c < minCol || c > maxCol) return false;
+      if (fillEndRow > maxRow) return index > maxRow && index <= fillEndRow;
+      if (fillEndRow < minRow) return index >= fillEndRow && index < minRow;
+    } else if (fillDirection === "horizontal" && fillEndCol !== null) {
+      if (index < minRow || index > maxRow) return false;
+      if (fillEndCol > maxCol) return c > maxCol && c <= fillEndCol;
+      if (fillEndCol < minCol) return c >= fillEndCol && c < minCol;
+    }
+    return false;
+  };
+
+  const fillBorderClass = (c: number): string => {
+    if (!isInFillRange(c) || !fillInfo || !selectionBounds) return "";
+    const { fillEndRow, fillEndCol, fillDirection } = fillInfo;
+    const { minRow, maxRow, minCol, maxCol } = selectionBounds;
+    let cls = "bg-indigo-50/10 ";
+    if (fillDirection === "vertical" && fillEndRow !== null) {
+      const fillMinR = fillEndRow > maxRow ? maxRow + 1 : fillEndRow;
+      const fillMaxR = fillEndRow > maxRow ? fillEndRow : minRow - 1;
+      if (index === fillMinR) cls += "border-t-2 border-t-indigo-400 border-dashed ";
+      if (index === fillMaxR) cls += "border-b-2 border-b-indigo-400 border-dashed ";
+      if (c === minCol) cls += "border-l-2 border-l-indigo-400 border-dashed ";
+      if (c === maxCol) cls += "border-r-2 border-r-indigo-400 border-dashed ";
+    } else if (fillDirection === "horizontal" && fillEndCol !== null) {
+      const fillMinC = fillEndCol > maxCol ? maxCol + 1 : fillEndCol;
+      const fillMaxC = fillEndCol > maxCol ? fillEndCol : minCol - 1;
+      if (index === minRow) cls += "border-t-2 border-t-indigo-400 border-dashed ";
+      if (index === maxRow) cls += "border-b-2 border-b-indigo-400 border-dashed ";
+      if (c === fillMinC) cls += "border-l-2 border-l-indigo-400 border-dashed ";
+      if (c === fillMaxC) cls += "border-r-2 border-r-indigo-400 border-dashed ";
+    }
+    return cls;
+  };
+
+  const isSelectionHandleVisible = (c: number): boolean =>
+    selectionBounds !== null && index === selectionBounds.maxRow && c === selectionBounds.maxCol;
+
+  return (
+    <tr
+      className={`hover:bg-slate-50/50 ${
+        row.isNew ? "bg-emerald-50/30" : row.isModified ? "bg-sky-50/30" : ""
+      } ${hasError ? "bg-red-50/20" : ""}`}
+    >
+      {/* No / Status Column */}
+      <td className="px-2 py-1 text-center font-mono text-slate-400 select-none border-r border-slate-100">
+        <div className="flex flex-col items-center gap-0.5">
+          <span>{index + 1}</span>
+          {row.isNew ? (
+            <span className="px-1 py-0.2 bg-emerald-100 text-emerald-800 rounded-[3px] text-[8px] font-bold">New</span>
+          ) : row.isModified ? (
+            <span className="px-1 py-0.2 bg-sky-100 text-sky-800 rounded-[3px] text-[8px] font-bold">Edit</span>
+          ) : null}
+        </div>
+      </td>
+
+      {/* Family Name */}
+      <td
+        className={`p-1 border-r border-slate-100 relative group transition-all ${selectionBorderClass(0)} ${fillBorderClass(0)}`}
+        onMouseDown={(e) => onMouseDown(e, index, 0)}
+        onMouseEnter={() => onMouseEnter(index, 0)}
+      >
+        <input
+          type="text"
+          value={row.familyName}
+          onChange={(e) => onCellChange(index, "familyName", e.target.value)}
+          onFocus={() => onCellFocus(index)}
+          onBlur={onCellBlur}
+          onKeyDown={(e) => onKeyDown(e, index, 0)}
+          onPaste={(e) => onPaste(e, index, 0)}
+          data-row-index={index}
+          data-col-index={0}
+          placeholder="성"
+          className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+            hasError && !row.familyName.trim() ? "border-red-400 bg-red-50/50" : "border-slate-200"
+          }`}
+        />
+        {isSelectionHandleVisible(0) && (
+          <div
+            onMouseDown={(e) => onFillMouseDown(e)}
+            onDoubleClick={(e) => onFillDoubleClick(e)}
+            className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+            title="더블클릭하거나 끌어서 자동 채우기"
+          />
+        )}
+      </td>
+
+      {/* Given Name */}
+      <td
+        className={`p-1 border-r border-slate-100 relative group transition-all ${selectionBorderClass(1)} ${fillBorderClass(1)}`}
+        onMouseDown={(e) => onMouseDown(e, index, 1)}
+        onMouseEnter={() => onMouseEnter(index, 1)}
+      >
+        <input
+          type="text"
+          value={row.givenName}
+          onChange={(e) => onCellChange(index, "givenName", e.target.value)}
+          onFocus={() => onCellFocus(index)}
+          onBlur={onCellBlur}
+          onKeyDown={(e) => onKeyDown(e, index, 1)}
+          onPaste={(e) => onPaste(e, index, 1)}
+          data-row-index={index}
+          data-col-index={1}
+          placeholder="이름"
+          className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+            hasError && !row.givenName.trim() ? "border-red-400 bg-red-50/50" : "border-slate-200"
+          }`}
+        />
+        {isSelectionHandleVisible(1) && (
+          <div
+            onMouseDown={(e) => onFillMouseDown(e)}
+            onDoubleClick={(e) => onFillDoubleClick(e)}
+            className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+            title="더블클릭하거나 끌어서 자동 채우기"
+          />
+        )}
+      </td>
+
+      {/* Google ID Prefix */}
+      <td
+        className={`p-1 border-r border-slate-100 relative group transition-all ${selectionBorderClass(2)} ${fillBorderClass(2)}`}
+        onMouseDown={(e) => onMouseDown(e, index, 2)}
+        onMouseEnter={() => onMouseEnter(index, 2)}
+      >
+        <div className="flex items-center">
+          <input
+            type="text"
+            value={row.emailPrefix}
+            onChange={(e) => onCellChange(index, "emailPrefix", e.target.value.replace(/\s/g, "").toLowerCase())}
+            onFocus={() => onCellFocus(index)}
+            onBlur={onCellBlur}
+            onKeyDown={(e) => onKeyDown(e, index, 2)}
+            onPaste={(e) => onPaste(e, index, 2)}
+            data-row-index={index}
+            data-col-index={2}
+            placeholder="아이디"
+            className={`flex-1 min-w-0 px-2 py-1 text-xs border rounded-l focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 font-mono ${
+              hasError && !row.emailPrefix.trim() ? "border-red-400 bg-red-50/50" : "border-slate-200"
+            }`}
+          />
+          <span className="px-2 py-1 text-[10px] text-slate-500 border border-l-0 border-slate-200 bg-slate-50 rounded-r font-mono select-none">
+            @{domain}
+          </span>
+        </div>
+        {isSelectionHandleVisible(2) && (
+          <div
+            onMouseDown={(e) => onFillMouseDown(e)}
+            onDoubleClick={(e) => onFillDoubleClick(e)}
+            className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+            title="더블클릭하거나 끌어서 자동 채우기"
+          />
+        )}
+      </td>
+
+      {/* Org Unit Path */}
+      <td
+        className={`p-1 border-r border-slate-100 w-52 relative group transition-all ${selectionBorderClass(3)} ${fillBorderClass(3)}`}
+        onMouseDown={(e) => onMouseDown(e, index, 3)}
+        onMouseEnter={() => onMouseEnter(index, 3)}
+      >
+        <OUTreeSelector
+          orgUnits={orgUnits}
+          value={row.orgUnitPath}
+          onChange={(path) => onCellChange(index, "orgUnitPath", path || "/")}
+          size="sm"
+          data-row-index={index}
+          data-col-index={3}
+          onKeyDown={(e: React.KeyboardEvent<HTMLElement>) => onKeyDown(e, index, 3)}
+        />
+        {isSelectionHandleVisible(3) && (
+          <div
+            onMouseDown={(e) => onFillMouseDown(e)}
+            onDoubleClick={(e) => onFillDoubleClick(e)}
+            className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+            title="더블클릭하거나 끌어서 자동 채우기"
+          />
+        )}
+      </td>
+
+      {/* Password */}
+      <td
+        className={`p-1 border-r border-slate-100 relative group transition-all ${selectionBorderClass(4)} ${fillBorderClass(4)}`}
+        onMouseDown={(e) => onMouseDown(e, index, 4)}
+        onMouseEnter={() => onMouseEnter(index, 4)}
+      >
+        <input
+          type="text"
+          value={row.password || ""}
+          onChange={(e) => onCellChange(index, "password", e.target.value)}
+          onFocus={() => onCellFocus(index)}
+          onBlur={onCellBlur}
+          onKeyDown={(e) => onKeyDown(e, index, 4)}
+          onPaste={(e) => onPaste(e, index, 4)}
+          data-row-index={index}
+          data-col-index={4}
+          placeholder={row.isNew ? "임시비밀번호" : "(변경 시 입력)"}
+          className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 font-mono ${
+            hasError && row.isNew && (!row.password || row.password.length < 8) ? "border-red-400 bg-red-50/50" : "border-slate-200"
+          }`}
+        />
+        {isSelectionHandleVisible(4) && (
+          <div
+            onMouseDown={(e) => onFillMouseDown(e)}
+            onDoubleClick={(e) => onFillDoubleClick(e)}
+            className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+            title="더블클릭하거나 끌어서 자동 채우기"
+          />
+        )}
+      </td>
+
+      {/* Change Password next sign in */}
+      <td
+        className={`p-1 text-center border-r border-slate-100 relative transition-all ${selectionBorderClass(5)} ${fillBorderClass(5)}`}
+        onMouseDown={(e) => onMouseDown(e, index, 5)}
+        onMouseEnter={() => onMouseEnter(index, 5)}
+      >
+        <div className="flex items-center justify-center">
+          <input
+            type="checkbox"
+            checked={row.changePasswordAtNextLogin}
+            onChange={(e) => {
+              onCellFocus(index);
+              onCellChange(index, "changePasswordAtNextLogin", e.target.checked);
+            }}
+            className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+          />
+        </div>
+        {isSelectionHandleVisible(5) && (
+          <div
+            onMouseDown={(e) => onFillMouseDown(e)}
+            onDoubleClick={(e) => onFillDoubleClick(e)}
+            className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+            title="더블클릭하거나 끌어서 자동 채우기"
+          />
+        )}
+      </td>
+
+      {/* Suspend status */}
+      <td
+        className={`p-1 text-center border-r border-slate-100 relative transition-all ${selectionBorderClass(6)} ${fillBorderClass(6)}`}
+        onMouseDown={(e) => onMouseDown(e, index, 6)}
+        onMouseEnter={() => onMouseEnter(index, 6)}
+      >
+        <div className="flex items-center justify-center">
+          <input
+            type="checkbox"
+            checked={row.suspended}
+            onChange={(e) => {
+              onCellFocus(index);
+              onCellChange(index, "suspended", e.target.checked);
+            }}
+            className="rounded text-red-600 focus:ring-red-500 w-3.5 h-3.5 cursor-pointer"
+          />
+        </div>
+        {isSelectionHandleVisible(6) && (
+          <div
+            onMouseDown={(e) => onFillMouseDown(e)}
+            onDoubleClick={(e) => onFillDoubleClick(e)}
+            className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
+            title="더블클릭하거나 끌어서 자동 채우기"
+          />
+        )}
+      </td>
+
+      {/* Delete row */}
+      <td className="p-1 text-center">
+        {row.isNew ? (
+          <button
+            type="button"
+            onClick={() => onRemoveRow(row.id, index)}
+            className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded text-[10px] font-semibold"
+          >
+            삭제
+          </button>
+        ) : (
+          <span className="text-slate-300 select-none">-</span>
+        )}
+      </td>
+    </tr>
+  );
+});
+
 export default function UserSheetEditor({
   users,
+
   orgUnits,
   domain,
   defaultOrgUnitPath,
@@ -61,19 +440,28 @@ export default function UserSheetEditor({
   const [fillEndCol, setFillEndCol] = useState<number | null>(null);
   const [fillDirection, setFillDirection] = useState<"vertical" | "horizontal" | null>(null);
 
-  const pushHistory = (currentRows: SheetRow[]) => {
-    const snapshot = JSON.parse(JSON.stringify(currentRows));
-    setHistory((prev) => [...prev.slice(-49), snapshot]);
-  };
+  // Mirror rows into a ref so useCallback handlers can read latest rows without being
+  // listed as deps (avoids re-creating every callback on every row change).
+  const rowsRef = useRef<SheetRow[]>([]);
+  useEffect(() => { rowsRef.current = rows; }, [rows]);
 
-  const handleUndo = () => {
+  // historyRef mirrors history for the same reason.
+  const historyRef = useRef<SheetRow[][]>([]);
+  useEffect(() => { historyRef.current = history; }, [history]);
+
+  const pushHistory = useCallback((currentRows: SheetRow[]) => {
+    const snapshot = JSON.parse(JSON.stringify(currentRows)) as SheetRow[];
+    setHistory((prev) => [...prev.slice(-49), snapshot]);
+  }, []);
+
+  const handleUndo = useCallback(() => {
     setHistory((prevHistory) => {
       if (prevHistory.length === 0) return prevHistory;
       const previousState = prevHistory[prevHistory.length - 1];
       setRows(previousState);
       return prevHistory.slice(0, -1);
     });
-  };
+  }, []);
 
   const getSelectionBounds = () => {
     if (!selectionStart || !selectionEnd) return null;
@@ -85,89 +473,6 @@ export default function UserSheetEditor({
     };
   };
 
-  const isSelected = (r: number, c: number) => {
-    const bounds = getSelectionBounds();
-    if (!bounds) return false;
-    return (
-      r >= bounds.minRow &&
-      r <= bounds.maxRow &&
-      c >= bounds.minCol &&
-      c <= bounds.maxCol
-    );
-  };
-
-  const getSelectionBorderClasses = (r: number, c: number) => {
-    const bounds = getSelectionBounds();
-    if (!bounds || !isSelected(r, c)) return "";
-    
-    let classes = "bg-indigo-50/20 ";
-    if (r === bounds.minRow) classes += "border-t-2 border-t-indigo-600 ";
-    if (r === bounds.maxRow) classes += "border-b-2 border-b-indigo-600 ";
-    if (c === bounds.minCol) classes += "border-l-2 border-l-indigo-600 ";
-    if (c === bounds.maxCol) classes += "border-r-2 border-r-indigo-600 ";
-    
-    return classes;
-  };
-
-  const isInFillRange = (r: number, c: number) => {
-    if (!isDraggingFill || !selectionStart || !selectionEnd) return false;
-    const bounds = getSelectionBounds();
-    if (!bounds) return false;
-
-    const minR = bounds.minRow;
-    const maxR = bounds.maxRow;
-    const minC = bounds.minCol;
-    const maxC = bounds.maxCol;
-
-    if (fillDirection === "vertical" && fillEndRow !== null) {
-      if (c < minC || c > maxC) return false;
-      if (fillEndRow > maxR) {
-        return r > maxR && r <= fillEndRow;
-      } else if (fillEndRow < minR) {
-        return r >= fillEndRow && r < minR;
-      }
-    } else if (fillDirection === "horizontal" && fillEndCol !== null) {
-      if (r < minR || r > maxR) return false;
-      if (fillEndCol > maxC) {
-        return c > maxC && c <= fillEndCol;
-      } else if (fillEndCol < minC) {
-        return c >= fillEndCol && c < minC;
-      }
-    }
-    return false;
-  };
-
-  const getFillBorderClasses = (r: number, c: number) => {
-    if (!isInFillRange(r, c)) return "";
-    const bounds = getSelectionBounds();
-    if (!bounds) return "";
-
-    let classes = "bg-indigo-50/10 ";
-
-    if (fillDirection === "vertical" && fillEndRow !== null) {
-      const minC = bounds.minCol;
-      const maxC = bounds.maxCol;
-      const fillMinR = fillEndRow > bounds.maxRow ? bounds.maxRow + 1 : fillEndRow;
-      const fillMaxR = fillEndRow > bounds.maxRow ? fillEndRow : bounds.minRow - 1;
-
-      if (r === fillMinR) classes += "border-t-2 border-t-indigo-400 border-dashed ";
-      if (r === fillMaxR) classes += "border-b-2 border-b-indigo-400 border-dashed ";
-      if (c === minC) classes += "border-l-2 border-l-indigo-400 border-dashed ";
-      if (c === maxC) classes += "border-r-2 border-r-indigo-400 border-dashed ";
-    } else if (fillDirection === "horizontal" && fillEndCol !== null) {
-      const minR = bounds.minRow;
-      const maxR = bounds.maxRow;
-      const fillMinC = fillEndCol > bounds.maxCol ? bounds.maxCol + 1 : fillEndCol;
-      const fillMaxC = fillEndCol > bounds.maxCol ? fillEndCol : bounds.minCol - 1;
-
-      if (r === minR) classes += "border-t-2 border-t-indigo-400 border-dashed ";
-      if (r === maxR) classes += "border-b-2 border-b-indigo-400 border-dashed ";
-      if (c === fillMinC) classes += "border-l-2 border-l-indigo-400 border-dashed ";
-      if (c === fillMaxC) classes += "border-r-2 border-r-indigo-400 border-dashed ";
-    }
-
-    return classes;
-  };
 
   const handleMouseDown = (e: React.MouseEvent, r: number, c: number) => {
     if ((e.target as HTMLElement).closest(".fill-handle")) return;
@@ -748,43 +1053,33 @@ export default function UserSheetEditor({
     }
   };
 
-  // Update a specific cell
-  const handleCellChange = (index: number, field: keyof SheetRow, value: any) => {
-    pushHistory(rows);
+  // Snapshot once when a cell receives focus (not on every keystroke).
+  // Stores the last-focused row index to avoid duplicate snapshots within the same cell edit.
+  const lastSnapshotRowRef = useRef<number>(-1);
+
+  const handleCellFocus = useCallback((index: number) => {
+    if (lastSnapshotRowRef.current === index) return;
+    lastSnapshotRowRef.current = index;
+    pushHistory(rowsRef.current);
+  }, [pushHistory]);
+
+  // Reset the snapshot guard when the table loses focus entirely.
+  const handleCellBlur = useCallback(() => {
+    lastSnapshotRowRef.current = -1;
+  }, []);
+
+  // Update a specific cell — no history push here; done via handleCellFocus.
+  const handleCellChange = useCallback((index: number, field: keyof SheetRow, value: any) => {
     setRows((prev) => {
       const next = [...prev];
       const row = { ...next[index] };
       (row as any)[field] = value;
-      row.isModified = !row.isNew; // mark modified if it's an existing record
-      
-      // Perform inline validation
+      row.isModified = !row.isNew;
       validateRow(row);
-      
       next[index] = row;
       return next;
     });
-  };
-
-  // Row validation helper
-  const validateRow = (row: SheetRow) => {
-    row.error = undefined;
-    if (!row.familyName.trim() || !row.givenName.trim()) {
-      row.error = "성 및 이름은 필수입니다.";
-      return;
-    }
-    if (!row.emailPrefix.trim()) {
-      row.error = "이메일 아이디는 필수입니다.";
-      return;
-    }
-    if (row.isNew && (!row.password || row.password.length < 8)) {
-      row.error = "새 계정은 8자 이상의 비밀번호가 필수입니다.";
-      return;
-    }
-    if (row.password && row.password.length > 0 && row.password.length < 8) {
-      row.error = "비밀번호는 최소 8자 이상이어야 합니다.";
-      return;
-    }
-  };
+  }, []);
 
   // Fill Down: Copies the target cell value down to all rows below it
   const handleFillDownFrom = (startIndex: number, field: keyof SheetRow) => {
@@ -1106,237 +1401,30 @@ export default function UserSheetEditor({
                 </td>
               </tr>
             ) : (
+              // Compute selection bounds once outside the loop.
+              // SheetRowMemo receives stable value props so React.memo can
+              // short-circuit rows whose data AND selection context are unchanged.
               rows.map((row, index) => {
-                const hasError = !!row.error;
-                const bounds = getSelectionBounds();
                 return (
-                  <tr
+                  <SheetRowMemo
                     key={row.id}
-                    className={`hover:bg-slate-50/50 ${
-                      row.isNew ? "bg-emerald-50/30" : row.isModified ? "bg-sky-50/30" : ""
-                    } ${hasError ? "bg-red-50/20" : ""}`}
-                  >
-                    {/* No / Status Column */}
-                    <td className="px-2 py-1 text-center font-mono text-slate-400 select-none border-r border-slate-100">
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span>{index + 1}</span>
-                        {row.isNew ? (
-                          <span className="px-1 py-0.2 bg-emerald-100 text-emerald-800 rounded-[3px] text-[8px] font-bold">New</span>
-                        ) : row.isModified ? (
-                          <span className="px-1 py-0.2 bg-sky-100 text-sky-800 rounded-[3px] text-[8px] font-bold">Edit</span>
-                        ) : null}
-                      </div>
-                    </td>
-
-                    {/* Family Name */}
-                    <td 
-                      className={`p-1 border-r border-slate-100 relative group transition-all ${getSelectionBorderClasses(index, 0)} ${getFillBorderClasses(index, 0)}`}
-                      onMouseDown={(e) => handleMouseDown(e, index, 0)}
-                      onMouseEnter={() => handleMouseEnter(index, 0)}
-                    >
-                      <input
-                        type="text"
-                        value={row.familyName}
-                        onChange={(e) => handleCellChange(index, "familyName", e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(e, index, 0)}
-                        onPaste={(e) => handlePaste(e, index, 0)}
-                        data-row-index={index}
-                        data-col-index={0}
-                        placeholder="성"
-                        className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
-                          hasError && !row.familyName.trim() ? "border-red-400 bg-red-50/50" : "border-slate-200"
-                        }`}
-                      />
-                      {bounds && index === bounds.maxRow && 0 === bounds.maxCol && (
-                        <div
-                          onMouseDown={(e) => handleFillMouseDown(e)}
-                          onDoubleClick={(e) => handleFillDoubleClick(e)}
-                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
-                          title="더블클릭하거나 끌어서 자동 채우기"
-                        />
-                      )}
-                    </td>
-
-                    {/* Given Name */}
-                    <td 
-                      className={`p-1 border-r border-slate-100 relative group transition-all ${getSelectionBorderClasses(index, 1)} ${getFillBorderClasses(index, 1)}`}
-                      onMouseDown={(e) => handleMouseDown(e, index, 1)}
-                      onMouseEnter={() => handleMouseEnter(index, 1)}
-                    >
-                      <input
-                        type="text"
-                        value={row.givenName}
-                        onChange={(e) => handleCellChange(index, "givenName", e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(e, index, 1)}
-                        onPaste={(e) => handlePaste(e, index, 1)}
-                        data-row-index={index}
-                        data-col-index={1}
-                        placeholder="이름"
-                        className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
-                          hasError && !row.givenName.trim() ? "border-red-400 bg-red-50/50" : "border-slate-200"
-                        }`}
-                      />
-                      {bounds && index === bounds.maxRow && 1 === bounds.maxCol && (
-                        <div
-                          onMouseDown={(e) => handleFillMouseDown(e)}
-                          onDoubleClick={(e) => handleFillDoubleClick(e)}
-                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
-                          title="더블클릭하거나 끌어서 자동 채우기"
-                        />
-                      )}
-                    </td>
-
-                    {/* Google ID Prefix */}
-                    <td 
-                      className={`p-1 border-r border-slate-100 relative group transition-all ${getSelectionBorderClasses(index, 2)} ${getFillBorderClasses(index, 2)}`}
-                      onMouseDown={(e) => handleMouseDown(e, index, 2)}
-                      onMouseEnter={() => handleMouseEnter(index, 2)}
-                    >
-                      <div className="flex items-center">
-                        <input
-                          type="text"
-                          value={row.emailPrefix}
-                          onChange={(e) => handleCellChange(index, "emailPrefix", e.target.value.replace(/\s/g, "").toLowerCase())}
-                          onKeyDown={(e) => handleKeyDown(e, index, 2)}
-                          onPaste={(e) => handlePaste(e, index, 2)}
-                          data-row-index={index}
-                          data-col-index={2}
-                          placeholder="아이디"
-                          className={`flex-1 min-w-0 px-2 py-1 text-xs border rounded-l focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 font-mono ${
-                            hasError && !row.emailPrefix.trim() ? "border-red-400 bg-red-50/50" : "border-slate-200"
-                          }`}
-                        />
-                        <span className="px-2 py-1 text-[10px] text-slate-500 border border-l-0 border-slate-200 bg-slate-50 rounded-r font-mono select-none">
-                          @{domain}
-                        </span>
-                      </div>
-                      {bounds && index === bounds.maxRow && 2 === bounds.maxCol && (
-                        <div
-                          onMouseDown={(e) => handleFillMouseDown(e)}
-                          onDoubleClick={(e) => handleFillDoubleClick(e)}
-                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
-                          title="더블클릭하거나 끌어서 자동 채우기"
-                        />
-                      )}
-                    </td>
-
-                    {/* Org Unit Path */}
-                    <td 
-                      className={`p-1 border-r border-slate-100 w-52 relative group transition-all ${getSelectionBorderClasses(index, 3)} ${getFillBorderClasses(index, 3)}`}
-                      onMouseDown={(e) => handleMouseDown(e, index, 3)}
-                      onMouseEnter={() => handleMouseEnter(index, 3)}
-                    >
-                      <OUTreeSelector
-                        orgUnits={orgUnits}
-                        value={row.orgUnitPath}
-                        onChange={(path) => handleCellChange(index, "orgUnitPath", path || "/")}
-                        size="sm"
-                        data-row-index={index}
-                        data-col-index={3}
-                        onKeyDown={(e) => handleKeyDown(e, index, 3)}
-                      />
-                      {bounds && index === bounds.maxRow && 3 === bounds.maxCol && (
-                        <div
-                          onMouseDown={(e) => handleFillMouseDown(e)}
-                          onDoubleClick={(e) => handleFillDoubleClick(e)}
-                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
-                          title="더블클릭하거나 끌어서 자동 채우기"
-                        />
-                      )}
-                    </td>
-
-                    {/* Password */}
-                    <td 
-                      className={`p-1 border-r border-slate-100 relative group transition-all ${getSelectionBorderClasses(index, 4)} ${getFillBorderClasses(index, 4)}`}
-                      onMouseDown={(e) => handleMouseDown(e, index, 4)}
-                      onMouseEnter={() => handleMouseEnter(index, 4)}
-                    >
-                      <input
-                        type="text"
-                        value={row.password || ""}
-                        onChange={(e) => handleCellChange(index, "password", e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(e, index, 4)}
-                        onPaste={(e) => handlePaste(e, index, 4)}
-                        data-row-index={index}
-                        data-col-index={4}
-                        placeholder={row.isNew ? "임시비밀번호" : "(변경 시 입력)"}
-                        className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 font-mono ${
-                          hasError && row.isNew && (!row.password || row.password.length < 8) ? "border-red-400 bg-red-50/50" : "border-slate-200"
-                        }`}
-                      />
-                      {bounds && index === bounds.maxRow && 4 === bounds.maxCol && (
-                        <div
-                          onMouseDown={(e) => handleFillMouseDown(e)}
-                          onDoubleClick={(e) => handleFillDoubleClick(e)}
-                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
-                          title="더블클릭하거나 끌어서 자동 채우기"
-                        />
-                      )}
-                    </td>
-
-                    {/* Change Password next sign in */}
-                    <td 
-                      className={`p-1 text-center border-r border-slate-100 relative transition-all ${getSelectionBorderClasses(index, 5)} ${getFillBorderClasses(index, 5)}`}
-                      onMouseDown={(e) => handleMouseDown(e, index, 5)}
-                      onMouseEnter={() => handleMouseEnter(index, 5)}
-                    >
-                      <div className="flex items-center justify-center">
-                        <input
-                          type="checkbox"
-                          checked={row.changePasswordAtNextLogin}
-                          onChange={(e) => handleCellChange(index, "changePasswordAtNextLogin", e.target.checked)}
-                          className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
-                        />
-                      </div>
-                      {bounds && index === bounds.maxRow && 5 === bounds.maxCol && (
-                        <div
-                          onMouseDown={(e) => handleFillMouseDown(e)}
-                          onDoubleClick={(e) => handleFillDoubleClick(e)}
-                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
-                          title="더블클릭하거나 끌어서 자동 채우기"
-                        />
-                      )}
-                    </td>
-
-                    {/* Suspend status */}
-                    <td 
-                      className={`p-1 text-center border-r border-slate-100 relative transition-all ${getSelectionBorderClasses(index, 6)} ${getFillBorderClasses(index, 6)}`}
-                      onMouseDown={(e) => handleMouseDown(e, index, 6)}
-                      onMouseEnter={() => handleMouseEnter(index, 6)}
-                    >
-                      <div className="flex items-center justify-center">
-                        <input
-                          type="checkbox"
-                          checked={row.suspended}
-                          onChange={(e) => handleCellChange(index, "suspended", e.target.checked)}
-                          className="rounded text-red-600 focus:ring-red-500 w-3.5 h-3.5 cursor-pointer"
-                        />
-                      </div>
-                      {bounds && index === bounds.maxRow && 6 === bounds.maxCol && (
-                        <div
-                          onMouseDown={(e) => handleFillMouseDown(e)}
-                          onDoubleClick={(e) => handleFillDoubleClick(e)}
-                          className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-indigo-600 border border-white cursor-crosshair z-30 translate-x-1/2 translate-y-1/2 rounded-sm shadow-sm fill-handle"
-                          title="더블클릭하거나 끌어서 자동 채우기"
-                        />
-                      )}
-                    </td>
-
-                    {/* Delete row */}
-                    <td className="p-1 text-center">
-                      {row.isNew ? (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveRow(row.id, index)}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded text-[10px] font-semibold"
-                        >
-                          삭제
-                        </button>
-                      ) : (
-                        <span className="text-slate-300 select-none">-</span>
-                      )}
-                    </td>
-                  </tr>
+                    row={row}
+                    index={index}
+                    domain={domain}
+                    orgUnits={orgUnits}
+                    selectionBounds={getSelectionBounds()}
+                    fillInfo={isDraggingFill ? { fillEndRow, fillEndCol, fillDirection } : null}
+                    onMouseDown={handleMouseDown}
+                    onMouseEnter={handleMouseEnter}
+                    onFillMouseDown={handleFillMouseDown}
+                    onFillDoubleClick={handleFillDoubleClick}
+                    onCellChange={handleCellChange}
+                    onCellFocus={handleCellFocus}
+                    onCellBlur={handleCellBlur}
+                    onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
+                    onRemoveRow={handleRemoveRow}
+                  />
                 );
               })
             )}
