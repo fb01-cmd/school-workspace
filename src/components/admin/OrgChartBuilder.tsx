@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
-import { collection, onSnapshot, query, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { writeAuditLog } from "@/lib/firebase/audit";
 
@@ -29,7 +29,23 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
   const [selectedDept, setSelectedDept] = useState<string | null>(null);
 
   // §7-1 로컬 스테이징 맵 (email.toLowerCase() -> Staged TeacherProfile)
-  const [stagedProfiles, setStagedProfiles] = useState<Record<string, TeacherProfile>>({});
+  // sessionStorage 보존 — 서브 탭/메뉴 전환으로 컴포넌트가 unmount돼도 미반영 변경이 유실되지 않게 (beforeunload는 인앱 이동을 못 막음)
+  const STAGING_KEY = "orgChartBuilder:staged";
+  const [stagedProfiles, setStagedProfiles] = useState<Record<string, TeacherProfile>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(window.sessionStorage.getItem(STAGING_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(STAGING_KEY, JSON.stringify(stagedProfiles));
+    } catch {
+      /* 저장 실패는 치명적이지 않음 — beforeunload 가드가 남아 있음 */
+    }
+  }, [stagedProfiles]);
 
   // 일괄 반영(커밋) 상태
   const [isCommitting, setIsCommitting] = useState(false);
@@ -426,24 +442,29 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
 
       try {
         // 1) teacher_profiles setDoc (merge)
+        // homeroom이 undefined면 setDoc이 예외를 던진다(ignoreUndefinedProperties 미설정) — 신규 교사·담임 해제가 전부 이 경로
         const ref = doc(db, "teacher_profiles", cleanEmail);
         await setDoc(
           ref,
           {
             ...draft,
+            homeroom: draft.homeroom ?? null,
             updatedAt: serverTimestamp(),
             updatedBy: userData?.email || "super_admin",
           },
           { merge: true }
         );
 
-        // 2) pending 신청 무효화
+        // 2) pending 신청 무효화 — 실재하는 PENDING만 (무조건 setDoc 시 빈 pending 문서 생성 오염)
         const pendingRef = doc(db, "teacher_profiles_pending", cleanEmail);
-        await setDoc(
-          pendingRef,
-          { status: "APPROVED", approvedAt: serverTimestamp() },
-          { merge: true }
-        );
+        const pendingSnap = await getDoc(pendingRef);
+        if (pendingSnap.exists() && pendingSnap.data()?.status === "PENDING") {
+          await setDoc(
+            pendingRef,
+            { status: "APPROVED", approvedAt: serverTimestamp(), supersededByManual: true },
+            { merge: true }
+          );
+        }
 
         // 3) 감사 로그
         await writeAuditLog({

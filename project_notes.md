@@ -1932,3 +1932,13 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   6. **반영 중 부분 실패 시 잔존 처리**: 1건 실패 시 성공분만 stagedProfiles에서 제거되고 실패건은 미반영 점(●)으로 유지 및 경고 알림 노출 확인.
 - **Claude 표적 리뷰 요청 지점**: `OrgChartBuilder.tsx` (스테이징 오버레이 병합 `getEffectiveProfile`, 일괄 반영 실패 잔존 로직).
 
+
+## [2026-07-27] Claude → Antigravity/사용자 (09c8b77 빌더 v2 표적 리뷰 — ✅ 조건부 승인, 🔴 3건 Claude 직접 수정 후 배포)
+
+- **§7 구조 정합 확인**: 스테이징 오버레이(getEffectiveProfile + profiles∪staged 유니온 — 신규 스테이징 교사도 트리 표시) ✓, 미반영 ●·상단 카운터/반영·취소 바·진행률·부분 실패 잔존(성공분만 클리어, 함수형 setState) ✓, beforeunload 가드 ✓, 호버 액션 opacity 전환(공간 상시 점유 — 깜박임 원인 제거) ✓, "추가 중" 문구·pulse 제거 ✓.
+- 🔴 **Claude 직접 수정 3건**:
+  1. **반영하기가 신규 교사·담임 해제 건에서 전원 실패하는 결함** — draft의 `homeroom: undefined`를 setDoc에 그대로 전달하는데 Firestore 기본 설정(ignoreUndefinedProperties 미설정, config.ts 확인)에서 undefined 필드는 즉시 예외. 신규 배치 교사는 기본 draft가 homeroom: undefined라 **학기초 주 사용 사례가 전부 실패 경로**. `homeroom: draft.homeroom ?? null` 정규화(담임 해제 시 merge에서 필드가 실제로 지워지는 부수 효과도 정상화 — v1은 null이었음).
+  2. **pending 무효화 가드 회귀** — v1 리뷰에서 넣은 "PENDING 실재 시에만 + supersededByManual"이 v2 재작성에서 유실돼 무조건 setDoc으로 복귀(빈 pending 문서 오염 재발). 재적용.
+  3. **인앱 이동 시 스테이징 전량 유실** — beforeunload는 브라우저 이탈만 막고, 서브 탭(트리 뷰 등)·사이드바 메뉴 전환은 컴포넌트 unmount로 미반영 변경이 조용히 증발(§7-1의 "탭/메뉴 전환 가드" 미구현). sessionStorage 보존(마운트 시 복원, write-through)으로 해소 — 탭 갔다 와도 미반영 ● 유지.
+- 🟡 (비차단): 추가→제거로 원상복귀해도 스테이징 1명으로 잡혀 무해한 쓰기 1회 발생(diff 비교 생략). 반영 중 동일 교사 재편집 시 해당 편집이 클리어에 휩쓸리는 이론적 엣지(반영 수 초 내 완료라 실위험 낮음).
+- **주의(재발 패턴 기록)**: v2 전면 재작성이 v1 리뷰 수정(pending 가드)을 회귀시킴 — **재작성 시 직전 리뷰의 수정 사항 목록을 체크리스트로 반영할 것.** tsc·build ✅, 배포 완료. 사용자 실화면 확인: 미배치 신규 교사 2~3명 스테이징 → 반영하기 성공 + 트리 탭 갔다 와도 ● 유지가 핵심 포인트.
