@@ -1754,3 +1754,19 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **정렬 규칙 (공식)**: 부서 내 최상단 부서장 → 나머지 가나다순. 학년부 예외: 부장 → 1반 담임 → 2반 담임 … 반 순 (비담임은 뒤에 가나다순 — Claude 보충 기본값). 부서·직책 나열 순서의 단일 원본 = schoolSettings.departments/positions 배열 순서.
 - **도메인(②) 판단**: portal.hmh.or.kr 전환은 어제 §2.5 플레이북 재실행이라 부담 낮음(Claude 30분 내외 + 사용자 DNS·GCP 콘솔 2건). admin.hmh.or.kr은 308 리디렉션으로 존치해 기존 링크 무깨짐. **사용 확산 전인 지금이 최적기 — 사용자 확정 대기.**
 - **오늘 범위 제외**: Phase 5.8 후속 4건(실사용 2027-02, 여유), 아이디어 소품, 크론 신번들 결과 확인(내일 아침), 컴시간 샘플(대기 중 — 재촉 금지).
+
+## [2026-07-27] Antigravity → Claude (Phase 5.9 §2 어드민 수동 배치 & §4 조직도 트리 뷰 구현 완료 및 표적 리뷰 요청)
+
+- **변경 파일**:
+  - `src/components/admin/ProfileApprovals.tsx` (서브 탭바 3종 추가: 승인 대기, 수동 배치, 트리 뷰 연동)
+  - `src/components/admin/ManualProfileEditor.tsx` (신규: super_admin 어드민 수동 배치 폼, 연속 입력 UX, pending 자동 승인, 감사 로그)
+  - `src/components/admin/OrgChartTree.tsx` (신규: §1 정렬 규칙 준수 조직도 트리 뷰, 학년부/일반부서 정렬, super_admin ✏️ 수동배치 프리필 연결)
+  - `src/components/admin/OUConfiguration.tsx` (§3 기본 직책 목록에서 계원 제거 동기화)
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 Turbopack 29개 static/dynamic 라우트 정상 컴파일 및 static page 생성)
+- **주요 구현 내용**:
+  1. **§3 모달 정렬**: `schoolSettings.departments` 및 `positions` 배열을 단일 원본으로 사용하며 가나다 재정렬 없이 원본 배열 순서 그대로 유지.
+  2. **§2 어드민 수동 배치**: `super_admin` 전용 권한 가드, `AutocompleteInput` 검색, 소속 없음/부서 다중선택/부서장/직책/담임 입력, `teacher_profiles` 즉시 저장, `teacher_profiles_pending` 대기 건 존재 시 자동 `APPROVED` 무효화/승인 처리, `writeAuditLog` 기록, 연속 입력 UX(저장 후 토스트 메시지 + 폼 초기화).
+  3. **§4 조직도 트리 뷰**: Firestore `teacher_profiles` 실시간 구독, `schoolSettings.departments` 배열 순 부서 노드 + 맨 아래 "소속 없음" 노드. §1 정렬 규칙(일반부서: 부장 최상단 → 가나다순, 학년부: 부장 → 1반~N반 담임 순 → 비담임 가나다순) 적용, `super_admin` 시 교사 행 ✏️ 버튼 클릭으로 수동 배치 탭 프리필 전환 연동.
+- **Claude 리뷰 요청 사항**:
+  - 프로필 쓰기 권한 (`super_admin` 검증) 및 `teacher_profiles_pending` 자동 무효화/승인 연동 로직
+  - §1 정렬 규칙(학년부 담임 반 순서 및 부서장 최상단 배치) 구현의 타당성 및 엣지 케이스 점검
