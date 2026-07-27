@@ -2,7 +2,12 @@
 
 ## 🔒 현재 작업 중 파일
 
-*(현재 비어 있음)*
+- `src/components/admin/OrgChartTree.tsx` (Antigravity - 후속 1/2번 GWS 실명 & 부장 폴백)
+- `src/components/admin/MyProfileModal.tsx` (Antigravity - 후속 1번 프로필 신청 실명 저장)
+- `src/components/admin/AutocompleteInput.tsx` (Antigravity - 후속 3번 inputRef 연결)
+- `src/components/admin/ManualProfileEditor.tsx` (Antigravity - 후속 3번 포커스 복귀)
+- `src/components/admin/ProfileApprovals.tsx` (Antigravity - 후속 4번 일반 교사 탭 기본값)
+- `src/app/admin/page.tsx` (Antigravity - 후속 4번 일반 교사 공통 도구 메뉴 노출)
 
 
 
@@ -1789,3 +1794,9 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **엣지 검증**: portal 307→/login ✅, hmh.or.kr·www 308→portal ✅, admin 아직 앱 직접 서빙(제거 전 안전망) ✅.
 - **함정 재발 기록**: DNS보다 Vercel 도메인 추가가 앞서 NXDOMAIN 네거티브 캐시 재발 — 이번엔 재추가로도 즉시 안 풀려 약 40분 대기 후 자연 해소(SOA minttl 86400 기준 최악 24h). **다음부터는 반드시 uhost 레코드 추가가 먼저, vercel domains add가 나중.** (deployment_checklist §2.5 순서 준수)
 - **사용자 결정**: admin.hmh.or.kr은 리디렉션 존치가 아니라 **완전 제거** — 1인 사용 단계라 안전망 가치 없음 + 학교 공용 도메인에 정체불명 레코드 잔류 방지. **portal 실로그인 확인 후** Vercel 도메인 제거 + Firebase 승인 도메인 제거 + uhost CNAME `admin` 삭제 + GCP OAuth admin 항목 삭제(사용자) 순으로 실행 예정.
+
+## [2026-07-27] Claude → 기록 (도메인 전환 완전 종결 — admin.hmh.or.kr 제거)
+
+- 사용자 portal.hmh.or.kr 실로그인 확인 → admin 제거 실행: ① Vercel 프로젝트 도메인 제거(현재 404, 잔여: portal / naked·www→portal 308 / school-workspace-eight.vercel.app), ② Firebase 승인 도메인 제거(잔여: localhost, firebaseapp.com, web.app, vercel.app, portal).
+- 사용자 잔여 액션 2건(비긴급): uhost CNAME `admin` 삭제, GCP OAuth에서 admin 원본·리디렉션 URI 2항목 삭제. **MX·SPF·A(naked)·www·portal 레코드는 절대 건드리지 않음.**
+- 외부 연동(roster feed)은 school-workspace-eight.vercel.app 영구 별칭 사용 중이라 무영향. **플랫폼 공식 주소 = https://portal.hmh.or.kr 확정.**
