@@ -13,7 +13,6 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
-import ManualProfileEditor from "@/components/admin/ManualProfileEditor";
 import OrgChartTree from "@/components/admin/OrgChartTree";
 import OrgChartBuilder from "@/components/admin/OrgChartBuilder";
 
@@ -382,33 +381,17 @@ export default function ProfileApprovals() {
         </div>
       )}
 
-      {/* Sub-tab 2: Super Admin Org Chart Builder */}
+      {/* Sub-tab 2: Super Admin Org Chart Builder — 세부 편집 모달의 단일 소유자 (이중 모달 방지) */}
       {activeSubTab === "manual" && isSuperAdmin && (
-        <OrgChartBuilder onOpenDetailEdit={handleTriggerEditFromTree} />
+        <OrgChartBuilder
+          externalEditEmail={selectedTeacherForEdit || undefined}
+          onExternalEditHandled={() => setSelectedTeacherForEdit("")}
+        />
       )}
 
-      {/* Sub-tab 3: Org Chart Tree View */}
+      {/* Sub-tab 3: Org Chart Tree View — ✏️는 빌더 탭으로 전환 후 빌더 모달로 열림 */}
       {activeSubTab === "tree" && (
         <OrgChartTree onEditTeacher={handleTriggerEditFromTree} />
-      )}
-
-      {/* ✏️ 상세 수동 편집 모달 (ManualProfileEditor) */}
-      {selectedTeacherForEdit && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 relative">
-            <button
-              onClick={() => setSelectedTeacherForEdit("")}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold p-1"
-              title="닫기"
-            >
-              ✕
-            </button>
-            <ManualProfileEditor
-              initialEmail={selectedTeacherForEdit}
-              onSuccess={() => setSelectedTeacherForEdit("")}
-            />
-          </div>
-        </div>
       )}
     </div>
   );

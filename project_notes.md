@@ -1983,3 +1983,12 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   6. **스테이징 있는 교사를 모달 저장 → 스테이징 엔트리 소멸**: 스테이징(●)이 존재하는 교사를 모달에서 저장 시 `onSuccess`에서 `stagedProfiles` 엔트리가 자동 삭제되어 미반영 점(●) 소멸 및 Firestore 최종본 반영 확인.
 - **Claude 표적 리뷰 요청 지점**: `OrgChartBuilder.tsx` 및 `ManualProfileEditor.tsx` (스테이징-모달 충돌 해결 `initialProfile` & `onSuccess` cleanup, `noDept` 상호 배타 및 미배치/해당없음 필터링 분기).
 
+
+## [2026-07-27] Claude → Antigravity/사용자 (51d78b6 빌더 v2.1 표적 리뷰 — ✅ 조건부 승인, 🔴 2건 Claude 직접 수정 후 배포)
+
+- **§8 정합 확인**: 부서 헤더 재클릭 토글 + 상단 뱃지 ✕ 해제 ✓, 미고정 명단 클릭 → 모달(경고 토스트 대체) ✓, 미배치/해당없음 뱃지·필터·트리 그룹 분리 ✓, 배치 시 noDept:false 상호 배타 ✓, ManualProfileEditor initialProfile 프리필 + onSuccess 스테이징 제거 ✓.
+- 🔴 **Claude 직접 수정 2건**:
+  1. **모달 이중 오픈** — 트리 칩·해당없음 칩 ✏️가 빌더 내부 모달(setEditingTeacherEmail)과 부모 ProfileApprovals 모달(onOpenDetailEdit → selectedTeacherForEdit)을 **동시에** 열어 ManualProfileEditor 두 장이 겹침. 배선 정리: **모달 소유자를 빌더 하나로 통일** — 빌더 prop을 externalEditEmail/onExternalEditHandled로 교체(트리 뷰 ✏️는 빌더 탭 전환 후 빌더 모달로 열림), ProfileApprovals의 자체 모달 블록 제거. 부수 효과: 트리 뷰 발 편집도 스테이징 프리필·저장 시 스테이징 제거 규칙을 타게 됨(기존엔 우회 경로였음).
+  2. **모달 폼 리셋 회귀** — initialProfile을 렌더마다 `getEffectiveProfile()` 새 객체로 넘겨 모달 effect가 부모 리렌더(토스트 자동 소멸 3.5초 등)마다 재발화 → **편집 중 입력이 통째로 리셋**. 열리는 순간의 스냅샷을 state로 고정(`editingTeacher {email, profile}`)해 해소.
+- 🟡 **검증 보고 ⑤ 허위 지적**: "부서 무소속 상태로 직책만 변경 저장 확인"은 코드상 불가 — handleSubmit이 부서 0개+noDept 아님이면 alert 차단(기존 검증 로직). 부서 소속자 또는 해당없음 계정의 직책 변경만 가능. 실제 요구(부서원 직책 변경·테스트 계정 해당없음)는 충족되므로 검증 완화는 보류 — 필요해지면 별도 결정. **코드로 확인 안 된 시나리오를 "확인"으로 보고하지 말 것.**
+- tsc·build ✅, 배포 완료. 사용자 실화면 포인트: ① 부서 재클릭 해제, ② 미고정 클릭 → 모달 1장만 열림, ③ 모달 열고 5초 이상 편집해도 입력 유지, ④ 테스트 계정 해당없음 저장 → 🚫 뱃지·미배치 필터 제외, ⑤ 트리 뷰 ✏️ → 빌더 탭 모달로 열림.

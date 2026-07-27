@@ -17,10 +17,12 @@ const DEFAULT_DEPARTMENTS = [
 ];
 
 interface Props {
-  onOpenDetailEdit?: (email: string) => void;
+  /** 외부(트리 뷰 ✏️ 등)에서 세부 편집을 요청할 이메일 — 빌더가 자기 모달로 연다 (모달 소유자는 빌더 하나) */
+  externalEditEmail?: string;
+  onExternalEditHandled?: () => void;
 }
 
-export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
+export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandled }: Props) {
   const { userData, schoolSettings } = useAuth();
   const [profiles, setProfiles] = useState<TeacherProfile[]>([]);
   const [gwsTeachers, setGwsTeachers] = useState<any[]>([]);
@@ -29,8 +31,9 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
   // 선택된 받는 부서 (locked target department)
   const [selectedDept, setSelectedDept] = useState<string | null>(null);
 
-  // 세부 편집 모달 (ManualProfileEditor) 타겟 이메일
-  const [editingTeacherEmail, setEditingTeacherEmail] = useState<string | null>(null);
+  // 세부 편집 모달 타겟 — 열리는 순간의 실효 프로필 스냅샷을 함께 보관.
+  // 렌더마다 getEffectiveProfile을 넘기면 새 객체라 부모 리렌더(토스트 소멸 등)에 모달 폼이 리셋된다.
+  const [editingTeacher, setEditingTeacher] = useState<{ email: string; profile: TeacherProfile } | null>(null);
 
   // §7-1 로컬 스테이징 맵 (email.toLowerCase() -> Staged TeacherProfile)
   // sessionStorage 보존 — 서브 탭/메뉴 전환으로 컴포넌트가 unmount돼도 미반영 변경이 유실되지 않게 (beforeunload는 인앱 이동을 못 막음)
@@ -170,6 +173,21 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
   const isTeacherStaged = (email: string): boolean => {
     return Boolean(stagedProfiles[email.toLowerCase()]);
   };
+
+  // 세부 편집 모달 열기 — 이 시점의 실효 프로필(스테이징 반영본)을 스냅샷으로 고정
+  const openDetailEditor = (email: string) => {
+    const cleanEmail = email.toLowerCase();
+    setEditingTeacher({ email: cleanEmail, profile: getEffectiveProfile(cleanEmail) });
+  };
+
+  // 외부(트리 뷰 ✏️) 편집 요청 소비
+  useEffect(() => {
+    if (externalEditEmail) {
+      openDetailEditor(externalEditEmail);
+      onExternalEditHandled?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalEditEmail]);
 
   // GWS 실명 해석
   const getDisplayName = (email: string, profile?: TeacherProfile) => {
@@ -802,10 +820,7 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setEditingTeacherEmail(email);
-                                    if (onOpenDetailEdit) onOpenDetailEdit(email);
-                                  }}
+                                  onClick={() => openDetailEditor(email)}
                                   className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 text-[10px] transition-colors"
                                   title="세부 편집 폼 열기"
                                 >
@@ -870,10 +885,7 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
                         </span>
                         <button
                           type="button"
-                          onClick={() => {
-                            setEditingTeacherEmail(email);
-                            if (onOpenDetailEdit) onOpenDetailEdit(email);
-                          }}
+                          onClick={() => openDetailEditor(email)}
                           className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 text-[10px] transition-colors"
                           title="세부 편집 폼 열기"
                         >
@@ -951,7 +963,7 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
                       if (selectedDept) {
                         handleAssignTeacherToDept(email, selectedDept);
                       } else {
-                        setEditingTeacherEmail(email);
+                        openDetailEditor(email);
                       }
                     }}
                     className={`pt-2 pb-2 px-3 rounded-lg flex items-center justify-between cursor-pointer transition-all ${
@@ -1007,7 +1019,7 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setEditingTeacherEmail(email);
+                          openDetailEditor(email);
                         }}
                         className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded text-xs transition-colors"
                         title="세부 편집 모달 열기"
@@ -1037,28 +1049,28 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
       </div>
 
       {/* §8-3 세부 편집 모달 (ManualProfileEditor) */}
-      {editingTeacherEmail && (
+      {editingTeacher && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 relative">
             <button
-              onClick={() => setEditingTeacherEmail(null)}
+              onClick={() => setEditingTeacher(null)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold p-1 z-10"
               title="닫기"
             >
               ✕
             </button>
             <ManualProfileEditor
-              initialEmail={editingTeacherEmail}
-              initialProfile={getEffectiveProfile(editingTeacherEmail)}
+              initialEmail={editingTeacher.email}
+              initialProfile={editingTeacher.profile}
               onSuccess={() => {
-                const clean = editingTeacherEmail.toLowerCase();
+                const clean = editingTeacher.email;
                 // §8-3 모달 저장 성공 시 해당 교사의 스테이징 엔트리 제거 (서버 확정본)
                 setStagedProfiles((prev) => {
                   const next = { ...prev };
                   delete next[clean];
                   return next;
                 });
-                setEditingTeacherEmail(null);
+                setEditingTeacher(null);
                 setToast({
                   type: "success",
                   text: `'${getDisplayName(clean, getEffectiveProfile(clean))}' 교사의 프로필이 저장되었습니다.`,
