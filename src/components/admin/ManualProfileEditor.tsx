@@ -19,10 +19,11 @@ const DEFAULT_POSITIONS = ["교장", "교감", "교목", "부장", "교사", "�
 
 interface Props {
   initialEmail?: string;
+  initialProfile?: TeacherProfile;
   onSuccess?: () => void;
 }
 
-export default function ManualProfileEditor({ initialEmail = "", onSuccess }: Props) {
+export default function ManualProfileEditor({ initialEmail = "", initialProfile, onSuccess }: Props) {
   const { userData, schoolSettings } = useAuth();
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,9 +94,25 @@ export default function ManualProfileEditor({ initialEmail = "", onSuccess }: Pr
   useEffect(() => {
     if (initialEmail) {
       setTargetEmail(initialEmail);
-      loadExistingProfile(initialEmail);
+      if (initialProfile && initialProfile.email.toLowerCase() === initialEmail.toLowerCase()) {
+        setTargetName(initialProfile.name || initialEmail.split("@")[0]);
+        setNoDept(initialProfile.noDept === true);
+        setSelectedDepts(initialProfile.departments || []);
+        setDeptHeadMap(initialProfile.deptHeadMap || {});
+        setPosition(initialProfile.position || "");
+        setIsHomeroom(initialProfile.isHomeroom === true);
+        if (initialProfile.homeroom) {
+          setHomeroomGrade(initialProfile.homeroom.grade || 1);
+          setHomeroomClass(initialProfile.homeroom.class || 1);
+        } else {
+          setHomeroomGrade(1);
+          setHomeroomClass(1);
+        }
+      } else {
+        loadExistingProfile(initialEmail);
+      }
     }
-  }, [initialEmail]);
+  }, [initialEmail, initialProfile]);
 
   // AutocompleteInput.onSelect 시그니처는 (email, name?: string) — name은 "성이름" 문자열
   const handleSelectUser = (email: string, name?: string) => {

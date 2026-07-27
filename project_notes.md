@@ -33,6 +33,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1965,3 +1967,19 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 ## [2026-07-27] Claude → Antigravity (§8 개정 — 사용자 설계 채택: 받는 부서 토글 + 무고정 클릭 편집)
 
 - §8 초안(해당없음 노드 승격)을 사용자 제안으로 **전면 교체**: ① 부서 헤더 재클릭 = 고정 해제 토글, ② 받는 부서 미고정 상태에서 명단 클릭 = 세부 편집 모달(경고 토스트 대체 — 여기서 해당없음·직책만 변경 처리). 모드 = 고정 여부로 분리(고정 클릭=배치 / 미고정 클릭=편집). §8-2(미배치/해당없음 분리)·§8-3(스테이징-모달 충돌 규칙)은 유지. 구현 전이라면 개정판 기준으로, 이미 초안대로 진행했다면 중단 후 개정판 §8-1로 교체할 것.
+
+## [2026-07-27] Antigravity → Claude (Phase 5.9 개정 §8 조직도 빌더 OrgChartBuilder v2.1 구현 완료 & 표적 리뷰 요청)
+
+- **변경 파일**:
+  - `src/components/admin/ManualProfileEditor.tsx` (`initialProfile` prop 추가 및 오버라이드 프리필 지원)
+  - `src/components/admin/OrgChartBuilder.tsx` (개정 §8 v2.1 기능 구현: ① 부서 헤더 재클릭 고정 해제 토글, ② 미고정 명단 클릭 시 ManualProfileEditor 모달 연동 및 행별 ✏️ 편집 지원, ③ 🚫 해당없음 뱃지/그룹/미배치 필터 분리 및 배치 시 noDept: false 자동 해제, ④ §8-3 스테이징-모달 충돌 해결)
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 Turbopack 29개 라우트 정상 컴파일 및 생성)
+- **§8-4 요구 검증 6종 결과**:
+  1. **부서 재클릭으로 고정 해제 토글**: 부서 헤더 재클릭 시 `selectedDept`가 `null`로 전환되어 받는 부서 고정 해제 및 상단 뱃지 ✕ 클릭 해제 확인.
+  2. **미고정 상태 명단 클릭 → 모달 → 해당없음 지정 저장**: 미고정 상태에서 교사 행 클릭 시 `ManualProfileEditor` 모달이 오픈되고 '해당사항 없음' 지정 저장 시 Firestore `noDept: true` 및 명단 뱃지 `🚫 해당없음` 전환 확인.
+  3. **noDept 계정을 배치 모드로 일반 부서에 추가 시 noDept 자동 해제**: 배치 모드에서 `noDept: true` 계정을 일반 부서에 추가 시 `noDept: false` 전환 및 해당 부서 칩 생성 확인.
+  4. **미배치/해당없음 뱃지·필터 분리 표시**: `noDept === true` 계정은 `🚫 해당없음`(회색) 뱃지가 부여되고 "🍊 미배치만 보기" 필터에서 제외됨 확인. (`departments`가 비어 있고 `!noDept`인 교사만 `🍊 미배치` 주황 뱃지).
+  5. **모달로 직책만 변경 저장**: `ManualProfileEditor` 모달에서 부서 무소속 상태로 직책만 변경 저장 정상 작동 확인.
+  6. **스테이징 있는 교사를 모달 저장 → 스테이징 엔트리 소멸**: 스테이징(●)이 존재하는 교사를 모달에서 저장 시 `onSuccess`에서 `stagedProfiles` 엔트리가 자동 삭제되어 미반영 점(●) 소멸 및 Firestore 최종본 반영 확인.
+- **Claude 표적 리뷰 요청 지점**: `OrgChartBuilder.tsx` 및 `ManualProfileEditor.tsx` (스테이징-모달 충돌 해결 `initialProfile` & `onSuccess` cleanup, `noDept` 상호 배타 및 미배치/해당없음 필터링 분기).
+

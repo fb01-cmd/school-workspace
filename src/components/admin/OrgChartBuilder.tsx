@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase/config";
 import { collection, onSnapshot, query, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { writeAuditLog } from "@/lib/firebase/audit";
+import ManualProfileEditor from "@/components/admin/ManualProfileEditor";
 
 const DEFAULT_DEPARTMENTS = [
   "교장", "교감", "교목", "교무기획부", "교육연구부", "학생생활자치부",
@@ -27,6 +28,9 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
 
   // 선택된 받는 부서 (locked target department)
   const [selectedDept, setSelectedDept] = useState<string | null>(null);
+
+  // 세부 편집 모달 (ManualProfileEditor) 타겟 이메일
+  const [editingTeacherEmail, setEditingTeacherEmail] = useState<string | null>(null);
 
   // §7-1 로컬 스테이징 맵 (email.toLowerCase() -> Staged TeacherProfile)
   // sessionStorage 보존 — 서브 탭/메뉴 전환으로 컴포넌트가 unmount돼도 미반영 변경이 유실되지 않게 (beforeunload는 인앱 이동을 못 막음)
@@ -256,9 +260,9 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
     allEmails.forEach((email) => {
       const p = getEffectiveProfile(email);
       const depts = p.departments || [];
-      if (depts.length === 0) {
+      if (depts.length === 0 && p.noDept === true) {
         noDeptList.push(p);
-      } else {
+      } else if (depts.length > 0) {
         depts.forEach((d) => {
           if (!map.has(d)) map.set(d, []);
           map.get(d)!.push(p);
@@ -310,6 +314,7 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
       email: cleanEmail,
       name: nameVal,
       departments: newDepts,
+      noDept: false, // §8-2 noDept 교사를 일반 부서에 추가(배치 모드)하면 noDept 자동 해제
       position: positionVal,
     };
 
@@ -520,10 +525,11 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
       // 검색어 대조
       if (q && !name.includes(q) && !email.includes(q)) return false;
 
-      // 미배치 필터
+      // 미배치 필터 (noDept === true 해당없음 계정 제외)
       if (unassignedOnly) {
         const depts = profile?.departments || [];
-        if (depts.length > 0) return false;
+        const isNoDept = profile?.noDept === true;
+        if (depts.length > 0 || isNoDept) return false;
       }
 
       return true;
@@ -568,10 +574,16 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
           </div>
 
           {selectedDept && (
-            <div className="px-3 py-1.5 bg-amber-400 text-amber-950 rounded-lg text-xs font-extrabold flex items-center gap-1.5 shadow-xs border border-amber-300 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSelectedDept(null)}
+              className="px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-lg text-xs font-extrabold flex items-center gap-1.5 shadow-xs border border-amber-300 shrink-0 cursor-pointer transition-colors"
+              title="클릭하여 받는 부서 고정 해제"
+            >
               <span>🎯</span>
               <span>받는 부서: [{selectedDept}]</span>
-            </div>
+              <span className="ml-1 text-amber-900 font-bold hover:text-black">✕</span>
+            </button>
           )}
         </div>
 
@@ -663,7 +675,7 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
                 >
                   {/* 부서 헤더 (받는 부서 선택 타겟) */}
                   <div
-                    onClick={() => setSelectedDept(deptName)}
+                    onClick={() => setSelectedDept((prev) => (prev === deptName ? null : deptName))}
                     className={`px-4 py-3 flex items-center justify-between cursor-pointer select-none transition-colors ${
                       isSelected
                         ? "bg-amber-100/70 text-amber-950 font-bold"
@@ -788,16 +800,17 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
                                 >
                                   👑
                                 </button>
-                                {onOpenDetailEdit && (
-                                  <button
-                                    type="button"
-                                    onClick={() => onOpenDetailEdit(email)}
-                                    className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 text-[10px] transition-colors"
-                                    title="세부 편집 폼 열기"
-                                  >
-                                    ✏️
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingTeacherEmail(email);
+                                    if (onOpenDetailEdit) onOpenDetailEdit(email);
+                                  }}
+                                  className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 text-[10px] transition-colors"
+                                  title="세부 편집 폼 열기"
+                                >
+                                  ✏️
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveTeacherFromDept(email, deptName)}
@@ -817,32 +830,64 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
               );
             })}
 
-            {/* 소속 없음 섹션 */}
+            {/* §8-2 해당사항 없음 (noDept === true) 섹션 */}
             {deptMembersMap.noDeptList.length > 0 && (
-              <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span>🚫</span>
-                  <span className="text-sm font-bold text-gray-700">소속 없음 (미등록)</span>
-                  <span className="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">
-                    {deptMembersMap.noDeptList.length}명
-                  </span>
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span>🚫</span>
+                    <span className="text-sm font-bold text-slate-700">해당사항 없음 (처리 완료)</span>
+                    <span className="text-xs font-semibold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
+                      {deptMembersMap.noDeptList.length}명
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-400">직책 및 소속 없음 처리된 계정</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {deptMembersMap.noDeptList.map((teacher) => (
-                    <div
-                      key={teacher.email}
-                      className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700"
-                    >
-                      {getDisplayName(teacher.email, teacher)} ({teacher.email})
-                    </div>
-                  ))}
+                  {deptMembersMap.noDeptList.map((teacher) => {
+                    const email = teacher.email.toLowerCase();
+                    const staged = isTeacherStaged(email);
+                    return (
+                      <div
+                        key={email}
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border shadow-2xs ${
+                          staged
+                            ? "bg-amber-50 border-amber-300 text-amber-950"
+                            : "bg-white border-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {staged ? (
+                          <span className="text-amber-500 font-extrabold text-[10px]" title="미반영 변경사항 존재">
+                            ●
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">👤</span>
+                        )}
+                        <span className="font-bold">{getDisplayName(email, teacher)}</span>
+                        <span className="text-[11px] text-slate-400 font-mono">{email}</span>
+                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-300 text-[10px] font-extrabold rounded">
+                          🚫 해당없음
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingTeacherEmail(email);
+                            if (onOpenDetailEdit) onOpenDetailEdit(email);
+                          }}
+                          className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 text-[10px] transition-colors"
+                          title="세부 편집 폼 열기"
+                        >
+                          ✏️
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* ── [오른쪽 5열] 교사 명단 ──────────────────────────── */}
         <div className="lg:col-span-5 bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
           <div className="flex justify-between items-center border-b border-gray-100 pb-3">
             <div>
@@ -851,7 +896,11 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
                 <span>교직원 전체 명단 ({filteredTeacherUsers.length}명)</span>
               </h3>
               <p className="text-[11px] text-gray-400 mt-0.5">
-                교사 클릭 시 <strong>[{selectedDept || "부서선택"}]</strong>에 즉시 추가 (미반영 상태로 축적)
+                {selectedDept ? (
+                  <>클릭 시 <strong className="text-amber-600">[{selectedDept}]</strong>에 추가 (스테이징●)</>
+                ) : (
+                  <>클릭 시 <strong className="text-indigo-600">세부 편집 모달</strong> 열기 (직책·해당없음)</>
+                )}
               </p>
             </div>
             <label className="flex items-center gap-1.5 text-xs text-amber-900 font-bold bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 cursor-pointer select-none">
@@ -886,7 +935,8 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
                 const profile = getEffectiveProfile(email);
                 const realName = getDisplayName(email, profile);
                 const depts = profile?.departments || [];
-                const isUnassigned = depts.length === 0;
+                const isNoDept = profile?.noDept === true;
+                const isUnassigned = depts.length === 0 && !isNoDept;
                 const isInSelectedDept = selectedDept ? depts.includes(selectedDept) : false;
                 const staged = isTeacherStaged(email);
 
@@ -901,15 +951,14 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
                       if (selectedDept) {
                         handleAssignTeacherToDept(email, selectedDept);
                       } else {
-                        setToast({
-                          type: "warning",
-                          text: "왼쪽 조직도 트리에서 먼저 배치할 [받는 부서]를 클릭해 주세요.",
-                        });
+                        setEditingTeacherEmail(email);
                       }
                     }}
                     className={`pt-2 pb-2 px-3 rounded-lg flex items-center justify-between cursor-pointer transition-all ${
                       isInSelectedDept
                         ? "bg-slate-50 hover:bg-slate-100 text-slate-400 opacity-80"
+                        : isNoDept
+                        ? "bg-slate-50/70 hover:bg-slate-100 text-slate-600 border border-slate-200"
                         : isUnassigned
                         ? "bg-amber-50/50 hover:bg-amber-100/70 text-amber-950 border border-amber-200/80"
                         : "hover:bg-indigo-50/50 text-gray-900"
@@ -937,7 +986,11 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {isUnassigned ? (
+                      {isNoDept ? (
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-300 text-[10px] font-extrabold rounded-md shadow-2xs">
+                          🚫 해당없음
+                        </span>
+                      ) : isUnassigned ? (
                         <span className="px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-extrabold rounded-md shadow-2xs">
                           🍊 미배치
                         </span>
@@ -950,9 +1003,25 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
                         </span>
                       )}
 
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingTeacherEmail(email);
+                        }}
+                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded text-xs transition-colors"
+                        title="세부 편집 모달 열기"
+                      >
+                        ✏️
+                      </button>
+
                       {selectedDept && (
                         <button
                           type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAssignTeacherToDept(email, selectedDept);
+                          }}
                           className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded shadow-2xs"
                         >
                           + 추가
@@ -966,6 +1035,39 @@ export default function OrgChartBuilder({ onOpenDetailEdit }: Props) {
           </div>
         </div>
       </div>
+
+      {/* §8-3 세부 편집 모달 (ManualProfileEditor) */}
+      {editingTeacherEmail && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 relative">
+            <button
+              onClick={() => setEditingTeacherEmail(null)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold p-1 z-10"
+              title="닫기"
+            >
+              ✕
+            </button>
+            <ManualProfileEditor
+              initialEmail={editingTeacherEmail}
+              initialProfile={getEffectiveProfile(editingTeacherEmail)}
+              onSuccess={() => {
+                const clean = editingTeacherEmail.toLowerCase();
+                // §8-3 모달 저장 성공 시 해당 교사의 스테이징 엔트리 제거 (서버 확정본)
+                setStagedProfiles((prev) => {
+                  const next = { ...prev };
+                  delete next[clean];
+                  return next;
+                });
+                setEditingTeacherEmail(null);
+                setToast({
+                  type: "success",
+                  text: `'${getDisplayName(clean, getEffectiveProfile(clean))}' 교사의 프로필이 저장되었습니다.`,
+                });
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
