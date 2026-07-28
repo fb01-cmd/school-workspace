@@ -263,12 +263,13 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
                   value={teacherInput}
                   onChange={(val) => {
                     setTeacherInput(val);
-                    setSelectedTeacherEmail(val);
+                    setSelectedTeacherEmail("");
+                    setSelectedTeacherName("");
                   }}
                   onSelect={(email, name) => {
                     setSelectedTeacherEmail(email);
                     setSelectedTeacherName(name || email);
-                    setTeacherInput(email);
+                    setTeacherInput(`${name || ""} (${email})`);
                   }}
                   placeholder="교사 이름 또는 이메일 검색"
                   className="w-full"

@@ -32,6 +32,7 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
   const gradesCount = schoolSettings?.gradesCount || 3;
 
   // Selected target teacher
+  const [searchQuery, setSearchQuery] = useState(initialEmail);
   const [targetEmail, setTargetEmail] = useState(initialEmail);
   const [targetName, setTargetName] = useState("");
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -118,10 +119,12 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
   const handleSelectUser = (email: string, name?: string) => {
     setTargetEmail(email);
     setTargetName(name || email.split("@")[0]);
+    setSearchQuery(`${name || email.split("@")[0]} (${email})`);
     loadExistingProfile(email, name);
   };
 
   const resetForm = () => {
+    setSearchQuery("");
     setTargetEmail("");
     setTargetName("");
     setNoDept(false);
@@ -283,12 +286,11 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
         <div className="max-w-md">
           <AutocompleteInput
             type="user"
-            value={targetEmail}
+            value={searchQuery}
             onChange={(val) => {
-              setTargetEmail(val);
-              if (!val) {
-                setTargetName("");
-              }
+              setSearchQuery(val);
+              setTargetEmail("");
+              setTargetName("");
             }}
             domain={domain}
             onSelect={handleSelectUser}

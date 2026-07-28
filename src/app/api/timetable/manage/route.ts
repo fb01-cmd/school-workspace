@@ -61,6 +61,16 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const invalidEmails = body.managerEmails.filter(
+          (email: string) => !emailRegex.test(email)
+        );
+        if (invalidEmails.length > 0) {
+          return NextResponse.json(
+            { error: `올바르지 않은 이메일 형식이 포함되어 있습니다: ${invalidEmails.join(", ")}` },
+            { status: 400 }
+          );
+        }
         const updatedSettings = await saveTimetableSettings(domain, {
           managerEmails: body.managerEmails,
         });

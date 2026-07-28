@@ -53,7 +53,8 @@ export default function GroupList() {
   const [creatingGroup, setCreatingGroup] = useState(false);
 
   // Form States (Add Member)
-  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [newMemberQuery, setNewMemberQuery] = useState("");
+  const [selectedMemberEmail, setSelectedMemberEmail] = useState("");
   const [addingMember, setAddingMember] = useState(false);
 
   // General Status Messages
@@ -246,11 +247,11 @@ export default function GroupList() {
   // Add Member
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedGroup || !newMemberEmail) return;
+    if (!selectedGroup || !selectedMemberEmail) return;
 
     setAddingMember(true);
     setError("");
-    const targetEmail = newMemberEmail.trim();
+    const targetEmail = selectedMemberEmail.trim();
 
     try {
       const res = await fetch("/api/workspace/groups", {
@@ -269,7 +270,8 @@ export default function GroupList() {
       if (!res.ok) throw new Error(data.error || "Failed to add member");
 
       setSuccess(`'${targetEmail}' 멤버를 추가했습니다.`);
-      setNewMemberEmail("");
+      setNewMemberQuery("");
+      setSelectedMemberEmail("");
 
       // 멤버 캐시 무효화 후 다시 로드
       invalidateClientCache(`group_members:${selectedGroup.email}`);
@@ -724,17 +726,23 @@ export default function GroupList() {
                     <div className="flex-1">
                       <AutocompleteInput
                         type="user"
-                        value={newMemberEmail}
-                        onChange={setNewMemberEmail}
+                        value={newMemberQuery}
+                        onChange={(val) => {
+                          setNewMemberQuery(val);
+                          setSelectedMemberEmail("");
+                        }}
                         domain={domain}
-                        onSelect={(email) => setNewMemberEmail(email)}
+                        onSelect={(email, name) => {
+                          setSelectedMemberEmail(email);
+                          setNewMemberQuery(`${name || ""} (${email})`);
+                        }}
                         placeholder="추가할 사용자 이메일 입력..."
                         className="flex-1"
                       />
                     </div>
                     <button
                       type="submit"
-                      disabled={addingMember || !newMemberEmail}
+                      disabled={addingMember || !selectedMemberEmail}
                       className="px-4 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                     >
                       {addingMember ? "⏳" : "추가"}

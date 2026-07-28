@@ -85,7 +85,8 @@ export default function TimetableImportTab({
   const [commitMessage, setCommitMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // 일과계 관리자 이메일 입력 (super_admin 전용)
-  const [newManagerEmail, setNewManagerEmail] = useState("");
+  const [newManagerQuery, setNewManagerQuery] = useState("");
+  const [selectedManagerEmail, setSelectedManagerEmail] = useState("");
   const [savingManagers, setSavingManagers] = useState(false);
 
   // 1. GWS 유저 목록 로드 (교사 매핑용)
@@ -739,9 +740,9 @@ export default function TimetableImportTab({
 
   // 8. 일과계 관리자 이메일 저장
   const handleAddManager = async () => {
-    if (!newManagerEmail.trim()) return;
+    if (!selectedManagerEmail) return;
     const currentList = settings?.managerEmails || [];
-    const targetEmail = newManagerEmail.trim().toLowerCase();
+    const targetEmail = selectedManagerEmail.trim().toLowerCase();
     if (currentList.includes(targetEmail)) {
       alert("이미 관리자로 등록된 이메일입니다.");
       return;
@@ -763,7 +764,8 @@ export default function TimetableImportTab({
           terms,
         });
         window.dispatchEvent(new CustomEvent("timetableSettingsUpdated", { detail: { managerEmails: updated } }));
-        setNewManagerEmail("");
+        setNewManagerQuery("");
+        setSelectedManagerEmail("");
         onRefreshData();
       } else {
         alert(`관리자 추가 실패: ${data.error}`);
@@ -1425,16 +1427,22 @@ export default function TimetableImportTab({
 
               <div className="flex gap-2 max-w-md">
                 <AutocompleteInput
-                  value={newManagerEmail}
-                  onChange={setNewManagerEmail}
+                  value={newManagerQuery}
+                  onChange={(val) => {
+                    setNewManagerQuery(val);
+                    setSelectedManagerEmail("");
+                  }}
                   type="user"
                   domain={domain}
                   placeholder="추가할 일과계 교직원 이메일 검색"
-                  onSelect={(email) => setNewManagerEmail(email)}
+                  onSelect={(email, name) => {
+                    setSelectedManagerEmail(email);
+                    setNewManagerQuery(`${name || ""} (${email})`);
+                  }}
                 />
                 <button
                   onClick={handleAddManager}
-                  disabled={savingManagers || !newManagerEmail.trim()}
+                  disabled={savingManagers || !selectedManagerEmail}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shrink-0 shadow-xs"
                 >
                   {savingManagers ? "저장 중..." : "관리자 추가"}

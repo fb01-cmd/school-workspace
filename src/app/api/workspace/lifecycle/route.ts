@@ -1983,7 +1983,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "teacherEmail과 teachersOBPath(OB 보존실 OU 경로)는 필수입니다." }, { status: 400 });
       }
 
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(teacherEmail)) {
+        return NextResponse.json({ error: "올바른 이메일 형식이 아닙니다." }, { status: 400 });
+      }
+
       try {
+        // 계정 실존 여부 사전 검증
+        try {
+          await getUser(teacherEmail);
+        } catch (uErr: any) {
+          return NextResponse.json({ error: `구글 워크스페이스에 존재하지 않는 계정입니다 (${teacherEmail})` }, { status: 404 });
+        }
+
         // 지정 연동 그룹에서 탈퇴
         const activeGroups = await getTeacherGroups();
         const groupResults: { group: string; success: boolean; error?: string }[] = [];

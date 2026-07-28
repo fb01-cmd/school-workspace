@@ -319,6 +319,7 @@ const DEFAULT_TEACHER_REMINDER_CHAT_BODY = `📢 *[효명고등학교 - 데이�
 // Panel: 교직원 전출 관리
 // ─────────────────────────────────────────────────────
 function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain: string; operatorEmail: string; operatorName: string }) {
+  const [transferQuery, setTransferQuery] = useState("");
   const [transferEmail, setTransferEmail] = useState("");
   const [transferName, setTransferName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -445,6 +446,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
       const data = await res.json();
       setResult(data);
       if (data.success) {
+        setTransferQuery("");
         setTransferEmail("");
         setTransferName("");
         await loadQueue();
@@ -559,25 +561,30 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
             <label className="block text-sm font-medium text-gray-700 mb-1">전출 교사 이메일/이름 검색</label>
             <AutocompleteInput
               type="user"
-              value={transferEmail}
-              onChange={setTransferEmail}
+              value={transferQuery}
+              onChange={(val) => {
+                setTransferQuery(val);
+                setTransferEmail("");
+                setTransferName("");
+              }}
               domain={domain}
               onSelect={(email, name) => {
                 setTransferEmail(email);
                 setTransferName(name || "");
+                setTransferQuery(`${name || ""} (${email})`);
               }}
               placeholder="이름 또는 이메일 검색..."
               className="w-full"
             />
-            {transferName && (
+            {transferEmail && (
               <p className="text-xs text-indigo-600 font-medium mt-1.5">
-                🎯 선택된 교사: <span className="font-bold">{transferName}</span> ({transferEmail})
+                🎯 선택된 교사: <span className="font-bold">{transferName || transferEmail}</span> ({transferEmail})
               </p>
             )}
           </div>
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !transferEmail}
             className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-lg disabled:opacity-50 transition-colors"
           >
             {loading ? "처리 중..." : "⚠️ 전출 등록 (그룹 즉시 탈퇴 + 알림 발송)"}

@@ -86,11 +86,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ settings, isMock });
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     // 4. CREATE GROUP
     if (action === "create") {
       const { groupEmail, groupName, description } = body;
       if (!groupEmail || !groupName) {
         return NextResponse.json({ error: "groupEmail and groupName are required" }, { status: 400 });
+      }
+      if (!emailRegex.test(groupEmail)) {
+        return NextResponse.json({ error: "올바른 그룹 이메일 형식이 아닙니다." }, { status: 400 });
       }
       const group = await createGroup(groupEmail, groupName, description || "");
       await writeAuditLog({
@@ -127,6 +132,9 @@ export async function POST(req: NextRequest) {
       const { groupEmail, memberEmail } = body;
       if (!groupEmail || !memberEmail) {
         return NextResponse.json({ error: "groupEmail and memberEmail are required" }, { status: 400 });
+      }
+      if (!emailRegex.test(groupEmail) || !emailRegex.test(memberEmail)) {
+        return NextResponse.json({ error: "올바른 이메일 형식이 아닙니다." }, { status: 400 });
       }
       await addGroupMember(groupEmail, memberEmail);
       await writeAuditLog({
