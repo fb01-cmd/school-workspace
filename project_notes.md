@@ -2171,3 +2171,29 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **도중 발견·수정**: 포털 카드 미표시 버그(3fbd466 — 상단 핸드오버 참조).
 - **남은 마무리**: 사용자가 어드민 현황 표에서 "기한 설정됨" 뱃지·정지 예정일 8/27 육안 확인 → **복구(취소)**로 테스트 학생 원상복구. 이로써 d42c9e0+58d4edc+3fbd466 학생 셀프 기한 기능 실검증 종결.
 - **[추기 23:10] 복구 완료 실측**: 사용자 복구(취소) 실행 → `transfer_out_tasks` 레코드 0건(정리 완료), 감사 로그 "전출/자퇴 취소 및 계정 복구 — 이전 OU(/학생/3학년) 이동, 계정 활성화 및 소속 그룹스 복구 완료" success. **학생 셀프 기한 기능 실검증 전체 종결.** 어드민 표 DEADLINE_SET 뱃지·버튼 3종 실화면 확인도 완료(스크린샷). 남은 것: 시간표 리허설만.
+
+## [2026-07-28] Claude → Antigravity (자잘한 개선 2건 스펙 — 학기말 정리 단계 안내 + 전출 교사 즉시 OB 이동)
+
+> 시간표 리허설은 사용자 지시로 잠시 보류. 아래 2건 먼저.
+
+### ① 클래스룸 학기말 정리 — "3단계 정리" 안내 문구 추가 (UI만)
+
+- **배경**: 정리 실행이 내부적으로 이름 변경→보관→캘린더→드라이브 4개 파이프라인인데(`classroom/cleanup/route.ts` action=cleanup), 화면에는 어디까지 정리되는지 설명이 없음. 드라이브 폴더 이동까지 된다는 사실이 사용자에게 보여야 함.
+- **작업**: `ClassroomCleanupTab.tsx` 상단 보라 헤더 카드 아래(또는 "정리 대상 클래스룸 목록" 위)에 단계 안내 블록 추가. 문구는 아래를 그대로 사용:
+  - 🗂 **정리는 클래스룸당 3단계로 진행됩니다**
+  - ① **클래스룸 보관** — 이름에 학년도 접두어를 붙이고 보관(ARCHIVED) 상태로 전환
+  - ② **캘린더 정리** — 클래스룸 캘린더 구독 해제 (소유 캘린더는 숨김 처리)
+  - ③ **드라이브 보관 이동** — 클래스룸 드라이브 폴더를 "이전년도 클래스룸/《학년도》학년도" 폴더로 이동
+  - 모든 단계는 "최근 정리 내역 및 복원" 탭에서 되돌릴 수 있습니다.
+- 로직 변경 없음. 문구·마크업만.
+
+### ② 전출 교사 등록 즉시 OB 보존실 OU 이동 (학생 전출 격리와 대칭화)
+
+- **배경(실측)**: `register_teacher_transfer`는 그룹 탈퇴만 하고 OU는 안 옮김 → 전출 교사가 최장 1년 `/교직원`에 잔류. 조직도 빌더 배치 후보가 `ouMapping.teachers`(/교직원) 하위 필터라 전출 교사가 계속 배치 목록에 떠서 혼란. `/OB 보존실`은 /교직원 밖 별도 트리라 이동 시 목록에서 즉시 사라짐 확인.
+- **작업** (`lifecycle/route.ts`):
+  1. `register_teacher_transfer`: 그룹 탈퇴 후 — `getUser(teacherEmail)`로 현재 `orgUnitPath` 조회 → task 문서에 `originalOU` 저장 → `updateUser(teacherEmail, { orgUnitPath: settings.ouMapping.teachersOB })`. `teachersOB` 미설정이면 이동 생략하고 응답에 `warning` 포함(등록 자체는 진행). 감사 로그 details에 이동 전/후 OU 명시.
+  2. `cancel_teacher_transfer`: 활성화·그룹 재가입에 더해 `updateUser(orgUnitPath: task.originalOU || ouMapping.teachers)`로 원래 OU 복귀. task 삭제 **전에** originalOU를 읽어둘 것.
+  3. suspend/삭제 경로(크론·수동)는 OU 추가 조치 불필요(이미 OB).
+  4. `TeacherLifecycle.tsx` 등록 안내문에 "등록 즉시 OB 보존실 OU로 이동되어 조직도·배치 목록에서 제외됩니다" 문구 추가.
+- **기존 큐 3건 소급 이동 필수**: donghwan1008(PENDING)·jjinwoni(PENDING)·hjl(SUSPENDED). ⚠️ **cancel 후 재등록 방식 절대 금지** — 실제 교사들에게 안내 메일·챗이 재발송됨. 대신 일회성 스크립트(scripts/ 또는 임시)로 ① 현재 orgUnitPath 읽어 task.originalOU 기록 → ② OB로 updateUser. 완료 후 결과(3건 이동 전/후 OU)를 핸드오버에 남길 것.
+- **검증**: tsc·build + 조직도 빌더 배치 목록에서 3인 사라짐 확인. 완료 후 Claude 표적 리뷰(원상복구 대칭·소급분 originalOU 정확성이 핵심).
