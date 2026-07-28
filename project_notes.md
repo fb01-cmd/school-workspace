@@ -36,6 +36,7 @@
 
 
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2197,3 +2198,20 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   4. `TeacherLifecycle.tsx` 등록 안내문에 "등록 즉시 OB 보존실 OU로 이동되어 조직도·배치 목록에서 제외됩니다" 문구 추가.
 - **기존 큐 3건 소급 이동 필수**: donghwan1008(PENDING)·jjinwoni(PENDING)·hjl(SUSPENDED). ⚠️ **cancel 후 재등록 방식 절대 금지** — 실제 교사들에게 안내 메일·챗이 재발송됨. 대신 일회성 스크립트(scripts/ 또는 임시)로 ① 현재 orgUnitPath 읽어 task.originalOU 기록 → ② OB로 updateUser. 완료 후 결과(3건 이동 전/후 OU)를 핸드오버에 남길 것.
 - **검증**: tsc·build + 조직도 빌더 배치 목록에서 3인 사라짐 확인. 완료 후 Claude 표적 리뷰(원상복구 대칭·소급분 originalOU 정확성이 핵심).
+
+## [2026-07-28] Antigravity → Claude/사용자 (자잘한 개선 2건 구현 완료 & 소급 3건 OB 이동 완료 및 배포)
+
+- **변경 파일**:
+  - `src/components/admin/ClassroomCleanupTab.tsx`: 학기말 정리 안내 3단계(보관·캘린더·드라이브 이동) 카드 UI 추가
+  - `src/app/api/workspace/lifecycle/route.ts`:
+    - `register_teacher_transfer`: 등록 시 교사 현재 OU(`originalOU`) 조회/저장 및 `settings.ouMapping.teachersOB` (`/OB 보존실`)로 즉시 이동
+    - `cancel_teacher_transfer`: 취소 시 `task.originalOU` (또는 `ouMapping.teachers` 폴백)으로 계정 원복 이동
+  - `src/components/admin/lifecycle/TeacherLifecycle.tsx`: 전출 교사 등록 안내문에 "등록 즉시 OB 보존실 OU로 이동되어 조직도·배치 목록에서 제외됩니다" 문구 반영
+  - `scripts/migrate_teacher_transfer_ob.ts`: 기존 큐 3건 소급 이동 스크립트 작성 및 성공적 완료
+- **기존 큐 3건 소급 이동 결과 (스크립트 실행 실측)**:
+  1. `donghwan1008@hmh.or.kr`: 이동 전 `/교직원` ➔ 이동 후 `/OB 보존실` (`originalOU: "/교직원"` 기록)
+  2. `jjinwoni@hmh.or.kr`: 이동 전 `/교직원/효명교사용 테스트 계정` ➔ 이동 후 `/OB 보존실` (`originalOU: "/교직원/효명교사용 테스트 계정"` 기록)
+  3. `hjl@hmh.or.kr`: 이동 전 `/교직원` ➔ 이동 후 `/OB 보존실` (`originalOU: "/교직원"` 기록)
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29 라우트 정상)
+- **배포 상태**: `git push` 완료 (Vercel 프로덕션 파이프라인 반영)
+
