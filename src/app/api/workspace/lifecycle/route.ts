@@ -385,6 +385,13 @@ export async function POST(req: NextRequest) {
       if (!email) {
         return NextResponse.json({ error: "이메일이 누락되었습니다." }, { status: 400 });
       }
+      // 유령 레코드 방어선: UI는 선택 객체를 보내지만, 원시 문자열 유입 시 문서 ID 오염 차단
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return NextResponse.json(
+          { error: "올바른 이메일 형식이 아닙니다. 전체 주소(아이디@도메인)로 입력해 주세요." },
+          { status: 400 }
+        );
+      }
 
       // 1. 설정에서 전출/자퇴자용 OU 경로 조회 (기본값: 마지노선 30일, 정지 후 삭제 7일)
       let transferOutOU = "/학생/전출및자퇴";
@@ -1176,6 +1183,13 @@ export async function POST(req: NextRequest) {
       const { name, email, studentId } = body;
       if (!email || !name || !domain) {
         return NextResponse.json({ error: "필수 정보(이름, 이메일, 도메인)가 누락되었습니다." }, { status: 400 });
+      }
+      // 원시 문자열이 그대로 문서 ID가 되는 유령 레코드 차단 (테스트 레코드라 실존 확인은 생략)
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return NextResponse.json(
+          { error: "올바른 이메일 형식이 아닙니다. 전체 주소(아이디@도메인)로 입력해 주세요." },
+          { status: 400 }
+        );
       }
 
       try {

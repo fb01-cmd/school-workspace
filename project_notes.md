@@ -2235,3 +2235,20 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   2. **등록 가드 2종**: ① 이메일 형식 정규식 400, ② `getUser` 실존 확인 실패 시 404로 등록 중단(기존엔 warn 후 계속 진행 — 유령 생성 경로).
   3. **취소 내성**: GWS 404(계정 없음)면 GWS 조치 생략하고 큐 정리만 수행(감사 로그에 구분 기록) — 향후 유사 잔재도 UI에서 정리 가능.
 - tsc·build ✅, 배포. **사용자**: 새로고침 후 gotest 1행만 남았는지 확인하고, 검색창에 "gotest"(도메인 없이) 넣고 등록 눌러 "올바른 이메일 형식이 아닙니다" 거부가 뜨는지 1회 확인 권장.
+
+## [2026-07-28] Claude → Antigravity/사용자 (검색→식별자 패턴 전수 감사 결과 & 잔여 수정 스펙)
+
+- **배경**: gotest 사고(검색창 원시 문자열이 계정 식별자로 등록) 후 사용자 요청으로 동일 패턴 전수 감사. 서버 라우트 20개 + 검색형 관리자 UI 22개 병렬 스캔, 상위 발견은 Claude가 코드 직접 재검증.
+- **근본 원인**: 공용 `AutocompleteInput`이 선택을 강제하지 않는 구조 + 각 소비자가 `onChange`를 제출 상태에 직접 바인딩. 안전 화면(PasswordReset·TransferOutTab)과 취약 화면이 혼재.
+- **Claude 직접 수정 완료 (이번 커밋)**:
+  1. 🔴 `add_test_graduation_student` — 형식 검증 없이 원시 문자열이 graduation_tasks 문서 ID가 되는 **순수 유령 레코드 구멍**(GWS 호출조차 없어 무조건 적재됨). 이메일 형식 400 가드 추가.
+  2. 🟡 `register_transfer_out` — 이메일 형식 400 가드 추가(UI는 선택 객체라 안전하지만 이중 방어).
+  3. 🔴 `check-admin` 라우트 삭제 — 호출처 전무한 죽은 코드인데 **무인증으로 임의 이메일의 GWS 관리자 여부를 조회** 가능했음.
+  4. **AGENTS.md 자동완성 규칙 §4·§5 신설** — 선택 강제(검색어/제출값 분리·onSelect만 제출값 세팅·선택 가드)와 서버 이중 방어(형식 검증+실존 확인+삼킴 금지+취소 404 내성)를 영구 지침화. 신규 검색 기능 개발 시 필독.
+- **Antigravity 잔여 수정 스펙 (클라이언트 — AGENTS.md 새 §4 패턴으로 통일)**:
+  - 🔴 `TeacherLifecycle.tsx` **전출 등록 폼**(handleRegisterTransfer): onChange가 transferEmail 직접 오염. 검색어/선택값 분리 + 선택 가드. 서버는 이미 막혀 있으나 UX상 선제 차단 필요.
+  - 🔴 `TeacherLifecycle.tsx` **명예퇴임(OB) 폼**(handleOB): 동일 패턴. execute_teacher_ob 서버 액션에도 이메일 형식+getUser 실존 가드 추가할 것(현재 GWS 실패가 gate지만 그룹 탈퇴 4회 시도 후 실패라 낭비·부분실패 소지).
+  - 🟡 `GroupList.tsx` 멤버 추가(add_member), `ManualProfileEditor.tsx`(targetEmail — Firestore teacher_profiles 문서 ID 직접 생성이라 유령 문서 가능), `DisciplinePermissionsTab.tsx`(서버 검증은 있음 — UI만 정리), `TimetableImportTab.tsx` 관리자 추가(set_managers 서버에 형식 검증도 추가) — 전부 §4 패턴 적용.
+  - 🟡 서버 보강: `groups/route.ts` add_member/create에 이메일 형식 가드.
+  - 검증: tsc·build + 취약했던 폼 2곳에서 원시 문자열 제출이 UI에서 차단되는지 확인. 완료 후 Claude 표적 리뷰.
+- **비긴급 메모**: classroom cleanup 파이프라인이 일부 단계 실패에도 감사 로그를 일괄 success로 남김(단계별 결과는 별도 보존됨) — 추후 개선 후보.
