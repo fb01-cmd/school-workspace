@@ -2144,3 +2144,10 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **배포 상태**: `git push` 완료 (Vercel 프로덕션 배포 반영)
 - **다음 할 일**: 사용자 학생 셀프 기한 설정 실검증 시나리오 진행 가능
 
+## [2026-07-28] Claude → 사용자 (58d4edc DEADLINE_SET 표 분기 수정 확인 — ✅ 승인, 실검증 진행 가능)
+
+- **디프 검토**: 수정 방향 3종(뱃지 "기한 설정됨" 파랑 추가, D-Day·정지 예정일 `OU_MOVED || DEADLINE_SET` 확장, 제어 버튼 3종 동일 확장) 전부 정확히 반영. status 타입에도 추가. OU_MOVED 뱃지를 sky 톤으로 바꿔 DEADLINE_SET 파랑과 시각 구분한 것도 적절.
+- **버튼 동작 안전성 확인**: `execute_transfer_out_suspend`/`execute_transfer_out_delete`/`restore_transfer_out` 모두 status 게이트 없이 동작하므로, DEADLINE_SET 상태에서 새로 노출된 버튼 3종 모두 유효.
+- **배포 실측**: `vercel ls` — 푸시 2분 후 Production Ready 확인.
+- **다음**: 사용자 실검증(등록 → 멘트 → 포털 기한 설정(마지노선 당일) → 어드민 표 "기한 설정됨" 확인 → 복구) → 완료 통보 시 Claude가 admin SDK로 suspendDueDate/deleteDueDate 재계산 최종 판정.
+
