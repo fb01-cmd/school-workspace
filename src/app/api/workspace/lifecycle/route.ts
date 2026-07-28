@@ -4,6 +4,7 @@ import {
   updateOrgunit,
   listOrgunits,
   createUser,
+  getUser,
   updateUser,
   deleteUser,
   listUsersInOUs,
@@ -1510,7 +1511,7 @@ export async function POST(req: NextRequest) {
 
     // ─────────────────────────────────────────
     // ACTION: register_teacher_transfer
-    // 교사 전출 등록: 지정 연동 그룹 즉시 탈퇴 + Firestore 큐 적재 + 안내 알림 발송
+    // 교사 전출 등록: 지정 연동 그룹 즉시 탈퇴 + OB 보존실 OU 이동 + Firestore 큐 적재 + 안내 알림 발송
     // ─────────────────────────────────────────
     if (action === "register_teacher_transfer") {
       const { teacherEmail, teacherName } = body;
@@ -1519,7 +1520,43 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        // 지정 연동 그룹 즉시 강제 탈퇴 (보안 즉각 차단)
+        // 1. 교사의 현재 워크스페이스 정보(OU) 조회
+        let originalOU = "";
+        try {
+          const userGws = await getUser(teacherEmail);
+          originalOU = userGws.orgUnitPath || "";
+        } catch (uErr: any) {
+          console.warn("교사 워크스페이스 정보 조회 실패:", uErr);
+        }
+
+        // 2. OB 보존실 OU 조회 및 이동
+        let newOU = "";
+        let ouWarning = "";
+        let teachersOBOU = "";
+        try {
+          const sSnap = await adminDb.collection("settings").doc(domain).get();
+          if (sSnap.exists) {
+            const sData = sSnap.data() || {};
+            teachersOBOU = sData.ouMapping?.teachersOB || "";
+          }
+        } catch (sErr) {
+          console.warn("설정 데이터 조회 실패:", sErr);
+        }
+
+        if (teachersOBOU) {
+          try {
+            await updateUser(teacherEmail, { orgUnitPath: teachersOBOU });
+            newOU = teachersOBOU;
+            invalidateUserCache();
+          } catch (movErr: any) {
+            console.error("교사 OB 보존실 OU 이동 실패:", movErr);
+            ouWarning = `OB 보존실 OU 이동 실패: ${movErr.message}`;
+          }
+        } else {
+          ouWarning = "OB 보존실 OU(teachersOB)가 설정되지 않아 OU 이동이 생략되었습니다.";
+        }
+
+        // 3. 지정 연동 그룹 즉시 강제 탈퇴 (보안 즉각 차단)
         const activeGroups = await getTeacherGroups();
         const groupResults: { group: string; success: boolean; error?: string }[] = [];
         for (const groupEmail of activeGroups) {
@@ -1535,12 +1572,13 @@ export async function POST(req: NextRequest) {
         const defaultDeadline = new Date();
         defaultDeadline.setFullYear(defaultDeadline.getFullYear() + 1);
 
-        // Firestore에 전출 작업 등록
+        // Firestore에 전출 작업 등록 (originalOU 포함)
         const taskRef = adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(teacherEmail);
         await taskRef.set({
           email: teacherEmail,
           name: teacherName || teacherEmail,
           status: "PENDING_DEADLINE",
+          originalOU,
           registeredAt: new Date(),
           deadlineDate: defaultDeadline,
           deadlineSetAt: null,
@@ -1600,11 +1638,11 @@ export async function POST(req: NextRequest) {
           operatorName: adminName,
           action: "교사 전출 등록",
           targetEmail: teacherEmail,
-          details: `연동 그룹 즉시 탈퇴 처리 및 전출 큐 등록. 그룹 결과: ${JSON.stringify(groupResults)}`,
+          details: `연동 그룹 즉시 탈퇴 처리 및 전출 큐 등록. OU 이동: ${originalOU || "미지정"} -> ${newOU || "이동생략"}${ouWarning ? ` (${ouWarning})` : ""}. 그룹 결과: ${JSON.stringify(groupResults)}`,
           status: "success",
         });
 
-        return NextResponse.json({ success: true, isMock, groupResults });
+        return NextResponse.json({ success: true, isMock, groupResults, warning: ouWarning || undefined });
       } catch (err: any) {
         return NextResponse.json({ error: `전출 등록 실패: ${err.message}` }, { status: 500 });
       }
@@ -1612,7 +1650,7 @@ export async function POST(req: NextRequest) {
 
     // ─────────────────────────────────────────
     // ACTION: cancel_teacher_transfer
-    // 교사 전출 취소: Firestore 큐 삭제 + 지정 연동 그룹 재가입 (롤백)
+    // 교사 전출 취소: Firestore 큐 삭제 + 지정 연동 그룹 재가입 + 원래 OU 복귀 (롤백)
     // ─────────────────────────────────────────
     if (action === "cancel_teacher_transfer") {
       const { teacherEmail, teacherName } = body;
@@ -1621,8 +1659,26 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        // 0. GWS 계정 일시정지 해제 (활성화)
-        await updateUser(teacherEmail, { suspended: false });
+        const taskRef = adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(teacherEmail);
+        const taskSnap = await taskRef.get();
+        const taskData = taskSnap.exists ? taskSnap.data() : null;
+
+        // 원복할 OU 결정 (task.originalOU -> settings.ouMapping.teachers -> "/교직원")
+        let teachersOU = "/교직원";
+        try {
+          const sSnap = await adminDb.collection("settings").doc(domain).get();
+          if (sSnap.exists) {
+            const sData = sSnap.data() || {};
+            if (sData.ouMapping?.teachers) teachersOU = sData.ouMapping.teachers;
+          }
+        } catch (sErr) {
+          console.warn("설정 조회 실패:", sErr);
+        }
+
+        const restoreOU = taskData?.originalOU || teachersOU;
+
+        // 0. GWS 계정 일시정지 해제 (활성화) 및 원래 OU 복귀
+        await updateUser(teacherEmail, { suspended: false, orgUnitPath: restoreOU });
         invalidateUserCache();
 
         // 1. 지정 연동 그룹 재가입 (롤백)
@@ -1638,7 +1694,6 @@ export async function POST(req: NextRequest) {
         }
 
         // 2. Firestore 전출 큐 삭제
-        const taskRef = adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(teacherEmail);
         await taskRef.delete();
 
         await writeAuditLog({
@@ -1646,7 +1701,7 @@ export async function POST(req: NextRequest) {
           operatorName: adminName,
           action: "교사 전출 취소",
           targetEmail: teacherEmail,
-          details: `전출 등록 취소 완료 및 지정된 연동 그룹 재가입 처리. 그룹 결과: ${JSON.stringify(groupResults)}`,
+          details: `전출 등록 취소 완료 및 원래 OU(${restoreOU}) 복귀, 지정 연동 그룹 재가입 처리. 그룹 결과: ${JSON.stringify(groupResults)}`,
           status: "success",
         });
 

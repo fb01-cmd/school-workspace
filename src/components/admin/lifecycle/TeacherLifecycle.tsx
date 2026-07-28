@@ -552,7 +552,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <h3 className="text-lg font-bold text-gray-900 mb-1">전출 교사 등록</h3>
         <p className="text-sm text-gray-500 mb-4">
-          등록 즉시 지정된 연동 그룹에서 강제 탈퇴하고, 교사 본인에게 데이터 백업 기한 선택 안내를 발송합니다.
+          등록 즉시 OB 보존실 OU로 이동되어 조직도·배치 목록에서 제외되며, 지정된 연동 그룹에서 강제 탈퇴하고 교사 본인에게 데이터 백업 기한 선택 안내를 발송합니다.
         </p>
         <form onSubmit={handleRegisterTransfer} className="space-y-4 max-w-lg">
           <div className="w-full">

@@ -499,6 +499,30 @@ export default function ClassroomCleanupTab() {
         </div>
       </div>
 
+      {/* 3-Step Cleanup Description Card */}
+      <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-4 text-xs text-indigo-950 space-y-2 shadow-xs">
+        <div className="font-bold text-sm text-indigo-900 flex items-center gap-1.5">
+          🗂 정리는 클래스룸당 3단계로 진행됩니다
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+          <div className="bg-white/80 border border-indigo-100 rounded-lg p-2.5">
+            <span className="font-bold text-indigo-800 block mb-0.5">① 클래스룸 보관</span>
+            <span className="text-gray-600">이름에 학년도 접두어를 붙이고 보관(ARCHIVED) 상태로 전환</span>
+          </div>
+          <div className="bg-white/80 border border-indigo-100 rounded-lg p-2.5">
+            <span className="font-bold text-indigo-800 block mb-0.5">② 캘린더 정리</span>
+            <span className="text-gray-600">클래스룸 캘린더 구독 해제 (소유 캘린더는 숨김 처리)</span>
+          </div>
+          <div className="bg-white/80 border border-indigo-100 rounded-lg p-2.5">
+            <span className="font-bold text-indigo-800 block mb-0.5">③ 드라이브 보관 이동</span>
+            <span className="text-gray-600">클래스룸 드라이브 폴더를 &quot;이전년도 클래스룸/《학년도》학년도&quot; 폴더로 이동</span>
+          </div>
+        </div>
+        <p className="text-[11px] text-indigo-700/80 font-medium pt-0.5">
+          모든 단계는 &quot;최근 정리 내역 및 복원&quot; 탭에서 되돌릴 수 있습니다.
+        </p>
+      </div>
+
       {message && (
         <div className={`p-4 rounded-lg text-sm font-semibold flex justify-between items-center ${
           message.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
