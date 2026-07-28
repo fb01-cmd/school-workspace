@@ -1529,6 +1529,14 @@ export async function POST(req: NextRequest) {
           console.warn("교사 워크스페이스 정보 조회 실패:", uErr);
         }
 
+        // 1-1. 재등록 가드: 이미 큐에 있으면 기존 originalOU 보존
+        // — 재등록 시점의 현재 OU는 이미 OB라, 덮어쓰면 취소해도 OB에 좌초된다.
+        const taskRef = adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(teacherEmail);
+        const prevTaskSnap = await taskRef.get();
+        if (prevTaskSnap.exists && prevTaskSnap.data()?.originalOU) {
+          originalOU = prevTaskSnap.data()!.originalOU;
+        }
+
         // 2. OB 보존실 OU 조회 및 이동
         let newOU = "";
         let ouWarning = "";
@@ -1573,7 +1581,6 @@ export async function POST(req: NextRequest) {
         defaultDeadline.setFullYear(defaultDeadline.getFullYear() + 1);
 
         // Firestore에 전출 작업 등록 (originalOU 포함)
-        const taskRef = adminDb.collection("teacher_transfer_tasks").doc(domain).collection("teachers").doc(teacherEmail);
         await taskRef.set({
           email: teacherEmail,
           name: teacherName || teacherEmail,
@@ -1675,10 +1682,19 @@ export async function POST(req: NextRequest) {
           console.warn("설정 조회 실패:", sErr);
         }
 
-        const restoreOU = taskData?.originalOU || teachersOU;
+        let restoreOU = taskData?.originalOU || teachersOU;
 
         // 0. GWS 계정 일시정지 해제 (활성화) 및 원래 OU 복귀
-        await updateUser(teacherEmail, { suspended: false, orgUnitPath: restoreOU });
+        // originalOU가 그 사이 삭제된 하위 OU면 이동이 실패하므로, 교사 루트 OU로 폴백 재시도
+        // — 복귀 이동 실패가 계정 활성화·그룹 재가입까지 막지 않게 한다.
+        try {
+          await updateUser(teacherEmail, { suspended: false, orgUnitPath: restoreOU });
+        } catch (restoreErr: any) {
+          if (restoreOU === teachersOU) throw restoreErr;
+          console.warn(`원래 OU(${restoreOU}) 복귀 실패, 교사 루트(${teachersOU})로 폴백:`, restoreErr.message);
+          restoreOU = teachersOU;
+          await updateUser(teacherEmail, { suspended: false, orgUnitPath: restoreOU });
+        }
         invalidateUserCache();
 
         // 1. 지정 연동 그룹 재가입 (롤백)

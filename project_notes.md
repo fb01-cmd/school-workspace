@@ -2215,3 +2215,13 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29 라우트 정상)
 - **배포 상태**: `git push` 완료 (Vercel 프로덕션 파이프라인 반영)
 
+
+## [2026-07-28] Claude → Antigravity/사용자 (4abc523 개선 2건 표적 리뷰 — ✅ 조건부 승인, 🟡 2건 Claude 직접 수정 후 배포)
+
+- **① 정리 3단계 안내**: ✅ 스펙 문구 그대로 3칸 카드 구현, 로직 무변경 — 승인.
+- **② OB 이동·소급**: 등록 originalOU 저장→OB 이동→감사 로그, 취소 원복(originalOU→teachers 폴백), 소급 3건 모두 스펙 정합. **소급 실측(Claude, Firestore+Directory API)**: 3인 전원 실제 `/OB 보존실` 재적 확인, originalOU 정확(jjinwoni 하위 OU `/교직원/효명교사용 테스트 계정`까지 보존 ✓), hjl 정지 상태 보존 ✓.
+- 🟡 **2건 직접 수정 (커밋 참조)**:
+  1. **재등록 가드 부재** — 이미 큐에 있는 교사를 재등록하면 현재 OU(=OB)가 originalOU를 덮어써 취소 후에도 OB에 좌초. 기존 task의 originalOU 보존 가드 추가 (+taskRef 선언 상향).
+  2. **취소 원복 OU 소멸 무대응** — originalOU 하위 OU가 그 사이 삭제되면 updateUser가 통째로 실패해 활성화·그룹 재가입까지 중단. 교사 루트 OU 폴백 재시도로 보강.
+- **비차단 메모**: `scripts/migrate_teacher_transfer_ob.ts`의 설정 부재 폴백 경로가 `/교직원/OB 보존실`로 오기(실제 `/OB 보존실`) — 실행 시 설정이 존재해 무해했고 일회성 스크립트라 수정 생략. 재사용 시 주의.
+- tsc·build ✅, 배포 진행.
