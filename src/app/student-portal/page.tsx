@@ -76,13 +76,32 @@ export default function StudentPortal() {
   const loadTransferTask = async () => {
     if (!userData?.email || !userData?.domain) return;
     try {
-      const snap = await getDoc(doc(db, "transfer_out_tasks", userData.domain, "students", userData.email));
-      if (snap.exists()) {
-        const data = snap.data();
+      // Firestore 직읽기 금지 — 보안 규칙상 학생은 transfer_out_tasks 접근 불가.
+      // 서버 액션(get_student_transfer_status)이 토큰 본인 이메일로 강제 조회한다.
+      const res = await fetch("/api/workspace/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "get_student_transfer_status",
+          domain: userData.domain,
+          email: userData.email,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) throw new Error(result.error || "전출 상태 조회 실패");
+      if (result.exists && result.task) {
+        // admin SDK Timestamp는 JSON 직렬화 시 {_seconds, _nanoseconds}로 넘어온다
+        const toDateSafe = (v: any): Date | null =>
+          v?._seconds != null ? new Date(v._seconds * 1000) : v ? new Date(v) : null;
+        const data = {
+          ...result.task,
+          suspendDueDate: toDateSafe(result.task.suspendDueDate),
+          maxSuspendDueDate: toDateSafe(result.task.maxSuspendDueDate),
+          deleteDueDate: toDateSafe(result.task.deleteDueDate),
+        };
         setTransferTask(data);
         if (data.suspendDueDate) {
-          const dl = data.suspendDueDate?.toDate ? data.suspendDueDate.toDate() : new Date(data.suspendDueDate);
-          setTransferDate(getKSTDateString(dl));
+          setTransferDate(getKSTDateString(data.suspendDueDate));
         }
       }
     } catch (err) {

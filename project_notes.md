@@ -2151,3 +2151,11 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **배포 실측**: `vercel ls` — 푸시 2분 후 Production Ready 확인.
 - **다음**: 사용자 실검증(등록 → 멘트 → 포털 기한 설정(마지노선 당일) → 어드민 표 "기한 설정됨" 확인 → 복구) → 완료 통보 시 Claude가 admin SDK로 suspendDueDate/deleteDueDate 재계산 최종 판정.
 
+
+## [2026-07-28] Claude → Antigravity/사용자 (🔴 실검증 C단계 차단 버그 즉시 수정 — 학생 포털 카드 미표시)
+
+- **증상**: 사용자 실검증 C단계에서 학생 포털에 기한 설정 카드가 아예 안 뜸. 콘솔: `Failed to load student transfer task status: FirebaseError: Missing or insufficient permissions.`
+- **원인**: `student-portal/page.tsx`의 `loadTransferTask`가 스펙(§d42c9e0 — 조회도 API 액션)과 달리 **클라이언트 Firestore `getDoc` 직읽기**로 구현됨. `firestore.rules`상 `transfer_out_tasks`는 `isTeacher()`만 읽기 가능이라 학생은 거부 — 규칙이 맞고 화면이 틀림. 서버 액션 `get_student_transfer_status`는 d42c9e0에서 구현돼 있었으나 **아무도 호출하지 않는 죽은 코드**였음.
+- **수정 (Claude 직접)**: `loadTransferTask`를 `POST /api/workspace/lifecycle` + `action: get_student_transfer_status` 호출로 전환. admin SDK Timestamp가 JSON으로 `{_seconds,_nanoseconds}` 직렬화되는 점을 `toDateSafe`로 정규화(미변환 시 `new Date({...})` → Invalid Date로 마지노선·max 계산 전부 깨짐). 렌더 쪽 `.toDate ? : new Date()` 분기는 Date 객체와 호환이라 무변경.
+- **교사판과의 차이 기록**: 교사판은 `teacher_transfer_tasks`에 `isSelf(email)` 읽기 규칙을 넣는 방식, 학생판은 API 경유 방식 — 학생판 규칙은 넓히지 않고 유지(규칙 재배포 불필요, 본인 강제 게이트 일원화 이점).
+- **검증**: tsc ✅ / build ✅ (29 라우트). 사용자 재시도 대기 — 포털 새로고침 후 카드 표시부터 C단계 재개.
