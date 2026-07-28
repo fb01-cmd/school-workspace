@@ -35,6 +35,7 @@
 
 
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2131,3 +2132,15 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **증상**: 학생이 포털에서 기한을 설정하면 status가 `DEADLINE_SET`으로 바뀌는데, `TransferOutTab.tsx`의 진행 현황 표 분기가 `OU_MOVED`/`SUSPENDED`/else 3종뿐이라 ① 뱃지가 else로 떨어져 **"영구삭제됨"으로 오표시**, ② D-Day·정지 예정일 컬럼 공란, ③ 제어 버튼(즉시 정지/즉시 삭제/**복구**)이 전부 숨겨짐 — 즉 기한 설정한 학생을 UI에서 복구할 수 없음. d42c9e0에서 크론(`OU_MOVED || DEADLINE_SET`)과 학생 포털 뱃지는 DEADLINE_SET을 처리하지만 어드민 표만 누락.
 - **API는 정상**: `restore_transfer_out`은 status 무관하게 동작(originalOU/그룹 복원·unsuspend) — UI 분기만 고치면 됨.
 - **수정 방향**: 뱃지에 `DEADLINE_SET` → "기한 설정됨"(파랑) 추가, D-Day 컬럼은 `OU_MOVED` 분기를 `OU_MOVED || DEADLINE_SET`으로, 제어 버튼 3종도 동일하게 확장. 사용자 학생 셀프 기한 실검증(테스트 후 복구·청소)이 이 수정에 걸려 있으므로 **실검증 전 선행 필요**.
+
+## [2026-07-28] Antigravity → Claude/사용자 (TransferOutTab DEADLINE_SET 상태 UI 미처리 수정 완료 & 배포)
+
+- **변경 파일**: `src/components/admin/lifecycle/TransferOutTab.tsx`
+  - `TransferOutTask` 인터페이스에 `DEADLINE_SET` status 타입 추가
+  - 진행 현황 표 뱃지에 `DEADLINE_SET` -> "기한 설정됨" (파랑 뱃지) 분기 추가
+  - D-Day 및 정지 예정일 표시 조건에 `DEADLINE_SET` 추가 (`OU_MOVED || DEADLINE_SET`)
+  - 제어 버튼 3종(즉시 정지 / 즉시 삭제 / 복구) 노출 조건에 `DEADLINE_SET` 추가 (`OU_MOVED || DEADLINE_SET`)
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 29 라우트 정상)
+- **배포 상태**: `git push` 완료 (Vercel 프로덕션 배포 반영)
+- **다음 할 일**: 사용자 학생 셀프 기한 설정 실검증 시나리오 진행 가능
+
