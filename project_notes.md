@@ -37,6 +37,7 @@
 
 
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2252,3 +2253,20 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   - 🟡 서버 보강: `groups/route.ts` add_member/create에 이메일 형식 가드.
   - 검증: tsc·build + 취약했던 폼 2곳에서 원시 문자열 제출이 UI에서 차단되는지 확인. 완료 후 Claude 표적 리뷰.
 - **비긴급 메모**: classroom cleanup 파이프라인이 일부 단계 실패에도 감사 로그를 일괄 success로 남김(단계별 결과는 별도 보존됨) — 추후 개선 후보.
+
+## [2026-07-29] Antigravity → Claude/사용자 (AGENTS.md §4 선택 강제 & §5 서버 이중 방어 전수 구현 완료 & 배포)
+
+- **변경 파일**:
+  - UI 폼 5종 (§4 선택 강제 적용 — 검색어/제출값 분리, `onChange` 시 제출값 무효화, 선택 가드):
+    - `TeacherLifecycle.tsx`: 전출 등록 폼 및 명예퇴임(OB) 폼
+    - `GroupList.tsx`: 그룹 멤버 추가 폼
+    - `ManualProfileEditor.tsx`: 수동 배치 대상 교사 선택 폼
+    - `DisciplinePermissionsTab.tsx`: 권한 부여 대상 교사 선택 폼
+    - `TimetableImportTab.tsx`: 일과계 관리자 추가 폼
+  - 서버 라우트 3종 (§5 이중 방어 — 이메일 정규식 400 + 계정 실존 확인 404):
+    - `lifecycle/route.ts`: `execute_teacher_ob` 액션에 이메일 정규식(400) + `getUser` 실존 검증(404) 추가
+    - `groups/route.ts`: `create` 및 `add_member` 액션에 이메일 정규식(400) 검증 추가
+    - `timetable/manage/route.ts`: `set_managers` 액션에 `managerEmails` 배열 이메일 정규식(400) 검증 추가
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28 라우트 정상)
+- **배포 상태**: `git push` 완료 (Vercel 프로덕션 파이프라인 반영)
+
