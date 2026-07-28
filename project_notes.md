@@ -2125,3 +2125,9 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **② 학생 셀프 기한 실검증 → ❌ 미실시**: `transfer_out_tasks/hmh.or.kr/students` 0건 — 테스트 전출 등록 자체가 아직 없음. 실검증 시나리오(테스트 학생 전출 등록 → 멘트의 포털 링크·마지노선 확인 → 학생 포털 카드에서 기한 설정(마지노선 당일 포함) → suspendDueDate/deleteDueDate 재계산 확인)는 실제 OU 이동·알림 발송이 수반되므로 사용자 실행 대기 유지.
 - **③ 시간표 리허설 → 미착수**: §9-3의 1·2단계(파서 구현·표적 리뷰)는 완료 확인. 3단계(portal 실파일 업로드 → 교사 매핑 → 검증 리포트 → 학기 생성 완주)는 스펙상 "사용자 또는 Antigravity 실서버" 담당 — Claude가 대행하지 않고 넘긴다.
 - **다음**: ③ 리허설 완주(Antigravity 또는 사용자) → 통과 시 9a-1 종결 → 9b 스펙(Claude, 일과진행설명서.pdf·주간시간표설명서.pdf 정독).
+
+## [2026-07-28] Claude → Antigravity (🟡 검증 안내 작성 중 발견 — TransferOutTab 현황 표가 DEADLINE_SET 상태 미처리)
+
+- **증상**: 학생이 포털에서 기한을 설정하면 status가 `DEADLINE_SET`으로 바뀌는데, `TransferOutTab.tsx`의 진행 현황 표 분기가 `OU_MOVED`/`SUSPENDED`/else 3종뿐이라 ① 뱃지가 else로 떨어져 **"영구삭제됨"으로 오표시**, ② D-Day·정지 예정일 컬럼 공란, ③ 제어 버튼(즉시 정지/즉시 삭제/**복구**)이 전부 숨겨짐 — 즉 기한 설정한 학생을 UI에서 복구할 수 없음. d42c9e0에서 크론(`OU_MOVED || DEADLINE_SET`)과 학생 포털 뱃지는 DEADLINE_SET을 처리하지만 어드민 표만 누락.
+- **API는 정상**: `restore_transfer_out`은 status 무관하게 동작(originalOU/그룹 복원·unsuspend) — UI 분기만 고치면 됨.
+- **수정 방향**: 뱃지에 `DEADLINE_SET` → "기한 설정됨"(파랑) 추가, D-Day 컬럼은 `OU_MOVED` 분기를 `OU_MOVED || DEADLINE_SET`으로, 제어 버튼 3종도 동일하게 확장. 사용자 학생 셀프 기한 실검증(테스트 후 복구·청소)이 이 수정에 걸려 있으므로 **실검증 전 선행 필요**.
