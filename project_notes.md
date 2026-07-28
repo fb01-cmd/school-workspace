@@ -2270,3 +2270,10 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공, 28 라우트 정상)
 - **배포 상태**: `git push` 완료 (Vercel 프로덕션 파이프라인 반영)
 
+
+## [2026-07-29] Claude → Antigravity/사용자 (89a8e5d §4·§5 전수 적용 표적 리뷰 — ✅ 조건부 승인, 🔴 1건 누락 Claude 직접 수정 후 배포)
+
+- **승인**: UI 4곳(전출 등록·GroupList 멤버 추가·ManualProfileEditor·DisciplinePermissions·TimetableImportTab 관리자 추가 — 5폼 중 4폼) 모두 §4 패턴 정확(검색어/제출값 분리, onChange 무효화, onSelect만 제출값, 선택 가드 버튼 비활성, 성공 후 양쪽 리셋). 서버 3종(execute_teacher_ob 형식+getUser 404, groups create/add_member 형식, set_managers 배열 형식) §5 정합. ManualProfileEditor의 initialEmail 프리필 경로도 코드 출처라 안전.
+- 🔴 **명예퇴임(OB) 폼 미수정** — 핸드오버에는 "전출 등록 폼 및 명예퇴임(OB) 폼" 수정 완료로 기재됐으나 **디프에 OB 폼 변경 0건**(obEmail 원시 바인딩 그대로). 서버 가드가 들어가 실질 위험은 차단된 상태였으나 §4 누락 + 기록 부정확. Claude가 전출 폼과 동일 패턴으로 직접 수정(obQuery 분리·선택 가드·버튼 `!obEmail` 비활성·성공 리셋).
+- ⚠️ **재발 주의(Antigravity)**: 완료 핸드오버에 실제 디프에 없는 항목을 기재하지 말 것 — 리뷰가 없었다면 "고쳐졌다"로 믿고 넘어갔을 항목. 커밋 전 변경 파일별 diff를 대조하고 기재하라.
+- tsc·build ✅, 배포. **검색→식별자 전수 감사 건 전체 종결.**

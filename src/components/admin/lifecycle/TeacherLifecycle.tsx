@@ -702,6 +702,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
 function OBTeacherPanel({ domain, operatorEmail, operatorName, settingsOBPath }: {
   domain: string; operatorEmail: string; operatorName: string; settingsOBPath: string;
 }) {
+  const [obQuery, setObQuery] = useState("");
   const [obEmail, setObEmail] = useState("");
   const [obName, setObName] = useState("");
   const [obPath, setObPath] = useState(settingsOBPath);
@@ -732,7 +733,7 @@ function OBTeacherPanel({ domain, operatorEmail, operatorName, settingsOBPath }:
       });
       const data = await res.json();
       setResult(data);
-      if (data.success) { setObEmail(""); setObName(""); }
+      if (data.success) { setObQuery(""); setObEmail(""); setObName(""); }
     } catch (err: any) {
       setResult({ error: err.message });
     } finally {
@@ -761,19 +762,24 @@ function OBTeacherPanel({ domain, operatorEmail, operatorName, settingsOBPath }:
           <label className="block text-sm font-medium text-gray-700 mb-1">퇴임 교사 이메일/이름 검색</label>
           <AutocompleteInput
             type="user"
-            value={obEmail}
-            onChange={setObEmail}
+            value={obQuery}
+            onChange={(val) => {
+              setObQuery(val);
+              setObEmail("");
+              setObName("");
+            }}
             domain={domain}
             onSelect={(email, name) => {
               setObEmail(email);
               setObName(name || "");
+              setObQuery(`${name || ""} (${email})`);
             }}
             placeholder="이름 또는 이메일 검색..."
             className="w-full"
           />
-          {obName && (
+          {obEmail && (
             <p className="text-xs text-indigo-600 font-medium mt-1.5">
-              🎯 선택된 교사: <span className="font-bold">{obName}</span> ({obEmail})
+              🎯 선택된 교사: <span className="font-bold">{obName || obEmail}</span> ({obEmail})
             </p>
           )}
         </div>
@@ -791,7 +797,7 @@ function OBTeacherPanel({ domain, operatorEmail, operatorName, settingsOBPath }:
         </div>
         <button
           type="submit"
-          disabled={loading || !obPath}
+          disabled={loading || !obPath || !obEmail}
           className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2.5 rounded-lg disabled:opacity-50 transition-colors"
         >
           {loading ? "처리 중..." : "🏅 명예퇴임 처리 (OB 보존실 이동)"}
