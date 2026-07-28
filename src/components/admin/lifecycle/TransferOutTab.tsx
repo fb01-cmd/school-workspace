@@ -22,7 +22,7 @@ interface TransferOutTask {
   studentId: string;
   originalOU: string;
   originalGroups: string[];
-  status: "OU_MOVED" | "SUSPENDED";
+  status: "OU_MOVED" | "DEADLINE_SET" | "SUSPENDED";
   registeredAt: any;
   suspendDueDate: any;
   deleteDueDate: any;
@@ -541,7 +541,9 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                     
                     let statusBadge = null;
                     if (task.status === "OU_MOVED") {
-                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-[10px] rounded-full bg-blue-100 text-blue-800">OU 격리됨</span>;
+                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-[10px] rounded-full bg-sky-100 text-sky-800">OU 격리됨</span>;
+                    } else if (task.status === "DEADLINE_SET") {
+                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-[10px] rounded-full bg-blue-100 text-blue-800">기한 설정됨</span>;
                     } else if (task.status === "SUSPENDED") {
                       statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-[10px] rounded-full bg-amber-100 text-amber-800">일시정지됨</span>;
                     } else {
@@ -569,7 +571,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
 
                         {/* D-Day & Due Dates */}
                         <td className="px-3 py-3">
-                          {task.status === "OU_MOVED" && (
+                          {(task.status === "OU_MOVED" || task.status === "DEADLINE_SET") && (
                             <div className="space-y-0.5">
                               <div className="font-bold text-red-600 flex items-center gap-1.5">
                                 🚨 {getDDay(task.suspendDueDate)}
@@ -591,7 +593,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                          {/* Actions */}
                          <td className="px-3 py-3 text-right whitespace-nowrap">
                            <div className="flex justify-end gap-1.5">
-                             {task.status === "OU_MOVED" && (
+                             {(task.status === "OU_MOVED" || task.status === "DEADLINE_SET") && (
                                <>
                                  <button
                                    onClick={() => handleLifecycleAction("execute_transfer_out_suspend", task.email)}
