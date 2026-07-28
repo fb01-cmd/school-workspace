@@ -2159,3 +2159,14 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **수정 (Claude 직접)**: `loadTransferTask`를 `POST /api/workspace/lifecycle` + `action: get_student_transfer_status` 호출로 전환. admin SDK Timestamp가 JSON으로 `{_seconds,_nanoseconds}` 직렬화되는 점을 `toDateSafe`로 정규화(미변환 시 `new Date({...})` → Invalid Date로 마지노선·max 계산 전부 깨짐). 렌더 쪽 `.toDate ? : new Date()` 분기는 Date 객체와 호환이라 무변경.
 - **교사판과의 차이 기록**: 교사판은 `teacher_transfer_tasks`에 `isSelf(email)` 읽기 규칙을 넣는 방식, 학생판은 API 경유 방식 — 학생판 규칙은 넓히지 않고 유지(규칙 재배포 불필요, 본인 강제 게이트 일원화 이점).
 - **검증**: tsc ✅ / build ✅ (29 라우트). 사용자 재시도 대기 — 포털 새로고침 후 카드 표시부터 C단계 재개.
+
+## [2026-07-28] Claude → 체크포인트 (학생 셀프 기한 실검증 ✅ 통과 — admin SDK 실측 판정)
+
+- **시나리오**: 테스트 학생(전테스트, 24343@hmh.or.kr) 전출 등록(22:49 KST) → 포털 카드 정상 표시(3fbd466 수정 후) → 기한 8/26 저장 → **마지노선 당일(8/27)로 변경 재저장**.
+- **실측 판정 (Firestore + 감사 로그 직접 조회)**:
+  - 마지노선 표기·저장 = 등록+30일(8/27) ✓
+  - 1차 저장: suspendDueDate 8/26, deleteDueDate 9/2(+7일) ✓
+  - 2차 저장(경계): **마지노선 당일 8/27 수락** — b661dfa KST 날짜 비교 수정 경로 통과 ✓, deleteDueDate 9/3으로 재계산 갱신 ✓, 기한 변경 재제출 경로 ✓
+  - status DEADLINE_SET 유지, 감사 로그 2건 정상 기록 ✓
+- **도중 발견·수정**: 포털 카드 미표시 버그(3fbd466 — 상단 핸드오버 참조).
+- **남은 마무리**: 사용자가 어드민 현황 표에서 "기한 설정됨" 뱃지·정지 예정일 8/27 육안 확인 → **복구(취소)**로 테스트 학생 원상복구. 이로써 d42c9e0+58d4edc+3fbd466 학생 셀프 기한 기능 실검증 종결.
