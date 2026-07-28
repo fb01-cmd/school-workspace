@@ -1518,15 +1518,27 @@ export async function POST(req: NextRequest) {
       if (!teacherEmail || !domain) {
         return NextResponse.json({ error: "교사 이메일과 도메인은 필수 항목입니다." }, { status: 400 });
       }
+      // 검색창 원시 문자열("gotest" 등)이 그대로 등록되던 구멍 차단
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(teacherEmail)) {
+        return NextResponse.json(
+          { error: "올바른 이메일 형식이 아닙니다. 전체 주소(아이디@도메인)로 입력해 주세요." },
+          { status: 400 }
+        );
+      }
 
       try {
-        // 1. 교사의 현재 워크스페이스 정보(OU) 조회
+        // 1. 교사의 현재 워크스페이스 정보(OU) 조회 — 계정 실존 확인을 겸하므로 실패 시 등록 중단
+        //    (존재하지 않는 계정이 큐에 유령 레코드로 남으면 취소조차 불가)
         let originalOU = "";
         try {
           const userGws = await getUser(teacherEmail);
+          if (!userGws) throw new Error("user-not-found");
           originalOU = userGws.orgUnitPath || "";
         } catch (uErr: any) {
-          console.warn("교사 워크스페이스 정보 조회 실패:", uErr);
+          return NextResponse.json(
+            { error: `해당 이메일의 워크스페이스 계정을 찾을 수 없습니다: ${teacherEmail}` },
+            { status: 404 }
+          );
         }
 
         // 1-1. 재등록 가드: 이미 큐에 있으면 기존 originalOU 보존
@@ -1687,25 +1699,37 @@ export async function POST(req: NextRequest) {
         // 0. GWS 계정 일시정지 해제 (활성화) 및 원래 OU 복귀
         // originalOU가 그 사이 삭제된 하위 OU면 이동이 실패하므로, 교사 루트 OU로 폴백 재시도
         // — 복귀 이동 실패가 계정 활성화·그룹 재가입까지 막지 않게 한다.
+        // 계정 자체가 GWS에 없으면(유령 레코드·이미 삭제) GWS 조치를 건너뛰고 큐 정리만 진행.
+        const isUserNotFound = (e: any) =>
+          e?.code === 404 || e?.response?.status === 404 || /resource not found|user.?not.?found/i.test(e?.message || "");
+        let accountMissing = false;
         try {
           await updateUser(teacherEmail, { suspended: false, orgUnitPath: restoreOU });
         } catch (restoreErr: any) {
-          if (restoreOU === teachersOU) throw restoreErr;
-          console.warn(`원래 OU(${restoreOU}) 복귀 실패, 교사 루트(${teachersOU})로 폴백:`, restoreErr.message);
-          restoreOU = teachersOU;
-          await updateUser(teacherEmail, { suspended: false, orgUnitPath: restoreOU });
+          if (isUserNotFound(restoreErr)) {
+            accountMissing = true;
+            console.warn(`전출 취소: ${teacherEmail} 계정이 GWS에 없음 — 큐 정리만 진행`);
+          } else if (restoreOU !== teachersOU) {
+            console.warn(`원래 OU(${restoreOU}) 복귀 실패, 교사 루트(${teachersOU})로 폴백:`, restoreErr.message);
+            restoreOU = teachersOU;
+            await updateUser(teacherEmail, { suspended: false, orgUnitPath: restoreOU });
+          } else {
+            throw restoreErr;
+          }
         }
         invalidateUserCache();
 
-        // 1. 지정 연동 그룹 재가입 (롤백)
-        const activeGroups = await getTeacherGroups();
+        // 1. 지정 연동 그룹 재가입 (롤백) — 계정이 없으면 생략
         const groupResults: { group: string; success: boolean; error?: string }[] = [];
-        for (const groupEmail of activeGroups) {
-          try {
-            await addGroupMember(groupEmail, teacherEmail);
-            groupResults.push({ group: groupEmail, success: true });
-          } catch (gErr: any) {
-            groupResults.push({ group: groupEmail, success: false, error: gErr.message });
+        if (!accountMissing) {
+          const activeGroups = await getTeacherGroups();
+          for (const groupEmail of activeGroups) {
+            try {
+              await addGroupMember(groupEmail, teacherEmail);
+              groupResults.push({ group: groupEmail, success: true });
+            } catch (gErr: any) {
+              groupResults.push({ group: groupEmail, success: false, error: gErr.message });
+            }
           }
         }
 
@@ -1717,7 +1741,9 @@ export async function POST(req: NextRequest) {
           operatorName: adminName,
           action: "교사 전출 취소",
           targetEmail: teacherEmail,
-          details: `전출 등록 취소 완료 및 원래 OU(${restoreOU}) 복귀, 지정 연동 그룹 재가입 처리. 그룹 결과: ${JSON.stringify(groupResults)}`,
+          details: accountMissing
+            ? `전출 등록 취소 — GWS에 계정이 없어(유령 레코드/기삭제) 큐 정리만 수행.`
+            : `전출 등록 취소 완료 및 원래 OU(${restoreOU}) 복귀, 지정 연동 그룹 재가입 처리. 그룹 결과: ${JSON.stringify(groupResults)}`,
           status: "success",
         });
 
