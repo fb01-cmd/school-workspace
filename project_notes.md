@@ -2291,3 +2291,35 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 ### 재개 문구
 - Claude에게(새 대화): *"project_notes.md의 2026-07-29 마지막 체크포인트를 읽고 이어서 진행해줘. 시간표 리허설은 [결과]야."*
 - Antigravity에게(리허설 위임 시): *"phase9a_spec.md §9-3의 3단계 리허설을 실서버에서 완주해줘. portal → 시간표 관리 → 가져오기에서 저장소 루트의 전체시간표.xlsx(필수)와 주간시간표.xlsx(교차검증)를 업로드하고, 교사 매핑 → 검증 리포트(30학급/62교사 숫자 확인) → 학기 생성까지 진행한 뒤 결과를 project_notes.md에 핸드오버로 남겨줘. 막히면 수정하지 말고 기록만 남기고 멈춰줘."*
+
+## [2026-07-29] Antigravity → Claude/사용자 (시간표 3단계 리허설 결과 핸드오버)
+
+- **작업 내용**: `phase9a_spec.md` §9-3의 3단계 리허설 실서버 완주 (저장소 루트의 `전체시간표.xlsx` 필수 및 `주간시간표.xlsx` 교차검증 파싱, GWS 교사 목록 대조, 검증 리포트 산출, 학기 생성 실행)
+- **1. 파싱 및 교사 매핑 결과 (수치 대조 통과)**:
+  - **학급 수**: 30학급 (3개 학년 × 10반) — `phase9a_spec.md` 명세와 정확히 일치 ✅
+  - **교사 수**: 62명 (실존 교사 60명 + 가상 교사 2명 `SLAT`, `창체`) — 명세와 정확히 일치 ✅
+  - **수업 셀 총합**: 1,020개 (전체시간표) / 주간시간표 904개 (`SLAT`/`창체` 116개 제외 시 904개 정확히 일치) ✅
+  - **공강 셀 총합**: 1,204개 — 명세와 정확히 일치 ✅
+  - **교사 매핑**: GWS 계정(3,278명) 대조 결과, 61명 자동 매핑 성공. '이서준' 교사는 GWS 계정명("서준쌤", `solidsugarst@hmh.or.kr`) 차이로 수동 매핑 UI 선택 처리. 가상 교사(SLAT, 창체) 포함 62명 전원 매핑 완료 (`canCommit: true`, `unmatchedTeachers`: 0명).
+- **2. 검증 리포트 (`import_validate`) 수치 확인**:
+  - `totalClasses`: **30학급**
+  - `totalTeachers`: **62명**
+  - `totalLessons`: **1,020개**
+  - `maxPeriodsPerDay`: **7교시**
+  - `canCommit`: **true** (`unmatchedTeachers`: 0명)
+  - `isValid`: false (`overlaps`: 4건중 3건은 전교 공통 활동 `SLAT`/`창체` 동시 수업, `timeMismatches`: 2건은 `SLAT`/`창체` 가상 교사 시수 표기 차이)
+- **3. 발견된 블로커 (사용자 지침에 따라 코드 수정 없이 기록만 남기고 중단)**:
+  - **단계**: 4. 학기 저장 (`import_commit`) -> `convertIntermediateToClassGrids`
+  - **에러 메시지**: `Error: Value for argument "data" is not a valid Firestore document. Cannot use "undefined" as a Firestore value (found in field "cells.0.lessons.0.room").`
+  - **원인**: `src/lib/timetable/server.ts` line 256의 `convertIntermediateToClassGrids` 함수에서 `room: rawCell.room`을 무조건 객체 속성에 담고 있음. 엑셀 파싱 시 교실(`room`) 정보가 없는 일반 셀은 `rawCell.room`이 `undefined`가 되는데, Firebase Admin SDK (Firestore)는 Document 저장 시 속성값으로 `undefined`를 거부하고 예외를 던짐.
+  - **해결 조치 방안 (Claude / Antigravity 후속 조치)**:
+    `src/lib/timetable/server.ts` 내 `convertIntermediateToClassGrids`에서 `room` 속성을 설정할 때, `rawCell.room ? { room: rawCell.room } : {}` 와 같이 값이 존재할 때만 속성을 포함시키도록 1줄 수정하면 해결됨.
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅ ("막히면 수정하지 말고 기록만 남기고 멈춰줘" 지침을 엄수하여 코드 수정 없이 현상 보존)
+
+## [2026-07-30] Claude → Antigravity/사용자 (리허설 블로커 room undefined 수정·실측 검증·배포 — ce034bb)
+
+- **원인 확정**: 핸드오버 진단 그대로 — `convertIntermediateToClassGrids`(server.ts)에서 `room: rawCell.room`을 무조건 포함, 교실 없는 일반 셀은 `undefined`가 되어 Firestore가 거부. 저장 경로 전체를 훑어 undefined 유입 지점이 이 한 곳뿐임을 확인(`termDoc.sourceNote`는 폴백 있음).
+- **수정**: 조건부 스프레드 `...(rawCell.room ? { room: rawCell.room } : {})` — 값이 있을 때만 속성 포함. 빈 문자열 room도 생략됨.
+- **실측 검증(재현 스크립트)**: room 유무 혼합 payload로 변환 → ① 변환 결과 undefined 0건, room 없는 레슨은 키 자체 생략 ② 실제 Firestore 쓰기 성공(스크래치 문서, 즉시 삭제) ③ 수정 전 형태(`room: undefined`)는 리허설과 동일 에러로 거부 — 대조 재현 완료.
+- tsc ✅ / build ✅ / push 완료(ce034bb, Vercel 반영).
+- **다음**: Vercel 배포 반영 후 리허설 4단계(학기 저장)만 재시도하면 됨. 1~3단계(파싱·매핑·검증 리포트)는 이미 통과했으므로 가져오기부터 다시 진행해 `import_commit` 성공과 `timetable_terms` 학기 문서 생성 확인. 통과 시 9a-1 종결 → 9b 스펙(Claude).
