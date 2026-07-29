@@ -3,11 +3,18 @@ import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { canManageTimetable } from "@/lib/timetable/authz";
 import {
   activateTerm,
+  approveSwapRequest,
   commitTimetableImport,
   deleteTerm,
+  listSwapRequests,
+  listWeeks,
   loadAllTerms,
   loadTimetableSettings,
+  registerWeek,
+  rejectSwapRequest,
+  revertTimetableChange,
   saveTimetableSettings,
+  updateWeek,
   validateTimetableImport,
 } from "@/lib/timetable/server";
 import { ManageAction, ManageTimetableRequest } from "@/lib/timetable/types";
@@ -33,6 +40,7 @@ export async function POST(req: NextRequest) {
       role: auth.role,
       email: auth.email,
       managerEmails: settings.managerEmails,
+      observerEmails: settings.observerEmails,
     };
 
     const judgment = canManageTimetable(authzCtx, action);
@@ -187,6 +195,99 @@ export async function POST(req: NextRequest) {
           action,
           terms,
         });
+      }
+
+      // ── Phase 9b (phase9b_spec §6) ──────────────────────────
+
+      case "week_register": {
+        if (!body.week?.termId || !body.week?.startDate) {
+          return NextResponse.json({ error: "week.termId와 week.startDate가 필요합니다." }, { status: 400 });
+        }
+        const week = await registerWeek(domain, body.week, auth.email);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: week.id,
+          action: "register_timetable_week",
+          details: `시간표 주 등록: ${week.id} (${week.termId})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, week });
+      }
+
+      case "week_update": {
+        if (!body.weekId) {
+          return NextResponse.json({ error: "weekId가 누락되었습니다." }, { status: 400 });
+        }
+        const week = await updateWeek(domain, body.weekId, body.week || {}, auth.email);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: week.id,
+          action: "update_timetable_week",
+          details: `시간표 주 수정: ${week.id}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, week });
+      }
+
+      case "week_list": {
+        const weeks = await listWeeks(domain, body.termId);
+        return NextResponse.json({ success: true, action, weeks });
+      }
+
+      case "request_list": {
+        const requests = await listSwapRequests(domain, {
+          weekId: body.weekId,
+          status: body.status,
+        });
+        return NextResponse.json({ success: true, action, requests, readOnly: judgment.basis === "observer_read" });
+      }
+
+      case "approve": {
+        if (!body.requestId) {
+          return NextResponse.json({ error: "requestId가 누락되었습니다." }, { status: 400 });
+        }
+        const { request, change } = await approveSwapRequest(domain, auth.email, body.requestId);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: request.requesterEmail,
+          action: "approve_swap_request",
+          details: `수업교환 승인: ${request.source.grade}-${request.source.classNum} ${request.source.day}요일 ${request.source.period}교시 (${request.type}) → change ${change.id}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, request, change });
+      }
+
+      case "reject": {
+        if (!body.requestId) {
+          return NextResponse.json({ error: "requestId가 누락되었습니다." }, { status: 400 });
+        }
+        if (!body.decisionNote?.trim()) {
+          return NextResponse.json({ error: "반려 사유는 필수입니다." }, { status: 400 });
+        }
+        const request = await rejectSwapRequest(domain, auth.email, body.requestId, body.decisionNote);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: request.requesterEmail,
+          action: "reject_swap_request",
+          details: `수업교환 반려: ${body.requestId} — ${body.decisionNote}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, request });
+      }
+
+      case "revert_change": {
+        if (!body.changeId) {
+          return NextResponse.json({ error: "changeId가 누락되었습니다." }, { status: 400 });
+        }
+        const revert = await revertTimetableChange(domain, auth.email, body.changeId);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: body.changeId,
+          action: "revert_timetable_change",
+          details: `수업교환 승인 취소(revert): ${body.changeId} → ${revert.id}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, change: revert });
       }
 
       default:

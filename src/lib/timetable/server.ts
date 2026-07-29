@@ -62,6 +62,8 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
       activeTermId: null,
       days: 5,
       periodsPerDay: 7,
+      lunchAfterPeriod: 4,
+      observerEmails: [],
     };
   }
   const data = snap.data() || {};
@@ -72,6 +74,10 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
     activeTermId: data.activeTermId || null,
     days: Number(data.days) || 5,
     periodsPerDay: Number(data.periodsPerDay) || 7,
+    lunchAfterPeriod: Number(data.lunchAfterPeriod) || 4,
+    observerEmails: Array.isArray(data.observerEmails)
+      ? data.observerEmails.map((e) => String(e).trim().toLowerCase())
+      : [],
   };
 }
 
@@ -634,6 +640,8 @@ export function synthesizeTeacherTimetable(
             subjectName: lesson.subjectName,
             subjectShort: lesson.subjectShort,
             room: lesson.room,
+            // 주간 합성본이 입력이면 변경 마킹을 그대로 전달 (phase9b_spec §3)
+            ...((lesson as any).changed ? { changed: (lesson as any).changed } : {}),
           });
         }
       }
@@ -720,4 +728,634 @@ export async function resolveStudentClass(
   }
 
   return null;
+}
+
+// ═════════════════════════════════════════════════════════════
+// Phase 9b: 주 등록 · 변경 로그 · 수업교환 신청 · 승인 트랜잭션
+// 상위 스펙: phase9b_spec.md §2, §5, §6
+// ═════════════════════════════════════════════════════════════
+
+import { sendGoogleChat } from "@/lib/google/workspace";
+import { countSubstituteTotals, isSlotWithinWeek, synthesizeWeeklyGrids } from "./weekly";
+import { findSubstituteCandidates, findSwapCandidates, resolveSourceLesson } from "./swap";
+import {
+  SubstituteCandidate,
+  SwapCandidate,
+  SwapCandidateSnapshot,
+  SwapRequest,
+  SwapRequestReason,
+  SwapRequestType,
+  SwapSourceSlot,
+  SWAP_REASON_TYPES,
+  TimetableChange,
+  TimetableWeek,
+  WeekRegisterInput,
+  WeeklyClassGrid,
+  WeeklySynthesisResult,
+} from "./types";
+
+export const timetableWeeksColRef = (domain: string) =>
+  adminDb.collection("timetable_weeks").doc(domain).collection("weeks");
+
+export const timetableChangesColRef = (domain: string) =>
+  adminDb.collection("timetable_changes").doc(domain).collection("changes");
+
+export const swapRequestsColRef = (domain: string) =>
+  adminDb.collection("swap_requests").doc(domain).collection("requests");
+
+// ── 주 등록 (weeks CRUD) ──────────────────────────────────────
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function addDaysISO(dateStr: string, add: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + add);
+  return d.toISOString().slice(0, 10);
+}
+
+function normalizeWeekDays(input: WeekRegisterInput): TimetableWeek["days"] {
+  const byDay = new Map<number, { holiday?: boolean; periodsByGrade?: Record<string, number> }>();
+  for (const d of input.days || []) {
+    const dayNum = Number(d.day);
+    if (dayNum >= 1 && dayNum <= 5) byDay.set(dayNum, d);
+  }
+  const days: TimetableWeek["days"] = [];
+  for (let day = 1; day <= 5; day++) {
+    const src = byDay.get(day);
+    days.push({
+      day,
+      date: addDaysISO(input.startDate, day - 1),
+      holiday: !!src?.holiday,
+      ...(src?.periodsByGrade && Object.keys(src.periodsByGrade).length > 0
+        ? { periodsByGrade: src.periodsByGrade }
+        : {}),
+    });
+  }
+  return days;
+}
+
+export async function registerWeek(
+  domain: string,
+  input: WeekRegisterInput,
+  userEmail: string
+): Promise<TimetableWeek> {
+  const startDate = (input.startDate || "").trim();
+  if (!DATE_RE.test(startDate)) throw new Error("startDate는 YYYY-MM-DD 형식이어야 합니다.");
+  if (new Date(`${startDate}T00:00:00Z`).getUTCDay() !== 1)
+    throw new Error("주 시작일은 월요일이어야 합니다.");
+  const term = await loadTimetableTerm(domain, input.termId);
+  if (!term) throw new Error(`학기(${input.termId})를 찾을 수 없습니다.`);
+  if (term.status === "archived") throw new Error("보관된 학기에는 주를 등록할 수 없습니다.");
+
+  const weekId = startDate;
+  const existing = await timetableWeeksColRef(domain).doc(weekId).get();
+  if (existing.exists) throw new Error(`이미 등록된 주(${weekId})입니다. week_update를 사용하세요.`);
+
+  const week: TimetableWeek = {
+    id: weekId,
+    termId: input.termId,
+    startDate,
+    days: normalizeWeekDays(input),
+    ...(input.note ? { note: input.note } : {}),
+    createdBy: userEmail.toLowerCase(),
+    createdAt: Date.now(),
+  };
+  await timetableWeeksColRef(domain).doc(weekId).set(week);
+  return week;
+}
+
+export async function updateWeek(
+  domain: string,
+  weekId: string,
+  input: Partial<WeekRegisterInput>,
+  userEmail: string
+): Promise<TimetableWeek> {
+  const ref = timetableWeeksColRef(domain).doc(weekId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error(`등록되지 않은 주(${weekId})입니다.`);
+  const current = snap.data() as TimetableWeek;
+
+  const updated: TimetableWeek = {
+    ...current,
+    ...(input.days
+      ? { days: normalizeWeekDays({ termId: current.termId, startDate: current.startDate, days: input.days }) }
+      : {}),
+    ...(input.note !== undefined ? { note: input.note } : {}),
+  };
+  // note가 빈 문자열이면 필드 제거 (Firestore undefined 금지 원칙과 동일 계열)
+  if (!updated.note) delete (updated as any).note;
+  await ref.set({ ...updated, updatedBy: userEmail.toLowerCase(), updatedAt: Date.now() });
+  return updated;
+}
+
+export async function loadWeek(domain: string, weekId: string): Promise<TimetableWeek | null> {
+  const snap = await timetableWeeksColRef(domain).doc(weekId).get();
+  if (!snap.exists) return null;
+  return snap.data() as TimetableWeek;
+}
+
+export async function listWeeks(domain: string, termId?: string): Promise<TimetableWeek[]> {
+  let q: FirebaseFirestore.Query = timetableWeeksColRef(domain);
+  if (termId) q = q.where("termId", "==", termId);
+  const snap = await q.get();
+  return snap.docs
+    .map((d) => d.data() as TimetableWeek)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+
+/**
+ * 오늘이 속한 등록된 주 (view 라우트의 현재 주 폴백용).
+ * 복합 인덱스를 피하려고 termId 등호 조회 후 메모리에서 판별한다 (학기당 주 ~25개).
+ */
+export async function findCurrentWeek(domain: string, termId: string): Promise<TimetableWeek | null> {
+  const today = new Date().toISOString().slice(0, 10);
+  const weeks = await listWeeks(domain, termId);
+  return (
+    weeks.find((w) => w.startDate <= today && addDaysISO(w.startDate, 6) >= today) || null
+  );
+}
+
+// ── 변경 로그 로드 & 주간 합성 ────────────────────────────────
+
+export async function loadWeekChanges(domain: string, weekId: string): Promise<TimetableChange[]> {
+  const snap = await timetableChangesColRef(domain).where("weekId", "==", weekId).get();
+  return snap.docs
+    .map((d) => ({ ...(d.data() as TimetableChange), id: d.id }))
+    .sort((a, b) => a.appliedAt - b.appliedAt);
+}
+
+export async function loadTermChanges(domain: string, termId: string): Promise<TimetableChange[]> {
+  const snap = await timetableChangesColRef(domain).where("termId", "==", termId).get();
+  return snap.docs
+    .map((d) => ({ ...(d.data() as TimetableChange), id: d.id }))
+    .sort((a, b) => a.appliedAt - b.appliedAt);
+}
+
+export async function synthesizeWeek(
+  domain: string,
+  week: TimetableWeek
+): Promise<WeeklySynthesisResult> {
+  const [baseGrids, changes, settings] = await Promise.all([
+    loadAllClassGrids(domain, week.termId),
+    loadWeekChanges(domain, week.id),
+    loadTimetableSettings(domain),
+  ]);
+  return synthesizeWeeklyGrids(baseGrids, week, changes, settings);
+}
+
+/** 학기 과목·그리드에서 전체 교사 수집 (view 라우트 free 액션과 동일 규칙) */
+export function collectTermTeachers(term: TimetableTerm, grids: WeeklyClassGrid[]): TimetableTeacher[] {
+  const teacherMap = new Map<string, TimetableTeacher>();
+  for (const subj of term.subjects || []) {
+    for (const email of subj.teacherEmails || []) {
+      const normEmail = email.trim().toLowerCase();
+      if (normEmail && !teacherMap.has(normEmail)) {
+        teacherMap.set(normEmail, { email: normEmail, name: normEmail.split("@")[0] });
+      }
+    }
+  }
+  for (const grid of grids) {
+    for (const cell of grid.cells || []) {
+      for (const lesson of cell.lessons || []) {
+        for (const teacher of lesson.teachers || []) {
+          const normEmail = (teacher.email || "").trim().toLowerCase();
+          if (normEmail) {
+            teacherMap.set(normEmail, { email: normEmail, name: teacher.name || normEmail.split("@")[0] });
+          }
+        }
+      }
+    }
+  }
+  return Array.from(teacherMap.values());
+}
+
+// ── 후보 탐색 (라우트 → 엔진 연결) ────────────────────────────
+
+export async function computeCandidates(
+  domain: string,
+  requesterEmail: string,
+  weekId: string,
+  source: SwapSourceSlot
+): Promise<{
+  swapCandidates: SwapCandidate[];
+  substituteCandidates: SubstituteCandidate[];
+  sourceSubjectName: string;
+  error?: string;
+}> {
+  const week = await loadWeek(domain, weekId);
+  if (!week) throw new Error(`등록되지 않은 주(${weekId})입니다.`);
+  const term = await loadTimetableTerm(domain, week.termId);
+  if (!term) throw new Error(`학기(${week.termId})를 찾을 수 없습니다.`);
+  const settings = await loadTimetableSettings(domain);
+
+  const { grids } = await synthesizeWeek(domain, week);
+  const src = resolveSourceLesson(grids, requesterEmail, source);
+  if (!src.ok) {
+    return { swapCandidates: [], substituteCandidates: [], sourceSubjectName: "", error: src.error };
+  }
+  const sourceSubjectName = src.lesson!.subjectName;
+  const fullSource: SwapSourceSlot = { ...source, subjectName: sourceSubjectName };
+
+  const swapRes = findSwapCandidates(grids, week, settings, requesterEmail, fullSource);
+
+  const allTeachers = collectTermTeachers(term, grids);
+  const termChanges = await loadTermChanges(domain, week.termId);
+  const substituteTotals = countSubstituteTotals(termChanges);
+  const subjectTeacherEmails = new Set(
+    (term.subjects || [])
+      .filter((s) => s.name === sourceSubjectName)
+      .flatMap((s) => s.teacherEmails.map((e) => e.trim().toLowerCase()))
+  );
+  const subRes = findSubstituteCandidates(
+    grids, week, settings, requesterEmail, fullSource,
+    allTeachers, substituteTotals, subjectTeacherEmails
+  );
+
+  return {
+    swapCandidates: swapRes.candidates,
+    substituteCandidates: subRes.candidates,
+    sourceSubjectName,
+  };
+}
+
+// ── 신청 생성·조회·취소 (§5 서버 검증) ────────────────────────
+
+function validateReason(reason: SwapRequestReason | undefined): SwapRequestReason {
+  if (!reason || !SWAP_REASON_TYPES.includes(reason.type))
+    throw new Error("신청 사유를 선택해야 합니다.");
+  const note = (reason.note || "").trim();
+  if (reason.type === "기타" && !note) throw new Error("기타 사유는 내용 입력이 필수입니다.");
+  return { type: reason.type, ...(note ? { note } : {}) };
+}
+
+export async function createSwapRequest(
+  domain: string,
+  requesterEmail: string,
+  params: {
+    weekId: string;
+    type: SwapRequestType;
+    source: SwapSourceSlot;
+    candidate: SwapCandidateSnapshot;
+    reason?: SwapRequestReason;
+  }
+): Promise<SwapRequest> {
+  const reason = validateReason(params.reason);
+  const week = await loadWeek(domain, params.weekId);
+  if (!week) throw new Error(`등록되지 않은 주(${params.weekId})입니다.`);
+
+  // 서버 재계산 검증: 클라이언트가 보낸 후보는 신뢰하지 않는다 (AGENTS.md §5 이중 방어)
+  const computed = await computeCandidates(domain, requesterEmail, params.weekId, params.source);
+  if (computed.error) throw new Error(computed.error);
+
+  let candidate: SwapCandidateSnapshot;
+  let requesterName = requesterEmail.split("@")[0];
+  if (params.type === "swap") {
+    const match = computed.swapCandidates.find(
+      (c) =>
+        c.targetDay === params.candidate.targetDay &&
+        c.targetPeriod === params.candidate.targetPeriod &&
+        c.counterpartEmail === (params.candidate.counterpartEmail || "").trim().toLowerCase()
+    );
+    if (!match) throw new Error("선택한 후보가 더 이상 유효하지 않습니다. 후보를 다시 조회해 주세요.");
+    candidate = { ...match }; // 서버 계산값 스냅샷 (점수·감점 포함)
+  } else {
+    const match = computed.substituteCandidates.find(
+      (c) => c.teacherEmail === (params.candidate.counterpartEmail || "").trim().toLowerCase()
+    );
+    if (!match) throw new Error("선택한 보강 교사가 더 이상 공강이 아닙니다. 후보를 다시 조회해 주세요.");
+    candidate = {
+      counterpartEmail: match.teacherEmail,
+      counterpartName: match.teacherName,
+      score: 0,
+      penalties: [],
+    };
+  }
+
+  // 신청자 실명: 합성본의 본인 lesson에서 추출
+  const { grids } = await synthesizeWeek(domain, week);
+  const src = resolveSourceLesson(grids, requesterEmail, params.source);
+  if (src.ok && src.lesson) requesterName = src.lesson.teachers[0]?.name || requesterName;
+
+  // 같은 소스 셀 중복 PENDING 차단
+  const dupSnap = await swapRequestsColRef(domain)
+    .where("weekId", "==", params.weekId)
+    .where("requesterEmail", "==", requesterEmail.toLowerCase())
+    .where("status", "==", "PENDING")
+    .get();
+  const dup = dupSnap.docs.some((d) => {
+    const s = (d.data() as SwapRequest).source;
+    return (
+      s.grade === params.source.grade && s.classNum === params.source.classNum &&
+      s.day === params.source.day && s.period === params.source.period
+    );
+  });
+  if (dup) throw new Error("같은 수업에 대해 이미 대기 중인 신청이 있습니다.");
+
+  const ref = swapRequestsColRef(domain).doc();
+  const request: SwapRequest = {
+    id: ref.id,
+    termId: week.termId,
+    weekId: params.weekId,
+    type: params.type,
+    requesterEmail: requesterEmail.toLowerCase(),
+    requesterName,
+    source: { ...params.source, subjectName: computed.sourceSubjectName },
+    candidate,
+    reason,
+    status: "PENDING",
+    createdAt: Date.now(),
+  };
+  await ref.set(request);
+
+  // 알림: 일과계에게 (실패해도 신청은 유효)
+  const settings = await loadTimetableSettings(domain);
+  const dayNames = ["", "월", "화", "수", "목", "금"];
+  const summary =
+    `📋 새 수업교환 신청\n` +
+    `신청자: ${requesterName} (${requesterEmail})\n` +
+    `대상: ${request.source.grade}-${request.source.classNum} ${dayNames[request.source.day]} ${request.source.period}교시 ${request.source.subjectName}\n` +
+    `유형: ${params.type === "swap" ? `맞교환 (상대: ${candidate.counterpartName})` : `특별보강 (보강: ${candidate.counterpartName})`}\n` +
+    `사유: ${reason.type}${reason.note ? ` — ${reason.note}` : ""}`;
+  for (const manager of settings.managerEmails) {
+    try {
+      await sendGoogleChat(manager, summary);
+    } catch (e: any) {
+      console.error(`[swap_request] 일과계 알림 실패 (${manager}):`, e.message);
+    }
+  }
+
+  return request;
+}
+
+export async function listSwapRequests(
+  domain: string,
+  filter: { weekId?: string; status?: string; requesterEmail?: string }
+): Promise<SwapRequest[]> {
+  let q: FirebaseFirestore.Query = swapRequestsColRef(domain);
+  if (filter.weekId) q = q.where("weekId", "==", filter.weekId);
+  if (filter.status) q = q.where("status", "==", filter.status);
+  if (filter.requesterEmail) q = q.where("requesterEmail", "==", filter.requesterEmail.toLowerCase());
+  const snap = await q.get();
+  return snap.docs
+    .map((d) => ({ ...(d.data() as SwapRequest), id: d.id }))
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function cancelSwapRequest(
+  domain: string,
+  requesterEmail: string,
+  requestId: string
+): Promise<SwapRequest> {
+  const ref = swapRequestsColRef(domain).doc(requestId);
+  return adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error("신청을 찾을 수 없습니다.");
+    const req = snap.data() as SwapRequest;
+    if (req.requesterEmail !== requesterEmail.toLowerCase())
+      throw new Error("본인의 신청만 취소할 수 있습니다.");
+    if (req.status !== "PENDING") throw new Error("대기 중인 신청만 취소할 수 있습니다.");
+    tx.update(ref, { status: "CANCELED", decidedAt: Date.now() });
+    return { ...req, id: requestId, status: "CANCELED" as const };
+  });
+}
+
+// ── 승인·반려·취소(revert) — §5 트랜잭션 ──────────────────────
+
+/**
+ * 승인: Firestore 트랜잭션 안에서 그 주 changes를 다시 읽고 후보를 재검증한다.
+ * 다른 승인으로 상황이 바뀌었으면 실패 — 승인 간 경합이 유일한 동시성 위험 지점(§5).
+ */
+export async function approveSwapRequest(
+  domain: string,
+  managerEmail: string,
+  requestId: string
+): Promise<{ request: SwapRequest; change: TimetableChange }> {
+  // 기초 그리드·설정·주는 승인 중 변하지 않으므로 트랜잭션 밖에서 읽는다.
+  const reqSnapPre = await swapRequestsColRef(domain).doc(requestId).get();
+  if (!reqSnapPre.exists) throw new Error("신청을 찾을 수 없습니다.");
+  const reqPre = reqSnapPre.data() as SwapRequest;
+  const [week, baseGrids, settings] = await Promise.all([
+    loadWeek(domain, reqPre.weekId),
+    loadAllClassGrids(domain, reqPre.termId),
+    loadTimetableSettings(domain),
+  ]);
+  if (!week) throw new Error(`등록되지 않은 주(${reqPre.weekId})입니다.`);
+
+  const result = await adminDb.runTransaction(async (tx) => {
+    const reqRef = swapRequestsColRef(domain).doc(requestId);
+    const reqSnap = await tx.get(reqRef);
+    if (!reqSnap.exists) throw new Error("신청을 찾을 수 없습니다.");
+    const request = { ...(reqSnap.data() as SwapRequest), id: requestId };
+    if (request.status !== "PENDING") throw new Error("대기 중인 신청만 승인할 수 있습니다.");
+
+    const changesSnap = await tx.get(
+      timetableChangesColRef(domain).where("weekId", "==", request.weekId)
+    );
+    const changes = changesSnap.docs
+      .map((d) => ({ ...(d.data() as TimetableChange), id: d.id }))
+      .sort((a, b) => a.appliedAt - b.appliedAt);
+
+    // 트랜잭션 내 재검증: 현재 오버레이 기준으로 후보가 여전히 성립하는가
+    const { grids } = synthesizeWeeklyGrids(baseGrids, week, changes, settings);
+    const src = resolveSourceLesson(grids, request.requesterEmail, request.source);
+    if (!src.ok) throw new Error(`승인 불가 — ${src.error} 신청자의 재신청이 필요합니다.`);
+
+    const changeRef = timetableChangesColRef(domain).doc();
+    let change: TimetableChange;
+
+    if (request.type === "swap") {
+      const cand = request.candidate;
+      const swapRes = findSwapCandidates(grids, week, settings, request.requesterEmail, request.source);
+      const still = swapRes.candidates.find(
+        (c) =>
+          c.targetDay === cand.targetDay &&
+          c.targetPeriod === cand.targetPeriod &&
+          c.counterpartEmail === cand.counterpartEmail
+      );
+      if (!still)
+        throw new Error("승인 불가 — 다른 변경으로 상황이 바뀌어 후보가 더 이상 유효하지 않습니다. 신청자의 재신청이 필요합니다.");
+
+      change = {
+        id: changeRef.id,
+        termId: request.termId,
+        weekId: request.weekId,
+        type: "swap",
+        requestId,
+        swap: {
+          grade: request.source.grade,
+          classNum: request.source.classNum,
+          a: {
+            day: request.source.day,
+            period: request.source.period,
+            subjectName: request.source.subjectName,
+            teacherEmail: request.requesterEmail,
+            teacherName: request.requesterName,
+          },
+          b: {
+            day: still.targetDay,
+            period: still.targetPeriod,
+            subjectName: still.counterpartSubjectName,
+            teacherEmail: still.counterpartEmail,
+            teacherName: still.counterpartName,
+          },
+        },
+        appliedBy: managerEmail.toLowerCase(),
+        appliedAt: Date.now(),
+      };
+    } else {
+      // 특별보강: 보강 교사가 여전히 그 슬롯에 공강인지 재확인
+      const idxFree = !synthesizeWeeklyGrids(baseGrids, week, changes, settings)
+        .grids.some((g) =>
+          g.cells.some(
+            (c) =>
+              c.day === request.source.day &&
+              c.period === request.source.period &&
+              c.lessons.some((l) =>
+                (l.teachers || []).some(
+                  (t) => t.email.trim().toLowerCase() === request.candidate.counterpartEmail
+                )
+              )
+          )
+        );
+      if (!idxFree)
+        throw new Error("승인 불가 — 보강 교사가 해당 교시에 더 이상 공강이 아닙니다. 신청자의 재신청이 필요합니다.");
+
+      change = {
+        id: changeRef.id,
+        termId: request.termId,
+        weekId: request.weekId,
+        type: "substitute",
+        requestId,
+        substitute: {
+          grade: request.source.grade,
+          classNum: request.source.classNum,
+          day: request.source.day,
+          period: request.source.period,
+          subjectName: request.source.subjectName,
+          absentTeacherEmail: request.requesterEmail,
+          absentTeacherName: request.requesterName,
+          subTeacherEmail: request.candidate.counterpartEmail,
+          subTeacherName: request.candidate.counterpartName,
+        },
+        appliedBy: managerEmail.toLowerCase(),
+        appliedAt: Date.now(),
+      };
+    }
+
+    tx.set(changeRef, change);
+    tx.update(reqRef, {
+      status: "APPROVED",
+      decidedBy: managerEmail.toLowerCase(),
+      decidedAt: change.appliedAt,
+      appliedChangeIds: [changeRef.id],
+    });
+    return { request: { ...request, status: "APPROVED" as const, appliedChangeIds: [changeRef.id] }, change };
+  });
+
+  // 알림: 신청자 + 상대 교사 (§5 — 교무부장은 열람 전용, DM 없음)
+  const dayNames = ["", "월", "화", "수", "목", "금"];
+  const r = result.request;
+  const msg =
+    `✅ 수업교환 승인 완료\n` +
+    `${r.source.grade}-${r.source.classNum} ${dayNames[r.source.day]} ${r.source.period}교시 ${r.source.subjectName}` +
+    (r.type === "swap"
+      ? ` ↔ ${dayNames[r.candidate.targetDay || 0]} ${r.candidate.targetPeriod}교시 ${r.candidate.counterpartSubjectName} (${r.candidate.counterpartName})`
+      : ` → ${r.candidate.counterpartName} 선생님 특별보강`) +
+    `\n승인: ${managerEmail}`;
+  for (const to of [r.requesterEmail, r.candidate.counterpartEmail]) {
+    try {
+      await sendGoogleChat(to, msg);
+    } catch (e: any) {
+      console.error(`[swap_approve] 알림 실패 (${to}):`, e.message);
+    }
+  }
+
+  return result;
+}
+
+export async function rejectSwapRequest(
+  domain: string,
+  managerEmail: string,
+  requestId: string,
+  decisionNote: string
+): Promise<SwapRequest> {
+  const note = (decisionNote || "").trim();
+  if (!note) throw new Error("반려 사유는 필수입니다.");
+  const ref = swapRequestsColRef(domain).doc(requestId);
+  const updated = await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error("신청을 찾을 수 없습니다.");
+    const req = { ...(snap.data() as SwapRequest), id: requestId };
+    if (req.status !== "PENDING") throw new Error("대기 중인 신청만 반려할 수 있습니다.");
+    tx.update(ref, {
+      status: "REJECTED",
+      decidedBy: managerEmail.toLowerCase(),
+      decidedAt: Date.now(),
+      decisionNote: note,
+    });
+    return { ...req, status: "REJECTED" as const, decisionNote: note };
+  });
+
+  try {
+    await sendGoogleChat(
+      updated.requesterEmail,
+      `❌ 수업교환 신청 반려\n사유: ${note}\n반려: ${managerEmail}`
+    );
+  } catch (e: any) {
+    console.error(`[swap_reject] 알림 실패:`, e.message);
+  }
+  return updated;
+}
+
+/** 승인 취소: 원본 불변 — 역방향(revert) 변경을 기록한다 (§2) */
+export async function revertTimetableChange(
+  domain: string,
+  managerEmail: string,
+  changeId: string
+): Promise<TimetableChange> {
+  const reverted = await adminDb.runTransaction(async (tx) => {
+    const targetRef = timetableChangesColRef(domain).doc(changeId);
+    const targetSnap = await tx.get(targetRef);
+    if (!targetSnap.exists) throw new Error("취소할 변경을 찾을 수 없습니다.");
+    const target = { ...(targetSnap.data() as TimetableChange), id: changeId };
+    if (target.type === "revert") throw new Error("취소 기록 자체는 다시 취소할 수 없습니다.");
+
+    const existingRevert = await tx.get(
+      timetableChangesColRef(domain).where("revertOf", "==", changeId).limit(1)
+    );
+    if (!existingRevert.empty) throw new Error("이미 취소된 변경입니다.");
+
+    const ref = timetableChangesColRef(domain).doc();
+    const revert: TimetableChange = {
+      id: ref.id,
+      termId: target.termId,
+      weekId: target.weekId,
+      type: "revert",
+      revertOf: changeId,
+      appliedBy: managerEmail.toLowerCase(),
+      appliedAt: Date.now(),
+    };
+    tx.set(ref, revert);
+    return { revert, target };
+  });
+
+  // 알림: 원 승인 알림 수신자 전원 (§5)
+  const recipients = new Set<string>();
+  const t = reverted.target;
+  if (t.swap) {
+    recipients.add(t.swap.a.teacherEmail);
+    recipients.add(t.swap.b.teacherEmail);
+  }
+  if (t.substitute) {
+    recipients.add(t.substitute.absentTeacherEmail);
+    recipients.add(t.substitute.subTeacherEmail);
+  }
+  for (const to of recipients) {
+    try {
+      await sendGoogleChat(to, `↩️ 승인되었던 수업교환이 취소되었습니다.\n취소: ${managerEmail}`);
+    } catch (e: any) {
+      console.error(`[swap_revert] 알림 실패 (${to}):`, e.message);
+    }
+  }
+  return reverted.revert;
 }

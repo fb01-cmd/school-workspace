@@ -77,7 +77,7 @@ export default function AdminPage() {
         setTimetableSettings((prev) =>
           prev
             ? { ...prev, managerEmails: e.detail.managerEmails }
-            : { managerEmails: e.detail.managerEmails, activeTermId: null, days: 5, periodsPerDay: 7 }
+            : { managerEmails: e.detail.managerEmails, activeTermId: null, days: 5, periodsPerDay: 7, lunchAfterPeriod: 4, observerEmails: [] }
         );
       }
     };

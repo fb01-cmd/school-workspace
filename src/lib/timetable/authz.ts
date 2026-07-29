@@ -10,6 +10,7 @@ export interface TimetableAuthzContext {
   role: "student" | "teacher" | "super_admin";
   email: string;
   managerEmails: string[];
+  observerEmails?: string[]; // 열람 전용 참관자 (교무부장 등) — phase9b_spec §5
   studentClass?: { grade: number; classNum: number };
 }
 
@@ -55,7 +56,13 @@ export function canManageTimetable(
     return { allowed: true, basis: "manager" };
   }
 
-  // 5. 일반 교사: 설정 조회만 허용
+  // 5. 열람 전용 참관자 (교무부장 등): 요청대장·주 목록 읽기만 (phase9b_spec §5)
+  const isObserver = (ctx.observerEmails || []).some((o) => o.toLowerCase() === normEmail);
+  if (isObserver && (action === "request_list" || action === "week_list")) {
+    return { allowed: true, basis: "observer_read" };
+  }
+
+  // 6. 일반 교사: 설정 조회만 허용
   if (action === "get_settings") {
     return { allowed: true, basis: "teacher_read_settings" };
   }

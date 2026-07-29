@@ -1,15 +1,19 @@
 import { verifyAuthAccess } from "@/lib/firebase/admin";
 import { canViewTimetable } from "@/lib/timetable/authz";
 import {
+  findCurrentWeek,
   loadActiveTerm,
   loadAllClassGrids,
   loadClassGrid,
   loadTimetableSettings,
   loadTimetableTerm,
+  loadWeek,
+  loadWeekChanges,
   resolveStudentClass,
   synthesizeFreeTeachers,
   synthesizeTeacherTimetable,
 } from "@/lib/timetable/server";
+import { synthesizeWeeklyGrids } from "@/lib/timetable/weekly";
 import {
   TimetableTeacher,
   ViewAction,
@@ -91,10 +95,46 @@ export async function POST(req: NextRequest) {
       status: term.status,
     };
 
+    // 3-b. 주간 합성 결정 (phase9b_spec §3-6):
+    //      weekId 지정 시 그 주, 미지정 시 현재 주 폴백. 둘 다 없으면 기초시간표 그대로.
+    let week = null;
+    if (body.weekId) {
+      week = await loadWeek(domain, body.weekId);
+      if (!week || week.termId !== term.id) {
+        return NextResponse.json(
+          { error: `해당 학기에 등록되지 않은 주(${body.weekId})입니다.` },
+          { status: 400 }
+        );
+      }
+    } else {
+      week = await findCurrentWeek(domain, term.id);
+    }
+
+    const isManagerish =
+      auth.role === "super_admin" ||
+      settings.managerEmails.some((m) => m.toLowerCase() === auth.email.toLowerCase());
+
+    /** 기초 그리드를 로드하고, 주가 정해져 있으면 합성본으로 치환 */
+    const loadGrids = async () => {
+      const baseGrids = await loadAllClassGrids(domain, term!.id);
+      if (!week) return { grids: baseGrids, warnings: [] as string[] };
+      const changes = await loadWeekChanges(domain, week.id);
+      const { grids, integrityWarnings } = synthesizeWeeklyGrids(baseGrids, week, changes, settings);
+      return { grids, warnings: integrityWarnings };
+    };
+
+    const weekMeta = week ? { id: week.id, startDate: week.startDate, days: week.days } : null;
+    /** 응답에 주 메타 + (일과계·super_admin에게만) 무결성 경고 동봉 */
+    const withWeek = (res: ViewTimetableResponse, warnings: string[]): ViewTimetableResponse => ({
+      ...res,
+      week: weekMeta,
+      ...(isManagerish && warnings.length > 0 ? { integrityWarnings: warnings } : {}),
+    });
+
     // 4. 액션별 데이터 처리
     switch (action) {
       case "my": {
-        const allGrids = await loadAllClassGrids(domain, term.id);
+        const { grids: allGrids, warnings } = await loadGrids();
         const cells = synthesizeTeacherTimetable(allGrids, auth.email);
         const res: ViewTimetableResponse = {
           term: termMeta,
@@ -105,12 +145,12 @@ export async function POST(req: NextRequest) {
             cells,
           },
         };
-        return NextResponse.json(res);
+        return NextResponse.json(withWeek(res, warnings));
       }
 
       case "teacher": {
         const targetTeacherEmail = (body.teacherEmail || auth.email).trim().toLowerCase();
-        const allGrids = await loadAllClassGrids(domain, term.id);
+        const { grids: allGrids, warnings } = await loadGrids();
         const cells = synthesizeTeacherTimetable(allGrids, targetTeacherEmail);
         const res: ViewTimetableResponse = {
           term: termMeta,
@@ -121,7 +161,7 @@ export async function POST(req: NextRequest) {
             cells,
           },
         };
-        return NextResponse.json(res);
+        return NextResponse.json(withWeek(res, warnings));
       }
 
       case "class": {
@@ -130,6 +170,19 @@ export async function POST(req: NextRequest) {
             { error: "grade와 classNum 파라미터가 유효하지 않습니다." },
             { status: 400 }
           );
+        }
+        // 주간 합성이 필요하면 전 학급 로드 후 대상 학급만 추출 (합성은 학급 단위로 쪼갤 수 없음)
+        if (week) {
+          const { grids, warnings } = await loadGrids();
+          const classGrid = grids.find(
+            (g) => g.grade === requestedGrade && g.classNum === requestedClassNum
+          );
+          const res: ViewTimetableResponse = {
+            term: termMeta,
+            action,
+            data: classGrid || { grade: requestedGrade, classNum: requestedClassNum, cells: [] },
+          };
+          return NextResponse.json(withWeek(res, warnings));
         }
         const classGrid = await loadClassGrid(
           domain,
@@ -146,19 +199,19 @@ export async function POST(req: NextRequest) {
       }
 
       case "school": {
-        const allGrids = await loadAllClassGrids(domain, term.id);
+        const { grids: allGrids, warnings } = await loadGrids();
         const res: ViewTimetableResponse = {
           term: termMeta,
           action,
           data: allGrids,
         };
-        return NextResponse.json(res);
+        return NextResponse.json(withWeek(res, warnings));
       }
 
       case "free": {
         const day = Number(body.day) || 1;
         const period = Number(body.period) || 1;
-        const allGrids = await loadAllClassGrids(domain, term.id);
+        const { grids: allGrids, warnings } = await loadGrids();
 
         // 등록된 전체 교사 목록 수집 (학기 과목 정보 + 시간표 그리드 내 교사)
         const teacherMap = new Map<string, TimetableTeacher>();
@@ -191,7 +244,7 @@ export async function POST(req: NextRequest) {
           action,
           data: freeTeachers,
         };
-        return NextResponse.json(res);
+        return NextResponse.json(withWeek(res, warnings));
       }
 
       default:
