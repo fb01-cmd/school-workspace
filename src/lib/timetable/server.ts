@@ -253,7 +253,8 @@ export function convertIntermediateToClassGrids(payload: IntermediateImportPaylo
           subjectName: subjName,
           subjectShort: subjShort,
           teachers: [teacherObj],
-          room: rawCell.room,
+          // Firestore는 undefined 값을 거부하므로 교실 정보가 있을 때만 속성을 포함
+          ...(rawCell.room ? { room: rawCell.room } : {}),
         });
       }
       cellMap.set(cellKey, existingLessons);
