@@ -2352,3 +2352,15 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   - §11 분업: 순서 1·2(weeks·합성·엔진·requests 라우트·승인 트랜잭션) **Claude 직접**, 화면 3~5 Antigravity, 6 실사용 리허설 → 오픈 게이트
 - **⚠️ 사용자 확인 4건 (spec §12) — 답변 전 구현 착수 금지**: ① 상대 교사 사전 동의 생략 동의 여부 ② 교무부장 알림 = notifyEmails 수동 등록 방식 ③ 정기고사 1차 제외(시험 주는 요일별 시수 축소로 대응) ④ 신청 사유 선택/필수.
 - 로드맵 갱신: 9a-1 ✅ 종결, 9b 📝 스펙 확정 대기.
+## [2026-07-30] Claude → Antigravity/사용자 (9b §11 순서 1·2 서버 핵심부 구현·실측 검증 완료 — f4ed9c4)
+
+- **구현 범위** (phase9b_spec §11 순서 1·2, 전부 Claude 직접):
+  - `types.ts`: weeks/changes/requests 전 모델 + settings 2필드(lunchAfterPeriod=4, observerEmails)
+  - `weekly.ts`(순수): 주간 합성 — 휴업일·학년별 축소 시수 제거, swap/substitute/revert 순차 적용, 적용 불능 change는 건너뛰고 `integrityWarnings` 수집(전체 조회 불사 원칙). `countSubstituteTotals`(보강 누계, revert 반영)
+  - `swap.ts`(순수): 맞교환·특별보강 후보 엔진. 하드 제외 = 동시수업 셀·복수교사·특별실 충돌·가상 교사·**블록 교사**(아래). 감점 6종(중복·학년·최적·연속3·점심·오후 — 주간설명서 p.27 계승, 1차 근사 휴리스틱)
+  - `server.ts`: weeks CRUD(월요일 검증·중복 거부), 신청 생성(**서버 후보 재계산 대조**·같은 셀 중복 PENDING 차단·기타 사유 내용 필수), **승인 Firestore 트랜잭션**(그 주 changes 재읽기+후보 재검증 — 경합 시 실패 반환, request는 PENDING 유지), 반려(사유 필수), revert(이중 취소 거부), 알림(신청→일과계 / 승인→신청자+상대 / 반려→신청자 / 취소→관련 전원, hmnotice 경유)
+  - 라우트: `POST /api/timetable/requests`(candidates/create/my_list/cancel, 학생 차단), manage에 week_register/week_update/week_list/request_list/approve/reject/revert_change(+감사 로그), **observerEmails 계정은 request_list·week_list 읽기만**(authz basis "observer_read", 응답에 readOnly 플래그). view 라우트 `weekId` 합성 확장 + 현재 주 자동 폴백 + 교사 뷰 셀 `changed` 마킹 전달 + 무결성 경고는 일과계·super_admin에게만
+- **🔴 실측이 잡은 설계 결함 → 수정**: 1차 검증에서 맞교환 1순위로 **SLAT(가상 교사)가 통과** — 리허설 때 SLAT·창체가 실이메일로 매핑돼 "이메일 없음" 가정이 깨짐. 알리미 튜토리얼의 "절대 교환 금지" 케이스. → `isBlockTeacher`(한 교시 2학급 이상 동시 담당) 하드 제외를 소스 검증·맞교환 상대·보강 후보 3곳에 추가. 수정 후 1순위가 실교사(이서준·기가)로 정상화.
+- **실측 검증**: 재현 스크립트(2026-2 실데이터, 테스트 주 2026-12-28 등록→종료 시 전삭제) **36건 전건 통과**. 구글 챗은 ADMIN_EMAIL 제거로 MOCK 강제(실교사 DM 0건). 커버: 주 등록 검증 4 / 합성(휴업·축소·셀 수 대조) 5 / 후보 독립 대조(원시 그리드 재확인) 6 / 신청 검증(유령 후보·중복·사유) 5 / 승인 후 합성·교사 뷰 마킹 5 / **승인 경합 재검증 거부 1**(A 승인 후 B의 보강 교사가 공강 아님) / 반려 3 / revert 원상복구·이중 취소 4 / 누계 1 + 기타.
+- **주의(구현 결정 3건)**: ① findCurrentWeek는 복합 인덱스 회피를 위해 termId 조회 후 메모리 판별(주 ~25개) ② 감점 휴리스틱 임계값(하루 5시간 쏠림, 오후-오전≥3 등)은 1차 근사 — 실사용 후 실무사 피드백으로 조정 ③ week_list는 스펙 §6에 없지만 UI 필수라 추가(읽기 전용).
+- **다음**: §11 순서 3~5 (Antigravity 화면: 주 운영·요청대장·직권 배정 탭 → 교사 신청 화면 → NEIS 목록·시수 집계). 서버는 배포됨(Vercel). 표적 리뷰 지점: authz observer 분기, 학생 차단 회귀, 트랜잭션 경합.
