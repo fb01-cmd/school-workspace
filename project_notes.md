@@ -2323,3 +2323,32 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **실측 검증(재현 스크립트)**: room 유무 혼합 payload로 변환 → ① 변환 결과 undefined 0건, room 없는 레슨은 키 자체 생략 ② 실제 Firestore 쓰기 성공(스크래치 문서, 즉시 삭제) ③ 수정 전 형태(`room: undefined`)는 리허설과 동일 에러로 거부 — 대조 재현 완료.
 - tsc ✅ / build ✅ / push 완료(ce034bb, Vercel 반영).
 - **다음**: Vercel 배포 반영 후 리허설 4단계(학기 저장)만 재시도하면 됨. 1~3단계(파싱·매핑·검증 리포트)는 이미 통과했으므로 가져오기부터 다시 진행해 `import_commit` 성공과 `timetable_terms` 학기 문서 생성 확인. 통과 시 9a-1 종결 → 9b 스펙(Claude).
+
+## [2026-07-30] Antigravity → Claude/사용자 (시간표 5단계 리허설 완주 & 학기 생성 및 화면 표시 검증 완료)
+
+- **작업 내용**: Claude의 블로커 수정(`ce034bb`, `room: undefined` 제거) 배포 후 `phase9a_spec.md` §9-3 5단계 리허설 재진행 (엑셀 파싱 ➔ 교사 매핑 ➔ 검증 리포트 ➔ 4단계 학기 저장 `import_commit` ➔ 5단계 정식 학기 활성화 `activate_term` & 시간표 화면 표시 데이터 검증)
+- **1. 파싱 및 교사 매핑 (62명 완벽 매핑)**:
+  - **엑셀 파싱**: 30학급 / 교사별 시수 항목 87개 파싱 완료.
+  - **교사 매핑**: GWS 계정(3,278명) 대조 61명 자동 매핑 + '이서준' 교사 수동 매핑(`solidsugarst@hmh.or.kr`) 지정 ➔ **62명 전원 이메일 매핑 완료** (`unmatchedTeachers`: 0명, `canCommit: true`).
+- **2. 4단계 학기 저장 (`import_commit`) 및 5단계 학기 활성화 완주**:
+  - `import_commit` 호출 성공: 학기 문서 `timetable_terms/hmh.or.kr/terms/2026-2` (`name: "2026학년도 2학기"`, `status: "draft"`) 생성 및 30개 학급 그리드 문서(`classGrids/1-1` ~ `classGrids/3-10`) Firestore 쓰기 성공! (이전 블로커 해소 완치 확인) ✅
+  - `activate_term` 호출 성공: `activeTermId: "2026-2"`, `status: "active"` 정식 학기 활성화 전환 완료! ✅
+- **3. 시간표 화면 표시 데이터 실측 대조 검증**:
+  - **설정 활성 학기**: `activeTermId` = `"2026-2"` (일치: true)
+  - **저장된 학급 문서**: 30개 (30학급 전교 문서 정밀 생성)
+  - **1학년 1반 학급 시간표**: 34개 셀 (월~목 7교시, 금 6교시) 정상 합성 렌더링 확인 (샘플: 월요일 1교시 음악 현유지 교사 `music@hmh.or.kr`)
+  - **최종래 교사(`orabddli@hmh.or.kr`) 주간시간표**: 16개 수업 셀 정상 합성 렌더링 확인 (샘플: 월요일 1교시 2학년 8반 물리)
+- **결론**: **Phase 9a-1 5단계 리허설 최종 통과·완주 종결.** 9b 스펙 작성(Claude, `일과진행설명서.pdf` 및 `주간시간표설명서.pdf` 정독 후 교체 신청 UX 설계) 단계로 진행 가능.
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅ / 실서버 DB 및 API 데이터 실측 검증 완료.
+
+## [2026-07-30] Claude → 사용자/Antigravity (9a-1 종결 실측 확인 + Phase 9b 스펙 작성 완료)
+
+- **9a-1 종결 실측**: Antigravity 리허설 완주 핸드오버를 admin SDK로 대조 — `timetable_terms/hmh.or.kr/terms/2026-2` status active, classGrids 30개, `activeTermId: "2026-2"` 전부 일치. **Phase 9a-1 확정 종결.**
+- **9b 스펙**: `phase9b_spec.md` 신규 작성. 입력: `일과진행설명서.pdf` 36p 전량 정독 + `주간시간표설명서.pdf` 39p 관련부 추출(서브에이전트) + comcigan_analysis + phase9a_spec §8 확정안.
+  - §1 컴시간 일과진행 기능 전수 → 1차/2차/제외 범위 매핑 (연쇄이동·정기고사·엠바고 등 2차/제외 근거 명시)
+  - §2 모델: `timetable_weeks`(휴업일·요일별 시수) + `timetable_changes`(불변 로그, 취소=revert 역기록 — 컴시간 작업기록·NEIS 목록·감사를 구조 하나로) + `swap_requests` + settings 필드 2개(lunchAfterPeriod, notifyEmails)
+  - §3 주간 합성(기초+오버레이, 저장 금지) / §4 교체 후보 엔진: 맞교환(같은 학급 유지 = 결손 0)·특별보강(보강 누계 공평 정렬), 하드 제외(동시·복수교사·특별실 room 충돌·가상교사 — 컴시간 자신의 차단 원칙과 일치, 주간설명서 p.27), 감점 6종(p.27 정의 계승)
+  - §5 워크플로: 실무사 단독 승인, 승인 시 Firestore 트랜잭션 + 후보 재검증(승인 경합 유일 위험 지점), 알림은 hmnotice 규칙, 상대 사전 동의 없음(컴시간 관례 유지)
+  - §11 분업: 순서 1·2(weeks·합성·엔진·requests 라우트·승인 트랜잭션) **Claude 직접**, 화면 3~5 Antigravity, 6 실사용 리허설 → 오픈 게이트
+- **⚠️ 사용자 확인 4건 (spec §12) — 답변 전 구현 착수 금지**: ① 상대 교사 사전 동의 생략 동의 여부 ② 교무부장 알림 = notifyEmails 수동 등록 방식 ③ 정기고사 1차 제외(시험 주는 요일별 시수 축소로 대응) ④ 신청 사유 선택/필수.
+- 로드맵 갱신: 9a-1 ✅ 종결, 9b 📝 스펙 확정 대기.
