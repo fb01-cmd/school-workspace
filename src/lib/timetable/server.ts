@@ -957,6 +957,10 @@ export async function computeCandidates(
   const fullSource: SwapSourceSlot = { ...source, subjectName: sourceSubjectName };
 
   const swapRes = findSwapCandidates(grids, week, settings, requesterEmail, fullSource);
+  // 소스 레벨 오류(블록 교사 등)는 두 후보 목록 모두에 대해 치명적 — 전파한다
+  if (swapRes.error) {
+    return { swapCandidates: [], substituteCandidates: [], sourceSubjectName, error: swapRes.error };
+  }
 
   const allTeachers = collectTermTeachers(term, grids);
   const termChanges = await loadTermChanges(domain, week.termId);
@@ -997,7 +1001,8 @@ export async function createSwapRequest(
     source: SwapSourceSlot;
     candidate: SwapCandidateSnapshot;
     reason?: SwapRequestReason;
-  }
+  },
+  options?: { skipManagerNotify?: boolean; direct?: boolean }
 ): Promise<SwapRequest> {
   const reason = validateReason(params.reason);
   const week = await loadWeek(domain, params.weekId);
@@ -1064,10 +1069,12 @@ export async function createSwapRequest(
     reason,
     status: "PENDING",
     createdAt: Date.now(),
+    ...(options?.direct ? { direct: true } : {}),
   };
   await ref.set(request);
 
-  // 알림: 일과계에게 (실패해도 신청은 유효)
+  // 알림: 일과계에게 (실패해도 신청은 유효). 직권 흐름은 관리자 본인이 만들었으므로 생략
+  if (options?.skipManagerNotify) return request;
   const settings = await loadTimetableSettings(domain);
   const dayNames = ["", "월", "화", "수", "목", "금"];
   const summary =
@@ -1358,4 +1365,102 @@ export async function revertTimetableChange(
     }
   }
   return reverted.revert;
+}
+
+// ── 일과계 직권 배정 (§6 direct_* — 관리자 전용) ──────────────
+
+export interface DirectSourceInfo {
+  teacherEmail: string;
+  teacherName: string;
+  subjectName: string;
+}
+
+/** 직권 배정용 소스 슬롯 해석: 관리자가 지정한 슬롯의 (단일) 담당 교사를 서버가 찾는다 */
+export function resolveDirectSource(
+  grids: WeeklyClassGrid[],
+  source: { grade: number; classNum: number; day: number; period: number }
+): { ok: true; info: DirectSourceInfo } | { ok: false; error: string } {
+  const grid = grids.find((g) => g.grade === source.grade && g.classNum === source.classNum);
+  if (!grid) return { ok: false, error: "해당 학급 시간표를 찾을 수 없습니다." };
+  const cell = grid.cells.find((c) => c.day === source.day && c.period === source.period);
+  if (!cell || cell.lessons.length === 0) return { ok: false, error: "해당 교시에 수업이 없습니다." };
+  if (cell.lessons.length > 1)
+    return { ok: false, error: "동시수업(분반) 교시는 직권 배정 대상이 아닙니다." };
+  const lesson = cell.lessons[0];
+  if ((lesson.teachers || []).length > 1)
+    return { ok: false, error: "복수교사 수업은 직권 배정 대상이 아닙니다." };
+  const t = lesson.teachers[0];
+  if (!t || !t.email?.trim())
+    return { ok: false, error: "가상 교사(학교 공통 활동) 수업은 직권 배정 대상이 아닙니다." };
+  return {
+    ok: true,
+    info: {
+      teacherEmail: t.email.trim().toLowerCase(),
+      teacherName: t.name,
+      subjectName: lesson.subjectName,
+    },
+  };
+}
+
+/** 직권 후보 탐색: 슬롯 담당 교사를 서버가 해석한 뒤 그 교사 기준으로 엔진 실행 */
+export async function computeDirectCandidates(
+  domain: string,
+  weekId: string,
+  source: SwapSourceSlot
+) {
+  const week = await loadWeek(domain, weekId);
+  if (!week) throw new Error(`등록되지 않은 주(${weekId})입니다.`);
+  const { grids } = await synthesizeWeek(domain, week);
+  const resolved = resolveDirectSource(grids, source);
+  if (!resolved.ok) return { error: resolved.error };
+  const computed = await computeCandidates(domain, resolved.info.teacherEmail, weekId, source);
+  return { ...computed, sourceTeacher: resolved.info };
+}
+
+/**
+ * 직권 배정 실행: 슬롯 담당 교사 명의의 신청을 서버가 생성한 뒤 즉시 승인한다.
+ * 승인 재검증에 실패하면 생성한 신청을 자동 취소(CANCELED)해 유령 PENDING을 남기지 않는다.
+ */
+export async function directCommit(
+  domain: string,
+  managerEmail: string,
+  params: {
+    weekId: string;
+    type: SwapRequestType;
+    source: SwapSourceSlot;
+    candidate: SwapCandidateSnapshot;
+    reason?: SwapRequestReason;
+  }
+): Promise<{ request: SwapRequest; change: TimetableChange }> {
+  const week = await loadWeek(domain, params.weekId);
+  if (!week) throw new Error(`등록되지 않은 주(${params.weekId})입니다.`);
+  const { grids } = await synthesizeWeek(domain, week);
+  const resolved = resolveDirectSource(grids, params.source);
+  if (!resolved.ok) throw new Error(resolved.error);
+
+  const request = await createSwapRequest(
+    domain,
+    resolved.info.teacherEmail,
+    {
+      weekId: params.weekId,
+      type: params.type,
+      source: params.source,
+      candidate: params.candidate,
+      reason: params.reason,
+    },
+    { skipManagerNotify: true, direct: true }
+  );
+
+  try {
+    return await approveSwapRequest(domain, managerEmail, request.id);
+  } catch (e) {
+    // 직권 흐름에서 승인 실패 시 교사 명의의 유령 PENDING이 남지 않도록 자동 취소
+    await swapRequestsColRef(domain).doc(request.id).update({
+      status: "CANCELED",
+      decidedBy: managerEmail.toLowerCase(),
+      decidedAt: Date.now(),
+      decisionNote: "직권 배정 승인 실패로 자동 취소",
+    });
+    throw e;
+  }
 }

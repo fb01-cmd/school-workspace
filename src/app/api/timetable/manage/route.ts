@@ -5,7 +5,9 @@ import {
   activateTerm,
   approveSwapRequest,
   commitTimetableImport,
+  computeDirectCandidates,
   deleteTerm,
+  directCommit,
   listSwapRequests,
   listWeeks,
   loadAllTerms,
@@ -273,6 +275,51 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
         return NextResponse.json({ success: true, action, request });
+      }
+
+      case "direct_candidates": {
+        if (!body.weekId || !body.source) {
+          return NextResponse.json({ error: "weekId와 source가 필요합니다." }, { status: 400 });
+        }
+        const { grade, classNum, day, period } = body.source;
+        if (![grade, classNum, day, period].every((n) => Number.isInteger(n) && n > 0)) {
+          return NextResponse.json({ error: "source 슬롯 값이 유효하지 않습니다." }, { status: 400 });
+        }
+        const result = await computeDirectCandidates(domain, body.weekId, {
+          grade, classNum, day, period, subjectName: "",
+        });
+        if (result.error) {
+          return NextResponse.json({ error: result.error }, { status: 400 });
+        }
+        return NextResponse.json({ success: true, action, ...result });
+      }
+
+      case "direct_commit": {
+        if (!body.weekId || !body.source || !body.type || !body.candidate) {
+          return NextResponse.json(
+            { error: "weekId, source, type, candidate가 모두 필요합니다." },
+            { status: 400 }
+          );
+        }
+        if (body.type !== "swap" && body.type !== "substitute") {
+          return NextResponse.json({ error: "type은 swap 또는 substitute여야 합니다." }, { status: 400 });
+        }
+        const { grade, classNum, day, period } = body.source;
+        const { request, change } = await directCommit(domain, auth.email, {
+          weekId: body.weekId,
+          type: body.type,
+          source: { grade, classNum, day, period, subjectName: body.source.subjectName || "" },
+          candidate: body.candidate,
+          reason: body.reason,
+        });
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: request.requesterEmail,
+          action: "direct_swap_commit",
+          details: `일과계 직권 배정: ${request.source.grade}-${request.source.classNum} ${request.source.day}요일 ${request.source.period}교시 (${request.type}) → change ${change.id}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, request, change });
       }
 
       case "revert_change": {

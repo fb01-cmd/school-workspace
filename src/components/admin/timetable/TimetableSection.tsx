@@ -8,6 +8,9 @@ import TimetableImportTab from "./TimetableImportTab";
 import TeacherTimetableTab from "./TeacherTimetableTab";
 import ClassTimetableTab from "./ClassTimetableTab";
 import FreeTeacherTab from "./FreeTeacherTab";
+import WeekManageTab from "./WeekManageTab";
+import SwapRequestLedgerTab from "./SwapRequestLedgerTab";
+import DirectSubstituteTab from "./DirectSubstituteTab";
 
 export default function TimetableSection() {
   const { userData } = useAuth();
@@ -19,7 +22,9 @@ export default function TimetableSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"view" | "class" | "free" | "import">("view");
+  const [activeTab, setActiveTab] = useState<
+    "weeks" | "ledger" | "direct" | "view" | "class" | "free" | "import"
+  >("weeks");
 
   const fetchSettingsAndTerms = async (forceRefresh = false) => {
     setLoading(true);
@@ -65,8 +70,12 @@ export default function TimetableSection() {
   const isManager =
     isSuperAdmin ||
     (settings?.managerEmails || []).some((m) => m.toLowerCase() === userEmail);
+  // 열람 전용 참관자 (교무부장 등): 요청대장 탭만 읽기 접근 (phase9b_spec §5)
+  const isObserver =
+    !isManager && (settings?.observerEmails || []).some((m) => m.toLowerCase() === userEmail);
 
   const periodsPerDay = settings?.periodsPerDay || 7;
+  const activeTermId = settings?.activeTermId || null;
 
   if (loading) {
     return (
@@ -92,6 +101,18 @@ export default function TimetableSection() {
     );
   }
 
+  // 참관자는 수업교환 신청 요청대장(읽기 전용)만 접근
+  if (isObserver) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 text-xs font-bold text-amber-900">
+          👀 열람 전용 참관 계정입니다 — 수업교환 신청 요청대장을 읽기 전용으로 볼 수 있습니다.
+        </div>
+        <SwapRequestLedgerTab activeTermId={activeTermId} />
+      </div>
+    );
+  }
+
   if (!isManager) {
     return (
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center text-amber-900 space-y-2">
@@ -105,24 +126,59 @@ export default function TimetableSection() {
 
   return (
     <div className="space-y-6">
-      {/* 4종 네비게이션 탭 (phase9a_spec.md §5 명시) */}
+      {/* 일과계 네비게이션 탭 (phase9b_spec.md §7 명시) */}
       <div className="bg-white rounded-xl p-2 shadow-sm border border-gray-200 flex flex-wrap gap-2 text-xs font-bold">
         <button
-          onClick={() => setActiveTab("view")}
+          onClick={() => setActiveTab("weeks")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
-            activeTab === "view"
+            activeTab === "weeks"
               ? "bg-indigo-600 text-white shadow-sm"
               : "text-gray-600 hover:bg-gray-100"
           }`}
         >
-          <span>🗓️ 내/교사 시간표</span>
+          <span>🗓️ 주 운영 (휴업·단축)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("ledger")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "ledger"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>📋 수업교환 신청 요청대장</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("direct")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "direct"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>⚡ 직권 배정</span>
+        </button>
+
+        <div className="h-6 w-px bg-gray-200 my-auto mx-1"></div>
+
+        <button
+          onClick={() => setActiveTab("view")}
+          className={`px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "view"
+              ? "bg-gray-800 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>👤 교사별 시간표</span>
         </button>
 
         <button
           onClick={() => setActiveTab("class")}
-          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+          className={`px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
             activeTab === "class"
-              ? "bg-indigo-600 text-white shadow-sm"
+              ? "bg-gray-800 text-white shadow-sm"
               : "text-gray-600 hover:bg-gray-100"
           }`}
         >
@@ -131,13 +187,13 @@ export default function TimetableSection() {
 
         <button
           onClick={() => setActiveTab("free")}
-          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+          className={`px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
             activeTab === "free"
-              ? "bg-indigo-600 text-white shadow-sm"
+              ? "bg-gray-800 text-white shadow-sm"
               : "text-gray-600 hover:bg-gray-100"
           }`}
         >
-          <span>☕ 공강 교사 조회</span>
+          <span>☕ 공강 교사</span>
         </button>
 
         {isManager && (
@@ -155,6 +211,12 @@ export default function TimetableSection() {
       </div>
 
       {/* 탭 액티브 뷰 */}
+      {activeTab === "weeks" && <WeekManageTab activeTermId={activeTermId} />}
+
+      {activeTab === "ledger" && <SwapRequestLedgerTab activeTermId={activeTermId} />}
+
+      {activeTab === "direct" && <DirectSubstituteTab activeTermId={activeTermId} />}
+
       {activeTab === "view" && <TeacherTimetableTab periodsPerDay={periodsPerDay} />}
 
       {activeTab === "class" && <ClassTimetableTab periodsPerDay={periodsPerDay} />}

@@ -198,7 +198,9 @@ export type ManageAction =
   | "request_list"
   | "approve"
   | "reject"
-  | "revert_change";
+  | "revert_change"
+  | "direct_candidates"
+  | "direct_commit";
 
 export interface ManageTimetableRequest {
   action: ManageAction;
@@ -212,6 +214,11 @@ export interface ManageTimetableRequest {
   changeId?: string;
   decisionNote?: string;
   status?: SwapRequestStatus;
+  // 직권 배정 (direct_candidates / direct_commit)
+  source?: SwapSourceSlot;
+  type?: SwapRequestType;
+  candidate?: SwapCandidateSnapshot;
+  reason?: SwapRequestReason;
 }
 
 export interface ManageTimetableResponse {
@@ -343,6 +350,7 @@ export interface SwapRequest {
   decisionNote?: string; // 반려 사유 (반려 시 필수)
   appliedChangeIds?: string[];
   createdAt: number;
+  direct?: boolean; // 일과계 직권 배정 경유 (교사 사전 신청 없음)
 }
 
 // ── 주간 합성 (weekly.ts 출력) ────────────────────────────────

@@ -110,6 +110,11 @@ export default function AdminPage() {
   const isTimetableManager =
     isSuperAdmin ||
     (timetableSettings?.managerEmails || []).some((m) => m.toLowerCase() === userEmail);
+  // 열람 전용 참관자 (교무부장 등) — 요청대장 읽기만 (phase9b_spec §5)
+  const isTimetableObserver =
+    !isTimetableManager &&
+    (timetableSettings?.observerEmails || []).some((m) => m.toLowerCase() === userEmail);
+  const canSeeTimetableMenu = isTimetableManager || isTimetableObserver;
 
   const renderContent = () => {
     switch (activeMenu) {
@@ -145,7 +150,7 @@ export default function AdminPage() {
       case "discipline":
         return <DisciplineSection />;
       case "timetable":
-        return isTimetableManager ? <TimetableSection /> : null;
+        return canSeeTimetableMenu ? <TimetableSection /> : null;
       case "logs":
         return <AuditLogViewer />;
       case "roster":
@@ -486,8 +491,8 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* 시간표 독립 섹션 (super_admin + managerEmails 전용) */}
-              {isTimetableManager && (
+              {/* 시간표 독립 섹션 (super_admin + managerEmails + 열람 전용 참관자) */}
+              {canSeeTimetableMenu && (
                 <div>
                   <div className="px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
                     시간표 관리

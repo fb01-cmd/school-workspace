@@ -329,6 +329,12 @@ export function findSubstituteCandidates(
   }
   const idx = buildSlotIndex(grids);
   const me = norm(requesterEmail);
+  if (isBlockTeacher(idx, me)) {
+    return {
+      candidates: [],
+      error: "동시 진행 수업(전교 공통 활동 등)은 보강 대상이 아닙니다. 일과계에 직접 요청하세요.",
+    };
+  }
   const candidates: SubstituteCandidate[] = [];
   const seen = new Set<string>();
 
