@@ -1,3 +1,4 @@
+import "./_force_notify_mock"; // 반드시 첫 import — 실교사 DM 차단
 import { adminDb } from "../src/lib/firebase/admin";
 import {
   registerWeek,
@@ -48,7 +49,7 @@ async function runRehearsal() {
     const sourceSlot = { grade: 1, classNum: 1, day: 1, period: 1, subjectName: "" };
     const candResult = await computeDirectCandidates(domain, testWeekId, sourceSlot);
 
-    if (candResult.error) {
+    if (candResult.error || !("sourceTeacher" in candResult)) {
       throw new Error(`직권 후보 탐색 실패: ${candResult.error}`);
     }
 
@@ -56,8 +57,29 @@ async function runRehearsal() {
     const swapCands = candResult.swapCandidates || [];
     const subCands = candResult.substituteCandidates || [];
     const type: "swap" | "substitute" = swapCands.length > 0 ? "swap" : "substitute";
-    const candidates = type === "swap" ? swapCands : subCands;
-    const topCandidate = candidates[0];
+
+    // DirectSubstituteTab.tsx와 동일한 SwapCandidateSnapshot 변환
+    let topCandidate;
+    if (type === "swap") {
+      const sc = swapCands[0];
+      topCandidate = sc && {
+        targetDay: sc.targetDay,
+        targetPeriod: sc.targetPeriod,
+        counterpartEmail: sc.counterpartEmail,
+        counterpartName: sc.counterpartName,
+        counterpartSubjectName: sc.counterpartSubjectName,
+        score: sc.score,
+        penalties: sc.penalties || [],
+      };
+    } else {
+      const subc = subCands[0];
+      topCandidate = subc && {
+        counterpartEmail: subc.teacherEmail,
+        counterpartName: subc.teacherName,
+        score: 0,
+        penalties: [] as string[],
+      };
+    }
 
     if (!topCandidate) {
       throw new Error("탐색된 배정 후보가 없습니다.");
