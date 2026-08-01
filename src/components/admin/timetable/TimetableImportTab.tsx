@@ -76,6 +76,10 @@ export default function TimetableImportTab({
 
   // 교사 매핑 (teacherName -> email)
   const [teacherEmailMap, setTeacherEmailMap] = useState<Record<string, string>>({});
+  // 가상 교사(SLAT·창체 등) — 계정 없이 저장 (2026-08-02)
+  const [virtualTeacherNames, setVirtualTeacherNames] = useState<string[]>([]);
+  // 매핑 검색어 표시 전용 state — 제출값(teacherEmailMap)은 onSelect에서만 세팅 (AGENTS.md §4)
+  const [mappingQueries, setMappingQueries] = useState<Record<string, string>>({});
   const [gwsTeachers, setGwsTeachers] = useState<any[]>([]);
 
   // 검증 리포트 및 커밋 상태
@@ -562,7 +566,12 @@ export default function TimetableImportTab({
     parseTimeCountText(text);
   };
 
-  // 4. 교사 자동 매칭 실행
+  // 학생 계정 판정 — 학번형 이메일 또는 학생 OU (2026-08-02 오매핑 사고 재발 방지)
+  const isStudentAccount = (u: any): boolean =>
+    /^\d+@/.test(u?.primaryEmail || "") ||
+    String(u?.orgUnitPath || "").startsWith("/학생");
+
+  // 4. 교사 자동 매칭 실행 — 후보 풀에서 학생 계정 제외
   const autoMatchTeachers = () => {
     const teacherNames = new Set<string>();
     for (const grid of parsedGrids) {
@@ -575,12 +584,13 @@ export default function TimetableImportTab({
     }
 
     const newMap: Record<string, string> = { ...teacherEmailMap };
+    const staffPool = gwsTeachers.filter((u) => !isStudentAccount(u));
 
     for (const name of Array.from(teacherNames)) {
       if (newMap[name]) continue;
 
       const cleanName = name.trim();
-      const matched = gwsTeachers.find((u) => {
+      const matched = staffPool.find((u) => {
         const givenName = u.name?.givenName || "";
         const familyName = u.name?.familyName || "";
         const fullName = `${familyName}${givenName}`.trim();
@@ -603,6 +613,17 @@ export default function TimetableImportTab({
     setActiveStep(2);
   };
 
+  // 가상 교사 지정/해제 토글
+  const toggleVirtualTeacher = (tName: string) => {
+    setVirtualTeacherNames((prev) => {
+      if (prev.includes(tName)) return prev.filter((n) => n !== tName);
+      // 가상 교사 지정 시 매핑된 계정·검색어를 함께 비운다 (서버는 동시 지정을 거부)
+      setTeacherEmailMap((m) => ({ ...m, [tName]: "" }));
+      setMappingQueries((q) => ({ ...q, [tName]: "" }));
+      return [...prev, tName];
+    });
+  };
+
   // 5. 검증 실행 (import_validate)
   const runValidation = async () => {
     setValidating(true);
@@ -615,6 +636,7 @@ export default function TimetableImportTab({
       rawClassGrids: parsedGrids,
       teacherTimeCounts: parsedTimeCounts,
       teacherEmailMap,
+      virtualTeacherNames,
     };
 
     try {
@@ -662,6 +684,7 @@ export default function TimetableImportTab({
       rawClassGrids: parsedGrids,
       teacherTimeCounts: parsedTimeCounts,
       teacherEmailMap,
+      virtualTeacherNames,
     };
 
     try {
@@ -1286,12 +1309,17 @@ export default function TimetableImportTab({
                   </tr>
                 ) : (
                   Object.entries(teacherEmailMap).map(([tName, email]) => {
+                    const isVirtual = virtualTeacherNames.includes(tName);
                     const isMatched = Boolean(email);
                     return (
-                      <tr key={tName} className={isMatched ? "bg-white" : "bg-amber-50/40"}>
+                      <tr key={tName} className={isVirtual ? "bg-indigo-50/40" : isMatched ? "bg-white" : "bg-amber-50/40"}>
                         <td className="px-4 py-3 font-bold text-gray-900">{tName}</td>
                         <td className="px-4 py-3">
-                          {isMatched ? (
+                          {isVirtual ? (
+                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                              가상 교사 (계정 없음)
+                            </span>
+                          ) : isMatched ? (
                             <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
                               자동 매칭됨
                             </span>
@@ -1302,21 +1330,47 @@ export default function TimetableImportTab({
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <AutocompleteInput
-                            value={email}
-                            onChange={(val) =>
-                              setTeacherEmailMap((prev) => ({ ...prev, [tName]: val }))
-                            }
-                            type="user"
-                            domain={domain}
-                            placeholder="교사 이메일 선택 또는 검색"
-                            onSelect={(selectedEmail) =>
-                              setTeacherEmailMap((prev) => ({
-                                ...prev,
-                                [tName]: selectedEmail,
-                              }))
-                            }
-                          />
+                          <div className="flex items-center gap-2">
+                            {!isVirtual && (
+                              <AutocompleteInput
+                                value={mappingQueries[tName] ?? email}
+                                onChange={(val) => {
+                                  // 검색어는 표시 전용 — 제출값은 onSelect에서만 (AGENTS.md §4)
+                                  setMappingQueries((prev) => ({ ...prev, [tName]: val }));
+                                  setTeacherEmailMap((prev) => ({ ...prev, [tName]: "" }));
+                                }}
+                                type="user"
+                                domain={domain}
+                                placeholder="교사 이메일 선택 또는 검색"
+                                onSelect={(selectedEmail) => {
+                                  const norm = (selectedEmail || "").toLowerCase();
+                                  const account = gwsTeachers.find(
+                                    (u) => (u.primaryEmail || "").toLowerCase() === norm
+                                  );
+                                  if (account && isStudentAccount(account)) {
+                                    alert(
+                                      `${norm} 은(는) 학생 계정입니다 (${account.orgUnitPath || "학번형 이메일"}).\n동명이인 학생 오매핑 방지를 위해 교직원 계정만 지정할 수 있습니다.`
+                                    );
+                                    setMappingQueries((prev) => ({ ...prev, [tName]: "" }));
+                                    return;
+                                  }
+                                  setTeacherEmailMap((prev) => ({ ...prev, [tName]: norm }));
+                                  setMappingQueries((prev) => ({ ...prev, [tName]: norm }));
+                                }}
+                              />
+                            )}
+                            <button
+                              onClick={() => toggleVirtualTeacher(tName)}
+                              className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-colors ${
+                                isVirtual
+                                  ? "bg-white border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                                  : "bg-gray-50 border-gray-200 text-gray-500 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200"
+                              }`}
+                              title="SLAT·창체처럼 실제 인물이 아닌 컴시간 자리표시 이름은 계정 없이 저장합니다"
+                            >
+                              {isVirtual ? "가상 지정 해제" : "가상 교사로 지정"}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1373,7 +1427,7 @@ export default function TimetableImportTab({
                 <h4 className="font-bold text-sm">
                   {validationReport.canCommit
                     ? "검증 성공: 초안 학기로 저장할 준비가 되었습니다."
-                    : "저장 불가: 미매칭 교사가 존재합니다."}
+                    : "저장 불가: 미매칭 교사 또는 의심 매핑(학생 계정 등)이 존재합니다."}
                 </h4>
                 <p className="text-xs opacity-80 mt-0.5">
                   {validationReport.isValid
@@ -1411,6 +1465,25 @@ export default function TimetableImportTab({
               </p>
             </div>
           </div>
+
+          {/* 의심 매핑 상세 (저장 차단 사유) — 2026-08-02 학생 오매핑 재발 방지 */}
+          {(validationReport.suspiciousMappings?.length || 0) > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-2">
+              <h4 className="text-xs font-bold text-red-800">
+                🚫 의심 매핑 {validationReport.suspiciousMappings.length}건 — 해결 전에는 저장할 수 없습니다
+              </h4>
+              <ul className="text-xs text-red-900 space-y-1">
+                {validationReport.suspiciousMappings.map((s, i) => (
+                  <li key={i}>
+                    <b>{s.teacherName}</b> → {s.email} : {s.reason}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-red-700">
+                2단계로 돌아가 교직원 계정을 다시 지정하거나, 실제 인물이 아닌 이름(SLAT·창체 등)은 "가상 교사로 지정"을 사용하세요.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

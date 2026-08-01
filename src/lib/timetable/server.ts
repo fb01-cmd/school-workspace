@@ -12,6 +12,7 @@ import {
   FreeTeacher,
   IntermediateClassGrid,
   IntermediateImportPayload,
+  SuspiciousMappingIssue,
   TeacherOverlapIssue,
   TeacherTimeCount,
   TeacherTimetable,
@@ -214,6 +215,9 @@ export function convertIntermediateToClassGrids(payload: IntermediateImportPaylo
   maxPeriodsPerDay: number;
 } {
   const teacherEmailMap = payload.teacherEmailMap || {};
+  const virtualNames = new Set(
+    (payload.virtualTeacherNames || []).map((n) => n.trim()).filter(Boolean)
+  );
   const gridMap = new Map<string, ClassGrid>(); // "grade-classNum" -> ClassGrid
   const subjectMap = new Map<string, { shortName: string; teacherEmails: Set<string> }>();
   let maxPeriodsPerDay = 7;
@@ -227,7 +231,11 @@ export function convertIntermediateToClassGrids(payload: IntermediateImportPaylo
         maxPeriodsPerDay = rawCell.period;
       }
       const cellKey = `${rawCell.day}-${rawCell.period}`;
-      const teacherEmail = (teacherEmailMap[rawCell.teacherName] || "").trim().toLowerCase();
+      // 가상 교사(SLAT·창체 등)는 계정이 실수로 매핑돼 있어도 이메일 없이 저장 —
+      // 엔진의 가상 교사 판정(이메일 없음 = 하드 제외)과 정합 유지
+      const teacherEmail = virtualNames.has(rawCell.teacherName?.trim())
+        ? ""
+        : (teacherEmailMap[rawCell.teacherName] || "").trim().toLowerCase();
       const teacherObj: TimetableTeacher = {
         email: teacherEmail,
         name: rawCell.teacherName,
@@ -301,17 +309,44 @@ export function validateTimetableImport(
   payload: IntermediateImportPayload
 ): TimetableValidationReport {
   const teacherEmailMap = payload.teacherEmailMap || {};
+  const virtualNames = new Set(
+    (payload.virtualTeacherNames || []).map((n) => n.trim()).filter(Boolean)
+  );
   const unmatchedTeachersSet = new Map<string, number>();
 
-  // 1. 미매칭 교사 체크
+  // 1. 미매칭 교사 체크 — 가상 교사(SLAT·창체 등)로 지정된 이름은 계정 없이 허용
   for (const rawGrid of payload.rawClassGrids || []) {
     for (const cell of rawGrid.cells || []) {
       const tName = cell.teacherName?.trim();
       if (!tName) continue;
+      if (virtualNames.has(tName)) continue;
       const email = teacherEmailMap[tName];
       if (!email) {
         unmatchedTeachersSet.set(tName, (unmatchedTeachersSet.get(tName) || 0) + 1);
       }
+    }
+  }
+
+  // 1-b. 의심 매핑 체크 (저장 차단) — 2026-08-02 오매핑 사고 재발 방지 서버측 이중 방어
+  //   학번형(^\d+@) 계정은 이 학교의 학생 계정 규칙: 동명이인 학생 오매핑의 실제 사고 패턴
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const suspiciousMappings: SuspiciousMappingIssue[] = [];
+  for (const [teacherName, rawEmail] of Object.entries(teacherEmailMap)) {
+    const email = (rawEmail || "").trim().toLowerCase();
+    if (virtualNames.has(teacherName.trim())) {
+      if (email)
+        suspiciousMappings.push({
+          teacherName,
+          email,
+          reason: "가상 교사로 지정됐는데 계정도 매핑됨 — 둘 중 하나만 선택",
+        });
+      continue;
+    }
+    if (!email) continue;
+    if (!EMAIL_RE.test(email)) {
+      suspiciousMappings.push({ teacherName, email, reason: "이메일 형식이 아님 (검색어 원문 의심)" });
+    } else if (/^\d+@/.test(email)) {
+      suspiciousMappings.push({ teacherName, email, reason: "학번형 계정 — 동명이인 학생 오매핑 의심" });
     }
   }
 
@@ -492,7 +527,7 @@ export function validateTimetableImport(
     }
   }
 
-  const canCommit = unmatchedTeachers.length === 0;
+  const canCommit = unmatchedTeachers.length === 0 && suspiciousMappings.length === 0;
   const isValid = canCommit && overlaps.length === 0 && cellIssues.length === 0;
 
   return {
@@ -502,6 +537,7 @@ export function validateTimetableImport(
     cellIssues,
     timeMismatches,
     unmatchedTeachers,
+    suspiciousMappings,
     summary: {
       totalClasses,
       totalTeachers: teacherNamesSet.size,
@@ -520,6 +556,16 @@ export async function commitTimetableImport(
 ): Promise<TimetableTerm> {
   const termId = payload.termId.trim();
   const termName = payload.termName.trim() || termId;
+
+  // 서버측 재검증 (2026-08-02 이중 방어): UI 우회 호출로 미매칭·의심 매핑이 저장되는 것 차단
+  const report = validateTimetableImport(payload);
+  if (!report.canCommit) {
+    const reasons = [
+      ...report.unmatchedTeachers.map((u) => `미매칭: ${u.teacherName}`),
+      ...report.suspiciousMappings.map((s) => `${s.teacherName}(${s.email}): ${s.reason}`),
+    ];
+    throw new Error(`저장 조건 미충족 — ${reasons.slice(0, 5).join(" / ")}${reasons.length > 5 ? ` 외 ${reasons.length - 5}건` : ""}`);
+  }
 
   // 🔴 수정 1: 기존 학기 존재 여부 및 status 검사
   const existingTerm = await loadTimetableTerm(domain, termId);

@@ -89,6 +89,8 @@ export interface IntermediateImportPayload {
   rawClassGrids: IntermediateClassGrid[];
   teacherTimeCounts?: TeacherTimeCount[];
   teacherEmailMap: Record<string, string>; // teacherName -> GWS email
+  // 가상 교사(SLAT·창체 등 컴시간 자리표시 이름) — 계정 매핑 없이 저장 허용 (2026-08-02)
+  virtualTeacherNames?: string[];
 }
 
 // ── 검증 리포트 DTO ──────────────────────────────────────────
@@ -120,6 +122,13 @@ export interface UnmatchedTeacherIssue {
   occurrenceCount: number;
 }
 
+/** 매핑 이메일이 의심스러운 경우 — 학생 계정·형식 오류·가상 교사 충돌 (저장 차단, 2026-08-02) */
+export interface SuspiciousMappingIssue {
+  teacherName: string;
+  email: string;
+  reason: string;
+}
+
 export interface TimetableValidationReport {
   isValid: boolean;
   canCommit: boolean;
@@ -127,6 +136,7 @@ export interface TimetableValidationReport {
   cellIssues: ClassCellIssue[];
   timeMismatches: TimeCountMismatchIssue[];
   unmatchedTeachers: UnmatchedTeacherIssue[];
+  suspiciousMappings: SuspiciousMappingIssue[];
   summary: {
     totalClasses: number;
     totalTeachers: number;
