@@ -2547,3 +2547,17 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   - `neis_list` 및 `hour_totals` 액션은 기존 서버 구현과 정확히 매칭됨
 
 - **다음 할 일**: Claude 표적 리뷰 및 phase9b §11 순서 6 (실사용 리허설 및 통과 시 오픈 게이트) 준비
+
+## [2026-08-02] Claude → 사용자/Antigravity (순서 5 표적 리뷰 전부 통과 — 9b 코드 완성, 순서 6 실사용 리허설 진행 판단)
+
+- **표적 리뷰 3지점 — 전부 통과, 수정 불요**:
+  1. **xlsx 클라이언트 생성 ✅**: NeisExportTab·HourTotalsTab 모두 "use client" + `XLSX.utils.json_to_sheet`/`XLSX.writeFile` 브라우저 실행 — 서버 부하 없음. 다운로드 전용, 업로드 경로 없음.
+  2. **학생 카드 게이트 회귀 없음 ✅**: `StudentTimetableCard`는 **현재 어디에도 마운트되지 않음**(9a 때부터 오픈 게이트 후 재마운트 예정) — 내부 코드만 주간 합성본 대응으로 전환됐고 노출 자체가 없어 회귀 불가. view 라우트 학생 가드(자기 반 강제)도 불변.
+  3. **화면-서버 계약 일치 ✅**: neis_list `{startDate, endDate, termId?, type}` → `data.rows`(NeisRow 전 필드 정확 사용, revert 제외는 서버 보장), hour_totals `{endDate, termId?}` → `data.totals`(byTeacher email·name·total·substituteCount / bySubject / byClass). 참관자는 TimetableSection 조기 반환으로 새 탭 도달 불가(서버도 403). DoD 재검증: tsc·build 직접 실행 ✅.
+- **판단: Phase 9b 코드 구현은 §11 순서 1~5 전부 완료·배포 상태. 순서 6(실사용 리허설) 진행 가능.** 단, 실측으로 확인한 현재 운영 설정이 리허설 전제 미충족:
+  - `managerEmails` **0명** — 지금까지 전부 super_admin/admin SDK로 검증했음. 실무사(일과계 담당) 계정을 "가져오기&학기 관리" 탭의 관리자 지정 UI로 등록해야 실무사가 일과계 화면에 접근 가능.
+  - `observerEmails` 0명 — 교무부장 열람이 필요하면 같은 탭 참관자 지정 UI로 등록(선택).
+  - 등록된 주 0개 — 리허설 1단계(주 등록)부터 실무사가 실제로 진행.
+  - **시기**: 현재 여름방학이라 실제 결보강이 없음. "실제 1주 이상 운영(실신청 승인 포함)"은 **2학기 개학 첫 주**부터가 자연스러움. 개학 전에는 실무사 온보딩(화면 안내·계정 등록)까지만.
+- **순서 6 리허설 절차 (사용자+실무사, 화면으로)**: ① super_admin이 실무사 managerEmails 등록 ② 개학 첫 주 월요일 날짜로 주 등록(휴업일·단축 반영) ③ 실제 결보강 발생 시 직권 배정 또는 교사 신청(실무사 본인 수업으로 신청→승인 시연 가능) ④ NEIS 목록 출력 → 실제 NEIS 수기 입력과 대조 ⑤ 시수 집계 확인. **주의: 실운영이므로 승인·취소 시 관련 교사에게 실제 구글 챗 DM이 발송됨(정상 동작).**
+- **오픈 게이트 시 남은 작업(리허설 통과 후)**: ① `TimetableSettings`에 `teacherOpen` 필드 정식 추가 + 설정 UI 토글(Claude 스펙 확정, 구현은 소규모) ② 학생 포털에 `StudentTimetableCard` 마운트(Antigravity) ③ 교사 공지. 백로그: 다음 학기 가져오기 전 교사 매핑에서 학생 계정(학번형·학생 OU) 제외 로직(8/2 오매핑 사고 재발 방지).
