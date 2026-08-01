@@ -30,6 +30,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
 
   // 취소(revert) 처리 중 상태
   const [revertingId, setRevertingId] = useState<string | null>(null);
+  const [revertedReqIds, setRevertedReqIds] = useState<Set<string>>(new Set());
 
   // 주 목록 조회 (필터용)
   const fetchWeeks = async () => {
@@ -184,6 +185,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
       const data = await res.json();
       if (res.ok && data.success) {
         setSuccessMsg(`승인된 수업교환이 성공적으로 취소(revert)되었습니다.`);
+        setRevertedReqIds((prev) => new Set(prev).add(req.id));
         fetchRequests();
         setTimeout(() => setSuccessMsg(null), 4000);
       } else {
@@ -468,13 +470,19 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                     )}
 
                     {isApproved && req.appliedChangeIds?.[0] && (
-                      <button
-                        onClick={() => handleRevert(req)}
-                        disabled={revertingId === req.id}
-                        className="px-4 py-2 bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 border border-gray-300 font-bold rounded-lg text-xs transition-colors disabled:opacity-50"
-                      >
-                        {revertingId === req.id ? "취소 처리 중..." : "↩️ 승인 취소 (revert)"}
-                      </button>
+                      revertedReqIds.has(req.id) ? (
+                        <span className="px-3.5 py-2 bg-gray-100 text-gray-500 font-bold rounded-lg text-xs border border-gray-200 cursor-not-allowed">
+                          ↩️ 승인 취소 완료
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleRevert(req)}
+                          disabled={revertingId === req.id}
+                          className="px-4 py-2 bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 border border-gray-300 font-bold rounded-lg text-xs transition-colors disabled:opacity-50"
+                        >
+                          {revertingId === req.id ? "취소 처리 중..." : "↩️ 승인 취소 (revert)"}
+                        </button>
+                      )
                     )}
                   </div>
                 )}

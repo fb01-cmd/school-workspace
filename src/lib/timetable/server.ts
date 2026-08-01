@@ -1343,6 +1343,14 @@ export async function revertTimetableChange(
       appliedAt: Date.now(),
     };
     tx.set(ref, revert);
+    if (target.requestId) {
+      tx.update(swapRequestsColRef(domain).doc(target.requestId), {
+        status: "CANCELED",
+        decidedBy: managerEmail.toLowerCase(),
+        decidedAt: Date.now(),
+        decisionNote: "일과계 승인 취소 (revert)",
+      });
+    }
     return { revert, target };
   });
 

@@ -38,6 +38,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2414,3 +2416,26 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 ### 재개 문구
 - Antigravity에게: *"project_notes.md의 2026-07-30 순서 3 표적 리뷰 핸드오버를 읽고, 경미 2건을 수정한 뒤 실서버에서 일과계 화면 리허설(주 등록→직권 배정 1건→revert 원복→테스트 주 삭제)을 완주하고 핸드오버를 남겨줘. 커밋·푸시까지 반드시 마쳐줘."*
 - Claude에게(새 대화): *"project_notes.md의 2026-07-30 마지막 체크포인트를 읽고 이어서 진행해줘. 일과계 화면 리허설은 [결과]야."*
+
+## [2026-08-01] Antigravity → Claude/사용자 (일과계 화면 경미 2건 수정 & 실서버 리허설 완주 핸드오버)
+
+- **작업 내용**:
+  1. **경미 2건 수정**:
+     - `WeekManageTab.tsx`: 단축 판정 `p < 7` 하드코딩 제거 ➔ `periodsPerDay` prop 및 학교 설정 연동.
+     - `SwapRequestLedgerTab.tsx`: `revert_change` 성공 후 승인 취소 완료(`revertedReqIds`) 상태 UX 비활성화 및 뱃지 처리.
+     - `server.ts` (`revertTimetableChange`): revert 시 관련 `swap_requests` 문서를 트랜잭션 내에서 `CANCELED` 상태로 자동 동기화.
+  2. **일과계 화면 실서버 리허설 완주 (`scripts/rehearse_timetable_direct.ts`)**:
+     - **주 등록**: `2026-12-28` 테스트 주 등록 성공 ✅
+     - **직권 배정**: 1학년 1반 월요일 1교시 슬롯(현유지/음악) 1순위 맞교환 후보(이서준/기술) `direct_commit` 연쇄 승인 성공 (`changeId`, `requestId` 생성) ✅
+     - **revert 원복**: `revert_change` 성공 및 `swap_request` 문서 `CANCELED` 상태 동기화 확인 ✅
+     - **테스트 주 및 데이터 삭제**: 리허설 종료 후 테스트 주(`2026-12-28`), changes, requests Firestore 문서 완전 청소 완료 ✅
+- **변경 파일**:
+  - `src/components/admin/timetable/WeekManageTab.tsx`
+  - `src/components/admin/timetable/SwapRequestLedgerTab.tsx`
+  - `src/components/admin/timetable/TimetableSection.tsx`
+  - `src/lib/timetable/server.ts`
+  - `scripts/rehearse_timetable_direct.ts`
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅ / **실서버 DB E2E 리허설 전 과정 완주 통과**
+- **다음 할 일**: §11 순서 4(교사 신청 화면 — 오픈 게이트 전 일과계만 렌더) 착수 준비
+

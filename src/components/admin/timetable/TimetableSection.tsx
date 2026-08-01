@@ -211,7 +211,7 @@ export default function TimetableSection() {
       </div>
 
       {/* 탭 액티브 뷰 */}
-      {activeTab === "weeks" && <WeekManageTab activeTermId={activeTermId} />}
+      {activeTab === "weeks" && <WeekManageTab activeTermId={activeTermId} periodsPerDay={periodsPerDay} />}
 
       {activeTab === "ledger" && <SwapRequestLedgerTab activeTermId={activeTermId} />}
 

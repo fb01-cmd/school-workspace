@@ -5,9 +5,10 @@ import { TimetableWeek, TimetableWeekDay } from "@/lib/timetable/types";
 
 interface WeekManageTabProps {
   activeTermId: string | null;
+  periodsPerDay?: number;
 }
 
-export default function WeekManageTab({ activeTermId }: WeekManageTabProps) {
+export default function WeekManageTab({ activeTermId, periodsPerDay = 7 }: WeekManageTabProps) {
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -251,7 +252,7 @@ export default function WeekManageTab({ activeTermId }: WeekManageTabProps) {
                           {(w.days || []).map((d) => {
                             const reduced =
                               d.periodsByGrade &&
-                              Object.values(d.periodsByGrade).some((p) => p < 7);
+                              Object.values(d.periodsByGrade).some((p) => p < periodsPerDay);
                             return (
                               <span
                                 key={d.day}
@@ -444,7 +445,7 @@ export default function WeekManageTab({ activeTermId }: WeekManageTabProps) {
                         <div className="pt-2 border-t border-gray-200/60 flex flex-wrap items-center gap-4 text-gray-700">
                           <span className="font-bold text-[11px] text-gray-600">학년별 최대 교시:</span>
                           {[1, 2, 3].map((g) => {
-                            const currentVal = dayItem.periodsByGrade?.[String(g)] ?? 7;
+                            const currentVal = dayItem.periodsByGrade?.[String(g)] ?? periodsPerDay;
                             return (
                               <div key={g} className="flex items-center gap-1">
                                 <span className="font-semibold">{g}학년:</span>
@@ -454,7 +455,7 @@ export default function WeekManageTab({ activeTermId }: WeekManageTabProps) {
                                     const updated = [...editDays];
                                     const val = parseInt(e.target.value, 10);
                                     const pbg = { ...(updated[idx].periodsByGrade || {}) };
-                                    if (val === 7) {
+                                    if (val === periodsPerDay) {
                                       delete pbg[String(g)];
                                     } else {
                                       pbg[String(g)] = val;
@@ -465,7 +466,7 @@ export default function WeekManageTab({ activeTermId }: WeekManageTabProps) {
                                   }}
                                   className="px-2 py-1 border border-gray-300 rounded bg-white font-bold"
                                 >
-                                  <option value={7}>7교시 (정상)</option>
+                                  <option value={periodsPerDay}>{periodsPerDay}교시 (정상)</option>
                                   <option value={6}>6교시 (단축)</option>
                                   <option value={5}>5교시 (단축)</option>
                                   <option value={4}>4교시 (단축)</option>
