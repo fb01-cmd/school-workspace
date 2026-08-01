@@ -2513,3 +2513,37 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. **학생 카드 재마운트**: `StudentTimetableCard`를 주간 합성본(view weekId·changed 플래그)으로 전환하되 **노출은 오픈 게이트 후** — 지금은 코드만 전환하고 렌더 게이트 유지.
   4. 결재용 일람표는 요청대장 인쇄 뷰(브라우저 인쇄)로 1차 갈음(§8) — 별도 양식 개발 금지.
 - **표적 리뷰 예약(순서 5 화면 완료 후)**: xlsx 생성 경로(클라이언트 생성인지 확인 — 서버 부하 금지), 학생 카드 게이트 회귀, NEIS 표의 revert 반영 여부 실화면 대조.
+
+## [2026-08-02] Antigravity → Claude (phase9b 순서 5 운영 도구 화면 구현 완료 핸드오버)
+
+- **변경 파일**:
+  - `src/components/admin/timetable/NeisExportTab.tsx` (신규 - NEIS 목록 탭)
+  - `src/components/admin/timetable/HourTotalsTab.tsx` (신규 - 시수 집계 탭)
+  - `src/components/admin/timetable/TimetableSection.tsx` (일과계 메뉴 '📑 NEIS 목록', '📊 시수 집계' 탭 버튼 및 마운트 추가)
+  - `src/components/student/StudentTimetableCard.tsx` (주간 합성본 지원 전환, `changed` 오버레이 마커 및 툴팁, weekMeta 헤더 표시)
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **커밋**: `6dffee2`
+
+- **구현 내용 요약**:
+  1. **NEIS 목록 탭 (`NeisExportTab.tsx`)**:
+     - `POST /api/timetable/manage` `{ action: "neis_list", startDate, endDate, type? }` 연동
+     - 컴시간 양식 계승: `변경있는 교시(일자·교시) | 학급 | 교사 | 과목 | 변경전 교시 | 비고 (대체 교사) | 구분` 표 렌더링
+     - 기간 지정 (시작일~종료일) UI 및 특별보강 전용 필터 체크박스 토글
+     - `SheetJS(xlsx)` 클라이언트 다운로드 (`NEIS_수업교환목록_startDate_endDate.xlsx`)
+  2. **시수 집계 탭 (`HourTotalsTab.tsx`)**:
+     - `POST /api/timetable/manage` `{ action: "hour_totals", endDate }` 연동
+     - 교사별 / 과목별 / 학급별 3개 서브 탭 표 제공
+     - 교사별 표에 특별보강 누계 횟수(공평 정렬 기준) 강조 표기
+     - 고교학점제 이수시수 판정을 위한 동적 계산 안내 문구 노출
+     - `SheetJS(xlsx)` 3개 시트(교사/과목/학급) 통합 엑셀 다운로드 (`수업시수집계_endDate.xlsx`)
+  3. **StudentTimetableCard 주간 합성본 전환**:
+     - `POST /api/timetable/view` (action: "class") 응답의 `week` 메타 및 레슨 `changed` 오버레이 지원
+     - 변경된 수업 셀에 `▲ 맞교환/보강 (origin 슬롯 이동)` 뱃지 및 출처 툴팁 표시
+     - 노출 게이트 및 본인 학급 자동 좁힘 보안 규칙 그대로 유지
+
+- **표적 리뷰 안내 지점 (Claude)**:
+  - xlsx 엑셀 파일 생성은 전부 클라이언트단(`XLSX.utils.json_to_sheet` & `XLSX.writeFile`)에서만 수행 (서버 부하 없음)
+  - `StudentTimetableCard`는 주간 합성본 및 변경 뱃지를 수신 렌더링하며 본인 반 가드가 변함없이 유지됨
+  - `neis_list` 및 `hour_totals` 액션은 기존 서버 구현과 정확히 매칭됨
+
+- **다음 할 일**: Claude 표적 리뷰 및 phase9b §11 순서 6 (실사용 리허설 및 통과 시 오픈 게이트) 준비
