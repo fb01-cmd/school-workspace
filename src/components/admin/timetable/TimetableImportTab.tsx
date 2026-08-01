@@ -571,7 +571,12 @@ export default function TimetableImportTab({
     /^\d+@/.test(u?.primaryEmail || "") ||
     String(u?.orgUnitPath || "").startsWith("/학생");
 
-  // 4. 교사 자동 매칭 실행 — 후보 풀에서 학생 계정 제외
+  // 자동 매칭 후보는 교직원 OU로 한정 — 학생·기기(전자칠판 등)·공용 계정의 이름 우연 일치 차단
+  // (실사례: "창체" → 창체부전자칠판 eb-s-01@ /기기, "김동현" → 동명이인 학생 24029@ /학생)
+  const isStaffAccount = (u: any): boolean =>
+    String(u?.orgUnitPath || "").startsWith("/교직원");
+
+  // 4. 교사 자동 매칭 실행 — 후보 풀 교직원 한정
   const autoMatchTeachers = () => {
     const teacherNames = new Set<string>();
     for (const grid of parsedGrids) {
@@ -584,7 +589,7 @@ export default function TimetableImportTab({
     }
 
     const newMap: Record<string, string> = { ...teacherEmailMap };
-    const staffPool = gwsTeachers.filter((u) => !isStudentAccount(u));
+    const staffPool = gwsTeachers.filter(isStaffAccount);
 
     for (const name of Array.from(teacherNames)) {
       if (newMap[name]) continue;
