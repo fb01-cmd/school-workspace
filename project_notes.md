@@ -2493,3 +2493,23 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 
 - **다음 할 일**: Claude 표적 리뷰 → 통과 후 phase9b §11 순서 5 (NEIS 목록·시수 집계 + 학생 카드 재마운트) 착수 고려
 
+
+## [2026-08-02] Claude → 사용자/Antigravity (순서 4 표적 리뷰 전부 통과 + 순서 5 서버부 직접 구현·실측 + 🔴 9a 교사 오매핑 4건 교정 — 65a8440)
+
+- **표적 리뷰 3지점 — 전부 통과, 수정 불요**:
+  1. **후보 위·변조 방어 ✅**: `createSwapRequest`가 서버 재계산 후 (targetDay·targetPeriod·counterpartEmail) 대조, 저장 스냅샷은 서버 계산값만 사용(클라이언트 score·penalties 폐기). `resolveSourceLesson`이 "본인의 수업만" 강제. 사유 검증·중복 PENDING 차단 포함.
+  2. **teacherOpen 학생 누출 ✅**: 3중 방어 — 사이드바 `!isStudent` 미노출 / 컴포넌트 학생 차단 + `isManager || teacherOpen` 게이트 / 서버(requests 라우트 role=student 403, manage authz 학생 전면 차단, view는 자기 반 class만). authz 규칙 6이 일반 교사에게 `get_settings` 읽기를 허용하므로 오픈 게이트 때 플래그 로드도 정상 동작.
+  3. **cancel 본인 판정 ✅**: 트랜잭션 내 `requesterEmail` 대조 + PENDING 한정. `set_observers`도 확인 — super_admin 전용 authz·형식 검증·감사 로그, UI는 AGENTS §4 선택 강제 패턴 준수. DoD 재검증: tsc·build 직접 실행 ✅ (이번 핸드오버는 사실).
+- **순서 5 판단 → 서버부 직접 구현**: `neis_list`·`hour_totals` 서버 액션이 §6에 있으나 미구현 상태 — 순서 3의 "서버 없는 화면" 사고 재발 방지 + 시수 집계는 고교학점제 이수 판정 직결(§12-3)이라 Claude 직접 구현(읽기 전용 조회 2종).
+  - `weekly.ts`: `flattenNeisChanges`(컴시간 양식 — 변경 교시·교사·과목·변경전 교시·비고, swap 1건=2행, revert 제외, 행 날짜 기준 기간 필터) / `accumulateWeeklyHours`(합성본 실시수만, endDate로 주 중간 집계 지원, 학급=셀당 1·교사/과목=레슨당 1, 이메일 없는 가상 교사 제외)
+  - `server.ts`: `listNeisRows` / `computeHourTotals`(특별보강 누계는 엔진 공평 정렬과 동일 `countSubstituteTotals` 공유, substitute는 슬롯 날짜≤endDate만) — manage 라우트 case 2개, authz는 기본 판정으로 일과계·super_admin 전용(참관자·일반 교사 거부).
+  - **실측 24/24** (`scripts/verify_neis_hours.ts`, MOCK 가드 적용): 기준선 1-1=34교시 / 수요일까지 21 / 금 휴업 28 / 맞교환 후 NEIS 2행·날짜 정확·두 교사 시수 불변 / 특별보강 NEIS 1행(비고)·결강 -1·보강 +1·누계 1 / revert 후 swap 행 소멸 / 기간 밖 0건 / 입력 검증 거부. 테스트 데이터 전삭제.
+- 🔴 **실측이 발견한 9a 결함 — 교사 매핑 4건이 동명이인 "학생" 계정**: 특별보강 실측에서 결강 교사 DM 수신자가 `24029@hmh.or.kr`(학번형)로 찍힘 → GWS 디렉터리 대조 결과 김동현→24029@(3학년 학생), 김지현→24071@(3학년), 김은호→24062@(3학년), 조수빈→25163@(2학년). **9a-1 "62명 전원 매핑 완료"는 실제로는 58명+오매핑 4명이었음.** 방치 시 이 4명 관련 수업교환에서 학생에게 DM 발송·본인 시간표 미표시·시수 집계 오귀속.
+  - **교정 완료** (`scripts/migrate_fix_student_mapped_teachers.ts`): 각 이름당 교직원 OU 계정이 정확히 1개 존재 확인 → 김동현 xmandh57@ / 김지현 jhkk17@ / 김은호 eunho-1@ / 조수빈 sub613@. 드라이런 → 백업(/tmp) → 적용(subjects 5항목·레슨 60건·학급 문서 10개, 이름 대조 가드) → 재검증(학번형 잔존 0·교정 등장 60/60) → 실측 24/24 재통과. weeks·changes·requests는 0건 시점이라 파급 없음. 되돌리려면 위 매핑을 역방향 실행.
+  - **재발 방지 메모**: 다음 학기 가져오기 때 교사 매핑 후보를 **교직원 OU로 한정**하거나 학번형(`^\d+@`) 계정을 매핑 후보에서 제외해야 함 — 9c 또는 다음 가져오기 전 import 매핑 로직 보강 항목으로 등록.
+- **다음 (§11 순서 5 잔여 — Antigravity)**: 화면만 남음.
+  1. **NEIS 목록 탭** (일과계 메뉴): `POST /api/timetable/manage` `{action:"neis_list", startDate, endDate, type?}` → `rows[]`(NeisRow, types.ts 참조). 표 컬럼 = 컴시간 양식(일자·교시|교사|과목|변경전 교시|비고) + xlsx 다운로드(기존 SheetJS 의존성 재사용). 특별보강만 필터 토글(type).
+  2. **시수 집계 탭**: `{action:"hour_totals", endDate}` → `totals`(HourTotalsResult: byTeacher(email·name·total·substituteCount)·bySubject·byClass). 교사별/과목별/학급별 3표 + 특별보강 누계 별도 표기. 저장 없음 안내 문구.
+  3. **학생 카드 재마운트**: `StudentTimetableCard`를 주간 합성본(view weekId·changed 플래그)으로 전환하되 **노출은 오픈 게이트 후** — 지금은 코드만 전환하고 렌더 게이트 유지.
+  4. 결재용 일람표는 요청대장 인쇄 뷰(브라우저 인쇄)로 1차 갈음(§8) — 별도 양식 개발 금지.
+- **표적 리뷰 예약(순서 5 화면 완료 후)**: xlsx 생성 경로(클라이언트 생성인지 확인 — 서버 부하 금지), 학생 카드 게이트 회귀, NEIS 표의 revert 반영 여부 실화면 대조.
