@@ -8,6 +8,7 @@
 
 import {
   ClassGrid,
+  NeisRow,
   SwapChangeSlot,
   TimetableChange,
   TimetableSettings,
@@ -280,4 +281,124 @@ export function countSubstituteTotals(allChanges: TimetableChange[]): Map<string
     totals.set(email, (totals.get(email) || 0) + 1);
   }
   return totals;
+}
+
+// ── 운영 도구 (phase9b_spec §8 — 순수 함수) ───────────────────
+
+/**
+ * NEIS 입력용 수업교환 목록 평탄화 — 컴시간 양식 계승 (§8).
+ * revert된 변경·revert 기록 자체는 제외. swap 1건 = 교사별 2행, substitute 1건 = 1행.
+ * 행의 날짜(변경 있는 교시 기준)가 [startDate, endDate] 안에 드는 것만 반환.
+ */
+export function flattenNeisChanges(
+  weeks: TimetableWeek[],
+  changes: TimetableChange[],
+  filter: { startDate: string; endDate: string; type?: "swap" | "substitute" }
+): NeisRow[] {
+  const weekById = new Map(weeks.map((w) => [w.id, w]));
+  const reverted = new Set(
+    changes.filter((c) => c.type === "revert" && c.revertOf).map((c) => c.revertOf as string)
+  );
+  const dateOf = (weekId: string, day: number): string =>
+    weekById.get(weekId)?.days.find((d) => d.day === day)?.date || "";
+
+  const rows: NeisRow[] = [];
+  for (const ch of changes) {
+    if (reverted.has(ch.id)) continue;
+    if (ch.type === "swap" && ch.swap && filter.type !== "substitute") {
+      const { grade, classNum, a, b } = ch.swap;
+      // a의 수업은 b 슬롯에서, b의 수업은 a 슬롯에서 진행된다
+      const pairs: Array<[SwapChangeSlot, SwapChangeSlot]> = [
+        [a, b],
+        [b, a],
+      ];
+      for (const [moved, into] of pairs) {
+        rows.push({
+          changeId: ch.id,
+          weekId: ch.weekId,
+          type: "swap",
+          grade,
+          classNum,
+          date: dateOf(ch.weekId, into.day),
+          day: into.day,
+          period: into.period,
+          teacherName: moved.teacherName,
+          teacherEmail: moved.teacherEmail,
+          subjectName: moved.subjectName,
+          prevDate: dateOf(ch.weekId, moved.day),
+          prevDay: moved.day,
+          prevPeriod: moved.period,
+          note: "",
+        });
+      }
+    } else if (ch.type === "substitute" && ch.substitute && filter.type !== "swap") {
+      const s = ch.substitute;
+      const date = dateOf(ch.weekId, s.day);
+      rows.push({
+        changeId: ch.id,
+        weekId: ch.weekId,
+        type: "substitute",
+        grade: s.grade,
+        classNum: s.classNum,
+        date,
+        day: s.day,
+        period: s.period,
+        teacherName: s.absentTeacherName,
+        teacherEmail: s.absentTeacherEmail,
+        subjectName: s.subjectName,
+        prevDate: date, // 특별보강은 교시 이동 없음 — 동일 슬롯
+        prevDay: s.day,
+        prevPeriod: s.period,
+        note: `특별보강: ${s.subTeacherName}${s.subSubjectName ? ` (${s.subSubjectName})` : ""}`,
+      });
+    }
+  }
+
+  return rows
+    .filter((r) => r.date && r.date >= filter.startDate && r.date <= filter.endDate)
+    .sort(
+      (x, y) =>
+        x.date.localeCompare(y.date) ||
+        x.period - y.period ||
+        x.grade - y.grade ||
+        x.classNum - y.classNum
+    );
+}
+
+/**
+ * 주 하나의 합성본을 시수 집계에 누적한다 (§8 — 실제 운영된 수업만, §12-3).
+ * 합성 단계에서 휴업일·축소 시수 슬롯은 이미 제거되어 있으므로,
+ * 여기서는 endDate 이후 요일만 추가로 걸러낸다 (주 중간까지 집계 지원).
+ * 학급 시수는 교시(셀) 단위 1, 교사·과목 시수는 lesson 단위(동시수업 분반 각각 1).
+ */
+export function accumulateWeeklyHours(
+  grids: WeeklyClassGrid[],
+  week: TimetableWeek,
+  endDate: string,
+  acc: {
+    byTeacher: Map<string, { name: string; total: number }>;
+    bySubject: Map<string, number>;
+    byClass: Map<string, number>;
+  }
+): void {
+  const countableDays = new Set(
+    (week.days || []).filter((d) => d.date <= endDate && !d.holiday).map((d) => d.day)
+  );
+  for (const grid of grids) {
+    for (const cell of grid.cells) {
+      if (!countableDays.has(cell.day) || cell.lessons.length === 0) continue;
+      const classKey = `${grid.grade}-${grid.classNum}`;
+      acc.byClass.set(classKey, (acc.byClass.get(classKey) || 0) + 1);
+      for (const lesson of cell.lessons) {
+        acc.bySubject.set(lesson.subjectName, (acc.bySubject.get(lesson.subjectName) || 0) + 1);
+        for (const t of lesson.teachers || []) {
+          const email = (t.email || "").trim().toLowerCase();
+          if (!email) continue; // 이메일 없는 가상 교사는 교사별 집계 대상 아님
+          const cur = acc.byTeacher.get(email);
+          if (cur) cur.total += 1;
+          else acc.byTeacher.set(email, { name: t.name || email.split("@")[0], total: 1 });
+        }
+      }
+    }
+  }
 }

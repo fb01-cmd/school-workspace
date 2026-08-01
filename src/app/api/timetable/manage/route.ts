@@ -6,8 +6,10 @@ import {
   approveSwapRequest,
   commitTimetableImport,
   computeDirectCandidates,
+  computeHourTotals,
   deleteTerm,
   directCommit,
+  listNeisRows,
   listSwapRequests,
   listWeeks,
   loadAllTerms,
@@ -372,6 +374,35 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
         return NextResponse.json({ success: true, action, change: revert });
+      }
+
+      case "neis_list": {
+        // phase9b_spec §8 — NEIS 입력용 수업교환 목록 (읽기 전용, 일과계·super_admin)
+        if (!body.startDate || !body.endDate) {
+          return NextResponse.json(
+            { error: "startDate와 endDate가 필요합니다." },
+            { status: 400 }
+          );
+        }
+        const rows = await listNeisRows(domain, {
+          termId: body.termId,
+          startDate: body.startDate,
+          endDate: body.endDate,
+          type: body.type,
+        });
+        return NextResponse.json({ success: true, action, rows });
+      }
+
+      case "hour_totals": {
+        // phase9b_spec §8 — 시수 집계 (읽기 전용, 저장 없음, 실시수만 — §12-3)
+        if (!body.endDate) {
+          return NextResponse.json({ error: "endDate가 필요합니다." }, { status: 400 });
+        }
+        const totals = await computeHourTotals(domain, {
+          termId: body.termId,
+          endDate: body.endDate,
+        });
+        return NextResponse.json({ success: true, action, totals });
       }
 
       default:

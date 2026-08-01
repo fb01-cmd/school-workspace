@@ -201,7 +201,10 @@ export type ManageAction =
   | "reject"
   | "revert_change"
   | "direct_candidates"
-  | "direct_commit";
+  | "direct_commit"
+  // ── Phase 9b 순서 5 운영 도구 (phase9b_spec §8) ──
+  | "neis_list"
+  | "hour_totals";
 
 export interface ManageTimetableRequest {
   action: ManageAction;
@@ -218,9 +221,12 @@ export interface ManageTimetableRequest {
   status?: SwapRequestStatus;
   // 직권 배정 (direct_candidates / direct_commit)
   source?: SwapSourceSlot;
-  type?: SwapRequestType;
+  type?: SwapRequestType; // direct_* 및 neis_list 유형 필터 겸용
   candidate?: SwapCandidateSnapshot;
   reason?: SwapRequestReason;
+  // 운영 도구 (neis_list / hour_totals) — phase9b_spec §8
+  startDate?: string; // "YYYY-MM-DD"
+  endDate?: string;
 }
 
 export interface ManageTimetableResponse {
@@ -382,6 +388,41 @@ export interface WeeklyClassGrid {
 export interface WeeklySynthesisResult {
   grids: WeeklyClassGrid[];
   integrityWarnings: string[]; // 적용 불능 change 수집 — 일과계 화면 노출용
+}
+
+// ── 운영 도구 (phase9b_spec §8 — neis_list / hour_totals) ─────
+
+/**
+ * NEIS 입력용 수업교환 목록 1행 — 컴시간 양식 계승:
+ * 변경있는 교시(일자·교시) | 교사 | 과목 | 변경전 교시 | 비고(특별보강 대체교사)
+ * swap 1건 = 2행(교사별), substitute 1건 = 1행. revert된 변경은 제외.
+ */
+export interface NeisRow {
+  changeId: string;
+  weekId: string;
+  type: "swap" | "substitute";
+  grade: number;
+  classNum: number;
+  date: string; // 변경 있는 교시의 일자 (YYYY-MM-DD)
+  day: number; // 1~5
+  period: number;
+  teacherName: string;
+  teacherEmail: string;
+  subjectName: string;
+  prevDate: string; // 변경전 교시 일자 (substitute는 동일 슬롯)
+  prevDay: number;
+  prevPeriod: number;
+  note: string; // 비고 — 특별보강 대체 교사
+}
+
+/** 시수 집계 (§8) — 저장하지 않고 합성본에서 계산. 실제 운영된 수업만 센다(§12-3). */
+export interface HourTotalsResult {
+  termId: string;
+  endDate: string; // 집계 종료일 (이 날짜까지의 등록 주·요일만)
+  weeksCounted: number;
+  byTeacher: Array<{ email: string; name: string; total: number; substituteCount: number }>;
+  bySubject: Array<{ subjectName: string; total: number }>;
+  byClass: Array<{ grade: number; classNum: number; total: number }>;
 }
 
 // ── 후보 탐색 엔진 (swap.ts 출력) ─────────────────────────────

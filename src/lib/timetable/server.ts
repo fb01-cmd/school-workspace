@@ -736,9 +736,17 @@ export async function resolveStudentClass(
 // ═════════════════════════════════════════════════════════════
 
 import { sendGoogleChat } from "@/lib/google/workspace";
-import { countSubstituteTotals, isSlotWithinWeek, synthesizeWeeklyGrids } from "./weekly";
+import {
+  accumulateWeeklyHours,
+  countSubstituteTotals,
+  flattenNeisChanges,
+  isSlotWithinWeek,
+  synthesizeWeeklyGrids,
+} from "./weekly";
 import { findSubstituteCandidates, findSwapCandidates, resolveSourceLesson } from "./swap";
 import {
+  HourTotalsResult,
+  NeisRow,
   SubstituteCandidate,
   SwapCandidate,
   SwapCandidateSnapshot,
@@ -1471,4 +1479,91 @@ export async function directCommit(
     });
     throw e;
   }
+}
+
+// ── 운영 도구 (phase9b_spec §8 — neis_list / hour_totals, 읽기 전용) ──
+
+async function resolveTermIdOrThrow(domain: string, termId?: string): Promise<string> {
+  if (termId) return termId;
+  const settings = await loadTimetableSettings(domain);
+  if (!settings.activeTermId) throw new Error("활성 학기가 없습니다. termId를 지정하세요.");
+  return settings.activeTermId;
+}
+
+/** NEIS 입력용 수업교환 목록 (§8) — 기간 내 확정 변경 평탄화, revert 반영 */
+export async function listNeisRows(
+  domain: string,
+  params: { termId?: string; startDate: string; endDate: string; type?: "swap" | "substitute" }
+): Promise<NeisRow[]> {
+  const { startDate, endDate } = params;
+  if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate))
+    throw new Error("startDate·endDate는 YYYY-MM-DD 형식이어야 합니다.");
+  if (startDate > endDate) throw new Error("startDate가 endDate보다 늦을 수 없습니다.");
+  const termId = await resolveTermIdOrThrow(domain, params.termId);
+  const [weeks, changes] = await Promise.all([
+    listWeeks(domain, termId),
+    loadTermChanges(domain, termId),
+  ]);
+  return flattenNeisChanges(weeks, changes, { startDate, endDate, type: params.type });
+}
+
+/**
+ * 시수 집계 (§8) — 학기 시작~endDate까지 등록된 주의 합성본에서 실시수만 센다 (§12-3).
+ * 저장하지 않고 매번 계산. 특별보강 누계는 엔진 공평 정렬과 동일 함수(countSubstituteTotals) 공유.
+ */
+export async function computeHourTotals(
+  domain: string,
+  params: { termId?: string; endDate: string }
+): Promise<HourTotalsResult> {
+  const { endDate } = params;
+  if (!DATE_RE.test(endDate)) throw new Error("endDate는 YYYY-MM-DD 형식이어야 합니다.");
+  const termId = await resolveTermIdOrThrow(domain, params.termId);
+
+  const weeks = (await listWeeks(domain, termId)).filter((w) => w.startDate <= endDate);
+  const acc = {
+    byTeacher: new Map<string, { name: string; total: number }>(),
+    bySubject: new Map<string, number>(),
+    byClass: new Map<string, number>(),
+  };
+  for (const week of weeks) {
+    const { grids } = await synthesizeWeek(domain, week);
+    accumulateWeeklyHours(grids, week, endDate, acc);
+  }
+
+  // 특별보강 누계: 집계 구간의 주 + 슬롯 날짜가 endDate 이내인 change만. revert 기록은 항상 유지.
+  const weekIds = new Set(weeks.map((w) => w.id));
+  const weekById = new Map(weeks.map((w) => [w.id, w]));
+  const termChanges = (await loadTermChanges(domain, termId)).filter((c) => {
+    if (!weekIds.has(c.weekId)) return false;
+    if (c.type === "revert") return true;
+    if (c.type === "substitute" && c.substitute) {
+      const date = weekById.get(c.weekId)?.days.find((d) => d.day === c.substitute!.day)?.date;
+      return !!date && date <= endDate;
+    }
+    return true; // swap은 특별보강 누계와 무관
+  });
+  const subTotals = countSubstituteTotals(termChanges);
+
+  return {
+    termId,
+    endDate,
+    weeksCounted: weeks.length,
+    byTeacher: Array.from(acc.byTeacher.entries())
+      .map(([email, v]) => ({
+        email,
+        name: v.name,
+        total: v.total,
+        substituteCount: subTotals.get(email) || 0,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ko")),
+    bySubject: Array.from(acc.bySubject.entries())
+      .map(([subjectName, total]) => ({ subjectName, total }))
+      .sort((a, b) => a.subjectName.localeCompare(b.subjectName, "ko")),
+    byClass: Array.from(acc.byClass.entries())
+      .map(([key, total]) => {
+        const [grade, classNum] = key.split("-").map(Number);
+        return { grade, classNum, total };
+      })
+      .sort((a, b) => a.grade - b.grade || a.classNum - b.classNum),
+  };
 }
