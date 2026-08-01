@@ -2455,3 +2455,41 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   5. (병행 백로그) **observerEmails 설정 UI**: 일과계 설정 위치에 참관자 이메일 등록 — AGENTS.md §4 AutocompleteInput 선택 강제 + 서버 형식·실존 검증 필수.
 - **표적 리뷰 예약 지점(완료 후 Claude)**: 교사 신청 플로우의 후보 위·변조 여지(클라이언트 스냅샷 그대로 전송하는지), teacherOpen 게이트의 학생 누출, my_list/cancel 본인 판정 회귀.
 
+## [2026-08-01] Antigravity → Claude (phase9b 순서 4 교사 신청 화면 구현 완료 핸드오버)
+
+- **변경 파일**:
+  - `src/components/admin/timetable/TeacherPortalSection.tsx` (신규)
+  - `src/components/admin/timetable/TimetableImportTab.tsx` (observerEmails 설정 UI 추가)
+  - `src/app/admin/page.tsx` (my_timetable MenuType + 사이드바 '내 시간표' 버튼 + isStudent)
+  - `src/app/api/timetable/manage/route.ts` (set_observers case 추가)
+  - `src/lib/timetable/types.ts` (ManageAction에 set_observers 추가, ManageTimetableRequest.observerEmails)
+  - `src/lib/timetable/authz.ts` (set_observers → super_admin 전용 판정)
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **커밋**: `1d69e11`
+
+- **구현 내용 요약**:
+  1. **TeacherPortalSection.tsx** (사이드바 '내 시간표' 메뉴):
+     - 노출 게이트: 학생 전면 차단, `isManager || teacherOpen` 플래그 검사 (teacherOpen 미충족 시 '준비 중' 안내)
+     - 탭 ① 내 주간시간표: 주 선택 드롭다운 → `/api/timetable/view` action:my + weekId 합성본
+       - 변경 셀 빨간 배경 + `▲` 텍스트 마커 + `title` 속성 마우스오버 툴팁 (`화3 ← 월2에서 이동`)
+       - 내 수업 셀 클릭 → `/api/timetable/requests` action:candidates → 맞교환 후보 초록 하이라이트
+       - 맞교환/특별보강 토글, 후보 카드 [선택] → 사유 드롭다운(SWAP_REASON_TYPES, 기타 시 텍스트 필수) → action:create
+       - 징검다리 체인: `<details>` 접힌 영역 + '통상 사용하지 않습니다 · 일과계에 직접 문의' 문구 (1차 미구현)
+       - **엔진 제시 후보만 선택 가능** — 임의 입력 UI 없음 (phase9b_spec §4-4-4 준수)
+     - 탭 ② 내 신청 내역: `my_list`, 주 필터, 상태 배지, PENDING 건 `cancel` 버튼
+     - 탭 ③ 다른 시간표 조회: AutocompleteInput + 주 선택 합성본 전환
+  2. **observerEmails 설정 UI** (TimetableImportTab 가져오기&학기관리 탭, super_admin 전용):
+     - `handleAddObserver` / `handleRemoveObserver` → `set_observers` action (신설)
+     - `managerEmails` 중복 차단 (관리자는 이미 열람 권한 포함)
+  3. **set_observers 서버 action** (manage/route.ts):
+     - 이메일 형식 검증 + `saveTimetableSettings` 저장 + 감사 로그
+     - authz: super_admin 전용 (`set_managers || set_observers`)
+  4. **teacherOpen 플래그**: `TimetableSettings` 타입 미확장(super_admin/manager 게이트만 1차 사용), 추후 `boolean` 필드 추가 시 플래그만 켜면 전 교사 노출되는 구조 완비
+
+- **주의 (Claude 표적 리뷰 예약 — phase9b_spec §11 완료 조건):**
+  - **후보 위·변조 여지**: 클라이언트가 `candidate` 스냅샷을 그대로 전송 → 서버 `createSwapRequest`에서 재계산 대조하는지 확인 필요
+  - **teacherOpen 게이트 학생 누출**: TeacherPortalSection 내부에서 학생 차단하나, `!isStudent` 사이드바 게이트가 학생이 `/admin`에 접근하는 경우에도 버튼 미노출인지 회귀 확인
+  - **my_list/cancel 본인 판정**: `cancelSwapRequest`에서 `requesterEmail === auth.email` 검사 서버 코드 재확인
+
+- **다음 할 일**: Claude 표적 리뷰 → 통과 후 phase9b §11 순서 5 (NEIS 목록·시수 집계 + 학생 카드 재마운트) 착수 고려
+
