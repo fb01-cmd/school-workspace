@@ -46,8 +46,8 @@ export function canManageTimetable(
     return { allowed: true, basis: "super_admin" };
   }
 
-  // 3. 관리자 지정 (super_admin 전용)
-  if (action === "set_managers") {
+  // 3. 관리자 지정 및 참관자 지정 (super_admin 전용)
+  if (action === "set_managers" || action === "set_observers") {
     return { allowed: false, basis: "denied:super_admin_only" };
   }
 

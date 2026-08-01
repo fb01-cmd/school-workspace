@@ -187,6 +187,7 @@ export interface ViewTimetableResponse {
 export type ManageAction =
   | "get_settings"
   | "set_managers"
+  | "set_observers"  // phase9b_spec §5 — observerEmails (열람 전용 참관자) 저장, super_admin 전용
   | "import_validate"
   | "import_commit"
   | "activate_term"
@@ -205,6 +206,7 @@ export type ManageAction =
 export interface ManageTimetableRequest {
   action: ManageAction;
   managerEmails?: string[];
+  observerEmails?: string[]; // set_observers action 전용 (phase9b_spec §5)
   importPayload?: IntermediateImportPayload;
   termId?: string;
   // ── Phase 9b ──

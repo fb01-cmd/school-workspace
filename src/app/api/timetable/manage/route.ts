@@ -100,6 +100,43 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      case "set_observers": {
+        // phase9b_spec §5 — observerEmails (열람 전용 참관자) 저장, super_admin 전용
+        if (!Array.isArray(body.observerEmails)) {
+          return NextResponse.json(
+            { error: "observerEmails 배열이 유효하지 않습니다." },
+            { status: 400 }
+          );
+        }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const invalidObservers = body.observerEmails.filter(
+          (email: string) => !emailRegex.test(email)
+        );
+        if (invalidObservers.length > 0) {
+          return NextResponse.json(
+            { error: `올바르지 않은 이메일 형식이 포함되어 있습니다: ${invalidObservers.join(", ")}` },
+            { status: 400 }
+          );
+        }
+        const updatedObserverSettings = await saveTimetableSettings(domain, {
+          observerEmails: body.observerEmails,
+        });
+
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "set_timetable_observers",
+          details: `시간표 열람 전용 참관자 변경: ${body.observerEmails.join(", ")}`,
+          status: "success",
+        });
+
+        return NextResponse.json({
+          success: true,
+          action,
+          settings: updatedObserverSettings,
+        });
+      }
+
       case "import_validate": {
         if (!body.importPayload) {
           return NextResponse.json(

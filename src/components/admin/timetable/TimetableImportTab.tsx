@@ -89,6 +89,11 @@ export default function TimetableImportTab({
   const [selectedManagerEmail, setSelectedManagerEmail] = useState("");
   const [savingManagers, setSavingManagers] = useState(false);
 
+  // 열람 전용 참관자(observerEmails) 입력 (super_admin 전용, phase9b_spec §5)
+  const [newObserverQuery, setNewObserverQuery] = useState("");
+  const [selectedObserverEmail, setSelectedObserverEmail] = useState("");
+  const [savingObservers, setSavingObservers] = useState(false);
+
   // 1. GWS 유저 목록 로드 (교사 매핑용)
   useEffect(() => {
     const cached = getClientCache("users:all");
@@ -805,6 +810,76 @@ export default function TimetableImportTab({
     }
   };
 
+  // 8-b. 열람 전용 참관자(observerEmails) 저장 (super_admin 전용, phase9b_spec §5)
+  const handleAddObserver = async () => {
+    if (!selectedObserverEmail) return;
+    const currentList = settings?.observerEmails || [];
+    const targetEmail = selectedObserverEmail.trim().toLowerCase();
+    if (currentList.includes(targetEmail)) {
+      alert("이미 참관자로 등록된 이메일입니다.");
+      return;
+    }
+    // managerEmails와 중복 차단
+    if ((settings?.managerEmails || []).includes(targetEmail)) {
+      alert("이미 일과계 관리자로 등록된 이메일입니다. 관리자는 열람 권한을 이미 지닕니다.");
+      return;
+    }
+
+    const updated = [...currentList, targetEmail];
+    setSavingObservers(true);
+
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_observers", observerEmails: updated }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setClientCache("timetable:settings", {
+          settings: data.settings,
+          terms,
+        });
+        setNewObserverQuery("");
+        setSelectedObserverEmail("");
+        onRefreshData();
+      } else {
+        alert(`참관자 추가 실패: ${data.error}`);
+      }
+    } catch (err: any) {
+      alert(`오류: ${err.message}`);
+    } finally {
+      setSavingObservers(false);
+    }
+  };
+
+  const handleRemoveObserver = async (email: string) => {
+    const updated = (settings?.observerEmails || []).filter((o) => o !== email);
+    setSavingObservers(true);
+
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_observers", observerEmails: updated }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setClientCache("timetable:settings", {
+          settings: data.settings,
+          terms,
+        });
+        onRefreshData();
+      } else {
+        alert(`참관자 삭제 실패: ${data.error}`);
+      }
+    } catch (err: any) {
+      alert(`오류: ${err.message}`);
+    } finally {
+      setSavingObservers(false);
+    }
+  };
+
   const totalParsedLessons = parsedGrids.reduce((acc, g) => acc + g.cells.length, 0);
 
   return (
@@ -1462,6 +1537,66 @@ export default function TimetableImportTab({
                       <button
                         onClick={() => handleRemoveManager(m)}
                         className="text-indigo-400 hover:text-indigo-600 font-bold ml-1 text-sm leading-none"
+                        title="삭제"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 열람 전용 참관자 지정 (super_admin 전용, phase9b_spec §5) */}
+          {isSuperAdmin && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <span>👁️</span>
+                <span>열람 전용 참관자 지정</span>
+              </h3>
+              <p className="text-xs text-gray-500">
+                수업교환 신청 요청대장과 변경 내역을 <strong>읽기 전용</strong>으로 열람할 교직원을 등록합니다.
+                승인·반려 버튼은 디스플레이되지 않으며 서버도 거부합니다. (DM 발송 없음)
+              </p>
+
+              <div className="flex gap-2 max-w-md">
+                <AutocompleteInput
+                  value={newObserverQuery}
+                  onChange={(val) => {
+                    setNewObserverQuery(val);
+                    setSelectedObserverEmail("");
+                  }}
+                  type="user"
+                  domain={domain}
+                  placeholder="추가할 참관자 이메일 검색 (교무부장 등)"
+                  onSelect={(email, name) => {
+                    setSelectedObserverEmail(email);
+                    setNewObserverQuery(`${name || ""} (${email})`);
+                  }}
+                />
+                <button
+                  onClick={handleAddObserver}
+                  disabled={savingObservers || !selectedObserverEmail}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shrink-0 shadow-xs"
+                >
+                  {savingObservers ? "저장 중..." : "참관자 추가"}
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-2">
+                {(settings?.observerEmails || []).length === 0 ? (
+                  <p className="text-xs text-gray-400">등록된 열람 전용 참관자가 없습니다.</p>
+                ) : (
+                  settings?.observerEmails?.map((o) => (
+                    <span
+                      key={o}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-xs font-bold"
+                    >
+                      <span>{o}</span>
+                      <button
+                        onClick={() => handleRemoveObserver(o)}
+                        className="text-amber-400 hover:text-amber-600 font-bold ml-1 text-sm leading-none"
                         title="삭제"
                       >
                         ×

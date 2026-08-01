@@ -33,6 +33,7 @@ const ProfileApprovals = dynamic(() => import("@/components/admin/ProfileApprova
 const ClassroomCleanupTab = dynamic(() => import("@/components/admin/ClassroomCleanupTab"), { loading: TabLoading });
 const DisciplineSection = dynamic(() => import("@/components/admin/discipline/DisciplineSection"), { loading: TabLoading });
 const TimetableSection = dynamic(() => import("@/components/admin/timetable/TimetableSection"), { loading: TabLoading });
+const TeacherPortalSection = dynamic(() => import("@/components/admin/timetable/TeacherPortalSection"), { loading: TabLoading });
 
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { TimetableSettings } from "@/lib/timetable/types";
@@ -40,7 +41,7 @@ import { TimetableSettings } from "@/lib/timetable/types";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable";
+type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable" | "my_timetable";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
@@ -104,6 +105,7 @@ export default function AdminPage() {
   const hasAccess = userData?.role === "super_admin" || userData?.isApproved;
   const isSuperAdmin = userData?.role === "super_admin";
   const isTeacher = userData?.role === "teacher";
+  const isStudent = userData?.role === "student";
   const hasNoProfile = (isSuperAdmin || isTeacher) && !teacherProfile;
 
   const userEmail = userData?.email?.toLowerCase() || "";
@@ -151,6 +153,9 @@ export default function AdminPage() {
         return <DisciplineSection />;
       case "timetable":
         return canSeeTimetableMenu ? <TimetableSection /> : null;
+      case "my_timetable":
+        // 교사 신청 화면 (phase9b_spec §7 순서 4). 학생·canSeeTimetableMenu 게이트는 컴포넌트 내부에서 재검증.
+        return <TeacherPortalSection />;
       case "logs":
         return <AuditLogViewer />;
       case "roster":
@@ -508,6 +513,27 @@ export default function AdminPage() {
                     >
                       <span>📦</span>
                       <span>시간표 관리 (일과계)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 내 시간표 (교사 신청 화면) — phase9b_spec §7 순서 4.
+                  게이트: 학생 미노출, 관리자/teacherOpen 플래그 시 교사 노출.
+                  현재는 managerEmails·super_admin + teacherOpen 플래그 — 컴포넌트 내부에서 재검증. */}
+              {!isStudent && (
+                <div>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setActiveMenu("my_timetable")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "my_timetable"
+                          ? "bg-indigo-800 text-white font-bold shadow-sm"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>📅</span>
+                      <span>내 시간표</span>
                     </button>
                   </div>
                 </div>
