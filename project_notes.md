@@ -2439,3 +2439,19 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅ / **실서버 DB E2E 리허설 전 과정 완주 통과**
 - **다음 할 일**: §11 순서 4(교사 신청 화면 — 오픈 게이트 전 일과계만 렌더) 착수 준비
 
+## [2026-08-01] Claude → 사용자/Antigravity (8/1 리허설 검증 — 발견 2건 직접 수정, 99b9ca9 / 순서 4 착수 안내)
+
+- **핸드오버 대조 결과**: 커밋 4e7f974 diff를 항목별 대조 — 경미 2건 수정(WeekManageTab periodsPerDay 연동 / SwapRequestLedgerTab revert 완료 배지)·server.ts revert 시 request CANCELED 트랜잭션 동기화 전부 주장과 일치. origin/main 동기화 확인. Firestore 실측(읽기 전용 스크립트): 테스트 주 `2026-12-28`·weeks·changes·requests 전부 0건 — 청소 완료 사실.
+- 🔴 **발견 1 — "tsc ✅" 허위 기재 (직접 수정)**: 검증 시점 `npx tsc --noEmit`이 `scripts/rehearse_timetable_direct.ts`에서 **5건 에러로 실패**(유니언 협소화 실패 + SubstituteCandidate를 SwapCandidateSnapshot 자리에 그대로 전달). 프로덕션 코드는 무관하나 핸드오버의 "tsc ✅"는 사실이 아니었음 — **AGENTS.md 규칙 ①(DoD) 위반이자 허위 기재 재발**. `in` 가드 협소화 + DirectSubstituteTab과 동일한 스냅샷 변환으로 수정.
+- 🔴 **발견 2 — 리허설이 실교사에게 실DM 4건 발송 (가드 신설)**: 7/30 실측 때의 "ADMIN_EMAIL 제거로 MOCK 강제"가 이번 스크립트에 없었음. `.env.local` 자격 증명 3종이 모두 있으므로 `isMock=false` — directCommit→approve가 현유지(music@)·이서준(solidsugarst@)에게 "승인 완료", revert가 같은 2명에게 "취소" DM을 **실발송**(재실행 MOCK 로그로 수신자·문면 확정). → `scripts/_force_notify_mock.ts` 신설(첫 import로 ADMIN_EMAIL 제거 → 알림만 MOCK, Firestore는 정상), 리허설 스크립트에 적용. **이후 모든 실서버 리허설 스크립트는 이 모듈을 첫 import로 두는 것을 규칙화.** 두 교사에게 안내가 필요한지는 사용자 판단(문면상 테스트임이 드러나지 않는 실승인·취소 알림이었음).
+- **재실행 실측**: 수정 스크립트로 리허설 재완주 — 주 등록→직권(맞교환 5·보강 30 후보, 1순위 이서준 유지)→revert(request CANCELED 동기화 확인)→전삭제, 알림 전부 [Chat MOCK]. tsc ✅. 커밋·푸시 99b9ca9.
+- **한계 기록**: 이번 리허설은 서버 함수 직접 호출(E2E는 라우트·화면 계층 제외). 라우트 authz는 7/30 Claude 실측 19/19로 커버. **브라우저 실화면 조작 확인은 여전히 미실시** — 순서 6 실무사 리허설이 최종 게이트. 그 전 화면에서 테스트 조작하면 실DM이 나가므로 주의.
+- **판정**: 경미 2건·revert 동기화·데이터 청소는 인정, 일과계 화면 단계 통과 → **§11 순서 4(교사 신청 화면) 착수 가능**.
+- **순서 4 스펙 요지 (phase9b_spec §7·§4-4 — 서버는 전부 준비됨, 클라이언트 작업만)**:
+  1. 사이드바 **"내 시간표" 메뉴 신설**. 노출 게이트: `managerEmails`·super_admin에게만 렌더 + `timetable_settings.teacherOpen`(boolean, 기본 false) 플래그가 true면 전 교사 노출(오픈 게이트 때 플래그만 켜면 되는 구조). 학생은 어떤 경우에도 미노출.
+  2. 탭 ① **내 주간시간표**: `/api/timetable/view`(weekId 파라미터·`changed` 플래그 기존 지원). 변경 셀 빨간 배경 + 텍스트 마커 병행(색약 대비), 마우스오버 출처 툴팁("화3 ← 월2에서 이동"). 내 수업 셀 클릭 → `/api/timetable/requests` action `candidates` → 교체 가능 공강 셀 초록 배지, 셀 클릭 시 상대·감점 상세, "교환 없이 보강만" 토글 시 특별보강 목록. 후보 카드 [신청] → 사유 드롭다운(필수, 기타는 내용 필수 — 서버가 이미 강제) → action `create`. **엔진 제시 후보만 선택 가능, 임의 입력 UI 금지.** 징검다리 체인은 접힌 영역 + "통상 사용하지 않습니다" 문구만.
+  3. 탭 ② **내 신청 내역**: action `my_list`(상태·결정 사유 표시), PENDING 건 `cancel` 버튼.
+  4. 탭 ③ **다른 교사·학급 시간표 조회**: 9a 탭 재사용, 주간 합성본(weekId)으로 전환.
+  5. (병행 백로그) **observerEmails 설정 UI**: 일과계 설정 위치에 참관자 이메일 등록 — AGENTS.md §4 AutocompleteInput 선택 강제 + 서버 형식·실존 검증 필수.
+- **표적 리뷰 예약 지점(완료 후 Claude)**: 교사 신청 플로우의 후보 위·변조 여지(클라이언트 스냅샷 그대로 전송하는지), teacherOpen 게이트의 학생 누출, my_list/cancel 본인 판정 회귀.
+
