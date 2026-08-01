@@ -11,6 +11,8 @@ import FreeTeacherTab from "./FreeTeacherTab";
 import WeekManageTab from "./WeekManageTab";
 import SwapRequestLedgerTab from "./SwapRequestLedgerTab";
 import DirectSubstituteTab from "./DirectSubstituteTab";
+import NeisExportTab from "./NeisExportTab";
+import HourTotalsTab from "./HourTotalsTab";
 
 export default function TimetableSection() {
   const { userData } = useAuth();
@@ -23,7 +25,7 @@ export default function TimetableSection() {
   const [error, setError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
-    "weeks" | "ledger" | "direct" | "view" | "class" | "free" | "import"
+    "weeks" | "ledger" | "direct" | "neis" | "hours" | "view" | "class" | "free" | "import"
   >("weeks");
 
   const fetchSettingsAndTerms = async (forceRefresh = false) => {
@@ -161,6 +163,28 @@ export default function TimetableSection() {
           <span>⚡ 직권 배정</span>
         </button>
 
+        <button
+          onClick={() => setActiveTab("neis")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "neis"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>📑 NEIS 목록</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("hours")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "hours"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>📊 시수 집계</span>
+        </button>
+
         <div className="h-6 w-px bg-gray-200 my-auto mx-1"></div>
 
         <button
@@ -216,6 +240,10 @@ export default function TimetableSection() {
       {activeTab === "ledger" && <SwapRequestLedgerTab activeTermId={activeTermId} />}
 
       {activeTab === "direct" && <DirectSubstituteTab activeTermId={activeTermId} />}
+
+      {activeTab === "neis" && <NeisExportTab activeTermId={activeTermId} />}
+
+      {activeTab === "hours" && <HourTotalsTab activeTermId={activeTermId} />}
 
       {activeTab === "view" && <TeacherTimetableTab periodsPerDay={periodsPerDay} />}
 

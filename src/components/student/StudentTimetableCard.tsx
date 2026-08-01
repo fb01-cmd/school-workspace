@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ClassGrid, TimetableCell } from "@/lib/timetable/types";
+import { ClassGrid } from "@/lib/timetable/types";
+
+const DAY_LABEL: Record<number, string> = { 1: "월", 2: "화", 3: "수", 4: "목", 5: "금" };
 
 export default function StudentTimetableCard() {
   const [classGrid, setClassGrid] = useState<ClassGrid | null>(null);
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
+  const [weekMeta, setWeekMeta] = useState<{ id: string; startDate: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +35,7 @@ export default function StudentTimetableCard() {
 
     try {
       // 학생 API는 서버가 학번 기반으로 본인 반을 강제 도출하므로 action만 전달
+      // weekId 미지정 시 서버가 현재 주(currentWeek)를 찾아 주간 합성본으로 반환함
       const res = await fetch("/api/timetable/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -41,6 +45,7 @@ export default function StudentTimetableCard() {
       if (res.ok) {
         const result = await res.json();
         setTermMeta(result.term || null);
+        setWeekMeta(result.week || null);
         if (result.data && result.data.grade > 0) {
           setClassGrid(result.data);
         } else {
@@ -71,7 +76,7 @@ export default function StudentTimetableCard() {
     return (
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs text-center space-y-2">
         <div className="inline-block animate-spin rounded-full h-6 w-6 border-3 border-indigo-600 border-t-transparent"></div>
-        <p className="text-xs text-slate-500 font-semibold">우리 반 시간표를 불러오는 중입니다...</p>
+        <p className="text-xs text-slate-500 font-semibold">우리 반 주간 시간표를 불러오는 중입니다...</p>
       </div>
     );
   }
@@ -94,9 +99,16 @@ export default function StudentTimetableCard() {
       {/* 헤더 */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
         <div>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
-            {termMeta?.name || "기초시간표"}
-          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+              {termMeta?.name || "기초시간표"}
+            </span>
+            {weekMeta && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-100">
+                🗓️ {weekMeta.startDate} 주간 합성본
+              </span>
+            )}
+          </div>
           <h3 className="text-lg font-black text-slate-900 mt-1 flex items-center gap-2">
             <span>📅 {classGrid.grade}학년 {classGrid.classNum}반 시간표</span>
           </h3>
@@ -136,28 +148,51 @@ export default function StudentTimetableCard() {
                   : "bg-white border-slate-100 opacity-60"
               }`}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 w-full">
                 <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-900 font-black text-xs flex items-center justify-center shrink-0">
                   {period}교시
                 </span>
 
                 {hasLessons ? (
-                  <div className="space-y-0.5">
-                    {lessons.map((lesson, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm">
-                          {lesson.subjectName}
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          ({lesson.teachers.map((t) => t.name).join(", ")})
-                        </span>
-                        {lesson.room && (
-                          <span className="text-[10px] bg-slate-200/60 text-slate-600 px-1.5 py-0.5 rounded font-medium">
-                            📍 {lesson.room}
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                  <div className="space-y-1 w-full">
+                    {lessons.map((lesson: any, idx) => {
+                      const isChanged = !!lesson.changed;
+                      const changedType = lesson.changed?.type;
+                      const origin = lesson.changed?.origin;
+
+                      return (
+                        <div key={idx} className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-bold text-sm ${isChanged ? "text-red-700" : "text-slate-900"}`}>
+                              {lesson.subjectName}
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              ({lesson.teachers?.map((t: any) => t.name).join(", ")})
+                            </span>
+                            {lesson.room && (
+                              <span className="text-[10px] bg-slate-200/60 text-slate-600 px-1.5 py-0.5 rounded font-medium">
+                                📍 {lesson.room}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* 주간 변경 오버레이 마커 */}
+                          {isChanged && (
+                            <span
+                              className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200"
+                              title={
+                                origin
+                                  ? `${DAY_LABEL[origin.day]}요일 ${origin.period}교시에서 이동`
+                                  : "수업 변경"
+                              }
+                            >
+                              ▲ {changedType === "swap" ? "맞교환" : "보강"}
+                              {origin && ` (${DAY_LABEL[origin.day]}${origin.period}에서 이동)`}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <span className="text-xs text-slate-400 font-light">수업 없음 (공강)</span>
