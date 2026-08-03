@@ -2658,3 +2658,13 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   2. **② subMode 토글 시 스테일 키 초기화**: 맞교환↔보강 모드 전환 시(onClick 두 곳) 두 키 초기화 추가 — 카드 언마운트는 onMouseLeave를 발화하지 않아 이전 강조가 되살아나는 현상 해소
   3. **③ 교사 드롭다운 상시 '내 시간표' 옵션**: `teacherList.length === 0` 조건 제거, `<option value={myEmail}>내 시간표</option>`를 항상 최상단에 렌더 + `teacherList.filter(t => t.email !== myEmail)`로 본인 중복 제거 — 비수업 교직원(실무사 등) 로그인 시 `<select>` value 불일치 해소
 - **주의**: 실서버 승인 조작 금지. `tteacher@` 파일럿 계정으로 화면 확인 권장.
+
+## [2026-08-04] Claude → Antigravity/사용자 (파일럿 피드백 2건 — 교사 보강 신청 폐지 확정·상대 시간표 미리보기 스펙 / 경미 3건 수정 확인)
+
+- **경미 3건(8dc7a77) 대조 확인**: 제출 성공 키 초기화·subMode 토글 초기화·드롭다운 '내 시간표' 상시 옵션+중복 제거 — 전부 리뷰 지시와 일치. 종결.
+- **결정 1 (사용자 확정): 교사 화면에서 특별보강 신청 폐지.** 보강은 결강을 일과계가 메우는 조치이므로 신청 주체가 교사인 것 자체가 부적절(컴시간 관행도 일과계 지정). `phase9b_spec.md` §4-4-3 개정, **requests 라우트 type=substitute 생성 서버 차단(86cc9e4)** — 화면 제거 전이라도 API 우회 불가. 일과계 직권(manage direct_*)은 영향 없음.
+- **결정 2 (사용자 요청): 맞교환 후보 선택 시 상대 교사 시간표 나란히 보기.** 감점 텍스트만으로는 상대 사정이 안 보임 — 눈으로 확인하는 UX 필요. 서버 준비 완료: `POST /api/timetable/view` `{action:"teacher", teacherEmail, weekId}`는 교사 권한으로 이미 호출 가능(추가 서버 작업 없음).
+- **Antigravity 작업 (교사 화면 `TeacherPortalSection.tsx` — MyTimetableTab)**:
+  1. **보강 UI 제거**: "맞교환/교환 없이 보강" 토글·특별보강 후보 목록·subMode state 전부 삭제(8dc7a77의 ② 토글 초기화 코드도 함께 삭제됨 — 정상). 신청 패널은 맞교환 전용으로 단순화. **맞교환 후보 0건일 때 안내**: "맞교환 가능한 상대가 없습니다. 결강 처리가 필요하면 일과계에 문의해 주세요(특별보강은 일과계가 직권 배정)." candidates 응답의 substituteCandidates 필드는 무시(서버 정리는 추후).
+  2. **상대 시간표 미리보기**: 후보 카드 **선택 시** 우측 패널 하단에 상대 교사의 같은 주 합성 시간표 미니 그리드 표시(view action:"teacher" + 동일 weekId). 강조 2곳 — ⓐ 상대의 target 슬롯(내 슬롯으로 넘어올 수업, amber) ⓑ 내 source 셀과 같은 요일·교시(상대가 공강임을 눈으로 확인, green). 같은 (교사·주) 재선택 시 재조회 방지(컴포넌트 내 캐시 map). 기존 OtherTimetableTab 그리드 렌더 패턴 재사용 권장(미니 버전, 읽기 전용).
+  - DoD: tsc·build, 핸드오버 포함 커밋·푸시. 실서버 승인 조작 금지. 화면 확인은 tteacher@ 파일럿으로.
