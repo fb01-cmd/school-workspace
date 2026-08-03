@@ -465,13 +465,20 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     </div>
                   )}
 
-                  {/* 징검다리 (1차 미구현) */}
+                  {/* 징검다리 — 자동 탐색은 미제공, 일과계 직권 순차 처리로 지원 (2026-08-04 문구 확정) */}
                   <details>
                     <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-gray-600 select-none">
-                      연쇄(징검다리) 교환 ▸
+                      연쇄(징검다리) 교환이 필요한 경우 ▸
                     </summary>
-                    <div className="mt-2 p-2 bg-gray-50 rounded-lg text-[11px] text-gray-500">
-                      ⚠️ 통상 사용하지 않습니다. 3인 이상 연쇄 이동이 필요한 경우 일과계에 직접 문의해 주세요.
+                    <div className="mt-2 p-2 bg-gray-50 rounded-lg text-[11px] text-gray-500 space-y-1">
+                      <p>
+                        ⚠️ 통상은 위의 맞교환·특별보강으로 충분하며, 연쇄 교환은 사용하지 않습니다.
+                      </p>
+                      <p>
+                        다만 경조사 등으로 <b>직접 교환 상대가 없는데 꼭 옮겨야 하는 경우</b>, 일과계에
+                        문의하시면 직권 배정을 두 번 이어 실행하는 방식(징검다리)으로 처리해 드릴 수
+                        있습니다. 원하는 요일·교시를 함께 알려주세요.
+                      </p>
                     </div>
                   </details>
                 </>
