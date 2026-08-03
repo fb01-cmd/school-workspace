@@ -14,9 +14,8 @@
  * 학생은 어떤 경우에도 미노출 (서버 라우트도 학생 차단)
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
-import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import {
   SWAP_REASON_TYPES,
   SwapCandidate,
@@ -63,6 +62,12 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
   const [subMode, setSubMode] = useState(false);
 
+  // ① 양방향 연동 상태: 카드 호버/선택 → 셀 강조
+  const [hoveredCandidateKey, setHoveredCandidateKey] = useState<string | null>(null);
+  const [selectedCandidateKey, setSelectedCandidateKey] = useState<string | null>(null);
+  // 후보 카드 컨테이너 ref (스크롤용)
+  const candidateListRef = useRef<HTMLDivElement>(null);
+
   // 신청 상태
   const [applyingCandidate, setApplyingCandidate] = useState<SwapCandidate | SubstituteCandidate | null>(null);
   const [applyingType, setApplyingType] = useState<"swap" | "substitute">("swap");
@@ -88,6 +93,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     setError(null);
     setSelectedCell(null);
     setCandidatesResult(null);
+    setHoveredCandidateKey(null);
+    setSelectedCandidateKey(null);
     try {
       const res = await fetch("/api/timetable/view", {
         method: "POST",
@@ -113,6 +120,22 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     fetchTimetable(selectedWeekId || undefined);
   }, [selectedWeekId, fetchTimetable]);
 
+  /** 맞교환 후보 카드의 고유 키 (day·period·counterpartEmail) */
+  const candidateKey = (sc: SwapCandidate) =>
+    `${sc.targetDay}-${sc.targetPeriod}-${sc.counterpartEmail}`;
+
+  /** 셀 클릭 후 해당 후보 카드로 스크롤·강조 */
+  const scrollToCandidate = useCallback((key: string) => {
+    setTimeout(() => {
+      const el = document.getElementById(`candidate-card-${key}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        el.classList.add("ring-2", "ring-indigo-500");
+        setTimeout(() => el.classList.remove("ring-2", "ring-indigo-500"), 1200);
+      }
+    }, 120);
+  }, []);
+
   const handleCellClick = async (cell: TeacherTimetableCell) => {
     if (!selectedWeekId) {
       alert("먼저 조회할 주를 선택해 주세요. 주가 등록되어 있어야 교환 신청이 가능합니다.");
@@ -124,6 +147,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     setCandidatesLoading(true);
     setSubMode(false);
     setApplyingCandidate(null);
+    setSelectedCandidateKey(null);
+    setHoveredCandidateKey(null);
     setSubmitResult(null);
     try {
       const res = await fetch("/api/timetable/requests", {
@@ -144,6 +169,11 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       if (res.ok) {
         const data = await res.json();
         setCandidatesResult(data);
+        // 셀 클릭 후 첫 번째 맞교환 후보 카드로 자동 스크롤
+        if ((data.swapCandidates?.length ?? 0) > 0) {
+          const first = data.swapCandidates[0] as SwapCandidate;
+          scrollToCandidate(candidateKey(first));
+        }
       } else {
         const err = await res.json().catch(() => ({}));
         setCandidatesError(err.error || "후보를 불러올 수 없습니다.");
@@ -227,6 +257,15 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       (sc) => sc.targetDay === day && sc.targetPeriod === period
     );
 
+  /** 카드 호버/선택으로 해당 셀이 강조돼야 하는지 */
+  const isCellHighlightedByCard = (day: number, period: number) => {
+    if (subMode) return false;
+    const key = hoveredCandidateKey || selectedCandidateKey;
+    if (!key) return false;
+    const [d, p] = key.split("-");
+    return Number(d) === day && Number(p) === period;
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
@@ -302,13 +341,15 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       const isTarget = isSwapTarget(d.num, period);
                       const isSelected = selectedCell?.day === d.num && selectedCell?.period === period;
 
+                      const isCardHighlighted = isCellHighlightedByCard(d.num, period);
                       return (
                         <td
                           key={d.num}
                           className={`p-1 border-r border-gray-100 text-center align-top transition-all
                             ${isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""}
-                            ${isTarget && !isSelected ? "bg-green-50 ring-1 ring-inset ring-green-400" : ""}
-                            ${hasLesson && !isSelected && !isTarget ? "hover:bg-indigo-50/60 cursor-pointer" : ""}
+                            ${isTarget && !isSelected && !isCardHighlighted ? "bg-green-50 ring-1 ring-inset ring-green-400" : ""}
+                            ${isCardHighlighted && !isSelected ? "bg-amber-50 ring-2 ring-inset ring-amber-400" : ""}
+                            ${hasLesson && !isSelected && !isTarget && !isCardHighlighted ? "hover:bg-indigo-50/60 cursor-pointer" : ""}
                           `}
                           onClick={() => { if (hasLesson) handleCellClick(matched[0]); }}
                         >
@@ -407,30 +448,45 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       {(candidatesResult.swapCandidates?.length ?? 0) === 0 ? (
                         <p className="text-xs text-gray-400 py-2">조건을 충족하는 맞교환 후보가 없습니다.</p>
                       ) : (
-                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                          {candidatesResult.swapCandidates?.map((sc, i) => (
-                            <div
-                              key={i}
-                              className={`p-3 rounded-lg border text-xs cursor-pointer transition-all ${
-                                applyingCandidate === sc && applyingType === "swap"
-                                  ? "bg-indigo-50 border-indigo-400"
-                                  : "bg-white border-gray-200 hover:bg-indigo-50/50 hover:border-indigo-300"
-                              }`}
-                              onClick={() => { setApplyingCandidate(sc); setApplyingType("swap"); }}
-                            >
-                              <div className="font-bold text-gray-900">
-                                {DAY_LABEL[sc.targetDay]}요일 {sc.targetPeriod}교시 ↔ {sc.counterpartName}
-                              </div>
-                              <div className="text-gray-500">{sc.counterpartSubjectName}</div>
-                              {sc.score > 0 ? (
-                                <div className="mt-1 text-orange-600 font-semibold">
-                                  ⚠ 감점 {sc.score} — {sc.penalties.join(", ")}
+                        <div ref={candidateListRef} className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                          {candidatesResult.swapCandidates?.map((sc, i) => {
+                            const ck = candidateKey(sc);
+                            const isActive = applyingCandidate === sc && applyingType === "swap";
+                            const isHovered = hoveredCandidateKey === ck;
+                            const isSelected2 = selectedCandidateKey === ck;
+                            return (
+                              <div
+                                key={i}
+                                id={`candidate-card-${ck}`}
+                                className={`p-3 rounded-lg border text-xs cursor-pointer transition-all ${
+                                  isActive
+                                    ? "bg-indigo-50 border-indigo-400"
+                                    : isHovered || isSelected2
+                                    ? "bg-amber-50 border-amber-400"
+                                    : "bg-white border-gray-200 hover:bg-indigo-50/50 hover:border-indigo-300"
+                                }`}
+                                onMouseEnter={() => setHoveredCandidateKey(ck)}
+                                onMouseLeave={() => setHoveredCandidateKey(null)}
+                                onClick={() => {
+                                  setApplyingCandidate(sc);
+                                  setApplyingType("swap");
+                                  setSelectedCandidateKey(ck);
+                                }}
+                              >
+                                <div className="font-bold text-gray-900">
+                                  {DAY_LABEL[sc.targetDay]}요일 {sc.targetPeriod}교시 ↔ {sc.counterpartName}
                                 </div>
-                              ) : (
-                                <div className="mt-1 text-green-600 font-semibold">✓ 최적</div>
-                              )}
-                            </div>
-                          ))}
+                                <div className="text-gray-500">{sc.counterpartSubjectName}</div>
+                                {sc.score > 0 ? (
+                                  <div className="mt-1 text-orange-600 font-semibold">
+                                    ⚠ 감점 {sc.score} — {sc.penalties.join(", ")}
+                                  </div>
+                                ) : (
+                                  <div className="mt-1 text-green-600 font-semibold">✓ 최적</div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -709,7 +765,6 @@ interface OtherTimetableTabProps {
 
 function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) {
   const { userData } = useAuth();
-  const domain = userData?.domain || userData?.email?.split("@")[1] || "hmh.or.kr";
   const myEmail = userData?.email?.toLowerCase() || "";
 
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
@@ -721,9 +776,14 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ② 교사 목록 드롭다운용
+  const [teacherList, setTeacherList] = useState<{ email: string; name: string }[]>([]);
+  const [teacherListLoading, setTeacherListLoading] = useState(false);
+
   useEffect(() => {
     const termId = settings?.activeTermId;
     if (!termId) return;
+    // 주 목록 로드
     fetch("/api/timetable/manage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -732,6 +792,19 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data?.success) setWeeks(data.weeks || []); })
       .catch(() => {});
+    // 교사 목록 로드 (가나다순 드롭다운)
+    setTeacherListLoading(true);
+    fetch("/api/timetable/view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "teachers", termId }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.data) setTeacherList(data.data as { email: string; name: string }[]);
+      })
+      .catch(() => {})
+      .finally(() => setTeacherListLoading(false));
   }, [settings?.activeTermId]);
 
   const fetchTimetable = useCallback(async (email: string, weekId?: string) => {
@@ -793,26 +866,28 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
             <option value="">기초시간표</option>
             {weeks.map((w) => <option key={w.id} value={w.id}>{w.startDate} 주</option>)}
           </select>
-          <button
-            onClick={() => setTargetEmail(myEmail)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-colors ${
-              targetEmail.toLowerCase() === myEmail
-                ? "bg-indigo-600 text-white shadow-sm"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
+          {/* ② 교사 드롭다운 — action:teachers 가나다순 */}
+          <select
+            value={targetEmail}
+            onChange={(e) => {
+              const email = e.target.value;
+              setTargetEmail(email);
+              const found = teacherList.find((t) => t.email === email);
+              if (found) setTeacherName(found.name);
+            }}
+            disabled={teacherListLoading}
+            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs min-w-[10rem] max-w-xs disabled:opacity-60"
           >
-            내 시간표
-          </button>
-          <div className="w-64">
-            <AutocompleteInput
-              value={targetEmail}
-              onChange={(val) => setTargetEmail(val)}
-              type="user"
-              domain={domain}
-              placeholder="다른 교사 검색"
-              onSelect={(email, name) => { setTargetEmail(email); if (name) setTeacherName(name); }}
-            />
-          </div>
+            {teacherListLoading && <option value="">불러오는 중...</option>}
+            {!teacherListLoading && teacherList.length === 0 && (
+              <option value={myEmail}>내 시간표</option>
+            )}
+            {!teacherListLoading && teacherList.map((t) => (
+              <option key={t.email} value={t.email}>
+                {t.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
