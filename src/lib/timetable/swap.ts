@@ -120,8 +120,8 @@ function teacherDayPenalties(
   day: number,
   addPeriod: number,
   removePeriod: number | null
-): string[] {
-  const penalties: string[] = [];
+): Array<{ message: string; points: number }> {
+  const penalties: Array<{ message: string; points: number }> = [];
   const tm = ctx.idx.teacherSlots.get(norm(teacherEmail)) || new Map<string, string[]>();
 
   // 이동 후 그 요일의 교시 집합
@@ -134,9 +134,12 @@ function teacherDayPenalties(
   }
   periods.add(addPeriod);
 
-  // '최적': 요일 시수 쏠림 — 하루 5시간 이상
+  // '최적': 요일 시수 쏠림 — 정도 비례 (5시간=1점, 1시간 초과당 +1점) [2026-08-04 가중]
   if (periods.size >= 5) {
-    penalties.push(`${teacherLabel} 요일 시수 쏠림 (${periods.size}시간)`);
+    penalties.push({
+      message: `${teacherLabel} 요일 시수 쏠림 (${periods.size}시간)`,
+      points: periods.size - 4,
+    });
   }
 
   // '연속3': 연속 3교시 이상 발생 (추가 교시가 포함된 연속 구간만 평가)
@@ -154,17 +157,21 @@ function teacherDayPenalties(
       runHasAdd = false;
     }
   }
+  // 연속 길이 비례 (3교시=1점, 1교시 초과당 +1점) [2026-08-04 가중]
   if (maxRunWithAdd >= 3) {
-    penalties.push(`${teacherLabel} 연속 ${maxRunWithAdd}교시 발생`);
+    penalties.push({
+      message: `${teacherLabel} 연속 ${maxRunWithAdd}교시 발생`,
+      points: maxRunWithAdd - 2,
+    });
   }
 
-  // '점심': 점심 직전·직후 연속 (추가 교시가 그 쌍을 만들 때만)
+  // '점심': 점심 직전·직후 연속 (추가 교시가 그 쌍을 만들 때만) — 1점 고정
   const L = ctx.settings.lunchAfterPeriod;
   if (
     (addPeriod === L && periods.has(L + 1)) ||
     (addPeriod === L + 1 && periods.has(L))
   ) {
-    penalties.push(`${teacherLabel} 점심 전후 연속 수업 발생`);
+    penalties.push({ message: `${teacherLabel} 점심 전후 연속 수업 발생`, points: 1 });
   }
 
   return penalties;
@@ -285,8 +292,8 @@ export function findSwapCandidates(
         ...teacherDayPenalties(ctx, b.email, `${b.name} 선생님`, source.day, source.period,
           d2 === source.day ? p2 : null),
       ];
-      penalties.push(...teacherPenalties);
-      score += teacherPenalties.length;
+      penalties.push(...teacherPenalties.map((p) => p.message));
+      score += teacherPenalties.reduce((sum, p) => sum + p.points, 0);
 
       candidates.push({
         targetDay: d2,
@@ -387,12 +394,14 @@ export function findCrossSwapCandidates(
       const dupSrc = classDuplicatePenalty(src.grid!, source.day, l2.subjectName, [source.period]);
       if (dupSrc) { penalties.push(`${srcLabel}: ${dupSrc.message}`); score += dupSrc.points; }
       const teacherPenalties = [
-        ...teacherDayPenalties(ctxTgt, me, "내", d2, p2, null).map((p) => `${tgtLabel}: ${p}`),
+        ...teacherDayPenalties(ctxTgt, me, "내", d2, p2, null).map((p) => ({
+          ...p, message: `${tgtLabel}: ${p.message}`,
+        })),
         ...teacherDayPenalties(ctxSrc, b.email, `${b.name} 선생님`, source.day, source.period, null)
-          .map((p) => `${srcLabel}: ${p}`),
+          .map((p) => ({ ...p, message: `${srcLabel}: ${p.message}` })),
       ];
-      penalties.push(...teacherPenalties);
-      score += teacherPenalties.length;
+      penalties.push(...teacherPenalties.map((p) => p.message));
+      score += teacherPenalties.reduce((sum, p) => sum + p.points, 0);
 
       candidates.push({
         targetDay: d2,

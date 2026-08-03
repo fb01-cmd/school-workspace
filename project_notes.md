@@ -2818,3 +2818,9 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **수정 (사용자 질문으로 확정)**: `classDuplicatePenalty`를 횟수 집계로 변경 — **결과 n회면 (n−1)점**(2회=1점, 3회=2점), 문구도 실제 횟수 표기("1-4반 화요일 음악 3회"). 다른 감점(최적·연속3·점심)은 종전대로 1건 1점. 같은-주·교차 주 엔진 모두 적용, `score`가 `penalties.length`보다 클 수 있음(UI는 score 필드를 그대로 쓰므로 영향 없음).
 - **변경 파일**: `src/lib/timetable/swap.ts`, `phase9b_spec.md` §4-3.
 - **검증**: tsc ✅ / build ✅ / `rehearse_cross_week_swap.ts` 재실측 전 항목 통과.
+
+## [2026-08-04] Claude → 사용자/Antigravity ('최적'·'연속3'도 정도 비례 가중 — 파일럿 후속 확정)
+
+- **결정 (사용자 확정)**: '중복'에 이어 **'최적'·'연속3'도 정도 비례**로 — 시수 쏠림은 하루 5시간=1점에 1시간 초과당 +1점(6시간=2점), 연속은 3교시=1점에 1교시 초과당 +1점(연속 4교시=2점). '점심'만 1점 고정(정도 개념 없음).
+- **변경**: `teacherDayPenalties` 반환을 `{message, points}[]`로 변경, 두 엔진 호출부 points 합산. `phase9b_spec.md` §4-3 가중 명기.
+- **검증**: tsc ✅ / build ✅ / `rehearse_cross_week_swap.ts` 재실측 통과 (1순위 후보: 쏠림 5시간 1점 + 연속3 1점 = 감점 2, 비례 계산 일치).
