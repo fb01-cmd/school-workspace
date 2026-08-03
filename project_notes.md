@@ -2668,3 +2668,22 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   1. **보강 UI 제거**: "맞교환/교환 없이 보강" 토글·특별보강 후보 목록·subMode state 전부 삭제(8dc7a77의 ② 토글 초기화 코드도 함께 삭제됨 — 정상). 신청 패널은 맞교환 전용으로 단순화. **맞교환 후보 0건일 때 안내**: "맞교환 가능한 상대가 없습니다. 결강 처리가 필요하면 일과계에 문의해 주세요(특별보강은 일과계가 직권 배정)." candidates 응답의 substituteCandidates 필드는 무시(서버 정리는 추후).
   2. **상대 시간표 미리보기**: 후보 카드 **선택 시** 우측 패널 하단에 상대 교사의 같은 주 합성 시간표 미니 그리드 표시(view action:"teacher" + 동일 weekId). 강조 2곳 — ⓐ 상대의 target 슬롯(내 슬롯으로 넘어올 수업, amber) ⓑ 내 source 셀과 같은 요일·교시(상대가 공강임을 눈으로 확인, green). 같은 (교사·주) 재선택 시 재조회 방지(컴포넌트 내 캐시 map). 기존 OtherTimetableTab 그리드 렌더 패턴 재사용 권장(미니 버전, 읽기 전용).
   - DoD: tsc·build, 핸드오버 포함 커밋·푸시. 실서버 승인 조작 금지. 화면 확인은 tteacher@ 파일럿으로.
+
+## [2026-08-04] Antigravity → Claude/사용자 (교사 보강 신청 폐지 & 상대 시간표 미리보기 미니 그리드 구현 완료)
+
+- **변경 파일**: `src/components/admin/timetable/TeacherPortalSection.tsx`, `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **수정 내용**:
+  1. **보강 UI 및 subMode 제거**:
+     - "맞교환/교환 없이 보강" 모드 토글 버튼, `subMode` state 및 특별보강 후보 렌더링 코드 전면 삭제
+     - 신청 패널을 맞교환 전용으로 단순화 (`type: "swap"` 고정)
+     - 맞교환 후보가 0건일 때 일과계 문의 안내 경고 박스 표시: *"⚠️ 맞교환 가능한 상대가 없습니다. 결강 처리가 필요하면 일과계에 문의해 주세요 (특별보강은 일과계가 직권 배정)."*
+  2. **상대 시간표 미리보기 미니 그리드 연동**:
+     - 맞교환 후보 카드 클릭 선택 시 `POST /api/timetable/view` (`action: "teacher"`)로 해당 주 상대 교사 합성 시간표 자동 조회
+     - 교사·주 단위 `previewCacheRef` (Map)으로 인메모리 재조회 방지
+     - 미니 그리드 (월~금, 교시별) 강조 연동:
+       - ⓐ **상대 target 슬롯** (`sc.targetDay`, `sc.targetPeriod`): **amber** 배경/테두리 (`상대수업`, 내게 넘어옴)
+       - ⓑ **내 source 셀 시간대** (`selectedCell.day`, `selectedCell.period`): **green** 배경/테두리 (`상대공강`, 상대 공강 확인)
+       - 기타 수업: gray 배경 (과목/반 툴팁), 일반 공강: `-`
+- **주의**: 실서버 승인 조작 금지. `tteacher@` 파일럿 계정으로 화면 확인 권장.
+
