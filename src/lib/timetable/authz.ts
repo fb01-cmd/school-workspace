@@ -62,9 +62,14 @@ export function canManageTimetable(
     return { allowed: true, basis: "observer_read" };
   }
 
-  // 6. 일반 교사: 설정 조회만 허용
+  // 6. 일반 교사: 설정 조회 + 주 목록 읽기 허용
+  //    week_list는 교사 신청 화면의 주 선택에 필수 (2026-08-04 파일럿 테스트에서 발견 —
+  //    관리자 계정 테스트에서는 드러나지 않던 결함). 주 문서는 휴업일·시수뿐이라 민감정보 없음.
   if (action === "get_settings") {
     return { allowed: true, basis: "teacher_read_settings" };
+  }
+  if (action === "week_list") {
+    return { allowed: true, basis: "teacher_read_weeks" };
   }
 
   return { allowed: false, basis: "denied:not_manager" };
