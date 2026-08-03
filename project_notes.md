@@ -2,7 +2,7 @@
 
 ## 🔒 현재 작업 중 파일
 
-*(현재 비어 있음)*
+- `src/components/admin/timetable/TeacherPortalSection.tsx` (Antigravity, 내 주간시간표 ➕ 배지 표기 버그 수정)
 
 
 
@@ -2727,3 +2727,18 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   - 신청 모델 `targetWeekId?` 추가(없으면 기존 같은-주). **대상 주는 등록돼 있어야 함** — 일과계가 주 2~3주치 선등록 운영 권장.
   - 시수·NEIS는 주별 문서 분리 덕에 기존 로직 자동 정합.
 - **구현 분업**: 서버(types·weekly 적용기·엔진 확장·requests/manage 라우트·승인/revert 트랜잭션 + 실측) = **Claude 직접, 다음 세션**. UI(신청 패널 "교체할 주" 선택·후보 재조회·미리보기 주 표기·요약 문장 주 병기) = Antigravity, 서버 배포 후.
+
+## [2026-08-04] Claude → 체크포인트 (세션 종료 — 일반 교사 파일럿 테스트 사이클: 결함 2건·UX 개선 5건·설계 확정 3건)
+
+- **이번 세션(8/3~8/4) 종결 항목**:
+  1. **일반 교사 시점 테스트 세팅**: teacherOpen·teacherPilotEmails 정식화(파일럿 게이트 신설), 현유지(music@)→tteacher@ 임시 교체(`setup_teacher_test.ts`), 테스트 주 2026-08-10 등록. (28c4e66)
+  2. 🔴 **파일럿이 잡은 결함 2건 수정**: ① 일반 교사 week_list 403 — 주 드롭다운 공백(관리자 테스트에서는 미노출, 실운영이면 전 교사 신청 불가였음. d2abf4a) ② 내 그리드 ➕ 배지에 상대 과목명 표기(수정 지시 상태 — Antigravity).
+  3. **설계 확정 3건**: ① 징검다리 절충 — 교사 셀프 연쇄 제외 유지, 문구를 "일과계 직권 2회 처리" 경로 안내로(018cdb3), 9c에 직권 연쇄 모드 백로그 ② **교사 특별보강 신청 폐지** — 보강은 일과계 직권 전용, 서버 차단(86cc9e4)·스펙 §4-4-3 개정 ③ **교차 주 교환 1차 편입** — 스펙 §4-3b 신설(84cc501): exchangeId 문서쌍·양주 재검증 트랜잭션·"교체할 주" 선택 UI.
+  4. **UX 개선 반영(Antigravity 구현·Claude 리뷰)**: 공강↔후보 양방향 연동(cf87e78, 표적 리뷰 경미 3건→8dc7a77 수정 확인), 교사 가나다 드롭다운(view `teachers` 액션 신설 e136133), 상대 교사 시간표 미리보기(6867905), 미니 그리드 학급 표기·➕/➖ 용어·변화 요약 스펙(구현 완료 여부는 최신 커밋 확인).
+- **현재 상태 주의**: **테스트 세팅이 살아 있음** — 현유지=tteacher@ 교체·파일럿 명단·테스트 주 2026-08-10. 테스트 종료 시 원복 필수: `npx tsx --env-file=.env.local scripts/setup_teacher_test.ts revert music@hmh.or.kr tteacher@hmh.or.kr --commit` + 주 운영 탭에서 2026-08-10 삭제 + 테스트 신청 기록 정리. managerEmails는 여전히 0명.
+- **다음 작업 순서**: ① Antigravity — 미리보기 표기 버그(+미니 그리드 학급 표기 스펙 잔여분 있으면 함께) ② **Claude(새 세션) — 교차 주 교환 서버부 구현·실측** ③ Antigravity — 교차 주 UI(주 선택) ④ 테스트 원복 ⑤ 순서 6 실사용 리허설(실무사 등록→개학 첫 주)→오픈 게이트(teacherOpen 켜기 + 학생 카드 마운트).
+- **백로그**: 9c 직권 연쇄 모드 / requests candidates 응답의 substituteCandidates 필드 정리 / 감점 임계값 실사용 조정 / 사유 드롭다운 실무사 확정 / 기존 잔여(Phase 5.8 후속 4건·teacher_profiles 클라이언트 쓰기·PII git blob 등).
+
+### 재개 문구
+- Antigravity에게: *"project_notes.md의 2026-08-04 마지막 체크포인트를 읽고, 미리보기 표기 버그(내 그리드 ➕ 배지는 내 과목 이동으로)를 수정해줘. tsc·build 후 핸드오버 포함 커밋·푸시."*
+- Claude에게(새 대화): *"project_notes.md의 2026-08-04 마지막 체크포인트를 읽고, phase9b_spec §4-3b 교차 주 맞교환 서버부를 구현해줘. 실측 후 커밋·푸시하고 Antigravity UI 지시까지 준비해줘."*
