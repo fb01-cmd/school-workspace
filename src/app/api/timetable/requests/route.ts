@@ -57,6 +57,14 @@ export async function POST(req: NextRequest) {
         if (body.type !== "swap" && body.type !== "substitute") {
           return NextResponse.json({ error: "type은 swap 또는 substitute여야 합니다." }, { status: 400 });
         }
+        // 특별보강은 교사 신청 대상이 아님 — 결강은 일과계가 직권 배정으로 처리 (2026-08-04 사용자 확정).
+        // 화면에서도 제거되지만 API 우회를 막기 위해 서버에서 차단. 일과계 직권은 manage 라우트(direct_commit) 사용.
+        if (body.type === "substitute") {
+          return NextResponse.json(
+            { error: "특별보강은 교사 신청 대상이 아닙니다. 결강 사유가 있으면 일과계에 문의해 주세요." },
+            { status: 400 }
+          );
+        }
         const { grade, classNum, day, period } = body.source;
         const request = await createSwapRequest(domain, auth.email, {
           weekId: body.weekId,
