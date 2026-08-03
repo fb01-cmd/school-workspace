@@ -338,7 +338,11 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                     </span>
 
                     <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 font-semibold text-[11px] rounded border border-indigo-100">
-                      {req.type === "swap" ? "↔️ 맞교환" : "👤 특별보강"}
+                      {req.type === "cross_swap" || (req.targetWeekId && req.targetWeekId !== req.weekId)
+                        ? "↔️ 교차 주 맞교환"
+                        : req.type === "swap"
+                        ? "↔️ 맞교환"
+                        : "👤 특별보강"}
                     </span>
 
                     <span className="text-xs font-bold text-gray-900">
@@ -347,7 +351,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                   </div>
 
                   <span className="text-[11px] text-gray-400">
-                    신청일시: {new Date(req.createdAt).toLocaleString("ko-KR")} (주: {req.weekId})
+                    신청일시: {new Date(req.createdAt).toLocaleString("ko-KR")} (주: {req.weekId}{req.targetWeekId && req.targetWeekId !== req.weekId ? ` ↔ ${req.targetWeekId}` : ""})
                   </span>
                 </div>
 

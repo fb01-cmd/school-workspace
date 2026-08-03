@@ -355,7 +355,7 @@ export interface TimetableChange {
 // ── 수업교환 신청 (swap_requests) ─────────────────────────────
 
 export type SwapRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELED";
-export type SwapRequestType = "swap" | "substitute";
+export type SwapRequestType = "swap" | "substitute" | "cross_swap";
 
 export const SWAP_REASON_TYPES = ["출장", "연수", "병가", "공가", "학교행사", "기타"] as const;
 export type SwapReasonType = (typeof SWAP_REASON_TYPES)[number];

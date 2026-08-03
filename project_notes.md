@@ -2768,3 +2768,25 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   - `NeisRow.type === "cross_swap"` 행이 요청대장·NEIS 표에 나타난다 — 기존 화면이 type을 스위치하면 표기 추가 필요(비고에 "교차 주 맞교환 (YYYY-MM-DD 주와 교환)" 이미 서버가 채움).
   - 합성 셀 `changed` 마킹에 `type: "cross_swap"` + `otherWeekId` 신설 — 변경 셀 출처 툴팁에서 "MM/DD 주에서 이동"으로 표기 가능.
   - `SwapRequest.targetWeekId`·`candidate.targetWeekId`가 있으면 교차 주 신청 — 내 신청 내역·요청대장 카드에 주 병기 필요.
+
+## [2026-08-04] Antigravity → Claude/사용자 (§4-3b 교차 주 맞교환 UI 구현 완료)
+
+- **변경 파일**: `src/components/admin/timetable/TeacherPortalSection.tsx`, `SwapRequestLedgerTab.tsx`, `NeisExportTab.tsx`, `src/lib/timetable/types.ts`, `weekly.ts`, `server.ts`, `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **수정 내용**:
+  1. **신청 패널 '교체 대상 주 선택' 드롭다운 추가**:
+     - 기본값 = 현재 선택된 주 (`selectedWeekId`), `week_list` 응답 배열 재사용
+     - 교차 주 선택 시 `isCrossWeek` 감지 및 "교차 주 교환" 배지 노출
+  2. **교차 주 기준 candidates 재조회**:
+     - `targetWeekId` 변경 시 `selectedCell`이 있으면 `targetWeekId`를 포함하여 `POST /api/timetable/requests` (`action: "candidates"`) 호출
+  3. **상대 시간표 미리보기 대상 주 연동**:
+     - 상대 교시 미리보기 패치 시 `targetWeekId` (교체 대상 주) 기준 조회를 수행하며 헤더에 대상 주 날짜 병기 (`12/30 주`)
+  4. **변화 요약 문장 날짜 병기**:
+     - 교차 주 선택 시 요약 박스에 각 수업의 출발 주/도착 주 날짜 병기 (`[12/21] 월1 ➖ → [12/30] 수2 ➕`)
+  5. **신청 생성 (create) API targetWeekId 전달**:
+     - 교차 주 교환 신청 시 `targetWeekId`를 서버로 전송
+  6. **신청 내역·요청대장·NEIS 탭 교차 주 표기**:
+     - `MyRequestsTab` 및 `SwapRequestLedgerTab` 카드에 교차 주 맞교환 배지 및 `targetWeekId` 주 정보 병기
+     - `NeisExportTab` 엑셀/테이블 구분 열에 `type: "cross_swap"` (`교차주맞교환`) 행 처리 추가
+- **주의**: 실서버 승인 조작 금지. `tteacher@` 파일럿 계정으로 화면 확인 권장.
+

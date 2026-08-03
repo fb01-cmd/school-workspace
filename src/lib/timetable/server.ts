@@ -1729,7 +1729,7 @@ async function resolveTermIdOrThrow(domain: string, termId?: string): Promise<st
 /** NEIS 입력용 수업교환 목록 (§8) — 기간 내 확정 변경 평탄화, revert 반영 */
 export async function listNeisRows(
   domain: string,
-  params: { termId?: string; startDate: string; endDate: string; type?: "swap" | "substitute" }
+  params: { termId?: string; startDate: string; endDate: string; type?: SwapRequestType }
 ): Promise<NeisRow[]> {
   const { startDate, endDate } = params;
   if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate))

@@ -83,7 +83,7 @@ export default function NeisExportTab({ activeTermId }: NeisExportTabProps) {
       과목: r.subjectName,
       "변경전 교시": `${r.prevDate} (${DAY_LABEL[r.prevDay] || ""} ${r.prevPeriod}교시)`,
       "비고(특별보강 대체교사)": r.note || "",
-      구분: r.type === "swap" ? "맞교환" : "특별보강",
+      구분: r.type === "cross_swap" ? "교차주맞교환" : r.type === "swap" ? "맞교환" : "특별보강",
     }));
 
     const wb = XLSX.utils.book_new();
@@ -253,7 +253,11 @@ export default function NeisExportTab({ activeTermId }: NeisExportTabProps) {
 
                   {/* 구분 */}
                   <td className="py-3 px-2 text-center font-bold">
-                    {r.type === "swap" ? (
+                    {r.type === "cross_swap" ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] bg-purple-50 text-purple-700 border border-purple-200">
+                        교차주맞교환
+                      </span>
+                    ) : r.type === "swap" ? (
                       <span className="px-2 py-0.5 rounded text-[10px] bg-blue-50 text-blue-700 border border-blue-200">
                         맞교환
                       </span>

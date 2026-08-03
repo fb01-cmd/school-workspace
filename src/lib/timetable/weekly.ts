@@ -11,6 +11,7 @@ import {
   CrossSwapLessonRef,
   NeisRow,
   SwapChangeSlot,
+  SwapRequestType,
   TimetableChange,
   TimetableSettings,
   TimetableWeek,
@@ -347,7 +348,7 @@ export function countSubstituteTotals(allChanges: TimetableChange[]): Map<string
 export function flattenNeisChanges(
   weeks: TimetableWeek[],
   changes: TimetableChange[],
-  filter: { startDate: string; endDate: string; type?: "swap" | "substitute" }
+  filter: { startDate: string; endDate: string; type?: SwapRequestType }
 ): NeisRow[] {
   const weekById = new Map(weeks.map((w) => [w.id, w]));
   const reverted = new Set(

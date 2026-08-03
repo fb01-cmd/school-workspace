@@ -50,10 +50,18 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [selectedWeekId, setSelectedWeekId] = useState<string>("");
+  const [targetWeekId, setTargetWeekId] = useState<string>("");
   const [cells, setCells] = useState<TeacherTimetableCell[]>([]);
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 유효 대상 주 계산 (교차 주 지원)
+  const effectiveTargetWeekId = targetWeekId || selectedWeekId;
+  const isCrossWeek = effectiveTargetWeekId !== "" && effectiveTargetWeekId !== selectedWeekId;
+
+  const sourceWeekObj = weeks.find((w) => w.id === selectedWeekId);
+  const targetWeekObj = weeks.find((w) => w.id === effectiveTargetWeekId);
 
   // 셀 클릭 → 후보 조회 상태
   const [selectedCell, setSelectedCell] = useState<TeacherTimetableCell | null>(null);
@@ -79,7 +87,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewCacheRef = useRef<Map<string, TeacherTimetableCell[]>>(new Map());
 
-  // 후보 카드(상대 교사) 선택 시 상대 교사 시간표 로드
+  // 후보 카드(상대 교사) 선택 시 상대 교사의 대상 주 시간표 로드
   useEffect(() => {
     if (!applyingCandidate) {
       setPreviewCells(null);
@@ -89,7 +97,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     const counterpartEmail = applyingCandidate.counterpartEmail;
     if (!counterpartEmail) return;
 
-    const cacheKey = `${counterpartEmail}_${selectedWeekId}`;
+    const cacheKey = `${counterpartEmail}_${effectiveTargetWeekId}`;
     if (previewCacheRef.current.has(cacheKey)) {
       setPreviewCells(previewCacheRef.current.get(cacheKey) || []);
       setPreviewError(null);
@@ -104,7 +112,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       body: JSON.stringify({
         action: "teacher",
         teacherEmail: counterpartEmail,
-        weekId: selectedWeekId || undefined,
+        weekId: effectiveTargetWeekId || undefined,
       }),
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("시간표를 불러올 수 없습니다."))))
@@ -119,7 +127,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       .finally(() => {
         setPreviewLoading(false);
       });
-  }, [applyingCandidate, selectedWeekId]);
+  }, [applyingCandidate, effectiveTargetWeekId]);
 
   useEffect(() => {
     const termId = settings?.activeTermId;
@@ -165,6 +173,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
   useEffect(() => {
     fetchTimetable(selectedWeekId || undefined);
+    setTargetWeekId(selectedWeekId);
   }, [selectedWeekId, fetchTimetable]);
 
   /** 맞교환 후보 카드의 고유 키 (day·period·counterpartEmail) */
@@ -183,52 +192,66 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     }, 120);
   }, []);
 
+  const fetchCandidates = useCallback(
+    async (cell: TeacherTimetableCell, srcWeekId: string, tgtWeekId: string) => {
+      setCandidatesResult(null);
+      setCandidatesError(null);
+      setCandidatesLoading(true);
+      setApplyingCandidate(null);
+      setSelectedCandidateKey(null);
+      setHoveredCandidateKey(null);
+      setSubmitResult(null);
+      setPreviewCells(null);
+      try {
+        const res = await fetch("/api/timetable/requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "candidates",
+            weekId: srcWeekId,
+            targetWeekId: tgtWeekId !== srcWeekId ? tgtWeekId : undefined,
+            source: {
+              grade: cell.grade,
+              classNum: cell.classNum,
+              day: cell.day,
+              period: cell.period,
+              subjectName: cell.subjectName,
+            },
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setCandidatesResult(data);
+          if ((data.swapCandidates?.length ?? 0) > 0) {
+            const first = data.swapCandidates[0] as SwapCandidate;
+            scrollToCandidate(candidateKey(first));
+          }
+        } else {
+          const err = await res.json().catch(() => ({}));
+          setCandidatesError(err.error || "후보를 불러올 수 없습니다.");
+        }
+      } catch (e: any) {
+        setCandidatesError(`오류: ${e.message}`);
+      } finally {
+        setCandidatesLoading(false);
+      }
+    },
+    [scrollToCandidate]
+  );
+
   const handleCellClick = async (cell: TeacherTimetableCell) => {
     if (!selectedWeekId) {
       alert("먼저 조회할 주를 선택해 주세요. 주가 등록되어 있어야 교환 신청이 가능합니다.");
       return;
     }
     setSelectedCell(cell);
-    setCandidatesResult(null);
-    setCandidatesError(null);
-    setCandidatesLoading(true);
-    setApplyingCandidate(null);
-    setSelectedCandidateKey(null);
-    setHoveredCandidateKey(null);
-    setSubmitResult(null);
-    setPreviewCells(null);
-    try {
-      const res = await fetch("/api/timetable/requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "candidates",
-          weekId: selectedWeekId,
-          source: {
-            grade: cell.grade,
-            classNum: cell.classNum,
-            day: cell.day,
-            period: cell.period,
-            subjectName: cell.subjectName,
-          },
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCandidatesResult(data);
-        // 셀 클릭 후 첫 번째 맞교환 후보 카드로 자동 스크롤
-        if ((data.swapCandidates?.length ?? 0) > 0) {
-          const first = data.swapCandidates[0] as SwapCandidate;
-          scrollToCandidate(candidateKey(first));
-        }
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setCandidatesError(err.error || "후보를 불러올 수 없습니다.");
-      }
-    } catch (e: any) {
-      setCandidatesError(`오류: ${e.message}`);
-    } finally {
-      setCandidatesLoading(false);
+    fetchCandidates(cell, selectedWeekId, effectiveTargetWeekId);
+  };
+
+  const handleTargetWeekChange = (newTargetWeekId: string) => {
+    setTargetWeekId(newTargetWeekId);
+    if (selectedCell) {
+      fetchCandidates(selectedCell, selectedWeekId, newTargetWeekId || selectedWeekId);
     }
   };
 
@@ -258,6 +281,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         body: JSON.stringify({
           action: "create",
           weekId: selectedWeekId,
+          targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
           type: "swap",
           source: {
             grade: selectedCell.grade,
@@ -275,7 +299,6 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         setApplyingCandidate(null);
         setCandidatesResult(null);
         setSelectedCell(null);
-        // ① 제출 성공 시 유령 강조 방지 — 두 키 초기화 및 미리보기 초기화
         setSelectedCandidateKey(null);
         setHoveredCandidateKey(null);
         setPreviewCells(null);
@@ -463,6 +486,29 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             </div>
 
             <div className="p-4 space-y-4">
+              {/* ① 교체 대상 주 선택 (교차 주 지원) */}
+              <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-200 space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                  <span>교체 대상 주 선택:</span>
+                  {isCrossWeek && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold">
+                      교차 주 교환
+                    </span>
+                  )}
+                </div>
+                <select
+                  value={effectiveTargetWeekId}
+                  onChange={(e) => handleTargetWeekChange(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
+                >
+                  {weeks.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.startDate} 주 {w.id === selectedWeekId ? "(현재 주)" : "(교차 주)"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {candidatesLoading && (
                 <div className="text-center py-4 text-xs text-indigo-500 animate-pulse font-semibold">후보 계산 중...</div>
               )}
@@ -549,7 +595,12 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               {applyingCandidate && (
                 <div className="border-t border-gray-100 pt-3 space-y-2">
                   <div className="text-xs font-bold text-gray-800 flex items-center justify-between">
-                    <span>🔍 {applyingCandidate.counterpartName} 교사 시간표 미리보기</span>
+                    <span>
+                      🔍 {applyingCandidate.counterpartName} 교사 시간표 미리보기
+                      <span className="text-[11px] text-indigo-700 font-semibold ml-1">
+                        ({targetWeekObj?.startDate ? `${targetWeekObj.startDate} 주` : "대상 주"})
+                      </span>
+                    </span>
                     {previewLoading && <span className="text-[10px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
                   </div>
                   <div className="text-[10px] text-gray-500 flex flex-wrap gap-2">
@@ -639,21 +690,34 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               {/* 변화 요약 한 줄 & 신청 폼 */}
               {applyingCandidate && (
                 <div className="border-t border-gray-100 pt-3 space-y-3">
-                  {/* ③ 변화 요약 한 줄 */}
+                  {/* ④ 변화 요약 한 줄 (두 주 날짜/주 병기) */}
                   <div className="bg-indigo-50/80 border border-indigo-200 rounded-lg p-2.5 text-xs space-y-1.5">
-                    <div className="font-bold text-indigo-950 flex items-center gap-1.5">
+                    <div className="font-bold text-indigo-950 flex items-center justify-between">
                       <span>💡 교환 시 시간표 변화 요약</span>
+                      {isCrossWeek && (
+                        <span className="text-[10px] bg-indigo-200 text-indigo-900 font-extrabold px-1.5 py-0.5 rounded">
+                          교차 주
+                        </span>
+                      )}
                     </div>
                     <div className="space-y-1 text-[11px] leading-tight">
                       <div className="text-gray-800">
                         <span className="font-bold text-indigo-900">내 {selectedCell.subjectName}({selectedCell.grade}-{selectedCell.classNum}반):</span>{" "}
-                        <span className="font-bold text-red-600">{DAY_LABEL[selectedCell.day]}{selectedCell.period} ➖</span> →{" "}
-                        <span className="font-bold text-green-700">{DAY_LABEL[applyingCandidate.targetDay]}{applyingCandidate.targetPeriod} ➕</span>
+                        <span className="font-bold text-red-600">
+                          {isCrossWeek ? `[${sourceWeekObj?.startDate || ""}] ` : ""}{DAY_LABEL[selectedCell.day]}{selectedCell.period}교시 ➖
+                        </span> →{" "}
+                        <span className="font-bold text-green-700">
+                          {isCrossWeek ? `[${targetWeekObj?.startDate || ""}] ` : ""}{DAY_LABEL[applyingCandidate.targetDay]}{applyingCandidate.targetPeriod}교시 ➕
+                        </span>
                       </div>
                       <div className="text-gray-800">
                         <span className="font-bold text-indigo-900">상대 {applyingCandidate.counterpartName} {applyingCandidate.counterpartSubjectName}:</span>{" "}
-                        <span className="font-bold text-red-600">{DAY_LABEL[applyingCandidate.targetDay]}{applyingCandidate.targetPeriod} ➖</span> →{" "}
-                        <span className="font-bold text-green-700">{DAY_LABEL[selectedCell.day]}{selectedCell.period} ➕</span>
+                        <span className="font-bold text-red-600">
+                          {isCrossWeek ? `[${targetWeekObj?.startDate || ""}] ` : ""}{DAY_LABEL[applyingCandidate.targetDay]}{applyingCandidate.targetPeriod}교시 ➖
+                        </span> →{" "}
+                        <span className="font-bold text-green-700">
+                          {isCrossWeek ? `[${sourceWeekObj?.startDate || ""}] ` : ""}{DAY_LABEL[selectedCell.day]}{selectedCell.period}교시 ➕
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -822,19 +886,34 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
         <div className="space-y-3">
           {requests.map((req) => {
             const statusInfo = STATUS_LABELS[req.status] || { label: req.status, className: "bg-gray-100 text-gray-600 border-gray-200" };
+            const isCross = req.type === "cross_swap" || (req.targetWeekId && req.targetWeekId !== req.weekId) || !!(req.candidate as any).targetWeekId;
+            const targetWeekVal = req.targetWeekId || (req.candidate as any).targetWeekId;
+
             return (
               <div key={req.id} className="border border-gray-200 rounded-xl p-4 space-y-2 hover:bg-gray-50/50 transition-colors">
                 <div className="flex items-start justify-between gap-2">
                   <div className="space-y-1">
-                    <div className="text-xs font-bold text-gray-900">
-                      {req.weekId} 주 — {req.type === "swap" ? "맞교환" : "특별보강"}
+                    <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                      <span>{req.weekId} 주</span>
+                      {isCross ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">
+                          ↔ {targetWeekVal ? `${targetWeekVal} 주` : ""} 교차 주 맞교환
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-gray-500 font-normal">
+                          — {req.type === "swap" ? "맞교환" : "특별보강"}
+                        </span>
+                      )}
                     </div>
                     <div className="text-[11px] text-gray-600">
                       원 수업: {DAY_LABEL[req.source.day]}요일 {req.source.period}교시 ({req.source.subjectName}, {req.source.grade}-{req.source.classNum}반)
                     </div>
-                    {req.type === "swap" && req.candidate.targetDay != null && (
+                    {(req.type === "swap" || req.type === "cross_swap") && req.candidate.targetDay != null && (
                       <div className="text-[11px] text-gray-600">
                         교환: {DAY_LABEL[req.candidate.targetDay!]}요일 {req.candidate.targetPeriod}교시 ({req.candidate.counterpartName})
+                        {isCross && targetWeekVal && (
+                          <span className="ml-1 text-indigo-700 font-semibold">[{targetWeekVal} 주]</span>
+                        )}
                       </div>
                     )}
                     {req.type === "substitute" && (
