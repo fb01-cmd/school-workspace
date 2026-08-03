@@ -2603,3 +2603,8 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **코드 (28c4e66)**: `teacherOpen`·`teacherPilotEmails`를 TimetableSettings에 정식 추가(loadTimetableSettings 통과 — 기존엔 필드가 응답에 실리지 않아 게이트가 열 수 없었음), TeacherPortalSection 게이트 = isManager ‖ teacherOpen ‖ 파일럿 명단. `scripts/setup_teacher_test.ts`(map/revert, 드라이런 기본, 백업·재검증, 학생 OU·학번형 차단).
 - **데이터 세팅 (실행 완료)**: 현유지(music@) → **tteacher@**(테스트교사, /교직원) 교체 — subjects 1·레슨 15·학급 5, 재검증 잔존 0/등장 16 ✅. 파일럿 명단 = [tteacher@]. 테스트 주 **2026-08-10(월)** 등록. managerEmails 0명이라 신청 생성 알림 수신자 없음, **승인만 안 누르면 실교사 DM 0건**.
 - **원복 (테스트 종료 후 반드시)**: `npx tsx --env-file=.env.local scripts/setup_teacher_test.ts revert music@hmh.or.kr tteacher@hmh.or.kr --commit` + 주 운영 탭에서 2026-08-10 주 삭제(또는 Claude에게 요청). 신청 기록은 반려/취소 상태로 남아도 무해하나 원하면 함께 청소.
+
+### [2026-08-04 추가] 파일럿 테스트가 잡은 결함 — 일반 교사 week_list 403 (d2abf4a)
+
+- tteacher@ 실화면에서 주 드롭다운이 "기초시간표"만 표시 — TeacherPortalSection이 `week_list`를 호출하나 authz가 일과계·참관자 전용이라 일반 교사 403 → 화면이 조용히 빈 목록 처리. **관리자 계정 테스트에서는 드러나지 않던 결함** (순서 6 실운영이었으면 전 교사가 신청 불가였음).
+- 수정: authz 규칙 6에 일반 교사 `week_list` 읽기 허용(basis "teacher_read_weeks"). 회귀 6/6(학생 차단·request_list/approve/neis 거부 유지) + tsc·build ✅, 배포.
