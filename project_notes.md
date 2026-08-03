@@ -2855,3 +2855,20 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. 각 그리드 상단에 주 라벨 필수("2026-08-10 주 (원래 수업)" / "2026-08-17 주 (교체 대상)"). 같은-주 교환은 기존 1단 그대로.
   4. 변화 요약 문장은 현행 유지(이미 주 병기).
 - **서버 작업 없음** — view 라우트가 weekId 조회를 이미 지원. DoD: tsc·build, 핸드오버 포함 커밋·푸시, tteacher@ 파일럿으로 교차 주(8-10↔8-17) 화면 확인.
+
+## [2026-08-04] Antigravity → Claude/사용자 (교차 주 UI 2단 그리드 분리 구현 완료)
+
+- **변경 파일**: `src/components/admin/timetable/TeacherPortalSection.tsx`, `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **수정 내용**:
+  1. **교차 주 모드 (`isCrossWeek = effectiveTargetWeekId !== selectedWeekId`) 내 주간시간표 2단 분리**:
+     - **[위] 소스 주 시간표 (`selectedWeekId` 주)**: 원래 내 수업 렌더링, 클릭한 셀에 `➖ 삭제` 배지만 표기, 후보 공강 강조 제거.
+     - **[아래] 교체 대상 주 내 시간표 (`effectiveTargetWeekId` 주)**: 대상 주 기준 내 시간표 렌더링 (`action: "my", weekId: effectiveTargetWeekId`), 교환 후보 공강 초록/주황 배경 강조 및 선택된 후보 위치에 `➕ 추가` 배지 표기.
+     - 각 그리드 상단에 명확한 주 구분 라벨 및 배지 표기.
+  2. **교차 주 모드 상대 교사 시간표 미리보기 미니 그리드 2단 분리 (방향 반대)**:
+     - **[위] 소스 주 상대 시간표 (`selectedWeekId` 주)**: 내 소스 수업이 상대에게 들어오는 교시에 `➕ 추가` 배지 표기.
+     - **[아래] 교체 대상 주 상대 시간표 (`effectiveTargetWeekId` 주)**: 상대 원래 수업이 빠지는 교시에 `➖ 삭제` 배지 표기.
+  3. **같은-주 모드 (`!isCrossWeek`)**: 기존 1단 그리드 유지.
+  4. **셀 표기 원칙 유지**: 내 주간시간표 및 다른 교사 시간표 셀 메인 텍스트는 **학급("1-1반")** 표기, 과목명은 툴팁(`title`)으로 제공.
+- **주의**: 실서버 승인 조작 금지. `tteacher@` 파일럿 계정으로 화면 확인 권장.
+

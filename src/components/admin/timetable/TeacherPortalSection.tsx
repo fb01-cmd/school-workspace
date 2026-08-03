@@ -81,53 +81,94 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<string | null>(null);
 
-  // 상대 교사 시간표 미리보기 상태 및 캐시
+  // 교차 주 지원: 교체 대상 주 내 시간표 셀 목록
+  const [targetCells, setTargetCells] = useState<TeacherTimetableCell[] | null>(null);
+  const [targetCellsLoading, setTargetCellsLoading] = useState(false);
+
+  // 상대 교사 시간표 미리보기 상태 및 캐시 (같은 주: previewCells, 교차 주: counterpartSourceCells / counterpartTargetCells)
   const [previewCells, setPreviewCells] = useState<TeacherTimetableCell[] | null>(null);
+  const [counterpartSourceCells, setCounterpartSourceCells] = useState<TeacherTimetableCell[] | null>(null);
+  const [counterpartTargetCells, setCounterpartTargetCells] = useState<TeacherTimetableCell[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewCacheRef = useRef<Map<string, TeacherTimetableCell[]>>(new Map());
 
-  // 후보 카드(상대 교사) 선택 시 상대 교사의 대상 주 시간표 로드
+  // 교차 주 모드일 때 내 대상 주 시간표 로드
+  useEffect(() => {
+    if (!isCrossWeek || !effectiveTargetWeekId) {
+      setTargetCells(null);
+      return;
+    }
+    setTargetCellsLoading(true);
+    fetch("/api/timetable/view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "my", weekId: effectiveTargetWeekId }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        setTargetCells(res?.data?.cells || []);
+      })
+      .catch(() => setTargetCells([]))
+      .finally(() => setTargetCellsLoading(false));
+  }, [isCrossWeek, effectiveTargetWeekId]);
+
+  // 후보 카드(상대 교사) 선택 시 상대 교사 시간표 로드 (같은 주: 1개 주, 교차 주: 소스주+대상주 2개 주)
   useEffect(() => {
     if (!applyingCandidate) {
       setPreviewCells(null);
+      setCounterpartSourceCells(null);
+      setCounterpartTargetCells(null);
       setPreviewError(null);
       return;
     }
     const counterpartEmail = applyingCandidate.counterpartEmail;
     if (!counterpartEmail) return;
 
-    const cacheKey = `${counterpartEmail}_${effectiveTargetWeekId}`;
-    if (previewCacheRef.current.has(cacheKey)) {
-      setPreviewCells(previewCacheRef.current.get(cacheKey) || []);
-      setPreviewError(null);
-      return;
-    }
+    const fetchTeacherWeek = async (weekId: string) => {
+      const cacheKey = `${counterpartEmail}_${weekId}`;
+      if (previewCacheRef.current.has(cacheKey)) {
+        return previewCacheRef.current.get(cacheKey)!;
+      }
+      const res = await fetch("/api/timetable/view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "teacher",
+          teacherEmail: counterpartEmail,
+          weekId: weekId || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error("시간표를 불러올 수 없습니다.");
+      const data = await res.json();
+      const fetched: TeacherTimetableCell[] = data.data?.cells || [];
+      previewCacheRef.current.set(cacheKey, fetched);
+      return fetched;
+    };
 
     setPreviewLoading(true);
     setPreviewError(null);
-    fetch("/api/timetable/view", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "teacher",
-        teacherEmail: counterpartEmail,
-        weekId: effectiveTargetWeekId || undefined,
-      }),
-    })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("시간표를 불러올 수 없습니다."))))
-      .then((res) => {
-        const fetchedCells: TeacherTimetableCell[] = res.data?.cells || [];
-        previewCacheRef.current.set(cacheKey, fetchedCells);
-        setPreviewCells(fetchedCells);
-      })
-      .catch((e: any) => {
-        setPreviewError(e?.message || "상대 시간표를 불러올 수 없습니다.");
-      })
-      .finally(() => {
-        setPreviewLoading(false);
-      });
-  }, [applyingCandidate, effectiveTargetWeekId]);
+
+    if (!isCrossWeek) {
+      fetchTeacherWeek(effectiveTargetWeekId)
+        .then((fetched) => {
+          setPreviewCells(fetched);
+        })
+        .catch((e: any) => setPreviewError(e?.message || "상대 시간표를 불러올 수 없습니다."))
+        .finally(() => setPreviewLoading(false));
+    } else {
+      Promise.all([
+        fetchTeacherWeek(selectedWeekId),
+        fetchTeacherWeek(effectiveTargetWeekId),
+      ])
+        .then(([srcCells, tgtCells]) => {
+          setCounterpartSourceCells(srcCells);
+          setCounterpartTargetCells(tgtCells);
+        })
+        .catch((e: any) => setPreviewError(e?.message || "상대 시간표를 불러올 수 없습니다."))
+        .finally(() => setPreviewLoading(false));
+    }
+  }, [applyingCandidate, effectiveTargetWeekId, selectedWeekId, isCrossWeek]);
 
   useEffect(() => {
     const termId = settings?.activeTermId;
@@ -373,103 +414,213 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       )}
 
       <div className="flex gap-4 items-start">
-        {/* 주간 시간표 그리드 */}
-        <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-indigo-950 to-indigo-800 px-5 py-3">
-            <h3 className="text-sm font-bold text-white">🗓️ 내 주간시간표</h3>
-            <p className="text-[11px] text-indigo-300 mt-0.5">
-              {selectedWeekId
-                ? "변경된 셀은 빨간 배경으로 표시됩니다. 내 수업 셀 클릭 시 교환 신청 플로우가 시작됩니다."
-                : "기초시간표 (주 선택 시 변경 반영)"}
-            </p>
-          </div>
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="py-2 px-2 border-r border-gray-200 w-12 text-center text-gray-500 font-bold text-[10px]">교시</th>
-                {DAYS.map((d) => (
-                  <th key={d.num} className="py-2 px-1 text-center text-gray-700 font-bold text-[11px]">{d.label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: Math.max(7, periodsPerDay) }).map((_, idx) => {
-                const period = idx + 1;
-                return (
-                  <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
-                    <td className="py-3 px-2 border-r border-gray-200 text-center font-bold text-gray-400 bg-gray-50 text-[11px]">{period}</td>
-                    {DAYS.map((d) => {
-                      const matched = getCellFor(d.num, period);
-                      const hasLesson = matched.length > 0;
-                      const isTarget = isSwapTarget(d.num, period);
-                      const isSelected = selectedCell?.day === d.num && selectedCell?.period === period;
+        {/* 주간 시간표 그리드 (같은 주=1단, 교차 주=2단 분리) */}
+        <div className="flex-1 space-y-4">
+          {/* ① 같은 주 모드 또는 교차 주 상단: 소스 주 시간표 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-indigo-950 to-indigo-800 px-5 py-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white">
+                  🗓️ {isCrossWeek ? `소스 주 시간표 (${sourceWeekObj?.startDate || selectedWeekId} 주)` : "내 주간시간표"}
+                </h3>
+                <p className="text-[11px] text-indigo-300 mt-0.5">
+                  {selectedWeekId
+                    ? isCrossWeek
+                      ? "원래 수업 주입니다. 내 수업 셀 클릭 시 ➖ 삭제 표시와 함께 교환 후보를 탐색합니다."
+                      : "변경된 셀은 빨간 배경으로 표시됩니다. 내 수업 셀 클릭 시 교환 신청 플로우가 시작됩니다."
+                    : "기초시간표 (주 선택 시 변경 반영)"}
+                </p>
+              </div>
+              {isCrossWeek && (
+                <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-700 text-indigo-100 font-bold border border-indigo-500">
+                  1/2 소스 주 (원래 수업)
+                </span>
+              )}
+            </div>
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="py-2 px-2 border-r border-gray-200 w-12 text-center text-gray-500 font-bold text-[10px]">교시</th>
+                  {DAYS.map((d) => (
+                    <th key={d.num} className="py-2 px-1 text-center text-gray-700 font-bold text-[11px]">{d.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: Math.max(7, periodsPerDay) }).map((_, idx) => {
+                  const period = idx + 1;
+                  return (
+                    <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
+                      <td className="py-3 px-2 border-r border-gray-200 text-center font-bold text-gray-400 bg-gray-50 text-[11px]">{period}</td>
+                      {DAYS.map((d) => {
+                        const matched = getCellFor(d.num, period);
+                        const hasLesson = matched.length > 0;
+                        const isTarget = !isCrossWeek && isSwapTarget(d.num, period);
+                        const isSelected = selectedCell?.day === d.num && selectedCell?.period === period;
+                        const isCardHighlighted = !isCrossWeek && isCellHighlightedByCard(d.num, period);
+                        const sc = applyingCandidate;
+                        const isSelectedSource = selectedCell?.day === d.num && selectedCell?.period === period;
+                        const isSelectedTarget = !isCrossWeek && sc && sc.targetDay === d.num && sc.targetPeriod === period;
 
-                      const isCardHighlighted = isCellHighlightedByCard(d.num, period);
-                      const sc = applyingCandidate;
-                      const isSelectedSource = selectedCell?.day === d.num && selectedCell?.period === period;
-                      const isSelectedTarget = sc && sc.targetDay === d.num && sc.targetPeriod === period;
-
-                      return (
-                        <td
-                          key={d.num}
-                          className={`p-1 border-r border-gray-100 text-center align-top transition-all
-                            ${isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""}
-                            ${isTarget && !isSelected && !isCardHighlighted ? "bg-green-50 ring-1 ring-inset ring-green-400" : ""}
-                            ${isCardHighlighted && !isSelected ? "bg-amber-50 ring-2 ring-inset ring-amber-400" : ""}
-                            ${hasLesson && !isSelected && !isTarget && !isCardHighlighted ? "hover:bg-indigo-50/60 cursor-pointer" : ""}
-                          `}
-                          onClick={() => { if (hasLesson) handleCellClick(matched[0]); }}
-                        >
-                          {hasLesson ? (
-                            matched.map((cell, ci) => {
-                              const changed = (cell as any).changed;
-                              const isChanged = !!changed;
-                              const tooltip = isChanged && changed?.origin
-                                ? `${cell.subjectName} (${DAY_LABEL[cell.day]}${cell.period} ← ${DAY_LABEL[(changed.origin as any).day]}${(changed.origin as any).period}에서 이동)`
-                                : `${cell.subjectName} · ${cell.grade}-${cell.classNum}반`;
-                              return (
-                                <div
-                                  key={ci}
-                                  title={tooltip}
-                                  className={`p-1.5 rounded text-center space-y-0.5 text-[10px] ${
-                                    isChanged
-                                      ? "bg-red-100 border border-red-300"
-                                      : "bg-white border border-indigo-200 shadow-2xs"
-                                  }`}
-                                >
-                                  <div className={`font-black ${isChanged ? "text-red-800" : "text-indigo-950"}`}>
-                                    {cell.grade}-{cell.classNum}반
-                                    {isChanged && <span className="ml-0.5 text-red-600 font-bold text-[9px]">▲</span>}
-                                  </div>
-                                  {isSelectedSource && sc && (
-                                    <div className="text-[9px] font-bold text-red-700 bg-red-100 px-1 py-0.5 rounded border border-red-200 mt-0.5">
-                                      ➖ 삭제
+                        return (
+                          <td
+                            key={d.num}
+                            className={`p-1 border-r border-gray-100 text-center align-top transition-all
+                              ${isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""}
+                              ${isTarget && !isSelected && !isCardHighlighted ? "bg-green-50 ring-1 ring-inset ring-green-400" : ""}
+                              ${isCardHighlighted && !isSelected ? "bg-amber-50 ring-2 ring-inset ring-amber-400" : ""}
+                              ${hasLesson && !isSelected && !isTarget && !isCardHighlighted ? "hover:bg-indigo-50/60 cursor-pointer" : ""}
+                            `}
+                            onClick={() => { if (hasLesson) handleCellClick(matched[0]); }}
+                          >
+                            {hasLesson ? (
+                              matched.map((cell, ci) => {
+                                const changed = (cell as any).changed;
+                                const isChanged = !!changed;
+                                const tooltip = isChanged && changed?.origin
+                                  ? `${cell.subjectName} (${DAY_LABEL[cell.day]}${cell.period} ← ${DAY_LABEL[(changed.origin as any).day]}${(changed.origin as any).period}에서 이동)`
+                                  : `${cell.subjectName} · ${cell.grade}-${cell.classNum}반`;
+                                return (
+                                  <div
+                                    key={ci}
+                                    title={tooltip}
+                                    className={`p-1.5 rounded text-center space-y-0.5 text-[10px] ${
+                                      isChanged
+                                        ? "bg-red-100 border border-red-300"
+                                        : "bg-white border border-indigo-200 shadow-2xs"
+                                    }`}
+                                  >
+                                    <div className={`font-black ${isChanged ? "text-red-800" : "text-indigo-950"}`}>
+                                      {cell.grade}-{cell.classNum}반
+                                      {isChanged && <span className="ml-0.5 text-red-600 font-bold text-[9px]">▲</span>}
                                     </div>
-                                  )}
-                                  {isTarget && !isSelectedSource && <div className="text-[9px] font-bold text-green-700">교환 가능 ✓</div>}
+                                    {isSelectedSource && (
+                                      <div className="text-[9px] font-bold text-red-700 bg-red-100 px-1 py-0.5 rounded border border-red-200 mt-0.5">
+                                        ➖ 삭제
+                                      </div>
+                                    )}
+                                    {isTarget && !isSelectedSource && <div className="text-[9px] font-bold text-green-700">교환 가능 ✓</div>}
+                                  </div>
+                                );
+                              })
+                            ) : isSelectedTarget ? (
+                              <div className="py-1 px-1 space-y-0.5 text-[10px] font-bold bg-amber-100 border border-amber-300 rounded text-amber-950">
+                                <div>➕ 추가</div>
+                                <div className="text-[9px] text-amber-800 font-medium">
+                                  {selectedCell ? `${selectedCell.grade}-${selectedCell.classNum}반` : ""}
                                 </div>
-                              );
-                            })
-                          ) : isSelectedTarget ? (
-                            <div className="py-1 px-1 space-y-0.5 text-[10px] font-bold bg-amber-100 border border-amber-300 rounded text-amber-950">
-                              <div>➕ 추가</div>
-                              <div className="text-[9px] text-amber-800 font-medium">
-                                {selectedCell ? `${selectedCell.subjectShort || selectedCell.subjectName}(${selectedCell.grade}-${selectedCell.classNum})` : ""}
                               </div>
-                            </div>
-                          ) : isTarget ? (
-                            <div className="py-2 text-[10px] font-bold text-green-700">🟢 공강</div>
-                          ) : (
-                            <span className="text-[10px] text-gray-200 block py-2">-</span>
-                          )}
-                        </td>
+                            ) : isTarget ? (
+                              <div className="py-2 text-[10px] font-bold text-green-700">🟢 공강</div>
+                            ) : (
+                              <span className="text-[10px] text-gray-200 block py-2">-</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ② 교차 주 모드 하단: 대상 주 내 시간표 (공강 강조 & ➕ 추가 표기) */}
+          {isCrossWeek && (
+            <div className="bg-white rounded-xl shadow-sm border border-indigo-200 overflow-hidden">
+              <div className="bg-gradient-to-r from-indigo-900 to-indigo-700 px-5 py-3 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    🗓️ 교체 대상 주 내 시간표 ({targetWeekObj?.startDate || effectiveTargetWeekId} 주)
+                  </h3>
+                  <p className="text-[11px] text-indigo-200 mt-0.5">
+                    교체 대상 주 기준 내 시간표입니다. 교환 후보 공강 위치가 아래 초록 배경으로 강조되며, 선택 시 ➕ 추가가 표시됩니다.
+                  </p>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-800 text-indigo-100 font-bold border border-indigo-600">
+                  2/2 대상 주 (교체 이동)
+                </span>
+              </div>
+              {targetCellsLoading ? (
+                <div className="py-8 text-center text-xs text-indigo-500 animate-pulse font-semibold">
+                  대상 주 시간표를 불러오는 중...
+                </div>
+              ) : (
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-indigo-50/70 border-b border-indigo-100">
+                      <th className="py-2 px-2 border-r border-indigo-100 w-12 text-center text-indigo-900 font-bold text-[10px]">교시</th>
+                      {DAYS.map((d) => (
+                        <th key={d.num} className="py-2 px-1 text-center text-indigo-950 font-bold text-[11px]">{d.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: Math.max(7, periodsPerDay) }).map((_, idx) => {
+                      const period = idx + 1;
+                      return (
+                        <tr key={period} className={period % 2 === 0 ? "bg-indigo-50/20" : "bg-white"}>
+                          <td className="py-3 px-2 border-r border-indigo-100 text-center font-bold text-indigo-400 bg-indigo-50/50 text-[11px]">{period}</td>
+                          {DAYS.map((d) => {
+                            const matched = (targetCells || []).filter((c) => c.day === d.num && c.period === period);
+                            const hasLesson = matched.length > 0;
+                            const isTarget = isSwapTarget(d.num, period);
+                            const isCardHighlighted = isCellHighlightedByCard(d.num, period);
+                            const sc = applyingCandidate;
+                            const isSelectedTarget = sc && sc.targetDay === d.num && sc.targetPeriod === period;
+
+                            return (
+                              <td
+                                key={d.num}
+                                className={`p-1 border-r border-indigo-50 text-center align-top transition-all
+                                  ${isTarget && !isCardHighlighted ? "bg-green-50 ring-1 ring-inset ring-green-400" : ""}
+                                  ${isCardHighlighted ? "bg-amber-50 ring-2 ring-inset ring-amber-400" : ""}
+                                `}
+                              >
+                                {hasLesson ? (
+                                  matched.map((cell, ci) => {
+                                    const changed = (cell as any).changed;
+                                    const isChanged = !!changed;
+                                    const tooltip = `${cell.subjectName} · ${cell.grade}-${cell.classNum}반`;
+                                    return (
+                                      <div
+                                        key={ci}
+                                        title={tooltip}
+                                        className={`p-1.5 rounded text-center space-y-0.5 text-[10px] ${
+                                          isChanged
+                                            ? "bg-red-100 border border-red-300"
+                                            : "bg-white border border-gray-200 shadow-2xs"
+                                        }`}
+                                      >
+                                        <div className={`font-black ${isChanged ? "text-red-800" : "text-gray-800"}`}>
+                                          {cell.grade}-{cell.classNum}반
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                ) : isSelectedTarget ? (
+                                  <div className="py-1 px-1 space-y-0.5 text-[10px] font-bold bg-amber-100 border border-amber-300 rounded text-amber-950">
+                                    <div>➕ 추가</div>
+                                    <div className="text-[9px] text-amber-800 font-medium">
+                                      {selectedCell ? `${selectedCell.grade}-${selectedCell.classNum}반` : ""}
+                                    </div>
+                                  </div>
+                                ) : isTarget ? (
+                                  <div className="py-2 text-[10px] font-bold text-green-700">🟢 공강</div>
+                                ) : (
+                                  <span className="text-[10px] text-gray-200 block py-2">-</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
                       );
                     })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 우측 패널: 후보 목록 및 신청 폼 */}
@@ -590,34 +741,38 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                 </>
               )}
 
-              {/* 상대 교사 시간표 미리보기 미니 그리드 */}
+              {/* 상대 교사 시간표 미리보기 미니 그리드 (같은 주=1단, 교차 주=2단 분리) */}
               {applyingCandidate && (
-                <div className="border-t border-gray-100 pt-3 space-y-2">
+                <div className="border-t border-gray-100 pt-3 space-y-3">
                   <div className="text-xs font-bold text-gray-800 flex items-center justify-between">
                     <span>
                       🔍 {applyingCandidate.counterpartName} 교사 시간표 미리보기
-                      <span className="text-[11px] text-indigo-700 font-semibold ml-1">
-                        ({targetWeekObj?.startDate ? `${targetWeekObj.startDate} 주` : "대상 주"})
-                      </span>
                     </span>
                     {previewLoading && <span className="text-[10px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
                   </div>
+
                   <div className="text-[10px] text-gray-500 flex flex-wrap gap-2">
                     <span className="inline-flex items-center gap-1">
                       <span className="w-2.5 h-2.5 rounded bg-amber-200 border border-amber-400 inline-block" />
-                      ➖ 삭제 (상대 수업 이동)
+                      ➖ 삭제 (수업 빠짐)
                     </span>
                     <span className="inline-flex items-center gap-1">
                       <span className="w-2.5 h-2.5 rounded bg-green-200 border border-green-400 inline-block" />
-                      ➕ 추가 (내 수업 들어옴)
+                      ➕ 추가 (수업 들어옴)
                     </span>
                   </div>
+
                   {previewError && <div className="text-[11px] text-red-600 bg-red-50 p-2 rounded">{previewError}</div>}
-                  {previewCells && (
+
+                  {/* ① 같은 주 모드: 기존 1단 미니 그리드 */}
+                  {!isCrossWeek && previewCells && (
                     <div className="border border-gray-200 rounded-lg overflow-hidden text-[10px]">
+                      <div className="bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-700 border-b border-gray-200">
+                        🗓️ {targetWeekObj?.startDate ? `${targetWeekObj.startDate} 주` : "대상 주"} 시간표
+                      </div>
                       <table className="w-full border-collapse text-center">
                         <thead>
-                          <tr className="bg-gray-100 border-b border-gray-200 text-gray-600 font-bold">
+                          <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
                             <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
                             {DAYS.map((d) => (
                               <th key={d.num} className="py-1 px-0.5">{d.label}</th>
@@ -681,6 +836,138 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                           })}
                         </tbody>
                       </table>
+                    </div>
+                  )}
+
+                  {/* ② 교차 주 모드: 2단 미니 그리드 (상단: 소스 주 ➕추가 / 하단: 대상 주 ➖삭제) */}
+                  {isCrossWeek && (
+                    <div className="space-y-2">
+                      {/* [상단] 소스 주 상대 시간표 (내 소스 수업이 상대에게 들어옴 ➕) */}
+                      <div className="border border-indigo-200 rounded-lg overflow-hidden text-[10px]">
+                        <div className="bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-900 border-b border-indigo-200 flex justify-between items-center">
+                          <span>🗓️ 소스 주 ({sourceWeekObj?.startDate || selectedWeekId} 주)</span>
+                          <span className="text-[9px] text-green-700 font-extrabold">내 수업 들어옴 ➕</span>
+                        </div>
+                        <table className="w-full border-collapse text-center">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
+                              <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
+                              {DAYS.map((d) => (
+                                <th key={d.num} className="py-1 px-0.5">{d.label}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Array.from({ length: Math.max(7, periodsPerDay) }).map((_, idx) => {
+                              const period = idx + 1;
+                              return (
+                                <tr key={period} className="border-b border-gray-100 last:border-0">
+                                  <td className="py-1 px-1 border-r border-gray-200 bg-gray-50 font-bold text-gray-400 text-[9px]">{period}</td>
+                                  {DAYS.map((d) => {
+                                    const matched = (counterpartSourceCells || []).filter((c) => c.day === d.num && c.period === period);
+                                    const isSourceSlot = selectedCell.day === d.num && selectedCell.period === period;
+                                    const hasLesson = matched.length > 0;
+
+                                    let cellStyle = "bg-white text-gray-400";
+                                    if (isSourceSlot) {
+                                      cellStyle = "bg-green-100 border border-green-400 font-bold text-green-900";
+                                    } else if (hasLesson) {
+                                      cellStyle = "bg-gray-100 text-gray-700 font-medium";
+                                    }
+
+                                    const cellTitle = hasLesson
+                                      ? `${matched[0].subjectName} (${matched[0].grade}-${matched[0].classNum}반)`
+                                      : undefined;
+
+                                    return (
+                                      <td key={d.num} className={`p-0.5 text-[9.5px] ${cellStyle}`} title={cellTitle}>
+                                        {isSourceSlot ? (
+                                          <div className="space-y-0.5">
+                                            <div className="text-[8px] font-extrabold text-green-900">➕ 추가</div>
+                                            <div className="font-bold text-[9px] truncate max-w-[40px] mx-auto">
+                                              {selectedCell.grade}-{selectedCell.classNum}
+                                            </div>
+                                          </div>
+                                        ) : hasLesson ? (
+                                          <div className="truncate max-w-[42px] mx-auto font-medium">
+                                            {matched[0].grade}-{matched[0].classNum}
+                                          </div>
+                                        ) : (
+                                          "-"
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* [하단] 교체 대상 주 상대 시간표 (상대 원래 수업이 빠짐 ➖) */}
+                      <div className="border border-amber-200 rounded-lg overflow-hidden text-[10px]">
+                        <div className="bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-900 border-b border-amber-200 flex justify-between items-center">
+                          <span>🗓️ 대상 주 ({targetWeekObj?.startDate || effectiveTargetWeekId} 주)</span>
+                          <span className="text-[9px] text-amber-900 font-extrabold">상대 수업 빠짐 ➖</span>
+                        </div>
+                        <table className="w-full border-collapse text-center">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
+                              <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
+                              {DAYS.map((d) => (
+                                <th key={d.num} className="py-1 px-0.5">{d.label}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Array.from({ length: Math.max(7, periodsPerDay) }).map((_, idx) => {
+                              const period = idx + 1;
+                              const sc = applyingCandidate;
+                              return (
+                                <tr key={period} className="border-b border-gray-100 last:border-0">
+                                  <td className="py-1 px-1 border-r border-gray-200 bg-gray-50 font-bold text-gray-400 text-[9px]">{period}</td>
+                                  {DAYS.map((d) => {
+                                    const matched = (counterpartTargetCells || []).filter((c) => c.day === d.num && c.period === period);
+                                    const isTargetSlot = sc.targetDay === d.num && sc.targetPeriod === period;
+                                    const hasLesson = matched.length > 0;
+
+                                    let cellStyle = "bg-white text-gray-400";
+                                    if (isTargetSlot) {
+                                      cellStyle = "bg-amber-100 border border-amber-400 font-bold text-amber-900";
+                                    } else if (hasLesson) {
+                                      cellStyle = "bg-gray-100 text-gray-700 font-medium";
+                                    }
+
+                                    const cellTitle = hasLesson
+                                      ? `${matched[0].subjectName} (${matched[0].grade}-${matched[0].classNum}반)`
+                                      : undefined;
+
+                                    return (
+                                      <td key={d.num} className={`p-0.5 text-[9.5px] ${cellStyle}`} title={cellTitle}>
+                                        {isTargetSlot ? (
+                                          <div className="space-y-0.5">
+                                            <div className="text-[8px] font-extrabold text-amber-900">➖ 삭제</div>
+                                            <div className="font-bold text-[9px] truncate max-w-[40px] mx-auto">
+                                              {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
+                                            </div>
+                                          </div>
+                                        ) : hasLesson ? (
+                                          <div className="truncate max-w-[42px] mx-auto font-medium">
+                                            {matched[0].grade}-{matched[0].classNum}
+                                          </div>
+                                        ) : (
+                                          "-"
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </div>
