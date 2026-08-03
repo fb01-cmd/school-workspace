@@ -310,6 +310,111 @@ export function findSwapCandidates(
   return { candidates };
 }
 
+// ── 교차 주 맞교환 후보 탐색 (§4-3b) ──────────────────────────
+
+/** 감점 사유에 붙일 주 표기 — "12/28 주" */
+function weekLabel(week: TimetableWeek): string {
+  const [, m, d] = week.startDate.split("-");
+  return `${Number(m)}/${Number(d)} 주`;
+}
+
+/**
+ * 교차 주 맞교환: 내 sourceWeek 수업 ↔ 같은 학급의 targetWeek 수업.
+ * 조건 ① 상대가 sourceWeek의 내 슬롯 시간에 공강 ② 내가 targetWeek의 상대 슬롯 시간에 공강.
+ * 하드 제외(동시·복수·가상·블록·특별실)는 각 주 기준으로 각각 적용, 감점은 두 주 합산 (§4-3b).
+ */
+export function findCrossSwapCandidates(
+  sourceGrids: WeeklyClassGrid[],
+  sourceWeek: TimetableWeek,
+  targetGrids: WeeklyClassGrid[],
+  targetWeek: TimetableWeek,
+  settings: TimetableSettings,
+  requesterEmail: string,
+  source: SwapSourceSlot
+): { candidates: SwapCandidate[]; error?: string } {
+  if (sourceWeek.id === targetWeek.id) {
+    return { candidates: [], error: "교차 주 교환은 서로 다른 주 사이에서만 가능합니다." };
+  }
+  const src = resolveSourceLesson(sourceGrids, requesterEmail, source);
+  if (!src.ok) return { candidates: [], error: src.error };
+  const myLesson = src.lesson!;
+  const idxSrc = buildSlotIndex(sourceGrids);
+  const idxTgt = buildSlotIndex(targetGrids);
+  const me = norm(requesterEmail);
+  if (isBlockTeacher(idxSrc, me) || isBlockTeacher(idxTgt, me)) {
+    return {
+      candidates: [],
+      error: "동시 진행 수업(전교 공통 활동 등)을 담당하는 계정은 교환 신청할 수 없습니다. 일과계에 직접 요청하세요.",
+    };
+  }
+  const targetGrid = targetGrids.find(
+    (g) => g.grade === source.grade && g.classNum === source.classNum
+  );
+  if (!targetGrid) {
+    return { candidates: [], error: "대상 주에서 해당 학급 시간표를 찾을 수 없습니다." };
+  }
+  const classKey = `${source.grade}-${source.classNum}`;
+  const srcLabel = weekLabel(sourceWeek);
+  const tgtLabel = weekLabel(targetWeek);
+  const ctxSrc: PenaltyCtx = { idx: idxSrc, settings, week: sourceWeek };
+  const ctxTgt: PenaltyCtx = { idx: idxTgt, settings, week: targetWeek };
+  const candidates: SwapCandidate[] = [];
+
+  for (let d2 = 1; d2 <= 5; d2++) {
+    const maxP = periodsForGradeDay(targetWeek, settings, source.grade, d2);
+    for (let p2 = 1; p2 <= maxP; p2++) {
+      // 조건 ②: 내가 targetWeek의 상대 슬롯 시간에 공강
+      if (!isTeacherFree(idxTgt, me, d2, p2)) continue;
+
+      const targetCell = targetGrid.cells.find((c) => c.day === d2 && c.period === p2);
+      if (!targetCell || targetCell.lessons.length === 0) continue;
+      if (targetCell.lessons.length > 1) continue; // 하드: 동시수업
+      const l2 = targetCell.lessons[0];
+      if ((l2.teachers || []).length > 1) continue; // 하드: 복수교사
+      const b = l2.teachers[0];
+      if (!b || !norm(b.email) || norm(b.email) === me) continue; // 하드: 가상 교사·본인
+      if (isBlockTeacher(idxTgt, b.email) || isBlockTeacher(idxSrc, b.email)) continue; // 하드: 블록 — 각 주 기준
+
+      // 조건 ①: 상대가 sourceWeek의 내 슬롯 시간에 공강
+      if (!isTeacherFree(idxSrc, b.email, source.day, source.period)) continue;
+
+      // 하드: 특별실 충돌 — 내 수업 room은 targetWeek 슬롯에서, 상대 room은 sourceWeek 내 슬롯에서 (각 주 기준)
+      if (myLesson.room && !isRoomFree(idxTgt, myLesson.room, d2, p2, classKey)) continue;
+      if (l2.room && !isRoomFree(idxSrc, l2.room, source.day, source.period, classKey)) continue;
+
+      // 감점 — 두 주 각각 계산해 합산. 교차 주라 같은 주 내 제거 상쇄는 없음(removePeriod=null)
+      const penalties: string[] = [];
+      const dupTgt = classDuplicatePenalty(targetGrid, d2, myLesson.subjectName, [p2]);
+      if (dupTgt) penalties.push(`${tgtLabel}: ${dupTgt}`);
+      const dupSrc = classDuplicatePenalty(src.grid!, source.day, l2.subjectName, [source.period]);
+      if (dupSrc) penalties.push(`${srcLabel}: ${dupSrc}`);
+      penalties.push(
+        ...teacherDayPenalties(ctxTgt, me, "내", d2, p2, myLesson.subjectName, null).map(
+          (p) => `${tgtLabel}: ${p}`
+        ),
+        ...teacherDayPenalties(
+          ctxSrc, b.email, `${b.name} 선생님`, source.day, source.period, l2.subjectName, null
+        ).map((p) => `${srcLabel}: ${p}`)
+      );
+
+      candidates.push({
+        targetDay: d2,
+        targetPeriod: p2,
+        counterpartEmail: norm(b.email),
+        counterpartName: b.name,
+        counterpartSubjectName: l2.subjectName,
+        score: penalties.length,
+        penalties,
+      });
+    }
+  }
+
+  candidates.sort(
+    (a, b) => a.score - b.score || a.targetDay - b.targetDay || a.targetPeriod - b.targetPeriod
+  );
+  return { candidates };
+}
+
 // ── 특별보강 후보 탐색 (§4-2) ─────────────────────────────────
 
 export function findSubstituteCandidates(

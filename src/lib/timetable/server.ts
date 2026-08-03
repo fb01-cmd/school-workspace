@@ -795,8 +795,14 @@ import {
   isSlotWithinWeek,
   synthesizeWeeklyGrids,
 } from "./weekly";
-import { findSubstituteCandidates, findSwapCandidates, resolveSourceLesson } from "./swap";
 import {
+  findCrossSwapCandidates,
+  findSubstituteCandidates,
+  findSwapCandidates,
+  resolveSourceLesson,
+} from "./swap";
+import {
+  CrossSwapLessonRef,
   HourTotalsResult,
   NeisRow,
   SubstituteCandidate,
@@ -995,11 +1001,13 @@ export async function computeCandidates(
   domain: string,
   requesterEmail: string,
   weekId: string,
-  source: SwapSourceSlot
+  source: SwapSourceSlot,
+  targetWeekId?: string
 ): Promise<{
   swapCandidates: SwapCandidate[];
   substituteCandidates: SubstituteCandidate[];
   sourceSubjectName: string;
+  targetWeekId?: string;
   error?: string;
 }> {
   const week = await loadWeek(domain, weekId);
@@ -1015,6 +1023,30 @@ export async function computeCandidates(
   }
   const sourceSubjectName = src.lesson!.subjectName;
   const fullSource: SwapSourceSlot = { ...source, subjectName: sourceSubjectName };
+
+  // ── 교차 주 맞교환 (§4-3b): 두 합성본 기준 별도 엔진. 특별보강은 교차 주 개념이 없음 ──
+  if (targetWeekId && targetWeekId !== weekId) {
+    const targetWeek = await loadWeek(domain, targetWeekId);
+    if (!targetWeek) throw new Error(`등록되지 않은 주(${targetWeekId})입니다. 일과계가 먼저 주를 등록해야 교환할 수 있습니다.`);
+    if (targetWeek.termId !== week.termId)
+      throw new Error("다른 학기의 주와는 교환할 수 없습니다.");
+    const { grids: targetGrids } = await synthesizeWeek(domain, targetWeek);
+    const crossRes = findCrossSwapCandidates(
+      grids, week, targetGrids, targetWeek, settings, requesterEmail, fullSource
+    );
+    if (crossRes.error) {
+      return {
+        swapCandidates: [], substituteCandidates: [], sourceSubjectName, targetWeekId,
+        error: crossRes.error,
+      };
+    }
+    return {
+      swapCandidates: crossRes.candidates,
+      substituteCandidates: [],
+      sourceSubjectName,
+      targetWeekId,
+    };
+  }
 
   const swapRes = findSwapCandidates(grids, week, settings, requesterEmail, fullSource);
   // 소스 레벨 오류(블록 교사 등)는 두 후보 목록 모두에 대해 치명적 — 전파한다
@@ -1061,6 +1093,7 @@ export async function createSwapRequest(
     source: SwapSourceSlot;
     candidate: SwapCandidateSnapshot;
     reason?: SwapRequestReason;
+    targetWeekId?: string; // 교차 주 맞교환 (§4-3b) — 없거나 weekId와 같으면 같은-주
   },
   options?: { skipManagerNotify?: boolean; direct?: boolean }
 ): Promise<SwapRequest> {
@@ -1068,8 +1101,15 @@ export async function createSwapRequest(
   const week = await loadWeek(domain, params.weekId);
   if (!week) throw new Error(`등록되지 않은 주(${params.weekId})입니다.`);
 
+  const targetWeekId =
+    params.targetWeekId && params.targetWeekId !== params.weekId ? params.targetWeekId : undefined;
+  if (targetWeekId && params.type !== "swap")
+    throw new Error("교차 주 교환은 맞교환만 가능합니다.");
+
   // 서버 재계산 검증: 클라이언트가 보낸 후보는 신뢰하지 않는다 (AGENTS.md §5 이중 방어)
-  const computed = await computeCandidates(domain, requesterEmail, params.weekId, params.source);
+  const computed = await computeCandidates(
+    domain, requesterEmail, params.weekId, params.source, targetWeekId
+  );
   if (computed.error) throw new Error(computed.error);
 
   let candidate: SwapCandidateSnapshot;
@@ -1082,7 +1122,7 @@ export async function createSwapRequest(
         c.counterpartEmail === (params.candidate.counterpartEmail || "").trim().toLowerCase()
     );
     if (!match) throw new Error("선택한 후보가 더 이상 유효하지 않습니다. 후보를 다시 조회해 주세요.");
-    candidate = { ...match }; // 서버 계산값 스냅샷 (점수·감점 포함)
+    candidate = { ...match, ...(targetWeekId ? { targetWeekId } : {}) }; // 서버 계산값 스냅샷 (점수·감점 포함)
   } else {
     const match = computed.substituteCandidates.find(
       (c) => c.teacherEmail === (params.candidate.counterpartEmail || "").trim().toLowerCase()
@@ -1122,6 +1162,7 @@ export async function createSwapRequest(
     termId: week.termId,
     weekId: params.weekId,
     type: params.type,
+    ...(targetWeekId ? { targetWeekId } : {}),
     requesterEmail: requesterEmail.toLowerCase(),
     requesterName,
     source: { ...params.source, subjectName: computed.sourceSubjectName },
@@ -1141,7 +1182,7 @@ export async function createSwapRequest(
     `📋 새 수업교환 신청\n` +
     `신청자: ${requesterName} (${requesterEmail})\n` +
     `대상: ${request.source.grade}-${request.source.classNum} ${dayNames[request.source.day]} ${request.source.period}교시 ${request.source.subjectName}\n` +
-    `유형: ${params.type === "swap" ? `맞교환 (상대: ${candidate.counterpartName})` : `특별보강 (보강: ${candidate.counterpartName})`}\n` +
+    `유형: ${params.type === "swap" ? `맞교환 (상대: ${candidate.counterpartName})` : `특별보강 (보강: ${candidate.counterpartName})`}${targetWeekId ? `\n교차 주 교환: ${targetWeekId} 주 ${dayNames[candidate.targetDay || 0]} ${candidate.targetPeriod}교시와 맞교환` : ""}\n` +
     `사유: ${reason.type}${reason.note ? ` — ${reason.note}` : ""}`;
   for (const manager of settings.managerEmails) {
     try {
@@ -1208,6 +1249,12 @@ export async function approveSwapRequest(
   ]);
   if (!week) throw new Error(`등록되지 않은 주(${reqPre.weekId})입니다.`);
 
+  // 교차 주 (§4-3b): 대상 주 문서도 트랜잭션 밖에서 읽는다 (주 문서는 승인 중 불변)
+  const isCross = !!reqPre.targetWeekId && reqPre.targetWeekId !== reqPre.weekId;
+  const targetWeek = isCross ? await loadWeek(domain, reqPre.targetWeekId!) : null;
+  if (isCross && !targetWeek)
+    throw new Error(`등록되지 않은 주(${reqPre.targetWeekId})입니다. 대상 주 등록이 삭제되어 승인할 수 없습니다.`);
+
   const result = await adminDb.runTransaction(async (tx) => {
     const reqRef = swapRequestsColRef(domain).doc(requestId);
     const reqSnap = await tx.get(reqRef);
@@ -1222,10 +1269,116 @@ export async function approveSwapRequest(
       .map((d) => ({ ...(d.data() as TimetableChange), id: d.id }))
       .sort((a, b) => a.appliedAt - b.appliedAt);
 
+    // 교차 주: 대상 주 changes도 트랜잭션 안에서 재읽기 (양주 재검증 — §4-3b)
+    let targetChanges: TimetableChange[] = [];
+    if (isCross) {
+      const targetChangesSnap = await tx.get(
+        timetableChangesColRef(domain).where("weekId", "==", request.targetWeekId!)
+      );
+      targetChanges = targetChangesSnap.docs
+        .map((d) => ({ ...(d.data() as TimetableChange), id: d.id }))
+        .sort((a, b) => a.appliedAt - b.appliedAt);
+    }
+
     // 트랜잭션 내 재검증: 현재 오버레이 기준으로 후보가 여전히 성립하는가
     const { grids } = synthesizeWeeklyGrids(baseGrids, week, changes, settings);
     const src = resolveSourceLesson(grids, request.requesterEmail, request.source);
     if (!src.ok) throw new Error(`승인 불가 — ${src.error} 신청자의 재신청이 필요합니다.`);
+
+    // ── 교차 주 맞교환 승인: 양방향 재검증 → 문서쌍(exchangeId) 원자 커밋 (§4-3b) ──
+    if (isCross) {
+      const cand = request.candidate;
+      const { grids: targetGrids } = synthesizeWeeklyGrids(baseGrids, targetWeek!, targetChanges, settings);
+      const crossRes = findCrossSwapCandidates(
+        grids, week, targetGrids, targetWeek!, settings, request.requesterEmail, request.source
+      );
+      if (crossRes.error) throw new Error(`승인 불가 — ${crossRes.error} 신청자의 재신청이 필요합니다.`);
+      const still = crossRes.candidates.find(
+        (c) =>
+          c.targetDay === cand.targetDay &&
+          c.targetPeriod === cand.targetPeriod &&
+          c.counterpartEmail === cand.counterpartEmail
+      );
+      if (!still)
+        throw new Error("승인 불가 — 다른 변경으로 상황이 바뀌어 후보가 더 이상 유효하지 않습니다. 신청자의 재신청이 필요합니다.");
+
+      // 상대 수업 전체 정보(약칭·특별실)는 재검증된 대상 주 합성본 셀에서 직접 읽는다
+      const targetGrid = targetGrids.find(
+        (g) => g.grade === request.source.grade && g.classNum === request.source.classNum
+      )!;
+      const counterpartLesson = targetGrid.cells.find(
+        (c) => c.day === still.targetDay && c.period === still.targetPeriod
+      )!.lessons[0];
+
+      const myRef: CrossSwapLessonRef = {
+        subjectName: src.lesson!.subjectName,
+        subjectShort: src.lesson!.subjectShort,
+        teacherEmail: request.requesterEmail,
+        teacherName: request.requesterName,
+        ...(src.lesson!.room ? { room: src.lesson!.room } : {}),
+      };
+      const otherRef: CrossSwapLessonRef = {
+        subjectName: counterpartLesson.subjectName,
+        subjectShort: counterpartLesson.subjectShort,
+        teacherEmail: still.counterpartEmail,
+        teacherName: still.counterpartName,
+        ...(counterpartLesson.room ? { room: counterpartLesson.room } : {}),
+      };
+
+      const exchangeId = timetableChangesColRef(domain).doc().id;
+      const refA = timetableChangesColRef(domain).doc();
+      const refB = timetableChangesColRef(domain).doc();
+      const now = Date.now();
+      const common = {
+        termId: request.termId,
+        type: "cross_swap" as const,
+        requestId,
+        appliedBy: managerEmail.toLowerCase(),
+        appliedAt: now,
+      };
+      const changeA: TimetableChange = {
+        id: refA.id,
+        weekId: request.weekId,
+        ...common,
+        crossSwap: {
+          exchangeId,
+          otherWeekId: request.targetWeekId!,
+          grade: request.source.grade,
+          classNum: request.source.classNum,
+          day: request.source.day,
+          period: request.source.period,
+          out: myRef,
+          in: otherRef,
+        },
+      };
+      const changeB: TimetableChange = {
+        id: refB.id,
+        weekId: request.targetWeekId!,
+        ...common,
+        crossSwap: {
+          exchangeId,
+          otherWeekId: request.weekId,
+          grade: request.source.grade,
+          classNum: request.source.classNum,
+          day: still.targetDay,
+          period: still.targetPeriod,
+          out: otherRef,
+          in: myRef,
+        },
+      };
+      tx.set(refA, changeA);
+      tx.set(refB, changeB);
+      tx.update(reqRef, {
+        status: "APPROVED",
+        decidedBy: managerEmail.toLowerCase(),
+        decidedAt: now,
+        appliedChangeIds: [refA.id, refB.id],
+      });
+      return {
+        request: { ...request, status: "APPROVED" as const, appliedChangeIds: [refA.id, refB.id] },
+        change: changeA,
+      };
+    }
 
     const changeRef = timetableChangesColRef(domain).doc();
     let change: TimetableChange;
@@ -1322,11 +1475,14 @@ export async function approveSwapRequest(
   // 알림: 신청자 + 상대 교사 (§5 — 교무부장은 열람 전용, DM 없음)
   const dayNames = ["", "월", "화", "수", "목", "금"];
   const r = result.request;
+  // 교차 주는 주가 다르므로 날짜를 병기한다 (§4-3b UI 원칙과 동일)
+  const dateOfDay = (w: TimetableWeek | null, day: number): string =>
+    w?.days.find((d) => d.day === day)?.date?.slice(5).replace("-", "/") || "";
   const msg =
-    `✅ 수업교환 승인 완료\n` +
-    `${r.source.grade}-${r.source.classNum} ${dayNames[r.source.day]} ${r.source.period}교시 ${r.source.subjectName}` +
+    `✅ 수업교환 승인 완료${isCross ? " (교차 주)" : ""}\n` +
+    `${r.source.grade}-${r.source.classNum} ${isCross ? `${dateOfDay(week, r.source.day)}(` : ""}${dayNames[r.source.day]} ${r.source.period}교시${isCross ? ")" : ""} ${r.source.subjectName}` +
     (r.type === "swap"
-      ? ` ↔ ${dayNames[r.candidate.targetDay || 0]} ${r.candidate.targetPeriod}교시 ${r.candidate.counterpartSubjectName} (${r.candidate.counterpartName})`
+      ? ` ↔ ${isCross ? `${dateOfDay(targetWeek, r.candidate.targetDay || 0)}(` : ""}${dayNames[r.candidate.targetDay || 0]} ${r.candidate.targetPeriod}교시${isCross ? ")" : ""} ${r.candidate.counterpartSubjectName} (${r.candidate.counterpartName})`
       : ` → ${r.candidate.counterpartName} 선생님 특별보강`) +
     `\n승인: ${managerEmail}`;
   for (const to of [r.requesterEmail, r.candidate.counterpartEmail]) {
@@ -1387,31 +1543,50 @@ export async function revertTimetableChange(
     const target = { ...(targetSnap.data() as TimetableChange), id: changeId };
     if (target.type === "revert") throw new Error("취소 기록 자체는 다시 취소할 수 없습니다.");
 
-    const existingRevert = await tx.get(
-      timetableChangesColRef(domain).where("revertOf", "==", changeId).limit(1)
-    );
-    if (!existingRevert.empty) throw new Error("이미 취소된 변경입니다.");
+    // 취소 대상 문서 집합: 교차 주는 exchangeId 문서쌍 전체 — 한쪽만 취소 금지 (§4-3b)
+    let targets: TimetableChange[] = [target];
+    if (target.type === "cross_swap" && target.crossSwap) {
+      const pairSnap = await tx.get(
+        timetableChangesColRef(domain).where(
+          "crossSwap.exchangeId", "==", target.crossSwap.exchangeId
+        )
+      );
+      targets = pairSnap.docs.map((d) => ({ ...(d.data() as TimetableChange), id: d.id }));
+      if (!targets.some((t) => t.id === changeId)) targets.push(target);
+    }
 
-    const ref = timetableChangesColRef(domain).doc();
-    const revert: TimetableChange = {
-      id: ref.id,
-      termId: target.termId,
-      weekId: target.weekId,
-      type: "revert",
-      revertOf: changeId,
-      appliedBy: managerEmail.toLowerCase(),
-      appliedAt: Date.now(),
-    };
-    tx.set(ref, revert);
+    for (const t of targets) {
+      const existingRevert = await tx.get(
+        timetableChangesColRef(domain).where("revertOf", "==", t.id).limit(1)
+      );
+      if (!existingRevert.empty) throw new Error("이미 취소된 변경입니다.");
+    }
+
+    const now = Date.now();
+    const reverts: TimetableChange[] = [];
+    for (const t of targets) {
+      const ref = timetableChangesColRef(domain).doc();
+      const revert: TimetableChange = {
+        id: ref.id,
+        termId: t.termId,
+        weekId: t.weekId,
+        type: "revert",
+        revertOf: t.id,
+        appliedBy: managerEmail.toLowerCase(),
+        appliedAt: now,
+      };
+      tx.set(ref, revert);
+      reverts.push(revert);
+    }
     if (target.requestId) {
       tx.update(swapRequestsColRef(domain).doc(target.requestId), {
         status: "CANCELED",
         decidedBy: managerEmail.toLowerCase(),
-        decidedAt: Date.now(),
+        decidedAt: now,
         decisionNote: "일과계 승인 취소 (revert)",
       });
     }
-    return { revert, target };
+    return { revert: reverts.find((r) => r.revertOf === changeId) || reverts[0], target };
   });
 
   // 알림: 원 승인 알림 수신자 전원 (§5)
@@ -1424,6 +1599,10 @@ export async function revertTimetableChange(
   if (t.substitute) {
     recipients.add(t.substitute.absentTeacherEmail);
     recipients.add(t.substitute.subTeacherEmail);
+  }
+  if (t.crossSwap) {
+    recipients.add(t.crossSwap.out.teacherEmail);
+    recipients.add(t.crossSwap.in.teacherEmail);
   }
   for (const to of recipients) {
     try {
@@ -1474,14 +1653,17 @@ export function resolveDirectSource(
 export async function computeDirectCandidates(
   domain: string,
   weekId: string,
-  source: SwapSourceSlot
+  source: SwapSourceSlot,
+  targetWeekId?: string
 ) {
   const week = await loadWeek(domain, weekId);
   if (!week) throw new Error(`등록되지 않은 주(${weekId})입니다.`);
   const { grids } = await synthesizeWeek(domain, week);
   const resolved = resolveDirectSource(grids, source);
   if (!resolved.ok) return { error: resolved.error };
-  const computed = await computeCandidates(domain, resolved.info.teacherEmail, weekId, source);
+  const computed = await computeCandidates(
+    domain, resolved.info.teacherEmail, weekId, source, targetWeekId
+  );
   return { ...computed, sourceTeacher: resolved.info };
 }
 
@@ -1498,6 +1680,7 @@ export async function directCommit(
     source: SwapSourceSlot;
     candidate: SwapCandidateSnapshot;
     reason?: SwapRequestReason;
+    targetWeekId?: string; // 교차 주 맞교환 (§4-3b)
   }
 ): Promise<{ request: SwapRequest; change: TimetableChange }> {
   const week = await loadWeek(domain, params.weekId);
@@ -1515,6 +1698,7 @@ export async function directCommit(
       source: params.source,
       candidate: params.candidate,
       reason: params.reason,
+      targetWeekId: params.targetWeekId,
     },
     { skipManagerNotify: true, direct: true }
   );

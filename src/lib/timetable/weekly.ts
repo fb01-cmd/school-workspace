@@ -8,6 +8,7 @@
 
 import {
   ClassGrid,
+  CrossSwapLessonRef,
   NeisRow,
   SwapChangeSlot,
   TimetableChange,
@@ -113,6 +114,10 @@ function changeLabel(ch: TimetableChange): string {
     const s = ch.substitute;
     return `substitute ${s.grade}-${s.classNum} (${s.day},${s.period}) ${s.absentTeacherName}→${s.subTeacherName}`;
   }
+  if (ch.type === "cross_swap" && ch.crossSwap) {
+    const s = ch.crossSwap;
+    return `cross_swap ${s.grade}-${s.classNum} (${s.day},${s.period}) ${s.out.teacherName}→${s.in.teacherName} (상대 주 ${s.otherWeekId})`;
+  }
   if (ch.type === "revert") return `revert of ${ch.revertOf}`;
   return ch.type;
 }
@@ -205,6 +210,51 @@ function applySubstitute(
   return true;
 }
 
+/**
+ * 교차 주 맞교환 적용 (phase9b_spec §4-3b) — 이 주(weekId) 문서의 셀 1개 치환.
+ * 셀 현재 수업이 out과 일치할 때만 in으로 치환. reversed(취소)면 in→out으로 복원.
+ */
+function applyCrossSwap(
+  grids: WeeklyClassGrid[],
+  ch: TimetableChange,
+  reversed: boolean,
+  warnings: string[]
+): boolean {
+  const s = ch.crossSwap!;
+  const grid = findGrid(grids, s.grade, s.classNum);
+  if (!grid) {
+    warnings.push(`[${ch.id}] 학급 ${s.grade}-${s.classNum} 그리드 없음 — 건너뜀 (${changeLabel(ch)})`);
+    return false;
+  }
+  const outRef: CrossSwapLessonRef = reversed ? s.in : s.out;
+  const inRef: CrossSwapLessonRef = reversed ? s.out : s.in;
+  const found = findLesson(grid, {
+    day: s.day,
+    period: s.period,
+    subjectName: outRef.subjectName,
+    teacherEmail: outRef.teacherEmail,
+    teacherName: outRef.teacherName,
+  });
+  if (!found) {
+    warnings.push(
+      `[${ch.id}] 대상 슬롯 상태 불일치 — 건너뜀 (${changeLabel(ch)}${reversed ? " 취소" : ""})`
+    );
+    return false;
+  }
+  found.cell.lessons.splice(found.index, 1);
+  const replacement: WeeklyLesson = {
+    subjectName: inRef.subjectName,
+    subjectShort: inRef.subjectShort,
+    teachers: [{ email: inRef.teacherEmail, name: inRef.teacherName }],
+    ...(inRef.room ? { room: inRef.room } : {}),
+    ...(reversed
+      ? {}
+      : { changed: { changeId: ch.id, type: "cross_swap" as const, otherWeekId: s.otherWeekId } }),
+  };
+  found.cell.lessons.push(replacement);
+  return true;
+}
+
 // ── 메인 합성 ─────────────────────────────────────────────────
 
 /**
@@ -239,6 +289,8 @@ export function synthesizeWeeklyGrids(
       if (applySwap(grids, ch, false, warnings)) applied.set(ch.id, ch);
     } else if (ch.type === "substitute" && ch.substitute) {
       if (applySubstitute(grids, ch, false, warnings)) applied.set(ch.id, ch);
+    } else if (ch.type === "cross_swap" && ch.crossSwap) {
+      if (applyCrossSwap(grids, ch, false, warnings)) applied.set(ch.id, ch);
     } else if (ch.type === "revert" && ch.revertOf) {
       const target = applied.get(ch.revertOf);
       if (!target) {
@@ -252,7 +304,9 @@ export function synthesizeWeeklyGrids(
       const ok =
         target.type === "swap"
           ? applySwap(grids, target, true, warnings)
-          : applySubstitute(grids, target, true, warnings);
+          : target.type === "cross_swap"
+            ? applyCrossSwap(grids, target, true, warnings)
+            : applySubstitute(grids, target, true, warnings);
       if (ok) reverted.add(ch.revertOf);
     } else {
       warnings.push(`[${ch.id}] 알 수 없는 변경 형식(${ch.type}) — 건너뜀`);
@@ -302,6 +356,16 @@ export function flattenNeisChanges(
   const dateOf = (weekId: string, day: number): string =>
     weekById.get(weekId)?.days.find((d) => d.day === day)?.date || "";
 
+  // 교차 주 문서쌍: exchangeId → 문서들 (자기 문서의 "변경전 교시"는 짝 문서의 슬롯 — §4-3b)
+  const crossByExchange = new Map<string, TimetableChange[]>();
+  for (const ch of changes) {
+    if (ch.type === "cross_swap" && ch.crossSwap) {
+      const list = crossByExchange.get(ch.crossSwap.exchangeId) || [];
+      list.push(ch);
+      crossByExchange.set(ch.crossSwap.exchangeId, list);
+    }
+  }
+
   const rows: NeisRow[] = [];
   for (const ch of changes) {
     if (reverted.has(ch.id)) continue;
@@ -331,6 +395,29 @@ export function flattenNeisChanges(
           note: "",
         });
       }
+    } else if (ch.type === "cross_swap" && ch.crossSwap && filter.type !== "substitute") {
+      // 교차 주 맞교환은 swap 계열 — 문서 1개 = 1행 (이 주 슬롯에서 진행되는 수업 in 기준),
+      // 변경전 교시는 exchangeId 짝 문서(otherWeekId)의 슬롯 날짜로 표기 (§4-3b)
+      const s = ch.crossSwap;
+      const pair = (crossByExchange.get(s.exchangeId) || []).find((c) => c.id !== ch.id);
+      const ps = pair?.crossSwap;
+      rows.push({
+        changeId: ch.id,
+        weekId: ch.weekId,
+        type: "cross_swap",
+        grade: s.grade,
+        classNum: s.classNum,
+        date: dateOf(ch.weekId, s.day),
+        day: s.day,
+        period: s.period,
+        teacherName: s.in.teacherName,
+        teacherEmail: s.in.teacherEmail,
+        subjectName: s.in.subjectName,
+        prevDate: ps ? dateOf(pair!.weekId, ps.day) : "",
+        prevDay: ps ? ps.day : s.day,
+        prevPeriod: ps ? ps.period : s.period,
+        note: `교차 주 맞교환 (${s.otherWeekId} 주와 교환)`,
+      });
     } else if (ch.type === "substitute" && ch.substitute && filter.type !== "swap") {
       const s = ch.substitute;
       const date = dateOf(ch.weekId, s.day);

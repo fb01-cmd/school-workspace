@@ -227,6 +227,7 @@ export interface ManageTimetableRequest {
   // ── Phase 9b ──
   week?: WeekRegisterInput;
   weekId?: string;
+  targetWeekId?: string; // 교차 주 맞교환 (§4-3b) — direct_candidates / direct_commit
   requestId?: string;
   changeId?: string;
   decisionNote?: string;
@@ -284,7 +285,7 @@ export interface WeekRegisterInput {
 
 // ── 변경 오버레이 (timetable_changes — 불변 로그) ─────────────
 
-export type ChangeType = "swap" | "substitute" | "revert";
+export type ChangeType = "swap" | "substitute" | "cross_swap" | "revert";
 
 export interface SwapChangeSlot {
   day: number;
@@ -292,6 +293,33 @@ export interface SwapChangeSlot {
   subjectName: string;
   teacherEmail: string;
   teacherName: string;
+}
+
+// ── 교차 주(cross-week) 맞교환 (phase9b_spec §4-3b) ───────────
+
+/** 교차 주 치환에 들어가고 나가는 수업 — 상대 주에서 재구성해야 하므로 표기 정보 전부 보유 */
+export interface CrossSwapLessonRef {
+  subjectName: string;
+  subjectShort: string;
+  teacherEmail: string;
+  teacherName: string;
+  room?: string;
+}
+
+/**
+ * 교차 주 교환 1건 = change 문서 2개(각 주에 1개), 공통 exchangeId로 연결.
+ * 각 문서는 자기 주(weekId)의 셀 1개 치환만 기술 — 주간 합성 로더의 weekId 등호 조회 유지 목적.
+ * 적용 시 셀 현재 수업이 out과 일치할 때만 in으로 치환, 불일치는 integrityWarning.
+ */
+export interface CrossSwapChange {
+  exchangeId: string;
+  otherWeekId: string;
+  grade: number;
+  classNum: number;
+  day: number; // 이 문서 주(weekId)의 슬롯
+  period: number;
+  out: CrossSwapLessonRef; // 이 슬롯에서 빠지는 수업
+  in: CrossSwapLessonRef; // 상대 주에서 넘어와 대신 들어오는 수업
 }
 
 export interface TimetableChange {
@@ -318,6 +346,7 @@ export interface TimetableChange {
     subTeacherName: string;
     subSubjectName?: string;
   };
+  crossSwap?: CrossSwapChange; // 교차 주 맞교환 (phase9b_spec §4-3b) — revert는 exchangeId 단위로만
   revertOf?: string; // 취소 대상 changeId (역방향 기록)
   appliedBy: string;
   appliedAt: number;
@@ -347,6 +376,7 @@ export interface SwapSourceSlot {
 export interface SwapCandidateSnapshot {
   targetDay?: number; // swap: 옮겨갈 슬롯
   targetPeriod?: number;
+  targetWeekId?: string; // 교차 주 맞교환: 상대 슬롯이 속한 주 (§4-3b). 없으면 같은 주
   counterpartEmail: string; // swap 상대 / substitute 보강 교사
   counterpartName: string;
   counterpartSubjectName?: string;
@@ -359,6 +389,7 @@ export interface SwapRequest {
   termId: string;
   weekId: string;
   type: SwapRequestType;
+  targetWeekId?: string; // 교차 주 맞교환 (§4-3b) — 없으면 기존 같은-주 교환
   requesterEmail: string;
   requesterName: string;
   source: SwapSourceSlot;
@@ -377,8 +408,9 @@ export interface SwapRequest {
 
 export interface WeeklyLessonChange {
   changeId: string;
-  type: "swap" | "substitute";
+  type: "swap" | "substitute" | "cross_swap";
   origin?: { day: number; period: number }; // "화3 ← 월2에서 이동" 출처
+  otherWeekId?: string; // cross_swap: 이 수업이 넘어온 상대 주 (§4-3b)
 }
 
 export interface WeeklyLesson extends TimetableLesson {
@@ -412,7 +444,7 @@ export interface WeeklySynthesisResult {
 export interface NeisRow {
   changeId: string;
   weekId: string;
-  type: "swap" | "substitute";
+  type: "swap" | "substitute" | "cross_swap";
   grade: number;
   classNum: number;
   date: string; // 변경 있는 교시의 일자 (YYYY-MM-DD)
@@ -469,6 +501,7 @@ export type SwapRequestAction = "candidates" | "create" | "my_list" | "cancel";
 export interface SwapRequestApiRequest {
   action: SwapRequestAction;
   weekId?: string;
+  targetWeekId?: string; // 교차 주 맞교환 (§4-3b) — candidates·create에서 사용, 없거나 weekId와 같으면 같은-주
   source?: Omit<SwapSourceSlot, "subjectName"> & { subjectName?: string };
   type?: SwapRequestType;
   candidate?: SwapCandidateSnapshot;

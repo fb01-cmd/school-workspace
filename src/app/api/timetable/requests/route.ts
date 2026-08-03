@@ -38,9 +38,11 @@ export async function POST(req: NextRequest) {
         if (![grade, classNum, day, period].every((n) => Number.isInteger(n) && n > 0)) {
           return NextResponse.json({ error: "source 슬롯 값이 유효하지 않습니다." }, { status: 400 });
         }
-        const result = await computeCandidates(domain, auth.email, body.weekId, {
-          grade, classNum, day, period, subjectName: "",
-        });
+        const result = await computeCandidates(
+          domain, auth.email, body.weekId,
+          { grade, classNum, day, period, subjectName: "" },
+          body.targetWeekId // 교차 주 맞교환 (§4-3b) — 없거나 weekId와 같으면 같은-주
+        );
         if (result.error) {
           return NextResponse.json({ error: result.error }, { status: 400 });
         }
@@ -72,12 +74,13 @@ export async function POST(req: NextRequest) {
           source: { grade, classNum, day, period, subjectName: body.source.subjectName || "" },
           candidate: body.candidate,
           reason: body.reason,
+          targetWeekId: body.targetWeekId,
         });
         await writeAuditLog({
           operatorEmail: auth.email,
           targetEmail: request.candidate.counterpartEmail,
           action: "create_swap_request",
-          details: `수업교환 신청: ${request.source.grade}-${request.source.classNum} ${request.source.day}요일 ${request.source.period}교시 (${request.type}) 사유 ${request.reason.type}`,
+          details: `수업교환 신청: ${request.source.grade}-${request.source.classNum} ${request.source.day}요일 ${request.source.period}교시 (${request.type}${request.targetWeekId ? `, 교차 주 → ${request.targetWeekId}` : ""}) 사유 ${request.reason.type}`,
           status: "success",
         });
         return NextResponse.json({ success: true, action, request });

@@ -2752,3 +2752,19 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 ### 재개 문구
 - Antigravity에게: *"project_notes.md의 2026-08-04 마지막 체크포인트를 읽고, 미리보기 표기 버그(내 그리드 ➕ 배지는 내 과목 이동으로)를 수정해줘. tsc·build 후 핸드오버 포함 커밋·푸시."*
 - Claude에게(새 대화): *"project_notes.md의 2026-08-04 마지막 체크포인트를 읽고, phase9b_spec §4-3b 교차 주 맞교환 서버부를 구현해줘. 실측 후 커밋·푸시하고 Antigravity UI 지시까지 준비해줘."*
+
+## [2026-08-04] Claude → Antigravity/사용자 (§4-3b 교차 주 맞교환 서버부 구현·실측 완료)
+
+- **변경 파일**: `src/lib/timetable/types.ts`, `weekly.ts`, `swap.ts`, `server.ts`, `src/app/api/timetable/requests/route.ts`, `manage/route.ts`, `scripts/rehearse_cross_week_swap.ts`(신규)
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅ / **실서버 리허설 ✅** (`rehearse_cross_week_swap.ts` 전 항목 통과 + 기존 `rehearse_timetable_direct.ts` 같은-주 회귀 통과, 알림 전부 MOCK, 테스트 주 2026-12-21·12-28은 청소 완료)
+- **구현 요약 (스펙 §4-3b 그대로)**:
+  - **모델**: `ChangeType`에 `cross_swap` 추가. 문서쌍 2개(각 주 1개) + `crossSwap: { exchangeId, otherWeekId, grade, classNum, day, period, out, in }`. `out`/`in`은 `CrossSwapLessonRef`(과목·약칭·교사·특별실) — 상대 주에서 수업을 재구성해야 하므로 표기 정보 전부 보유. 합성 적용은 셀 현재 수업이 `out`과 일치할 때만 치환, 불일치는 integrityWarning(`applyCrossSwap`).
+  - **엔진**: `findCrossSwapCandidates(sourceGrids, sourceWeek, targetGrids, targetWeek, …)` — 조건 ① 상대가 소스 주 내 슬롯 시간에 공강 ② 내가 대상 주 상대 슬롯 시간에 공강. 하드 제외(동시·복수·가상·블록·특별실)는 각 주 기준, 감점은 두 주 각각 계산·합산(사유에 "12/21 주:" 접두).
+  - **API**: `requests`(candidates·create)·`manage`(direct_candidates·direct_commit)에 `targetWeekId?` 추가 — 없거나 weekId와 같으면 기존 같은-주 경로 그대로. 교차 주 + substitute 조합은 서버 거부("교차 주 교환은 맞교환만"). 미등록 대상 주·타 학기 주 거부. 신청 문서·후보 스냅샷에 `targetWeekId` 저장.
+  - **승인**: 트랜잭션 안에서 **두 주 changes 모두 재읽기 → 양방향 재검증 → 문서쌍 원자 커밋**. `appliedChangeIds`에 두 문서 id. 알림 문구에 날짜 병기("12/21(월 1교시) ↔ 12/30(수 2교시)").
+  - **revert**: 어느 쪽 changeId로 취소해도 **exchangeId로 짝 문서를 찾아 두 주에 동시 역기록**(단일 트랜잭션, 한쪽만 취소 불가). 이중 revert 차단 확인.
+  - **NEIS**: `cross_swap` 문서 1개 = 1행(그 주 슬롯에서 진행되는 in 수업 기준), **변경전 교시는 exchangeId 짝 문서의 슬롯 날짜**(`prevDate`가 상대 주 날짜) — 실측으로 확인. `NeisRow.type`에 `cross_swap` 추가됨. 시수 집계는 주별 문서 분리 덕에 무수정 자동 정합(실측 확인).
+- ⚠️ **Antigravity 화면 작업 시 주의**:
+  - `NeisRow.type === "cross_swap"` 행이 요청대장·NEIS 표에 나타난다 — 기존 화면이 type을 스위치하면 표기 추가 필요(비고에 "교차 주 맞교환 (YYYY-MM-DD 주와 교환)" 이미 서버가 채움).
+  - 합성 셀 `changed` 마킹에 `type: "cross_swap"` + `otherWeekId` 신설 — 변경 셀 출처 툴팁에서 "MM/DD 주에서 이동"으로 표기 가능.
+  - `SwapRequest.targetWeekId`·`candidate.targetWeekId`가 있으면 교차 주 신청 — 내 신청 내역·요청대장 카드에 주 병기 필요.
