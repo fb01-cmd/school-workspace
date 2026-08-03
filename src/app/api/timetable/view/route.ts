@@ -247,6 +247,40 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(withWeek(res, warnings));
       }
 
+      case "teachers": {
+        // 전체 교사 목록 (가나다순) — 교사 선택 드롭다운용 (2026-08-04, 검색 입력 대체)
+        // 기초 그리드만 필요하므로 주간 합성 생략 (이름·이메일만 수집)
+        const baseGrids = await loadAllClassGrids(domain, term.id);
+        const teacherMap = new Map<string, TimetableTeacher>();
+        for (const subj of term.subjects || []) {
+          for (const email of subj.teacherEmails || []) {
+            const normEmail = email.trim().toLowerCase();
+            if (normEmail && !teacherMap.has(normEmail)) {
+              teacherMap.set(normEmail, { email: normEmail, name: normEmail.split("@")[0] });
+            }
+          }
+        }
+        for (const grid of baseGrids) {
+          for (const cell of grid.cells || []) {
+            for (const lesson of cell.lessons || []) {
+              for (const teacher of lesson.teachers || []) {
+                const normEmail = (teacher.email || "").trim().toLowerCase();
+                if (normEmail) {
+                  teacherMap.set(normEmail, {
+                    email: normEmail,
+                    name: teacher.name || normEmail.split("@")[0],
+                  });
+                }
+              }
+            }
+          }
+        }
+        const sorted = Array.from(teacherMap.values()).sort((a, b) =>
+          a.name.localeCompare(b.name, "ko")
+        );
+        return NextResponse.json({ term: termMeta, action, data: sorted });
+      }
+
       default:
         return NextResponse.json({ error: "지원하지 않는 action입니다." }, { status: 400 });
     }

@@ -149,7 +149,7 @@ export interface TimetableValidationReport {
 
 // ── API DTO (View & Manage) ──────────────────────────────────
 
-export type ViewAction = "my" | "teacher" | "class" | "school" | "free";
+export type ViewAction = "my" | "teacher" | "class" | "school" | "free" | "teachers";
 
 export interface TeacherTimetableCell {
   day: number;
