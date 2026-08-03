@@ -170,20 +170,27 @@ function teacherDayPenalties(
   return penalties;
 }
 
-/** 학급이 같은 요일에 같은 과목을 2회 갖게 되는가 ('중복' — 최대 감점) */
+/**
+ * 학급이 같은 요일에 같은 과목을 여러 번 갖게 되는가 ('중복' — 최대 감점).
+ * [2026-08-04] 횟수 비례 가중: 이동 결과 그 요일 총 n회면 (n−1)점 — 2회=1점, 3회=2점.
+ */
 function classDuplicatePenalty(
   grid: WeeklyClassGrid,
   day: number,
   subjectName: string,
   excludePeriods: number[]
-): string | null {
+): { message: string; points: number } | null {
+  let existing = 0;
   for (const cell of grid.cells) {
     if (cell.day !== day || excludePeriods.includes(cell.period)) continue;
-    if (cell.lessons.some((l) => l.subjectName === subjectName)) {
-      return `${grid.grade}-${grid.classNum}반 ${["", "월", "화", "수", "목", "금"][day]}요일 ${subjectName} 2회`;
-    }
+    existing += cell.lessons.filter((l) => l.subjectName === subjectName).length;
   }
-  return null;
+  if (existing === 0) return null;
+  const total = existing + 1; // 이동해 들어오는 1회 포함
+  return {
+    message: `${grid.grade}-${grid.classNum}반 ${["", "월", "화", "수", "목", "금"][day]}요일 ${subjectName} ${total}회`,
+    points: existing,
+  };
 }
 
 // ── 소스 슬롯 검증 (하드 규칙 공통) ───────────────────────────
@@ -266,17 +273,20 @@ export function findSwapCandidates(
       if (myLesson.room && !isRoomFree(idx, myLesson.room, d2, p2, classKey)) continue;
       if (l2.room && !isRoomFree(idx, l2.room, source.day, source.period, classKey)) continue;
 
-      // 감점 계산
+      // 감점 계산 — 중복은 횟수 비례 가중, 나머지는 사유 1건당 1점
       const penalties: string[] = [];
+      let score = 0;
       const dup1 = classDuplicatePenalty(grid, d2, myLesson.subjectName, [p2, ...(d2 === source.day ? [source.period] : [])]);
-      if (dup1) penalties.push(dup1);
+      if (dup1) { penalties.push(dup1.message); score += dup1.points; }
       const dup2 = classDuplicatePenalty(grid, source.day, l2.subjectName, [source.period, ...(source.day === d2 ? [p2] : [])]);
-      if (dup2) penalties.push(dup2);
-      penalties.push(
+      if (dup2) { penalties.push(dup2.message); score += dup2.points; }
+      const teacherPenalties = [
         ...teacherDayPenalties(ctx, me, "내", d2, p2, source.day === d2 ? source.period : null),
         ...teacherDayPenalties(ctx, b.email, `${b.name} 선생님`, source.day, source.period,
-          d2 === source.day ? p2 : null)
-      );
+          d2 === source.day ? p2 : null),
+      ];
+      penalties.push(...teacherPenalties);
+      score += teacherPenalties.length;
 
       candidates.push({
         targetDay: d2,
@@ -284,7 +294,7 @@ export function findSwapCandidates(
         counterpartEmail: norm(b.email),
         counterpartName: b.name,
         counterpartSubjectName: l2.subjectName,
-        score: penalties.length,
+        score,
         penalties,
       });
     }
@@ -368,17 +378,21 @@ export function findCrossSwapCandidates(
       if (myLesson.room && !isRoomFree(idxTgt, myLesson.room, d2, p2, classKey)) continue;
       if (l2.room && !isRoomFree(idxSrc, l2.room, source.day, source.period, classKey)) continue;
 
-      // 감점 — 두 주 각각 계산해 합산. 교차 주라 같은 주 내 제거 상쇄는 없음(removePeriod=null)
+      // 감점 — 두 주 각각 계산해 합산. 교차 주라 같은 주 내 제거 상쇄는 없음(removePeriod=null).
+      // 중복은 횟수 비례 가중, 나머지는 사유 1건당 1점
       const penalties: string[] = [];
+      let score = 0;
       const dupTgt = classDuplicatePenalty(targetGrid, d2, myLesson.subjectName, [p2]);
-      if (dupTgt) penalties.push(`${tgtLabel}: ${dupTgt}`);
+      if (dupTgt) { penalties.push(`${tgtLabel}: ${dupTgt.message}`); score += dupTgt.points; }
       const dupSrc = classDuplicatePenalty(src.grid!, source.day, l2.subjectName, [source.period]);
-      if (dupSrc) penalties.push(`${srcLabel}: ${dupSrc}`);
-      penalties.push(
+      if (dupSrc) { penalties.push(`${srcLabel}: ${dupSrc.message}`); score += dupSrc.points; }
+      const teacherPenalties = [
         ...teacherDayPenalties(ctxTgt, me, "내", d2, p2, null).map((p) => `${tgtLabel}: ${p}`),
         ...teacherDayPenalties(ctxSrc, b.email, `${b.name} 선생님`, source.day, source.period, null)
-          .map((p) => `${srcLabel}: ${p}`)
-      );
+          .map((p) => `${srcLabel}: ${p}`),
+      ];
+      penalties.push(...teacherPenalties);
+      score += teacherPenalties.length;
 
       candidates.push({
         targetDay: d2,
@@ -386,7 +400,7 @@ export function findCrossSwapCandidates(
         counterpartEmail: norm(b.email),
         counterpartName: b.name,
         counterpartSubjectName: l2.subjectName,
-        score: penalties.length,
+        score,
         penalties,
       });
     }

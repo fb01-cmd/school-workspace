@@ -2811,3 +2811,10 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **변경 파일**: `src/lib/timetable/swap.ts`(teacherDayPenalties에서 두 블록 제거, addSubject 파라미터 제거), `phase9b_spec.md` §4-3 취소선+사유.
 - **검증**: tsc ✅ / build ✅ / `rehearse_cross_week_swap.ts` 재실측 전 항목 통과(감점 사유가 잔여 4종만 출력되는 것 확인).
 - 백로그의 "감점 임계값 실사용 조정"은 유지 — 잔여 4종의 문턱값(5시간 등) 조정용.
+
+## [2026-08-04] Claude → 사용자/Antigravity ('중복' 감점 횟수 비례 가중 — 파일럿 질문 후속)
+
+- **발견**: '중복' 감점이 유무만 보고 1점 고정이었음 — 이동 결과 같은 과목이 하루 3회가 돼도 2회와 동점이고, 문구도 무조건 "2회"로 표기되는 결함.
+- **수정 (사용자 질문으로 확정)**: `classDuplicatePenalty`를 횟수 집계로 변경 — **결과 n회면 (n−1)점**(2회=1점, 3회=2점), 문구도 실제 횟수 표기("1-4반 화요일 음악 3회"). 다른 감점(최적·연속3·점심)은 종전대로 1건 1점. 같은-주·교차 주 엔진 모두 적용, `score`가 `penalties.length`보다 클 수 있음(UI는 score 필드를 그대로 쓰므로 영향 없음).
+- **변경 파일**: `src/lib/timetable/swap.ts`, `phase9b_spec.md` §4-3.
+- **검증**: tsc ✅ / build ✅ / `rehearse_cross_week_swap.ts` 재실측 전 항목 통과.
