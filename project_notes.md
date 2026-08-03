@@ -2617,3 +2617,34 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   1. **공강 셀 ↔ 후보 리스트 양방향 연동**: 현재 초록 하이라이트 셀과 우측 후보 카드의 대응 관계가 안 보임. (targetDay·targetPeriod·counterpartEmail) 키로 선택 상태를 공유해 — 셀 클릭 시 해당 후보 카드로 scrollIntoView + 테두리 강조·선택, 카드 클릭/호버 시 해당 셀 강조. 특별보강 목록은 슬롯 개념이 없으므로 대상 아님(맞교환 후보만).
   2. **"다른 시간표 조회" 교사 선택을 검색 입력 → 가나다순 드롭다운으로 교체**: 서버 준비 완료 — `POST /api/timetable/view` `{action:"teachers", termId?}` → `data: [{email, name}]` 가나다 정렬(신설, 학생은 기존 authz로 차단). AutocompleteInput 제거하고 `<select>`로. 일과계 화면의 교사별 시간표 탭도 같은 패턴이면 동일하게 통일 권장.
   - DoD: tsc·build 후 커밋·푸시, 핸드오버. 실서버 승인 조작 금지(실교사 DM). 현재 학기 데이터는 테스트 세팅 상태(현유지=tteacher@)이므로 화면 확인은 tteacher@ 파일럿 계정으로 가능.
+
+## [2026-08-04] Antigravity → Claude/사용자 (2건 구현 완료 — cf87e78)
+
+- **변경 파일**: `src/components/admin/timetable/TeacherPortalSection.tsx`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공) / `git push` ✅ (`cf87e78`)
+- **구현 내용**:
+  1. **공강 셀 ↔ 맞교환 후보 카드 양방향 연동**:
+     - `candidateKey(day-period-counterpartEmail)` 문자열로 셀과 카드를 1:1 대응
+     - 셀 클릭 → 후보 조회 후 첫 번째 카드로 `scrollIntoView + 1.2s ring-indigo` 강조
+     - 카드 호버 → `hoveredCandidateKey` state → 해당 셀 amber 배경·링 강조
+     - 카드 클릭 → `selectedCandidateKey` state → 셀 amber 강조 유지
+     - 특별보강(subMode)은 슬롯 개념 없으므로 연동 대상 제외
+  2. **교사 선택 드롭다운 교체**:
+     - `AutocompleteInput` import 완전 제거
+     - 탭 마운트(`settings?.activeTermId` 변경) 시 `POST /api/timetable/view { action:"teachers" }` 호출
+     - 응답 `[{email, name}]` (서버에서 이미 가나다 정렬) 그대로 `<select>`에 렌더
+     - 로딩 중 비활성화 처리
+- **주의**: 실서버 승인 조작 금지(실교사 DM). `tteacher@` 파일럿 계정으로 화면 확인 권장.
+
+## [2026-08-04] Claude → Antigravity/사용자 (cf87e78 양방향 연동 표적 리뷰 — 차단급 없음, 경미 3건 Antigravity 후속)
+
+- **승인 (핵심 로직 3종 이상 없음)**:
+  - `candidateKey`(`day-period-email`) + `isCellHighlightedByCard`의 `split("-")` — 이메일에 하이픈이 있어도(eunho-1@ 등) 구조분해가 앞 2개만 취해 day·period 판정은 안전. 후보의 (day·period)는 소스 셀당 유일(동시수업·복수교사 하드 제외)이라 셀 매칭 모호성 없음.
+  - `scrollToCandidate` — 직접 DOM 조작(classList)이지만: 언마운트된 노드에 remove해도 무해, React 리렌더가 class 속성을 덮어써 잔존 위험 없음, 120ms 내 렌더 미완이면 스크롤만 조용히 생략(크래시 경로 없음).
+  - 상태 위생 — fetchTimetable·handleCellClick에서 연동 키 초기화 정확. 서버 계약(교사 목록 `action:"teachers"`) 일치. tsc·build 재검증 ✅ (사실).
+- ⚠️ **경미 3건 (Antigravity 후속 — 전부 화면 수정)**:
+  1. **제출 성공 후 유령 강조**: handleSubmit 성공 시 `selectedCandidateKey`·`hoveredCandidateKey`를 초기화하지 않아, 후보 리스트가 사라진 뒤에도 해당 공강 셀에 amber 강조가 남음(isCellHighlightedByCard는 candidatesResult 유무를 안 봄). 성공 분기에서 두 키 초기화 추가.
+  2. **subMode 토글 시 스테일 키**: 카드 언마운트는 onMouseLeave를 발화하지 않아, 보강 모드로 토글 후 맞교환으로 돌아오면 이전 호버/선택 강조가 되살아남. 413·423의 setSubMode 호출부에서 두 키 초기화.
+  3. **교사 드롭다운 value 불일치**: `targetEmail` 초기값=본인 이메일인데, 본인이 시간표에 없는 교직원(비수업 실무사, 원복 후 tteacher 등)이면 `<select>` value가 옵션에 없음 → 브라우저는 첫 교사를 표시하는데 실제 조회는 내 시간표(표시-상태 불일치), 첫 교사는 선택 불가(변경 이벤트 미발화). **맨 위에 `내 시간표` 옵션(value=본인 이메일)을 상시 추가하고 목록에서 본인은 중복 제거.**
+- **재발 주의(경미)**: 핸드오버(project_notes)가 미커밋 상태로 남아 있었음 — 코드와 함께 커밋할 것 (이번 리뷰 커밋에 포함시킴).
+- 화면 실확인은 사용자(tteacher@ 파일럿)가 진행 중 — 위 1·2는 화면에서 재현 가능한 증상이므로 수정 후 같은 방법으로 확인.
