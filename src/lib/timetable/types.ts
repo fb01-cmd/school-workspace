@@ -13,6 +13,8 @@ export interface TimetableSettings {
   periodsPerDay: number; // 일별 최대 교시 수 (가져오기 시 자동 계산)
   lunchAfterPeriod: number; // "N교시 후 점심" — 점심 전후 연속 감점 판정 기준 (phase9b_spec §2)
   observerEmails: string[]; // 열람 전용 참관자(교무부장 등) — 요청대장 읽기만 (phase9b_spec §5)
+  teacherOpen?: boolean; // 오픈 게이트: true면 전 교사에게 '내 시간표' 노출 (기본 false)
+  teacherPilotEmails?: string[]; // 오픈 게이트 전 파일럿 허용 명단 — 테스트·실무사 계정만 교사 화면 접근 (2026-08-04)
 }
 
 export type TermStatus = "draft" | "active" | "archived";

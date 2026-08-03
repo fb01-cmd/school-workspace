@@ -65,6 +65,8 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
       periodsPerDay: 7,
       lunchAfterPeriod: 4,
       observerEmails: [],
+      teacherOpen: false,
+      teacherPilotEmails: [],
     };
   }
   const data = snap.data() || {};
@@ -78,6 +80,10 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
     lunchAfterPeriod: Number(data.lunchAfterPeriod) || 4,
     observerEmails: Array.isArray(data.observerEmails)
       ? data.observerEmails.map((e) => String(e).trim().toLowerCase())
+      : [],
+    teacherOpen: !!data.teacherOpen,
+    teacherPilotEmails: Array.isArray(data.teacherPilotEmails)
+      ? data.teacherPilotEmails.map((e) => String(e).trim().toLowerCase())
       : [],
   };
 }

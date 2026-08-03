@@ -931,9 +931,12 @@ export default function TeacherPortalSection() {
   const isManager =
     isSuperAdmin ||
     (settings?.managerEmails || []).some((m) => m.toLowerCase() === userEmail);
-  // teacherOpen 플래그: TimetableSettings 확장 전 optional 처리
-  const teacherOpen = !!(settings as any)?.teacherOpen;
-  const canView = isManager || teacherOpen;
+  // teacherOpen(전 교사 오픈) 또는 파일럿 명단(오픈 게이트 전 테스트·실무사) — 2026-08-04 정식화
+  const teacherOpen = !!settings?.teacherOpen;
+  const isPilot = (settings?.teacherPilotEmails || []).some(
+    (e) => e.toLowerCase() === userEmail
+  );
+  const canView = isManager || teacherOpen || isPilot;
 
   if (!canView) {
     return (
