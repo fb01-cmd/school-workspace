@@ -382,6 +382,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       const isSelected = selectedCell?.day === d.num && selectedCell?.period === period;
 
                       const isCardHighlighted = isCellHighlightedByCard(d.num, period);
+                      const sc = applyingCandidate;
+                      const isSelectedSource = selectedCell?.day === d.num && selectedCell?.period === period;
+                      const isSelectedTarget = sc && sc.targetDay === d.num && sc.targetPeriod === period;
+
                       return (
                         <td
                           key={d.num}
@@ -415,10 +419,20 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                     {isChanged && <span className="ml-0.5 text-red-600 font-bold text-[9px]">▲</span>}
                                   </div>
                                   <div className="text-[9px] text-gray-500">{cell.grade}-{cell.classNum}반</div>
-                                  {isTarget && <div className="text-[9px] font-bold text-green-700">교환 가능 ✓</div>}
+                                  {isSelectedSource && sc && (
+                                    <div className="text-[9px] font-bold text-red-700 bg-red-100 px-1 py-0.5 rounded border border-red-200 mt-0.5">
+                                      ➖ 삭제
+                                    </div>
+                                  )}
+                                  {isTarget && !isSelectedSource && <div className="text-[9px] font-bold text-green-700">교환 가능 ✓</div>}
                                 </div>
                               );
                             })
+                          ) : isSelectedTarget ? (
+                            <div className="py-1 px-1 space-y-0.5 text-[10px] font-bold bg-amber-100 border border-amber-300 rounded text-amber-950">
+                              <div>➕ 추가</div>
+                              <div className="text-[9px] text-amber-800 font-medium">{sc.counterpartSubjectName}</div>
+                            </div>
                           ) : isTarget ? (
                             <div className="py-2 text-[10px] font-bold text-green-700">🟢 공강</div>
                           ) : (
@@ -539,11 +553,11 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   <div className="text-[10px] text-gray-500 flex flex-wrap gap-2">
                     <span className="inline-flex items-center gap-1">
                       <span className="w-2.5 h-2.5 rounded bg-amber-200 border border-amber-400 inline-block" />
-                      상대 수업 (내게 넘어옴)
+                      ➖ 삭제 (상대 수업 이동)
                     </span>
                     <span className="inline-flex items-center gap-1">
                       <span className="w-2.5 h-2.5 rounded bg-green-200 border border-green-400 inline-block" />
-                      내 수업 시간 (상대 공강)
+                      ➕ 추가 (내 수업 들어옴)
                     </span>
                   </div>
                   {previewError && <div className="text-[11px] text-red-600 bg-red-50 p-2 rounded">{previewError}</div>}
@@ -577,19 +591,33 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                   } else if (isSourceSlot) {
                                     cellStyle = "bg-green-100 border border-green-400 font-bold text-green-900";
                                   } else if (hasLesson) {
-                                    cellStyle = "bg-gray-100 text-gray-700";
+                                    cellStyle = "bg-gray-100 text-gray-700 font-medium";
                                   }
 
+                                  const cellTitle = hasLesson
+                                    ? `${matched[0].subjectName} (${matched[0].grade}-${matched[0].classNum}반)`
+                                    : undefined;
+
                                   return (
-                                    <td key={d.num} className={`p-0.5 text-[9px] ${cellStyle}`}>
-                                      {hasLesson ? (
-                                        <div className="truncate max-w-[42px] mx-auto" title={`${matched[0].subjectName} (${matched[0].grade}-${matched[0].classNum}반)`}>
-                                          {matched[0].subjectShort || matched[0].subjectName}
+                                    <td key={d.num} className={`p-0.5 text-[9.5px] ${cellStyle}`} title={cellTitle}>
+                                      {isTargetSlot ? (
+                                        <div className="space-y-0.5">
+                                          <div className="text-[8px] font-extrabold text-amber-900">➖ 삭제</div>
+                                          <div className="font-bold text-[9px] truncate max-w-[40px] mx-auto">
+                                            {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
+                                          </div>
                                         </div>
-                                      ) : isTargetSlot ? (
-                                        <div className="text-[8px]">상대수업</div>
                                       ) : isSourceSlot ? (
-                                        <div className="text-[8px]">상대공강</div>
+                                        <div className="space-y-0.5">
+                                          <div className="text-[8px] font-extrabold text-green-900">➕ 추가</div>
+                                          <div className="font-bold text-[9px] truncate max-w-[40px] mx-auto">
+                                            {selectedCell.grade}-{selectedCell.classNum}
+                                          </div>
+                                        </div>
+                                      ) : hasLesson ? (
+                                        <div className="truncate max-w-[42px] mx-auto font-medium">
+                                          {matched[0].grade}-{matched[0].classNum}
+                                        </div>
                                       ) : (
                                         "-"
                                       )}
@@ -606,9 +634,28 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                 </div>
               )}
 
-              {/* 신청 폼 */}
+              {/* 변화 요약 한 줄 & 신청 폼 */}
               {applyingCandidate && (
-                <div className="border-t border-gray-100 pt-4 space-y-3">
+                <div className="border-t border-gray-100 pt-3 space-y-3">
+                  {/* ③ 변화 요약 한 줄 */}
+                  <div className="bg-indigo-50/80 border border-indigo-200 rounded-lg p-2.5 text-xs space-y-1.5">
+                    <div className="font-bold text-indigo-950 flex items-center gap-1.5">
+                      <span>💡 교환 시 시간표 변화 요약</span>
+                    </div>
+                    <div className="space-y-1 text-[11px] leading-tight">
+                      <div className="text-gray-800">
+                        <span className="font-bold text-indigo-900">내 {selectedCell.subjectName}({selectedCell.grade}-{selectedCell.classNum}반):</span>{" "}
+                        <span className="font-bold text-red-600">{DAY_LABEL[selectedCell.day]}{selectedCell.period} ➖</span> →{" "}
+                        <span className="font-bold text-green-700">{DAY_LABEL[applyingCandidate.targetDay]}{applyingCandidate.targetPeriod} ➕</span>
+                      </div>
+                      <div className="text-gray-800">
+                        <span className="font-bold text-indigo-900">상대 {applyingCandidate.counterpartName} {applyingCandidate.counterpartSubjectName}:</span>{" "}
+                        <span className="font-bold text-red-600">{DAY_LABEL[applyingCandidate.targetDay]}{applyingCandidate.targetPeriod} ➖</span> →{" "}
+                        <span className="font-bold text-green-700">{DAY_LABEL[selectedCell.day]}{selectedCell.period} ➕</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="text-xs font-bold text-gray-800">신청 사유 (필수)</div>
                   <select
                     value={reason.type}
