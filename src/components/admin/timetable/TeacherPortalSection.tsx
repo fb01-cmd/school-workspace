@@ -237,6 +237,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         setApplyingCandidate(null);
         setCandidatesResult(null);
         setSelectedCell(null);
+        // ① 제출 성공 시 유령 강조 방지 — 두 키 초기화
+        setSelectedCandidateKey(null);
+        setHoveredCandidateKey(null);
       } else {
         const err = await res.json().catch(() => ({}));
         setSubmitResult(`❌ 신청 실패: ${err.error || "알 수 없는 오류"}`);
@@ -410,7 +413,12 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               {/* 모드 토글 */}
               <div className="flex gap-2">
                 <button
-                  onClick={() => setSubMode(false)}
+                  onClick={() => {
+                    setSubMode(false);
+                    // ② subMode 토글 시 스테일 키 초기화
+                    setSelectedCandidateKey(null);
+                    setHoveredCandidateKey(null);
+                  }}
                   className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors border ${
                     !subMode
                       ? "bg-indigo-600 text-white border-indigo-600"
@@ -420,7 +428,12 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   맞교환
                 </button>
                 <button
-                  onClick={() => setSubMode(true)}
+                  onClick={() => {
+                    setSubMode(true);
+                    // ② subMode 토글 시 스테일 키 초기화
+                    setSelectedCandidateKey(null);
+                    setHoveredCandidateKey(null);
+                  }}
                   className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors border ${
                     subMode
                       ? "bg-orange-500 text-white border-orange-500"
@@ -879,14 +892,19 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
             className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs min-w-[10rem] max-w-xs disabled:opacity-60"
           >
             {teacherListLoading && <option value="">불러오는 중...</option>}
-            {!teacherListLoading && teacherList.length === 0 && (
+            {/* ③ '내 시간표' 옵션 상시 고정 (본인이 시간표에 없어도 value 불일치 방지) */}
+            {!teacherListLoading && (
               <option value={myEmail}>내 시간표</option>
             )}
-            {!teacherListLoading && teacherList.map((t) => (
-              <option key={t.email} value={t.email}>
-                {t.name}
-              </option>
-            ))}
+            {/* 본인 중복 제거 후 가나다순 렌더 */}
+            {!teacherListLoading && teacherList
+              .filter((t) => t.email !== myEmail)
+              .map((t) => (
+                <option key={t.email} value={t.email}>
+                  {t.name}
+                </option>
+              ))
+            }
           </select>
         </div>
       </div>

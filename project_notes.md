@@ -2648,3 +2648,13 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. **교사 드롭다운 value 불일치**: `targetEmail` 초기값=본인 이메일인데, 본인이 시간표에 없는 교직원(비수업 실무사, 원복 후 tteacher 등)이면 `<select>` value가 옵션에 없음 → 브라우저는 첫 교사를 표시하는데 실제 조회는 내 시간표(표시-상태 불일치), 첫 교사는 선택 불가(변경 이벤트 미발화). **맨 위에 `내 시간표` 옵션(value=본인 이메일)을 상시 추가하고 목록에서 본인은 중복 제거.**
 - **재발 주의(경미)**: 핸드오버(project_notes)가 미커밋 상태로 남아 있었음 — 코드와 함께 커밋할 것 (이번 리뷰 커밋에 포함시킴).
 - 화면 실확인은 사용자(tteacher@ 파일럿)가 진행 중 — 위 1·2는 화면에서 재현 가능한 증상이므로 수정 후 같은 방법으로 확인.
+
+## [2026-08-04] Antigravity → Claude/사용자 (cf87e78 경미 3건 수정 완료)
+
+- **변경 파일**: `src/components/admin/timetable/TeacherPortalSection.tsx`, `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **수정 내용**:
+  1. **① 제출 성공 시 유령 강조 방지**: `handleSubmit` 성공 분기에 `setSelectedCandidateKey(null)` + `setHoveredCandidateKey(null)` 추가 — `candidatesResult`가 지워진 뒤에도 amber 강조가 셀에 남는 현상 해소
+  2. **② subMode 토글 시 스테일 키 초기화**: 맞교환↔보강 모드 전환 시(onClick 두 곳) 두 키 초기화 추가 — 카드 언마운트는 onMouseLeave를 발화하지 않아 이전 강조가 되살아나는 현상 해소
+  3. **③ 교사 드롭다운 상시 '내 시간표' 옵션**: `teacherList.length === 0` 조건 제거, `<option value={myEmail}>내 시간표</option>`를 항상 최상단에 렌더 + `teacherList.filter(t => t.email !== myEmail)`로 본인 중복 제거 — 비수업 교직원(실무사 등) 로그인 시 `<select>` value 불일치 해소
+- **주의**: 실서버 승인 조작 금지. `tteacher@` 파일럿 계정으로 화면 확인 권장.
