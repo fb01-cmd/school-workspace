@@ -2804,3 +2804,10 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   2. ➕/➖ 배지·변화 요약 문장은 현행 유지(과목·학급 병기가 맞음 — 문장은 정보 전달용).
   3. **학생 화면은 반대(과목 메인)** — 오픈 게이트 후 StudentTimetableCard 구현 시 적용. 지금 작업 아님, 스펙에만 기록됨.
 - 작업 파일: `TeacherPortalSection.tsx` (MyTimetableTab·OtherTimetableTab 셀 렌더). DoD: tsc·build, 핸드오버 포함 커밋·푸시. 화면 확인은 tteacher@ 파일럿.
+
+## [2026-08-04] Claude → 사용자/Antigravity (감점 항목 2건 삭제 — 파일럿 피드백 확정)
+
+- **결정 (사용자 확정)**: 교체 후보 감점에서 **'학년'(같은 요일 3과목 이상)·'오후'(오전·오후 균형) 삭제**. 근거: 둘 다 컴시간 원배정 품질 조건(주간시간표설명서 p.27 원문 확인) — '학년'은 복수 과목 교사 전용이라 사유 전달이 안 되고, '오후'는 일회성 교체에 과함. 잔여 감점 = **중복·최적(요일 5시간 쏠림)·연속3·점심** 4종.
+- **변경 파일**: `src/lib/timetable/swap.ts`(teacherDayPenalties에서 두 블록 제거, addSubject 파라미터 제거), `phase9b_spec.md` §4-3 취소선+사유.
+- **검증**: tsc ✅ / build ✅ / `rehearse_cross_week_swap.ts` 재실측 전 항목 통과(감점 사유가 잔여 4종만 출력되는 것 확인).
+- 백로그의 "감점 임계값 실사용 조정"은 유지 — 잔여 4종의 문턱값(5시간 등) 조정용.

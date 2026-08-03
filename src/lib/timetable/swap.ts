@@ -6,7 +6,8 @@
  *
  * 하드 제외 (§4-3 — 컴시간도 중대 속성 셀은 이동 자체를 차단):
  *   동시수업(한 셀 lessons 2+), 복수교사(teachers 2+), 가상 교사(이메일 없음), 특별실 충돌.
- * 감점 (소프트 — 주간시간표설명서 p.27 정의 계승): 중복·학년·최적·연속3·점심·오후.
+ * 감점 (소프트 — 주간시간표설명서 p.27 정의 계승): 중복·최적·연속3·점심.
+ *   '학년'·'오후'는 2026-08-04 파일럿 확정으로 삭제 (원배정 품질 조건 — 일회성 교체에 부적합).
  */
 
 import { isSlotWithinWeek, periodsForGradeDay } from "./weekly";
@@ -108,6 +109,9 @@ interface PenaltyCtx {
 /**
  * 교사의 하루 일정에 (day, addPeriod)가 추가되고 (day, removePeriod?)가 빠졌을 때의 감점.
  * 반환: 사람이 읽는 사유 목록.
+ *
+ * [2026-08-04 파일럿 확정] '학년'(같은 요일 3과목)·'오후'(오전·오후 균형) 감점은 삭제 —
+ * 원배정 품질 조건이라 일회성 교체 감점으로는 과하고, 교사에게 사유가 전달되지 않음.
  */
 function teacherDayPenalties(
   ctx: PenaltyCtx,
@@ -115,30 +119,20 @@ function teacherDayPenalties(
   teacherLabel: string,
   day: number,
   addPeriod: number,
-  addSubject: string,
   removePeriod: number | null
 ): string[] {
   const penalties: string[] = [];
   const tm = ctx.idx.teacherSlots.get(norm(teacherEmail)) || new Map<string, string[]>();
 
-  // 이동 후 그 요일의 교시 집합·과목 목록
+  // 이동 후 그 요일의 교시 집합
   const periods = new Set<number>();
-  const subjects: string[] = [];
-  for (const [slotKey, subjNames] of tm.entries()) {
+  for (const [slotKey] of tm.entries()) {
     const [d, p] = slotKey.split("-").map(Number);
     if (d !== day) continue;
     if (removePeriod !== null && p === removePeriod) continue;
     periods.add(p);
-    subjects.push(...subjNames);
   }
   periods.add(addPeriod);
-  subjects.push(addSubject);
-
-  // '학년': 같은 요일 3과목 이상
-  const distinctSubjects = new Set(subjects);
-  if (distinctSubjects.size >= 3) {
-    penalties.push(`${teacherLabel} 같은 요일 ${distinctSubjects.size}과목 수업`);
-  }
 
   // '최적': 요일 시수 쏠림 — 하루 5시간 이상
   if (periods.size >= 5) {
@@ -171,13 +165,6 @@ function teacherDayPenalties(
     (addPeriod === L + 1 && periods.has(L))
   ) {
     penalties.push(`${teacherLabel} 점심 전후 연속 수업 발생`);
-  }
-
-  // '오후': 오전·오후 균형 — 이동 후 오후 시수가 오전보다 3시간 이상 많아질 때
-  const am = [...periods].filter((p) => p <= L).length;
-  const pm = periods.size - am;
-  if (addPeriod > L && pm - am >= 3) {
-    penalties.push(`${teacherLabel} 오후 쏠림 (오전 ${am}·오후 ${pm})`);
   }
 
   return penalties;
@@ -286,9 +273,8 @@ export function findSwapCandidates(
       const dup2 = classDuplicatePenalty(grid, source.day, l2.subjectName, [source.period, ...(source.day === d2 ? [p2] : [])]);
       if (dup2) penalties.push(dup2);
       penalties.push(
-        ...teacherDayPenalties(ctx, me, "내", d2, p2, myLesson.subjectName,
-          source.day === d2 ? source.period : null),
-        ...teacherDayPenalties(ctx, b.email, `${b.name} 선생님`, source.day, source.period, l2.subjectName,
+        ...teacherDayPenalties(ctx, me, "내", d2, p2, source.day === d2 ? source.period : null),
+        ...teacherDayPenalties(ctx, b.email, `${b.name} 선생님`, source.day, source.period,
           d2 === source.day ? p2 : null)
       );
 
@@ -389,12 +375,9 @@ export function findCrossSwapCandidates(
       const dupSrc = classDuplicatePenalty(src.grid!, source.day, l2.subjectName, [source.period]);
       if (dupSrc) penalties.push(`${srcLabel}: ${dupSrc}`);
       penalties.push(
-        ...teacherDayPenalties(ctxTgt, me, "내", d2, p2, myLesson.subjectName, null).map(
-          (p) => `${tgtLabel}: ${p}`
-        ),
-        ...teacherDayPenalties(
-          ctxSrc, b.email, `${b.name} 선생님`, source.day, source.period, l2.subjectName, null
-        ).map((p) => `${srcLabel}: ${p}`)
+        ...teacherDayPenalties(ctxTgt, me, "내", d2, p2, null).map((p) => `${tgtLabel}: ${p}`),
+        ...teacherDayPenalties(ctxSrc, b.email, `${b.name} 선생님`, source.day, source.period, null)
+          .map((p) => `${srcLabel}: ${p}`)
       );
 
       candidates.push({
