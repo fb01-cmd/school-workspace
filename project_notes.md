@@ -2608,3 +2608,12 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 
 - tteacher@ 실화면에서 주 드롭다운이 "기초시간표"만 표시 — TeacherPortalSection이 `week_list`를 호출하나 authz가 일과계·참관자 전용이라 일반 교사 403 → 화면이 조용히 빈 목록 처리. **관리자 계정 테스트에서는 드러나지 않던 결함** (순서 6 실운영이었으면 전 교사가 신청 불가였음).
 - 수정: authz 규칙 6에 일반 교사 `week_list` 읽기 허용(basis "teacher_read_weeks"). 회귀 6/6(학생 차단·request_list/approve/neis 거부 유지) + tsc·build ✅, 배포.
+
+## [2026-08-04] Claude → Antigravity/사용자 (파일럿 UX 피드백 반영 스펙 — 연쇄 절충 확정·week_list 수정·teachers 액션 신설)
+
+- **파일럿 테스트(tteacher@) 성과 요약**: ① 🔴 일반 교사 week_list 403 결함 발견·수정(d2abf4a — 관리자 테스트에서는 안 드러나던 것) ② 징검다리 UX 결정 확정 ③ UI 개선 2건 도출(아래).
+- **징검다리 절충안 (사용자 승인, 018cdb3 반영)**: 교사 셀프 연쇄·자동 체인 탐색은 1차 계속 제외. 화면 문구를 "차단"이 아니라 **"경조사 등 꼭 필요하면 일과계 직권 배정 2회로 처리"** 경로 안내로 변경(이미 배포). **9c 백로그 격상**: 일과계 직권 화면 "연쇄 모드"(2단계 체인 자동 탐색 + 두 변경 원자 승인).
+- **Antigravity 작업 2건 (교사 화면 `TeacherPortalSection.tsx`)**:
+  1. **공강 셀 ↔ 후보 리스트 양방향 연동**: 현재 초록 하이라이트 셀과 우측 후보 카드의 대응 관계가 안 보임. (targetDay·targetPeriod·counterpartEmail) 키로 선택 상태를 공유해 — 셀 클릭 시 해당 후보 카드로 scrollIntoView + 테두리 강조·선택, 카드 클릭/호버 시 해당 셀 강조. 특별보강 목록은 슬롯 개념이 없으므로 대상 아님(맞교환 후보만).
+  2. **"다른 시간표 조회" 교사 선택을 검색 입력 → 가나다순 드롭다운으로 교체**: 서버 준비 완료 — `POST /api/timetable/view` `{action:"teachers", termId?}` → `data: [{email, name}]` 가나다 정렬(신설, 학생은 기존 authz로 차단). AutocompleteInput 제거하고 `<select>`로. 일과계 화면의 교사별 시간표 탭도 같은 패턴이면 동일하게 통일 권장.
+  - DoD: tsc·build 후 커밋·푸시, 핸드오버. 실서버 승인 조작 금지(실교사 DM). 현재 학기 데이터는 테스트 세팅 상태(현유지=tteacher@)이므로 화면 확인은 tteacher@ 파일럿 계정으로 가능.
