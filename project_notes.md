@@ -2596,3 +2596,10 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 
 - 사용자 화면 확인에서 추가 발견: "창체"가 기기 계정 **창체부전자칠판(eb-s-01@, OU /기기/전자칠판)** 에 자동 매칭돼 있었음 — 학생 제외 필터만으로는 기기·공용 계정의 이름 우연 일치를 못 막음. → 자동 매칭 후보 풀을 `orgUnitPath.startsWith("/교직원")`로 한정(수동 선택의 학생 차단 경고는 유지). tsc·build ✅, 푸시 완료.
 - 사용자 실화면 결과: SLAT·창체 가상 지정 후 **검증 리포트 미매칭 0명·canCommit ✅** — 의심 매핑 배너 없음 = 자동 매칭이 학생 계정을 잡지 않았다는 실증. "학기 저장" 시도는 **활성 학기(2026-2) 보호가 정상 거부**(빨간 배너) — 저장된 것 없음, 재저장 불필요. **가져오기 매핑 가드 건 화면 검증까지 종결.**
+
+## [2026-08-04] Claude → 사용자 (일반 교사 시점 테스트 세팅 완료 — 28c4e66 + 데이터 세팅)
+
+- **요청**: 일반 교사 입장에서 수업교환 신청을 테스트하고 싶음 (일과계 화면 아님). 가져오기 재실행 대신 표적 교체 방식 채택.
+- **코드 (28c4e66)**: `teacherOpen`·`teacherPilotEmails`를 TimetableSettings에 정식 추가(loadTimetableSettings 통과 — 기존엔 필드가 응답에 실리지 않아 게이트가 열 수 없었음), TeacherPortalSection 게이트 = isManager ‖ teacherOpen ‖ 파일럿 명단. `scripts/setup_teacher_test.ts`(map/revert, 드라이런 기본, 백업·재검증, 학생 OU·학번형 차단).
+- **데이터 세팅 (실행 완료)**: 현유지(music@) → **tteacher@**(테스트교사, /교직원) 교체 — subjects 1·레슨 15·학급 5, 재검증 잔존 0/등장 16 ✅. 파일럿 명단 = [tteacher@]. 테스트 주 **2026-08-10(월)** 등록. managerEmails 0명이라 신청 생성 알림 수신자 없음, **승인만 안 누르면 실교사 DM 0건**.
+- **원복 (테스트 종료 후 반드시)**: `npx tsx --env-file=.env.local scripts/setup_teacher_test.ts revert music@hmh.or.kr tteacher@hmh.or.kr --commit` + 주 운영 탭에서 2026-08-10 주 삭제(또는 Claude에게 요청). 신청 기록은 반려/취소 상태로 남아도 무해하나 원하면 함께 청소.
