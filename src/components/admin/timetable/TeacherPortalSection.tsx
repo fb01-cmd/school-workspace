@@ -425,7 +425,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                               const changed = (cell as any).changed;
                               const isChanged = !!changed;
                               const tooltip = isChanged && changed?.origin
-                                ? `${DAY_LABEL[cell.day]}${cell.period} ← ${DAY_LABEL[(changed.origin as any).day]}${(changed.origin as any).period}에서 이동`
+                                ? `${cell.subjectName} (${DAY_LABEL[cell.day]}${cell.period} ← ${DAY_LABEL[(changed.origin as any).day]}${(changed.origin as any).period}에서 이동)`
                                 : `${cell.subjectName} · ${cell.grade}-${cell.classNum}반`;
                               return (
                                 <div
@@ -438,10 +438,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                   }`}
                                 >
                                   <div className={`font-black ${isChanged ? "text-red-800" : "text-indigo-950"}`}>
-                                    {cell.subjectShort || cell.subjectName}
+                                    {cell.grade}-{cell.classNum}반
                                     {isChanged && <span className="ml-0.5 text-red-600 font-bold text-[9px]">▲</span>}
                                   </div>
-                                  <div className="text-[9px] text-gray-500">{cell.grade}-{cell.classNum}반</div>
                                   {isSelectedSource && sc && (
                                     <div className="text-[9px] font-bold text-red-700 bg-red-100 px-1 py-0.5 rounded border border-red-200 mt-0.5">
                                       ➖ 삭제
@@ -1128,14 +1127,12 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
                           <div className="space-y-1.5">
                             {matched.map((cell, cIdx) => {
                               const isChanged = !!(cell as any).changed;
+                              const tooltip = `${cell.subjectName} · ${cell.grade}-${cell.classNum}반${cell.room ? ` (${cell.room})` : ""}`;
                               return (
-                                <div key={cIdx} className={`p-2 rounded-lg space-y-1 ${isChanged ? "bg-red-50 border border-red-300" : "bg-white border border-indigo-200 shadow-2xs"}`}>
+                                <div key={cIdx} title={tooltip} className={`p-2 rounded-lg space-y-1 ${isChanged ? "bg-red-50 border border-red-300" : "bg-white border border-indigo-200 shadow-2xs"}`}>
                                   <div className={`font-black text-xs ${isChanged ? "text-red-800" : "text-indigo-950"}`}>
-                                    {cell.subjectShort || cell.subjectName}
-                                    {isChanged && <span className="ml-0.5 text-red-500 text-[9px]">▲</span>}
-                                  </div>
-                                  <div className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800">
                                     {cell.grade}-{cell.classNum}반
+                                    {isChanged && <span className="ml-0.5 text-red-500 text-[9px]">▲</span>}
                                   </div>
                                   {cell.room && <div className="text-[10px] text-gray-500 truncate">📍 {cell.room}</div>}
                                 </div>
