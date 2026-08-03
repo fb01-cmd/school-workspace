@@ -431,7 +431,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                           ) : isSelectedTarget ? (
                             <div className="py-1 px-1 space-y-0.5 text-[10px] font-bold bg-amber-100 border border-amber-300 rounded text-amber-950">
                               <div>➕ 추가</div>
-                              <div className="text-[9px] text-amber-800 font-medium">{sc.counterpartSubjectName}</div>
+                              <div className="text-[9px] text-amber-800 font-medium">
+                                {selectedCell ? `${selectedCell.subjectShort || selectedCell.subjectName}(${selectedCell.grade}-${selectedCell.classNum})` : ""}
+                              </div>
                             </div>
                           ) : isTarget ? (
                             <div className="py-2 text-[10px] font-bold text-green-700">🟢 공강</div>

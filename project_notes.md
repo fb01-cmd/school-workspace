@@ -2,7 +2,7 @@
 
 ## 🔒 현재 작업 중 파일
 
-- `src/components/admin/timetable/TeacherPortalSection.tsx` (Antigravity, 내 주간시간표 ➕ 배지 표기 버그 수정)
+*(현재 비어 있음)*
 
 
 
@@ -2732,7 +2732,17 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 
 - **이번 세션(8/3~8/4) 종결 항목**:
   1. **일반 교사 시점 테스트 세팅**: teacherOpen·teacherPilotEmails 정식화(파일럿 게이트 신설), 현유지(music@)→tteacher@ 임시 교체(`setup_teacher_test.ts`), 테스트 주 2026-08-10 등록. (28c4e66)
-  2. 🔴 **파일럿이 잡은 결함 2건 수정**: ① 일반 교사 week_list 403 — 주 드롭다운 공백(관리자 테스트에서는 미노출, 실운영이면 전 교사 신청 불가였음. d2abf4a) ② 내 그리드 ➕ 배지에 상대 과목명 표기(수정 지시 상태 — Antigravity).
+  2. 🔴 **파일럿이 잡은 결함 2건 수정**: ① 일반 교사 week_list 403 — 주 드롭다운 공백(관리자 테스트에서는 미노출, 실운영이면 전 교사 신청 불가였음. d2abf4a) ② 내 그리드 ➕ 배지에 상대 과목명 표기(Antigravity 수정 완료 — 내 과목 및 학급 정보로 변경).
+
+## [2026-08-04] Antigravity → Claude/사용자 (내 주간시간표 ➕ 배지 표기 버그 수정 완료)
+
+- **변경 파일**: `src/components/admin/timetable/TeacherPortalSection.tsx`, `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **수정 내용**:
+  - 내 주간시간표 그리드에서 맞교환 후보 선택 시 내 target 이동 위치(공강) 셀에 표시되던 `➕ 추가` 배지의 텍스트를 상대 과목명(`sc.counterpartSubjectName`)에서 **내 과목 및 학급 정보**(`selectedCell.subjectName(selectedCell.grade-selectedCell.classNum)`)로 정상 수정.
+  - 하단 변화 요약 데이터와 동일한 `selectedCell` 데이터로 표시 정합성 확보.
+- **주의**: 실서버 승인 조작 금지. `tteacher@` 파일럿 계정으로 화면 확인 권장.
+
   3. **설계 확정 3건**: ① 징검다리 절충 — 교사 셀프 연쇄 제외 유지, 문구를 "일과계 직권 2회 처리" 경로 안내로(018cdb3), 9c에 직권 연쇄 모드 백로그 ② **교사 특별보강 신청 폐지** — 보강은 일과계 직권 전용, 서버 차단(86cc9e4)·스펙 §4-4-3 개정 ③ **교차 주 교환 1차 편입** — 스펙 §4-3b 신설(84cc501): exchangeId 문서쌍·양주 재검증 트랜잭션·"교체할 주" 선택 UI.
   4. **UX 개선 반영(Antigravity 구현·Claude 리뷰)**: 공강↔후보 양방향 연동(cf87e78, 표적 리뷰 경미 3건→8dc7a77 수정 확인), 교사 가나다 드롭다운(view `teachers` 액션 신설 e136133), 상대 교사 시간표 미리보기(6867905), 미니 그리드 학급 표기·➕/➖ 용어·변화 요약 스펙(구현 완료 여부는 최신 커밋 확인).
 - **현재 상태 주의**: **테스트 세팅이 살아 있음** — 현유지=tteacher@ 교체·파일럿 명단·테스트 주 2026-08-10. 테스트 종료 시 원복 필수: `npx tsx --env-file=.env.local scripts/setup_teacher_test.ts revert music@hmh.or.kr tteacher@hmh.or.kr --commit` + 주 운영 탭에서 2026-08-10 삭제 + 테스트 신청 기록 정리. managerEmails는 여전히 0명.
