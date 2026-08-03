@@ -39,6 +39,24 @@ const DAYS = [
 
 const DAY_LABEL: Record<number, string> = { 1: "월", 2: "화", 3: "수", 4: "목", 5: "금" };
 
+/** 주(startDate)와 요일 번호(1=월 ~ 5=금)로 날짜(M/D) 계산 */
+function getDayDateLabel(weekStartDate?: string, dayNum?: number): string {
+  if (!weekStartDate || !dayNum) return "";
+  const parts = weekStartDate.split("-").map((v) => parseInt(v, 10));
+  if (parts.length < 3 || isNaN(parts[0])) return "";
+  const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+  dateObj.setDate(dateObj.getDate() + (dayNum - 1));
+  return `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
+}
+
+/** 주(startDate) 기준 범위 문자열 생성 (예: "8/10(월)~8/14(금)") */
+function getWeekRangeLabel(weekStartDate?: string): string {
+  if (!weekStartDate) return "";
+  const startMD = getDayDateLabel(weekStartDate, 1);
+  const endMD = getDayDateLabel(weekStartDate, 5);
+  return `${startMD}(월)~${endMD}(금)`;
+}
+
 // ── ① 내 주간시간표 탭 ─────────────────────────────────────────
 interface MyTimetableTabProps {
   periodsPerDay: number;
@@ -421,7 +439,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             <div className="bg-gradient-to-r from-indigo-950 to-indigo-800 px-5 py-3 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white">
-                  🗓️ {isCrossWeek ? `소스 주 시간표 (${sourceWeekObj?.startDate || selectedWeekId} 주)` : "내 주간시간표"}
+                  🗓️ {isCrossWeek
+                    ? `원래 수업 주 · ${getWeekRangeLabel(sourceWeekObj?.startDate || selectedWeekId)}`
+                    : `내 주간시간표${sourceWeekObj?.startDate ? ` · ${getWeekRangeLabel(sourceWeekObj.startDate)}` : ""}`}
                 </h3>
                 <p className="text-[11px] text-indigo-300 mt-0.5">
                   {selectedWeekId
@@ -433,7 +453,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               </div>
               {isCrossWeek && (
                 <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-700 text-indigo-100 font-bold border border-indigo-500">
-                  1/2 소스 주 (원래 수업)
+                  1/2 소스 주
                 </span>
               )}
             </div>
@@ -441,9 +461,15 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="py-2 px-2 border-r border-gray-200 w-12 text-center text-gray-500 font-bold text-[10px]">교시</th>
-                  {DAYS.map((d) => (
-                    <th key={d.num} className="py-2 px-1 text-center text-gray-700 font-bold text-[11px]">{d.label}</th>
-                  ))}
+                  {DAYS.map((d) => {
+                    const dateLabel = getDayDateLabel(sourceWeekObj?.startDate || selectedWeekId, d.num);
+                    return (
+                      <th key={d.num} className="py-2 px-1 text-center text-gray-700 font-bold text-[11px]">
+                        <div>{d.label}</div>
+                        {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -531,14 +557,14 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               <div className="bg-gradient-to-r from-indigo-900 to-indigo-700 px-5 py-3 flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-white">
-                    🗓️ 교체 대상 주 내 시간표 ({targetWeekObj?.startDate || effectiveTargetWeekId} 주)
+                    🗓️ 교체 대상 주 · {getWeekRangeLabel(targetWeekObj?.startDate || effectiveTargetWeekId)}
                   </h3>
                   <p className="text-[11px] text-indigo-200 mt-0.5">
                     교체 대상 주 기준 내 시간표입니다. 교환 후보 공강 위치가 아래 초록 배경으로 강조되며, 선택 시 ➕ 추가가 표시됩니다.
                   </p>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-800 text-indigo-100 font-bold border border-indigo-600">
-                  2/2 대상 주 (교체 이동)
+                  2/2 대상 주
                 </span>
               </div>
               {targetCellsLoading ? (
@@ -550,9 +576,15 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   <thead>
                     <tr className="bg-indigo-50/70 border-b border-indigo-100">
                       <th className="py-2 px-2 border-r border-indigo-100 w-12 text-center text-indigo-900 font-bold text-[10px]">교시</th>
-                      {DAYS.map((d) => (
-                        <th key={d.num} className="py-2 px-1 text-center text-indigo-950 font-bold text-[11px]">{d.label}</th>
-                      ))}
+                      {DAYS.map((d) => {
+                        const dateLabel = getDayDateLabel(targetWeekObj?.startDate || effectiveTargetWeekId, d.num);
+                        return (
+                          <th key={d.num} className="py-2 px-1 text-center text-indigo-950 font-bold text-[11px]">
+                            <div>{d.label}</div>
+                            {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -768,15 +800,21 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   {!isCrossWeek && previewCells && (
                     <div className="border border-gray-200 rounded-lg overflow-hidden text-[10px]">
                       <div className="bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-700 border-b border-gray-200">
-                        🗓️ {targetWeekObj?.startDate ? `${targetWeekObj.startDate} 주` : "대상 주"} 시간표
+                        🗓️ {targetWeekObj?.startDate ? getWeekRangeLabel(targetWeekObj.startDate) : "대상 주"} 시간표
                       </div>
                       <table className="w-full border-collapse text-center">
                         <thead>
                           <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
                             <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
-                            {DAYS.map((d) => (
-                              <th key={d.num} className="py-1 px-0.5">{d.label}</th>
-                            ))}
+                            {DAYS.map((d) => {
+                              const dateLabel = getDayDateLabel(targetWeekObj?.startDate || effectiveTargetWeekId, d.num);
+                              return (
+                                <th key={d.num} className="py-1 px-0.5">
+                                  <div>{d.label}</div>
+                                  {dateLabel && <div className="text-[9px] text-gray-400 font-normal">{dateLabel}</div>}
+                                </th>
+                              );
+                            })}
                           </tr>
                         </thead>
                         <tbody>
@@ -845,16 +883,22 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       {/* [상단] 소스 주 상대 시간표 (내 소스 수업이 상대에게 들어옴 ➕) */}
                       <div className="border border-indigo-200 rounded-lg overflow-hidden text-[10px]">
                         <div className="bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-900 border-b border-indigo-200 flex justify-between items-center">
-                          <span>🗓️ 소스 주 ({sourceWeekObj?.startDate || selectedWeekId} 주)</span>
+                          <span>🗓️ 소스 주 ({getWeekRangeLabel(sourceWeekObj?.startDate || selectedWeekId)})</span>
                           <span className="text-[9px] text-green-700 font-extrabold">내 수업 들어옴 ➕</span>
                         </div>
                         <table className="w-full border-collapse text-center">
                           <thead>
                             <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
                               <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
-                              {DAYS.map((d) => (
-                                <th key={d.num} className="py-1 px-0.5">{d.label}</th>
-                              ))}
+                              {DAYS.map((d) => {
+                                const dateLabel = getDayDateLabel(sourceWeekObj?.startDate || selectedWeekId, d.num);
+                                return (
+                                  <th key={d.num} className="py-1 px-0.5">
+                                    <div>{d.label}</div>
+                                    {dateLabel && <div className="text-[9px] text-gray-400 font-normal">{dateLabel}</div>}
+                                  </th>
+                                );
+                              })}
                             </tr>
                           </thead>
                           <tbody>
@@ -908,16 +952,22 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       {/* [하단] 교체 대상 주 상대 시간표 (상대 원래 수업이 빠짐 ➖) */}
                       <div className="border border-amber-200 rounded-lg overflow-hidden text-[10px]">
                         <div className="bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-900 border-b border-amber-200 flex justify-between items-center">
-                          <span>🗓️ 대상 주 ({targetWeekObj?.startDate || effectiveTargetWeekId} 주)</span>
+                          <span>🗓️ 대상 주 ({getWeekRangeLabel(targetWeekObj?.startDate || effectiveTargetWeekId)})</span>
                           <span className="text-[9px] text-amber-900 font-extrabold">상대 수업 빠짐 ➖</span>
                         </div>
                         <table className="w-full border-collapse text-center">
                           <thead>
                             <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
                               <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
-                              {DAYS.map((d) => (
-                                <th key={d.num} className="py-1 px-0.5">{d.label}</th>
-                              ))}
+                              {DAYS.map((d) => {
+                                const dateLabel = getDayDateLabel(targetWeekObj?.startDate || effectiveTargetWeekId, d.num);
+                                return (
+                                  <th key={d.num} className="py-1 px-0.5">
+                                    <div>{d.label}</div>
+                                    {dateLabel && <div className="text-[9px] text-gray-400 font-normal">{dateLabel}</div>}
+                                  </th>
+                                );
+                              })}
                             </tr>
                           </thead>
                           <tbody>
@@ -1394,9 +1444,16 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
           <thead>
             <tr className="bg-indigo-950 text-white font-bold">
               <th className="py-3 px-2 border-b border-r border-indigo-800 w-16 text-center">교시</th>
-              {DAYS.map((d) => (
-                <th key={d.num} className="py-3 px-2 border-b border-indigo-800 text-center">{d.label}요일</th>
-              ))}
+              {DAYS.map((d) => {
+                const targetWeekObj = weeks.find((w) => w.id === selectedWeekId);
+                const dateLabel = getDayDateLabel(targetWeekObj?.startDate || selectedWeekId, d.num);
+                return (
+                  <th key={d.num} className="py-2.5 px-2 border-b border-indigo-800 text-center">
+                    <div>{d.label}요일</div>
+                    {dateLabel && <div className="text-[10px] text-indigo-300 font-normal mt-0.5">{dateLabel}</div>}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white">
