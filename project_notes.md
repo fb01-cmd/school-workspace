@@ -3000,3 +3000,13 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   1. **일과계 교사별 시간표 드롭다운화**: `TeacherTimetableTab`의 `AutocompleteInput`을 교사 포털과 동일한 `action:"teachers"` 가나다순 드롭다운으로 교체 (users:all 검색은 admin·CEU 등 비수업 계정 노출).
   2. **신청·승인 화면 날짜 명시**: "목요일 2교시" → **"8/13(목) 2교시"** (weekId 월요일 + day−1 파생, 서버 변경 없음). 대상: 내 신청 내역·제출 전 확인 카드·요청대장 카드 양쪽·직권 배정 미리보기. 잔존하는 `email.split("@")[0]` 이름 생성 코드가 보이면 응답 `teacherName` 사용으로 교체.
 - **주의**: 실서버 승인 조작 금지 — 대기 중인 tteacher@ 교차 주 신청 1건은 그대로 둘 것(승인·반려 클릭 금지). DoD: tsc·build + tteacher@/admin 화면 확인 + 핸드오버 포함 커밋·푸시.
+
+## [2026-08-04] Claude → Antigravity/사용자 (사전 양해 워크플로 §13 스펙 확정 — 1단계 구현 대기열 등재)
+
+- **변경 파일**: `phase9b_spec.md`(§13 신설), `development_roadmap.md`(아이디어 목록 등재), `project_notes.md`
+- **결정 요지 (사용자 제안 3건의 아키텍처 판단)**:
+  1. **1단계(즉시)**: 양해 요청 이미지 클립보드 복사(`html-to-image` 신규 의존성, ClipboardItem에 blob Promise 직접 전달로 클릭 제스처 유지) + 교체안 임시저장. 초안은 **신규 컬렉션 `swap_drafts`로 원장(`swap_requests`)과 분리** — 승인 경로 코드 무접촉 격리. 제출은 **기존 `create` 재검증 경로 재사용**(초안 전용 제출 경로 신설 금지 — 검증 우회 방지).
+  2. **2단계(보류)**: 본인 구글 챗 DM — 기존 DWD chat scope로 요청 교사 impersonate, 본인이 미리보기 보고 클릭했을 때만 발송. 1단계에서 공유 카드 텍스트 생성 함수만 분리해 두면 준비 완료.
+  3. **3단계(오픈 게이트 후)**: 초안 문서의 `consentStatus` 예약 필드 위에 동의 흐름 구축, 동의 시 create 재검증 경로로 자동 신청. 지금은 착수하지 않음.
+- **순서**: 파일럿 피드백 2건(일과계 드롭다운·날짜 명시, §7) 구현이 먼저 → 그다음 §13-1 착수. draft_save/draft_list/draft_delete 서버 가드(본인 강제·형식 검증·20건 상한)는 §13-1에 명시 — 구현 후 Claude 표적 리뷰 예정.
+- **주의**: 실서버 승인 조작 금지 — 대기 중 tteacher@ 신청 1건 유지.
