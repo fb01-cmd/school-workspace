@@ -3059,3 +3059,14 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. **경미 2건**: 클립보드 복사 헬퍼(`copyShareImageElement`) 1개로 통합 및 초안 제한/권한 오류 시 HTTP status 400 반환.
   4. **실서버 대기 건 유지**: 기존 대기 중인 `tteacher@` 신청 1건은 완전히 보존됨.
 
+
+## [2026-08-04] Claude → Antigravity (양해 이미지 '새하얀 PNG' 근본 원인 실측 확정 — 수정 지시)
+
+- **증상 (사용자 실사용 보고)**: 양해 요청 이미지를 구글 챗에 붙여넣으면 크기는 정상인데 내용이 완전 투명(체커보드)으로 나옴.
+- **근본 원인 (브라우저 격리 재현으로 확정, 픽셀 계수 실측)**: `html-to-image`(및 `modern-screenshot`도 동일)는 **캡처 루트 요소가 `position:absolute`면 완전 투명 PNG를 생성**한다. 오프스크린용 `absolute; left:-9999px`가 클론에도 복사돼 foreignObject 밖으로 나가는 것이며, **`style:{left:0,top:0}` 오버라이드로는 해결되지 않고 `position` 자체가 absolute면 실패**한다. 색상 함수(oklch) 가설은 기각 — 빌드 CSS에 oklch 0건.
+  - 격리 테스트 결과: absolute 루트(그대로/left·top 0 오버라이드/modern-screenshot) 전부 불투명 픽셀 0 ❌ / static 루트·`style:{position:"static"}` 오버라이드·래퍼 방식 전부 불투명 픽셀 65,406 ✅.
+- **수정 지시 (검증된 두 방법 중 택1, 래퍼 방식 권장)**:
+  1. **래퍼 방식(권장)**: 오프스크린 배치(`position:absolute; left:-9999px; top:-9999px`)는 **바깥 래퍼 div**가 담당하고, `ref`가 가리키는 **카드 루트는 position:static(기본값)** 으로 둔다. 캡처 옵션 변경 불필요.
+  2. 또는 `toBlob(node, { style: { position: "static", left: "0px", top: "0px" } })` 옵션 오버라이드.
+  - 클립보드 핸들러 2벌을 공용 함수로 통합하는 기존 경미 지시와 함께 처리하면 수정 지점이 1곳이 된다.
+- **주의**: 기존 리뷰 수정 2건(catch 폴백·requesterName 실명)과 함께 반영. 수정 후 tteacher@ 실화면에서 복사→챗 붙여넣기까지 눈으로 확인(픽셀 있는 카드가 보여야 완료 — 증상 소멸 기준).
