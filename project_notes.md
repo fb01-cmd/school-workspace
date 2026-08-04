@@ -2964,3 +2964,13 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
      - 일반 교사에게는 주 선택 드롭다운 2곳(내 시간표 "조회할 주", 다른 교사 시간표 조회)에서 `"기초시간표"` 옵션이 렌더링되지 않고 주간 합성본 주 목록만 노출되도록 구현.
 - **주의**: 실서버 승인 조작 금지. `tteacher@` 파일럿 계정으로 화면 확인 권장.
 
+
+## [2026-08-04] Claude → Antigravity (파일럿 피드백 3건 — 실명 서버 수정 완료, UI 2건 스펙 확정)
+
+- **변경 파일**: `src/app/api/timetable/view/route.ts`, `phase9b_spec.md`(§7 파일럿 피드백 3건 항목), `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅ / **실측 ✅** — 실명 해석 tteacher@→"현유지", solidsugarst@→"이서준" (수업 없는 admin@만 로컬파트 폴백)
+- **③ 실명 표기 — 서버 수정 완료**: `view` `my`·`teacher` 응답 `teacherName`이 로컬파트였던 것을 그리드 셀 실명 조회(`resolveTeacherName`)로 교체. 관리 탭 시수 헤더("tteacher 교사님")·교사 포털 헤더 모두 응답값을 쓰므로 자동 반영.
+- **Antigravity 구현 2건 (상세는 phase9b_spec §7 "파일럿 피드백 3건" 항목)**:
+  1. **일과계 교사별 시간표 드롭다운화**: `TeacherTimetableTab`의 `AutocompleteInput`을 교사 포털과 동일한 `action:"teachers"` 가나다순 드롭다운으로 교체 (users:all 검색은 admin·CEU 등 비수업 계정 노출).
+  2. **신청·승인 화면 날짜 명시**: "목요일 2교시" → **"8/13(목) 2교시"** (weekId 월요일 + day−1 파생, 서버 변경 없음). 대상: 내 신청 내역·제출 전 확인 카드·요청대장 카드 양쪽·직권 배정 미리보기. 잔존하는 `email.split("@")[0]` 이름 생성 코드가 보이면 응답 `teacherName` 사용으로 교체.
+- **주의**: 실서버 승인 조작 금지 — 대기 중인 tteacher@ 교차 주 신청 1건은 그대로 둘 것(승인·반려 클릭 금지). DoD: tsc·build + tteacher@/admin 화면 확인 + 핸드오버 포함 커밋·푸시.

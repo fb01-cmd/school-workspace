@@ -16,12 +16,27 @@ import {
 } from "@/lib/timetable/server";
 import { synthesizeWeeklyGrids } from "@/lib/timetable/weekly";
 import {
+  ClassGrid,
   TimetableTeacher,
   ViewAction,
   ViewTimetableRequest,
   ViewTimetableResponse,
 } from "@/lib/timetable/types";
 import { NextRequest, NextResponse } from "next/server";
+
+/** 그리드 셀에 저장된 교사 실명 조회 — 이메일 로컬파트("tteacher") 노출 방지 (2026-08-04 파일럿) */
+function resolveTeacherName(grids: ClassGrid[], normEmail: string): string {
+  for (const grid of grids) {
+    for (const cell of grid.cells || []) {
+      for (const lesson of cell.lessons || []) {
+        for (const t of lesson.teachers || []) {
+          if ((t.email || "").trim().toLowerCase() === normEmail && t.name) return t.name;
+        }
+      }
+    }
+  }
+  return normEmail.split("@")[0];
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -142,7 +157,7 @@ export async function POST(req: NextRequest) {
           action,
           data: {
             teacherEmail: auth.email,
-            teacherName: auth.email.split("@")[0],
+            teacherName: resolveTeacherName(allGrids, auth.email.trim().toLowerCase()),
             cells,
           },
         };
@@ -158,7 +173,7 @@ export async function POST(req: NextRequest) {
           action,
           data: {
             teacherEmail: targetTeacherEmail,
-            teacherName: targetTeacherEmail.split("@")[0],
+            teacherName: resolveTeacherName(allGrids, targetTeacherEmail),
             cells,
           },
         };
