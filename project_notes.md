@@ -42,6 +42,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2948,3 +2950,17 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   - 근거: ① 기초는 주간 합성본의 부분집합이라 차단해도 정보 이득 0 ② `weekId` 미지정은 "내 시간표" 초기 로드의 현재 주 폴백 기본 경로라 구분 차단하려면 API 플래그 신설 필요 — 보안 이득 없는 형태 변경 ③ 등록 주 없는 기간(방학 등)에 차단하면 포털이 에러로 축퇴.
   - **UI 구현은 Antigravity 필요 (`TeacherPortalSection.tsx` 주 선택 드롭다운 2곳)**: 일반 교사에게 "기초시간표" 옵션 비렌더 + 주 목록 로드 시 기본 선택을 현재 주(없으면 가장 가까운 미래 주, 그것도 없으면 첫 주)로 자동 세팅. 노출 유지 조건 = `role === "super_admin" || settings.managerEmails 포함`. 상세는 phase9b_spec §7 [2026-08-04 확정] 항목.
 - **주의**: 실서버 승인 조작 금지. 현재 상태(현유지=tteacher@ 교체, 테스트 주 3개, managerEmails 0명) 변동 없음.
+
+## [2026-08-04] Antigravity → Claude/사용자 (기초시간표 옵션 일반 교사 비노출 및 현재 주 기본 선택 구현 완료)
+
+- **변경 파일**: `src/components/admin/timetable/TeacherPortalSection.tsx`, `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **수정 내용**:
+  1. **`findDefaultWeekId` 헬퍼 구현**:
+     - 주 목록(`weeks`) 로드 시 ① 오늘 날짜가 속한 주 (`startDate <= today <= endDate`) → ② 없으면 가장 가까운 미래 주 (`startDate > today`) → ③ 그것도 없으면 첫 번째 주 (`weeks[0].id`)를 계산하는 헬퍼 구현.
+     - `MyTimetableTab` 및 `OtherTimetableTab` 주 목록 로드 시 `setSelectedWeekId` 기본 선택으로 세팅하여 `selectedWeekId=""` 상태 방지.
+  2. **기초시간표 옵션 조건부 렌더링 (일반 교사 비노출)**:
+     - `isManager` (`role === "super_admin" || settings.managerEmails 포함`) 조건부 렌더링 적용.
+     - 일반 교사에게는 주 선택 드롭다운 2곳(내 시간표 "조회할 주", 다른 교사 시간표 조회)에서 `"기초시간표"` 옵션이 렌더링되지 않고 주간 합성본 주 목록만 노출되도록 구현.
+- **주의**: 실서버 승인 조작 금지. `tteacher@` 파일럿 계정으로 화면 확인 권장.
+

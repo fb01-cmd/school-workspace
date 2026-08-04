@@ -57,6 +57,45 @@ function getWeekRangeLabel(weekStartDate?: string): string {
   return `${startMD}(월)~${endMD}(금)`;
 }
 
+/** 주 목록에서 기본 선택할 주 ID 계산 (현재 주 → 가장 가까운 미래 주 → 첫 주) */
+function findDefaultWeekId(weeks: TimetableWeek[]): string {
+  if (!weeks || weeks.length === 0) return "";
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const todayStr = `${year}-${month}-${day}`;
+
+  // ① 오늘 날짜가 속한 주 (startDate ~ startDate + 6일)
+  const currentWeek = weeks.find((w) => {
+    if (!w.startDate) return false;
+    const parts = w.startDate.split("-").map((v) => parseInt(v, 10));
+    if (parts.length < 3 || isNaN(parts[0])) return false;
+    const startObj = new Date(parts[0], parts[1] - 1, parts[2]);
+    const endObj = new Date(startObj);
+    endObj.setDate(endObj.getDate() + 6); // 일요일까지
+
+    const endY = endObj.getFullYear();
+    const endM = String(endObj.getMonth() + 1).padStart(2, "0");
+    const endD = String(endObj.getDate()).padStart(2, "0");
+    const endStr = `${endY}-${endM}-${endD}`;
+
+    return todayStr >= w.startDate && todayStr <= endStr;
+  });
+
+  if (currentWeek) return currentWeek.id;
+
+  // ② 없으면 가장 가까운 미래 주 (startDate > todayStr 중 가장 빠른 날짜)
+  const futureWeeks = weeks
+    .filter((w) => w.startDate && w.startDate > todayStr)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+  if (futureWeeks.length > 0) return futureWeeks[0].id;
+
+  // ③ 그것도 없으면 첫 번째 주
+  return weeks[0].id;
+}
+
 // ── ① 내 주간시간표 탭 ─────────────────────────────────────────
 interface MyTimetableTabProps {
   periodsPerDay: number;
@@ -65,6 +104,11 @@ interface MyTimetableTabProps {
 
 function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const { userData } = useAuth();
+  const userEmail = userData?.email?.toLowerCase() || "";
+  const isSuperAdmin = userData?.role === "super_admin";
+  const isManager =
+    isSuperAdmin ||
+    (settings?.managerEmails || []).some((m) => m.toLowerCase() === userEmail);
 
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [selectedWeekId, setSelectedWeekId] = useState<string>("");
@@ -197,7 +241,18 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       body: JSON.stringify({ action: "week_list", termId }),
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (data?.success) setWeeks(data.weeks || []); })
+      .then((data) => {
+        if (data?.success) {
+          const loadedWeeks: TimetableWeek[] = data.weeks || [];
+          setWeeks(loadedWeeks);
+          if (loadedWeeks.length > 0) {
+            const defaultId = findDefaultWeekId(loadedWeeks);
+            if (defaultId) {
+              setSelectedWeekId((prev) => (prev ? prev : defaultId));
+            }
+          }
+        }
+      })
       .catch(() => {});
   }, [settings?.activeTermId]);
 
@@ -398,7 +453,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             onChange={(e) => setSelectedWeekId(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           >
-            <option value="">기초시간표 (주 미지정)</option>
+            {isManager && <option value="">기초시간표 (주 미지정)</option>}
             {weeks.map((w) => (
               <option key={w.id} value={w.id}>{w.startDate} 주</option>
             ))}
@@ -1289,6 +1344,11 @@ interface OtherTimetableTabProps {
 function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) {
   const { userData } = useAuth();
   const myEmail = userData?.email?.toLowerCase() || "";
+  const userEmail = myEmail;
+  const isSuperAdmin = userData?.role === "super_admin";
+  const isManager =
+    isSuperAdmin ||
+    (settings?.managerEmails || []).some((m) => m.toLowerCase() === userEmail);
 
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [selectedWeekId, setSelectedWeekId] = useState("");
@@ -1313,7 +1373,18 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
       body: JSON.stringify({ action: "week_list", termId }),
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (data?.success) setWeeks(data.weeks || []); })
+      .then((data) => {
+        if (data?.success) {
+          const loadedWeeks: TimetableWeek[] = data.weeks || [];
+          setWeeks(loadedWeeks);
+          if (loadedWeeks.length > 0) {
+            const defaultId = findDefaultWeekId(loadedWeeks);
+            if (defaultId) {
+              setSelectedWeekId((prev) => (prev ? prev : defaultId));
+            }
+          }
+        }
+      })
       .catch(() => {});
     // 교사 목록 로드 (가나다순 드롭다운)
     setTeacherListLoading(true);
@@ -1385,7 +1456,7 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
             onChange={(e) => setSelectedWeekId(e.target.value)}
             className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs"
           >
-            <option value="">기초시간표</option>
+            {isManager && <option value="">기초시간표</option>}
             {weeks.map((w) => <option key={w.id} value={w.id}>{w.startDate} 주</option>)}
           </select>
           {/* ② 교사 드롭다운 — action:teachers 가나다순 */}
