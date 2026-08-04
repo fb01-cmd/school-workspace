@@ -14,7 +14,7 @@
  * 학생은 어떤 경우에도 미노출 (서버 라우트도 학생 차단)
  */
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { toBlob } from "html-to-image";
 import {
@@ -251,7 +251,7 @@ function MiniPreviewGrid({
           {/* [상단] 소스 주 상대 시간표 (내 수업이 상대에게 들어옴 ➕) */}
           <div className="border border-emerald-200 rounded-lg overflow-hidden text-xs bg-white shadow-xs">
             <div className="bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-900 border-b border-emerald-200 flex justify-between items-center">
-              <span>🗓️ 소스 주 ({getWeekRangeLabel(sourceStartDate)}) 시간표</span>
+              <span>🗓️ {getWeekRangeLabel(sourceStartDate)} 주 시간표</span>
               <span className="text-[10px] text-emerald-800 font-extrabold">선생님 시간표에 들어옴 ➕</span>
             </div>
             <table className="w-full table-fixed border-collapse text-center">
@@ -320,7 +320,7 @@ function MiniPreviewGrid({
           {/* [하단] 교체 대상 주 상대 시간표 (상대 원래 수업이 빠짐 ➖) */}
           <div className="border border-amber-200 rounded-lg overflow-hidden text-xs bg-white shadow-xs">
             <div className="bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-900 border-b border-amber-200 flex justify-between items-center">
-              <span>🗓️ 대상 주 ({getWeekRangeLabel(targetStartDate)}) 시간표</span>
+              <span>🗓️ {getWeekRangeLabel(targetStartDate)} 주 시간표</span>
               <span className="text-[10px] text-amber-900 font-extrabold">선생님 수업 빠짐 ➖</span>
             </div>
             <table className="w-full table-fixed border-collapse text-center">
@@ -514,6 +514,188 @@ function OffscreenShareCard({
 }
 
 /**
+ * §13-1b: 같은 상대 교사에게 가는 초안 여러 건을 하나로 융합한 양해 요청 카드 데이터.
+ * 상대 교사가 "최종적으로 내 주가 어떻게 변하는지"를 주 단위 그리드 한 장씩으로 보게 한다.
+ */
+export interface ConsolidatedShareData {
+  requesterName: string;
+  counterpartName: string;
+  items: SwapDraft[];
+  weekBlocks: Array<{
+    weekId: string;
+    startDate: string;
+    cells: TeacherTimetableCell[]; // 상대 교사의 해당 주 실제 시간표
+    markers: Array<{ day: number; period: number; kind: "in" | "out"; label: string }>;
+  }>;
+  periodsPerDay: number;
+}
+
+/** 융합 카드의 주 단위 그리드: 상대 교사 실제 시간표 + 전 건의 빠짐/들어옴 마커 일괄 표시 */
+function RecipientWeekBlock({
+  block,
+  periodsPerDay,
+}: {
+  block: ConsolidatedShareData["weekBlocks"][number];
+  periodsPerDay: number;
+}) {
+  const maxPeriod = Math.max(7, periodsPerDay || 7);
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden text-xs bg-white shadow-xs">
+      <div className="bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-700 border-b border-gray-200">
+        🗓️ {getWeekRangeLabel(block.startDate)} 주 선생님 시간표
+      </div>
+      <table className="w-full table-fixed border-collapse text-center">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
+            <th className="py-1 px-0.5 border-r border-gray-200 w-8 text-xs">교시</th>
+            {DAYS.map((d) => {
+              const dateLabel = getDayDateLabel(block.startDate, d.num);
+              return (
+                <th key={d.num} className="py-1 px-0.5 w-1/5 text-xs">
+                  <div>{d.label}</div>
+                  {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: maxPeriod }).map((_, idx) => {
+            const period = idx + 1;
+            return (
+              <tr key={period} className="border-b border-gray-100 last:border-0">
+                <td className="py-1 px-0.5 border-r border-gray-200 bg-gray-50 font-bold text-gray-500 text-xs align-middle w-8">{period}</td>
+                {DAYS.map((d) => {
+                  const matched = block.cells.filter((c) => c.day === d.num && c.period === period);
+                  const marker = block.markers.find((m) => m.day === d.num && m.period === period);
+                  const hasLesson = matched.length > 0;
+
+                  let cellStyle = "bg-white text-gray-400";
+                  if (marker?.kind === "out") cellStyle = "bg-amber-100 border border-amber-400 font-bold text-amber-900";
+                  else if (marker?.kind === "in") cellStyle = "bg-emerald-100 border border-emerald-400 font-bold text-emerald-900";
+                  else if (hasLesson) cellStyle = "bg-gray-100 text-gray-700 font-medium";
+
+                  return (
+                    <td key={d.num} className={`p-0.5 h-10 text-xs align-middle ${cellStyle}`}>
+                      {marker?.kind === "out" ? (
+                        <div className="space-y-0.5">
+                          <div className="text-[9px] font-extrabold text-amber-900">➖ 빠짐</div>
+                          <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">
+                            {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
+                          </div>
+                        </div>
+                      ) : marker?.kind === "in" ? (
+                        <div className="space-y-0.5">
+                          <div className="text-[9px] font-extrabold text-emerald-900">➕ 들어옴</div>
+                          <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">{marker.label}</div>
+                        </div>
+                      ) : hasLesson ? (
+                        <div className="truncate max-w-[48px] mx-auto font-bold text-[11px]">
+                          {matched[0].grade}-{matched[0].classNum}
+                        </div>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** §13-1b 융합 양해 카드 (오프스크린 — 같은 상대에게 가는 N건을 한 장으로) */
+function OffscreenConsolidatedShareCard({
+  cardRef,
+  data,
+}: {
+  cardRef: React.RefObject<HTMLDivElement | null>;
+  data: ConsolidatedShareData | null;
+}) {
+  if (!data) {
+    return <div ref={cardRef} style={{ position: "absolute", left: "-9999px", top: "-9999px", pointerEvents: "none" }} />;
+  }
+
+  const n = data.items.length;
+
+  return (
+    <div style={{ position: "absolute", left: "-9999px", top: "-9999px", pointerEvents: "none" }}>
+      <div
+        ref={cardRef}
+        className="w-[520px] bg-white border border-indigo-200 rounded-2xl p-5 shadow-xl space-y-4 font-sans text-gray-900"
+      >
+        <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
+          <div className="text-[10px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
+          <div className="text-lg font-black mt-0.5 tracking-tight">수업교환 양해 요청{n > 1 ? ` (${n}건)` : ""}</div>
+        </div>
+
+        <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3.5 space-y-1 text-xs">
+          <div className="font-extrabold text-indigo-950 text-sm">
+            안녕하세요, {data.counterpartName} 선생님! 👋
+          </div>
+          <div className="text-gray-700 leading-relaxed text-xs">
+            <span className="font-bold text-indigo-900">{data.requesterName} 교사</span>입니다.<br />
+            {n > 1
+              ? `아래 ${n}건의 수업 교체가 가능할지 여쭙습니다. 😊`
+              : "아래 일정으로 수업 교체가 가능할까요? 😊"}
+          </div>
+        </div>
+
+        <div className="border border-gray-200 rounded-xl p-3.5 space-y-2 text-xs bg-gray-50/40">
+          <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5">
+            🔄 교환 목록 (선생님 기준)
+          </div>
+          {data.items.map((d, i) => {
+            const tgtWeek = d.targetWeekId || d.sourceWeekId;
+            const srcSlot = formatSlotWithDate(d.sourceWeekId, d.source.day, d.source.period);
+            const tgtSlot = formatSlotWithDate(tgtWeek, d.candidate.targetDay, d.candidate.targetPeriod);
+            return (
+              <div key={d.id} className="flex items-start gap-2 bg-white border border-gray-200 rounded-lg p-2.5">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center mt-0.5">
+                  {i + 1}
+                </span>
+                <div className="space-y-0.5">
+                  <div className="font-bold text-amber-900">
+                    선생님의 {d.source.grade}-{d.source.classNum}반 {d.candidate.counterpartSubjectName || "수업"} : {tgtSlot} → {srcSlot}
+                  </div>
+                  <div className="font-bold text-emerald-900">
+                    제 {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} : {srcSlot} → {tgtSlot}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-[10px] text-gray-500 flex flex-wrap gap-2.5">
+            <span className="inline-flex items-center gap-1 font-bold text-amber-900">
+              <span className="w-2.5 h-2.5 rounded bg-amber-200 border border-amber-400 inline-block" />
+              ➖ 빠짐 (선생님 시간표에서 빠질 수업)
+            </span>
+            <span className="inline-flex items-center gap-1 font-bold text-emerald-900">
+              <span className="w-2.5 h-2.5 rounded bg-emerald-200 border border-emerald-400 inline-block" />
+              ➕ 들어옴 (선생님 시간표에 들어올 수업)
+            </span>
+          </div>
+          {data.weekBlocks.map((block) => (
+            <RecipientWeekBlock key={block.weekId} block={block} periodsPerDay={data.periodsPerDay} />
+          ))}
+        </div>
+
+        <div className="text-center text-[10px] text-gray-400 border-t border-gray-100 pt-2 font-medium">
+          효명고등학교 학적 & 일과진행 시스템
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * 오프스크린 공유 카드 DOM을 PNG 이미지로 복사/다운로드하는 공용 헬퍼 함수
  * 1. navigator.clipboard.write 지원 시 클립보드 직접 복사 시도
  * 2. 권한 거부(NotAllowedError) 또는 미지원 시 생성된 blob으로 PNG 자동 다운로드 폴백 실행
@@ -622,6 +804,12 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [shareCardData, setShareCardData] = useState<ShareCardData | null>(null);
   const shareCardRef = useRef<HTMLDivElement>(null);
 
+  // §13-1b: 상대 교사별 융합 양해 카드
+  const [myDrafts, setMyDrafts] = useState<SwapDraft[]>([]);
+  const [consolidatedData, setConsolidatedData] = useState<ConsolidatedShareData | null>(null);
+  const consolidatedCardRef = useRef<HTMLDivElement>(null);
+  const [generatingShareFor, setGeneratingShareFor] = useState<string | null>(null);
+
   // 상대 교사 시간표 미리보기 상태
   const [previewCells, setPreviewCells] = useState<TeacherTimetableCell[] | null>(null);
   const [counterpartSourceCells, setCounterpartSourceCells] = useState<TeacherTimetableCell[] | null>(null);
@@ -629,6 +817,24 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewCacheRef = useRef<Map<string, TeacherTimetableCell[]>>(new Map());
+
+  /** 상대 교사의 특정 주 시간표 셀 조회 (세션 캐시) — 사이드바 미리보기·융합 양해 카드 공용 */
+  const fetchTeacherWeekCells = useCallback(async (email: string, wId: string) => {
+    const cacheKey = `${email}_${wId}`;
+    if (previewCacheRef.current.has(cacheKey)) {
+      return previewCacheRef.current.get(cacheKey)!;
+    }
+    const res = await fetch("/api/timetable/view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "teacher", teacherEmail: email, weekId: wId || undefined }),
+    });
+    if (!res.ok) throw new Error("시간표를 불러올 수 없습니다.");
+    const data = await res.json();
+    const fetched: TeacherTimetableCell[] = data.data?.cells || [];
+    previewCacheRef.current.set(cacheKey, fetched);
+    return fetched;
+  }, []);
 
   // §14-2 v2: my_projected 전 주 예상 시간표 로드
   const fetchMyProjected = useCallback(async () => {
@@ -768,6 +974,106 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       alert(`오류: ${e.message}`);
     } finally {
       setDeletingDraftId(null);
+    }
+  };
+
+  // §13-1b: 초안 목록 로드 — my_projected의 초안 수가 변할 때마다 동기화
+  const refreshDrafts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "draft_list" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMyDrafts(data.drafts || []);
+      }
+    } catch {
+      // 융합 카드 버튼이 안 뜰 뿐 — 치명적이지 않으므로 무시
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshDrafts();
+  }, [refreshDrafts, projectedData?.assumedDraftCount]);
+
+  // 상대 교사별 초안 묶음 (융합 양해 카드 단위)
+  const draftGroups = useMemo(() => {
+    const m = new Map<string, { name: string; drafts: SwapDraft[] }>();
+    for (const d of myDrafts) {
+      const email = (d.candidate?.counterpartEmail || "").toLowerCase();
+      if (!email) continue;
+      const g = m.get(email) || { name: d.candidate?.counterpartName || email.split("@")[0], drafts: [] };
+      g.drafts.push(d);
+      m.set(email, g);
+    }
+    return m;
+  }, [myDrafts]);
+
+  // §13-1b: 같은 상대에게 가는 초안 전부를 한 장의 양해 이미지로 융합 복사
+  const handleCopyConsolidatedShare = async (email: string) => {
+    const group = draftGroups.get(email);
+    if (!group || group.drafts.length === 0 || generatingShareFor) return;
+    setGeneratingShareFor(email);
+    try {
+      const weekIds = Array.from(
+        new Set(group.drafts.flatMap((d) => [d.sourceWeekId, d.targetWeekId || d.sourceWeekId]))
+      );
+      const cellsByWeek = new Map<string, TeacherTimetableCell[]>();
+      await Promise.all(
+        weekIds.map(async (wid) => {
+          cellsByWeek.set(wid, await fetchTeacherWeekCells(email, wid));
+        })
+      );
+
+      const weekBlocks = weekIds
+        .map((wid) => {
+          const weekObj = weeks.find((w) => w.id === wid);
+          const markers: ConsolidatedShareData["weekBlocks"][number]["markers"] = [];
+          for (const d of group.drafts) {
+            const outWeek = d.targetWeekId || d.sourceWeekId;
+            if (outWeek === wid && d.candidate?.targetDay != null && d.candidate?.targetPeriod != null) {
+              markers.push({
+                day: d.candidate.targetDay,
+                period: d.candidate.targetPeriod,
+                kind: "out",
+                label: `${d.source.grade}-${d.source.classNum}`,
+              });
+            }
+            if (d.sourceWeekId === wid) {
+              markers.push({
+                day: d.source.day,
+                period: d.source.period,
+                kind: "in",
+                label: `${d.source.grade}-${d.source.classNum}`,
+              });
+            }
+          }
+          return {
+            weekId: wid,
+            startDate: weekObj?.startDate || wid,
+            cells: cellsByWeek.get(wid) || [],
+            markers,
+          };
+        })
+        .filter((b) => b.markers.length > 0)
+        .sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+      setConsolidatedData({
+        requesterName: user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사",
+        counterpartName: group.name,
+        items: group.drafts,
+        weekBlocks,
+        periodsPerDay,
+      });
+      // 오프스크린 렌더 완료를 기다렸다가 이미지 복사 (기존 단건 카드와 동일 패턴)
+      setTimeout(() => {
+        copyShareImageElement(consolidatedCardRef.current).finally(() => setGeneratingShareFor(null));
+      }, 150);
+    } catch (e: any) {
+      alert(`양해 이미지 생성 실패: ${e.message}`);
+      setGeneratingShareFor(null);
     }
   };
 
@@ -964,26 +1270,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     const counterpartEmail = applyingCandidate.counterpartEmail;
     if (!counterpartEmail) return;
 
-    const fetchTeacherWeek = async (wId: string) => {
-      const cacheKey = `${counterpartEmail}_${wId}`;
-      if (previewCacheRef.current.has(cacheKey)) {
-        return previewCacheRef.current.get(cacheKey)!;
-      }
-      const res = await fetch("/api/timetable/view", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "teacher",
-          teacherEmail: counterpartEmail,
-          weekId: wId || undefined,
-        }),
-      });
-      if (!res.ok) throw new Error("시간표를 불러올 수 없습니다.");
-      const data = await res.json();
-      const fetched: TeacherTimetableCell[] = data.data?.cells || [];
-      previewCacheRef.current.set(cacheKey, fetched);
-      return fetched;
-    };
+    const fetchTeacherWeek = (wId: string) => fetchTeacherWeekCells(counterpartEmail, wId);
 
     setPreviewLoading(true);
     setPreviewError(null);
@@ -1005,7 +1292,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         .catch((e: any) => setPreviewError(e?.message || "상대 시간표를 불러올 수 없습니다."))
         .finally(() => setPreviewLoading(false));
     }
-  }, [applyingCandidate, effectiveTargetWeekId, selectedWeekId, isCrossWeek]);
+  }, [applyingCandidate, effectiveTargetWeekId, selectedWeekId, isCrossWeek, fetchTeacherWeekCells]);
 
   return (
     <div className="space-y-4">
@@ -1051,6 +1338,26 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             </button>
           </div>
         </div>
+
+        {/* §13-1b: 상대 교사별 융합 양해 이미지 — 같은 상대에게 가는 초안 전부를 한 장으로 */}
+        {draftGroups.size > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
+            <span className="text-[11px] font-bold text-gray-500">📨 신청 전 양해 구하기 (상대별 이미지 복사):</span>
+            {Array.from(draftGroups.entries()).map(([email, g]) => (
+              <button
+                key={email}
+                onClick={() => handleCopyConsolidatedShare(email)}
+                disabled={!!generatingShareFor}
+                className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 disabled:opacity-50 border border-sky-200 text-sky-800 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+              >
+                <span>📋</span>
+                <span>
+                  {generatingShareFor === email ? "이미지 생성 중…" : `${g.name} 선생님 (${g.drafts.length}건)`}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {batchReason.type === "기타" && (
           <textarea
@@ -1404,10 +1711,14 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                           periodsPerDay,
                         });
                       }}
-                      className="py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
+                      disabled={
+                        previewLoading ||
+                        (isCrossWeek ? !counterpartSourceCells || !counterpartTargetCells : !previewCells)
+                      }
+                      className="py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
                     >
                       <span>📋</span>
-                      <span>양해 이미지 복사</span>
+                      <span>{previewLoading ? "상대 시간표 불러오는 중…" : "양해 이미지 복사"}</span>
                     </button>
 
                     <button
@@ -1439,6 +1750,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
       {/* 오프스크린 사전 양해 공유 카드 DOM (클립보드 복사용) */}
       <OffscreenShareCard cardRef={shareCardRef} data={shareCardData} />
+      <OffscreenConsolidatedShareCard cardRef={consolidatedCardRef} data={consolidatedData} />
     </div>
   );
 }
