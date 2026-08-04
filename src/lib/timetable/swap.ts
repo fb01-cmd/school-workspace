@@ -12,6 +12,7 @@
 
 import { isSlotWithinWeek, periodsForGradeDay } from "./weekly";
 import {
+  PenaltyDetail,
   SubstituteCandidate,
   SwapCandidate,
   SwapSourceSlot,
@@ -280,20 +281,20 @@ export function findSwapCandidates(
       if (myLesson.room && !isRoomFree(idx, myLesson.room, d2, p2, classKey)) continue;
       if (l2.room && !isRoomFree(idx, l2.room, source.day, source.period, classKey)) continue;
 
-      // 감점 계산 — 중복은 횟수 비례 가중, 나머지는 사유 1건당 1점
-      const penalties: string[] = [];
-      let score = 0;
+      // 감점 계산 — 중복은 횟수 비례 가중, 나머지는 사유 1건당 1점.
+      // §14-2 v2: scope 분류 — 교사 화면은 counterpart만 표시, 전체는 일과계 스냅샷용 유지
+      const details: PenaltyDetail[] = [];
       const dup1 = classDuplicatePenalty(grid, d2, myLesson.subjectName, [p2, ...(d2 === source.day ? [source.period] : [])]);
-      if (dup1) { penalties.push(dup1.message); score += dup1.points; }
+      if (dup1) details.push({ scope: "class", text: dup1.message, points: dup1.points });
       const dup2 = classDuplicatePenalty(grid, source.day, l2.subjectName, [source.period, ...(source.day === d2 ? [p2] : [])]);
-      if (dup2) { penalties.push(dup2.message); score += dup2.points; }
-      const teacherPenalties = [
-        ...teacherDayPenalties(ctx, me, "내", d2, p2, source.day === d2 ? source.period : null),
+      if (dup2) details.push({ scope: "class", text: dup2.message, points: dup2.points });
+      details.push(
+        ...teacherDayPenalties(ctx, me, "내", d2, p2, source.day === d2 ? source.period : null)
+          .map((p) => ({ scope: "mine" as const, text: p.message, points: p.points })),
         ...teacherDayPenalties(ctx, b.email, `${b.name} 선생님`, source.day, source.period,
-          d2 === source.day ? p2 : null),
-      ];
-      penalties.push(...teacherPenalties.map((p) => p.message));
-      score += teacherPenalties.reduce((sum, p) => sum + p.points, 0);
+          d2 === source.day ? p2 : null)
+          .map((p) => ({ scope: "counterpart" as const, text: p.message, points: p.points }))
+      );
 
       candidates.push({
         targetDay: d2,
@@ -301,14 +302,21 @@ export function findSwapCandidates(
         counterpartEmail: norm(b.email),
         counterpartName: b.name,
         counterpartSubjectName: l2.subjectName,
-        score,
-        penalties,
+        score: details.reduce((sum, p) => sum + p.points, 0),
+        penalties: details.map((p) => p.text),
+        penaltyDetails: details,
+        counterpartScore: details
+          .filter((p) => p.scope === "counterpart")
+          .reduce((sum, p) => sum + p.points, 0),
       });
     }
   }
 
   candidates.sort(
-    (a, b) => a.score - b.score || a.targetDay - b.targetDay || a.targetPeriod - b.targetPeriod
+    (a, b) =>
+      a.counterpartScore - b.counterpartScore || // §14-2 v2: 상대 부담 우선 정렬
+      a.score - b.score ||
+      a.targetDay - b.targetDay || a.targetPeriod - b.targetPeriod
   );
   return { candidates };
 }
@@ -386,22 +394,18 @@ export function findCrossSwapCandidates(
       if (l2.room && !isRoomFree(idxSrc, l2.room, source.day, source.period, classKey)) continue;
 
       // 감점 — 두 주 각각 계산해 합산. 교차 주라 같은 주 내 제거 상쇄는 없음(removePeriod=null).
-      // 중복은 횟수 비례 가중, 나머지는 사유 1건당 1점
-      const penalties: string[] = [];
-      let score = 0;
+      // 중복은 횟수 비례 가중, 나머지는 사유 1건당 1점. §14-2 v2 scope 분류 동일 적용.
+      const details: PenaltyDetail[] = [];
       const dupTgt = classDuplicatePenalty(targetGrid, d2, myLesson.subjectName, [p2]);
-      if (dupTgt) { penalties.push(`${tgtLabel}: ${dupTgt.message}`); score += dupTgt.points; }
+      if (dupTgt) details.push({ scope: "class", text: `${tgtLabel}: ${dupTgt.message}`, points: dupTgt.points });
       const dupSrc = classDuplicatePenalty(src.grid!, source.day, l2.subjectName, [source.period]);
-      if (dupSrc) { penalties.push(`${srcLabel}: ${dupSrc.message}`); score += dupSrc.points; }
-      const teacherPenalties = [
-        ...teacherDayPenalties(ctxTgt, me, "내", d2, p2, null).map((p) => ({
-          ...p, message: `${tgtLabel}: ${p.message}`,
-        })),
+      if (dupSrc) details.push({ scope: "class", text: `${srcLabel}: ${dupSrc.message}`, points: dupSrc.points });
+      details.push(
+        ...teacherDayPenalties(ctxTgt, me, "내", d2, p2, null)
+          .map((p) => ({ scope: "mine" as const, text: `${tgtLabel}: ${p.message}`, points: p.points })),
         ...teacherDayPenalties(ctxSrc, b.email, `${b.name} 선생님`, source.day, source.period, null)
-          .map((p) => ({ ...p, message: `${srcLabel}: ${p.message}` })),
-      ];
-      penalties.push(...teacherPenalties.map((p) => p.message));
-      score += teacherPenalties.reduce((sum, p) => sum + p.points, 0);
+          .map((p) => ({ scope: "counterpart" as const, text: `${srcLabel}: ${p.message}`, points: p.points }))
+      );
 
       candidates.push({
         targetDay: d2,
@@ -409,14 +413,21 @@ export function findCrossSwapCandidates(
         counterpartEmail: norm(b.email),
         counterpartName: b.name,
         counterpartSubjectName: l2.subjectName,
-        score,
-        penalties,
+        score: details.reduce((sum, p) => sum + p.points, 0),
+        penalties: details.map((p) => p.text),
+        penaltyDetails: details,
+        counterpartScore: details
+          .filter((p) => p.scope === "counterpart")
+          .reduce((sum, p) => sum + p.points, 0),
       });
     }
   }
 
   candidates.sort(
-    (a, b) => a.score - b.score || a.targetDay - b.targetDay || a.targetPeriod - b.targetPeriod
+    (a, b) =>
+      a.counterpartScore - b.counterpartScore || // §14-2 v2: 상대 부담 우선 정렬
+      a.score - b.score ||
+      a.targetDay - b.targetDay || a.targetPeriod - b.targetPeriod
   );
   return { candidates };
 }

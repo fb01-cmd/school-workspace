@@ -3,6 +3,7 @@ import { writeAuditLog } from "@/lib/firebase/audit-server";
 import {
   cancelSwapRequest,
   computeCandidates,
+  computeMyProjectedWeeks,
   createSwapRequest,
   deleteSwapDraft,
   listSwapDrafts,
@@ -167,6 +168,16 @@ export async function POST(req: NextRequest) {
           weekId: body.weekId,
         });
         return NextResponse.json({ success: true, action, requests });
+      }
+
+      // ── §14-2 v2: 등록 전 주 예상 내 시간표 (알리미식 일렬 나열) ──
+      // 기본값 켜짐 — 그리드가 곧 작업 상태이므로 PENDING·초안(클릭 누적)을 항상 반영해 보여준다.
+      case "my_projected": {
+        const result = await computeMyProjectedWeeks(domain, auth.email, {
+          includeMyPending: body.includeMyPending !== false,
+          includeDrafts: body.includeDrafts !== false,
+        });
+        return NextResponse.json({ success: true, action, ...result });
       }
 
       case "cancel": {

@@ -1120,7 +1120,7 @@ async function loadMyVirtualOverlay(
   userEmail: string,
   weekIds: string[],
   opts: { includeMyPending?: boolean; includeDrafts?: boolean },
-  excludeSource: { weekId: string; source: SwapSourceSlot }
+  excludeSource: { weekId: string; source: SwapSourceSlot } | null
 ): Promise<{ byWeek: Map<string, TimetableChange[]>; pendingCount: number; draftCount: number }> {
   const norm = userEmail.trim().toLowerCase();
   const items: VirtualSwapItem[] = [];
@@ -1128,6 +1128,7 @@ async function loadMyVirtualOverlay(
   let draftCount = 0;
 
   const isExcluded = (weekId: string, s: SwapSourceSlot) =>
+    excludeSource !== null &&
     weekId === excludeSource.weekId &&
     s.grade === excludeSource.source.grade && s.classNum === excludeSource.source.classNum &&
     s.day === excludeSource.source.day && s.period === excludeSource.source.period;
@@ -1198,6 +1199,66 @@ function countMyDayLoads(grids: WeeklyClassGrid[], email: string): ProjectedDayL
     counts.set(cell.day, (counts.get(cell.day) || 0) + 1);
   }
   return [1, 2, 3, 4, 5].map((day) => ({ day, count: counts.get(day) || 0 }));
+}
+
+/**
+ * §14-2 v2: 등록된 전 주의 "예상 내 시간표" — 알리미식 일렬 나열용.
+ * PENDING 신청·초안(클릭 누적분)을 가상 적용한 각 주의 본인 셀·요일 시수를 한 번에 반환.
+ * 셀 changed.changeId 접두어("virtual-req-"/"virtual-draft-")로 UI가 대기/초안 반영분을 구분한다.
+ */
+export async function computeMyProjectedWeeks(
+  domain: string,
+  userEmail: string,
+  opts: { includeMyPending: boolean; includeDrafts: boolean }
+): Promise<{
+  termId: string | null;
+  weeks: Array<{
+    weekId: string;
+    startDate: string;
+    days: TimetableWeek["days"];
+    cells: TeacherTimetableCell[];
+    dayLoads: ProjectedDayLoad[];
+  }>;
+  assumedPendingCount: number;
+  assumedDraftCount: number;
+}> {
+  const term = await loadActiveTerm(domain);
+  if (!term) return { termId: null, weeks: [], assumedPendingCount: 0, assumedDraftCount: 0 };
+
+  const weeks = await listWeeks(domain, term.id);
+  weeks.sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const overlay = await loadMyVirtualOverlay(
+    domain, userEmail, weeks.map((w) => w.id), opts, null
+  );
+
+  // 기초 그리드·설정은 주마다 같으므로 1회만 로드 (주당 changes만 개별 조회)
+  const [baseGrids, settings] = await Promise.all([
+    loadAllClassGrids(domain, term.id),
+    loadTimetableSettings(domain),
+  ]);
+
+  const out: Array<{
+    weekId: string; startDate: string; days: TimetableWeek["days"];
+    cells: TeacherTimetableCell[]; dayLoads: ProjectedDayLoad[];
+  }> = [];
+  for (const week of weeks) {
+    const changes = await loadWeekChanges(domain, week.id);
+    const virtual = overlay.byWeek.get(week.id) || [];
+    const { grids } = synthesizeWeeklyGrids(baseGrids, week, [...changes, ...virtual], settings);
+    out.push({
+      weekId: week.id,
+      startDate: week.startDate,
+      days: week.days,
+      cells: synthesizeTeacherTimetable(grids, userEmail),
+      dayLoads: countMyDayLoads(grids, userEmail),
+    });
+  }
+  return {
+    termId: term.id,
+    weeks: out,
+    assumedPendingCount: overlay.pendingCount,
+    assumedDraftCount: overlay.draftCount,
+  };
 }
 
 // ── 후보 탐색 (라우트 → 엔진 연결) ────────────────────────────

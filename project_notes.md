@@ -3168,3 +3168,15 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
 - **실서버 대기 신청 검증**: 기존 대기 중인 신청 1건은 승인·반려하지 않고 그대로 보존함.
 
+
+## [2026-08-04] Claude → Antigravity/사용자 (§14-2 v2 개정 + 서버부 확장 완료 — 그리드 직접 조작 멀티클릭)
+
+- **배경 (파일럿 피드백 + 사용자 문답)**: 장바구니 패널(v1)은 "내 수업이 어떻게 되는지 안 보임" — 알리미처럼 **그리드 자체가 작업 상태**(클릭이 클릭된 채 남고 최종 시간표를 항상 한눈에)로 개정. 문답 확정 2건: ① 등록된 주 **전부** 일렬 나열 ② 감점은 **상대 교사 관련만** 표시(내 감점·학급 중복은 교사 화면에서 제거하되, **일과계 스냅샷에는 전체 유지** — 승인자의 학생 영향 판단용).
+- **변경 파일**: `src/lib/timetable/swap.ts`(감점 scope 분류 `penaltyDetails`·`counterpartScore`·상대 부담 우선 정렬), `src/lib/timetable/server.ts`(`computeMyProjectedWeeks` — 전 주 예상 시간표), `src/lib/timetable/types.ts`(PenaltyDetail·my_projected), `src/app/api/timetable/requests/route.ts`(my_projected 액션), `phase9b_spec.md`(§14-2 v2 전면 개정), `scripts/verify_projected_weeks.ts`(실측)
+- **검증 상태**: `npx tsc --noEmit` ✅(기존 UI 비파괴 — penalties·score 유지, 신규 필드 추가형) / `npm run build` ✅ / **실측 ✅** — 실보유 초안 4건(교차 주)이 주별로 정확히 반영: 가상 마커 8/10주 2·8/17주 1·8/24주 1(각 교차 초안의 "내 수업 들어가는 쪽" 1셀씩), 요일 시수 이동 전부 초안 내용과 일치. 감점 분류 합계·정렬 ✅ (`scripts/verify_projected_weeks.ts` 재실행 가능).
+- **API 계약 (UI 구현용)**:
+  1. `my_projected` (기본 오버레이 켜짐) → `{termId, weeks: [{weekId, startDate, days, cells, dayLoads}], assumedPendingCount, assumedDraftCount}`. 셀 `changed.changeId` 접두어: `virtual-draft-{초안id}`(클릭 누적 — 점선/취소 가능) / `virtual-req-`(제출 대기) / 실 id(승인 확정).
+  2. `candidates`는 항상 `includeMyPending:true, includeDrafts:true`로 호출. 후보 카드는 `counterpartScore`·`penaltyDetails`의 `scope==="counterpart"` 항목만 표시 (0이면 "상대 부담 없음"). 정렬은 서버가 이미 상대 부담 우선.
+  3. 클릭=`draft_save`, 클릭 취소=`draft_delete`, 일괄 제출=`create_batch`(기존 계약 그대로) — 각 조작 후 `my_projected` 재조회로 그리드 갱신.
+- **다음**: Antigravity가 §14-2 v2 UI(전 주 일렬 그리드·멀티클릭·상대 감점만 후보 카드·일괄 제출)와 §14-3(요청대장 batchId 묶음·일괄 승인) 구현.
+- **주의**: 실서버 승인 조작 금지 유지. tteacher@ 초안 4건은 UI 테스트 소재로 그대로 둠.

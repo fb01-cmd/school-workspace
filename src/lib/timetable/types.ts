@@ -492,14 +492,25 @@ export interface HourTotalsResult {
 
 // ── 후보 탐색 엔진 (swap.ts 출력) ─────────────────────────────
 
+/** 감점 대상 분류 (§14-2 v2) — 교사 화면은 counterpart만 표시, 일과계는 전체 열람 */
+export type PenaltyScope = "mine" | "counterpart" | "class";
+
+export interface PenaltyDetail {
+  scope: PenaltyScope;
+  text: string;
+  points: number;
+}
+
 export interface SwapCandidate {
   targetDay: number;
   targetPeriod: number;
   counterpartEmail: string;
   counterpartName: string;
   counterpartSubjectName: string;
-  score: number; // 감점 합 (0이 최선)
-  penalties: string[]; // 사람이 읽는 감점 사유
+  score: number; // 전체 감점 합 (0이 최선) — 일과계 스냅샷·정렬 보조
+  penalties: string[]; // 사람이 읽는 감점 사유 전체 (일과계 요청대장 표시용 유지)
+  penaltyDetails: PenaltyDetail[]; // 분류된 감점 (§14-2 v2 — 교사 화면은 scope==="counterpart"만)
+  counterpartScore: number; // 상대 교사 관련 감점 합 — 교사 화면 표시·1차 정렬 기준
 }
 
 export interface SubstituteCandidate {
@@ -526,6 +537,7 @@ export type SwapRequestAction =
   | "create"
   | "create_batch"
   | "my_list"
+  | "my_projected" // §14-2 v2: 등록 전 주 예상 내 시간표 (PENDING·초안 가상 반영)
   | "cancel"
   | "draft_save"
   | "draft_list"
