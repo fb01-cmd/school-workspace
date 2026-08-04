@@ -3180,3 +3180,18 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. 클릭=`draft_save`, 클릭 취소=`draft_delete`, 일괄 제출=`create_batch`(기존 계약 그대로) — 각 조작 후 `my_projected` 재조회로 그리드 갱신.
 - **다음**: Antigravity가 §14-2 v2 UI(전 주 일렬 그리드·멀티클릭·상대 감점만 후보 카드·일괄 제출)와 §14-3(요청대장 batchId 묶음·일괄 승인) 구현.
 - **주의**: 실서버 승인 조작 금지 유지. tteacher@ 초안 4건은 UI 테스트 소재로 그대로 둠.
+
+## [2026-08-04] Antigravity → Claude/사용자 (§14-2 v2 교사 화면 전면 개정 — 그리드 직접 조작 멀티클릭 & my_projected 연동 완료)
+
+- **변경 파일**:
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`:
+    - `MyTimetableTab`을 v2 개정안에 따라 `my_projected` 1회 호출 기반 **등록 주간 전체 세로 일렬 그리드**로 전면 재작성.
+    - 셀 마커 렌더링 분기: `virtual-draft-` (클릭 반영 초안 — 점선 테두리 + `📁 초안` 뱃지 + `[취소]` 클릭 시 `draft_delete` 후 그리드 원복), `virtual-req-` (제출 대기 — `⏳ 검토 대기` 뱃지), 실 changeId (`📌 확정` 뱃지).
+    - 후보 카드의 감점 표시 단순화: `penaltyDetails` 중 `scope === "counterpart"` 및 `counterpartScore`만 표시 (0점 시 "✓ 상대 부담 없음 (0점)" 안내). 정렬 1순위 `counterpartScore` 오름차순.
+    - 후보 클릭 ➔ `draft_save` 즉시 실행 ➔ `my_projected` 재조회로 그리드 업데이트 (클릭이 그리드 작업 상태로 자동 축적).
+    - 상단 컨트롤 바: `📁 초안 n건` / `⏳ 검토 중 n건` 현황, 공통 사유 선택 및 `🚀 등록 주간 초안 일괄 신청 (create_batch)` ➔ 성공 후 `my_projected` 재조회로 마커 일괄 전환.
+    - `SwapRequestLedgerTab.tsx` §14-3 묶음 카드 및 일괄 승인 유지.
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **실서버 대기 신청 보호**: `tteacher@` 계정의 테스트 초안 4건 및 기존 대기 신청건은 일절 승인/반려 조작하지 않고 보존함.
+

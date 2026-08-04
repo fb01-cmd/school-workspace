@@ -554,10 +554,18 @@ async function copyShareImageElement(node: HTMLDivElement | null): Promise<void>
   alert("양해 요청 이미지를 생성하지 못했습니다.");
 }
 
-// ── ① 내 주간시간표 탭 ─────────────────────────────────────────
+// ── ① 내 주간시간표 탭 (v2: 그리드 직접 조작 멀티클릭 & my_projected 연동) ─────
 interface MyTimetableTabProps {
   periodsPerDay: number;
   settings: TimetableSettings | null;
+}
+
+interface ProjectedWeek {
+  weekId: string;
+  startDate: string;
+  days: { num: number; label: string }[];
+  cells: TeacherTimetableCell[];
+  dayLoads: ProjectedDayLoad[];
 }
 
 function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
@@ -568,13 +576,20 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     isSuperAdmin ||
     (settings?.managerEmails || []).some((m) => m.toLowerCase() === userEmail);
 
+  // 주 목록 (교차 주 선택 및 메타 데이터용)
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [selectedWeekId, setSelectedWeekId] = useState<string>("");
   const [targetWeekId, setTargetWeekId] = useState<string>("");
-  const [cells, setCells] = useState<TeacherTimetableCell[]>([]);
-  const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // §14-2 v2: 등록 전 주 예상 내 시간표 상태 (my_projected)
+  const [projectedData, setProjectedData] = useState<{
+    termId: string;
+    weeks: ProjectedWeek[];
+    assumedPendingCount: number;
+    assumedDraftCount: number;
+  } | null>(null);
 
   // 유효 대상 주 계산 (교차 주 지원)
   const effectiveTargetWeekId = targetWeekId || selectedWeekId;
@@ -583,87 +598,32 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const sourceWeekObj = weeks.find((w) => w.id === selectedWeekId);
   const targetWeekObj = weeks.find((w) => w.id === effectiveTargetWeekId);
 
-  // 셀 클릭 → 후보 조회 상태
-  const [selectedCell, setSelectedCell] = useState<TeacherTimetableCell | null>(null);
+  // 셀 클릭 후 후보 조회를 위한 상태 (선택된 셀 + 해당 셀이 속한 주 ID)
+  const [selectedCell, setSelectedCell] = useState<(TeacherTimetableCell & { weekId: string }) | null>(null);
   const [candidatesResult, setCandidatesResult] = useState<SwapCandidatesResult | null>(null);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
 
-  // ① 양방향 연동 상태: 카드 호버/선택 → 셀 강조
+  // 카드 호버/선택 상태
   const [hoveredCandidateKey, setHoveredCandidateKey] = useState<string | null>(null);
   const [selectedCandidateKey, setSelectedCandidateKey] = useState<string | null>(null);
-  // 후보 카드 컨테이너 ref (스크롤용)
   const candidateListRef = useRef<HTMLDivElement>(null);
 
-  // 신청 상태
+  // 신청 및 임시저장 처리 상태
   const [applyingCandidate, setApplyingCandidate] = useState<SwapCandidate | null>(null);
   const [reason, setReason] = useState<SwapRequestReason>({ type: "출장" });
+  const [batchReason, setBatchReason] = useState<SwapRequestReason>({ type: "출장" });
   const [submitting, setSubmitting] = useState(false);
+  const [submittingBatch, setSubmittingBatch] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [submitResult, setSubmitResult] = useState<string | null>(null);
 
-  const [savingDraft, setSavingDraft] = useState(false);
   const [shareCardData, setShareCardData] = useState<ShareCardData | null>(null);
   const shareCardRef = useRef<HTMLDivElement>(null);
 
-  const handleCopyShareImage = (data: ShareCardData) => {
-    setShareCardData(data);
-    setTimeout(() => {
-      copyShareImageElement(shareCardRef.current);
-    }, 100);
-  };
-
-  const handleSaveDraft = async () => {
-    if (!selectedCell || !applyingCandidate) return;
-    setSavingDraft(true);
-    try {
-      const res = await fetch("/api/timetable/requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "draft_save",
-          draft: {
-            sourceWeekId: selectedWeekId,
-            targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
-            source: {
-              grade: selectedCell.grade,
-              classNum: selectedCell.classNum,
-              day: selectedCell.day,
-              period: selectedCell.period,
-              subjectName: selectedCell.subjectName,
-            },
-            candidate: {
-              type: "swap",
-              targetDay: applyingCandidate.targetDay,
-              targetPeriod: applyingCandidate.targetPeriod,
-              targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
-              counterpartEmail: applyingCandidate.counterpartEmail,
-              counterpartName: applyingCandidate.counterpartName,
-              counterpartSubjectName: applyingCandidate.counterpartSubjectName,
-              score: applyingCandidate.score,
-              penalties: applyingCandidate.penalties,
-            },
-            reason: reason,
-          },
-        }),
-      });
-      if (res.ok) {
-        alert("임시저장함에 초안이 저장되었습니다.\n'내 신청 내역' 탭의 사전 양해 임시저장함에서 확인하실 수 있습니다.");
-      } else {
-        const err = await res.json().catch(() => ({}));
-        alert(`임시저장 실패: ${err.error}`);
-      }
-    } catch (e: any) {
-      alert(`오류: ${e.message}`);
-    } finally {
-      setSavingDraft(false);
-    }
-  };
-
-  // 교차 주 지원: 교체 대상 주 내 시간표 셀 목록
+  // 교차 주 지원: 내 교체 대상 주 시간표 셀 및 상대 교사 시간표 미리보기 상태
   const [targetCells, setTargetCells] = useState<TeacherTimetableCell[] | null>(null);
   const [targetCellsLoading, setTargetCellsLoading] = useState(false);
-
-  // 상대 교사 시간표 미리보기 상태 및 캐시 (같은 주: previewCells, 교차 주: counterpartSourceCells / counterpartTargetCells)
   const [previewCells, setPreviewCells] = useState<TeacherTimetableCell[] | null>(null);
   const [counterpartSourceCells, setCounterpartSourceCells] = useState<TeacherTimetableCell[] | null>(null);
   const [counterpartTargetCells, setCounterpartTargetCells] = useState<TeacherTimetableCell[] | null>(null);
@@ -671,82 +631,42 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewCacheRef = useRef<Map<string, TeacherTimetableCell[]>>(new Map());
 
-  // 교차 주 모드일 때 내 대상 주 시간표 로드
-  useEffect(() => {
-    if (!isCrossWeek || !effectiveTargetWeekId) {
-      setTargetCells(null);
-      return;
-    }
-    setTargetCellsLoading(true);
-    fetch("/api/timetable/view", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "my", weekId: effectiveTargetWeekId }),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((res) => {
-        setTargetCells(res?.data?.cells || []);
-      })
-      .catch(() => setTargetCells([]))
-      .finally(() => setTargetCellsLoading(false));
-  }, [isCrossWeek, effectiveTargetWeekId]);
-
-  // 후보 카드(상대 교사) 선택 시 상대 교사 시간표 로드 (같은 주: 1개 주, 교차 주: 소스주+대상주 2개 주)
-  useEffect(() => {
-    if (!applyingCandidate) {
-      setPreviewCells(null);
-      setCounterpartSourceCells(null);
-      setCounterpartTargetCells(null);
-      setPreviewError(null);
-      return;
-    }
-    const counterpartEmail = applyingCandidate.counterpartEmail;
-    if (!counterpartEmail) return;
-
-    const fetchTeacherWeek = async (weekId: string) => {
-      const cacheKey = `${counterpartEmail}_${weekId}`;
-      if (previewCacheRef.current.has(cacheKey)) {
-        return previewCacheRef.current.get(cacheKey)!;
-      }
-      const res = await fetch("/api/timetable/view", {
+  // §14-2 v2: my_projected 전 주 예상 시간표 로드 (기본 켜짐)
+  const fetchMyProjected = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/timetable/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "teacher",
-          teacherEmail: counterpartEmail,
-          weekId: weekId || undefined,
+          action: "my_projected",
+          includeMyPending: true,
+          includeDrafts: true,
         }),
       });
-      if (!res.ok) throw new Error("시간표를 불러올 수 없습니다.");
-      const data = await res.json();
-      const fetched: TeacherTimetableCell[] = data.data?.cells || [];
-      previewCacheRef.current.set(cacheKey, fetched);
-      return fetched;
-    };
-
-    setPreviewLoading(true);
-    setPreviewError(null);
-
-    if (!isCrossWeek) {
-      fetchTeacherWeek(effectiveTargetWeekId)
-        .then((fetched) => {
-          setPreviewCells(fetched);
-        })
-        .catch((e: any) => setPreviewError(e?.message || "상대 시간표를 불러올 수 없습니다."))
-        .finally(() => setPreviewLoading(false));
-    } else {
-      Promise.all([
-        fetchTeacherWeek(selectedWeekId),
-        fetchTeacherWeek(effectiveTargetWeekId),
-      ])
-        .then(([srcCells, tgtCells]) => {
-          setCounterpartSourceCells(srcCells);
-          setCounterpartTargetCells(tgtCells);
-        })
-        .catch((e: any) => setPreviewError(e?.message || "상대 시간표를 불러올 수 없습니다."))
-        .finally(() => setPreviewLoading(false));
+      if (res.ok) {
+        const data = await res.json();
+        setProjectedData({
+          termId: data.termId || "",
+          weeks: data.weeks || [],
+          assumedPendingCount: data.assumedPendingCount || 0,
+          assumedDraftCount: data.assumedDraftCount || 0,
+        });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setError(err.error || "예상 시간표를 불러올 수 없습니다.");
+      }
+    } catch (e: any) {
+      setError(`네트워크 오류: ${e.message}`);
+    } finally {
+      setLoading(false);
     }
-  }, [applyingCandidate, effectiveTargetWeekId, selectedWeekId, isCrossWeek]);
+  }, []);
+
+  useEffect(() => {
+    fetchMyProjected();
+  }, [fetchMyProjected]);
 
   useEffect(() => {
     const termId = settings?.activeTermId;
@@ -772,45 +692,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       .catch(() => {});
   }, [settings?.activeTermId]);
 
-  const fetchTimetable = useCallback(async (weekId?: string) => {
-    setLoading(true);
-    setError(null);
-    setSelectedCell(null);
-    setCandidatesResult(null);
-    setHoveredCandidateKey(null);
-    setSelectedCandidateKey(null);
-    setPreviewCells(null);
-    try {
-      const res = await fetch("/api/timetable/view", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "my", weekId: weekId || undefined }),
-      });
-      if (res.ok) {
-        const result = await res.json();
-        setTermMeta(result.term || null);
-        setCells(result.data?.cells || []);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setError(err.error || "시간표를 불러올 수 없습니다.");
-      }
-    } catch (e: any) {
-      setError(`네트워크 오류: ${e.message}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTimetable(selectedWeekId || undefined);
-    setTargetWeekId(selectedWeekId);
-  }, [selectedWeekId, fetchTimetable]);
-
-  /** 맞교환 후보 카드의 고유 키 (day·period·counterpartEmail) */
   const candidateKey = (sc: SwapCandidate) =>
     `${sc.targetDay}-${sc.targetPeriod}-${sc.counterpartEmail}`;
 
-  /** 셀 클릭 후 해당 후보 카드로 스크롤·강조 */
   const scrollToCandidate = useCallback((key: string) => {
     setTimeout(() => {
       const el = document.getElementById(`candidate-card-${key}`);
@@ -871,24 +755,159 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     [scrollToCandidate]
   );
 
-  const handleCellClick = async (cell: TeacherTimetableCell) => {
-    if (!selectedWeekId) {
-      alert("먼저 조회할 주를 선택해 주세요. 주가 등록되어 있어야 교환 신청이 가능합니다.");
-      return;
-    }
-    setSelectedCell(cell);
-    fetchCandidates(cell, selectedWeekId, effectiveTargetWeekId);
+  const handleCellClick = (cell: TeacherTimetableCell, srcWeekId: string) => {
+    setSelectedCell({ ...cell, weekId: srcWeekId });
+    setSelectedWeekId(srcWeekId);
+    setTargetWeekId(srcWeekId);
+    fetchCandidates(cell, srcWeekId, targetWeekId || srcWeekId);
   };
 
   const handleTargetWeekChange = (newTargetWeekId: string) => {
     setTargetWeekId(newTargetWeekId);
     if (selectedCell) {
-      fetchCandidates(selectedCell, selectedWeekId, newTargetWeekId || selectedWeekId);
+      fetchCandidates(selectedCell, selectedCell.weekId, newTargetWeekId || selectedCell.weekId);
     }
   };
 
-  const handleSubmit = async () => {
-    if (!applyingCandidate || !selectedCell || !selectedWeekId) return;
+  // 초안 셀 삭제 (draft_delete -> my_projected 원복)
+  const handleDeleteDraftById = async (draftId: string) => {
+    if (!confirm("이 임시저장 초안을 삭제하시겠습니까?")) return;
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "draft_delete", draftId }),
+      });
+      if (res.ok) {
+        await fetchMyProjected();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`초안 삭제 실패: ${err.error}`);
+      }
+    } catch (e: any) {
+      alert(`오류: ${e.message}`);
+    }
+  };
+
+  // 클릭 = 초안 자동 저장 (draft_save -> my_projected 갱신)
+  const handleSelectCandidateAndSave = async (sc: SwapCandidate) => {
+    if (!selectedCell) return;
+    setApplyingCandidate(sc);
+    setSavingDraft(true);
+    try {
+      const srcWeekId = selectedCell.weekId;
+      const tgtWeekId = isCrossWeek ? effectiveTargetWeekId : srcWeekId;
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "draft_save",
+          draft: {
+            sourceWeekId: srcWeekId,
+            targetWeekId: tgtWeekId !== srcWeekId ? tgtWeekId : undefined,
+            source: {
+              grade: selectedCell.grade,
+              classNum: selectedCell.classNum,
+              day: selectedCell.day,
+              period: selectedCell.period,
+              subjectName: selectedCell.subjectName,
+            },
+            candidate: {
+              type: "swap",
+              targetDay: sc.targetDay,
+              targetPeriod: sc.targetPeriod,
+              targetWeekId: tgtWeekId !== srcWeekId ? tgtWeekId : undefined,
+              counterpartEmail: sc.counterpartEmail,
+              counterpartName: sc.counterpartName,
+              counterpartSubjectName: sc.counterpartSubjectName,
+              score: sc.score,
+              penalties: sc.penalties,
+            },
+            reason: reason,
+          },
+        }),
+      });
+      if (res.ok) {
+        await fetchMyProjected();
+        setApplyingCandidate(null);
+        setSelectedCell(null);
+        setCandidatesResult(null);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`초안 저장 실패: ${err.error}`);
+      }
+    } catch (e: any) {
+      alert(`오류: ${e.message}`);
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // 상단 일괄 제출 (create_batch -> my_projected 갱신)
+  const handleBatchSubmitFromHeader = async () => {
+    if (batchReason.type === "기타" && !batchReason.note?.trim()) {
+      alert("신청 사유(기타) 상세 내용을 입력해 주세요.");
+      return;
+    }
+
+    try {
+      const draftRes = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "draft_list" }),
+      });
+      if (!draftRes.ok) throw new Error("초안 목록을 불러올 수 없습니다.");
+      const draftData = await draftRes.json();
+      const activeDrafts: SwapDraft[] = draftData.drafts || [];
+      if (activeDrafts.length === 0) {
+        alert("일괄 신청할 임시저장 초안이 없습니다. 시간표 셀을 클릭하여 교환안을 임시저장해 주세요.");
+        return;
+      }
+
+      if (!confirm(`등록된 주간 전체의 임시저장 초안 ${activeDrafts.length}건을 한 번에 일괄 신청(일과계 제출)하시겠습니까?`)) {
+        return;
+      }
+
+      setSubmittingBatch(true);
+      setSubmitResult(null);
+
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_batch",
+          items: activeDrafts.map((d) => ({
+            draftId: d.id,
+            weekId: d.sourceWeekId,
+            targetWeekId: d.targetWeekId,
+            type: "swap",
+            source: d.source,
+            candidate: d.candidate,
+          })),
+          reason: batchReason,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const okCount = data.createdCount || 0;
+        const results: SwapBatchItemResult[] = data.results || [];
+        const failCount = results.filter((r) => !r.ok).length;
+
+        setSubmitResult(`🚀 ${okCount}건의 수업교환 신청이 성공적으로 일괄 접수되었습니다.${failCount > 0 ? ` (${failCount}건 거부됨)` : ""}`);
+        await fetchMyProjected();
+      } else {
+        setSubmitResult(`❌ 일괄 신청 실패: ${data.error || "알 수 없는 오류"}`);
+      }
+    } catch (e: any) {
+      setSubmitResult(`❌ 오류: ${e.message}`);
+    } finally {
+      setSubmittingBatch(false);
+    }
+  };
+
+  const handleSingleSubmit = async () => {
+    if (!applyingCandidate || !selectedCell) return;
     if (reason.type === "기타" && !reason.note?.trim()) {
       alert("\"기타\" 사유는 내용을 반드시 입력해야 합니다.");
       return;
@@ -912,7 +931,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create",
-          weekId: selectedWeekId,
+          weekId: selectedCell.weekId,
           targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
           type: "swap",
           source: {
@@ -928,6 +947,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       });
       if (res.ok) {
         setSubmitResult("✅ 수업교환 신청이 완료되었습니다. 일과계에서 검토 후 처리됩니다.");
+        await fetchMyProjected();
         setApplyingCandidate(null);
         setCandidatesResult(null);
         setSelectedCell(null);
@@ -945,54 +965,170 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     }
   };
 
-  const getCellFor = (day: number, period: number) =>
-    cells.filter((c) => c.day === day && c.period === period);
-
-  const isSwapTarget = (day: number, period: number) =>
-    !!candidatesResult?.swapCandidates?.some(
-      (sc) => sc.targetDay === day && sc.targetPeriod === period
-    );
-
-  /** 카드 호버/선택으로 해당 셀이 강조돼야 하는지 */
-  const isCellHighlightedByCard = (day: number, period: number) => {
-    const key = hoveredCandidateKey || selectedCandidateKey;
-    if (!key) return false;
-    const [d, p] = key.split("-");
-    return Number(d) === day && Number(p) === period;
+  const handleCopyShareImage = (data: ShareCardData) => {
+    setShareCardData(data);
+    setTimeout(() => {
+      copyShareImageElement(shareCardRef.current);
+    }, 100);
   };
+
+  // 교차 주 모드일 때 내 대상 주 시간표 로드
+  useEffect(() => {
+    if (!isCrossWeek || !effectiveTargetWeekId) {
+      setTargetCells(null);
+      return;
+    }
+    setTargetCellsLoading(true);
+    fetch("/api/timetable/view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "my", weekId: effectiveTargetWeekId }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        setTargetCells(res?.data?.cells || []);
+      })
+      .catch(() => setTargetCells([]))
+      .finally(() => setTargetCellsLoading(false));
+  }, [isCrossWeek, effectiveTargetWeekId]);
+
+  // 후보 선택 시 상대 교사 시간표 미리보기 로드
+  useEffect(() => {
+    if (!applyingCandidate) {
+      setPreviewCells(null);
+      setCounterpartSourceCells(null);
+      setCounterpartTargetCells(null);
+      setPreviewError(null);
+      return;
+    }
+    const counterpartEmail = applyingCandidate.counterpartEmail;
+    if (!counterpartEmail) return;
+
+    const fetchTeacherWeek = async (wId: string) => {
+      const cacheKey = `${counterpartEmail}_${wId}`;
+      if (previewCacheRef.current.has(cacheKey)) {
+        return previewCacheRef.current.get(cacheKey)!;
+      }
+      const res = await fetch("/api/timetable/view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "teacher",
+          teacherEmail: counterpartEmail,
+          weekId: wId || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error("시간표를 불러올 수 없습니다.");
+      const data = await res.json();
+      const fetched: TeacherTimetableCell[] = data.data?.cells || [];
+      previewCacheRef.current.set(cacheKey, fetched);
+      return fetched;
+    };
+
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    if (!isCrossWeek) {
+      fetchTeacherWeek(effectiveTargetWeekId)
+        .then((fetched) => setPreviewCells(fetched))
+        .catch((e: any) => setPreviewError(e?.message || "상대 시간표를 불러올 수 없습니다."))
+        .finally(() => setPreviewLoading(false));
+    } else {
+      Promise.all([
+        fetchTeacherWeek(selectedWeekId),
+        fetchTeacherWeek(effectiveTargetWeekId),
+      ])
+        .then(([srcCells, tgtCells]) => {
+          setCounterpartSourceCells(srcCells);
+          setCounterpartTargetCells(tgtCells);
+        })
+        .catch((e: any) => setPreviewError(e?.message || "상대 시간표를 불러올 수 없습니다."))
+        .finally(() => setPreviewLoading(false));
+    }
+  }, [applyingCandidate, effectiveTargetWeekId, selectedWeekId, isCrossWeek]);
+
+  // 후보 카드 정렬: 1순위 counterpartScore (상대 부담 적은 순), 2순위 전체 score
+  const sortedSwapCandidates = (candidatesResult?.swapCandidates || []).slice().sort((a, b) => {
+    const cpA = a.counterpartScore ?? a.score ?? 0;
+    const cpB = b.counterpartScore ?? b.score ?? 0;
+    if (cpA !== cpB) return cpA - cpB;
+    return (a.score ?? 0) - (b.score ?? 0);
+  });
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs font-bold text-gray-700">조회할 주:</span>
-          <select
-            value={selectedWeekId}
-            onChange={(e) => setSelectedWeekId(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          >
-            {isManager && <option value="">기초시간표 (주 미지정)</option>}
-            {weeks.map((w) => (
-              <option key={w.id} value={w.id}>{w.startDate} 주</option>
-            ))}
-          </select>
-          {termMeta && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-medium">
-              {termMeta.name}
-            </span>
-          )}
-          {loading && <span className="text-xs text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
-          {selectedWeekId && (
-            <span className="text-[11px] text-gray-400">
-              💡 내 수업 셀을 클릭하면 교환 신청 가능한 슬롯을 확인할 수 있습니다.
-            </span>
-          )}
+      {/* 🚀 상단 컨트롤 바 (v2: 전 주 일괄 제출 및 가상 반영 현황) */}
+      <div className="bg-white rounded-xl shadow-sm border border-indigo-200 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-extrabold text-indigo-950 flex items-center gap-1.5">
+              <span>🗓️ 등록 주간 전체 예상 시간표</span>
+              <span className="text-xs text-indigo-500 font-medium">(그리드 직접 조작 멀티클릭)</span>
+            </h2>
+
+            {projectedData && (
+              <div className="flex items-center gap-1.5 text-xs font-bold">
+                <span className="bg-indigo-100 text-indigo-900 border border-indigo-200 px-2.5 py-0.5 rounded-full">
+                  📁 초안 {projectedData.assumedDraftCount}건
+                </span>
+                <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full">
+                  ⏳ 검토 중 신청 {projectedData.assumedPendingCount}건
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={batchReason.type}
+              onChange={(e) => setBatchReason({ type: e.target.value as any, note: batchReason.note })}
+              className="border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              {SWAP_REASON_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+
+            <button
+              onClick={handleBatchSubmitFromHeader}
+              disabled={submittingBatch || (projectedData?.assumedDraftCount || 0) === 0}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl transition-colors shadow-sm flex items-center gap-1.5"
+            >
+              <span>🚀</span>
+              <span>{submittingBatch ? "일괄 제출 중..." : `등록 주간 초안 일괄 신청 (${projectedData?.assumedDraftCount || 0}건)`}</span>
+            </button>
+          </div>
+        </div>
+
+        {batchReason.type === "기타" && (
+          <textarea
+            value={batchReason.note || ""}
+            onChange={(e) => setBatchReason({ ...batchReason, note: e.target.value })}
+            placeholder="일괄 신청 사유(기타)를 입력해 주세요 (필수)"
+            rows={2}
+            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 resize-none"
+          />
+        )}
+
+        <div className="text-[11px] text-gray-500 flex flex-wrap items-center gap-3 pt-1 border-t border-gray-100">
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded bg-indigo-50 border border-dashed border-indigo-400 inline-block" />
+            <b className="text-indigo-900">점선/파란 배경</b>: 클릭 반영 초안 (`virtual-draft-`, [취소] 클릭 시 원복)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded bg-amber-50 border border-amber-300 inline-block" />
+            <b className="text-amber-900">주황 배경</b>: 일과계 검토 중 신청 (`virtual-req-`)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded bg-red-100 border border-red-300 inline-block" />
+            <b className="text-red-900">빨간 배경</b>: 최종 확정 변경
+          </span>
         </div>
       </div>
 
       {submitResult && (
         <div className={`rounded-xl p-4 text-sm font-semibold border ${
-          submitResult.startsWith("✅")
+          submitResult.startsWith("🚀") || submitResult.startsWith("✅")
             ? "bg-green-50 border-green-200 text-green-800"
             : "bg-red-50 border-red-200 text-red-800"
         }`}>
@@ -1005,228 +1141,136 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       )}
 
       <div className="flex gap-4 items-start">
-        {/* 주간 시간표 그리드 (같은 주=1단, 교차 주=2단 분리) */}
-        <div className="flex-1 space-y-4">
-          {/* ① 같은 주 모드 또는 교차 주 상단: 소스 주 시간표 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="bg-gradient-to-r from-indigo-950 to-indigo-800 px-5 py-3 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-white">
-                  🗓️ {isCrossWeek
-                    ? `원래 수업 주 · ${getWeekRangeLabel(sourceWeekObj?.startDate || selectedWeekId)}`
-                    : `내 주간시간표${sourceWeekObj?.startDate ? ` · ${getWeekRangeLabel(sourceWeekObj.startDate)}` : ""}`}
-                </h3>
-              </div>
-              {isCrossWeek && (
-                <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-700 text-indigo-100 font-bold border border-indigo-500">
-                  1/2 소스 주
-                </span>
-              )}
-            </div>
-            <table className="w-full table-fixed border-collapse text-xs">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="py-2.5 px-1 border-r border-gray-200 w-14 text-center text-gray-500 font-bold text-xs">교시</th>
-                  {DAYS.map((d) => {
-                    const dateLabel = getDayDateLabel(sourceWeekObj?.startDate || selectedWeekId, d.num);
-                    return (
-                      <th key={d.num} className="py-2 px-1 text-center text-gray-800 font-bold text-sm w-1/5">
-                        <div>{d.label}</div>
-                        {dateLabel && <div className="text-xs text-gray-500 font-normal mt-0.5">{dateLabel}</div>}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from({ length: Math.max(7, periodsPerDay) }).map((_, idx) => {
-                  const period = idx + 1;
-                  return (
-                    <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
-                      <td className="py-2 px-1 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50 text-xs align-middle w-14">{period}</td>
-                      {DAYS.map((d) => {
-                        const matched = getCellFor(d.num, period);
-                        const hasLesson = matched.length > 0;
-                        const isTarget = !isCrossWeek && isSwapTarget(d.num, period);
-                        const isSelected = selectedCell?.day === d.num && selectedCell?.period === period;
-                        const isCardHighlighted = !isCrossWeek && isCellHighlightedByCard(d.num, period);
-                        const sc = applyingCandidate;
-                        const isSelectedSource = selectedCell?.day === d.num && selectedCell?.period === period;
-                        const isSelectedTarget = !isCrossWeek && sc && sc.targetDay === d.num && sc.targetPeriod === period;
-
-                        return (
-                          <td
-                            key={d.num}
-                            className={`p-1 border-r border-gray-100 text-center align-middle h-16 transition-all
-                              ${isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""}
-                              ${isTarget && !isSelected && !isCardHighlighted ? "bg-green-50 ring-1 ring-inset ring-green-400" : ""}
-                              ${isCardHighlighted && !isSelected ? "bg-amber-50 ring-2 ring-inset ring-amber-400" : ""}
-                              ${hasLesson && !isSelected && !isTarget && !isCardHighlighted ? "hover:bg-indigo-50/60 cursor-pointer" : ""}
-                            `}
-                            onClick={() => { if (hasLesson) handleCellClick(matched[0]); }}
-                          >
-                            {hasLesson ? (
-                              matched.map((cell, ci) => {
-                                const changed = (cell as any).changed;
-                                const isChanged = !!changed;
-                                const tooltip = isChanged && changed?.origin
-                                  ? `${cell.subjectName} (${DAY_LABEL[cell.day]}${cell.period} ← ${DAY_LABEL[(changed.origin as any).day]}${(changed.origin as any).period}에서 이동)`
-                                  : `${cell.subjectName} · ${cell.grade}-${cell.classNum}반`;
-                                return (
-                                  <div
-                                    key={ci}
-                                    title={tooltip}
-                                    className={`p-1.5 rounded-lg text-center space-y-0.5 ${
-                                      isChanged
-                                        ? "bg-red-100 border border-red-300"
-                                        : "bg-white border border-indigo-200 shadow-2xs"
-                                    }`}
-                                  >
-                                    <div className={`font-black text-sm ${isChanged ? "text-red-800" : "text-indigo-950"}`}>
-                                      {cell.grade}-{cell.classNum}반
-                                      {isChanged && <span className="ml-1 text-red-600 font-bold text-xs">▲</span>}
-                                    </div>
-                                    {isSelectedSource && (
-                                      <div className="text-xs font-bold text-red-700 bg-red-100 px-1 py-0.5 rounded border border-red-200 mt-0.5">
-                                        ➖ 삭제
-                                      </div>
-                                    )}
-                                    {isTarget && !isSelectedSource && <div className="text-xs font-bold text-green-700">교환 가능 ✓</div>}
-                                  </div>
-                                );
-                              })
-                            ) : isSelectedTarget ? (
-                              <div className="py-1 px-1 space-y-0.5 text-xs font-bold bg-amber-100 border border-amber-300 rounded-lg text-amber-950">
-                                <div>➕ 추가</div>
-                                <div className="text-xs text-amber-800 font-medium">
-                                  {selectedCell ? `${selectedCell.grade}-${selectedCell.classNum}반` : ""}
-                                </div>
-                              </div>
-                            ) : isTarget ? (
-                              <div className="text-xs font-bold text-green-700">🟢 공강</div>
-                            ) : (
-                              <span className="text-xs text-gray-300 block py-1">-</span>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* ② 교차 주 모드 하단: 대상 주 내 시간표 (공강 강조 & ➕ 추가 표기) */}
-          {isCrossWeek && (
-            <div className="bg-white rounded-xl shadow-sm border border-indigo-200 overflow-hidden">
-              <div className="bg-gradient-to-r from-indigo-900 to-indigo-700 px-5 py-3 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-white">
-                    🗓️ 교체 대상 주 · {getWeekRangeLabel(targetWeekObj?.startDate || effectiveTargetWeekId)}
-                  </h3>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-800 text-indigo-100 font-bold border border-indigo-600">
-                  2/2 대상 주
-                </span>
-              </div>
-              {targetCellsLoading ? (
-                <div className="py-8 text-center text-xs text-indigo-500 animate-pulse font-semibold">
-                  대상 주 시간표를 불러오는 중...
-                </div>
-              ) : (
-                <table className="w-full table-fixed border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-indigo-50/70 border-b border-indigo-100">
-                      <th className="py-2.5 px-1 border-r border-indigo-100 w-14 text-center text-indigo-900 font-bold text-xs">교시</th>
-                      {DAYS.map((d) => {
-                        const dateLabel = getDayDateLabel(targetWeekObj?.startDate || effectiveTargetWeekId, d.num);
-                        return (
-                          <th key={d.num} className="py-2 px-1 text-center text-indigo-950 font-bold text-sm w-1/5">
-                            <div>{d.label}</div>
-                            {dateLabel && <div className="text-xs text-gray-500 font-normal mt-0.5">{dateLabel}</div>}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: Math.max(7, periodsPerDay) }).map((_, idx) => {
-                      const period = idx + 1;
-                      return (
-                        <tr key={period} className={period % 2 === 0 ? "bg-indigo-50/20" : "bg-white"}>
-                          <td className="py-2 px-1 border-r border-indigo-100 text-center font-bold text-indigo-400 bg-indigo-50/50 text-xs align-middle w-14">{period}</td>
-                          {DAYS.map((d) => {
-                            const matched = (targetCells || []).filter((c) => c.day === d.num && c.period === period);
-                            const hasLesson = matched.length > 0;
-                            const isTarget = isSwapTarget(d.num, period);
-                            const isCardHighlighted = isCellHighlightedByCard(d.num, period);
-                            const sc = applyingCandidate;
-                            const isSelectedTarget = sc && sc.targetDay === d.num && sc.targetPeriod === period;
-
-                            return (
-                              <td
-                                key={d.num}
-                                className={`p-1 border-r border-indigo-50 text-center align-middle h-16 transition-all
-                                  ${isTarget && !isCardHighlighted ? "bg-green-50 ring-1 ring-inset ring-green-400" : ""}
-                                  ${isCardHighlighted ? "bg-amber-50 ring-2 ring-inset ring-amber-400" : ""}
-                                `}
-                              >
-                                {hasLesson ? (
-                                  matched.map((cell, ci) => {
-                                    const changed = (cell as any).changed;
-                                    const isChanged = !!changed;
-                                    const tooltip = `${cell.subjectName} · ${cell.grade}-${cell.classNum}반`;
-                                    return (
-                                      <div
-                                        key={ci}
-                                        title={tooltip}
-                                        className={`p-1.5 rounded-lg text-center space-y-0.5 ${
-                                          isChanged
-                                            ? "bg-red-100 border border-red-300"
-                                            : "bg-white border border-gray-200 shadow-2xs"
-                                        }`}
-                                      >
-                                        <div className={`font-black text-sm ${isChanged ? "text-red-800" : "text-gray-800"}`}>
-                                          {cell.grade}-{cell.classNum}반
-                                        </div>
-                                      </div>
-                                    );
-                                  })
-                                ) : isSelectedTarget ? (
-                                  <div className="py-1 px-1 space-y-0.5 text-xs font-bold bg-amber-100 border border-amber-300 rounded-lg text-amber-950">
-                                    <div>➕ 추가</div>
-                                    <div className="text-xs text-amber-800 font-medium">
-                                      {selectedCell ? `${selectedCell.grade}-${selectedCell.classNum}반` : ""}
-                                    </div>
-                                  </div>
-                                ) : isTarget ? (
-                                  <div className="text-xs font-bold text-green-700">🟢 공강</div>
-                                ) : (
-                                  <span className="text-xs text-gray-300 block py-1">-</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+        {/* 주간 시간표 그리드 (등록된 주간 전체 세로 일렬 나열 — §14-2 v2) */}
+        <div className="flex-1 space-y-6">
+          {loading && !projectedData && (
+            <div className="bg-white rounded-xl p-12 text-center text-xs font-semibold text-indigo-500 border border-gray-200 shadow-sm animate-pulse">
+              예상 시간표를 불러오는 중...
             </div>
           )}
+
+          {projectedData?.weeks.map((week) => (
+            <div key={week.weekId} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="bg-gradient-to-r from-indigo-950 to-indigo-800 px-5 py-3 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span>🗓️ {week.startDate} 주간시간표 ({week.weekId})</span>
+                    {selectedCell?.weekId === week.weekId && (
+                      <span className="text-[10px] bg-amber-300 text-amber-950 px-2 py-0.5 rounded font-black">
+                        선택 중
+                      </span>
+                    )}
+                  </h3>
+                </div>
+              </div>
+
+              <table className="w-full table-fixed border-collapse text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="py-2.5 px-1 border-r border-gray-200 w-14 text-center text-gray-500 font-bold text-xs">교시</th>
+                    {DAYS.map((d) => {
+                      const dateLabel = getDayDateLabel(week.startDate, d.num);
+                      return (
+                        <th key={d.num} className="py-2 px-1 text-center text-gray-800 font-bold text-sm w-1/5">
+                          <div>{d.label}</div>
+                          {dateLabel && <div className="text-xs text-gray-500 font-normal mt-0.5">{dateLabel}</div>}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: Math.max(7, periodsPerDay) }).map((_, idx) => {
+                    const period = idx + 1;
+                    return (
+                      <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
+                        <td className="py-2 px-1 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50 text-xs align-middle w-14">{period}</td>
+                        {DAYS.map((d) => {
+                          const matched = week.cells.filter((c) => c.day === d.num && c.period === period);
+                          const hasLesson = matched.length > 0;
+                          const isSelected = selectedCell?.weekId === week.weekId && selectedCell?.day === d.num && selectedCell?.period === period;
+
+                          return (
+                            <td
+                              key={d.num}
+                              className={`p-1 border-r border-gray-100 text-center align-middle h-16 transition-all ${
+                                isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""
+                              } ${hasLesson && !isSelected ? "hover:bg-indigo-50/60 cursor-pointer" : ""}`}
+                              onClick={() => { if (hasLesson) handleCellClick(matched[0], week.weekId); }}
+                            >
+                              {hasLesson ? (
+                                matched.map((cell, ci) => {
+                                  const changed = (cell as any).changed;
+                                  const changeId: string = changed?.changeId || "";
+                                  const isVirtualDraft = changeId.startsWith("virtual-draft-");
+                                  const isVirtualReq = changeId.startsWith("virtual-req-");
+                                  const isApprovedChange = !!changed && !isVirtualDraft && !isVirtualReq;
+
+                                  const draftId = isVirtualDraft ? changeId.replace("virtual-draft-", "") : "";
+
+                                  let cellStyle = "bg-white border border-indigo-200 shadow-2xs";
+                                  if (isVirtualDraft) cellStyle = "bg-indigo-50/90 border-2 border-dashed border-indigo-400 text-indigo-950 shadow-xs";
+                                  else if (isVirtualReq) cellStyle = "bg-amber-50/90 border-2 border-amber-300 text-amber-950 shadow-xs";
+                                  else if (isApprovedChange) cellStyle = "bg-red-100 border border-red-300 text-red-950";
+
+                                  return (
+                                    <div key={ci} className={`p-1.5 rounded-lg text-center space-y-0.5 ${cellStyle}`}>
+                                      <div className="font-black text-sm flex items-center justify-center gap-1">
+                                        <span>{cell.grade}-{cell.classNum}반</span>
+                                        {isApprovedChange && <span className="text-red-600 font-bold text-xs">▲</span>}
+                                      </div>
+
+                                      <div className="text-[11px] text-gray-600 font-medium">{cell.subjectName}</div>
+
+                                      {isVirtualDraft && (
+                                        <div className="flex items-center justify-between gap-1 pt-0.5">
+                                          <span className="text-[10px] font-extrabold text-indigo-900 bg-indigo-200 px-1 py-0.5 rounded">
+                                            📁 초안
+                                          </span>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDeleteDraftById(draftId);
+                                            }}
+                                            className="text-[10px] font-bold text-red-600 hover:text-red-800 bg-white px-1 py-0.5 rounded border border-red-200"
+                                          >
+                                            취소
+                                          </button>
+                                        </div>
+                                      )}
+
+                                      {isVirtualReq && (
+                                        <div className="text-[10px] font-extrabold text-amber-900 bg-amber-200 px-1 py-0.5 rounded mt-0.5">
+                                          ⏳ 검토 대기
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <span className="text-xs text-gray-300 block py-1">-</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ))}
         </div>
 
-        {/* 우측 패널: 후보 목록 및 신청 폼 */}
+        {/* 우측 패널: 후보 목록 및 초안 조작 */}
         {selectedCell && (
-          <div className="w-80 shrink-0 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="w-80 shrink-0 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden sticky top-4">
             <div className="bg-gradient-to-r from-indigo-900 to-indigo-700 px-4 py-3">
               <div className="text-xs font-bold text-white">
-                수업교환 신청 — {formatSlotWithDate(selectedWeekId, selectedCell.day, selectedCell.period)}
+                수업교환 선택 — {formatSlotWithDate(selectedCell.weekId, selectedCell.day, selectedCell.period)}
               </div>
               <div className="text-[11px] text-indigo-300 mt-0.5">
-                {selectedCell.subjectName} · {selectedCell.grade}-{selectedCell.classNum}반
+                {selectedCell.subjectName} · {selectedCell.grade}-{selectedCell.classNum}반 ({selectedCell.weekId} 주)
               </div>
             </div>
 
@@ -1248,7 +1292,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                 >
                   {weeks.map((w) => (
                     <option key={w.id} value={w.id}>
-                      {w.startDate} 주 {w.id === selectedWeekId ? "(현재 주)" : "(교차 주)"}
+                      {w.startDate} 주 {w.id === selectedCell.weekId ? "(현재 주)" : "(교차 주)"}
                     </option>
                   ))}
                 </select>
@@ -1264,36 +1308,34 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               {candidatesResult && !candidatesLoading && (
                 <>
                   <div className="space-y-2">
-                    <div className="text-xs font-bold text-gray-700">
-                      맞교환 후보 ({candidatesResult.swapCandidates?.length || 0}건)
+                    <div className="text-xs font-bold text-gray-700 flex justify-between items-center">
+                      <span>맞교환 후보 ({sortedSwapCandidates.length}건)</span>
+                      <span className="text-[10px] text-gray-400 font-normal">상대 부담 낮은 순</span>
                     </div>
-                    {(candidatesResult.swapCandidates?.length ?? 0) === 0 ? (
+                    {sortedSwapCandidates.length === 0 ? (
                       <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 space-y-1">
                         <p className="font-semibold">⚠️ 맞교환 가능한 상대가 없습니다.</p>
                         <p className="text-[11px] text-amber-800">
-                          결강 처리가 필요하면 일과계에 문의해 주세요 (특별보강은 일과계가 직권 배정).
+                          결강 처리가 필요하면 일과계에 문의해 주세요.
                         </p>
                       </div>
                     ) : (
                       <div ref={candidateListRef} className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                        {candidatesResult.swapCandidates?.map((sc, i) => {
+                        {sortedSwapCandidates.map((sc, i) => {
                           const ck = candidateKey(sc);
                           const isActive = applyingCandidate === sc;
-                          const isHovered = hoveredCandidateKey === ck;
-                          const isSelected2 = selectedCandidateKey === ck;
+                          const counterpartPenalties = (sc.penaltyDetails || []).filter((p) => p.scope === "counterpart");
+                          const cpScore = sc.counterpartScore ?? 0;
+
                           return (
                             <div
                               key={i}
                               id={`candidate-card-${ck}`}
                               className={`p-3 rounded-lg border text-xs cursor-pointer transition-all ${
                                 isActive
-                                  ? "bg-indigo-50 border-indigo-400 shadow-xs"
-                                  : isHovered || isSelected2
-                                  ? "bg-amber-50 border-amber-400"
+                                  ? "bg-indigo-50 border-indigo-400 shadow-xs ring-2 ring-indigo-500"
                                   : "bg-white border-gray-200 hover:bg-indigo-50/50 hover:border-indigo-300"
                               }`}
-                              onMouseEnter={() => setHoveredCandidateKey(ck)}
-                              onMouseLeave={() => setHoveredCandidateKey(null)}
                               onClick={() => {
                                 setApplyingCandidate(sc);
                                 setSelectedCandidateKey(ck);
@@ -1303,12 +1345,16 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                 {formatSlotWithDate(effectiveTargetWeekId, sc.targetDay, sc.targetPeriod)} ↔ {sc.counterpartName}
                               </div>
                               <div className="text-gray-500">{sc.counterpartSubjectName}</div>
-                              {sc.score > 0 ? (
-                                <div className="mt-1 text-orange-600 font-semibold text-[11px]">
-                                  ⚠ 감점 {sc.score} — {sc.penalties.join(", ")}
+
+                              {/* §14-2 v2: 상대 교사 감점만 표시 */}
+                              {cpScore > 0 || counterpartPenalties.length > 0 ? (
+                                <div className="mt-1 text-amber-800 font-semibold text-[11px] bg-amber-50 p-1.5 rounded border border-amber-200">
+                                  ⚠ 상대 부담 ({cpScore}점): {counterpartPenalties.map((p) => p.text).join(", ") || "감점"}
                                 </div>
                               ) : (
-                                <div className="mt-1 text-green-600 font-semibold text-[11px]">✓ 최적</div>
+                                <div className="mt-1 text-emerald-800 font-semibold text-[11px] bg-emerald-50 p-1 rounded border border-emerald-200">
+                                  ✓ 상대 부담 없음 (0점)
+                                </div>
                               )}
                             </div>
                           );
@@ -1316,41 +1362,15 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       </div>
                     )}
                   </div>
-
-                  {/* 징검다리 — 자동 탐색은 미제공, 일과계 직권 순차 처리로 지원 */}
-                  <details>
-                    <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-gray-600 select-none">
-                      연쇄(징검다리) 교환이 필요한 경우 ▸
-                    </summary>
-                    <div className="mt-2 p-2 bg-gray-50 rounded-lg text-[11px] text-gray-500 space-y-1">
-                      <p>
-                        ⚠️ 통상은 위의 맞교환으로 충분하며, 연쇄 교환은 사용하지 않습니다.
-                      </p>
-                      <p>
-                        다만 경조사 등으로 <b>직접 교환 상대가 없는데 꼭 옮겨야 하는 경우</b>, 일과계에
-                        문의하시면 직권 배정을 두 번 이어 실행하는 방식(징검다리)으로 처리해 드릴 수
-                        있습니다. 원하는 요일·교시를 함께 알려주세요.
-                      </p>
-                    </div>
-                  </details>
                 </>
               )}
 
-              {/* 상대 교사 시간표 미리보기 미니 그리드 (공용 MiniPreviewGrid 컴포넌트) */}
+              {/* 미리보기 및 초안 저장 버튼 */}
               {applyingCandidate && selectedCell && (
                 <div className="border-t border-gray-100 pt-3 space-y-3">
-                  <div className="text-xs font-bold text-gray-800 flex items-center justify-between">
-                    <span>
-                      🔍 {applyingCandidate.counterpartName} 교사 시간표 미리보기
-                    </span>
-                    {previewLoading && <span className="text-[10px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
-                  </div>
-
-                  {previewError && <div className="text-[11px] text-red-600 bg-red-50 p-2 rounded">{previewError}</div>}
-
                   <MiniPreviewGrid
                     isCrossWeek={isCrossWeek}
-                    sourceWeekId={selectedWeekId}
+                    sourceWeekId={selectedCell.weekId}
                     targetWeekId={effectiveTargetWeekId}
                     sourceWeekObj={sourceWeekObj}
                     targetWeekObj={targetWeekObj}
@@ -1362,93 +1382,29 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     counterpartTargetCells={counterpartTargetCells}
                     counterpartTitle={`${applyingCandidate.counterpartName || "상대"} 선생님`}
                   />
-                </div>
-              )}
 
-              {/* 변화 요약 한 줄 & 신청 폼 */}
-              {applyingCandidate && (
-                <div className="border-t border-gray-100 pt-3 space-y-3">
-                  {/* ④ 변화 요약 한 줄 (두 주 날짜/주 병기) */}
-                  <div className="bg-indigo-50/80 border border-indigo-200 rounded-lg p-2.5 text-xs space-y-1.5">
-                    <div className="font-bold text-indigo-950 flex items-center justify-between">
-                      <span>💡 교환 시 시간표 변화 요약</span>
-                      {isCrossWeek && (
-                        <span className="text-[10px] bg-indigo-200 text-indigo-900 font-extrabold px-1.5 py-0.5 rounded">
-                          교차 주
-                        </span>
-                      )}
-                    </div>
-                    <div className="space-y-1 text-[11px] leading-tight">
-                      <div className="text-gray-800">
-                        <span className="font-bold text-indigo-900">내 {selectedCell.subjectName}({selectedCell.grade}-{selectedCell.classNum}반):</span>{" "}
-                        <span className="font-bold text-red-600">
-                          {formatSlotWithDate(sourceWeekObj?.startDate || selectedWeekId, selectedCell.day, selectedCell.period)} ➖
-                        </span> →{" "}
-                        <span className="font-bold text-green-700">
-                          {formatSlotWithDate(targetWeekObj?.startDate || effectiveTargetWeekId, applyingCandidate.targetDay, applyingCandidate.targetPeriod)} ➕
-                        </span>
-                      </div>
-                      <div className="text-gray-800">
-                        <span className="font-bold text-indigo-900">상대 {applyingCandidate.counterpartName} {applyingCandidate.counterpartSubjectName}:</span>{" "}
-                        <span className="font-bold text-red-600">
-                          {formatSlotWithDate(targetWeekObj?.startDate || effectiveTargetWeekId, applyingCandidate.targetDay, applyingCandidate.targetPeriod)} ➖
-                        </span> →{" "}
-                        <span className="font-bold text-green-700">
-                          {formatSlotWithDate(sourceWeekObj?.startDate || selectedWeekId, selectedCell.day, selectedCell.period)} ➕
-                        </span>
-                      </div>
-                    </div>
-                  </div>                  {/* 예상 요일별 시수 표시 패널 (what-if 가상 합성 결과) */}
-                  {candidatesResult?.projectedDayLoads && candidatesResult.projectedDayLoads.length > 0 && (
-                    <div className="bg-indigo-50/70 border border-indigo-200 rounded-lg p-2.5 space-y-1.5 text-xs">
-                      <div className="font-bold text-indigo-950 flex items-center justify-between text-[11px]">
-                        <span>📊 가상 반영 후 요일별 예상 시수 ({isCrossWeek ? "소스 주" : "해당 주"})</span>
-                        {(candidatesResult.assumedPendingCount || 0) + (candidatesResult.assumedDraftCount || 0) > 0 && (
-                          <span className="text-[10px] text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded font-semibold">
-                            대기{candidatesResult.assumedPendingCount || 0} + 초안{candidatesResult.assumedDraftCount || 0}건 가상 적용됨
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                        {DAYS.map((d) => {
-                          const pl = candidatesResult.projectedDayLoads?.find((p) => p.day === d.num);
-                          const baseCount = pl?.count || 0;
-                          let delta = 0;
-                          if (selectedCell.day === d.num) delta -= 1;
-                          if (!isCrossWeek && applyingCandidate.targetDay === d.num) delta += 1;
-                          const newCount = Math.max(0, baseCount + delta);
-                          const isHighLoad = newCount >= 6;
-                          const isChanged = delta !== 0;
+                  {/* 사유 선택 */}
+                  <div className="pt-1 space-y-1.5">
+                    <div className="text-[11px] font-bold text-gray-600">신청 사유</div>
+                    <select
+                      value={reason.type}
+                      onChange={(e) => setReason({ type: e.target.value as any, note: reason.note })}
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {SWAP_REASON_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                          return (
-                            <span
-                              key={d.num}
-                              className={`px-2 py-1 rounded-md border font-semibold flex items-center gap-0.5 ${
-                                isHighLoad
-                                  ? "bg-amber-100 border-amber-400 text-amber-950 font-black shadow-2xs"
-                                  : isChanged
-                                  ? "bg-white border-indigo-300 text-indigo-900 font-bold"
-                                  : "bg-white/80 border-gray-200 text-gray-700"
-                              }`}
-                            >
-                              <span>{d.label}</span>
-                              <span>{isChanged ? `${baseCount}→${newCount}` : `${newCount}`}h</span>
-                              {isHighLoad && <span className="ml-0.5">⚠️</span>}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 1순위 주 버튼: 목록에 담기 (임시저장) — phase9b_spec §14-2 컴시간알리미 UX 계승 */}
+                  {/* 1순위: 클릭 반영 (draft_save + 그리드 갱신) */}
                   <button
-                    onClick={handleSaveDraft}
+                    onClick={() => handleSelectCandidateAndSave(applyingCandidate)}
                     disabled={savingDraft}
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5"
                   >
                     <span>📁</span>
-                    <span>{savingDraft ? "장바구니 저장 중..." : "목록에 담기 (장바구니 저장)"}</span>
+                    <span>{savingDraft ? "초안 저장 중..." : "선택 반영 (그리드에 초안 누적)"}</span>
                   </button>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -1458,7 +1414,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                         const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
                         handleCopyShareImage({
                           requesterName: currentUserName,
-                          sourceWeekId: selectedWeekId,
+                          sourceWeekId: selectedCell.weekId,
                           targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
                           source: {
                             grade: selectedCell.grade,
@@ -1482,53 +1438,31 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                           periodsPerDay,
                         });
                       }}
-                      className="py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
+                      className="py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
                     >
                       <span>📋</span>
                       <span>양해 이미지 복사</span>
                     </button>
 
                     <button
-                      onClick={handleSubmit}
+                      onClick={handleSingleSubmit}
                       disabled={submitting || (reason.type === "기타" && !reason.note?.trim())}
-                      className="py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 rounded-lg text-xs transition-colors shadow-2xs disabled:opacity-50 flex items-center justify-center gap-1"
+                      className="py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 rounded-lg text-xs transition-colors shadow-2xs disabled:opacity-50 flex items-center justify-center gap-1"
                     >
                       <span>⚡</span>
-                      <span>{submitting ? "신청 중..." : "즉시 단건 신청"}</span>
+                      <span>{submitting ? "신청 중..." : "단건 즉시 신청"}</span>
                     </button>
-                  </div>
-
-                  {/* 사유 선택 (단건 신청 및 임시저장용) */}
-                  <div className="pt-1 space-y-1.5">
-                    <div className="text-[11px] font-bold text-gray-600">신청 사유 선택</div>
-                    <select
-                      value={reason.type}
-                      onChange={(e) => setReason({ type: e.target.value as any, note: reason.note })}
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500"
-                    >
-                      {SWAP_REASON_TYPES.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                    {reason.type === "기타" && (
-                      <textarea
-                        value={reason.note || ""}
-                        onChange={(e) => setReason({ ...reason, note: e.target.value })}
-                        placeholder="사유를 입력해 주세요 (필수)"
-                        rows={2}
-                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 resize-none"
-                      />
-                    )}
                   </div>
 
                   <button
                     onClick={() => {
                       setApplyingCandidate(null);
+                      setSelectedCell(null);
                       setPreviewCells(null);
                     }}
                     className="w-full py-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
                   >
-                    취소
+                    닫기
                   </button>
                 </div>
               )}
