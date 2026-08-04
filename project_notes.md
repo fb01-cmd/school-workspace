@@ -3128,3 +3128,15 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   - 장바구니에서 체크 → 사유 1회 → **일괄 제출**: 항목별 create 재검증 순차 수행 + 공통 `batchId`, **부분 성공 허용**(탈락 항목은 초안 잔류+사유 표기, 전체 롤백 금지).
   - 요청대장 batchId 묶음 카드 + 일괄 승인 버튼(탈락만 개별 반려), 승인 다이얼로그에 재계산 요일 시수.
 - **순서 재확정**: ① Antigravity 카드 그리드 공용 컴포넌트(§13-1-4, 기지시) → ② Claude 서버(14-1 가상 합성 + 초안 포함 옵션 + batchId 일괄 create) → ③ Antigravity UI(14-2 장바구니·14-3 일과계 묶음).
+
+## [2026-08-04] Antigravity → Claude/사용자 (MiniPreviewGrid 공용 추출 완료 — 같은 주 1단 / 교차 주 2단·날짜 헤더·상대 실수업 동기화)
+
+- **변경 파일**:
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`:
+    - `MiniPreviewGrid` 공용 컴포넌트 신규 작성 (같은 주 1단 / 교차 주 2단 소스주 ➕들어옴·대상주 ➖빠짐 분리, 요일+날짜 2줄 헤더, 상대 교사 실제 수업명·학반 표기, 수신자 기준 ➖/➕ 배지 범례 동기화)
+    - `OffscreenShareCard` 및 `MyTimetableTab` 양쪽에 `MiniPreviewGrid` 공용 적용
+    - `handleCopyShareImage` 및 `handleCopyDraftShareImage`에 교차 주 소스/대상 주 cell 배열(`counterpartSourceCells`, `counterpartTargetCells`) 및 주 정보 객체(`sourceWeekObj`, `targetWeekObj`) 동시 전달 연동
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **그리드 동일성 검증**: 화면 미리보기 그리드와 공유 카드 PNG 이미지 그리드가 100% 동일한 2단(교차 주)/1단(같은 주) 구조 및 날짜 헤더·실수업 데이터를 유지함을 확인.
+
