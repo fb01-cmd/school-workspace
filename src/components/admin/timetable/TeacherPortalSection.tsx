@@ -24,6 +24,8 @@ import {
   SwapDraft,
   SwapRequest,
   SwapRequestReason,
+  SwapBatchItemResult,
+  ProjectedDayLoad,
   SubstituteCandidate,
   TeacherTimetableCell,
   TimetableSettings,
@@ -838,6 +840,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             action: "candidates",
             weekId: srcWeekId,
             targetWeekId: tgtWeekId !== srcWeekId ? tgtWeekId : undefined,
+            includeMyPending: true,
+            includeDrafts: true,
             source: {
               grade: cell.grade,
               classNum: cell.classNum,
@@ -1394,45 +1398,60 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                         </span>
                       </div>
                     </div>
-                  </div>
+                  </div>                  {/* 예상 요일별 시수 표시 패널 (what-if 가상 합성 결과) */}
+                  {candidatesResult?.projectedDayLoads && candidatesResult.projectedDayLoads.length > 0 && (
+                    <div className="bg-indigo-50/70 border border-indigo-200 rounded-lg p-2.5 space-y-1.5 text-xs">
+                      <div className="font-bold text-indigo-950 flex items-center justify-between text-[11px]">
+                        <span>📊 가상 반영 후 요일별 예상 시수 ({isCrossWeek ? "소스 주" : "해당 주"})</span>
+                        {(candidatesResult.assumedPendingCount || 0) + (candidatesResult.assumedDraftCount || 0) > 0 && (
+                          <span className="text-[10px] text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded font-semibold">
+                            대기{candidatesResult.assumedPendingCount || 0} + 초안{candidatesResult.assumedDraftCount || 0}건 가상 적용됨
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                        {DAYS.map((d) => {
+                          const pl = candidatesResult.projectedDayLoads?.find((p) => p.day === d.num);
+                          const baseCount = pl?.count || 0;
+                          let delta = 0;
+                          if (selectedCell.day === d.num) delta -= 1;
+                          if (!isCrossWeek && applyingCandidate.targetDay === d.num) delta += 1;
+                          const newCount = Math.max(0, baseCount + delta);
+                          const isHighLoad = newCount >= 6;
+                          const isChanged = delta !== 0;
 
-                  <div className="text-xs font-bold text-gray-800">신청 사유 (필수)</div>
-                  <select
-                    value={reason.type}
-                    onChange={(e) => setReason({ type: e.target.value as any, note: reason.note })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  >
-                    {SWAP_REASON_TYPES.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                  {reason.type === "기타" && (
-                    <textarea
-                      value={reason.note || ""}
-                      onChange={(e) => setReason({ ...reason, note: e.target.value })}
-                      placeholder="사유를 입력해 주세요 (필수)"
-                      rows={2}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-                    />
+                          return (
+                            <span
+                              key={d.num}
+                              className={`px-2 py-1 rounded-md border font-semibold flex items-center gap-0.5 ${
+                                isHighLoad
+                                  ? "bg-amber-100 border-amber-400 text-amber-950 font-black shadow-2xs"
+                                  : isChanged
+                                  ? "bg-white border-indigo-300 text-indigo-900 font-bold"
+                                  : "bg-white/80 border-gray-200 text-gray-700"
+                              }`}
+                            >
+                              <span>{d.label}</span>
+                              <span>{isChanged ? `${baseCount}→${newCount}` : `${newCount}`}h</span>
+                              {isHighLoad && <span className="ml-0.5">⚠️</span>}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
+
+                  {/* 1순위 주 버튼: 목록에 담기 (임시저장) — phase9b_spec §14-2 컴시간알리미 UX 계승 */}
                   <button
-                    onClick={handleSubmit}
-                    disabled={submitting || (reason.type === "기타" && !reason.note?.trim())}
-                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shadow-sm"
+                    onClick={handleSaveDraft}
+                    disabled={savingDraft}
+                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5"
                   >
-                    {submitting ? "신청 중..." : "수업교환 신청하기 (일과계 제출)"}
+                    <span>📁</span>
+                    <span>{savingDraft ? "장바구니 저장 중..." : "목록에 담기 (장바구니 저장)"}</span>
                   </button>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={handleSaveDraft}
-                      disabled={savingDraft}
-                      className="py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-1"
-                    >
-                      <span>📁</span>
-                      <span>{savingDraft ? "저장 중..." : "교체안 임시저장"}</span>
-                    </button>
-
                     <button
                       onClick={() => {
                         if (!selectedCell || !applyingCandidate) return;
@@ -1463,11 +1482,43 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                           periodsPerDay,
                         });
                       }}
-                      className="py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
+                      className="py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
                     >
                       <span>📋</span>
                       <span>양해 이미지 복사</span>
                     </button>
+
+                    <button
+                      onClick={handleSubmit}
+                      disabled={submitting || (reason.type === "기타" && !reason.note?.trim())}
+                      className="py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 rounded-lg text-xs transition-colors shadow-2xs disabled:opacity-50 flex items-center justify-center gap-1"
+                    >
+                      <span>⚡</span>
+                      <span>{submitting ? "신청 중..." : "즉시 단건 신청"}</span>
+                    </button>
+                  </div>
+
+                  {/* 사유 선택 (단건 신청 및 임시저장용) */}
+                  <div className="pt-1 space-y-1.5">
+                    <div className="text-[11px] font-bold text-gray-600">신청 사유 선택</div>
+                    <select
+                      value={reason.type}
+                      onChange={(e) => setReason({ type: e.target.value as any, note: reason.note })}
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {SWAP_REASON_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    {reason.type === "기타" && (
+                      <textarea
+                        value={reason.note || ""}
+                        onChange={(e) => setReason({ ...reason, note: e.target.value })}
+                        placeholder="사유를 입력해 주세요 (필수)"
+                        rows={2}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 resize-none"
+                      />
+                    )}
                   </div>
 
                   <button
@@ -1475,7 +1526,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       setApplyingCandidate(null);
                       setPreviewCells(null);
                     }}
-                    className="w-full py-2 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                    className="w-full py-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
                   >
                     취소
                   </button>
@@ -1525,6 +1576,11 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
   const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
   const [submittingDraftId, setSubmittingDraftId] = useState<string | null>(null);
 
+  // 장바구니 일괄 제출 상태 (phase9b_spec §14-2)
+  const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
+  const [batchReason, setBatchReason] = useState<SwapRequestReason>({ type: "출장" });
+  const [submittingBatch, setSubmittingBatch] = useState(false);
+
   // 초안 이미지 복사용 ref & state
   const [draftShareData, setDraftShareData] = useState<ShareCardData | null>(null);
   const draftShareRef = useRef<HTMLDivElement>(null);
@@ -1539,7 +1595,9 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
       });
       if (res.ok) {
         const data = await res.json();
-        setDrafts(data.drafts || []);
+        const loadedDrafts: SwapDraft[] = data.drafts || [];
+        setDrafts(loadedDrafts);
+        setSelectedDraftIds(loadedDrafts.map((d) => d.id));
       }
     } catch (e) {
       console.error("fetchDrafts error:", e);
@@ -1547,6 +1605,79 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
       setDraftsLoading(false);
     }
   }, []);
+
+  const handleBatchSubmit = async () => {
+    const itemsToSubmit = drafts.filter((d) => selectedDraftIds.includes(d.id));
+    if (itemsToSubmit.length === 0) {
+      alert("일괄 제출할 초안 항목을 선택해 주세요.");
+      return;
+    }
+    if (batchReason.type === "기타" && !batchReason.note?.trim()) {
+      alert("신청 사유(기타) 상세 내용을 입력해 주세요.");
+      return;
+    }
+
+    if (!confirm(`선택한 ${itemsToSubmit.length}건의 수업교환 초안을 한 번에 일괄 신청(일과계 제출)하시겠습니까?`)) {
+      return;
+    }
+
+    setSubmittingBatch(true);
+    setSuccessMsg(null);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_batch",
+          items: itemsToSubmit.map((d) => ({
+            draftId: d.id,
+            weekId: d.sourceWeekId,
+            targetWeekId: d.targetWeekId,
+            type: "swap",
+            source: d.source,
+            candidate: d.candidate,
+          })),
+          reason: batchReason,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const results: SwapBatchItemResult[] = data.results || [];
+        const okCount = data.createdCount || 0;
+        const failResults = results.filter((r) => !r.ok);
+
+        if (failResults.length > 0) {
+          const newErrors = { ...draftErrors };
+          failResults.forEach((fr) => {
+            if (fr.draftId) {
+              newErrors[fr.draftId] = fr.error || "신청 거부";
+            }
+          });
+          setDraftErrors(newErrors);
+        }
+
+        if (okCount > 0) {
+          setSuccessMsg(`🚀 ${okCount}건의 수업교환 신청이 성공적으로 일괄 접수되었습니다. (배치 ID: ${data.batchId || ""})`);
+        }
+
+        if (failResults.length > 0) {
+          alert(`일괄 신청 처리 완료: ${okCount}건 성공, ${failResults.length}건 거부.\n거부된 항목은 초안 카드에 사유가 표시되니 확인 후 [삭제]해 주세요.`);
+        }
+
+        fetchDrafts();
+        fetchMyList();
+      } else {
+        setError(data.error || "일괄 신청 처리에 실패했습니다.");
+      }
+    } catch (e: any) {
+      setError(`네트워크 오류: ${e.message}`);
+    } finally {
+      setSubmittingBatch(false);
+    }
+  };
 
   useEffect(() => {
     fetchDrafts();
@@ -1780,7 +1911,59 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
             {draftsLoading && <div className="text-xs text-indigo-500 animate-pulse">초안 불러오는 중...</div>}
             {!draftsLoading && drafts.length === 0 && (
               <div className="text-xs text-gray-500 py-3 text-center bg-white/70 rounded-lg border border-dashed border-indigo-200">
-                임시저장된 교체안 초안이 없습니다. 시간표 셀을 선택 후 [교체안 임시저장]할 수 있습니다.
+                임시저장된 교체안 초안이 없습니다. 시간표 셀을 선택 후 [목록에 담기]할 수 있습니다.
+              </div>
+            )}
+            {!draftsLoading && drafts.length > 0 && (
+              <div className="bg-white border border-indigo-200 rounded-xl p-3.5 space-y-3 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedDraftIds.length === drafts.length && drafts.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedDraftIds(drafts.map((d) => d.id));
+                        else setSelectedDraftIds([]);
+                      }}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-xs font-bold text-gray-800">
+                      전체 선택 ({selectedDraftIds.length}/{drafts.length}건 선택됨)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-gray-600">일괄 신청 사유:</span>
+                    <select
+                      value={batchReason.type}
+                      onChange={(e) => setBatchReason({ type: e.target.value as any, note: batchReason.note })}
+                      className="border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {SWAP_REASON_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {batchReason.type === "기타" && (
+                  <textarea
+                    value={batchReason.note || ""}
+                    onChange={(e) => setBatchReason({ ...batchReason, note: e.target.value })}
+                    placeholder="사유(기타)를 입력해 주세요 (필수)"
+                    rows={2}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 resize-none"
+                  />
+                )}
+
+                <button
+                  onClick={handleBatchSubmit}
+                  disabled={submittingBatch || selectedDraftIds.length === 0}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <span>🚀</span>
+                  <span>{submittingBatch ? "일괄 신청 제출 중..." : `선택 항목 ${selectedDraftIds.length}건 한 번에 일괄 신청하기 (일과계 제출)`}</span>
+                </button>
               </div>
             )}
             {!draftsLoading &&
@@ -1816,7 +1999,16 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
 
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1 text-xs">
-                        <div className="font-bold text-gray-900 flex items-center gap-1.5">
+                        <div className="font-bold text-gray-900 flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedDraftIds.includes(draft.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedDraftIds((prev) => [...prev, draft.id]);
+                              else setSelectedDraftIds((prev) => prev.filter((id) => id !== draft.id));
+                            }}
+                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0"
+                          />
                           <span className="text-indigo-900">{draft.sourceWeekId} 주</span>
                           {draft.targetWeekId && draft.targetWeekId !== draft.sourceWeekId && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">

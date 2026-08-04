@@ -28,6 +28,57 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
 
   // 승인 처리 중 상태
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [batchApprovingId, setBatchApprovingId] = useState<string | null>(null);
+
+  // 묶음 일괄 승인 처리 (phase9b_spec §14-3)
+  const handleBatchApprove = async (batchId: string, reqs: SwapRequest[]) => {
+    if (readOnly) return;
+    const requesterName = reqs[0]?.requesterName || "교사";
+    if (
+      !confirm(
+        `[${requesterName}] 선생님의 묶음 신청 (${reqs.length}건)을 한 번에 일괄 승인하시겠습니까?`
+      )
+    ) {
+      return;
+    }
+
+    setBatchApprovingId(batchId);
+    setError(null);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const req of reqs) {
+      try {
+        const res = await fetch("/api/timetable/manage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "approve", requestId: req.id }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch {
+        failCount++;
+      }
+    }
+
+    if (successCount > 0) {
+      setSuccessMsg(
+        `🚀 묶음 신청 ${successCount}건이 성공적으로 일괄 승인되었습니다.${
+          failCount > 0 ? ` (${failCount}건 실패)` : ""
+        }`
+      );
+      fetchRequests();
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } else {
+      setError("일괄 승인 처리 중 오류가 발생했습니다.");
+    }
+
+    setBatchApprovingId(null);
+  };
 
   // 취소(revert) 처리 중 상태
   const [revertingId, setRevertingId] = useState<string | null>(null);
@@ -204,6 +255,224 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
   const otherRequests = requests.filter((r) => r.status !== "PENDING");
   const sortedRequests = [...pendingRequests, ...otherRequests];
 
+  // PENDING 중 batchId가 있는 항목 그룹화
+  const pendingBatchGroups: Record<string, SwapRequest[]> = {};
+  const ungroupedRequests: SwapRequest[] = [];
+
+  sortedRequests.forEach((req) => {
+    if (req.status === "PENDING" && req.batchId) {
+      if (!pendingBatchGroups[req.batchId]) {
+        pendingBatchGroups[req.batchId] = [];
+      }
+      pendingBatchGroups[req.batchId].push(req);
+    } else {
+      ungroupedRequests.push(req);
+    }
+  });
+
+  const renderRequestCard = (req: SwapRequest) => {
+    const isPending = req.status === "PENDING";
+    const isApproved = req.status === "APPROVED";
+    const isRejected = req.status === "REJECTED";
+
+    return (
+      <div
+        key={req.id}
+        className={`bg-white rounded-xl shadow-sm border transition-all p-5 space-y-4 ${
+          isPending
+            ? "border-amber-300 ring-2 ring-amber-100"
+            : "border-gray-200"
+        }`}
+      >
+        {/* 상단 뱃지 & 신청자 정보 */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+          <div className="flex items-center gap-2">
+            <span
+              className={`px-2.5 py-1 rounded-md text-xs font-bold ${
+                isPending
+                  ? "bg-amber-100 text-amber-900 border border-amber-300"
+                  : isApproved
+                  ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                  : isRejected
+                  ? "bg-red-100 text-red-900 border border-red-300"
+                  : "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {isPending
+                ? "⏳ 대기 중"
+                : isApproved
+                ? "✅ 승인됨"
+                : isRejected
+                ? "❌ 반려됨"
+                : "⚪ 취소됨"}
+            </span>
+
+            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 font-semibold text-[11px] rounded border border-indigo-100">
+              {req.type === "cross_swap" || (req.targetWeekId && req.targetWeekId !== req.weekId)
+                ? "↔️ 교차 주 맞교환"
+                : req.type === "swap"
+                ? "↔️ 맞교환"
+                : "👤 특별보강"}
+            </span>
+
+            <span className="text-xs font-bold text-gray-900">
+              {req.requesterName} ({req.requesterEmail})
+            </span>
+
+            {req.batchId && (
+              <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded border border-indigo-200">
+                📦 묶음 ID: {req.batchId.slice(0, 8)}
+              </span>
+            )}
+          </div>
+
+          <span className="text-[11px] text-gray-400">
+            신청일시: {new Date(req.createdAt).toLocaleString("ko-KR")} (주: {req.weekId}{req.targetWeekId && req.targetWeekId !== req.weekId ? ` ↔ ${req.targetWeekId}` : ""})
+          </span>
+        </div>
+
+        {/* 변경 내역 비교 그리드 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          {/* 원래 수업 (Source) */}
+          <div className="bg-gray-50 rounded-lg p-3.5 border border-gray-200 space-y-1">
+            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+              📌 변경 대상 원래 수업
+            </div>
+            <div className="font-bold text-gray-900 text-sm">
+              {req.source.grade}학년 {req.source.classNum}반{" "}
+              <span className="text-indigo-700">
+                {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
+              </span>
+            </div>
+            <div className="text-gray-600 font-medium">
+              과목: {req.source.subjectName} ({req.requesterName} 교사)
+            </div>
+          </div>
+
+          {/* 교체안 (Candidate) */}
+          <div className="bg-indigo-50/50 rounded-lg p-3.5 border border-indigo-100 space-y-1">
+            <div className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">
+              🎯 신청 교체안 (엔진 계산 결과)
+            </div>
+            {req.type === "swap" || req.type === "cross_swap" ? (
+              <>
+                <div className="font-bold text-gray-900 text-sm">
+                  옮겨갈 교시:{" "}
+                  <span className="text-indigo-700">
+                    {formatSlotWithDate(
+                      req.targetWeekId || (req.candidate as any).targetWeekId || req.weekId,
+                      req.candidate.targetDay,
+                      req.candidate.targetPeriod
+                    )}
+                  </span>
+                </div>
+                <div className="text-gray-700 font-medium">
+                  상대 교사: <strong>{req.candidate.counterpartName}</strong> (
+                  {req.candidate.counterpartEmail}) — {req.candidate.counterpartSubjectName || ""}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="font-bold text-gray-900 text-sm">
+                  보강 담당 교사:{" "}
+                  <span className="text-indigo-700">
+                    {req.candidate.counterpartName} 선생님
+                  </span>
+                </div>
+                <div className="text-gray-700 font-medium">
+                  보강 교사 이메일: {req.candidate.counterpartEmail}
+                </div>
+              </>
+            )}
+
+            {/* 감점 및 사유 표시 */}
+            {req.candidate.penalties && req.candidate.penalties.length > 0 && (
+              <div className="pt-1.5 flex flex-wrap items-center gap-1">
+                <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                  주의 감점 ({req.candidate.score}점):
+                </span>
+                {req.candidate.penalties.map((p, pIdx) => (
+                  <span
+                    key={pIdx}
+                    className="text-[10px] bg-red-100 text-red-800 font-medium px-1.5 py-0.5 rounded"
+                  >
+                    {p}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 사유 & 처리 결과 정보 */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs bg-gray-50/70 p-3 rounded-lg border border-gray-100">
+          <div>
+            <span className="font-bold text-gray-700">신청 사유: </span>
+            <span className="font-semibold text-indigo-900">
+              [{req.reason.type}]
+            </span>{" "}
+            <span className="text-gray-700">{req.reason.note || ""}</span>
+          </div>
+
+          {req.decidedBy && (
+            <div className="text-gray-500 text-[11px]">
+              처리: <strong>{req.decidedBy}</strong> (
+              {req.decidedAt ? new Date(req.decidedAt).toLocaleString("ko-KR") : ""})
+              {req.decisionNote && (
+                <span className="ml-1 text-red-700 font-bold">
+                  — 사유: {req.decisionNote}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 결재 버튼 영역 */}
+        {!readOnly && (
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            {isPending && (
+              <>
+                <button
+                  onClick={() => {
+                    setRejectingReq(req);
+                    setRejectReason("");
+                    setRejectError(null);
+                  }}
+                  className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded-lg text-xs transition-colors"
+                >
+                  ❌ 반려
+                </button>
+                <button
+                  onClick={() => handleApprove(req)}
+                  disabled={approvingId === req.id}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow-sm transition-colors disabled:opacity-50"
+                >
+                  {approvingId === req.id ? "승인 처리 중..." : "✅ 승인 확정"}
+                </button>
+              </>
+            )}
+
+            {isApproved && req.appliedChangeIds?.[0] && (
+              revertedReqIds.has(req.id) ? (
+                <span className="px-3.5 py-2 bg-gray-100 text-gray-500 font-bold rounded-lg text-xs border border-gray-200 cursor-not-allowed">
+                  ↩️ 승인 취소 완료
+                </span>
+              ) : (
+                <button
+                  onClick={() => handleRevert(req)}
+                  disabled={revertingId === req.id}
+                  className="px-4 py-2 bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 border border-gray-300 font-bold rounded-lg text-xs transition-colors disabled:opacity-50"
+                >
+                  {revertingId === req.id ? "취소 처리 중..." : "↩️ 승인 취소 (revert)"}
+                </button>
+              )
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* 헤더 & 필터 */}
@@ -299,202 +568,47 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
             <p className="text-gray-400">필터 조건을 변경하거나 교사들의 신청을 기다려 주세요.</p>
           </div>
         ) : (
-          sortedRequests.map((req) => {
-            const isPending = req.status === "PENDING";
-            const isApproved = req.status === "APPROVED";
-            const isRejected = req.status === "REJECTED";
-
-            return (
+          <>
+            {/* ① batchId 묶음 그룹 카드 렌더링 */}
+            {Object.entries(pendingBatchGroups).map(([bId, bReqs]) => (
               <div
-                key={req.id}
-                className={`bg-white rounded-xl shadow-sm border transition-all p-5 space-y-4 ${
-                  isPending
-                    ? "border-amber-300 ring-2 ring-amber-100"
-                    : "border-gray-200"
-                }`}
+                key={`batch-${bId}`}
+                className="border-2 border-indigo-300 bg-indigo-50/20 rounded-2xl p-4 space-y-3 shadow-md"
               >
-                {/* 상단 뱃지 & 신청자 정보 */}
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-200 pb-3">
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                        isPending
-                          ? "bg-amber-100 text-amber-900 border border-amber-300"
-                          : isApproved
-                          ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
-                          : isRejected
-                          ? "bg-red-100 text-red-900 border border-red-300"
-                          : "bg-gray-100 text-gray-700"
-                      }`}
+                    <span className="px-2.5 py-1 rounded-md text-xs font-black bg-indigo-600 text-white shadow-xs">
+                      📦 묶음 일괄 신청 ({bReqs.length}건)
+                    </span>
+                    <span className="text-sm font-extrabold text-indigo-950">
+                      {bReqs[0].requesterName} ({bReqs[0].requesterEmail})
+                    </span>
+                    <span className="text-xs font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
+                      🔔 동일 주 대기 {bReqs.length}건
+                    </span>
+                  </div>
+
+                  {!readOnly && (
+                    <button
+                      onClick={() => handleBatchApprove(bId, bReqs)}
+                      disabled={batchApprovingId === bId}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl transition-colors shadow-sm flex items-center gap-1.5"
                     >
-                      {isPending
-                        ? "⏳ 대기 중"
-                        : isApproved
-                        ? "✅ 승인됨"
-                        : isRejected
-                        ? "❌ 반려됨"
-                        : "⚪ 취소됨"}
-                    </span>
-
-                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 font-semibold text-[11px] rounded border border-indigo-100">
-                      {req.type === "cross_swap" || (req.targetWeekId && req.targetWeekId !== req.weekId)
-                        ? "↔️ 교차 주 맞교환"
-                        : req.type === "swap"
-                        ? "↔️ 맞교환"
-                        : "👤 특별보강"}
-                    </span>
-
-                    <span className="text-xs font-bold text-gray-900">
-                      {req.requesterName} ({req.requesterEmail})
-                    </span>
-                  </div>
-
-                  <span className="text-[11px] text-gray-400">
-                    신청일시: {new Date(req.createdAt).toLocaleString("ko-KR")} (주: {req.weekId}{req.targetWeekId && req.targetWeekId !== req.weekId ? ` ↔ ${req.targetWeekId}` : ""})
-                  </span>
-                </div>
-
-                {/* 변경 내역 비교 그리드 */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  {/* 원래 수업 (Source) */}
-                  <div className="bg-gray-50 rounded-lg p-3.5 border border-gray-200 space-y-1">
-                    <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                      📌 변경 대상 원래 수업
-                    </div>
-                    <div className="font-bold text-gray-900 text-sm">
-                      {req.source.grade}학년 {req.source.classNum}반{" "}
-                      <span className="text-indigo-700">
-                        {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
-                      </span>
-                    </div>
-                    <div className="text-gray-600 font-medium">
-                      과목: {req.source.subjectName} ({req.requesterName} 교사)
-                    </div>
-                  </div>
-
-                  {/* 교체안 (Candidate) */}
-                  <div className="bg-indigo-50/50 rounded-lg p-3.5 border border-indigo-100 space-y-1">
-                    <div className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">
-                      🎯 신청 교체안 (엔진 계산 결과)
-                    </div>
-                    {req.type === "swap" || req.type === "cross_swap" ? (
-                      <>
-                        <div className="font-bold text-gray-900 text-sm">
-                          옮겨갈 교시:{" "}
-                          <span className="text-indigo-700">
-                            {formatSlotWithDate(
-                              req.targetWeekId || (req.candidate as any).targetWeekId || req.weekId,
-                              req.candidate.targetDay,
-                              req.candidate.targetPeriod
-                            )}
-                          </span>
-                        </div>
-                        <div className="text-gray-700 font-medium">
-                          상대 교사: <strong>{req.candidate.counterpartName}</strong> (
-                          {req.candidate.counterpartEmail}) — {req.candidate.counterpartSubjectName || ""}
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="font-bold text-gray-900 text-sm">
-                          보강 담당 교사:{" "}
-                          <span className="text-indigo-700">
-                            {req.candidate.counterpartName} 선생님
-                          </span>
-                        </div>
-                        <div className="text-gray-700 font-medium">
-                          보강 교사 이메일: {req.candidate.counterpartEmail}
-                        </div>
-                      </>
-                    )}
-
-                    {/* 감점 및 사유 표시 */}
-                    {req.candidate.penalties && req.candidate.penalties.length > 0 && (
-                      <div className="pt-1.5 flex flex-wrap items-center gap-1">
-                        <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                          주의 감점 ({req.candidate.score}점):
-                        </span>
-                        {req.candidate.penalties.map((p, pIdx) => (
-                          <span
-                            key={pIdx}
-                            className="text-[10px] bg-red-100 text-red-800 font-medium px-1.5 py-0.5 rounded"
-                          >
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 사유 & 처리 결과 정보 */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs bg-gray-50/70 p-3 rounded-lg border border-gray-100">
-                  <div>
-                    <span className="font-bold text-gray-700">신청 사유: </span>
-                    <span className="font-semibold text-indigo-900">
-                      [{req.reason.type}]
-                    </span>{" "}
-                    <span className="text-gray-700">{req.reason.note || ""}</span>
-                  </div>
-
-                  {req.decidedBy && (
-                    <div className="text-gray-500 text-[11px]">
-                      처리: <strong>{req.decidedBy}</strong> (
-                      {req.decidedAt ? new Date(req.decidedAt).toLocaleString("ko-KR") : ""})
-                      {req.decisionNote && (
-                        <span className="ml-1 text-red-700 font-bold">
-                          — 사유: {req.decisionNote}
-                        </span>
-                      )}
-                    </div>
+                      <span>⚡</span>
+                      <span>{batchApprovingId === bId ? "일괄 승인 중..." : "묶음 일괄 승인"}</span>
+                    </button>
                   )}
                 </div>
 
-                {/* 결재 버튼 영역 */}
-                {!readOnly && (
-                  <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-                    {isPending && (
-                      <>
-                        <button
-                          onClick={() => {
-                            setRejectingReq(req);
-                            setRejectReason("");
-                            setRejectError(null);
-                          }}
-                          className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded-lg text-xs transition-colors"
-                        >
-                          ❌ 반려
-                        </button>
-                        <button
-                          onClick={() => handleApprove(req)}
-                          disabled={approvingId === req.id}
-                          className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow-sm transition-colors disabled:opacity-50"
-                        >
-                          {approvingId === req.id ? "승인 처리 중..." : "✅ 승인 확정"}
-                        </button>
-                      </>
-                    )}
-
-                    {isApproved && req.appliedChangeIds?.[0] && (
-                      revertedReqIds.has(req.id) ? (
-                        <span className="px-3.5 py-2 bg-gray-100 text-gray-500 font-bold rounded-lg text-xs border border-gray-200 cursor-not-allowed">
-                          ↩️ 승인 취소 완료
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleRevert(req)}
-                          disabled={revertingId === req.id}
-                          className="px-4 py-2 bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 border border-gray-300 font-bold rounded-lg text-xs transition-colors disabled:opacity-50"
-                        >
-                          {revertingId === req.id ? "취소 처리 중..." : "↩️ 승인 취소 (revert)"}
-                        </button>
-                      )
-                    )}
-                  </div>
-                )}
+                <div className="space-y-3">
+                  {bReqs.map((req) => renderRequestCard(req))}
+                </div>
               </div>
-            );
-          })
+            ))}
+
+            {/* ② 기타 일반/개별 신청 렌더링 */}
+            {ungroupedRequests.map((req) => renderRequestCard(req))}
+          </>
         )}
       </div>
 

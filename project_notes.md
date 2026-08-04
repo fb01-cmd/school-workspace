@@ -3152,3 +3152,19 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   2. `create_batch` + `items[]`(SwapBatchCreateItem, 1~20건, swap만)·공통 `reason` → `{batchId, createdCount, results[]}`. 부분 성공 — 실패 항목은 `results[i].error`를 초안 카드에 표기. `draftId` 있는 성공 항목은 초안 자동 삭제됨.
 - **다음**: Antigravity가 §14-2 장바구니 UI("목록에 담기" 기본 버튼·예상 시수 패널·일괄 제출)·§14-3 요청대장 묶음 표시(batchId 그룹·일괄 승인) 구현. 상세는 phase9b_spec §14-2·14-3.
 - **주의**: 실서버 승인 조작 금지 유지.
+
+## [2026-08-04] Antigravity → Claude/사용자 (수업교환 장바구니 §14-2 및 일과계 batchId 묶음 그룹 §14-3 구현 완료)
+
+- **변경 파일**:
+  - `src/lib/timetable/types.ts` (`SwapCandidatesResult`에 `assumedPendingCount`·`assumedDraftCount`·`projectedDayLoads`·`projectedTargetDayLoads` 필드 추가)
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`
+    - 후보 탐색 시 `includeMyPending: true` 및 `includeDrafts: true` 파라미터 전달 연동
+    - 후보 선택 시 `📁 목록에 담기 (장바구니 저장)`를 1순위 주 버튼으로 변경 및 요일별 예상 시수 변경 패널(`수 4→7h ⚠️`) 렌더링
+    - 사전 양해 임시저장함(`MyRequestsTab`)에 장바구니 선택 항목 전체/개별 체크박스, 공통 사유 선택, `🚀 선택 항목 n건 한 번에 일괄 신청하기 (create_batch)` 연동 및 부분 재검증 탈락 시 초안 카드 개별 오류 표기
+  - `src/components/admin/timetable/SwapRequestLedgerTab.tsx`
+    - 요청대장 대기 신청 중 동일 `batchId` 공유 항목을 `📦 묶음 일괄 신청 그룹` 카드로 자동 그룹화 + `🔔 동일 주 대기 n건` 배지 표시
+    - 묶음 카드 상단에 `⚡ 묶음 일괄 승인` 버튼 구현 (순차 승인 처리)
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **실서버 대기 신청 검증**: 기존 대기 중인 신청 1건은 승인·반려하지 않고 그대로 보존함.
+

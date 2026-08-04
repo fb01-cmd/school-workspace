@@ -513,6 +513,10 @@ export interface SwapCandidatesResult {
   source: SwapSourceSlot;
   swapCandidates: SwapCandidate[];
   substituteCandidates: SubstituteCandidate[];
+  assumedPendingCount?: number;
+  assumedDraftCount?: number;
+  projectedDayLoads?: ProjectedDayLoad[];
+  projectedTargetDayLoads?: ProjectedDayLoad[];
 }
 
 // ── 신청 라우트 DTO (/api/timetable/requests) ─────────────────
