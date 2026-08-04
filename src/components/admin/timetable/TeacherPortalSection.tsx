@@ -97,10 +97,13 @@ export interface ShareCardData {
     counterpartName?: string;
     counterpartSubjectName?: string;
   };
+  previewCells?: TeacherTimetableCell[] | null;
+  periodsPerDay?: number;
 }
 
 /**
  * 사전 양해 요청 공유 카드 DOM (offscreen 렌더링 — display:none 금지, position:absolute; left:-9999px 사용)
+ * 공유 카드 v2: 수신자(상대 교사) 관점으로 문구 및 일정 전면 반전 + 상대 미니 그리드 수록
  */
 function OffscreenShareCard({
   cardRef,
@@ -117,61 +120,166 @@ function OffscreenShareCard({
   const targetWeek = data.targetWeekId || data.sourceWeekId;
   const targetSlotStr = formatSlotWithDate(targetWeek, data.candidate.targetDay, data.candidate.targetPeriod);
 
+  const counterpartTitle = data.candidate.counterpartName
+    ? `${data.candidate.counterpartName} 선생님`
+    : "선생님";
+
+  const counterpartLessonName = data.candidate.counterpartSubjectName
+    ? `${data.source.grade}-${data.source.classNum}반 ${data.candidate.counterpartSubjectName}`
+    : "수업";
+
+  const maxPeriod = data.periodsPerDay || 7;
+  const previewCells = data.previewCells || [];
+
   return (
     <div style={{ position: "absolute", left: "-9999px", top: "-9999px", pointerEvents: "none" }}>
       <div
         ref={cardRef}
-        className="w-[420px] bg-white border border-indigo-200 rounded-2xl p-5 shadow-lg space-y-4 font-sans text-gray-900"
+        className="w-[520px] bg-white border border-indigo-200 rounded-2xl p-5 shadow-xl space-y-4 font-sans text-gray-900"
       >
-        <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
+        <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
           <div className="text-[10px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
           <div className="text-lg font-black mt-0.5 tracking-tight">수업교환 양해 요청</div>
         </div>
 
-        <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3.5 space-y-1.5 text-xs">
-          <div className="font-bold text-indigo-950 text-sm">
-            안녕하세요, {data.candidate.counterpartName || "선생님"}! 👋
+        <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3.5 space-y-1 text-xs">
+          <div className="font-extrabold text-indigo-950 text-sm">
+            안녕하세요, {counterpartTitle}! 👋
           </div>
-          <div className="text-gray-700 leading-relaxed text-[11px]">
+          <div className="text-gray-700 leading-relaxed text-xs">
             <span className="font-bold text-indigo-900">{data.requesterName} 교사</span>입니다.<br />
-            아래 일정으로 수업 교환이 가능한지 사전 양해를 구합니다. 😊
+            아래 일정으로 수업 교체가 가능할까요? 😊
           </div>
         </div>
 
-        <div className="border border-gray-200 rounded-xl p-3.5 space-y-2 text-xs bg-gray-50/30">
+        <div className="border border-gray-200 rounded-xl p-3.5 space-y-2.5 text-xs bg-gray-50/40">
           <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5 flex items-center justify-between">
-            <span>🔄 수업교환 상세 일정</span>
+            <span>🔄 수업교환 상세 일정 (선생님 기준)</span>
             {data.targetWeekId && data.targetWeekId !== data.sourceWeekId && (
               <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full border border-indigo-200">
-                교차 주 교환
+                ↔ {data.targetWeekId} 주 교차 주
               </span>
             )}
           </div>
-          <div className="space-y-2 pt-1">
-            <div className="flex items-start justify-between bg-red-50/80 border border-red-200 rounded-lg p-2.5">
+          <div className="space-y-2 pt-0.5">
+            {/* 1행: 상대 교사의 수업 이동 */}
+            <div className="flex items-start justify-between bg-amber-50/90 border border-amber-200 rounded-lg p-2.5">
               <div>
-                <div className="text-[11px] font-extrabold text-red-600">내 원래 수업 (➖ 이동)</div>
-                <div className="font-bold text-gray-900 text-sm mt-0.5">{sourceSlotStr}</div>
-                <div className="text-gray-600 text-[11px]">
-                  {data.source.grade}-{data.source.classNum}반 ({data.source.subjectName})
+                <div className="text-[11px] font-extrabold text-amber-800">
+                  선생님의 수업 (이동)
+                </div>
+                <div className="font-bold text-gray-900 text-sm mt-0.5">
+                  선생님의 {counterpartLessonName}
+                </div>
+                <div className="text-amber-900 font-bold text-xs mt-0.5">
+                  {targetSlotStr} → {sourceSlotStr}로 이동
                 </div>
               </div>
-              <span className="text-red-700 font-black text-xs bg-red-100 border border-red-200 px-2 py-1 rounded">➖</span>
+              <span className="text-amber-800 font-extrabold text-[11px] bg-amber-100 border border-amber-300 px-2 py-1 rounded shrink-0">
+                선생님 수업
+              </span>
             </div>
 
-            <div className="flex items-start justify-between bg-green-50/80 border border-green-200 rounded-lg p-2.5">
+            {/* 2행: 신청자 교사의 수업 이동 */}
+            <div className="flex items-start justify-between bg-emerald-50/90 border border-emerald-200 rounded-lg p-2.5">
               <div>
-                <div className="text-[11px] font-extrabold text-green-700">교체 희망 슬롯 (➕ 이동)</div>
-                <div className="font-bold text-gray-900 text-sm mt-0.5">{targetSlotStr}</div>
-                <div className="text-gray-600 text-[11px]">
-                  {data.candidate.counterpartSubjectName
-                    ? `${data.source.grade}-${data.source.classNum}반 (${data.candidate.counterpartSubjectName})`
-                    : "공강 슬롯"}
+                <div className="text-[11px] font-extrabold text-emerald-800">
+                  제 수업 (이동)
+                </div>
+                <div className="font-bold text-gray-900 text-sm mt-0.5">
+                  제 {data.source.grade}-{data.source.classNum}반 {data.source.subjectName}
+                </div>
+                <div className="text-emerald-900 font-bold text-xs mt-0.5">
+                  {sourceSlotStr} → {targetSlotStr}로 이동
                 </div>
               </div>
-              <span className="text-green-700 font-black text-xs bg-green-100 border border-green-200 px-2 py-1 rounded">➕</span>
+              <span className="text-emerald-800 font-extrabold text-[11px] bg-emerald-100 border border-emerald-300 px-2 py-1 rounded shrink-0">
+                제 수업
+              </span>
             </div>
           </div>
+        </div>
+
+        {/* 상대 시간표 미리보기 미니 그리드 */}
+        <div className="border border-gray-200 rounded-xl overflow-hidden text-xs bg-white p-3 space-y-2">
+          <div className="flex items-center justify-between pb-1.5 border-b border-gray-100">
+            <div className="font-bold text-gray-800 text-xs flex items-center gap-1">
+              <span>🗓️ {counterpartTitle}의 주간 시간표 미리보기</span>
+            </div>
+            <div className="flex items-center gap-2 text-[10px] font-semibold">
+              <span className="text-amber-800 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded">➖ 빠짐</span>
+              <span className="text-emerald-800 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded">➕ 들어옴</span>
+            </div>
+          </div>
+
+          <table className="w-full table-fixed border-collapse text-center">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
+                <th className="py-1 px-0.5 border-r border-gray-200 w-10 text-[11px]">교시</th>
+                {DAYS.map((d) => (
+                  <th key={d.num} className="py-1 px-0.5 text-[11px]">
+                    {d.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: Math.max(7, maxPeriod) }).map((_, idx) => {
+                const period = idx + 1;
+                const targetDay = data.candidate.targetDay;
+                const targetPeriod = data.candidate.targetPeriod;
+
+                return (
+                  <tr key={period} className="border-b border-gray-100 last:border-0">
+                    <td className="py-1 px-0.5 border-r border-gray-200 bg-gray-50 font-bold text-gray-500 text-[11px] align-middle">
+                      {period}
+                    </td>
+                    {DAYS.map((d) => {
+                      const isTargetSlot = targetDay === d.num && targetPeriod === period;
+                      const isSourceSlot = data.source.day === d.num && data.source.period === period;
+                      const matched = previewCells.filter((c) => c.day === d.num && c.period === period);
+                      const hasLesson = matched.length > 0;
+
+                      if (isTargetSlot) {
+                        return (
+                          <td key={d.num} className="p-0.5 h-9 text-[10px] align-middle bg-amber-100 border border-amber-300 font-bold text-amber-900">
+                            <div className="text-[9px] text-amber-800">➖ 빠짐</div>
+                            <div className="truncate font-semibold">
+                              {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
+                            </div>
+                          </td>
+                        );
+                      }
+                      if (isSourceSlot) {
+                        return (
+                          <td key={d.num} className="p-0.5 h-9 text-[10px] align-middle bg-emerald-100 border border-emerald-300 font-bold text-emerald-900">
+                            <div className="text-[9px] text-emerald-800">➕ 들어옴</div>
+                            <div className="truncate font-semibold">
+                              {data.source.grade}-{data.source.classNum}
+                            </div>
+                          </td>
+                        );
+                      }
+                      if (hasLesson) {
+                        return (
+                          <td key={d.num} className="p-0.5 h-9 text-[10px] align-middle bg-gray-100 text-gray-700 font-medium">
+                            <div className="truncate">{matched[0].subjectName}</div>
+                            <div className="text-[9px] text-gray-400 font-normal">{matched[0].grade}-{matched[0].classNum}</div>
+                          </td>
+                        );
+                      }
+
+                      return (
+                        <td key={d.num} className="p-0.5 h-9 text-[10px] align-middle bg-white text-gray-300">
+                          -
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
 
         <div className="text-center text-[10px] text-gray-400 border-t border-gray-100 pt-2 font-medium">
@@ -1348,6 +1456,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                             counterpartName: applyingCandidate.counterpartName,
                             counterpartSubjectName: applyingCandidate.counterpartSubjectName,
                           },
+                          previewCells,
+                          periodsPerDay,
                         });
                       }}
                       className="py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
@@ -1507,8 +1617,39 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
     }
   };
 
-  const handleCopyDraftShareImage = (data: ShareCardData) => {
-    setDraftShareData(data);
+  const handleCopyDraftShareImage = async (draft: SwapDraft) => {
+    let fetchedCells: TeacherTimetableCell[] | null = null;
+    const targetWeek = draft.targetWeekId || draft.sourceWeekId;
+    const counterpartEmail = draft.candidate.counterpartEmail;
+    if (counterpartEmail) {
+      try {
+        const res = await fetch("/api/timetable/view", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "teacher",
+            weekId: targetWeek,
+            teacherEmail: counterpartEmail,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          fetchedCells = data.cells || [];
+        }
+      } catch (e) {
+        console.error("Fetch counterpart timetable error:", e);
+      }
+    }
+
+    setDraftShareData({
+      requesterName: user?.displayName || teacherProfile?.name || userEmail.split("@")[0] || "교사",
+      sourceWeekId: draft.sourceWeekId,
+      targetWeekId: draft.targetWeekId,
+      source: draft.source,
+      candidate: draft.candidate,
+      previewCells: fetchedCells,
+    });
+
     setTimeout(() => {
       copyShareImageElement(draftShareRef.current);
     }, 100);
@@ -1679,15 +1820,7 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                       </button>
 
                       <button
-                        onClick={() => {
-                          handleCopyDraftShareImage({
-                            requesterName: user?.displayName || teacherProfile?.name || userEmail.split("@")[0] || "교사",
-                            sourceWeekId: draft.sourceWeekId,
-                            targetWeekId: draft.targetWeekId,
-                            source: draft.source,
-                            candidate: draft.candidate,
-                          });
-                        }}
+                        onClick={() => handleCopyDraftShareImage(draft)}
                         className="py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs border border-indigo-200 transition-colors shrink-0"
                       >
                         📋 양해 이미지 복사

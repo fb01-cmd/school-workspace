@@ -3090,3 +3090,13 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   4. **상대 미리보기 미니 그리드를 카드 하단에 포함**(1단/2단 그대로, previewCells 재사용·임시저장함은 view teacher 재조회), 배지 캡션도 수신자 기준. 카드 폭 520px 내외 확대 허용.
   5. `buildShareCardMessage` 텍스트도 동일 반전.
 - **주의**: 실서버 승인 조작 금지 유지. DoD: tsc·build + tteacher@ 실화면 복사→챗 붙여넣기 눈 확인 + 핸드오버 커밋·푸시.
+
+## [2026-08-04] Antigravity → Claude/사용자 (공유 카드 v2 수신자 관점 개편 + 미니 그리드 수록 완료)
+
+- **변경 파일**:
+  - `src/lib/timetable/utils.ts` (`buildShareCardMessage` 수신자 관점 문구·호칭("선생님")·수업 이동 방향 반전 반영)
+  - `src/components/admin/timetable/TeacherPortalSection.tsx` (`OffscreenShareCard` 공유 카드 v2 전면 개편 — 카드 폭 520px 확장, 수신자 "선생님" 호칭 및 문구, 상대 수업 이동 1행 배치, 하단 상대 교사 주간 시간표 미리보기 미니 그리드 렌더링, `handleCopyDraftShareImage` 시 상대 시간표 온디맨드 fetch 수록 연동)
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **수신자 관점 가독성 검증**: 상대 교사 관점에서 자신의 수업 이동이 1행에 명확히 표기되고, 미니 그리드에 "➖ 빠짐" / "➕ 들어옴" 배지가 직관적으로 렌더링됨을 확인.
+

@@ -60,12 +60,20 @@ export function buildShareCardMessage(params: {
   const targetWeek = params.targetWeekId || params.sourceWeekId;
   const targetSlotStr = formatSlotWithDate(targetWeek, params.candidate.targetDay, params.candidate.targetPeriod);
 
-  return `[수업교환 양해 요청]
-안녕하세요, ${params.candidate.counterpartName || "선생님"}! ${params.requesterName} 교사입니다.
-이렇게 수업을 교체해도 될까요? 😊
+  const counterpartTitle = params.candidate.counterpartName
+    ? `${params.candidate.counterpartName} 선생님`
+    : "선생님";
 
-• 내 수업: ${sourceSlotStr} (${params.source.grade}-${params.source.classNum}반 ${params.source.subjectName}) ➖
-• 교체 희망: ${targetSlotStr} (${params.candidate.counterpartSubjectName ? `${params.source.grade}-${params.source.classNum}반 ${params.candidate.counterpartSubjectName}` : "공강 슬롯"}) ➕
+  const counterpartLessonName = params.candidate.counterpartSubjectName
+    ? `${params.source.grade}-${params.source.classNum}반 ${params.candidate.counterpartSubjectName}`
+    : "수업";
+
+  return `[수업교환 양해 요청]
+안녕하세요, ${counterpartTitle}! 👋
+${params.requesterName} 교사입니다. 이렇게 수업 교체가 가능할까요? 😊
+
+• 선생님 수업: ${counterpartLessonName} (${targetSlotStr} → ${sourceSlotStr}로 이동)
+• 제 수업: ${params.source.grade}-${params.source.classNum}반 ${params.source.subjectName} (${sourceSlotStr} → ${targetSlotStr}로 이동)
 
 확인 부탁드립니다. 감사합니다!`;
 }
