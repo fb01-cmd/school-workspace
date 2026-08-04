@@ -443,13 +443,6 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     ? `원래 수업 주 · ${getWeekRangeLabel(sourceWeekObj?.startDate || selectedWeekId)}`
                     : `내 주간시간표${sourceWeekObj?.startDate ? ` · ${getWeekRangeLabel(sourceWeekObj.startDate)}` : ""}`}
                 </h3>
-                <p className="text-[11px] text-indigo-300 mt-0.5">
-                  {selectedWeekId
-                    ? isCrossWeek
-                      ? "원래 수업 주입니다. 내 수업 셀 클릭 시 ➖ 삭제 표시와 함께 교환 후보를 탐색합니다."
-                      : "변경된 셀은 빨간 배경으로 표시됩니다. 내 수업 셀 클릭 시 교환 신청 플로우가 시작됩니다."
-                    : "기초시간표 (주 선택 시 변경 반영)"}
-                </p>
               </div>
               {isCrossWeek && (
                 <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-700 text-indigo-100 font-bold border border-indigo-500">
@@ -457,16 +450,16 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                 </span>
               )}
             </div>
-            <table className="w-full border-collapse text-xs">
+            <table className="w-full table-fixed border-collapse text-xs">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="py-2 px-2 border-r border-gray-200 w-12 text-center text-gray-500 font-bold text-[10px]">교시</th>
+                  <th className="py-2.5 px-1 border-r border-gray-200 w-14 text-center text-gray-500 font-bold text-xs">교시</th>
                   {DAYS.map((d) => {
                     const dateLabel = getDayDateLabel(sourceWeekObj?.startDate || selectedWeekId, d.num);
                     return (
-                      <th key={d.num} className="py-2 px-1 text-center text-gray-700 font-bold text-[11px]">
+                      <th key={d.num} className="py-2 px-1 text-center text-gray-800 font-bold text-sm w-1/5">
                         <div>{d.label}</div>
-                        {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
+                        {dateLabel && <div className="text-xs text-gray-500 font-normal mt-0.5">{dateLabel}</div>}
                       </th>
                     );
                   })}
@@ -477,7 +470,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   const period = idx + 1;
                   return (
                     <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
-                      <td className="py-3 px-2 border-r border-gray-200 text-center font-bold text-gray-400 bg-gray-50 text-[11px]">{period}</td>
+                      <td className="py-2 px-1 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50 text-xs align-middle w-14">{period}</td>
                       {DAYS.map((d) => {
                         const matched = getCellFor(d.num, period);
                         const hasLesson = matched.length > 0;
@@ -491,7 +484,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                         return (
                           <td
                             key={d.num}
-                            className={`p-1 border-r border-gray-100 text-center align-top transition-all
+                            className={`p-1 border-r border-gray-100 text-center align-middle h-16 transition-all
                               ${isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""}
                               ${isTarget && !isSelected && !isCardHighlighted ? "bg-green-50 ring-1 ring-inset ring-green-400" : ""}
                               ${isCardHighlighted && !isSelected ? "bg-amber-50 ring-2 ring-inset ring-amber-400" : ""}
@@ -510,36 +503,36 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                   <div
                                     key={ci}
                                     title={tooltip}
-                                    className={`p-1.5 rounded text-center space-y-0.5 text-[10px] ${
+                                    className={`p-1.5 rounded-lg text-center space-y-0.5 ${
                                       isChanged
                                         ? "bg-red-100 border border-red-300"
                                         : "bg-white border border-indigo-200 shadow-2xs"
                                     }`}
                                   >
-                                    <div className={`font-black ${isChanged ? "text-red-800" : "text-indigo-950"}`}>
+                                    <div className={`font-black text-sm ${isChanged ? "text-red-800" : "text-indigo-950"}`}>
                                       {cell.grade}-{cell.classNum}반
-                                      {isChanged && <span className="ml-0.5 text-red-600 font-bold text-[9px]">▲</span>}
+                                      {isChanged && <span className="ml-1 text-red-600 font-bold text-xs">▲</span>}
                                     </div>
                                     {isSelectedSource && (
-                                      <div className="text-[9px] font-bold text-red-700 bg-red-100 px-1 py-0.5 rounded border border-red-200 mt-0.5">
+                                      <div className="text-xs font-bold text-red-700 bg-red-100 px-1 py-0.5 rounded border border-red-200 mt-0.5">
                                         ➖ 삭제
                                       </div>
                                     )}
-                                    {isTarget && !isSelectedSource && <div className="text-[9px] font-bold text-green-700">교환 가능 ✓</div>}
+                                    {isTarget && !isSelectedSource && <div className="text-xs font-bold text-green-700">교환 가능 ✓</div>}
                                   </div>
                                 );
                               })
                             ) : isSelectedTarget ? (
-                              <div className="py-1 px-1 space-y-0.5 text-[10px] font-bold bg-amber-100 border border-amber-300 rounded text-amber-950">
+                              <div className="py-1 px-1 space-y-0.5 text-xs font-bold bg-amber-100 border border-amber-300 rounded-lg text-amber-950">
                                 <div>➕ 추가</div>
-                                <div className="text-[9px] text-amber-800 font-medium">
+                                <div className="text-xs text-amber-800 font-medium">
                                   {selectedCell ? `${selectedCell.grade}-${selectedCell.classNum}반` : ""}
                                 </div>
                               </div>
                             ) : isTarget ? (
-                              <div className="py-2 text-[10px] font-bold text-green-700">🟢 공강</div>
+                              <div className="text-xs font-bold text-green-700">🟢 공강</div>
                             ) : (
-                              <span className="text-[10px] text-gray-200 block py-2">-</span>
+                              <span className="text-xs text-gray-300 block py-1">-</span>
                             )}
                           </td>
                         );
@@ -559,9 +552,6 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   <h3 className="text-sm font-bold text-white">
                     🗓️ 교체 대상 주 · {getWeekRangeLabel(targetWeekObj?.startDate || effectiveTargetWeekId)}
                   </h3>
-                  <p className="text-[11px] text-indigo-200 mt-0.5">
-                    교체 대상 주 기준 내 시간표입니다. 교환 후보 공강 위치가 아래 초록 배경으로 강조되며, 선택 시 ➕ 추가가 표시됩니다.
-                  </p>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-800 text-indigo-100 font-bold border border-indigo-600">
                   2/2 대상 주
@@ -572,16 +562,16 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   대상 주 시간표를 불러오는 중...
                 </div>
               ) : (
-                <table className="w-full border-collapse text-xs">
+                <table className="w-full table-fixed border-collapse text-xs">
                   <thead>
                     <tr className="bg-indigo-50/70 border-b border-indigo-100">
-                      <th className="py-2 px-2 border-r border-indigo-100 w-12 text-center text-indigo-900 font-bold text-[10px]">교시</th>
+                      <th className="py-2.5 px-1 border-r border-indigo-100 w-14 text-center text-indigo-900 font-bold text-xs">교시</th>
                       {DAYS.map((d) => {
                         const dateLabel = getDayDateLabel(targetWeekObj?.startDate || effectiveTargetWeekId, d.num);
                         return (
-                          <th key={d.num} className="py-2 px-1 text-center text-indigo-950 font-bold text-[11px]">
+                          <th key={d.num} className="py-2 px-1 text-center text-indigo-950 font-bold text-sm w-1/5">
                             <div>{d.label}</div>
-                            {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
+                            {dateLabel && <div className="text-xs text-gray-500 font-normal mt-0.5">{dateLabel}</div>}
                           </th>
                         );
                       })}
@@ -592,7 +582,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       const period = idx + 1;
                       return (
                         <tr key={period} className={period % 2 === 0 ? "bg-indigo-50/20" : "bg-white"}>
-                          <td className="py-3 px-2 border-r border-indigo-100 text-center font-bold text-indigo-400 bg-indigo-50/50 text-[11px]">{period}</td>
+                          <td className="py-2 px-1 border-r border-indigo-100 text-center font-bold text-indigo-400 bg-indigo-50/50 text-xs align-middle w-14">{period}</td>
                           {DAYS.map((d) => {
                             const matched = (targetCells || []).filter((c) => c.day === d.num && c.period === period);
                             const hasLesson = matched.length > 0;
@@ -604,7 +594,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                             return (
                               <td
                                 key={d.num}
-                                className={`p-1 border-r border-indigo-50 text-center align-top transition-all
+                                className={`p-1 border-r border-indigo-50 text-center align-middle h-16 transition-all
                                   ${isTarget && !isCardHighlighted ? "bg-green-50 ring-1 ring-inset ring-green-400" : ""}
                                   ${isCardHighlighted ? "bg-amber-50 ring-2 ring-inset ring-amber-400" : ""}
                                 `}
@@ -618,29 +608,29 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                       <div
                                         key={ci}
                                         title={tooltip}
-                                        className={`p-1.5 rounded text-center space-y-0.5 text-[10px] ${
+                                        className={`p-1.5 rounded-lg text-center space-y-0.5 ${
                                           isChanged
                                             ? "bg-red-100 border border-red-300"
                                             : "bg-white border border-gray-200 shadow-2xs"
                                         }`}
                                       >
-                                        <div className={`font-black ${isChanged ? "text-red-800" : "text-gray-800"}`}>
+                                        <div className={`font-black text-sm ${isChanged ? "text-red-800" : "text-gray-800"}`}>
                                           {cell.grade}-{cell.classNum}반
                                         </div>
                                       </div>
                                     );
                                   })
                                 ) : isSelectedTarget ? (
-                                  <div className="py-1 px-1 space-y-0.5 text-[10px] font-bold bg-amber-100 border border-amber-300 rounded text-amber-950">
+                                  <div className="py-1 px-1 space-y-0.5 text-xs font-bold bg-amber-100 border border-amber-300 rounded-lg text-amber-950">
                                     <div>➕ 추가</div>
-                                    <div className="text-[9px] text-amber-800 font-medium">
+                                    <div className="text-xs text-amber-800 font-medium">
                                       {selectedCell ? `${selectedCell.grade}-${selectedCell.classNum}반` : ""}
                                     </div>
                                   </div>
                                 ) : isTarget ? (
-                                  <div className="py-2 text-[10px] font-bold text-green-700">🟢 공강</div>
+                                  <div className="text-xs font-bold text-green-700">🟢 공강</div>
                                 ) : (
-                                  <span className="text-[10px] text-gray-200 block py-2">-</span>
+                                  <span className="text-xs text-gray-300 block py-1">-</span>
                                 )}
                               </td>
                             );
@@ -798,20 +788,20 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
                   {/* ① 같은 주 모드: 기존 1단 미니 그리드 */}
                   {!isCrossWeek && previewCells && (
-                    <div className="border border-gray-200 rounded-lg overflow-hidden text-[10px]">
-                      <div className="bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-700 border-b border-gray-200">
+                    <div className="border border-gray-200 rounded-lg overflow-hidden text-xs">
+                      <div className="bg-gray-100 px-2 py-1 text-[11px] font-bold text-gray-700 border-b border-gray-200">
                         🗓️ {targetWeekObj?.startDate ? getWeekRangeLabel(targetWeekObj.startDate) : "대상 주"} 시간표
                       </div>
-                      <table className="w-full border-collapse text-center">
+                      <table className="w-full table-fixed border-collapse text-center">
                         <thead>
                           <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
-                            <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
+                            <th className="py-1 px-0.5 border-r border-gray-200 w-8 text-xs">교시</th>
                             {DAYS.map((d) => {
                               const dateLabel = getDayDateLabel(targetWeekObj?.startDate || effectiveTargetWeekId, d.num);
                               return (
-                                <th key={d.num} className="py-1 px-0.5">
+                                <th key={d.num} className="py-1 px-0.5 w-1/5 text-xs">
                                   <div>{d.label}</div>
-                                  {dateLabel && <div className="text-[9px] text-gray-400 font-normal">{dateLabel}</div>}
+                                  {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
                                 </th>
                               );
                             })}
@@ -823,7 +813,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                             const sc = applyingCandidate;
                             return (
                               <tr key={period} className="border-b border-gray-100 last:border-0">
-                                <td className="py-1 px-1 border-r border-gray-200 bg-gray-50 font-bold text-gray-400 text-[9px]">{period}</td>
+                                <td className="py-1 px-0.5 border-r border-gray-200 bg-gray-50 font-bold text-gray-500 text-xs align-middle w-8">{period}</td>
                                 {DAYS.map((d) => {
                                   const matched = previewCells.filter((c) => c.day === d.num && c.period === period);
                                   const isTargetSlot = sc.targetDay === d.num && sc.targetPeriod === period;
@@ -844,23 +834,23 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                     : undefined;
 
                                   return (
-                                    <td key={d.num} className={`p-0.5 text-[9.5px] ${cellStyle}`} title={cellTitle}>
+                                    <td key={d.num} className={`p-0.5 h-10 text-xs align-middle ${cellStyle}`} title={cellTitle}>
                                       {isTargetSlot ? (
                                         <div className="space-y-0.5">
-                                          <div className="text-[8px] font-extrabold text-amber-900">➖ 삭제</div>
-                                          <div className="font-bold text-[9px] truncate max-w-[40px] mx-auto">
+                                          <div className="text-[9px] font-extrabold text-amber-900">➖ 삭제</div>
+                                          <div className="font-bold text-[10px] truncate max-w-[44px] mx-auto">
                                             {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
                                           </div>
                                         </div>
                                       ) : isSourceSlot ? (
                                         <div className="space-y-0.5">
-                                          <div className="text-[8px] font-extrabold text-green-900">➕ 추가</div>
-                                          <div className="font-bold text-[9px] truncate max-w-[40px] mx-auto">
+                                          <div className="text-[9px] font-extrabold text-green-900">➕ 추가</div>
+                                          <div className="font-bold text-[10px] truncate max-w-[44px] mx-auto">
                                             {selectedCell.grade}-{selectedCell.classNum}
                                           </div>
                                         </div>
                                       ) : hasLesson ? (
-                                        <div className="truncate max-w-[42px] mx-auto font-medium">
+                                        <div className="truncate max-w-[44px] mx-auto font-bold text-[11px]">
                                           {matched[0].grade}-{matched[0].classNum}
                                         </div>
                                       ) : (
@@ -881,21 +871,21 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   {isCrossWeek && (
                     <div className="space-y-2">
                       {/* [상단] 소스 주 상대 시간표 (내 소스 수업이 상대에게 들어옴 ➕) */}
-                      <div className="border border-indigo-200 rounded-lg overflow-hidden text-[10px]">
-                        <div className="bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-900 border-b border-indigo-200 flex justify-between items-center">
+                      <div className="border border-indigo-200 rounded-lg overflow-hidden text-xs">
+                        <div className="bg-indigo-50 px-2 py-1 text-[11px] font-bold text-indigo-900 border-b border-indigo-200 flex justify-between items-center">
                           <span>🗓️ 소스 주 ({getWeekRangeLabel(sourceWeekObj?.startDate || selectedWeekId)})</span>
-                          <span className="text-[9px] text-green-700 font-extrabold">내 수업 들어옴 ➕</span>
+                          <span className="text-[10px] text-green-700 font-extrabold">내 수업 들어옴 ➕</span>
                         </div>
-                        <table className="w-full border-collapse text-center">
+                        <table className="w-full table-fixed border-collapse text-center">
                           <thead>
                             <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
-                              <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
+                              <th className="py-1 px-0.5 border-r border-gray-200 w-8 text-xs">교시</th>
                               {DAYS.map((d) => {
                                 const dateLabel = getDayDateLabel(sourceWeekObj?.startDate || selectedWeekId, d.num);
                                 return (
-                                  <th key={d.num} className="py-1 px-0.5">
+                                  <th key={d.num} className="py-1 px-0.5 w-1/5 text-xs">
                                     <div>{d.label}</div>
-                                    {dateLabel && <div className="text-[9px] text-gray-400 font-normal">{dateLabel}</div>}
+                                    {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
                                   </th>
                                 );
                               })}
@@ -906,7 +896,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                               const period = idx + 1;
                               return (
                                 <tr key={period} className="border-b border-gray-100 last:border-0">
-                                  <td className="py-1 px-1 border-r border-gray-200 bg-gray-50 font-bold text-gray-400 text-[9px]">{period}</td>
+                                  <td className="py-1 px-0.5 border-r border-gray-200 bg-gray-50 font-bold text-gray-500 text-xs align-middle w-8">{period}</td>
                                   {DAYS.map((d) => {
                                     const matched = (counterpartSourceCells || []).filter((c) => c.day === d.num && c.period === period);
                                     const isSourceSlot = selectedCell.day === d.num && selectedCell.period === period;
@@ -924,16 +914,16 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                       : undefined;
 
                                     return (
-                                      <td key={d.num} className={`p-0.5 text-[9.5px] ${cellStyle}`} title={cellTitle}>
+                                      <td key={d.num} className={`p-0.5 h-10 text-xs align-middle ${cellStyle}`} title={cellTitle}>
                                         {isSourceSlot ? (
                                           <div className="space-y-0.5">
-                                            <div className="text-[8px] font-extrabold text-green-900">➕ 추가</div>
-                                            <div className="font-bold text-[9px] truncate max-w-[40px] mx-auto">
+                                            <div className="text-[9px] font-extrabold text-green-900">➕ 추가</div>
+                                            <div className="font-bold text-[10px] truncate max-w-[44px] mx-auto">
                                               {selectedCell.grade}-{selectedCell.classNum}
                                             </div>
                                           </div>
                                         ) : hasLesson ? (
-                                          <div className="truncate max-w-[42px] mx-auto font-medium">
+                                          <div className="truncate max-w-[44px] mx-auto font-bold text-[11px]">
                                             {matched[0].grade}-{matched[0].classNum}
                                           </div>
                                         ) : (
@@ -950,21 +940,21 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       </div>
 
                       {/* [하단] 교체 대상 주 상대 시간표 (상대 원래 수업이 빠짐 ➖) */}
-                      <div className="border border-amber-200 rounded-lg overflow-hidden text-[10px]">
-                        <div className="bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-900 border-b border-amber-200 flex justify-between items-center">
+                      <div className="border border-amber-200 rounded-lg overflow-hidden text-xs">
+                        <div className="bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-900 border-b border-amber-200 flex justify-between items-center">
                           <span>🗓️ 대상 주 ({getWeekRangeLabel(targetWeekObj?.startDate || effectiveTargetWeekId)})</span>
-                          <span className="text-[9px] text-amber-900 font-extrabold">상대 수업 빠짐 ➖</span>
+                          <span className="text-[10px] text-amber-900 font-extrabold">상대 수업 빠짐 ➖</span>
                         </div>
-                        <table className="w-full border-collapse text-center">
+                        <table className="w-full table-fixed border-collapse text-center">
                           <thead>
                             <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
-                              <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
+                              <th className="py-1 px-0.5 border-r border-gray-200 w-8 text-xs">교시</th>
                               {DAYS.map((d) => {
                                 const dateLabel = getDayDateLabel(targetWeekObj?.startDate || effectiveTargetWeekId, d.num);
                                 return (
-                                  <th key={d.num} className="py-1 px-0.5">
+                                  <th key={d.num} className="py-1 px-0.5 w-1/5 text-xs">
                                     <div>{d.label}</div>
-                                    {dateLabel && <div className="text-[9px] text-gray-400 font-normal">{dateLabel}</div>}
+                                    {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
                                   </th>
                                 );
                               })}
@@ -976,7 +966,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                               const sc = applyingCandidate;
                               return (
                                 <tr key={period} className="border-b border-gray-100 last:border-0">
-                                  <td className="py-1 px-1 border-r border-gray-200 bg-gray-50 font-bold text-gray-400 text-[9px]">{period}</td>
+                                  <td className="py-1 px-0.5 border-r border-gray-200 bg-gray-50 font-bold text-gray-500 text-xs align-middle w-8">{period}</td>
                                   {DAYS.map((d) => {
                                     const matched = (counterpartTargetCells || []).filter((c) => c.day === d.num && c.period === period);
                                     const isTargetSlot = sc.targetDay === d.num && sc.targetPeriod === period;
@@ -994,16 +984,16 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                       : undefined;
 
                                     return (
-                                      <td key={d.num} className={`p-0.5 text-[9.5px] ${cellStyle}`} title={cellTitle}>
+                                      <td key={d.num} className={`p-0.5 h-10 text-xs align-middle ${cellStyle}`} title={cellTitle}>
                                         {isTargetSlot ? (
                                           <div className="space-y-0.5">
-                                            <div className="text-[8px] font-extrabold text-amber-900">➖ 삭제</div>
-                                            <div className="font-bold text-[9px] truncate max-w-[40px] mx-auto">
+                                            <div className="text-[9px] font-extrabold text-amber-900">➖ 삭제</div>
+                                            <div className="font-bold text-[10px] truncate max-w-[44px] mx-auto">
                                               {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
                                             </div>
                                           </div>
                                         ) : hasLesson ? (
-                                          <div className="truncate max-w-[42px] mx-auto font-medium">
+                                          <div className="truncate max-w-[44px] mx-auto font-bold text-[11px]">
                                             {matched[0].grade}-{matched[0].classNum}
                                           </div>
                                         ) : (
@@ -1388,7 +1378,6 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
               <span className="text-xs px-2 py-0.5 rounded-full font-normal bg-indigo-100 text-indigo-800">{termMeta.name}</span>
             )}
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">교사를 검색하여 주간 합성 시간표를 조회합니다.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           <select
@@ -1440,17 +1429,17 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
       {error && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800">{error}</div>}
 
       <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-        <table className="w-full border-collapse text-xs">
+        <table className="w-full table-fixed border-collapse text-xs">
           <thead>
             <tr className="bg-indigo-950 text-white font-bold">
-              <th className="py-3 px-2 border-b border-r border-indigo-800 w-16 text-center">교시</th>
+              <th className="py-2.5 px-1 border-b border-r border-indigo-800 w-14 text-center text-xs">교시</th>
               {DAYS.map((d) => {
                 const targetWeekObj = weeks.find((w) => w.id === selectedWeekId);
                 const dateLabel = getDayDateLabel(targetWeekObj?.startDate || selectedWeekId, d.num);
                 return (
-                  <th key={d.num} className="py-2.5 px-2 border-b border-indigo-800 text-center">
+                  <th key={d.num} className="py-2 px-1 border-b border-indigo-800 text-center w-1/5 text-sm">
                     <div>{d.label}요일</div>
-                    {dateLabel && <div className="text-[10px] text-indigo-300 font-normal mt-0.5">{dateLabel}</div>}
+                    {dateLabel && <div className="text-xs text-indigo-300 font-normal mt-0.5">{dateLabel}</div>}
                   </th>
                 );
               })}
@@ -1461,30 +1450,30 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
               const period = pIdx + 1;
               return (
                 <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
-                  <td className="py-4 px-2 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50">{period}교시</td>
+                  <td className="py-2 px-1 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50 text-xs align-middle w-14">{period}교시</td>
                   {DAYS.map((d) => {
                     const matched = getCellFor(d.num, period);
                     const hasLesson = matched.length > 0;
                     return (
-                      <td key={d.num} className={`p-2 border-r border-gray-100 text-center align-top transition-colors ${hasLesson ? "bg-indigo-50/40 hover:bg-indigo-100/50" : ""}`}>
+                      <td key={d.num} className={`p-1.5 border-r border-gray-100 text-center align-middle h-16 transition-colors ${hasLesson ? "bg-indigo-50/40 hover:bg-indigo-100/50" : ""}`}>
                         {hasLesson ? (
-                          <div className="space-y-1.5">
+                          <div className="space-y-1">
                             {matched.map((cell, cIdx) => {
                               const isChanged = !!(cell as any).changed;
                               const tooltip = `${cell.subjectName} · ${cell.grade}-${cell.classNum}반${cell.room ? ` (${cell.room})` : ""}`;
                               return (
-                                <div key={cIdx} title={tooltip} className={`p-2 rounded-lg space-y-1 ${isChanged ? "bg-red-50 border border-red-300" : "bg-white border border-indigo-200 shadow-2xs"}`}>
-                                  <div className={`font-black text-xs ${isChanged ? "text-red-800" : "text-indigo-950"}`}>
+                                <div key={cIdx} title={tooltip} className={`p-1.5 rounded-lg space-y-0.5 ${isChanged ? "bg-red-50 border border-red-300" : "bg-white border border-indigo-200 shadow-2xs"}`}>
+                                  <div className={`font-black text-sm ${isChanged ? "text-red-800" : "text-indigo-950"}`}>
                                     {cell.grade}-{cell.classNum}반
-                                    {isChanged && <span className="ml-0.5 text-red-500 text-[9px]">▲</span>}
+                                    {isChanged && <span className="ml-1 text-red-500 text-xs">▲</span>}
                                   </div>
-                                  {cell.room && <div className="text-[10px] text-gray-500 truncate">📍 {cell.room}</div>}
+                                  {cell.room && <div className="text-xs text-gray-500 truncate">📍 {cell.room}</div>}
                                 </div>
                               );
                             })}
                           </div>
                         ) : (
-                          <span className="text-[11px] text-gray-300 font-light block py-2">-</span>
+                          <span className="text-xs text-gray-300 font-light block py-1">-</span>
                         )}
                       </td>
                     );
