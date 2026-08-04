@@ -7,6 +7,7 @@ import {
   SwapReasonType,
   TimetableWeek,
 } from "@/lib/timetable/types";
+import { DAY_LABEL, formatSlotWithDate } from "@/lib/timetable/utils";
 
 interface DirectSubstituteTabProps {
   activeTermId: string | null;
@@ -192,24 +193,6 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     }
   };
 
-  const DAY_NAMES = ["", "월", "화", "수", "목", "금"];
-
-  const formatSlotWithDate = (weekId?: string, d?: number, p?: number): string => {
-    if (!d || !p) return "";
-    const dayStr = DAY_NAMES[d] || `${d}`;
-    if (!weekId) return `${dayStr}요일 ${p}교시`;
-
-    const parts = weekId.split("-").map((v) => parseInt(v, 10));
-    if (parts.length < 3 || isNaN(parts[0])) return `${dayStr}요일 ${p}교시`;
-
-    const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
-    dateObj.setDate(dateObj.getDate() + (d - 1));
-    const m = dateObj.getMonth() + 1;
-    const dateVal = dateObj.getDate();
-
-    return `${m}/${dateVal}(${dayStr}) ${p}교시`;
-  };
-
   return (
     <div className="space-y-6">
       {/* 헤더 안내 */}
@@ -344,7 +327,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
               <span>2️⃣</span>
               <span>
-                후보 선택 — {grade}학년 {classNum}반 {DAY_NAMES[day]}요일 {period}교시 ({sourceLessonInfo.subjectName}
+                후보 선택 — {grade}학년 {classNum}반 {DAY_LABEL[day] || day}요일 {period}교시 ({sourceLessonInfo.subjectName}
                 {sourceLessonInfo.teacherName ? ` · ${sourceLessonInfo.teacherName} 교사` : ""})
               </span>
             </h3>

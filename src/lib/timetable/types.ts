@@ -404,6 +404,26 @@ export interface SwapRequest {
   direct?: boolean; // 일과계 직권 배정 경유 (교사 사전 신청 없음)
 }
 
+// ── 사전 양해 임시저장 (swap_drafts — phase9b_spec §13-1) ─────
+
+export type ConsentStatus = "NONE" | "REQUESTED" | "CONSENTED" | "DECLINED";
+
+export interface SwapDraft {
+  id: string;
+  requesterEmail: string;
+  requesterName: string;
+  termId: string;
+  sourceWeekId: string;
+  targetWeekId?: string;
+  source: SwapSourceSlot;
+  candidate: SwapCandidateSnapshot;
+  reason?: SwapRequestReason;
+  note?: string;
+  consentStatus: ConsentStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ── 주간 합성 (weekly.ts 출력) ────────────────────────────────
 
 export interface WeeklyLessonChange {
@@ -496,7 +516,14 @@ export interface SwapCandidatesResult {
 
 // ── 신청 라우트 DTO (/api/timetable/requests) ─────────────────
 
-export type SwapRequestAction = "candidates" | "create" | "my_list" | "cancel";
+export type SwapRequestAction =
+  | "candidates"
+  | "create"
+  | "my_list"
+  | "cancel"
+  | "draft_save"
+  | "draft_list"
+  | "draft_delete";
 
 export interface SwapRequestApiRequest {
   action: SwapRequestAction;
@@ -507,4 +534,16 @@ export interface SwapRequestApiRequest {
   candidate?: SwapCandidateSnapshot;
   reason?: SwapRequestReason;
   requestId?: string;
+  // 임시저장 (draft_save / draft_delete)
+  draftId?: string;
+  draft?: {
+    termId?: string;
+    sourceWeekId?: string;
+    targetWeekId?: string;
+    source?: SwapSourceSlot;
+    candidate?: SwapCandidateSnapshot;
+    reason?: SwapRequestReason;
+    note?: string;
+  };
 }
+

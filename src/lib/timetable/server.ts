@@ -12,6 +12,7 @@ import {
   FreeTeacher,
   IntermediateClassGrid,
   IntermediateImportPayload,
+  SwapDraft,
   SuspiciousMappingIssue,
   TeacherOverlapIssue,
   TeacherTimeCount,
@@ -28,6 +29,9 @@ import {
 } from "./types";
 
 // ── Firestore 경로 헬퍼 ────────────────────────────────────────
+
+export const swapDraftsColRef = (domain: string) =>
+  adminDb.collection("swap_drafts").doc(domain).collection("drafts");
 
 export const timetableSettingsDocRef = (domain: string) =>
   adminDb.collection("timetable_settings").doc(domain);
@@ -1803,3 +1807,124 @@ export async function computeHourTotals(
       .sort((a, b) => a.grade - b.grade || a.classNum - b.classNum),
   };
 }
+
+// ── 사전 양해 임시저장 CRUD (swap_drafts — phase9b_spec §13-1) ─
+
+export async function saveSwapDraft(
+  domain: string,
+  userEmail: string,
+  userName: string,
+  draftId?: string,
+  draftData?: any
+): Promise<SwapDraft> {
+  const colRef = swapDraftsColRef(domain);
+  const now = Date.now();
+
+  if (!draftData || !draftData.source || !draftData.candidate || !draftData.sourceWeekId) {
+    throw new Error("초안 저장을 위한 필수 정보(source, candidate, sourceWeekId)가 누락되었습니다.");
+  }
+
+  // 상대 교사 이메일 형식 검증
+  const counterpartEmail = draftData.candidate?.counterpartEmail;
+  if (counterpartEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(counterpartEmail)) {
+    throw new Error("상대 교사 이메일 형식이 올바르지 않습니다.");
+  }
+
+  let docId = draftId;
+
+  if (docId) {
+    // 1. (보안 가드) 수정 경로 소유권 확인 — 기존 초안 ID가 넘겨진 경우 작성자 본인 일치 검증
+    const existingSnap = await colRef.doc(docId).get();
+    if (!existingSnap.exists) {
+      throw new Error("존재하지 않는 초안입니다.");
+    }
+    const existingData = existingSnap.data();
+    if (existingData?.requesterEmail !== userEmail) {
+      throw new Error("해당 초안을 수정할 권한이 없습니다.");
+    }
+  } else {
+    // 2. 신규 생성 시 1인당 최대 20건 상한 검증
+    const countSnap = await colRef.where("requesterEmail", "==", userEmail).get();
+    if (countSnap.size >= 20) {
+      throw new Error("임시저장 초안은 최대 20건까지 저장할 수 있습니다. 기존 초안을 정리 후 다시 시도해 주세요.");
+    }
+    docId = colRef.doc().id;
+  }
+
+  const activeTerm = await loadActiveTerm(domain);
+  const termId = draftData.termId || activeTerm?.id || "2026-2";
+
+  const docPayload = {
+    requesterEmail: userEmail, // 서버가 본인으로 강제 세팅
+    requesterName: userName || userEmail.split("@")[0],
+    termId,
+    sourceWeekId: draftData.sourceWeekId,
+    targetWeekId: draftData.targetWeekId || null,
+    source: draftData.source,
+    candidate: draftData.candidate,
+    reason: draftData.reason || null,
+    note: draftData.note || "",
+    consentStatus: "NONE" as const,
+    updatedAt: now,
+    ...(draftId ? {} : { createdAt: now }),
+  };
+
+  await colRef.doc(docId).set(docPayload, { merge: true });
+
+  const updatedSnap = await colRef.doc(docId).get();
+  const savedData = updatedSnap.data()!;
+
+  return {
+    id: docId,
+    requesterEmail: savedData.requesterEmail,
+    requesterName: savedData.requesterName,
+    termId: savedData.termId,
+    sourceWeekId: savedData.sourceWeekId,
+    targetWeekId: savedData.targetWeekId || undefined,
+    source: savedData.source,
+    candidate: savedData.candidate,
+    reason: savedData.reason || undefined,
+    note: savedData.note || "",
+    consentStatus: savedData.consentStatus || "NONE",
+    createdAt: toMillis(savedData.createdAt) || now,
+    updatedAt: toMillis(savedData.updatedAt) || now,
+  };
+}
+
+export async function listSwapDrafts(domain: string, userEmail: string): Promise<SwapDraft[]> {
+  const colRef = swapDraftsColRef(domain);
+  const snap = await colRef.where("requesterEmail", "==", userEmail).get();
+  const drafts: SwapDraft[] = snap.docs.map((doc) => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      requesterEmail: data.requesterEmail,
+      requesterName: data.requesterName || "",
+      termId: data.termId || "",
+      sourceWeekId: data.sourceWeekId || "",
+      targetWeekId: data.targetWeekId || undefined,
+      source: data.source,
+      candidate: data.candidate,
+      reason: data.reason || undefined,
+      note: data.note || "",
+      consentStatus: data.consentStatus || "NONE",
+      createdAt: toMillis(data.createdAt) || Date.now(),
+      updatedAt: toMillis(data.updatedAt) || Date.now(),
+    };
+  });
+  return drafts.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function deleteSwapDraft(domain: string, userEmail: string, draftId: string): Promise<void> {
+  const colRef = swapDraftsColRef(domain);
+  const docRef = colRef.doc(draftId);
+  const snap = await docRef.get();
+  if (!snap.exists) {
+    throw new Error("존재하지 않는 초안입니다.");
+  }
+  if (snap.data()?.requesterEmail !== userEmail) {
+    throw new Error("해당 초안을 삭제할 권한이 없습니다.");
+  }
+  await docRef.delete();
+}
+

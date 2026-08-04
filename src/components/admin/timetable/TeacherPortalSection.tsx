@@ -16,10 +16,12 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { toBlob } from "html-to-image";
 import {
   SWAP_REASON_TYPES,
   SwapCandidate,
   SwapCandidatesResult,
+  SwapDraft,
   SwapRequest,
   SwapRequestReason,
   SubstituteCandidate,
@@ -28,6 +30,13 @@ import {
   TimetableWeek,
 } from "@/lib/timetable/types";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
+import {
+  DAY_LABEL,
+  getDayDateLabel,
+  getWeekRangeLabel,
+  formatSlotWithDate,
+  buildShareCardMessage,
+} from "@/lib/timetable/utils";
 
 const DAYS = [
   { num: 1, label: "월" },
@@ -36,43 +45,6 @@ const DAYS = [
   { num: 4, label: "목" },
   { num: 5, label: "금" },
 ];
-
-const DAY_LABEL: Record<number, string> = { 1: "월", 2: "화", 3: "수", 4: "목", 5: "금" };
-
-/** 주(startDate)와 요일 번호(1=월 ~ 5=금)로 날짜(M/D) 계산 */
-function getDayDateLabel(weekStartDate?: string, dayNum?: number): string {
-  if (!weekStartDate || !dayNum) return "";
-  const parts = weekStartDate.split("-").map((v) => parseInt(v, 10));
-  if (parts.length < 3 || isNaN(parts[0])) return "";
-  const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
-  dateObj.setDate(dateObj.getDate() + (dayNum - 1));
-  return `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
-}
-
-/** 주(startDate) 기준 범위 문자열 생성 (예: "8/10(월)~8/14(금)") */
-function getWeekRangeLabel(weekStartDate?: string): string {
-  if (!weekStartDate) return "";
-  const startMD = getDayDateLabel(weekStartDate, 1);
-  const endMD = getDayDateLabel(weekStartDate, 5);
-  return `${startMD}(월)~${endMD}(금)`;
-}
-
-/** weekId(월요일 YYYY-MM-DD), day(1~5), period(1~) 로 "8/13(목) 2교시" 형식 문자열 생성 */
-function formatSlotWithDate(weekId?: string, day?: number, period?: number): string {
-  if (!day || !period) return "";
-  const dayStr = DAY_LABEL[day] || `${day}`;
-  if (!weekId) return `${dayStr}요일 ${period}교시`;
-
-  const parts = weekId.split("-").map((v) => parseInt(v, 10));
-  if (parts.length < 3 || isNaN(parts[0])) return `${dayStr}요일 ${period}교시`;
-
-  const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
-  dateObj.setDate(dateObj.getDate() + (day - 1));
-  const m = dateObj.getMonth() + 1;
-  const d = dateObj.getDate();
-
-  return `${m}/${d}(${dayStr}) ${period}교시`;
-}
 
 /** 주 목록에서 기본 선택할 주 ID 계산 (현재 주 → 가장 가까운 미래 주 → 첫 주) */
 function findDefaultWeekId(weeks: TimetableWeek[]): string {
@@ -113,6 +85,102 @@ function findDefaultWeekId(weeks: TimetableWeek[]): string {
   return weeks[0].id;
 }
 
+export interface ShareCardData {
+  requesterName: string;
+  sourceWeekId: string;
+  targetWeekId?: string;
+  source: { grade: number; classNum: number; day: number; period: number; subjectName: string };
+  candidate: {
+    targetDay?: number;
+    targetPeriod?: number;
+    counterpartEmail?: string;
+    counterpartName?: string;
+    counterpartSubjectName?: string;
+  };
+}
+
+/**
+ * 사전 양해 요청 공유 카드 DOM (offscreen 렌더링 — display:none 금지, position:absolute; left:-9999px 사용)
+ */
+function OffscreenShareCard({
+  cardRef,
+  data,
+}: {
+  cardRef: React.RefObject<HTMLDivElement | null>;
+  data: ShareCardData | null;
+}) {
+  if (!data) {
+    return <div ref={cardRef} style={{ position: "absolute", left: "-9999px", top: "-9999px", pointerEvents: "none" }} />;
+  }
+
+  const sourceSlotStr = formatSlotWithDate(data.sourceWeekId, data.source.day, data.source.period);
+  const targetWeek = data.targetWeekId || data.sourceWeekId;
+  const targetSlotStr = formatSlotWithDate(targetWeek, data.candidate.targetDay, data.candidate.targetPeriod);
+
+  return (
+    <div
+      ref={cardRef}
+      style={{ position: "absolute", left: "-9999px", top: "-9999px", pointerEvents: "none" }}
+      className="w-[420px] bg-white border border-indigo-200 rounded-2xl p-5 shadow-lg space-y-4 font-sans text-gray-900"
+    >
+      <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
+        <div className="text-[10px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
+        <div className="text-lg font-black mt-0.5 tracking-tight">수업교환 양해 요청</div>
+      </div>
+
+      <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3.5 space-y-1.5 text-xs">
+        <div className="font-bold text-indigo-950 text-sm">
+          안녕하세요, {data.candidate.counterpartName || "선생님"}! 👋
+        </div>
+        <div className="text-gray-700 leading-relaxed text-[11px]">
+          <span className="font-bold text-indigo-900">{data.requesterName} 교사</span>입니다.<br />
+          아래 일정으로 수업 교환이 가능한지 사전 양해를 구합니다. 😊
+        </div>
+      </div>
+
+      <div className="border border-gray-200 rounded-xl p-3.5 space-y-2 text-xs bg-gray-50/30">
+        <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5 flex items-center justify-between">
+          <span>🔄 수업교환 상세 일정</span>
+          {data.targetWeekId && data.targetWeekId !== data.sourceWeekId && (
+            <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full border border-indigo-200">
+              교차 주 교환
+            </span>
+          )}
+        </div>
+        <div className="space-y-2 pt-1">
+          <div className="flex items-start justify-between bg-red-50/80 border border-red-200 rounded-lg p-2.5">
+            <div>
+              <div className="text-[11px] font-extrabold text-red-600">내 원래 수업 (➖ 이동)</div>
+              <div className="font-bold text-gray-900 text-sm mt-0.5">{sourceSlotStr}</div>
+              <div className="text-gray-600 text-[11px]">
+                {data.source.grade}-{data.source.classNum}반 ({data.source.subjectName})
+              </div>
+            </div>
+            <span className="text-red-700 font-black text-xs bg-red-100 border border-red-200 px-2 py-1 rounded">➖</span>
+          </div>
+
+          <div className="flex items-start justify-between bg-green-50/80 border border-green-200 rounded-lg p-2.5">
+            <div>
+              <div className="text-[11px] font-extrabold text-green-700">교체 희망 슬롯 (➕ 이동)</div>
+              <div className="font-bold text-gray-900 text-sm mt-0.5">{targetSlotStr}</div>
+              <div className="text-gray-600 text-[11px]">
+                {data.candidate.counterpartSubjectName
+                  ? `${data.source.grade}-${data.source.classNum}반 (${data.candidate.counterpartSubjectName})`
+                  : "공강 슬롯"}
+              </div>
+            </div>
+            <span className="text-green-700 font-black text-xs bg-green-100 border border-green-200 px-2 py-1 rounded">➕</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="text-center text-[10px] text-gray-400 border-t border-gray-100 pt-2 font-medium">
+        효명고등학교 학적 & 일과진행 시스템
+      </div>
+    </div>
+  );
+}
+
 // ── ① 내 주간시간표 탭 ─────────────────────────────────────────
 interface MyTimetableTabProps {
   periodsPerDay: number;
@@ -120,7 +188,7 @@ interface MyTimetableTabProps {
 }
 
 function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
-  const { userData } = useAuth();
+  const { user, userData, teacherProfile } = useAuth();
   const userEmail = userData?.email?.toLowerCase() || "";
   const isSuperAdmin = userData?.role === "super_admin";
   const isManager =
@@ -159,6 +227,84 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [reason, setReason] = useState<SwapRequestReason>({ type: "출장" });
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<string | null>(null);
+
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [shareCardData, setShareCardData] = useState<ShareCardData | null>(null);
+  const shareCardRef = useRef<HTMLDivElement>(null);
+
+  const handleCopyShareImage = async (data: ShareCardData) => {
+    setShareCardData(data);
+    setTimeout(async () => {
+      if (!shareCardRef.current) return;
+      try {
+        const blob = await toBlob(shareCardRef.current, { pixelRatio: 2, cacheBust: true });
+        if (!blob) throw new Error("이미지 생성 실패");
+
+        if (typeof window !== "undefined" && navigator.clipboard && window.ClipboardItem) {
+          const item = new ClipboardItem({ "image/png": blob });
+          await navigator.clipboard.write([item]);
+          alert("양해 요청 이미지가 클립보드에 복사되었습니다! 메신저나 구글 챗에 Ctrl+V로 붙여넣으세요. 😊");
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `수업교환_양해요청_${new Date().toISOString().slice(0, 10)}.png`;
+          a.click();
+          URL.revokeObjectURL(url);
+          alert("클립보드 직접 쓰기가 지원되지 않아 PNG 이미지 파일로 다운로드되었습니다.");
+        }
+      } catch (err: any) {
+        alert(`이미지 복사 중 오류: ${err.message}`);
+      }
+    }, 100);
+  };
+
+  const handleSaveDraft = async () => {
+    if (!selectedCell || !applyingCandidate) return;
+    setSavingDraft(true);
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "draft_save",
+          draft: {
+            sourceWeekId: selectedWeekId,
+            targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
+            source: {
+              grade: selectedCell.grade,
+              classNum: selectedCell.classNum,
+              day: selectedCell.day,
+              period: selectedCell.period,
+              subjectName: selectedCell.subjectName,
+            },
+            candidate: {
+              type: "swap",
+              targetDay: applyingCandidate.targetDay,
+              targetPeriod: applyingCandidate.targetPeriod,
+              targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
+              counterpartEmail: applyingCandidate.counterpartEmail,
+              counterpartName: applyingCandidate.counterpartName,
+              counterpartSubjectName: applyingCandidate.counterpartSubjectName,
+              score: applyingCandidate.score,
+              penalties: applyingCandidate.penalties,
+            },
+            reason: reason,
+          },
+        }),
+      });
+      if (res.ok) {
+        alert("임시저장함에 초안이 저장되었습니다.\n'내 신청 내역' 탭의 사전 양해 임시저장함에서 확인하실 수 있습니다.");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`임시저장 실패: ${err.error}`);
+      }
+    } catch (e: any) {
+      alert(`오류: ${e.message}`);
+    } finally {
+      setSavingDraft(false);
+    }
+  };
 
   // 교차 주 지원: 교체 대상 주 내 시간표 셀 목록
   const [targetCells, setTargetCells] = useState<TeacherTimetableCell[] | null>(null);
@@ -1144,8 +1290,50 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     disabled={submitting || (reason.type === "기타" && !reason.note?.trim())}
                     className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shadow-sm"
                   >
-                    {submitting ? "신청 중..." : "수업교환 신청하기"}
+                    {submitting ? "신청 중..." : "수업교환 신청하기 (일과계 제출)"}
                   </button>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={handleSaveDraft}
+                      disabled={savingDraft}
+                      className="py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-1"
+                    >
+                      <span>📁</span>
+                      <span>{savingDraft ? "저장 중..." : "교체안 임시저장"}</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (!selectedCell || !applyingCandidate) return;
+                        const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
+                        handleCopyShareImage({
+                          requesterName: currentUserName,
+                          sourceWeekId: selectedWeekId,
+                          targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
+                          source: {
+                            grade: selectedCell.grade,
+                            classNum: selectedCell.classNum,
+                            day: selectedCell.day,
+                            period: selectedCell.period,
+                            subjectName: selectedCell.subjectName,
+                          },
+                          candidate: {
+                            targetDay: applyingCandidate.targetDay,
+                            targetPeriod: applyingCandidate.targetPeriod,
+                            counterpartEmail: applyingCandidate.counterpartEmail,
+                            counterpartName: applyingCandidate.counterpartName,
+                            counterpartSubjectName: applyingCandidate.counterpartSubjectName,
+                          },
+                        });
+                      }}
+                      className="py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
+                    >
+                      <span>📋</span>
+                      <span>양해 이미지 복사</span>
+                    </button>
+                  </div>
+
                   <button
                     onClick={() => {
                       setApplyingCandidate(null);
@@ -1161,6 +1349,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
           </div>
         )}
       </div>
+
+      {/* 오프스크린 사전 양해 공유 카드 DOM (클립보드 복사용) */}
+      <OffscreenShareCard cardRef={shareCardRef} data={shareCardData} />
     </div>
   );
 }
@@ -1178,6 +1369,9 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
 };
 
 function MyRequestsTab({ settings }: MyRequestsTabProps) {
+  const { user, userData, teacherProfile } = useAuth();
+  const userEmail = userData?.email || "";
+
   const [requests, setRequests] = useState<SwapRequest[]>([]);
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [selectedWeekId, setSelectedWeekId] = useState("");
@@ -1185,6 +1379,137 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
   const [error, setError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // 사전 양해 임시저장함 상태 (phase9b_spec §13-1)
+  const [drafts, setDrafts] = useState<SwapDraft[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftsOpen, setDraftsOpen] = useState(true);
+  const [confirmingDraft, setConfirmingDraft] = useState<SwapDraft | null>(null);
+  const [draftReason, setDraftReason] = useState<SwapRequestReason>({ type: "출장" });
+  const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
+  const [submittingDraftId, setSubmittingDraftId] = useState<string | null>(null);
+
+  // 초안 이미지 복사용 ref & state
+  const [draftShareData, setDraftShareData] = useState<ShareCardData | null>(null);
+  const draftShareRef = useRef<HTMLDivElement>(null);
+
+  const fetchDrafts = useCallback(async () => {
+    setDraftsLoading(true);
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "draft_list" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDrafts(data.drafts || []);
+      }
+    } catch (e) {
+      console.error("fetchDrafts error:", e);
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDrafts();
+  }, [fetchDrafts]);
+
+  const handleDeleteDraft = async (draftId: string) => {
+    if (!confirm("이 임시저장 초안을 삭제하시겠습니까?")) return;
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "draft_delete", draftId }),
+      });
+      if (res.ok) {
+        setDrafts((prev) => prev.filter((d) => d.id !== draftId));
+        setDraftErrors((prev) => {
+          const next = { ...prev };
+          delete next[draftId];
+          return next;
+        });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`초안 삭제 실패: ${err.error}`);
+      }
+    } catch (e: any) {
+      alert(`오류: ${e.message}`);
+    }
+  };
+
+  const handleSubmitDraftConfirm = async () => {
+    if (!confirmingDraft) return;
+    const draft = confirmingDraft;
+    setSubmittingDraftId(draft.id);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create",
+          weekId: draft.sourceWeekId,
+          targetWeekId: draft.targetWeekId,
+          type: "swap",
+          source: draft.source,
+          candidate: draft.candidate,
+          reason: draftReason,
+        }),
+      });
+      if (res.ok) {
+        // 성공 시 초안 삭제 및 리스트 갱신
+        await fetch("/api/timetable/requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "draft_delete", draftId: draft.id }),
+        });
+        setSuccessMsg("초안으로 수업교환 신청이 완료되었고 해당 초안은 임시저장함에서 자동으로 정리되었습니다.");
+        setConfirmingDraft(null);
+        fetchMyList();
+        fetchDrafts();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        const errMsg = err.error || "신청에 실패했습니다.";
+        setDraftErrors((prev) => ({ ...prev, [draft.id]: errMsg }));
+        setConfirmingDraft(null);
+        alert(`신청 거부: ${errMsg}\n시간표 변경 등으로 신청이 불가합니다. 초안 카드에 표기된 사유를 확인하시고 [이 초안 삭제] 버튼으로 정리해 주세요.`);
+      }
+    } catch (e: any) {
+      alert(`오류: ${e.message}`);
+    } finally {
+      setSubmittingDraftId(null);
+    }
+  };
+
+  const handleCopyDraftShareImage = async (data: ShareCardData) => {
+    setDraftShareData(data);
+    setTimeout(async () => {
+      if (!draftShareRef.current) return;
+      try {
+        const blob = await toBlob(draftShareRef.current, { pixelRatio: 2, cacheBust: true });
+        if (!blob) throw new Error("이미지 생성 실패");
+
+        if (typeof window !== "undefined" && navigator.clipboard && window.ClipboardItem) {
+          const item = new ClipboardItem({ "image/png": blob });
+          await navigator.clipboard.write([item]);
+          alert("양해 요청 이미지가 클립보드에 복사되었습니다! 메신저나 구글 챗에 Ctrl+V로 붙여넣으세요. 😊");
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `수업교환_양해요청_${new Date().toISOString().slice(0, 10)}.png`;
+          a.click();
+          URL.revokeObjectURL(url);
+          alert("클립보드 직접 쓰기가 지원되지 않아 PNG 이미지 파일로 다운로드되었습니다.");
+        }
+      } catch (err: any) {
+        alert(`이미지 복사 중 오류: ${err.message}`);
+      }
+    }, 100);
+  };
 
   useEffect(() => {
     const termId = settings?.activeTermId;
@@ -1249,7 +1574,210 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-5">
+      {/* 📁 사전 양해 임시저장함 (phase9b_spec §13-1) */}
+      <div className="border border-indigo-200 bg-indigo-50/40 rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setDraftsOpen(!draftsOpen)}
+            className="flex items-center gap-2 font-bold text-sm text-indigo-950 hover:text-indigo-700 transition-colors"
+          >
+            <span>📁 사전 양해 임시저장함</span>
+            <span className="text-xs bg-indigo-200 text-indigo-900 font-extrabold px-2 py-0.5 rounded-full">
+              {drafts.length}건
+            </span>
+            <span className="text-xs text-indigo-500 font-medium">{draftsOpen ? "▲ 접기" : "▼ 펼치기"}</span>
+          </button>
+          <button
+            onClick={fetchDrafts}
+            className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline"
+          >
+            초안 새로고침
+          </button>
+        </div>
+
+        {draftsOpen && (
+          <div className="space-y-3 pt-1">
+            {draftsLoading && <div className="text-xs text-indigo-500 animate-pulse">초안 불러오는 중...</div>}
+            {!draftsLoading && drafts.length === 0 && (
+              <div className="text-xs text-gray-500 py-3 text-center bg-white/70 rounded-lg border border-dashed border-indigo-200">
+                임시저장된 교체안 초안이 없습니다. 시간표 셀을 선택 후 [교체안 임시저장]할 수 있습니다.
+              </div>
+            )}
+            {!draftsLoading &&
+              drafts.map((draft) => {
+                const errorMsg = draftErrors[draft.id];
+                const sourceSlotStr = formatSlotWithDate(draft.sourceWeekId, draft.source.day, draft.source.period);
+                const targetWeekVal = draft.targetWeekId || draft.sourceWeekId;
+                const targetSlotStr = formatSlotWithDate(
+                  targetWeekVal,
+                  draft.candidate.targetDay,
+                  draft.candidate.targetPeriod
+                );
+
+                return (
+                  <div
+                    key={draft.id}
+                    className={`bg-white border rounded-xl p-3.5 space-y-2.5 shadow-sm transition-colors ${
+                      errorMsg ? "border-red-300 bg-red-50/30" : "border-indigo-150 hover:border-indigo-300"
+                    }`}
+                  >
+                    {/* 재검증 거부 시 경고 배너 */}
+                    {errorMsg && (
+                      <div className="bg-red-100/90 border border-red-300 text-red-900 rounded-lg p-2.5 text-xs font-bold space-y-1">
+                        <div className="flex items-center gap-1 text-red-700">
+                          <span>⚠️ 교환 신청 불가 (시간표 상태 변경 등)</span>
+                        </div>
+                        <div className="text-[11px] font-medium text-red-800">{errorMsg}</div>
+                        <div className="text-[10px] text-red-700 font-normal">
+                          상태가 변경되었으므로 아래 <b>[이 초안 삭제]</b> 버튼을 눌러 초안을 정리해 주세요.
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1 text-xs">
+                        <div className="font-bold text-gray-900 flex items-center gap-1.5">
+                          <span className="text-indigo-900">{draft.sourceWeekId} 주</span>
+                          {draft.targetWeekId && draft.targetWeekId !== draft.sourceWeekId && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">
+                              ↔ {draft.targetWeekId} 주 교차 주
+                            </span>
+                          )}
+                          <span className="text-gray-400 text-[10px]">
+                            · {new Date(draft.updatedAt).toLocaleDateString("ko-KR")} 저장
+                          </span>
+                        </div>
+                        <div className="text-gray-800">
+                          <span className="font-semibold text-gray-500">내 수업:</span> {sourceSlotStr} ({draft.source.grade}-{draft.source.classNum}반 {draft.source.subjectName})
+                        </div>
+                        <div className="text-gray-800">
+                          <span className="font-semibold text-gray-500">교환 희망:</span> {targetSlotStr} ({draft.candidate.counterpartName || "상대 교사"})
+                        </div>
+                        {draft.reason && (
+                          <div className="text-gray-500 text-[11px]">
+                            저장 사유: {draft.reason.type}{draft.reason.note ? ` (${draft.reason.note})` : ""}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 버튼들 */}
+                    <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+                      <button
+                        onClick={() => {
+                          setConfirmingDraft(draft);
+                          setDraftReason(draft.reason || { type: "출장" });
+                        }}
+                        disabled={submittingDraftId === draft.id}
+                        className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors shadow-sm disabled:opacity-50"
+                      >
+                        {submittingDraftId === draft.id ? "신청 중..." : "이 안으로 신청"}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          handleCopyDraftShareImage({
+                            requesterName: user?.displayName || teacherProfile?.name || userEmail.split("@")[0] || "교사",
+                            sourceWeekId: draft.sourceWeekId,
+                            targetWeekId: draft.targetWeekId,
+                            source: draft.source,
+                            candidate: draft.candidate,
+                          });
+                        }}
+                        className="py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs border border-indigo-200 transition-colors shrink-0"
+                      >
+                        📋 양해 이미지 복사
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteDraft(draft.id)}
+                        className={`py-1.5 px-3 font-bold rounded-lg text-xs transition-colors shrink-0 ${
+                          errorMsg
+                            ? "bg-red-600 hover:bg-red-700 text-white shadow-sm ring-2 ring-red-400 animate-pulse"
+                            : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                        }`}
+                      >
+                        {errorMsg ? "이 초안 삭제 권장" : "삭제"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
+      </div>
+
+      {/* 오프스크린 초안 이미지 복사용 DOM */}
+      <OffscreenShareCard cardRef={draftShareRef} data={draftShareData} />
+
+      {/* 사유 선택 및 제출 확인 모달 (사유 필수 수집 흐름) */}
+      {confirmingDraft && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-6 space-y-4">
+            <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
+              <h4 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
+                <span>📝 수업교환 최종 신청</span>
+              </h4>
+              <button
+                onClick={() => setConfirmingDraft(null)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3.5 space-y-1 text-xs">
+              <div className="font-bold text-indigo-950">초안 교환 정보 확인</div>
+              <div className="text-gray-700">
+                • <b>내 수업:</b> {formatSlotWithDate(confirmingDraft.sourceWeekId, confirmingDraft.source.day, confirmingDraft.source.period)} ({confirmingDraft.source.grade}-{confirmingDraft.source.classNum}반 {confirmingDraft.source.subjectName})
+              </div>
+              <div className="text-gray-700">
+                • <b>교환 상대:</b> {formatSlotWithDate(confirmingDraft.targetWeekId || confirmingDraft.sourceWeekId, confirmingDraft.candidate.targetDay, confirmingDraft.candidate.targetPeriod)} ({confirmingDraft.candidate.counterpartName || "상대 교사"})
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-800">신청 사유 선택 (필수)</label>
+              <select
+                value={draftReason.type}
+                onChange={(e) => setDraftReason({ type: e.target.value as any, note: draftReason.note })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500"
+              >
+                {SWAP_REASON_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+              {draftReason.type === "기타" && (
+                <textarea
+                  value={draftReason.note || ""}
+                  onChange={(e) => setDraftReason({ ...draftReason, note: e.target.value })}
+                  placeholder="사유를 상세히 입력해 주세요 (필수)"
+                  rows={2}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                onClick={() => setConfirmingDraft(null)}
+                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSubmitDraftConfirm}
+                disabled={submittingDraftId === confirmingDraft.id || (draftReason.type === "기타" && !draftReason.note?.trim())}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-sm disabled:opacity-50 transition-colors"
+              >
+                {submittingDraftId === confirmingDraft.id ? "제출 중..." : "확인 및 수업교환 신청"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3 pb-2 border-b border-gray-100">
         <h3 className="text-base font-bold text-gray-900">📋 내 수업교환 신청 내역</h3>
         <select

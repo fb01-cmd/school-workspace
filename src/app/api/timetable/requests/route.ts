@@ -4,13 +4,16 @@ import {
   cancelSwapRequest,
   computeCandidates,
   createSwapRequest,
+  deleteSwapDraft,
+  listSwapDrafts,
   listSwapRequests,
+  saveSwapDraft,
 } from "@/lib/timetable/server";
 import { SwapRequestApiRequest } from "@/lib/timetable/types";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Phase 9b: 수업교환 신청 라우트 (교사 본인용) — phase9b_spec §6
+ * Phase 9b: 수업교환 신청 라우트 (교사 본인용) — phase9b_spec §6, §13-1
  *
  * 권한: 교직원(teacher·super_admin)만. 학생 전면 차단.
  * 원칙: 후보는 서버가 계산한 것만 신청 가능 — create 시 서버가 재계산해 대조한다 (§5).
@@ -107,6 +110,32 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
         return NextResponse.json({ success: true, action, request });
+      }
+
+      // ── 사전 양해 임시저장 API (phase9b_spec §13-1) ───────────
+
+      case "draft_save": {
+        const draft = await saveSwapDraft(
+          domain,
+          auth.email,
+          "",
+          body.draftId,
+          body.draft
+        );
+        return NextResponse.json({ success: true, action, draft });
+      }
+
+      case "draft_list": {
+        const drafts = await listSwapDrafts(domain, auth.email);
+        return NextResponse.json({ success: true, action, drafts });
+      }
+
+      case "draft_delete": {
+        if (!body.draftId) {
+          return NextResponse.json({ error: "draftId가 누락되었습니다." }, { status: 400 });
+        }
+        await deleteSwapDraft(domain, auth.email, body.draftId);
+        return NextResponse.json({ success: true, action, draftId: body.draftId });
       }
 
       default:

@@ -3010,3 +3010,24 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. **3단계(오픈 게이트 후)**: 초안 문서의 `consentStatus` 예약 필드 위에 동의 흐름 구축, 동의 시 create 재검증 경로로 자동 신청. 지금은 착수하지 않음.
 - **순서**: 파일럿 피드백 2건(일과계 드롭다운·날짜 명시, §7) 구현이 먼저 → 그다음 §13-1 착수. draft_save/draft_list/draft_delete 서버 가드(본인 강제·형식 검증·20건 상한)는 §13-1에 명시 — 구현 후 Claude 표적 리뷰 예정.
 - **주의**: 실서버 승인 조작 금지 — 대기 중 tteacher@ 신청 1건 유지.
+
+## [2026-08-04] Antigravity → Claude/사용자 (사전 양해 1단계 §13-1 및 공용 유틸 통합 구현 완료)
+
+- **변경 파일**:
+  - `src/lib/timetable/utils.ts` (신규 — `formatSlotWithDate`, `DAY_LABEL`, `getDayDateLabel`, `getWeekRangeLabel`, `buildShareCardMessage` 공용 유틸 통합)
+  - `src/lib/timetable/types.ts` (`ConsentStatus` 유니온 타입, `SwapDraft` 인터페이스, `SwapRequestAction` & `SwapRequestApiRequest` DTO 확장)
+  - `src/lib/timetable/server.ts` (`swap_drafts` CRUD — `saveSwapDraft`, `listSwapDrafts`, `deleteSwapDraft`, 수정 경로 소유권 확인 가드, 20건 상한 제한, 이메일 검증 포함)
+  - `src/app/api/timetable/requests/route.ts` (`draft_save`, `draft_list`, `draft_delete` 액션 및 가드 연동)
+  - `src/components/admin/timetable/TeacherPortalSection.tsx` (`OffscreenShareCard` 렌더러, `html-to-image` 클립보드 복사, 후보 카드 [교체안 임시저장] & [📋 양해 이미지 복사] 버튼, 내 신청 내역 [📁 사전 양해 임시저장함] 접이식 섹션, 신청 사유 확인 모달 및 재검증 실패 거부 사유 표기 + 삭제 유도)
+  - `src/components/admin/timetable/SwapRequestLedgerTab.tsx` (공용 `formatSlotWithDate` 유틸 적용)
+  - `src/components/admin/timetable/DirectSubstituteTab.tsx` (공용 `formatSlotWithDate` 및 `DAY_LABEL` 유틸 적용)
+  - `package.json`, `package-lock.json` (`html-to-image` 패키지 추가)
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **Claude 보완 피드백 5건 반영 확인**:
+  1. `draft_save` 수정 경로 소유권 확인 (`requesterEmail === userEmail`) 가드 적용 완료.
+  2. 초안 "이 안으로 신청" 제출 시 사유(reason) 수집 확인 모달 단계 구현 완료.
+  3. 재검증 탈락 시 초안 카드에 서버 거부 사유 표기 및 "이 초안 삭제" 버튼 유도 구현 완료.
+  4. 오프스크린 카드는 `position: absolute; left: -9999px; top: -9999px` 적용 (`display:none` 미사용).
+  5. 대기 중 신청 1건 완전 보존 유지.
+

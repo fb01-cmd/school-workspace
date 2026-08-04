@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SwapRequest, SwapRequestStatus, TimetableWeek } from "@/lib/timetable/types";
+import { formatSlotWithDate } from "@/lib/timetable/utils";
 
 interface SwapRequestLedgerTabProps {
   activeTermId: string | null;
@@ -196,24 +197,6 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
     } finally {
       setRevertingId(null);
     }
-  };
-
-  const DAY_NAMES = ["", "월", "화", "수", "목", "금"];
-
-  const formatSlotWithDate = (weekId?: string, day?: number, period?: number): string => {
-    if (!day || !period) return "";
-    const dayStr = DAY_NAMES[day] || `${day}`;
-    if (!weekId) return `${dayStr}요일 ${period}교시`;
-
-    const parts = weekId.split("-").map((v) => parseInt(v, 10));
-    if (parts.length < 3 || isNaN(parts[0])) return `${dayStr}요일 ${period}교시`;
-
-    const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
-    dateObj.setDate(dateObj.getDate() + (day - 1));
-    const m = dateObj.getMonth() + 1;
-    const d = dateObj.getDate();
-
-    return `${m}/${d}(${dayStr}) ${period}교시`;
   };
 
   // PENDING 상태를 상단으로 정렬
