@@ -181,6 +181,48 @@ function OffscreenShareCard({
   );
 }
 
+/**
+ * 오프스크린 공유 카드 DOM을 PNG 이미지로 복사/다운로드하는 공용 헬퍼 함수
+ * 1. navigator.clipboard.write 지원 시 클립보드 직접 복사 시도
+ * 2. 권한 거부(NotAllowedError) 또는 미지원 시 생성된 blob으로 PNG 자동 다운로드 폴백 실행
+ */
+async function copyShareImageElement(node: HTMLDivElement | null): Promise<void> {
+  if (!node) return;
+  let blob: Blob | null = null;
+  try {
+    blob = await toBlob(node, { pixelRatio: 2, cacheBust: true });
+    if (!blob) throw new Error("이미지 생성 실패");
+
+    if (typeof window !== "undefined" && navigator.clipboard && window.ClipboardItem) {
+      const item = new ClipboardItem({ "image/png": blob });
+      await navigator.clipboard.write([item]);
+      alert("양해 요청 이미지가 클립보드에 복사되었습니다! 메신저나 구글 챗에 Ctrl+V로 붙여넣으세요. 😊");
+      return;
+    }
+  } catch (clipboardErr: any) {
+    console.warn("[copyShareImageElement] Clipboard write failed, trying PNG download fallback:", clipboardErr);
+  }
+
+  // 폴백: 클립보드 쓰기 실패(NotAllowedError 포함) 또는 API 미지원 시 PNG 파일 다운로드
+  if (blob) {
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `수업교환_양해요청_${new Date().toISOString().slice(0, 10)}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+      alert("클립보드 직접 복사가 제한되어 PNG 이미지 파일로 자동 다운로드되었습니다.");
+      return;
+    } catch (downloadErr: any) {
+      alert(`이미지 파일 다운로드 실패: ${downloadErr.message}`);
+      return;
+    }
+  }
+
+  alert("양해 요청 이미지를 생성하지 못했습니다.");
+}
+
 // ── ① 내 주간시간표 탭 ─────────────────────────────────────────
 interface MyTimetableTabProps {
   periodsPerDay: number;
@@ -232,30 +274,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [shareCardData, setShareCardData] = useState<ShareCardData | null>(null);
   const shareCardRef = useRef<HTMLDivElement>(null);
 
-  const handleCopyShareImage = async (data: ShareCardData) => {
+  const handleCopyShareImage = (data: ShareCardData) => {
     setShareCardData(data);
-    setTimeout(async () => {
-      if (!shareCardRef.current) return;
-      try {
-        const blob = await toBlob(shareCardRef.current, { pixelRatio: 2, cacheBust: true });
-        if (!blob) throw new Error("이미지 생성 실패");
-
-        if (typeof window !== "undefined" && navigator.clipboard && window.ClipboardItem) {
-          const item = new ClipboardItem({ "image/png": blob });
-          await navigator.clipboard.write([item]);
-          alert("양해 요청 이미지가 클립보드에 복사되었습니다! 메신저나 구글 챗에 Ctrl+V로 붙여넣으세요. 😊");
-        } else {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `수업교환_양해요청_${new Date().toISOString().slice(0, 10)}.png`;
-          a.click();
-          URL.revokeObjectURL(url);
-          alert("클립보드 직접 쓰기가 지원되지 않아 PNG 이미지 파일로 다운로드되었습니다.");
-        }
-      } catch (err: any) {
-        alert(`이미지 복사 중 오류: ${err.message}`);
-      }
+    setTimeout(() => {
+      copyShareImageElement(shareCardRef.current);
     }, 100);
   };
 
@@ -1484,30 +1506,10 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
     }
   };
 
-  const handleCopyDraftShareImage = async (data: ShareCardData) => {
+  const handleCopyDraftShareImage = (data: ShareCardData) => {
     setDraftShareData(data);
-    setTimeout(async () => {
-      if (!draftShareRef.current) return;
-      try {
-        const blob = await toBlob(draftShareRef.current, { pixelRatio: 2, cacheBust: true });
-        if (!blob) throw new Error("이미지 생성 실패");
-
-        if (typeof window !== "undefined" && navigator.clipboard && window.ClipboardItem) {
-          const item = new ClipboardItem({ "image/png": blob });
-          await navigator.clipboard.write([item]);
-          alert("양해 요청 이미지가 클립보드에 복사되었습니다! 메신저나 구글 챗에 Ctrl+V로 붙여넣으세요. 😊");
-        } else {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `수업교환_양해요청_${new Date().toISOString().slice(0, 10)}.png`;
-          a.click();
-          URL.revokeObjectURL(url);
-          alert("클립보드 직접 쓰기가 지원되지 않아 PNG 이미지 파일로 다운로드되었습니다.");
-        }
-      } catch (err: any) {
-        alert(`이미지 복사 중 오류: ${err.message}`);
-      }
+    setTimeout(() => {
+      copyShareImageElement(draftShareRef.current);
     }, 100);
   };
 

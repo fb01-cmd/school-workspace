@@ -1854,9 +1854,24 @@ export async function saveSwapDraft(
   const activeTerm = await loadActiveTerm(domain);
   const termId = draftData.termId || activeTerm?.id || "2026-2";
 
+  // 신청자 실명: 합성본의 소스 lesson에서 추출 (3단계 대비 실명 저장)
+  let requesterName = userName || userEmail.split("@")[0];
+  try {
+    const week = await loadWeek(domain, draftData.sourceWeekId);
+    if (week) {
+      const { grids } = await synthesizeWeek(domain, week);
+      const src = resolveSourceLesson(grids, userEmail, draftData.source);
+      if (src.ok && src.lesson) {
+        requesterName = src.lesson.teachers[0]?.name || requesterName;
+      }
+    }
+  } catch (e) {
+    // fallback to default
+  }
+
   const docPayload = {
     requesterEmail: userEmail, // 서버가 본인으로 강제 세팅
-    requesterName: userName || userEmail.split("@")[0],
+    requesterName,
     termId,
     sourceWeekId: draftData.sourceWeekId,
     targetWeekId: draftData.targetWeekId || null,

@@ -115,14 +115,28 @@ export async function POST(req: NextRequest) {
       // ── 사전 양해 임시저장 API (phase9b_spec §13-1) ───────────
 
       case "draft_save": {
-        const draft = await saveSwapDraft(
-          domain,
-          auth.email,
-          "",
-          body.draftId,
-          body.draft
-        );
-        return NextResponse.json({ success: true, action, draft });
+        try {
+          const draft = await saveSwapDraft(
+            domain,
+            auth.email,
+            "",
+            body.draftId,
+            body.draft
+          );
+          return NextResponse.json({ success: true, action, draft });
+        } catch (e: any) {
+          const msg = e.message || "";
+          if (
+            msg.includes("최대 20건") ||
+            msg.includes("수정할 권한") ||
+            msg.includes("존재하지 않는") ||
+            msg.includes("이메일 형식") ||
+            msg.includes("필수 정보")
+          ) {
+            return NextResponse.json({ error: msg }, { status: 400 });
+          }
+          throw e;
+        }
       }
 
       case "draft_list": {
@@ -134,8 +148,16 @@ export async function POST(req: NextRequest) {
         if (!body.draftId) {
           return NextResponse.json({ error: "draftId가 누락되었습니다." }, { status: 400 });
         }
-        await deleteSwapDraft(domain, auth.email, body.draftId);
-        return NextResponse.json({ success: true, action, draftId: body.draftId });
+        try {
+          await deleteSwapDraft(domain, auth.email, body.draftId);
+          return NextResponse.json({ success: true, action, draftId: body.draftId });
+        } catch (e: any) {
+          const msg = e.message || "";
+          if (msg.includes("삭제할 권한") || msg.includes("존재하지 않는")) {
+            return NextResponse.json({ error: msg }, { status: 400 });
+          }
+          throw e;
+        }
       }
 
       default:

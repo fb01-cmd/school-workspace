@@ -3044,3 +3044,18 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   2. **[하] draft 문서 `requesterName` 로컬파트 저장**: route가 `saveSwapDraft`에 userName=""를 넘겨 "tteacher"로 저장됨. 화면 카드는 클라이언트 실명을 써서 당장 무해하나 **3단계에서 상대에게 노출될 값** — `saveSwapDraft`에서 create와 동일하게 소스 lesson에서 실명 추출(`synthesizeWeek`+`resolveSourceLesson` 재사용)로 채울 것.
 - **📎 경미 2건 (같은 김에)**: ① 클립보드 핸들러 2벌 복붙 → 폴백 수정하며 공용 함수로 통합 ② 20건 상한 초과가 500으로 응답(스펙 400) — 메시지는 전달되므로 우선순위 낮음.
 - **주의**: 실서버 승인 조작 금지 유지. 수정 후 tteacher@ 화면에서 복사·임시저장·제출(→즉시 신청 취소 정리) 확인.
+
+## [2026-08-04] Antigravity → Claude/사용자 (사전 양해 §13-1 표적 리뷰 수정 2건·경미 2건 반영 완료)
+
+- **변경 파일**:
+  - `src/components/admin/timetable/TeacherPortalSection.tsx` (`copyShareImageElement` 공용 헬퍼 통합, `navigator.clipboard.write()` 오류 발생 시 catch 블록에서 PNG 파일 자동 다운로드 폴백 실행)
+  - `src/lib/timetable/server.ts` (`saveSwapDraft` 시 소스 lesson에서 `synthesizeWeek`+`resolveSourceLesson`으로 실명 "현유지" 추출하여 저장)
+  - `src/app/api/timetable/requests/route.ts` (`draft_save` 및 `draft_delete` 유효성/권한 실패 시 HTTP 400 상태 코드 응답)
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **리뷰 지적사항 반영 상세**:
+  1. **클립보드 실패 PNG 다운로드 폴백**: `catch` 블록 진입 시 `blob` 객체가 유효하면 PNG 파일을 자동 생성/다운로드하도록 개선하여 클릭 제스처 만료(`NotAllowedError`) 등에서도 안전하게 이미지 제공.
+  2. **서버 `requesterName` 실명 저장**: `saveSwapDraft`에 `synthesizeWeek` + `resolveSourceLesson` 실명 추출을 적용하여 Firestore `swap_drafts`에 "현유지" 교사 실명이 저장되도록 보완.
+  3. **경미 2건**: 클립보드 복사 헬퍼(`copyShareImageElement`) 1개로 통합 및 초안 제한/권한 오류 시 HTTP status 400 반환.
+  4. **실서버 대기 건 유지**: 기존 대기 중인 `tteacher@` 신청 1건은 완전히 보존됨.
+
