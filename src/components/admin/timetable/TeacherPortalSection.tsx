@@ -118,64 +118,65 @@ function OffscreenShareCard({
   const targetSlotStr = formatSlotWithDate(targetWeek, data.candidate.targetDay, data.candidate.targetPeriod);
 
   return (
-    <div
-      ref={cardRef}
-      style={{ position: "absolute", left: "-9999px", top: "-9999px", pointerEvents: "none" }}
-      className="w-[420px] bg-white border border-indigo-200 rounded-2xl p-5 shadow-lg space-y-4 font-sans text-gray-900"
-    >
-      <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
-        <div className="text-[10px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
-        <div className="text-lg font-black mt-0.5 tracking-tight">수업교환 양해 요청</div>
-      </div>
+    <div style={{ position: "absolute", left: "-9999px", top: "-9999px", pointerEvents: "none" }}>
+      <div
+        ref={cardRef}
+        className="w-[420px] bg-white border border-indigo-200 rounded-2xl p-5 shadow-lg space-y-4 font-sans text-gray-900"
+      >
+        <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
+          <div className="text-[10px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
+          <div className="text-lg font-black mt-0.5 tracking-tight">수업교환 양해 요청</div>
+        </div>
 
-      <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3.5 space-y-1.5 text-xs">
-        <div className="font-bold text-indigo-950 text-sm">
-          안녕하세요, {data.candidate.counterpartName || "선생님"}! 👋
-        </div>
-        <div className="text-gray-700 leading-relaxed text-[11px]">
-          <span className="font-bold text-indigo-900">{data.requesterName} 교사</span>입니다.<br />
-          아래 일정으로 수업 교환이 가능한지 사전 양해를 구합니다. 😊
-        </div>
-      </div>
-
-      <div className="border border-gray-200 rounded-xl p-3.5 space-y-2 text-xs bg-gray-50/30">
-        <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5 flex items-center justify-between">
-          <span>🔄 수업교환 상세 일정</span>
-          {data.targetWeekId && data.targetWeekId !== data.sourceWeekId && (
-            <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full border border-indigo-200">
-              교차 주 교환
-            </span>
-          )}
-        </div>
-        <div className="space-y-2 pt-1">
-          <div className="flex items-start justify-between bg-red-50/80 border border-red-200 rounded-lg p-2.5">
-            <div>
-              <div className="text-[11px] font-extrabold text-red-600">내 원래 수업 (➖ 이동)</div>
-              <div className="font-bold text-gray-900 text-sm mt-0.5">{sourceSlotStr}</div>
-              <div className="text-gray-600 text-[11px]">
-                {data.source.grade}-{data.source.classNum}반 ({data.source.subjectName})
-              </div>
-            </div>
-            <span className="text-red-700 font-black text-xs bg-red-100 border border-red-200 px-2 py-1 rounded">➖</span>
+        <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3.5 space-y-1.5 text-xs">
+          <div className="font-bold text-indigo-950 text-sm">
+            안녕하세요, {data.candidate.counterpartName || "선생님"}! 👋
           </div>
-
-          <div className="flex items-start justify-between bg-green-50/80 border border-green-200 rounded-lg p-2.5">
-            <div>
-              <div className="text-[11px] font-extrabold text-green-700">교체 희망 슬롯 (➕ 이동)</div>
-              <div className="font-bold text-gray-900 text-sm mt-0.5">{targetSlotStr}</div>
-              <div className="text-gray-600 text-[11px]">
-                {data.candidate.counterpartSubjectName
-                  ? `${data.source.grade}-${data.source.classNum}반 (${data.candidate.counterpartSubjectName})`
-                  : "공강 슬롯"}
-              </div>
-            </div>
-            <span className="text-green-700 font-black text-xs bg-green-100 border border-green-200 px-2 py-1 rounded">➕</span>
+          <div className="text-gray-700 leading-relaxed text-[11px]">
+            <span className="font-bold text-indigo-900">{data.requesterName} 교사</span>입니다.<br />
+            아래 일정으로 수업 교환이 가능한지 사전 양해를 구합니다. 😊
           </div>
         </div>
-      </div>
 
-      <div className="text-center text-[10px] text-gray-400 border-t border-gray-100 pt-2 font-medium">
-        효명고등학교 학적 & 일과진행 시스템
+        <div className="border border-gray-200 rounded-xl p-3.5 space-y-2 text-xs bg-gray-50/30">
+          <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5 flex items-center justify-between">
+            <span>🔄 수업교환 상세 일정</span>
+            {data.targetWeekId && data.targetWeekId !== data.sourceWeekId && (
+              <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full border border-indigo-200">
+                교차 주 교환
+              </span>
+            )}
+          </div>
+          <div className="space-y-2 pt-1">
+            <div className="flex items-start justify-between bg-red-50/80 border border-red-200 rounded-lg p-2.5">
+              <div>
+                <div className="text-[11px] font-extrabold text-red-600">내 원래 수업 (➖ 이동)</div>
+                <div className="font-bold text-gray-900 text-sm mt-0.5">{sourceSlotStr}</div>
+                <div className="text-gray-600 text-[11px]">
+                  {data.source.grade}-{data.source.classNum}반 ({data.source.subjectName})
+                </div>
+              </div>
+              <span className="text-red-700 font-black text-xs bg-red-100 border border-red-200 px-2 py-1 rounded">➖</span>
+            </div>
+
+            <div className="flex items-start justify-between bg-green-50/80 border border-green-200 rounded-lg p-2.5">
+              <div>
+                <div className="text-[11px] font-extrabold text-green-700">교체 희망 슬롯 (➕ 이동)</div>
+                <div className="font-bold text-gray-900 text-sm mt-0.5">{targetSlotStr}</div>
+                <div className="text-gray-600 text-[11px]">
+                  {data.candidate.counterpartSubjectName
+                    ? `${data.source.grade}-${data.source.classNum}반 (${data.candidate.counterpartSubjectName})`
+                    : "공강 슬롯"}
+                </div>
+              </div>
+              <span className="text-green-700 font-black text-xs bg-green-100 border border-green-200 px-2 py-1 rounded">➕</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center text-[10px] text-gray-400 border-t border-gray-100 pt-2 font-medium">
+          효명고등학교 학적 & 일과진행 시스템
+        </div>
       </div>
     </div>
   );

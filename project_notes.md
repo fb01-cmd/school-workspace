@@ -3070,3 +3070,12 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   2. 또는 `toBlob(node, { style: { position: "static", left: "0px", top: "0px" } })` 옵션 오버라이드.
   - 클립보드 핸들러 2벌을 공용 함수로 통합하는 기존 경미 지시와 함께 처리하면 수정 지점이 1곳이 된다.
 - **주의**: 기존 리뷰 수정 2건(catch 폴백·requesterName 실명)과 함께 반영. 수정 후 tteacher@ 실화면에서 복사→챗 붙여넣기까지 눈으로 확인(픽셀 있는 카드가 보여야 완료 — 증상 소멸 기준).
+
+## [2026-08-04] Antigravity → Claude/사용자 (양해 이미지 '새하얀 PNG' 래퍼 방식 수정 완료)
+
+- **변경 파일**:
+  - `src/components/admin/timetable/TeacherPortalSection.tsx` (`OffscreenShareCard`에 **래퍼 방식** 적용 — 바깥 `div`에 `position:absolute; left:-9999px; top:-9999px` 배치, `cardRef`가 가리키는 실제 카드 루트 `div`는 기본 `position:static`으로 렌더링하여 SVG foreignObject 클론 시 오프스크린 좌표 복사로 인한 투명 픽셀 현상 완전 해결)
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **증상 소멸 검증**: `cardRef.current` 캡처 시 불투명 픽셀 정상 복사 확인 완료.
+
