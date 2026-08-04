@@ -1623,6 +1623,96 @@ export async function listSwapRequests(
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
+/**
+ * 요청대장 사전 검증: PENDING 신청이 현재 확정 시간표 기준으로 여전히 성립하는지.
+ * 승인 트랜잭션(approveSwapRequest)의 재검증과 같은 규칙을 목록 시점에 미리 돌려,
+ * 먼저 승인된 다른 건 때문에 이미 불가능해진 신청을 일과계가 화면에서 바로 보게 한다.
+ * (실제 차단은 여전히 승인 트랜잭션이 담당 — 여기는 표시용이라 트랜잭션 불필요)
+ */
+export async function validatePendingSwapRequests(
+  domain: string,
+  requests: SwapRequest[]
+): Promise<Record<string, { ok: boolean; reason?: string }>> {
+  const out: Record<string, { ok: boolean; reason?: string }> = {};
+  const pendings = requests.filter((r) => r.status === "PENDING");
+  if (pendings.length === 0) return out;
+
+  const settings = await loadTimetableSettings(domain);
+  const baseGridsByTerm = new Map<string, ClassGrid[]>();
+  for (const termId of new Set(pendings.map((r) => r.termId))) {
+    baseGridsByTerm.set(termId, await loadAllClassGrids(domain, termId));
+  }
+
+  // 관련 주 합성본은 주당 1회만 (병렬 로드)
+  const weekIds = Array.from(new Set(pendings.flatMap((r) => [r.weekId, r.targetWeekId || r.weekId])));
+  const weekObjs = new Map<string, TimetableWeek | null>();
+  const gridsByWeek = new Map<string, WeeklyClassGrid[]>();
+  await Promise.all(
+    weekIds.map(async (wid) => {
+      const [w, changes] = await Promise.all([loadWeek(domain, wid), loadWeekChanges(domain, wid)]);
+      weekObjs.set(wid, w);
+      const base = w ? baseGridsByTerm.get(w.termId) : null;
+      if (w && base) gridsByWeek.set(wid, synthesizeWeeklyGrids(base, w, changes, settings).grids);
+    })
+  );
+
+  for (const r of pendings) {
+    try {
+      const week = weekObjs.get(r.weekId);
+      const grids = gridsByWeek.get(r.weekId);
+      if (!week || !grids) {
+        out[r.id] = { ok: false, reason: `주(${r.weekId}) 등록이 삭제되어 승인할 수 없습니다.` };
+        continue;
+      }
+      const src = resolveSourceLesson(grids, r.requesterEmail, r.source);
+      if (!src.ok) {
+        out[r.id] = { ok: false, reason: src.error || "원래 수업이 다른 변경으로 이미 이동/변경되었습니다." };
+        continue;
+      }
+      if (r.type === "substitute") {
+        // 특별보강은 소스 수업 성립만 사전 확인 (보강 교사 가용성은 승인 트랜잭션에서 재검증)
+        out[r.id] = { ok: true };
+        continue;
+      }
+      const fullSource: SwapSourceSlot = { ...r.source, subjectName: src.lesson!.subjectName };
+      const isCross = !!r.targetWeekId && r.targetWeekId !== r.weekId;
+      let stillValid = false;
+      let engineError: string | undefined;
+      if (!isCross) {
+        const res = findSwapCandidates(grids, week, settings, r.requesterEmail, fullSource);
+        engineError = res.error;
+        stillValid = !res.error && (res.candidates || []).some(
+          (c) =>
+            c.targetDay === r.candidate.targetDay &&
+            c.targetPeriod === r.candidate.targetPeriod &&
+            c.counterpartEmail === r.candidate.counterpartEmail
+        );
+      } else {
+        const tWeek = weekObjs.get(r.targetWeekId!);
+        const tGrids = gridsByWeek.get(r.targetWeekId!);
+        if (!tWeek || !tGrids) {
+          out[r.id] = { ok: false, reason: `대상 주(${r.targetWeekId}) 등록이 삭제되어 승인할 수 없습니다.` };
+          continue;
+        }
+        const res = findCrossSwapCandidates(grids, week, tGrids, tWeek, settings, r.requesterEmail, fullSource);
+        engineError = res.error;
+        stillValid = !res.error && (res.candidates || []).some(
+          (c) =>
+            c.targetDay === r.candidate.targetDay &&
+            c.targetPeriod === r.candidate.targetPeriod &&
+            c.counterpartEmail === r.candidate.counterpartEmail
+        );
+      }
+      out[r.id] = stillValid
+        ? { ok: true }
+        : { ok: false, reason: engineError || "먼저 승인된 다른 변경으로 이 교체안이 더 이상 성립하지 않습니다." };
+    } catch (e: any) {
+      out[r.id] = { ok: false, reason: e?.message || "사전 검증 중 오류가 발생했습니다." };
+    }
+  }
+  return out;
+}
+
 export async function cancelSwapRequest(
   domain: string,
   requesterEmail: string,

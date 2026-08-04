@@ -10,6 +10,8 @@ interface SwapRequestLedgerTabProps {
 
 export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedgerTabProps) {
   const [requests, setRequests] = useState<SwapRequest[]>([]);
+  // PENDING 사전 검증 결과 — 먼저 승인된 건 때문에 이미 성립 불가한 신청 표시용
+  const [validity, setValidity] = useState<Record<string, { ok: boolean; reason?: string }>>({});
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [readOnly, setReadOnly] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -31,12 +33,21 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
   const [batchApprovingId, setBatchApprovingId] = useState<string | null>(null);
 
   // 묶음 일괄 승인 처리 (phase9b_spec §14-3)
-  const handleBatchApprove = async (batchId: string, reqs: SwapRequest[]) => {
+  const handleBatchApprove = async (batchId: string, allReqs: SwapRequest[]) => {
     if (readOnly) return;
-    const requesterName = reqs[0]?.requesterName || "교사";
+    const requesterName = allReqs[0]?.requesterName || "교사";
+    // 사전 검증 실패 건은 승인 시도 자체를 건너뛴다 (서버 트랜잭션에서도 어차피 거부됨)
+    const invalidReqs = allReqs.filter((r) => validity[r.id]?.ok === false);
+    const reqs = allReqs.filter((r) => validity[r.id]?.ok !== false);
+    if (reqs.length === 0) {
+      alert("이 묶음의 모든 신청이 성립 불가 상태입니다. 개별 반려 처리해 주세요.");
+      return;
+    }
     if (
       !confirm(
-        `[${requesterName}] 선생님의 묶음 신청 (${reqs.length}건)을 한 번에 일괄 승인하시겠습니까?`
+        invalidReqs.length > 0
+          ? `[${requesterName}] 선생님의 묶음 신청 중 ${invalidReqs.length}건은 성립 불가 상태로 건너뜁니다.\n나머지 ${reqs.length}건만 일괄 승인하시겠습니까?`
+          : `[${requesterName}] 선생님의 묶음 신청 (${reqs.length}건)을 한 번에 일괄 승인하시겠습니까?`
       )
     ) {
       return;
@@ -120,6 +131,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
       const data = await res.json();
       if (res.ok && data.success) {
         setRequests(data.requests || []);
+        setValidity(data.validity || {});
         setReadOnly(!!data.readOnly);
       } else {
         setError(data.error || "수업교환 신청 목록을 불러오지 못했습니다.");
@@ -250,8 +262,11 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
     }
   };
 
-  // PENDING 상태를 상단으로 정렬
-  const pendingRequests = requests.filter((r) => r.status === "PENDING");
+  // PENDING을 상단에, 그 안에서는 **신청 시간순(먼저 신청한 것 먼저)** — 먼저 온 신청부터
+  // 처리해야 나중 신청이 꼬였는지(사전 검증 배지)를 순서대로 판단할 수 있다.
+  const pendingRequests = requests
+    .filter((r) => r.status === "PENDING")
+    .sort((a, b) => a.createdAt - b.createdAt);
   const otherRequests = requests.filter((r) => r.status !== "PENDING");
   const sortedRequests = [...pendingRequests, ...otherRequests];
 
@@ -274,12 +289,17 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
     const isPending = req.status === "PENDING";
     const isApproved = req.status === "APPROVED";
     const isRejected = req.status === "REJECTED";
+    // 사전 검증: 먼저 승인된 다른 건 때문에 이미 성립 불가해진 신청
+    const invalid = isPending && validity[req.id]?.ok === false;
+    const invalidReason = invalid ? validity[req.id]?.reason : undefined;
 
     return (
       <div
         key={req.id}
         className={`bg-white rounded-xl shadow-sm border transition-all p-5 space-y-4 ${
-          isPending
+          invalid
+            ? "border-red-300 ring-2 ring-red-100"
+            : isPending
             ? "border-amber-300 ring-2 ring-amber-100"
             : "border-gray-200"
         }`}
@@ -331,78 +351,54 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
           </span>
         </div>
 
-        {/* 변경 내역 비교 그리드 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          {/* 원래 수업 (Source) */}
-          <div className="bg-gray-50 rounded-lg p-3.5 border border-gray-200 space-y-1">
-            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-              📌 변경 대상 원래 수업
+        {/* 핵심 변경 내역 한 줄: 어느 수업을 언제에서 언제로 (승인자 관점 필수 정보만) */}
+        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 bg-gray-50/60 rounded-lg p-4 border border-gray-200">
+          <div className="flex-1">
+            <div className="font-black text-gray-900 text-base">
+              {req.source.grade}-{req.source.classNum}반 {req.source.subjectName}
             </div>
-            <div className="font-bold text-gray-900 text-sm">
-              {req.source.grade}학년 {req.source.classNum}반{" "}
-              <span className="text-indigo-700">
-                {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
-              </span>
-            </div>
-            <div className="text-gray-600 font-medium">
-              과목: {req.source.subjectName} ({req.requesterName} 교사)
+            <div className="text-indigo-700 font-bold text-sm mt-0.5">
+              {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
             </div>
           </div>
 
-          {/* 교체안 (Candidate) */}
-          <div className="bg-indigo-50/50 rounded-lg p-3.5 border border-indigo-100 space-y-1">
-            <div className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">
-              🎯 신청 교체안 (엔진 계산 결과)
-            </div>
+          <div className="text-2xl font-black text-indigo-300 text-center shrink-0">→</div>
+
+          <div className="flex-1">
             {req.type === "swap" || req.type === "cross_swap" ? (
               <>
-                <div className="font-bold text-gray-900 text-sm">
-                  옮겨갈 교시:{" "}
-                  <span className="text-indigo-700">
-                    {formatSlotWithDate(
-                      req.targetWeekId || (req.candidate as any).targetWeekId || req.weekId,
-                      req.candidate.targetDay,
-                      req.candidate.targetPeriod
-                    )}
-                  </span>
+                <div className="font-black text-indigo-800 text-base">
+                  {formatSlotWithDate(
+                    req.targetWeekId || (req.candidate as any).targetWeekId || req.weekId,
+                    req.candidate.targetDay,
+                    req.candidate.targetPeriod
+                  )}
                 </div>
-                <div className="text-gray-700 font-medium">
-                  상대 교사: <strong>{req.candidate.counterpartName}</strong> (
-                  {req.candidate.counterpartEmail}) — {req.candidate.counterpartSubjectName || ""}
+                <div className="text-gray-600 font-semibold text-xs mt-0.5">
+                  맞교환 상대: <strong className="text-gray-900">{req.candidate.counterpartName}</strong>
+                  {req.candidate.counterpartSubjectName ? ` (${req.candidate.counterpartSubjectName})` : ""}
                 </div>
               </>
             ) : (
               <>
-                <div className="font-bold text-gray-900 text-sm">
-                  보강 담당 교사:{" "}
-                  <span className="text-indigo-700">
-                    {req.candidate.counterpartName} 선생님
-                  </span>
-                </div>
-                <div className="text-gray-700 font-medium">
-                  보강 교사 이메일: {req.candidate.counterpartEmail}
+                <div className="font-black text-indigo-800 text-base">같은 교시 특별보강</div>
+                <div className="text-gray-600 font-semibold text-xs mt-0.5">
+                  보강 담당: <strong className="text-gray-900">{req.candidate.counterpartName}</strong> 선생님
                 </div>
               </>
             )}
-
-            {/* 감점 및 사유 표시 */}
-            {req.candidate.penalties && req.candidate.penalties.length > 0 && (
-              <div className="pt-1.5 flex flex-wrap items-center gap-1">
-                <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                  주의 감점 ({req.candidate.score}점):
-                </span>
-                {req.candidate.penalties.map((p, pIdx) => (
-                  <span
-                    key={pIdx}
-                    className="text-[10px] bg-red-100 text-red-800 font-medium px-1.5 py-0.5 rounded"
-                  >
-                    {p}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
         </div>
+
+        {/* 사전 검증 실패: 먼저 승인된 다른 건 때문에 성립 불가 — 화면에서 즉시 표시 */}
+        {invalid && (
+          <div className="bg-red-50 border-2 border-red-300 rounded-lg p-3 text-xs font-bold text-red-900">
+            ⚠️ <span className="font-black">승인 불가 상태</span> — {invalidReason}
+            <span className="block mt-1 font-semibold text-red-700">
+              반려 처리 후 신청자에게 재신청을 안내해 주세요.
+            </span>
+          </div>
+        )}
 
         {/* 사유 & 처리 결과 정보 */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs bg-gray-50/70 p-3 rounded-lg border border-gray-100">
@@ -444,10 +440,10 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                 </button>
                 <button
                   onClick={() => handleApprove(req)}
-                  disabled={approvingId === req.id}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow-sm transition-colors disabled:opacity-50"
+                  disabled={approvingId === req.id || invalid}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {approvingId === req.id ? "승인 처리 중..." : "✅ 승인 확정"}
+                  {invalid ? "🚫 승인 불가" : approvingId === req.id ? "승인 처리 중..." : "✅ 승인 확정"}
                 </button>
               </>
             )}
@@ -586,6 +582,11 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                     <span className="text-xs font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
                       🔔 동일 주 대기 {bReqs.length}건
                     </span>
+                    {bReqs.some((r) => validity[r.id]?.ok === false) && (
+                      <span className="text-xs font-black text-red-900 bg-red-100 border border-red-300 px-2 py-0.5 rounded-full">
+                        ⚠️ 성립 불가 {bReqs.filter((r) => validity[r.id]?.ok === false).length}건 포함
+                      </span>
+                    )}
                   </div>
 
                   {!readOnly && (

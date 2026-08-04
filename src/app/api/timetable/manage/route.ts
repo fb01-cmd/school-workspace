@@ -11,6 +11,7 @@ import {
   directCommit,
   listNeisRows,
   listSwapRequests,
+  validatePendingSwapRequests,
   listWeeks,
   loadAllTerms,
   loadTimetableSettings,
@@ -280,7 +281,9 @@ export async function POST(req: NextRequest) {
           weekId: body.weekId,
           status: body.status,
         });
-        return NextResponse.json({ success: true, action, requests, readOnly: judgment.basis === "observer_read" });
+        // PENDING 사전 검증: 먼저 승인된 건 때문에 이미 성립 불가한 신청을 목록에 표시
+        const validity = await validatePendingSwapRequests(domain, requests);
+        return NextResponse.json({ success: true, action, requests, validity, readOnly: judgment.basis === "observer_read" });
       }
 
       case "approve": {
