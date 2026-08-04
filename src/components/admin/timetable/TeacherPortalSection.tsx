@@ -1156,7 +1156,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                     const isVirtualReq = changeId.startsWith("virtual-req-");
                                     const isApprovedChange = !!changed && !isVirtualDraft && !isVirtualReq;
 
-                                    const draftId = isVirtualDraft ? changeId.replace("virtual-draft-", "") : "";
+                                    // 교차 주 초안은 서버 가상 문서가 방향별 "-a"/"-b" 접미어를 붙이므로 함께 제거해야 실제 초안 문서 ID가 된다 (Firestore 자동 ID에는 하이픈이 없음)
+                                    const draftId = isVirtualDraft ? changeId.replace("virtual-draft-", "").replace(/-(a|b)$/, "") : "";
 
                                     let cellStyle = "bg-white border border-indigo-200 shadow-2xs";
                                     if (isVirtualDraft) cellStyle = "bg-indigo-50/90 border-2 border-dashed border-indigo-400 text-indigo-950 shadow-xs";
