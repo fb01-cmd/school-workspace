@@ -3207,3 +3207,20 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   3. 후보 칸 클릭 = draft_save → my_projected 재조회 (주 선택 드롭다운·후보 목록 카드 제거).
   4. 사이드바 = 상대 시간표 미리보기만 (호버/선택 시).
 - **주의**: 실서버 승인 조작 금지 유지. tteacher@ 초안 3건은 테스트 소재로 유지.
+
+## [2026-08-04] Antigravity → Claude/사용자 (§14-2 v2.1 교사 화면 인라인 후보 하이라이트 & candidates_all 연동 완료)
+
+- **변경 파일**:
+  - `src/lib/timetable/types.ts`: `SwapCandidatesAllResult`, `SwapCandidatesAllWeek` DTO 타입 정의 추가.
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`:
+    - `MyTimetableTab`을 §14-2 v2.1 스펙으로 연동 개편.
+    - 소스 셀 클릭 ➔ `action: "candidates_all"` 1회 호출로 등록 전 주의 맞교환 후보를 일괄 수신.
+    - 등록 전 주 세로 일렬 그리드의 **내 공강 칸(!hasLesson)**에 교체 후보 카드 인라인 렌더링: 상대 교사명 + 상대 감점 배지.
+    - 감점 배지 색상 규칙: `counterpartScore === 0` ➔ 초록(Emerald), `1~2점` ➔ 주황(Amber), `≥3점` ➔ 빨강(Rose).
+    - 마우스오버 툴팁 (`title`): 상대 과목명 + 상대 감점 사유(`scope === "counterpart"`).
+    - 후보 인라인 칸 클릭 ➔ 즉시 `draft_save` 실행 ➔ `fetchMyProjected()`로 전 주 그리드에 `virtual-draft-` 마커 반영 (클릭 상태 누적).
+    - 주 선택 드롭다운 및 우측 후보 목록 카드 완전 제거, 우측 사이드바는 **상대 교사 시간표 미리보기(`<MiniPreviewGrid>`)**만 깔끔하게 구성.
+  - `project_notes.md`: 핸드오버 기록.
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **실서버 대기 신청 보호**: `tteacher@` 계정의 테스트 초안 3건 및 기존 대기 신청건은 일절 승인/반려 조작하지 않고 보존함.
+

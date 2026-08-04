@@ -21,6 +21,7 @@ import {
   SWAP_REASON_TYPES,
   SwapCandidate,
   SwapCandidatesResult,
+  SwapCandidatesAllResult,
   SwapDraft,
   SwapRequest,
   SwapRequestReason,
@@ -554,7 +555,7 @@ async function copyShareImageElement(node: HTMLDivElement | null): Promise<void>
   alert("양해 요청 이미지를 생성하지 못했습니다.");
 }
 
-// ── ① 내 주간시간표 탭 (v2: 그리드 직접 조작 멀티클릭 & my_projected 연동) ─────
+// ── ① 내 주간시간표 탭 (v2.1: 전 주 인라인 후보 하이라이트 & candidates_all 연동) ─────
 interface MyTimetableTabProps {
   periodsPerDay: number;
   settings: TimetableSettings | null;
@@ -576,7 +577,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     isSuperAdmin ||
     (settings?.managerEmails || []).some((m) => m.toLowerCase() === userEmail);
 
-  // 주 목록 (교차 주 선택 및 메타 데이터용)
+  // 주 목록
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [selectedWeekId, setSelectedWeekId] = useState<string>("");
   const [targetWeekId, setTargetWeekId] = useState<string>("");
@@ -591,6 +592,11 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     assumedDraftCount: number;
   } | null>(null);
 
+  // §14-2 v2.1: 전 주 후보 일괄 결과 상태 (candidates_all)
+  const [candidatesAllResult, setCandidatesAllResult] = useState<SwapCandidatesAllResult | null>(null);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [candidatesError, setCandidatesError] = useState<string | null>(null);
+
   // 유효 대상 주 계산 (교차 주 지원)
   const effectiveTargetWeekId = targetWeekId || selectedWeekId;
   const isCrossWeek = effectiveTargetWeekId !== "" && effectiveTargetWeekId !== selectedWeekId;
@@ -598,18 +604,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const sourceWeekObj = weeks.find((w) => w.id === selectedWeekId);
   const targetWeekObj = weeks.find((w) => w.id === effectiveTargetWeekId);
 
-  // 셀 클릭 후 후보 조회를 위한 상태 (선택된 셀 + 해당 셀이 속한 주 ID)
+  // 소스 셀 클릭 상태 (선택된 셀 + 속한 주 ID)
   const [selectedCell, setSelectedCell] = useState<(TeacherTimetableCell & { weekId: string }) | null>(null);
-  const [candidatesResult, setCandidatesResult] = useState<SwapCandidatesResult | null>(null);
-  const [candidatesLoading, setCandidatesLoading] = useState(false);
-  const [candidatesError, setCandidatesError] = useState<string | null>(null);
 
-  // 카드 호버/선택 상태
-  const [hoveredCandidateKey, setHoveredCandidateKey] = useState<string | null>(null);
-  const [selectedCandidateKey, setSelectedCandidateKey] = useState<string | null>(null);
-  const candidateListRef = useRef<HTMLDivElement>(null);
-
-  // 신청 및 임시저장 처리 상태
+  // 호버/선택 후보 및 신청 사유
   const [applyingCandidate, setApplyingCandidate] = useState<SwapCandidate | null>(null);
   const [reason, setReason] = useState<SwapRequestReason>({ type: "출장" });
   const [batchReason, setBatchReason] = useState<SwapRequestReason>({ type: "출장" });
@@ -621,9 +619,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [shareCardData, setShareCardData] = useState<ShareCardData | null>(null);
   const shareCardRef = useRef<HTMLDivElement>(null);
 
-  // 교차 주 지원: 내 교체 대상 주 시간표 셀 및 상대 교사 시간표 미리보기 상태
-  const [targetCells, setTargetCells] = useState<TeacherTimetableCell[] | null>(null);
-  const [targetCellsLoading, setTargetCellsLoading] = useState(false);
+  // 상대 교사 시간표 미리보기 상태
   const [previewCells, setPreviewCells] = useState<TeacherTimetableCell[] | null>(null);
   const [counterpartSourceCells, setCounterpartSourceCells] = useState<TeacherTimetableCell[] | null>(null);
   const [counterpartTargetCells, setCounterpartTargetCells] = useState<TeacherTimetableCell[] | null>(null);
@@ -631,7 +627,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewCacheRef = useRef<Map<string, TeacherTimetableCell[]>>(new Map());
 
-  // §14-2 v2: my_projected 전 주 예상 시간표 로드 (기본 켜짐)
+  // §14-2 v2: my_projected 전 주 예상 시간표 로드
   const fetchMyProjected = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -692,81 +688,51 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       .catch(() => {});
   }, [settings?.activeTermId]);
 
-  const candidateKey = (sc: SwapCandidate) =>
-    `${sc.targetDay}-${sc.targetPeriod}-${sc.counterpartEmail}`;
-
-  const scrollToCandidate = useCallback((key: string) => {
-    setTimeout(() => {
-      const el = document.getElementById(`candidate-card-${key}`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        el.classList.add("ring-2", "ring-indigo-500");
-        setTimeout(() => el.classList.remove("ring-2", "ring-indigo-500"), 1200);
+  // §14-2 v2.1: candidates_all 1회 호출로 전 주 맞교환 후보 계산
+  const fetchCandidatesAll = useCallback(async (cell: TeacherTimetableCell, srcWeekId: string) => {
+    setCandidatesAllResult(null);
+    setCandidatesError(null);
+    setCandidatesLoading(true);
+    setApplyingCandidate(null);
+    setSubmitResult(null);
+    setPreviewCells(null);
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "candidates_all",
+          weekId: srcWeekId,
+          includeMyPending: true,
+          includeDrafts: true,
+          source: {
+            grade: cell.grade,
+            classNum: cell.classNum,
+            day: cell.day,
+            period: cell.period,
+            subjectName: cell.subjectName,
+          },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCandidatesAllResult(data);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setCandidatesError(err.error || "전 주 맞교환 후보를 불러올 수 없습니다.");
       }
-    }, 120);
+    } catch (e: any) {
+      setCandidatesError(`오류: ${e.message}`);
+    } finally {
+      setCandidatesLoading(false);
+    }
   }, []);
-
-  const fetchCandidates = useCallback(
-    async (cell: TeacherTimetableCell, srcWeekId: string, tgtWeekId: string) => {
-      setCandidatesResult(null);
-      setCandidatesError(null);
-      setCandidatesLoading(true);
-      setApplyingCandidate(null);
-      setSelectedCandidateKey(null);
-      setHoveredCandidateKey(null);
-      setSubmitResult(null);
-      setPreviewCells(null);
-      try {
-        const res = await fetch("/api/timetable/requests", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "candidates",
-            weekId: srcWeekId,
-            targetWeekId: tgtWeekId !== srcWeekId ? tgtWeekId : undefined,
-            includeMyPending: true,
-            includeDrafts: true,
-            source: {
-              grade: cell.grade,
-              classNum: cell.classNum,
-              day: cell.day,
-              period: cell.period,
-              subjectName: cell.subjectName,
-            },
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setCandidatesResult(data);
-          if ((data.swapCandidates?.length ?? 0) > 0) {
-            const first = data.swapCandidates[0] as SwapCandidate;
-            scrollToCandidate(candidateKey(first));
-          }
-        } else {
-          const err = await res.json().catch(() => ({}));
-          setCandidatesError(err.error || "후보를 불러올 수 없습니다.");
-        }
-      } catch (e: any) {
-        setCandidatesError(`오류: ${e.message}`);
-      } finally {
-        setCandidatesLoading(false);
-      }
-    },
-    [scrollToCandidate]
-  );
 
   const handleCellClick = (cell: TeacherTimetableCell, srcWeekId: string) => {
     setSelectedCell({ ...cell, weekId: srcWeekId });
     setSelectedWeekId(srcWeekId);
     setTargetWeekId(srcWeekId);
-    fetchCandidates(cell, srcWeekId, targetWeekId || srcWeekId);
-  };
-
-  const handleTargetWeekChange = (newTargetWeekId: string) => {
-    setTargetWeekId(newTargetWeekId);
-    if (selectedCell) {
-      fetchCandidates(selectedCell, selectedCell.weekId, newTargetWeekId || selectedCell.weekId);
-    }
+    fetchCandidatesAll(cell, srcWeekId);
   };
 
   // 초안 셀 삭제 (draft_delete -> my_projected 원복)
@@ -789,14 +755,14 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     }
   };
 
-  // 클릭 = 초안 자동 저장 (draft_save -> my_projected 갱신)
-  const handleSelectCandidateAndSave = async (sc: SwapCandidate) => {
+  // §14-2 v2.1: 인라인 후보 클릭 = draft_save 실행 ➔ my_projected 갱신
+  const handleSelectCandidateAndSave = async (sc: SwapCandidate, tgtWeekId: string) => {
     if (!selectedCell) return;
     setApplyingCandidate(sc);
+    setTargetWeekId(tgtWeekId);
     setSavingDraft(true);
     try {
       const srcWeekId = selectedCell.weekId;
-      const tgtWeekId = isCrossWeek ? effectiveTargetWeekId : srcWeekId;
       const res = await fetch("/api/timetable/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -831,7 +797,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         await fetchMyProjected();
         setApplyingCandidate(null);
         setSelectedCell(null);
-        setCandidatesResult(null);
+        setCandidatesAllResult(null);
       } else {
         const err = await res.json().catch(() => ({}));
         alert(`초안 저장 실패: ${err.error}`);
@@ -949,11 +915,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         setSubmitResult("✅ 수업교환 신청이 완료되었습니다. 일과계에서 검토 후 처리됩니다.");
         await fetchMyProjected();
         setApplyingCandidate(null);
-        setCandidatesResult(null);
         setSelectedCell(null);
-        setSelectedCandidateKey(null);
-        setHoveredCandidateKey(null);
-        setPreviewCells(null);
+        setCandidatesAllResult(null);
       } else {
         const err = await res.json().catch(() => ({}));
         setSubmitResult(`❌ 신청 실패: ${err.error || "알 수 없는 오류"}`);
@@ -971,26 +934,6 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       copyShareImageElement(shareCardRef.current);
     }, 100);
   };
-
-  // 교차 주 모드일 때 내 대상 주 시간표 로드
-  useEffect(() => {
-    if (!isCrossWeek || !effectiveTargetWeekId) {
-      setTargetCells(null);
-      return;
-    }
-    setTargetCellsLoading(true);
-    fetch("/api/timetable/view", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "my", weekId: effectiveTargetWeekId }),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((res) => {
-        setTargetCells(res?.data?.cells || []);
-      })
-      .catch(() => setTargetCells([]))
-      .finally(() => setTargetCellsLoading(false));
-  }, [isCrossWeek, effectiveTargetWeekId]);
 
   // 후보 선택 시 상대 교사 시간표 미리보기 로드
   useEffect(() => {
@@ -1047,23 +990,15 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     }
   }, [applyingCandidate, effectiveTargetWeekId, selectedWeekId, isCrossWeek]);
 
-  // 후보 카드 정렬: 1순위 counterpartScore (상대 부담 적은 순), 2순위 전체 score
-  const sortedSwapCandidates = (candidatesResult?.swapCandidates || []).slice().sort((a, b) => {
-    const cpA = a.counterpartScore ?? a.score ?? 0;
-    const cpB = b.counterpartScore ?? b.score ?? 0;
-    if (cpA !== cpB) return cpA - cpB;
-    return (a.score ?? 0) - (b.score ?? 0);
-  });
-
   return (
     <div className="space-y-4">
-      {/* 🚀 상단 컨트롤 바 (v2: 전 주 일괄 제출 및 가상 반영 현황) */}
+      {/* 🚀 상단 컨트롤 바 (v2.1: 전 주 일괄 제출 및 인라인 하이라이트 현황) */}
       <div className="bg-white rounded-xl shadow-sm border border-indigo-200 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-sm font-extrabold text-indigo-950 flex items-center gap-1.5">
               <span>🗓️ 등록 주간 전체 예상 시간표</span>
-              <span className="text-xs text-indigo-500 font-medium">(그리드 직접 조작 멀티클릭)</span>
+              <span className="text-xs text-indigo-500 font-medium">(v2.1 전 주 인라인 후보 하이라이트)</span>
             </h2>
 
             {projectedData && (
@@ -1112,16 +1047,20 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
         <div className="text-[11px] text-gray-500 flex flex-wrap items-center gap-3 pt-1 border-t border-gray-100">
           <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-300 inline-block" />
+            <b className="text-emerald-950">초록 배지</b>: 상대 부담 0점 (좋은 교체)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded bg-amber-100 border border-amber-300 inline-block" />
+            <b className="text-amber-950">주황 배지</b>: 상대 부담 1~2점
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded bg-rose-100 border border-rose-300 inline-block" />
+            <b className="text-rose-950">빨간 배지</b>: 상대 부담 3+점
+          </span>
+          <span className="flex items-center gap-1 border-l pl-2 border-gray-200">
             <span className="w-2.5 h-2.5 rounded bg-indigo-50 border border-dashed border-indigo-400 inline-block" />
-            <b className="text-indigo-900">점선/파란 배경</b>: 클릭 반영 초안 (`virtual-draft-`, [취소] 클릭 시 원복)
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded bg-amber-50 border border-amber-300 inline-block" />
-            <b className="text-amber-900">주황 배경</b>: 일과계 검토 중 신청 (`virtual-req-`)
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded bg-red-100 border border-red-300 inline-block" />
-            <b className="text-red-900">빨간 배경</b>: 최종 확정 변경
+            <b className="text-indigo-900">점선 파란 배경</b>: 클릭 반영 초안
           </span>
         </div>
       </div>
@@ -1141,7 +1080,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       )}
 
       <div className="flex gap-4 items-start">
-        {/* 주간 시간표 그리드 (등록된 주간 전체 세로 일렬 나열 — §14-2 v2) */}
+        {/* 주간 시간표 그리드 (등록된 주간 전체 세로 일렬 나열 — §14-2 v2.1 인라인 하이라이트) */}
         <div className="flex-1 space-y-6">
           {loading && !projectedData && (
             <div className="bg-white rounded-xl p-12 text-center text-xs font-semibold text-indigo-500 border border-gray-200 shadow-sm animate-pulse">
@@ -1149,125 +1088,169 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             </div>
           )}
 
-          {projectedData?.weeks.map((week) => (
-            <div key={week.weekId} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="bg-gradient-to-r from-indigo-950 to-indigo-800 px-5 py-3 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <span>🗓️ {week.startDate} 주간시간표 ({week.weekId})</span>
-                    {selectedCell?.weekId === week.weekId && (
-                      <span className="text-[10px] bg-amber-300 text-amber-950 px-2 py-0.5 rounded font-black">
-                        선택 중
-                      </span>
-                    )}
-                  </h3>
-                </div>
-              </div>
+          {projectedData?.weeks.map((week) => {
+            // §14-2 v2.1: 현재 주간에 해당하는 candidates_all 맞교환 후보 목록 조회
+            const weekCandidates = candidatesAllResult?.weeks.find((w) => w.weekId === week.weekId)?.swapCandidates || [];
 
-              <table className="w-full table-fixed border-collapse text-xs">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="py-2.5 px-1 border-r border-gray-200 w-14 text-center text-gray-500 font-bold text-xs">교시</th>
-                    {DAYS.map((d) => {
-                      const dateLabel = getDayDateLabel(week.startDate, d.num);
+            return (
+              <div key={week.weekId} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-indigo-950 to-indigo-800 px-5 py-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>🗓️ {week.startDate} 주간시간표 ({week.weekId})</span>
+                      {selectedCell?.weekId === week.weekId && (
+                        <span className="text-[10px] bg-amber-300 text-amber-950 px-2 py-0.5 rounded font-black">
+                          선택한 소스 수업 주
+                        </span>
+                      )}
+                    </h3>
+                  </div>
+                </div>
+
+                <table className="w-full table-fixed border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="py-2.5 px-1 border-r border-gray-200 w-14 text-center text-gray-500 font-bold text-xs">교시</th>
+                      {DAYS.map((d) => {
+                        const dateLabel = getDayDateLabel(week.startDate, d.num);
+                        return (
+                          <th key={d.num} className="py-2 px-1 text-center text-gray-800 font-bold text-sm w-1/5">
+                            <div>{d.label}</div>
+                            {dateLabel && <div className="text-xs text-gray-500 font-normal mt-0.5">{dateLabel}</div>}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: Math.max(7, periodsPerDay) }).map((_, idx) => {
+                      const period = idx + 1;
                       return (
-                        <th key={d.num} className="py-2 px-1 text-center text-gray-800 font-bold text-sm w-1/5">
-                          <div>{d.label}</div>
-                          {dateLabel && <div className="text-xs text-gray-500 font-normal mt-0.5">{dateLabel}</div>}
-                        </th>
+                        <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
+                          <td className="py-2 px-1 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50 text-xs align-middle w-14">{period}</td>
+                          {DAYS.map((d) => {
+                            const matched = week.cells.filter((c) => c.day === d.num && c.period === period);
+                            const hasLesson = matched.length > 0;
+                            const isSelected = selectedCell?.weekId === week.weekId && selectedCell?.day === d.num && selectedCell?.period === period;
+
+                            // §14-2 v2.1: 내 공강 칸(!hasLesson)이고 소스 셀이 선택되었을 때 인라인 맞교환 후보 매칭
+                            const candidate = !hasLesson && selectedCell
+                              ? weekCandidates.find((c) => c.targetDay === d.num && c.targetPeriod === period)
+                              : null;
+
+                            return (
+                              <td
+                                key={d.num}
+                                className={`p-1 border-r border-gray-100 text-center align-middle h-16 transition-all ${
+                                  isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""
+                                } ${hasLesson && !isSelected ? "hover:bg-indigo-50/60 cursor-pointer" : ""}`}
+                                onClick={() => {
+                                  if (hasLesson) handleCellClick(matched[0], week.weekId);
+                                }}
+                              >
+                                {hasLesson ? (
+                                  matched.map((cell, ci) => {
+                                    const changed = (cell as any).changed;
+                                    const changeId: string = changed?.changeId || "";
+                                    const isVirtualDraft = changeId.startsWith("virtual-draft-");
+                                    const isVirtualReq = changeId.startsWith("virtual-req-");
+                                    const isApprovedChange = !!changed && !isVirtualDraft && !isVirtualReq;
+
+                                    const draftId = isVirtualDraft ? changeId.replace("virtual-draft-", "") : "";
+
+                                    let cellStyle = "bg-white border border-indigo-200 shadow-2xs";
+                                    if (isVirtualDraft) cellStyle = "bg-indigo-50/90 border-2 border-dashed border-indigo-400 text-indigo-950 shadow-xs";
+                                    else if (isVirtualReq) cellStyle = "bg-amber-50/90 border-2 border-amber-300 text-amber-950 shadow-xs";
+                                    else if (isApprovedChange) cellStyle = "bg-red-100 border border-red-300 text-red-950";
+
+                                    return (
+                                      <div key={ci} className={`p-1.5 rounded-lg text-center space-y-0.5 ${cellStyle}`}>
+                                        <div className="font-black text-sm flex items-center justify-center gap-1">
+                                          <span>{cell.grade}-{cell.classNum}반</span>
+                                          {isApprovedChange && <span className="text-red-600 font-bold text-xs">▲</span>}
+                                        </div>
+
+                                        <div className="text-[11px] text-gray-600 font-medium">{cell.subjectName}</div>
+
+                                        {isVirtualDraft && (
+                                          <div className="flex items-center justify-between gap-1 pt-0.5">
+                                            <span className="text-[10px] font-extrabold text-indigo-900 bg-indigo-200 px-1 py-0.5 rounded">
+                                              📁 초안
+                                            </span>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteDraftById(draftId);
+                                              }}
+                                              className="text-[10px] font-bold text-red-600 hover:text-red-800 bg-white px-1 py-0.5 rounded border border-red-200"
+                                            >
+                                              취소
+                                            </button>
+                                          </div>
+                                        )}
+
+                                        {isVirtualReq && (
+                                          <div className="text-[10px] font-extrabold text-amber-900 bg-amber-200 px-1 py-0.5 rounded mt-0.5">
+                                            ⏳ 검토 대기
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })
+                                ) : candidate ? (
+                                  /* §14-2 v2.1: 공강 칸 인라인 후보 카딩 (클릭 = draft_save 실행) */
+                                  (() => {
+                                    const cpScore = candidate.counterpartScore ?? 0;
+                                    const counterpartPenalties = (candidate.penaltyDetails || []).filter((p) => p.scope === "counterpart");
+                                    const tooltipText = `[${candidate.counterpartSubjectName}] ${candidate.counterpartName} 교사 · 상대 감점 ${cpScore}점${
+                                      counterpartPenalties.length > 0 ? ` (${counterpartPenalties.map((p) => p.text).join(", ")})` : ""
+                                    }`;
+
+                                    let badgeStyle = "bg-emerald-100 border-emerald-300 text-emerald-950";
+                                    if (cpScore >= 3) badgeStyle = "bg-rose-100 border-rose-300 text-rose-950";
+                                    else if (cpScore >= 1) badgeStyle = "bg-amber-100 border-amber-300 text-amber-950";
+
+                                    return (
+                                      <div
+                                        title={tooltipText}
+                                        onMouseEnter={() => {
+                                          setApplyingCandidate(candidate);
+                                          setTargetWeekId(week.weekId);
+                                        }}
+                                        onClick={() => handleSelectCandidateAndSave(candidate, week.weekId)}
+                                        className={`p-1.5 rounded-lg border text-center transition-all cursor-pointer shadow-2xs hover:scale-102 ${badgeStyle}`}
+                                      >
+                                        <div className="font-extrabold text-xs truncate">
+                                          {candidate.counterpartName}
+                                        </div>
+                                        <div className="text-[10px] font-black underline mt-0.5">
+                                          {cpScore === 0 ? "✓ 0점" : `⚠ ${cpScore}점`}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()
+                                ) : (
+                                  <span className="text-xs text-gray-300 block py-1">-</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
                       );
                     })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.from({ length: Math.max(7, periodsPerDay) }).map((_, idx) => {
-                    const period = idx + 1;
-                    return (
-                      <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
-                        <td className="py-2 px-1 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50 text-xs align-middle w-14">{period}</td>
-                        {DAYS.map((d) => {
-                          const matched = week.cells.filter((c) => c.day === d.num && c.period === period);
-                          const hasLesson = matched.length > 0;
-                          const isSelected = selectedCell?.weekId === week.weekId && selectedCell?.day === d.num && selectedCell?.period === period;
-
-                          return (
-                            <td
-                              key={d.num}
-                              className={`p-1 border-r border-gray-100 text-center align-middle h-16 transition-all ${
-                                isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""
-                              } ${hasLesson && !isSelected ? "hover:bg-indigo-50/60 cursor-pointer" : ""}`}
-                              onClick={() => { if (hasLesson) handleCellClick(matched[0], week.weekId); }}
-                            >
-                              {hasLesson ? (
-                                matched.map((cell, ci) => {
-                                  const changed = (cell as any).changed;
-                                  const changeId: string = changed?.changeId || "";
-                                  const isVirtualDraft = changeId.startsWith("virtual-draft-");
-                                  const isVirtualReq = changeId.startsWith("virtual-req-");
-                                  const isApprovedChange = !!changed && !isVirtualDraft && !isVirtualReq;
-
-                                  const draftId = isVirtualDraft ? changeId.replace("virtual-draft-", "") : "";
-
-                                  let cellStyle = "bg-white border border-indigo-200 shadow-2xs";
-                                  if (isVirtualDraft) cellStyle = "bg-indigo-50/90 border-2 border-dashed border-indigo-400 text-indigo-950 shadow-xs";
-                                  else if (isVirtualReq) cellStyle = "bg-amber-50/90 border-2 border-amber-300 text-amber-950 shadow-xs";
-                                  else if (isApprovedChange) cellStyle = "bg-red-100 border border-red-300 text-red-950";
-
-                                  return (
-                                    <div key={ci} className={`p-1.5 rounded-lg text-center space-y-0.5 ${cellStyle}`}>
-                                      <div className="font-black text-sm flex items-center justify-center gap-1">
-                                        <span>{cell.grade}-{cell.classNum}반</span>
-                                        {isApprovedChange && <span className="text-red-600 font-bold text-xs">▲</span>}
-                                      </div>
-
-                                      <div className="text-[11px] text-gray-600 font-medium">{cell.subjectName}</div>
-
-                                      {isVirtualDraft && (
-                                        <div className="flex items-center justify-between gap-1 pt-0.5">
-                                          <span className="text-[10px] font-extrabold text-indigo-900 bg-indigo-200 px-1 py-0.5 rounded">
-                                            📁 초안
-                                          </span>
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleDeleteDraftById(draftId);
-                                            }}
-                                            className="text-[10px] font-bold text-red-600 hover:text-red-800 bg-white px-1 py-0.5 rounded border border-red-200"
-                                          >
-                                            취소
-                                          </button>
-                                        </div>
-                                      )}
-
-                                      {isVirtualReq && (
-                                        <div className="text-[10px] font-extrabold text-amber-900 bg-amber-200 px-1 py-0.5 rounded mt-0.5">
-                                          ⏳ 검토 대기
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })
-                              ) : (
-                                <span className="text-xs text-gray-300 block py-1">-</span>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
         </div>
 
-        {/* 우측 패널: 후보 목록 및 초안 조작 */}
+        {/* 우측 사이드바: 선택 정보 & 상대 교사 시간표 미리보기만 유지 (§14-2 v2.1) */}
         {selectedCell && (
           <div className="w-80 shrink-0 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden sticky top-4">
             <div className="bg-gradient-to-r from-indigo-900 to-indigo-700 px-4 py-3">
               <div className="text-xs font-bold text-white">
-                수업교환 선택 — {formatSlotWithDate(selectedCell.weekId, selectedCell.day, selectedCell.period)}
+                수업교환 소스 — {formatSlotWithDate(selectedCell.weekId, selectedCell.day, selectedCell.period)}
               </div>
               <div className="text-[11px] text-indigo-300 mt-0.5">
                 {selectedCell.subjectName} · {selectedCell.grade}-{selectedCell.classNum}반 ({selectedCell.weekId} 주)
@@ -1275,99 +1258,34 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             </div>
 
             <div className="p-4 space-y-4">
-              {/* ① 교체 대상 주 선택 (교차 주 지원) */}
-              <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-200 space-y-1">
-                <div className="flex items-center justify-between text-xs font-bold text-gray-700">
-                  <span>교체 대상 주 선택:</span>
-                  {isCrossWeek && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold">
-                      교차 주 교환
-                    </span>
-                  )}
-                </div>
-                <select
-                  value={effectiveTargetWeekId}
-                  onChange={(e) => handleTargetWeekChange(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
-                >
-                  {weeks.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.startDate} 주 {w.id === selectedCell.weekId ? "(현재 주)" : "(교차 주)"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               {candidatesLoading && (
-                <div className="text-center py-4 text-xs text-indigo-500 animate-pulse font-semibold">후보 계산 중...</div>
+                <div className="text-center py-4 text-xs text-indigo-500 animate-pulse font-semibold">전 주 맞교환 후보 계산 중...</div>
               )}
               {candidatesError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800">{candidatesError}</div>
               )}
 
-              {candidatesResult && !candidatesLoading && (
-                <>
-                  <div className="space-y-2">
-                    <div className="text-xs font-bold text-gray-700 flex justify-between items-center">
-                      <span>맞교환 후보 ({sortedSwapCandidates.length}건)</span>
-                      <span className="text-[10px] text-gray-400 font-normal">상대 부담 낮은 순</span>
-                    </div>
-                    {sortedSwapCandidates.length === 0 ? (
-                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 space-y-1">
-                        <p className="font-semibold">⚠️ 맞교환 가능한 상대가 없습니다.</p>
-                        <p className="text-[11px] text-amber-800">
-                          결강 처리가 필요하면 일과계에 문의해 주세요.
-                        </p>
-                      </div>
-                    ) : (
-                      <div ref={candidateListRef} className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                        {sortedSwapCandidates.map((sc, i) => {
-                          const ck = candidateKey(sc);
-                          const isActive = applyingCandidate === sc;
-                          const counterpartPenalties = (sc.penaltyDetails || []).filter((p) => p.scope === "counterpart");
-                          const cpScore = sc.counterpartScore ?? 0;
-
-                          return (
-                            <div
-                              key={i}
-                              id={`candidate-card-${ck}`}
-                              className={`p-3 rounded-lg border text-xs cursor-pointer transition-all ${
-                                isActive
-                                  ? "bg-indigo-50 border-indigo-400 shadow-xs ring-2 ring-indigo-500"
-                                  : "bg-white border-gray-200 hover:bg-indigo-50/50 hover:border-indigo-300"
-                              }`}
-                              onClick={() => {
-                                setApplyingCandidate(sc);
-                                setSelectedCandidateKey(ck);
-                              }}
-                            >
-                              <div className="font-bold text-gray-900">
-                                {formatSlotWithDate(effectiveTargetWeekId, sc.targetDay, sc.targetPeriod)} ↔ {sc.counterpartName}
-                              </div>
-                              <div className="text-gray-500">{sc.counterpartSubjectName}</div>
-
-                              {/* §14-2 v2: 상대 교사 감점만 표시 */}
-                              {cpScore > 0 || counterpartPenalties.length > 0 ? (
-                                <div className="mt-1 text-amber-800 font-semibold text-[11px] bg-amber-50 p-1.5 rounded border border-amber-200">
-                                  ⚠ 상대 부담 ({cpScore}점): {counterpartPenalties.map((p) => p.text).join(", ") || "감점"}
-                                </div>
-                              ) : (
-                                <div className="mt-1 text-emerald-800 font-semibold text-[11px] bg-emerald-50 p-1 rounded border border-emerald-200">
-                                  ✓ 상대 부담 없음 (0점)
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </>
+              {!candidatesLoading && !applyingCandidate && (
+                <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-lg text-xs text-indigo-900 space-y-1">
+                  <p className="font-bold">💡 인라인 후보 선택 안내</p>
+                  <p className="text-[11px] text-indigo-800">
+                    좌측 전 주 시간표 그리드의 <b>공강 칸(초록/주황/빨간 배지)</b>을 직접 클릭하면 해당 교시로 교체안이 자동 저장됩니다.
+                  </p>
+                </div>
               )}
 
-              {/* 미리보기 및 초안 저장 버튼 */}
-              {applyingCandidate && selectedCell && (
-                <div className="border-t border-gray-100 pt-3 space-y-3">
+              {/* 상대 교사 시간표 미리보기 미니 그리드 */}
+              {applyingCandidate && (
+                <div className="space-y-3">
+                  <div className="text-xs font-bold text-gray-800 flex items-center justify-between">
+                    <span>
+                      🔍 {applyingCandidate.counterpartName} 교사 시간표 미리보기
+                    </span>
+                    {previewLoading && <span className="text-[10px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
+                  </div>
+
+                  {previewError && <div className="text-[11px] text-red-600 bg-red-50 p-2 rounded">{previewError}</div>}
+
                   <MiniPreviewGrid
                     isCrossWeek={isCrossWeek}
                     sourceWeekId={selectedCell.weekId}
@@ -1389,23 +1307,13 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     <select
                       value={reason.type}
                       onChange={(e) => setReason({ type: e.target.value as any, note: reason.note })}
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500"
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
                     >
                       {SWAP_REASON_TYPES.map((t) => (
                         <option key={t} value={t}>{t}</option>
                       ))}
                     </select>
                   </div>
-
-                  {/* 1순위: 클릭 반영 (draft_save + 그리드 갱신) */}
-                  <button
-                    onClick={() => handleSelectCandidateAndSave(applyingCandidate)}
-                    disabled={savingDraft}
-                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5"
-                  >
-                    <span>📁</span>
-                    <span>{savingDraft ? "초안 저장 중..." : "선택 반영 (그리드에 초안 누적)"}</span>
-                  </button>
 
                   <div className="grid grid-cols-2 gap-2">
                     <button

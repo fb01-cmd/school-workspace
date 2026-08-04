@@ -530,6 +530,19 @@ export interface SwapCandidatesResult {
   projectedTargetDayLoads?: ProjectedDayLoad[];
 }
 
+export interface SwapCandidatesAllWeek {
+  weekId: string;
+  startDate: string;
+  swapCandidates: SwapCandidate[];
+}
+
+export interface SwapCandidatesAllResult {
+  sourceSubjectName: string;
+  weeks: SwapCandidatesAllWeek[];
+  assumedPendingCount?: number;
+  assumedDraftCount?: number;
+}
+
 // ── 신청 라우트 DTO (/api/timetable/requests) ─────────────────
 
 export type SwapRequestAction =
