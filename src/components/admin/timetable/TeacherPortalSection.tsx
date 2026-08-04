@@ -615,6 +615,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [submittingBatch, setSubmittingBatch] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [submitResult, setSubmitResult] = useState<string | null>(null);
+  // 진행 중 표시·완료 토스트 — 서버 왕복이 길 때 클릭이 반영 중임을 화면에 보여준다
+  const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
 
   const [shareCardData, setShareCardData] = useState<ShareCardData | null>(null);
   const shareCardRef = useRef<HTMLDivElement>(null);
@@ -663,6 +666,13 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   useEffect(() => {
     fetchMyProjected();
   }, [fetchMyProjected]);
+
+  // 완료 토스트 자동 숨김
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 3500);
+    return () => clearTimeout(t);
+  }, [flash]);
 
   useEffect(() => {
     const termId = settings?.activeTermId;
@@ -729,6 +739,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   }, []);
 
   const handleCellClick = (cell: TeacherTimetableCell, srcWeekId: string) => {
+    if (savingDraft || deletingDraftId) return; // 반영 중 추가 클릭으로 상태가 꼬이는 것 방지
     setSelectedCell({ ...cell, weekId: srcWeekId });
     setSelectedWeekId(srcWeekId);
     setTargetWeekId(srcWeekId);
@@ -737,7 +748,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
   // 초안 셀 삭제 (draft_delete -> my_projected 원복)
   const handleDeleteDraftById = async (draftId: string) => {
+    if (deletingDraftId || savingDraft) return;
     if (!confirm("이 임시저장 초안을 삭제하시겠습니까?")) return;
+    setDeletingDraftId(draftId);
     try {
       const res = await fetch("/api/timetable/requests", {
         method: "POST",
@@ -746,18 +759,21 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       });
       if (res.ok) {
         await fetchMyProjected();
+        setFlash("🗑️ 초안이 삭제되었습니다.");
       } else {
         const err = await res.json().catch(() => ({}));
         alert(`초안 삭제 실패: ${err.error}`);
       }
     } catch (e: any) {
       alert(`오류: ${e.message}`);
+    } finally {
+      setDeletingDraftId(null);
     }
   };
 
   // §14-2 v2.1: 인라인 후보 클릭 = draft_save 실행 ➔ my_projected 갱신
   const handleSelectCandidateAndSave = async (sc: SwapCandidate, tgtWeekId: string) => {
-    if (!selectedCell) return;
+    if (!selectedCell || savingDraft || deletingDraftId) return;
     setApplyingCandidate(sc);
     setTargetWeekId(tgtWeekId);
     setSavingDraft(true);
@@ -798,6 +814,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         setApplyingCandidate(null);
         setSelectedCell(null);
         setCandidatesAllResult(null);
+        setFlash("📁 초안으로 저장되었습니다. 점선 칸에서 확인하세요.");
       } else {
         const err = await res.json().catch(() => ({}));
         alert(`초안 저장 실패: ${err.error}`);
@@ -1079,6 +1096,24 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-800 text-center">{error}</div>
       )}
 
+      {/* 진행 중 고정 배너 — 클릭이 반영되는 동안 화면 어디서든 보이도록 */}
+      {(savingDraft || deletingDraftId || candidatesLoading) && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-indigo-950 text-white text-sm font-bold px-5 py-2.5 rounded-full shadow-xl animate-pulse">
+          {savingDraft
+            ? "⏳ 초안 저장 반영 중… 잠시만 기다려 주세요"
+            : deletingDraftId
+              ? "⏳ 초안 삭제 중… 잠시만 기다려 주세요"
+              : "🔍 전 주 맞교환 후보 계산 중…"}
+        </div>
+      )}
+
+      {/* 완료 토스트 (3.5초 후 자동 숨김) */}
+      {flash && !savingDraft && !deletingDraftId && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-700 text-white text-sm font-bold px-5 py-2.5 rounded-full shadow-xl">
+          {flash}
+        </div>
+      )}
+
       <div className="flex gap-4 items-start">
         {/* 주간 시간표 그리드 (등록된 주간 전체 세로 일렬 나열 — §14-2 v2.1 인라인 하이라이트) */}
         <div className="flex-1 space-y-6">
@@ -1178,15 +1213,22 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                             <span className="text-[10px] font-extrabold text-indigo-900 bg-indigo-200 px-1 py-0.5 rounded">
                                               📁 초안
                                             </span>
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDeleteDraftById(draftId);
-                                              }}
-                                              className="text-[10px] font-bold text-red-600 hover:text-red-800 bg-white px-1 py-0.5 rounded border border-red-200"
-                                            >
-                                              취소
-                                            </button>
+                                            {deletingDraftId === draftId ? (
+                                              <span className="text-[10px] font-bold text-gray-500 animate-pulse px-1 py-0.5">
+                                                ⏳ 삭제 중…
+                                              </span>
+                                            ) : (
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleDeleteDraftById(draftId);
+                                                }}
+                                                disabled={!!deletingDraftId || savingDraft}
+                                                className="text-[10px] font-bold text-red-600 hover:text-red-800 bg-white px-1 py-0.5 rounded border border-red-200 disabled:opacity-40"
+                                              >
+                                                취소
+                                              </button>
+                                            )}
                                           </div>
                                         )}
 
@@ -1211,22 +1253,37 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                     if (cpScore >= 3) badgeStyle = "bg-rose-100 border-rose-300 text-rose-950";
                                     else if (cpScore >= 1) badgeStyle = "bg-amber-100 border-amber-300 text-amber-950";
 
+                                    const isSavingThis = savingDraft && applyingCandidate === candidate;
+
                                     return (
                                       <div
                                         title={tooltipText}
                                         onMouseEnter={() => {
+                                          if (savingDraft) return;
                                           setApplyingCandidate(candidate);
                                           setTargetWeekId(week.weekId);
                                         }}
                                         onClick={() => handleSelectCandidateAndSave(candidate, week.weekId)}
-                                        className={`p-1.5 rounded-lg border text-center transition-all cursor-pointer shadow-2xs hover:scale-102 ${badgeStyle}`}
+                                        className={`p-1.5 rounded-lg border text-center transition-all shadow-2xs ${badgeStyle} ${
+                                          isSavingThis
+                                            ? "animate-pulse ring-2 ring-indigo-500"
+                                            : savingDraft
+                                              ? "opacity-40 pointer-events-none"
+                                              : "cursor-pointer hover:scale-102"
+                                        }`}
                                       >
-                                        <div className="font-extrabold text-xs truncate">
-                                          {candidate.counterpartName}
-                                        </div>
-                                        <div className="text-[10px] font-black underline mt-0.5">
-                                          {cpScore === 0 ? "✓ 0점" : `⚠ ${cpScore}점`}
-                                        </div>
+                                        {isSavingThis ? (
+                                          <div className="font-extrabold text-xs">⏳ 반영 중…</div>
+                                        ) : (
+                                          <>
+                                            <div className="font-extrabold text-xs truncate">
+                                              {candidate.counterpartName}
+                                            </div>
+                                            <div className="text-[10px] font-black underline mt-0.5">
+                                              {cpScore === 0 ? "✓ 0점" : `⚠ ${cpScore}점`}
+                                            </div>
+                                          </>
+                                        )}
                                       </div>
                                     );
                                   })()

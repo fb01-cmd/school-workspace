@@ -1237,12 +1237,19 @@ export async function computeMyProjectedWeeks(
     loadTimetableSettings(domain),
   ]);
 
+  // 주별 changes는 서로 독립이므로 병렬 조회 — 직렬 왕복 누적(주 수 × RTT) 방지
+  const changesByWeek = new Map(
+    await Promise.all(
+      weeks.map(async (w) => [w.id, await loadWeekChanges(domain, w.id)] as const)
+    )
+  );
+
   const out: Array<{
     weekId: string; startDate: string; days: TimetableWeek["days"];
     cells: TeacherTimetableCell[]; dayLoads: ProjectedDayLoad[];
   }> = [];
   for (const week of weeks) {
-    const changes = await loadWeekChanges(domain, week.id);
+    const changes = changesByWeek.get(week.id) || [];
     const virtual = overlay.byWeek.get(week.id) || [];
     const { grids } = synthesizeWeeklyGrids(baseGrids, week, [...changes, ...virtual], settings);
     out.push({
@@ -1300,9 +1307,15 @@ export async function computeCandidatesAllWeeks(
     loadAllClassGrids(domain, term.id),
     loadTimetableSettings(domain),
   ]);
+  // 주별 changes 병렬 조회 (computeMyProjectedWeeks와 동일 이유)
+  const changesByWeek = new Map(
+    await Promise.all(
+      allWeeks.map(async (w) => [w.id, await loadWeekChanges(domain, w.id)] as const)
+    )
+  );
   const synthByWeek = new Map<string, WeeklyClassGrid[]>();
   for (const week of allWeeks) {
-    const changes = await loadWeekChanges(domain, week.id);
+    const changes = changesByWeek.get(week.id) || [];
     const virtual = overlay?.byWeek.get(week.id) || [];
     const { grids } = synthesizeWeeklyGrids(baseGrids, week, [...changes, ...virtual], settings);
     synthByWeek.set(week.id, grids);
