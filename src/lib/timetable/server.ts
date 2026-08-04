@@ -809,6 +809,7 @@ import {
   CrossSwapLessonRef,
   HourTotalsResult,
   NeisRow,
+  ProjectedDayLoad,
   SubstituteCandidate,
   SwapCandidate,
   SwapCandidateSnapshot,
@@ -963,14 +964,18 @@ export async function loadTermChanges(domain: string, termId: string): Promise<T
 
 export async function synthesizeWeek(
   domain: string,
-  week: TimetableWeek
+  week: TimetableWeek,
+  extraChanges?: TimetableChange[]
 ): Promise<WeeklySynthesisResult> {
   const [baseGrids, changes, settings] = await Promise.all([
     loadAllClassGrids(domain, week.termId),
     loadWeekChanges(domain, week.id),
     loadTimetableSettings(domain),
   ]);
-  return synthesizeWeeklyGrids(baseGrids, week, changes, settings);
+  // extraChanges(가상 what-if — §14-1)는 실 변경 뒤에 적용돼야 한다. 합성기가 appliedAt으로
+  // 재정렬하므로, 호출부는 extraChanges의 appliedAt을 미래값으로 세팅해 전달한다.
+  const all = extraChanges?.length ? [...changes, ...extraChanges] : changes;
+  return synthesizeWeeklyGrids(baseGrids, week, all, settings);
 }
 
 /** 학기 과목·그리드에서 전체 교사 수집 (view 라우트 free 액션과 동일 규칙) */
@@ -999,6 +1004,202 @@ export function collectTermTeachers(term: TimetableTerm, grids: WeeklyClassGrid[
   return Array.from(teacherMap.values());
 }
 
+// ── §14-1 가상 합성(what-if): PENDING 신청·초안 → 가상 change ──
+
+/** 신청·초안 공통 최소 형태 — 가상 change 변환 입력 */
+interface VirtualSwapItem {
+  key: string; // 가상 change id 구성용 (req-{id} / draft-{id})
+  termId: string;
+  weekId: string;
+  targetWeekId?: string;
+  type: SwapRequestType;
+  requesterEmail: string;
+  requesterName: string;
+  source: SwapSourceSlot;
+  candidate: SwapCandidateSnapshot;
+}
+
+/**
+ * 한 항목을 특정 주(weekId)에 적용될 가상 change로 변환 (phase9b_spec §14-1).
+ *
+ * 승인 트랜잭션(approveSwapRequest)이 생성하는 3형태(swap/cross_swap 쌍/substitute)와 같은
+ * 문서 모양을 **스냅샷 값으로 근사**한다 — change 필드를 바꿀 때는 반드시 양쪽을 함께 고칠 것.
+ * (승인 쪽은 재검증된 그리드에서 lesson 세부를 읽지만, 여기는 검증 없이 스냅샷만 쓰므로
+ *  함수를 공유하지 않는다. 무효 항목은 합성기가 integrityWarnings로 건너뛴다(§3-4) —
+ *  what-if 목적에는 그 방어 동작이 정확히 원하는 것이다.)
+ *
+ * appliedAt은 호출부가 미래값으로 지정한다 — 합성기의 appliedAt 재정렬에서 실 변경 뒤에
+ * 적용되는 것을 보장하기 위함. 가상 문서는 절대 저장하지 않는다.
+ */
+function buildVirtualChanges(item: VirtualSwapItem, weekId: string, appliedAt: number): TimetableChange[] {
+  const common = {
+    termId: item.termId,
+    appliedBy: "__virtual__",
+    appliedAt,
+  };
+  const isCross = !!item.targetWeekId && item.targetWeekId !== item.weekId;
+
+  if (!isCross) {
+    if (item.weekId !== weekId) return [];
+    if (item.type === "substitute") {
+      return [{
+        id: `virtual-${item.key}`, weekId, type: "substitute", ...common,
+        substitute: {
+          grade: item.source.grade, classNum: item.source.classNum,
+          day: item.source.day, period: item.source.period,
+          subjectName: item.source.subjectName,
+          absentTeacherEmail: item.requesterEmail, absentTeacherName: item.requesterName,
+          subTeacherEmail: item.candidate.counterpartEmail, subTeacherName: item.candidate.counterpartName,
+        },
+      }];
+    }
+    if (item.candidate.targetDay == null || item.candidate.targetPeriod == null) return [];
+    return [{
+      id: `virtual-${item.key}`, weekId, type: "swap", ...common,
+      swap: {
+        grade: item.source.grade, classNum: item.source.classNum,
+        a: {
+          day: item.source.day, period: item.source.period,
+          subjectName: item.source.subjectName,
+          teacherEmail: item.requesterEmail, teacherName: item.requesterName,
+        },
+        b: {
+          day: item.candidate.targetDay, period: item.candidate.targetPeriod,
+          subjectName: item.candidate.counterpartSubjectName || "",
+          teacherEmail: item.candidate.counterpartEmail, teacherName: item.candidate.counterpartName,
+        },
+      },
+    }];
+  }
+
+  // 교차 주: 이 주에 해당하는 쪽 문서만 (approve의 changeA/changeB와 동일 방향)
+  if (item.candidate.targetDay == null || item.candidate.targetPeriod == null) return [];
+  const myRef: CrossSwapLessonRef = {
+    subjectName: item.source.subjectName,
+    subjectShort: item.source.subjectName.slice(0, 2), // 근사 — 가상 문서는 표시용이 아님
+    teacherEmail: item.requesterEmail,
+    teacherName: item.requesterName,
+  };
+  const otherRef: CrossSwapLessonRef = {
+    subjectName: item.candidate.counterpartSubjectName || "",
+    subjectShort: (item.candidate.counterpartSubjectName || "").slice(0, 2),
+    teacherEmail: item.candidate.counterpartEmail,
+    teacherName: item.candidate.counterpartName,
+  };
+  if (weekId === item.weekId) {
+    return [{
+      id: `virtual-${item.key}-a`, weekId, type: "cross_swap", ...common,
+      crossSwap: {
+        exchangeId: `virtual-${item.key}`, otherWeekId: item.targetWeekId!,
+        grade: item.source.grade, classNum: item.source.classNum,
+        day: item.source.day, period: item.source.period,
+        out: myRef, in: otherRef,
+      },
+    }];
+  }
+  if (weekId === item.targetWeekId) {
+    return [{
+      id: `virtual-${item.key}-b`, weekId, type: "cross_swap", ...common,
+      crossSwap: {
+        exchangeId: `virtual-${item.key}`, otherWeekId: item.weekId,
+        grade: item.source.grade, classNum: item.source.classNum,
+        day: item.candidate.targetDay, period: item.candidate.targetPeriod,
+        out: otherRef, in: myRef,
+      },
+    }];
+  }
+  return [];
+}
+
+/**
+ * 본인 PENDING 신청(+선택 시 초안)을 주별 가상 change 목록으로 로드 (§14-1).
+ * excludeSource: 지금 후보를 조회하는 소스 셀과 같은 항목은 제외 — 자기 자신과의 충돌 방지.
+ */
+async function loadMyVirtualOverlay(
+  domain: string,
+  userEmail: string,
+  weekIds: string[],
+  opts: { includeMyPending?: boolean; includeDrafts?: boolean },
+  excludeSource: { weekId: string; source: SwapSourceSlot }
+): Promise<{ byWeek: Map<string, TimetableChange[]>; pendingCount: number; draftCount: number }> {
+  const norm = userEmail.trim().toLowerCase();
+  const items: VirtualSwapItem[] = [];
+  let pendingCount = 0;
+  let draftCount = 0;
+
+  const isExcluded = (weekId: string, s: SwapSourceSlot) =>
+    weekId === excludeSource.weekId &&
+    s.grade === excludeSource.source.grade && s.classNum === excludeSource.source.classNum &&
+    s.day === excludeSource.source.day && s.period === excludeSource.source.period;
+  const touches = (weekId: string, targetWeekId?: string) =>
+    weekIds.includes(weekId) || (targetWeekId ? weekIds.includes(targetWeekId) : false);
+
+  if (opts.includeMyPending) {
+    const snap = await swapRequestsColRef(domain)
+      .where("requesterEmail", "==", norm)
+      .where("status", "==", "PENDING")
+      .get();
+    for (const doc of snap.docs) {
+      const r = doc.data() as SwapRequest;
+      if (!touches(r.weekId, r.targetWeekId) || isExcluded(r.weekId, r.source)) continue;
+      items.push({
+        key: `req-${doc.id}`, termId: r.termId, weekId: r.weekId, targetWeekId: r.targetWeekId,
+        type: r.type, requesterEmail: norm, requesterName: r.requesterName,
+        source: r.source, candidate: r.candidate,
+      });
+      pendingCount++;
+    }
+  }
+
+  if (opts.includeDrafts) {
+    const drafts = await listSwapDrafts(domain, norm);
+    for (const d of drafts) {
+      if (!touches(d.sourceWeekId, d.targetWeekId) || isExcluded(d.sourceWeekId, d.source)) continue;
+      // 이미 같은 소스 셀의 PENDING 신청이 겹쳐 있으면 초안은 건너뜀 (이중 적용 방지)
+      if (items.some((it) => isSameSourceSlot(it, d.sourceWeekId, d.source))) continue;
+      items.push({
+        key: `draft-${d.id}`, termId: d.termId, weekId: d.sourceWeekId, targetWeekId: d.targetWeekId,
+        type: "swap", requesterEmail: norm,
+        requesterName: d.requesterName || norm.split("@")[0],
+        source: d.source, candidate: d.candidate,
+      });
+      draftCount++;
+    }
+  }
+
+  const byWeek = new Map<string, TimetableChange[]>();
+  // 실 변경 뒤 + 항목 생성순 적용 보장: 미래 시각 + 순번
+  const futureBase = Date.now() + 10_000_000;
+  let seq = 0;
+  for (const it of items) {
+    for (const wid of weekIds) {
+      const chs = buildVirtualChanges(it, wid, futureBase + seq);
+      if (chs.length) {
+        byWeek.set(wid, [...(byWeek.get(wid) || []), ...chs]);
+        seq += chs.length;
+      }
+    }
+  }
+  return { byWeek, pendingCount, draftCount };
+}
+
+function isSameSourceSlot(it: VirtualSwapItem, weekId: string, s: SwapSourceSlot): boolean {
+  return (
+    it.weekId === weekId &&
+    it.source.grade === s.grade && it.source.classNum === s.classNum &&
+    it.source.day === s.day && it.source.period === s.period
+  );
+}
+
+/** 가상 합성본에서 본인 요일별 시수 집계 (§14-1 projectedDayLoads) */
+function countMyDayLoads(grids: WeeklyClassGrid[], email: string): ProjectedDayLoad[] {
+  const counts = new Map<number, number>();
+  for (const cell of synthesizeTeacherTimetable(grids, email)) {
+    counts.set(cell.day, (counts.get(cell.day) || 0) + 1);
+  }
+  return [1, 2, 3, 4, 5].map((day) => ({ day, count: counts.get(day) || 0 }));
+}
+
 // ── 후보 탐색 (라우트 → 엔진 연결) ────────────────────────────
 
 export async function computeCandidates(
@@ -1006,13 +1207,19 @@ export async function computeCandidates(
   requesterEmail: string,
   weekId: string,
   source: SwapSourceSlot,
-  targetWeekId?: string
+  targetWeekId?: string,
+  whatIf?: { includeMyPending?: boolean; includeDrafts?: boolean }
 ): Promise<{
   swapCandidates: SwapCandidate[];
   substituteCandidates: SubstituteCandidate[];
   sourceSubjectName: string;
   targetWeekId?: string;
   error?: string;
+  // §14-1 가상 합성 부가 정보 (whatIf 요청 시에만)
+  assumedPendingCount?: number;
+  assumedDraftCount?: number;
+  projectedDayLoads?: ProjectedDayLoad[]; // 소스 주 — 현재 검토 후보 미포함 (±1은 UI 계산)
+  projectedTargetDayLoads?: ProjectedDayLoad[]; // 교차 주일 때 대상 주
 }> {
   const week = await loadWeek(domain, weekId);
   if (!week) throw new Error(`등록되지 않은 주(${weekId})입니다.`);
@@ -1020,7 +1227,17 @@ export async function computeCandidates(
   if (!term) throw new Error(`학기(${week.termId})를 찾을 수 없습니다.`);
   const settings = await loadTimetableSettings(domain);
 
-  const { grids } = await synthesizeWeek(domain, week);
+  // §14-1: 본인 PENDING 신청(+선택 초안)을 가상 change로 겹쳐 누적 기준으로 계산
+  const wantWhatIf = !!(whatIf?.includeMyPending || whatIf?.includeDrafts);
+  const overlayWeekIds = [weekId, ...(targetWeekId && targetWeekId !== weekId ? [targetWeekId] : [])];
+  const overlay = wantWhatIf
+    ? await loadMyVirtualOverlay(domain, requesterEmail, overlayWeekIds, whatIf!, { weekId, source })
+    : null;
+  const whatIfExtras = overlay
+    ? { assumedPendingCount: overlay.pendingCount, assumedDraftCount: overlay.draftCount }
+    : {};
+
+  const { grids } = await synthesizeWeek(domain, week, overlay?.byWeek.get(weekId));
   const src = resolveSourceLesson(grids, requesterEmail, source);
   if (!src.ok) {
     return { swapCandidates: [], substituteCandidates: [], sourceSubjectName: "", error: src.error };
@@ -1034,7 +1251,9 @@ export async function computeCandidates(
     if (!targetWeek) throw new Error(`등록되지 않은 주(${targetWeekId})입니다. 일과계가 먼저 주를 등록해야 교환할 수 있습니다.`);
     if (targetWeek.termId !== week.termId)
       throw new Error("다른 학기의 주와는 교환할 수 없습니다.");
-    const { grids: targetGrids } = await synthesizeWeek(domain, targetWeek);
+    const { grids: targetGrids } = await synthesizeWeek(
+      domain, targetWeek, overlay?.byWeek.get(targetWeekId)
+    );
     const crossRes = findCrossSwapCandidates(
       grids, week, targetGrids, targetWeek, settings, requesterEmail, fullSource
     );
@@ -1049,6 +1268,13 @@ export async function computeCandidates(
       substituteCandidates: [],
       sourceSubjectName,
       targetWeekId,
+      ...(overlay
+        ? {
+            ...whatIfExtras,
+            projectedDayLoads: countMyDayLoads(grids, requesterEmail),
+            projectedTargetDayLoads: countMyDayLoads(targetGrids, requesterEmail),
+          }
+        : {}),
     };
   }
 
@@ -1075,6 +1301,9 @@ export async function computeCandidates(
     swapCandidates: swapRes.candidates,
     substituteCandidates: subRes.candidates,
     sourceSubjectName,
+    ...(overlay
+      ? { ...whatIfExtras, projectedDayLoads: countMyDayLoads(grids, requesterEmail) }
+      : {}),
   };
 }
 
@@ -1099,7 +1328,7 @@ export async function createSwapRequest(
     reason?: SwapRequestReason;
     targetWeekId?: string; // 교차 주 맞교환 (§4-3b) — 없거나 weekId와 같으면 같은-주
   },
-  options?: { skipManagerNotify?: boolean; direct?: boolean }
+  options?: { skipManagerNotify?: boolean; direct?: boolean; batchId?: string }
 ): Promise<SwapRequest> {
   const reason = validateReason(params.reason);
   const week = await loadWeek(domain, params.weekId);
@@ -1175,6 +1404,7 @@ export async function createSwapRequest(
     status: "PENDING",
     createdAt: Date.now(),
     ...(options?.direct ? { direct: true } : {}),
+    ...(options?.batchId ? { batchId: options.batchId } : {}),
   };
   await ref.set(request);
 
@@ -1197,6 +1427,32 @@ export async function createSwapRequest(
   }
 
   return request;
+}
+
+/**
+ * 장바구니 일괄 제출 요약 알림 (§14-2) — 항목별 개별 DM 대신 일과계에 1건만 보낸다.
+ * (개별 create는 skipManagerNotify로 호출되므로 이 함수가 유일한 알림 경로)
+ */
+export async function notifySwapBatchToManagers(
+  domain: string,
+  requesterName: string,
+  requesterEmail: string,
+  createdCount: number,
+  totalCount: number
+): Promise<void> {
+  const settings = await loadTimetableSettings(domain);
+  const msg =
+    `📋 수업교환 일괄 신청 접수\n` +
+    `신청자: ${requesterName} (${requesterEmail})\n` +
+    `접수: ${createdCount}건${createdCount < totalCount ? ` (제출 ${totalCount}건 중 ${totalCount - createdCount}건 재검증 탈락)` : ""}\n` +
+    `요청대장에서 묶음으로 확인할 수 있습니다.`;
+  for (const manager of settings.managerEmails) {
+    try {
+      await sendGoogleChat(manager, msg);
+    } catch (e: any) {
+      console.error(`[swap_batch] 일과계 알림 실패 (${manager}):`, e.message);
+    }
+  }
 }
 
 export async function listSwapRequests(

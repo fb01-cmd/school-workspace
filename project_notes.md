@@ -3140,3 +3140,15 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
 - **그리드 동일성 검증**: 화면 미리보기 그리드와 공유 카드 PNG 이미지 그리드가 100% 동일한 2단(교차 주)/1단(같은 주) 구조 및 날짜 헤더·실수업 데이터를 유지함을 확인.
 
+
+## [2026-08-04] Claude → Antigravity/사용자 (§14-1 서버부 구현 완료 — 가상 합성 what-if + batchId 일괄 접수, 실측 통과)
+
+- **변경 파일**: `src/lib/timetable/server.ts`(buildVirtualChanges·loadMyVirtualOverlay·countMyDayLoads·synthesizeWeek extraChanges·notifySwapBatchToManagers·createSwapRequest batchId), `src/lib/timetable/types.ts`(SwapBatchCreateItem·SwapBatchItemResult·ProjectedDayLoad·batchId·create_batch DTO), `src/app/api/timetable/requests/route.ts`(candidates what-if 전달·create_batch), `phase9b_spec.md`(§14-1 구현 확정 반영), `scripts/verify_whatif_overlay.ts`·`scripts/verify_batch_create.ts`(실측, 재실행 가능), `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅ / **실측 ✅**
+  - what-if(읽기 전용): 대기 중인 교차 주 신청 1건 반영 시 소스 주 목 4→3·대상 주 수 0→1 정확, whatIf 미지정 시 응답 불변(회귀 ✅).
+  - batch(자가 정리): batchId 저장·동일 소스 중복 차단(부분 실패)·본인 취소 정리 전부 ✅. 실측이 남긴 기록은 CANCELED 2건뿐(무해). **기존 tteacher@ 대기 신청 1건 그대로 유지** — 승인/반려 안 함.
+- **API 계약 (UI 구현용)**:
+  1. `candidates` + `includeMyPending`/`includeDrafts`(bool) → 응답에 `assumedPendingCount`·`assumedDraftCount`·`projectedDayLoads`·(교차 주)`projectedTargetDayLoads` 추가. **검토 중 후보는 미포함 — 선택 후보의 ±1은 UI가 계산해 강조 표시** (예: `수 4→7 ⚠️`).
+  2. `create_batch` + `items[]`(SwapBatchCreateItem, 1~20건, swap만)·공통 `reason` → `{batchId, createdCount, results[]}`. 부분 성공 — 실패 항목은 `results[i].error`를 초안 카드에 표기. `draftId` 있는 성공 항목은 초안 자동 삭제됨.
+- **다음**: Antigravity가 §14-2 장바구니 UI("목록에 담기" 기본 버튼·예상 시수 패널·일괄 제출)·§14-3 요청대장 묶음 표시(batchId 그룹·일괄 승인) 구현. 상세는 phase9b_spec §14-2·14-3.
+- **주의**: 실서버 승인 조작 금지 유지.

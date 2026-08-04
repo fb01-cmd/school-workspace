@@ -7,10 +7,12 @@ import {
   deleteSwapDraft,
   listSwapDrafts,
   listSwapRequests,
+  notifySwapBatchToManagers,
   saveSwapDraft,
 } from "@/lib/timetable/server";
-import { SwapRequestApiRequest } from "@/lib/timetable/types";
+import { SwapBatchItemResult, SwapRequestApiRequest } from "@/lib/timetable/types";
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 
 /**
  * Phase 9b: 수업교환 신청 라우트 (교사 본인용) — phase9b_spec §6, §13-1
@@ -44,7 +46,11 @@ export async function POST(req: NextRequest) {
         const result = await computeCandidates(
           domain, auth.email, body.weekId,
           { grade, classNum, day, period, subjectName: "" },
-          body.targetWeekId // 교차 주 맞교환 (§4-3b) — 없거나 weekId와 같으면 같은-주
+          body.targetWeekId, // 교차 주 맞교환 (§4-3b) — 없거나 weekId와 같으면 같은-주
+          // §14-1 가상 합성: 본인 PENDING 신청·초안을 겹친 누적 기준 계산 (기본 꺼짐)
+          body.includeMyPending || body.includeDrafts
+            ? { includeMyPending: !!body.includeMyPending, includeDrafts: !!body.includeDrafts }
+            : undefined
         );
         if (result.error) {
           return NextResponse.json({ error: result.error }, { status: 400 });
@@ -87,6 +93,72 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
         return NextResponse.json({ success: true, action, request });
+      }
+
+      // ── 장바구니 일괄 제출 (phase9b_spec §14-2) ───────────────
+      // 항목별로 기존 createSwapRequest 재검증을 순차 수행 — 부분 성공 허용 (전체 롤백 없음).
+      case "create_batch": {
+        const items = body.items;
+        if (!Array.isArray(items) || items.length < 1 || items.length > 20) {
+          return NextResponse.json({ error: "items 배열(1~20건)이 필요합니다." }, { status: 400 });
+        }
+        const batchId = randomUUID();
+        const results: SwapBatchItemResult[] = [];
+        let firstCreated: Awaited<ReturnType<typeof createSwapRequest>> | null = null;
+
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const draftIdField = item?.draftId ? { draftId: item.draftId } : {};
+          try {
+            if (!item?.weekId || !item.source || !item.candidate) {
+              throw new Error("weekId, source, candidate가 모두 필요합니다.");
+            }
+            // 단건 create와 동일 규약: 교사 신청은 맞교환만 (특별보강 서버 차단과 정합)
+            if (item.type !== "swap") {
+              throw new Error("일괄 제출은 맞교환(swap) 항목만 가능합니다.");
+            }
+            const { grade, classNum, day, period } = item.source;
+            const request = await createSwapRequest(
+              domain, auth.email,
+              {
+                weekId: item.weekId,
+                type: "swap",
+                source: { grade, classNum, day, period, subjectName: item.source.subjectName || "" },
+                candidate: item.candidate,
+                reason: item.reason || body.reason,
+                targetWeekId: item.targetWeekId,
+              },
+              { batchId, skipManagerNotify: true } // 요약 알림 1건으로 대체 (아래)
+            );
+            if (!firstCreated) firstCreated = request;
+            // 접수 성공한 항목의 초안 정리 (본인 소유 검증은 deleteSwapDraft 내부)
+            if (item.draftId) {
+              try {
+                await deleteSwapDraft(domain, auth.email, item.draftId);
+              } catch (e: any) {
+                console.error(`[create_batch] 초안 정리 실패 (${item.draftId}):`, e.message);
+              }
+            }
+            results.push({ index: i, ok: true, requestId: request.id, ...draftIdField });
+          } catch (e: any) {
+            results.push({ index: i, ok: false, error: e.message || "접수 실패", ...draftIdField });
+          }
+        }
+
+        const createdCount = results.filter((r) => r.ok).length;
+        if (createdCount > 0 && firstCreated) {
+          await notifySwapBatchToManagers(
+            domain, firstCreated.requesterName, auth.email, createdCount, items.length
+          );
+          await writeAuditLog({
+            operatorEmail: auth.email,
+            targetEmail: auth.email,
+            action: "create_swap_batch",
+            details: `수업교환 일괄 신청: ${createdCount}/${items.length}건 접수 (batchId ${batchId})`,
+            status: "success",
+          });
+        }
+        return NextResponse.json({ success: true, action, batchId, createdCount, results });
       }
 
       case "my_list": {

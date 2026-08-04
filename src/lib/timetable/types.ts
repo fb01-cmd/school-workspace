@@ -402,6 +402,7 @@ export interface SwapRequest {
   appliedChangeIds?: string[];
   createdAt: number;
   direct?: boolean; // 일과계 직권 배정 경유 (교사 사전 신청 없음)
+  batchId?: string; // 장바구니 일괄 제출 묶음 (phase9b_spec §14-2) — 같은 제출의 신청들이 공유
 }
 
 // ── 사전 양해 임시저장 (swap_drafts — phase9b_spec §13-1) ─────
@@ -519,11 +520,37 @@ export interface SwapCandidatesResult {
 export type SwapRequestAction =
   | "candidates"
   | "create"
+  | "create_batch"
   | "my_list"
   | "cancel"
   | "draft_save"
   | "draft_list"
   | "draft_delete";
+
+/** 장바구니 일괄 제출 항목 (phase9b_spec §14-2). 교차 주는 type:"swap"+targetWeekId — create와 동일 규약 */
+export interface SwapBatchCreateItem {
+  weekId: string;
+  targetWeekId?: string;
+  type: SwapRequestType;
+  source: SwapSourceSlot;
+  candidate: SwapCandidateSnapshot;
+  reason?: SwapRequestReason; // 없으면 일괄 제출의 공통 reason 적용
+  draftId?: string; // 접수 성공 시 정리할 초안 (본인 소유 검증은 서버)
+}
+
+export interface SwapBatchItemResult {
+  index: number;
+  ok: boolean;
+  requestId?: string;
+  error?: string; // 재검증 탈락 사유 — 초안 카드에 표기 (부분 성공 허용, §14-2)
+  draftId?: string;
+}
+
+/** 요일별 예상 시수 (phase9b_spec §14-1) — 가상 합성 반영 후, 현재 검토 중 후보는 미포함(±1은 UI가 계산) */
+export interface ProjectedDayLoad {
+  day: number; // 1~5
+  count: number;
+}
 
 export interface SwapRequestApiRequest {
   action: SwapRequestAction;
@@ -532,8 +559,13 @@ export interface SwapRequestApiRequest {
   source?: Omit<SwapSourceSlot, "subjectName"> & { subjectName?: string };
   type?: SwapRequestType;
   candidate?: SwapCandidateSnapshot;
-  reason?: SwapRequestReason;
+  reason?: SwapRequestReason; // create: 신청 사유 / create_batch: 항목별 reason 없을 때의 공통 사유
   requestId?: string;
+  // 가상 합성 what-if (candidates — §14-1)
+  includeMyPending?: boolean;
+  includeDrafts?: boolean;
+  // 장바구니 일괄 제출 (create_batch — §14-2)
+  items?: SwapBatchCreateItem[];
   // 임시저장 (draft_save / draft_delete)
   draftId?: string;
   draft?: {
