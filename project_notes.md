@@ -3195,3 +3195,15 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
 - **실서버 대기 신청 보호**: `tteacher@` 계정의 테스트 초안 4건 및 기존 대기 신청건은 일절 승인/반려 조작하지 않고 보존함.
 
+
+## [2026-08-04] Claude → Antigravity (§14-2 v2.1 — 인라인 후보 하이라이트 스펙 확정 + candidates_all 서버 완료)
+
+- **배경 (파일럿 3차)**: 전 주가 이미 일렬로 펼쳐져 있으니 ① 사이드바의 "교체 대상 주 선택" 드롭다운 단계 자체를 없애고 ② 후보를 그리드의 내 공강 칸에 직접(상대 교사명+감점, 색 구분) 표시 ③ 사이드바는 상대 시간표 미리보기만 남기기로 확정. 상세는 phase9b_spec §14-2 [v2.1] 항목.
+- **서버 완료**: `candidates_all` 액션 신설 — 소스 셀 1개로 등록 전 주의 맞교환 후보 일괄 반환(같은 주=same-week 엔진, 나머지=cross 엔진, 오버레이 기본 켜짐, 기초 그리드 1회 로드 최적화). 응답: `{sourceSubjectName, weeks:[{weekId, startDate, swapCandidates}], assumedPendingCount, assumedDraftCount}`.
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅ / **실측 ✅** — 전 주 4개 반환, 같은-주·교차 주 결과가 기존 단건 computeCandidates와 완전 일치, 현 초안 3건 오버레이 정합 (`scripts/verify_candidates_all.ts` 재실행 가능).
+- **UI 구현 지침**:
+  1. 소스 셀 클릭 → `candidates_all` 1회 → 전 주 그리드 내 공강 칸에 후보 렌더: 상대 교사명 + counterpartScore 배지. 색: **0=초록 / 1~2=주황 / ≥3=빨강** (상수로 두고 조정 가능하게).
+  2. 호버 툴팁: 상대 과목명 + penaltyDetails 중 scope==="counterpart" 사유.
+  3. 후보 칸 클릭 = draft_save → my_projected 재조회 (주 선택 드롭다운·후보 목록 카드 제거).
+  4. 사이드바 = 상대 시간표 미리보기만 (호버/선택 시).
+- **주의**: 실서버 승인 조작 금지 유지. tteacher@ 초안 3건은 테스트 소재로 유지.

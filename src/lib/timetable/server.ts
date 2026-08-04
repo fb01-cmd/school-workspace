@@ -1261,6 +1261,86 @@ export async function computeMyProjectedWeeks(
   };
 }
 
+/**
+ * §14-2 v2.1: 소스 셀 1개에 대해 등록된 **전 주**의 맞교환 후보를 한 번에 계산.
+ * 그리드 인라인 하이라이트용 — 같은 주는 same-week 엔진, 나머지 주는 cross 엔진.
+ * 오버레이(PENDING·초안)는 전 주에 공통 적용(기본 켜짐 권장 — 클릭 누적 위에서 탐색).
+ */
+export async function computeCandidatesAllWeeks(
+  domain: string,
+  requesterEmail: string,
+  sourceWeekId: string,
+  source: SwapSourceSlot,
+  whatIf?: { includeMyPending?: boolean; includeDrafts?: boolean }
+): Promise<{
+  sourceSubjectName: string;
+  weeks: Array<{ weekId: string; startDate: string; swapCandidates: SwapCandidate[] }>;
+  assumedPendingCount: number;
+  assumedDraftCount: number;
+  error?: string;
+}> {
+  const sourceWeek = await loadWeek(domain, sourceWeekId);
+  if (!sourceWeek) throw new Error(`등록되지 않은 주(${sourceWeekId})입니다.`);
+  const term = await loadTimetableTerm(domain, sourceWeek.termId);
+  if (!term) throw new Error(`학기(${sourceWeek.termId})를 찾을 수 없습니다.`);
+
+  const allWeeks = await listWeeks(domain, term.id);
+  allWeeks.sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+  const wantWhatIf = !!(whatIf?.includeMyPending || whatIf?.includeDrafts);
+  const overlay = wantWhatIf
+    ? await loadMyVirtualOverlay(
+        domain, requesterEmail, allWeeks.map((w) => w.id), whatIf!,
+        { weekId: sourceWeekId, source }
+      )
+    : null;
+
+  // 기초 그리드·설정 1회 로드, 주별 합성 (computeMyProjectedWeeks와 동일 패턴)
+  const [baseGrids, settings] = await Promise.all([
+    loadAllClassGrids(domain, term.id),
+    loadTimetableSettings(domain),
+  ]);
+  const synthByWeek = new Map<string, WeeklyClassGrid[]>();
+  for (const week of allWeeks) {
+    const changes = await loadWeekChanges(domain, week.id);
+    const virtual = overlay?.byWeek.get(week.id) || [];
+    const { grids } = synthesizeWeeklyGrids(baseGrids, week, [...changes, ...virtual], settings);
+    synthByWeek.set(week.id, grids);
+  }
+
+  const srcGrids = synthByWeek.get(sourceWeekId)!;
+  const src = resolveSourceLesson(srcGrids, requesterEmail, source);
+  if (!src.ok) {
+    return {
+      sourceSubjectName: "", weeks: [], error: src.error,
+      assumedPendingCount: overlay?.pendingCount || 0, assumedDraftCount: overlay?.draftCount || 0,
+    };
+  }
+  const sourceSubjectName = src.lesson!.subjectName;
+  const fullSource: SwapSourceSlot = { ...source, subjectName: sourceSubjectName };
+
+  const weeks: Array<{ weekId: string; startDate: string; swapCandidates: SwapCandidate[] }> = [];
+  for (const week of allWeeks) {
+    if (week.id === sourceWeekId) {
+      const res = findSwapCandidates(srcGrids, sourceWeek, settings, requesterEmail, fullSource);
+      // 소스 레벨 오류는 위 resolveSourceLesson에서 이미 걸렀으므로 여기 error는 후보 0건으로 취급
+      weeks.push({ weekId: week.id, startDate: week.startDate, swapCandidates: res.candidates || [] });
+    } else {
+      const res = findCrossSwapCandidates(
+        srcGrids, sourceWeek, synthByWeek.get(week.id)!, week, settings, requesterEmail, fullSource
+      );
+      weeks.push({ weekId: week.id, startDate: week.startDate, swapCandidates: res.candidates || [] });
+    }
+  }
+
+  return {
+    sourceSubjectName,
+    weeks,
+    assumedPendingCount: overlay?.pendingCount || 0,
+    assumedDraftCount: overlay?.draftCount || 0,
+  };
+}
+
 // ── 후보 탐색 (라우트 → 엔진 연결) ────────────────────────────
 
 export async function computeCandidates(

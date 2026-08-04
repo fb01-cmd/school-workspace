@@ -3,6 +3,7 @@ import { writeAuditLog } from "@/lib/firebase/audit-server";
 import {
   cancelSwapRequest,
   computeCandidates,
+  computeCandidatesAllWeeks,
   computeMyProjectedWeeks,
   createSwapRequest,
   deleteSwapDraft,
@@ -52,6 +53,30 @@ export async function POST(req: NextRequest) {
           body.includeMyPending || body.includeDrafts
             ? { includeMyPending: !!body.includeMyPending, includeDrafts: !!body.includeDrafts }
             : undefined
+        );
+        if (result.error) {
+          return NextResponse.json({ error: result.error }, { status: 400 });
+        }
+        return NextResponse.json({ success: true, action, ...result });
+      }
+
+      // ── §14-2 v2.1: 전 주 후보 일괄 (그리드 인라인 하이라이트) ──
+      // 오버레이 기본 켜짐 — 그리드가 작업 상태이므로 클릭 누적(초안)·대기 신청 위에서 탐색한다.
+      case "candidates_all": {
+        if (!body.weekId || !body.source) {
+          return NextResponse.json({ error: "weekId와 source가 필요합니다." }, { status: 400 });
+        }
+        const { grade, classNum, day, period } = body.source;
+        if (![grade, classNum, day, period].every((n) => Number.isInteger(n) && n > 0)) {
+          return NextResponse.json({ error: "source 슬롯 값이 유효하지 않습니다." }, { status: 400 });
+        }
+        const result = await computeCandidatesAllWeeks(
+          domain, auth.email, body.weekId,
+          { grade, classNum, day, period, subjectName: "" },
+          {
+            includeMyPending: body.includeMyPending !== false,
+            includeDrafts: body.includeDrafts !== false,
+          }
         );
         if (result.error) {
           return NextResponse.json({ error: result.error }, { status: 400 });
