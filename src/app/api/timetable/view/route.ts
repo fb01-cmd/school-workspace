@@ -1,5 +1,6 @@
 import { verifyAuthAccess } from "@/lib/firebase/admin";
 import { canViewTimetable } from "@/lib/timetable/authz";
+import { buildSlotIndex, isBlockTeacher } from "@/lib/timetable/swap";
 import {
   findCurrentWeek,
   loadActiveTerm,
@@ -236,7 +237,12 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const allTeachers = Array.from(teacherMap.values());
+        // 가상·블록 교사는 공강 목록에서도 제외 — 보강 후보 엔진(findSubstituteCandidates)과
+        // 동일 기준. 수업 없는 교시의 창체·SLAT이 공강 교사로 잡히는 것을 막는다.
+        const blockIdx = buildSlotIndex(allGrids);
+        const allTeachers = Array.from(teacherMap.values()).filter(
+          (t) => !isBlockTeacher(blockIdx, t.email)
+        );
         const freeTeachers = synthesizeFreeTeachers(allGrids, allTeachers, day, period);
 
         const res: ViewTimetableResponse = {
@@ -275,9 +281,13 @@ export async function POST(req: NextRequest) {
             }
           }
         }
-        const sorted = Array.from(teacherMap.values()).sort((a, b) =>
-          a.name.localeCompare(b.name, "ko")
-        );
+        // 가상 교사(창체·SLAT 등)가 실이메일로 매핑된 학기 데이터에서 드롭다운이 오염됨
+        // (60시간·다학급 셀). 한 교시에 2개 학급 이상 동시 수업이면 실교사 시간표가 아니므로
+        // 블록 판정(isBlockTeacher)으로 제외 — 실교사의 그런 중복은 임포트 검증이 이미 차단한다.
+        const blockIdx = buildSlotIndex(baseGrids);
+        const sorted = Array.from(teacherMap.values())
+          .filter((t) => !isBlockTeacher(blockIdx, t.email))
+          .sort((a, b) => a.name.localeCompare(b.name, "ko"));
         return NextResponse.json({ term: termMeta, action, data: sorted });
       }
 

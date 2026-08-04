@@ -2935,3 +2935,16 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
      - `OtherTimetableTab` 타이틀 아래 설명 문구 삭제
 - **주의**: 실서버 승인 조작 금지. `tteacher@` 파일럿 계정으로 화면 확인 권장.
 
+
+## [2026-08-04] Claude → Antigravity/사용자 (내일 작업 2·3번 완료 — 가상 교사 서버 제외 구현 + 기초 비노출 판단·스펙)
+
+- **변경 파일**: `src/app/api/timetable/view/route.ts`, `phase9b_spec.md`(§6·§7 확정 기록), `scripts/verify_block_teacher_filter.ts`(신규, 읽기 전용 실측), `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅ / **실데이터 실측 ✅** — 수집 62명 중 제외 2명 = SLAT(slat@)·창체(changche@, 각 동시 30학급), 실교사 60명 전원 유지·오탐 0 (`npx tsx --env-file=.env.local scripts/verify_block_teacher_filter.ts` 재실행 가능)
+- **3번 (가상 교사 노출) — 서버 제외로 구현 완료**:
+  - `view` `teachers` 액션: `buildSlotIndex(baseGrids)` + `isBlockTeacher` 필터 — 한 교시 2개 학급 이상 동시 수업이면 드롭다운에서 제외. `virtualTeacherNames`는 학기 문서에 저장되지 않아 뷰 시점엔 구조 판정이 유일한 방법.
+  - `free`(공강 교사) 액션에도 동일 필터 — 수업 없는 교시의 가상 계정이 공강·보강 후보로 잡히는 것 방지 (보강 엔진 기존 제외 기준과 정합).
+  - `teacher` 액션(이메일 직접 지정)은 막지 않음 — 열람 무해, 드롭다운에서 이미 사라짐.
+- **2번 (기초시간표 비노출) — 판단: 서버 차단 안 함, UI 제거만 (스펙 §7 기록)**:
+  - 근거: ① 기초는 주간 합성본의 부분집합이라 차단해도 정보 이득 0 ② `weekId` 미지정은 "내 시간표" 초기 로드의 현재 주 폴백 기본 경로라 구분 차단하려면 API 플래그 신설 필요 — 보안 이득 없는 형태 변경 ③ 등록 주 없는 기간(방학 등)에 차단하면 포털이 에러로 축퇴.
+  - **UI 구현은 Antigravity 필요 (`TeacherPortalSection.tsx` 주 선택 드롭다운 2곳)**: 일반 교사에게 "기초시간표" 옵션 비렌더 + 주 목록 로드 시 기본 선택을 현재 주(없으면 가장 가까운 미래 주, 그것도 없으면 첫 주)로 자동 세팅. 노출 유지 조건 = `role === "super_admin" || settings.managerEmails 포함`. 상세는 phase9b_spec §7 [2026-08-04 확정] 항목.
+- **주의**: 실서버 승인 조작 금지. 현재 상태(현유지=tteacher@ 교체, 테스트 주 3개, managerEmails 0명) 변동 없음.
