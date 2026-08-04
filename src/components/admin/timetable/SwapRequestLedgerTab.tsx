@@ -200,6 +200,22 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
 
   const DAY_NAMES = ["", "월", "화", "수", "목", "금"];
 
+  const formatSlotWithDate = (weekId?: string, day?: number, period?: number): string => {
+    if (!day || !period) return "";
+    const dayStr = DAY_NAMES[day] || `${day}`;
+    if (!weekId) return `${dayStr}요일 ${period}교시`;
+
+    const parts = weekId.split("-").map((v) => parseInt(v, 10));
+    if (parts.length < 3 || isNaN(parts[0])) return `${dayStr}요일 ${period}교시`;
+
+    const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+    dateObj.setDate(dateObj.getDate() + (day - 1));
+    const m = dateObj.getMonth() + 1;
+    const d = dateObj.getDate();
+
+    return `${m}/${d}(${dayStr}) ${period}교시`;
+  };
+
   // PENDING 상태를 상단으로 정렬
   const pendingRequests = requests.filter((r) => r.status === "PENDING");
   const otherRequests = requests.filter((r) => r.status !== "PENDING");
@@ -365,7 +381,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                     <div className="font-bold text-gray-900 text-sm">
                       {req.source.grade}학년 {req.source.classNum}반{" "}
                       <span className="text-indigo-700">
-                        {DAY_NAMES[req.source.day]}요일 {req.source.period}교시
+                        {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
                       </span>
                     </div>
                     <div className="text-gray-600 font-medium">
@@ -378,13 +394,16 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                     <div className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">
                       🎯 신청 교체안 (엔진 계산 결과)
                     </div>
-                    {req.type === "swap" ? (
+                    {req.type === "swap" || req.type === "cross_swap" ? (
                       <>
                         <div className="font-bold text-gray-900 text-sm">
                           옮겨갈 교시:{" "}
                           <span className="text-indigo-700">
-                            {DAY_NAMES[req.candidate.targetDay || 0]}요일{" "}
-                            {req.candidate.targetPeriod}교시
+                            {formatSlotWithDate(
+                              req.targetWeekId || (req.candidate as any).targetWeekId || req.weekId,
+                              req.candidate.targetDay,
+                              req.candidate.targetPeriod
+                            )}
                           </span>
                         </div>
                         <div className="text-gray-700 font-medium">

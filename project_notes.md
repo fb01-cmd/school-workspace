@@ -44,6 +44,9 @@
 
 
 
+
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2963,6 +2966,29 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
      - `isManager` (`role === "super_admin" || settings.managerEmails 포함`) 조건부 렌더링 적용.
      - 일반 교사에게는 주 선택 드롭다운 2곳(내 시간표 "조회할 주", 다른 교사 시간표 조회)에서 `"기초시간표"` 옵션이 렌더링되지 않고 주간 합성본 주 목록만 노출되도록 구현.
 - **주의**: 실서버 승인 조작 금지. `tteacher@` 파일럿 계정으로 화면 확인 권장.
+
+## [2026-08-04] Antigravity → Claude/사용자 (파일럿 피드백 3건 2차 사이클 ①·② 구현 완료)
+
+- **변경 파일**:
+  - `src/components/admin/timetable/TeacherTimetableTab.tsx`
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`
+  - `src/components/admin/timetable/SwapRequestLedgerTab.tsx`
+  - `src/components/admin/timetable/DirectSubstituteTab.tsx`
+  - `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+- **수정 내용**:
+  1. **`TeacherTimetableTab` 검색창 드롭다운 교체**:
+     - 기존 `AutocompleteInput` (users:all 검색)을 교사 포털과 동일한 `/api/timetable/view` (`action: "teachers"`) 가나다순 드롭다운 `<select>`로 교체.
+     - 서버 측 가상 계정(창체·SLAT 등) 및 동시수업 블록 계정 필터링 자동 반영.
+  2. **신청·승인 화면 날짜 명시 ("8/13(목) 2교시" 형식)**:
+     - `formatSlotWithDate(weekId, day, period)` 헬퍼 구현 (`weekId` 월요일 기준 `+(day-1)` 계산).
+     - 적용 화면 4곳:
+       - 교사 포털 신청 내역 카드 (`MyRequestsTab`)
+       - 신청 제출 전 확인 및 시간표 변화 요약 카드 (`MyTimetableTab`)
+       - 요청대장 카드 (`SwapRequestLedgerTab` — 원 수업 & 신청 교체안 양쪽)
+       - 일과계 직권 배정 미리보기 (`DirectSubstituteTab`)
+- **주의**: 요청대장의 대기 중 신청 데이터는 승인·반려 조작 없이 안전하게 상태 보존함.
+
 
 
 ## [2026-08-04] Claude → Antigravity (파일럿 피드백 3건 — 실명 서버 수정 완료, UI 2건 스펙 확정)

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import { TeacherTimetableCell } from "@/lib/timetable/types";
 
 interface TeacherTimetableTabProps {
@@ -15,11 +14,30 @@ export default function TeacherTimetableTab({ periodsPerDay = 7 }: TeacherTimeta
   const myEmail = userData?.email?.toLowerCase() || "";
 
   const [targetEmail, setTargetEmail] = useState(myEmail);
-  const [teacherName, setTeacherName] = useState(myEmail.split("@")[0]);
+  const [teacherName, setTeacherName] = useState((userData as any)?.displayName || (userData as any)?.name || myEmail.split("@")[0]);
   const [cells, setCells] = useState<TeacherTimetableCell[]>([]);
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 교사 목록 드롭다운용 (action: "teachers")
+  const [teacherList, setTeacherList] = useState<{ email: string; name: string }[]>([]);
+  const [teacherListLoading, setTeacherListLoading] = useState(false);
+
+  useEffect(() => {
+    setTeacherListLoading(true);
+    fetch("/api/timetable/view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "teachers" }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.data) setTeacherList(data.data as { email: string; name: string }[]);
+      })
+      .catch(() => {})
+      .finally(() => setTeacherListLoading(false));
+  }, []);
 
   const DAYS = [
     { num: 1, label: "월요일" },
@@ -94,10 +112,13 @@ export default function TeacherTimetableTab({ periodsPerDay = 7 }: TeacherTimeta
           </p>
         </div>
 
-        {/* 교사 검색 Autocomplete */}
-        <div className="flex items-center gap-2 w-full md:w-80">
+        {/* 교사 선택 드롭다운 (action: "teachers") */}
+        <div className="flex items-center gap-2 w-full md:w-auto">
           <button
-            onClick={() => setTargetEmail(myEmail)}
+            onClick={() => {
+              setTargetEmail(myEmail);
+              setTeacherName((userData as any)?.displayName || myEmail.split("@")[0]);
+            }}
             className={`px-3 py-2 rounded-lg text-xs font-bold shrink-0 transition-colors ${
               targetEmail.toLowerCase() === myEmail
                 ? "bg-indigo-600 text-white shadow-sm"
@@ -106,17 +127,30 @@ export default function TeacherTimetableTab({ periodsPerDay = 7 }: TeacherTimeta
           >
             내 시간표
           </button>
-          <AutocompleteInput
+          <select
             value={targetEmail}
-            onChange={(val) => setTargetEmail(val)}
-            type="user"
-            domain={domain}
-            placeholder="다른 교사 검색 (이메일/성명)"
-            onSelect={(email, name) => {
+            onChange={(e) => {
+              const email = e.target.value;
               setTargetEmail(email);
-              if (name) setTeacherName(name);
+              const found = teacherList.find((t) => t.email === email);
+              if (found) setTeacherName(found.name);
             }}
-          />
+            disabled={teacherListLoading}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-xs font-medium min-w-[10rem] max-w-xs disabled:opacity-60 bg-white focus:ring-2 focus:ring-indigo-500"
+          >
+            {teacherListLoading && <option value="">불러오는 중...</option>}
+            {!teacherListLoading && (
+              <option value={myEmail}>내 시간표 ({(userData as any)?.displayName || myEmail.split("@")[0]})</option>
+            )}
+            {!teacherListLoading &&
+              teacherList
+                .filter((t) => t.email.toLowerCase() !== myEmail)
+                .map((t) => (
+                  <option key={t.email} value={t.email}>
+                    {t.name}
+                  </option>
+                ))}
+          </select>
         </div>
       </div>
 

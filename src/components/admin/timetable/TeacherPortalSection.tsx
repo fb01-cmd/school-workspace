@@ -57,6 +57,23 @@ function getWeekRangeLabel(weekStartDate?: string): string {
   return `${startMD}(월)~${endMD}(금)`;
 }
 
+/** weekId(월요일 YYYY-MM-DD), day(1~5), period(1~) 로 "8/13(목) 2교시" 형식 문자열 생성 */
+function formatSlotWithDate(weekId?: string, day?: number, period?: number): string {
+  if (!day || !period) return "";
+  const dayStr = DAY_LABEL[day] || `${day}`;
+  if (!weekId) return `${dayStr}요일 ${period}교시`;
+
+  const parts = weekId.split("-").map((v) => parseInt(v, 10));
+  if (parts.length < 3 || isNaN(parts[0])) return `${dayStr}요일 ${period}교시`;
+
+  const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+  dateObj.setDate(dateObj.getDate() + (day - 1));
+  const m = dateObj.getMonth() + 1;
+  const d = dateObj.getDate();
+
+  return `${m}/${d}(${dayStr}) ${period}교시`;
+}
+
 /** 주 목록에서 기본 선택할 주 ID 계산 (현재 주 → 가장 가까운 미래 주 → 첫 주) */
 function findDefaultWeekId(weeks: TimetableWeek[]): string {
   if (!weeks || weeks.length === 0) return "";
@@ -705,7 +722,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
           <div className="w-80 shrink-0 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="bg-gradient-to-r from-indigo-900 to-indigo-700 px-4 py-3">
               <div className="text-xs font-bold text-white">
-                수업교환 신청 — {DAY_LABEL[selectedCell.day]}요일 {selectedCell.period}교시
+                수업교환 신청 — {formatSlotWithDate(selectedWeekId, selectedCell.day, selectedCell.period)}
               </div>
               <div className="text-[11px] text-indigo-300 mt-0.5">
                 {selectedCell.subjectName} · {selectedCell.grade}-{selectedCell.classNum}반
@@ -782,7 +799,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                               }}
                             >
                               <div className="font-bold text-gray-900">
-                                {DAY_LABEL[sc.targetDay]}요일 {sc.targetPeriod}교시 ↔ {sc.counterpartName}
+                                {formatSlotWithDate(effectiveTargetWeekId, sc.targetDay, sc.targetPeriod)} ↔ {sc.counterpartName}
                               </div>
                               <div className="text-gray-500">{sc.counterpartSubjectName}</div>
                               {sc.score > 0 ? (
@@ -1085,19 +1102,19 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       <div className="text-gray-800">
                         <span className="font-bold text-indigo-900">내 {selectedCell.subjectName}({selectedCell.grade}-{selectedCell.classNum}반):</span>{" "}
                         <span className="font-bold text-red-600">
-                          {isCrossWeek ? `[${sourceWeekObj?.startDate || ""}] ` : ""}{DAY_LABEL[selectedCell.day]}{selectedCell.period}교시 ➖
+                          {formatSlotWithDate(sourceWeekObj?.startDate || selectedWeekId, selectedCell.day, selectedCell.period)} ➖
                         </span> →{" "}
                         <span className="font-bold text-green-700">
-                          {isCrossWeek ? `[${targetWeekObj?.startDate || ""}] ` : ""}{DAY_LABEL[applyingCandidate.targetDay]}{applyingCandidate.targetPeriod}교시 ➕
+                          {formatSlotWithDate(targetWeekObj?.startDate || effectiveTargetWeekId, applyingCandidate.targetDay, applyingCandidate.targetPeriod)} ➕
                         </span>
                       </div>
                       <div className="text-gray-800">
                         <span className="font-bold text-indigo-900">상대 {applyingCandidate.counterpartName} {applyingCandidate.counterpartSubjectName}:</span>{" "}
                         <span className="font-bold text-red-600">
-                          {isCrossWeek ? `[${targetWeekObj?.startDate || ""}] ` : ""}{DAY_LABEL[applyingCandidate.targetDay]}{applyingCandidate.targetPeriod}교시 ➖
+                          {formatSlotWithDate(targetWeekObj?.startDate || effectiveTargetWeekId, applyingCandidate.targetDay, applyingCandidate.targetPeriod)} ➖
                         </span> →{" "}
                         <span className="font-bold text-green-700">
-                          {isCrossWeek ? `[${sourceWeekObj?.startDate || ""}] ` : ""}{DAY_LABEL[selectedCell.day]}{selectedCell.period}교시 ➕
+                          {formatSlotWithDate(sourceWeekObj?.startDate || selectedWeekId, selectedCell.day, selectedCell.period)} ➕
                         </span>
                       </div>
                     </div>
@@ -1287,14 +1304,11 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                       )}
                     </div>
                     <div className="text-[11px] text-gray-600">
-                      원 수업: {DAY_LABEL[req.source.day]}요일 {req.source.period}교시 ({req.source.subjectName}, {req.source.grade}-{req.source.classNum}반)
+                      원 수업: {formatSlotWithDate(req.weekId, req.source.day, req.source.period)} ({req.source.subjectName}, {req.source.grade}-{req.source.classNum}반)
                     </div>
                     {(req.type === "swap" || req.type === "cross_swap") && req.candidate.targetDay != null && (
                       <div className="text-[11px] text-gray-600">
-                        교환: {DAY_LABEL[req.candidate.targetDay!]}요일 {req.candidate.targetPeriod}교시 ({req.candidate.counterpartName})
-                        {isCross && targetWeekVal && (
-                          <span className="ml-1 text-indigo-700 font-semibold">[{targetWeekVal} 주]</span>
-                        )}
+                        교환: {formatSlotWithDate(targetWeekVal || req.weekId, req.candidate.targetDay!, req.candidate.targetPeriod!)} ({req.candidate.counterpartName})
                       </div>
                     )}
                     {req.type === "substitute" && (

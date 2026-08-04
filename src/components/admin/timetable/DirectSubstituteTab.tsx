@@ -180,7 +180,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       }
 
       setSuccessMsg(
-        `⚡ 직권 배정 완료! ${grade}학년 ${classNum}반 ${day}요일 ${period}교시 수업이 성공적으로 처리 및 반영되었습니다.`
+        `⚡ 직권 배정 완료! ${grade}학년 ${classNum}반 ${formatSlotWithDate(selectedWeekId, day, period)} 수업이 성공적으로 처리 및 반영되었습니다.`
       );
       setSelectedCandidate(null);
       // 리프레시
@@ -193,6 +193,22 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   };
 
   const DAY_NAMES = ["", "월", "화", "수", "목", "금"];
+
+  const formatSlotWithDate = (weekId?: string, d?: number, p?: number): string => {
+    if (!d || !p) return "";
+    const dayStr = DAY_NAMES[d] || `${d}`;
+    if (!weekId) return `${dayStr}요일 ${p}교시`;
+
+    const parts = weekId.split("-").map((v) => parseInt(v, 10));
+    if (parts.length < 3 || isNaN(parts[0])) return `${dayStr}요일 ${p}교시`;
+
+    const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+    dateObj.setDate(dateObj.getDate() + (d - 1));
+    const m = dateObj.getMonth() + 1;
+    const dateVal = dateObj.getDate();
+
+    return `${m}/${dateVal}(${dayStr}) ${p}교시`;
+  };
 
   return (
     <div className="space-y-6">
@@ -393,7 +409,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-bold text-gray-900">
-                            {DAY_NAMES[cand.targetDay]}요일 {cand.targetPeriod}교시
+                            {formatSlotWithDate(selectedWeekId, cand.targetDay, cand.targetPeriod)}
                           </span>
                           <span className="font-bold text-indigo-700">
                             상대: {cand.counterpartName} ({cand.counterpartSubjectName})
