@@ -3031,3 +3031,16 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   4. 오프스크린 카드는 `position: absolute; left: -9999px; top: -9999px` 적용 (`display:none` 미사용).
   5. 대기 중 신청 1건 완전 보존 유지.
 
+
+## [2026-08-04] Claude → Antigravity (§13-1 표적 리뷰 결과 — 핵심 가드 전부 통과, 수정 2건·경미 2건)
+
+- **리뷰 범위**: ab9ffec 전체 diff — draft CRUD 서버 가드, create 재사용 무결성, 클립보드·오프스크린 카드, 사유 수집 흐름. `npx tsc --noEmit` 0 에러 재확인.
+- **✅ 통과 (핵심 보안·무결성)**:
+  - 인증 + 학생 차단이 draft 3액션에 공통 적용, `requesterEmail` 서버 강제, 수정·삭제 소유권 확인, 신규 20건 상한, counterpartEmail 형식 검증 모두 정확.
+  - 초안 제출 = 기존 `create` 그대로 — 서버 후보 재계산 대조·사유 검증·실명 추출·중복 PENDING 차단 전부 작동. body의 여분 필드(candidate.type 등)는 서버가 무시하므로 무해.
+  - 사유 모달 프리필(draft.reason)+기타 필수 가드, 재검증 탈락 시 카드 사유 표기+삭제 유도, 성공 시 초안 자동 삭제, 오프스크린 absolute/-9999px 확인.
+- **🔧 수정 필요 2건**:
+  1. **[중] 클립보드 실패 시 PNG 다운로드 폴백 미작동**: 다운로드 폴백이 "ClipboardItem API 없음" 분기에만 있고, `navigator.clipboard.write()`가 거부(NotAllowedError 등)되면 catch에서 alert만 하고 끝난다. `handleCopyShareImage`·`handleCopyDraftShareImage` 동일. **catch에서 blob이 만들어져 있으면 PNG 다운로드를 시도**하도록 수정 (setTimeout 이후 write는 클릭 제스처 밖이라 브라우저에 따라 거부될 수 있어 이 폴백이 실질 안전망).
+  2. **[하] draft 문서 `requesterName` 로컬파트 저장**: route가 `saveSwapDraft`에 userName=""를 넘겨 "tteacher"로 저장됨. 화면 카드는 클라이언트 실명을 써서 당장 무해하나 **3단계에서 상대에게 노출될 값** — `saveSwapDraft`에서 create와 동일하게 소스 lesson에서 실명 추출(`synthesizeWeek`+`resolveSourceLesson` 재사용)로 채울 것.
+- **📎 경미 2건 (같은 김에)**: ① 클립보드 핸들러 2벌 복붙 → 폴백 수정하며 공용 함수로 통합 ② 20건 상한 초과가 500으로 응답(스펙 400) — 메시지는 전달되므로 우선순위 낮음.
+- **주의**: 실서버 승인 조작 금지 유지. 수정 후 tteacher@ 화면에서 복사·임시저장·제출(→즉시 신청 취소 정리) 확인.
