@@ -1034,3 +1034,38 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **Claude 직접 수정 2건**: ① `scripts/public/` 잔재 아이콘 5종 삭제 — 커밋된 `public/` 본과 바이트 동일(cmp) 확인, 생성 스크립트 출력 경로는 `<root>/public`으로 정상이라 초기 실행 잔재로 판단. ② `layout.tsx` viewport의 `maximumScale: 1` 제거 — 모바일 핀치 줌 차단은 접근성 손해이고 PWA 설치 요건과 무관.
 - **비판 1건 (경미, Antigravity 관행)**: 이번 커밋에 핸드오버 본문이 없었음(작업 중 파일 목록 등록·해제만 있음). 핸드오버 규칙은 코드 커밋에도 적용됨 — 다음 작업부터 준수 요망.
 - **잔여 (로드맵 §2 PWA 항목의 ② 자동 시작)**: 교무실 PC의 Chrome 관리 대상 여부 확인 → (a) 교사 안내문(chrome://apps 2클릭) vs (b) 관리 콘솔 `WebAppSettings` 정책(강제 설치+`run_on_os_login`) 중 Claude가 방식 결정. 코드 작업 아님.
+
+## [2026-08-05] Antigravity → Claude / 사용자
+- **작업 내용**: 사용자 노출 전체 문구(버튼, 배지, 안내, 모달, 오류 메시지) 내 개발자 용어를 교사 눈높이 친화 표현으로 변경.
+- **수정 파일 및 문자열 변경 내역**:
+  1. `src/components/admin/RosterApiKeyManager.tsx`:
+     - `API 키` → `연동 키` (최초 안내 시 `연동 키 (API 키)` 표현 병기)
+     - `평문 API 키` → `발급된 연동 키`
+     - `저장소에는 SHA-256 해시값만 보관` → `시스템에는 암호화된 형태로만 저장`
+     - `인증 방식 (HTTP Header)` → `인증 방식 (요청 헤더에 연동 키 포함)`
+     - `키 식별자 (Prefix)` → `키 앞자리`
+     - `키 폐기` / `폐기완료` → `사용 중단` / `사용 중단됨`
+     - `Google Workspace Admin Console` → `Google Workspace 관리자 콘솔`
+     - `GCP Console` → `Google Cloud 콘솔`
+  2. `src/components/admin/ChromeBookmarks.tsx`:
+     - `북마크 변경 히스토리 감사로그` → `북마크 변경 이력 기록`
+     - `구글 Workspace 크롬 정책 API 권한(DWD) 미활성 안내` → `구글 Workspace 크롬 정책 API 연동 권한 미활성 안내`
+     - `도메인 위임 권한` → `서비스 연동 권한`
+     - `스코프가 API 콘솔에 등록되지 않았거나` → `접근 권한이 구글 관리자 화면에 등록되지 않았거나`
+     - `[로컬 DB 백업 모드]` → `[오프라인 임시 저장 모드]`
+     - `API 반환 상세 오류` → `API 오류 상세`
+  3. `src/components/admin/GroupList.tsx`:
+     - `Google Admin의 '도메인 범위 위임'에서 '...' 스코프 권한 대행` → `Google Workspace 관리자 화면에서 서비스 연동 권한('...')`
+  4. `src/components/admin/OUConfiguration.tsx` & `OUManager.tsx`:
+     - `구글 워크스페이스 연동 변수(GCP Credentials)` → `구글 워크스페이스 연동 설정`
+     - `가짜 데이터 모드(Mock Mode)` → `테스트 모드`
+  5. `src/components/admin/UserList.tsx`:
+     - `가짜 데이터 모드(Mock Mode)` → `테스트 모드`
+  6. `src/components/RouteGuard.tsx`:
+     - `인증 확인 중...` → `로그인 상태 확인 중...`
+  7. `src/app/admin/page.tsx`:
+     - `(GCP 연동 완료)` → `(구글 서비스 연동 완료)`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` 진행 완료 / 확인 예정
+- **주의**: 기능 및 백엔드 API/로직은 일절 수정하지 않으며 사용자 렌더링 문자열만 수정함.

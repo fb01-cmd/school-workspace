@@ -229,7 +229,7 @@ export default function ChromeBookmarks() {
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
             }`}
           >
-            📋 북마크 변경 히스토리 감사로그
+            📋 북마크 변경 이력 기록
           </button>
         </nav>
       </div>
@@ -238,19 +238,19 @@ export default function ChromeBookmarks() {
         <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-md p-4 text-xs font-semibold space-y-1">
           <p className="flex items-center gap-1.5 text-amber-800 font-bold text-sm">
             <span>⚠️</span>
-            <span>구글 Workspace 크롬 정책 API 권한(DWD) 미활성 안내</span>
+            <span>구글 Workspace 크롬 정책 API 연동 권한 미활성 안내</span>
           </p>
           <p className="leading-relaxed">
-            현재 구글 Workspace 최고관리자의 도메인 위임 권한 중 
+            현재 구글 Workspace 최고관리자의 서비스 연동 권한 중 
             <span className="font-mono bg-amber-100 px-1 py-0.5 rounded text-[10px] mx-1">https://www.googleapis.com/auth/chrome.management.policy</span> 
-            스코프가 API 콘솔에 등록되지 않았거나 승인되지 않아 <strong>[로컬 DB 백업 모드]</strong>로 자동 전환하여 구동 중입니다.
+            접근 권한이 구글 관리자 화면에 등록되지 않았거나 승인되지 않아 <strong>[오프라인 임시 저장 모드]</strong>로 자동 전환하여 작동 중입니다.
           </p>
           <p className="text-[10px] text-amber-600 font-medium">
-            (북마크 편집 정보는 플랫폼 데이터베이스와 수정 이력에 정상 보관되나, 실제 학생 기기 크롬 브라우저 상단바에 즉시 배포되지는 않습니다. 도메인 위임이 활성화되면 실시간 동기화가 재개됩니다.)
+            (북마크 편집 정보는 플랫폼 데이터베이스와 수정 이력에 정상 보관되나, 실제 학생 기기 크롬 브라우저 상단바에 즉시 배포되지는 않습니다. 서비스 연동 권한이 활성화되면 실시간 동기화가 재개됩니다.)
           </p>
           {authWarning && (
             <p className="text-[10px] font-mono text-amber-500 mt-1.5 border-t border-amber-200/50 pt-1">
-              API 반환 상세 오류: {authWarning}
+              API 오류 상세: {authWarning}
             </p>
           )}
         </div>

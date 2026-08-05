@@ -287,7 +287,7 @@ export default function AdminPage() {
                     </p>
                     <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2 py-1 rounded">
                       <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                      구글 API 서버 통신 상태 정상 (GCP 연동 완료)
+                      구글 API 서버 통신 상태 정상 (구글 서비스 연동 완료)
                     </div>
                   </div>
                 </div>

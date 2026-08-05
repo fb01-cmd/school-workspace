@@ -852,7 +852,7 @@ export default function UserList() {
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6">
       {isMock && (
         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md p-4 text-sm">
-          💡 <strong>안내:</strong> 현재 가짜 데이터 모드(Mock Mode)로 작동 중입니다.
+          💡 <strong>안내:</strong> 현재 <strong>테스트 모드</strong>로 작동 중입니다.
         </div>
       )}
 

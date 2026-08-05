@@ -112,7 +112,7 @@ export default function RouteGuard({
   if (loading || !user || !userData || !allowedRoles.includes(userData.role)) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
-        <p className="text-gray-500">인증 확인 중...</p>
+        <p className="text-gray-500">로그인 상태 확인 중...</p>
       </div>
     );
   }

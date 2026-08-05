@@ -117,7 +117,7 @@ export default function OUManager() {
     <div className="space-y-8">
       {isMock && (
         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md p-4 mb-4 text-sm">
-          💡 <strong>안내:</strong> 현재 구글 워크스페이스 연동 변수(GCP Credentials)가 설정되지 않아 <strong>가짜 데이터 모드(Mock Mode)</strong>로 작동 중입니다. 자유롭게 가상의 조직단위를 생성하고 편집해 보실 수 있습니다.
+          💡 <strong>안내:</strong> 현재 구글 워크스페이스 연동 설정이 완료되지 않아 <strong>테스트 모드</strong>로 작동 중입니다. 자유롭게 가상의 조직단위를 생성하고 편집해 보실 수 있습니다.
         </div>
       )}
 

@@ -152,7 +152,7 @@ export default function GroupList() {
       } else {
         console.warn("Failed to load group settings:", data.error);
         if (data.error?.includes("unauthorized_client")) {
-          setError("⚠️ 그룹 권한 설정을 불러오지 못했습니다. Google Admin의 '도메인 범위 위임'에서 'https://www.googleapis.com/auth/apps.groups.settings' 스코프 권한 대행이 승인되어 있는지 확인해주세요.");
+          setError("⚠️ 그룹 권한 설정을 불러오지 못했습니다. Google Workspace 관리자 화면에서 서비스 연동 권한('https://www.googleapis.com/auth/apps.groups.settings')이 승인되어 있는지 확인해주세요.");
         } else {
           setError(`그룹 권한 설정을 불러오지 못했습니다: ${data.error}`);
         }
