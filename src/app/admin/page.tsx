@@ -373,10 +373,11 @@ export default function AdminPage() {
 
   return (
     <RouteGuard allowedRoles={["teacher", "super_admin"]}>
-      <div className="min-h-screen bg-gray-50 flex">
+      {/* h-screen + main overflow-auto: 본문을 main 스크롤로 고정해야 우측 미리보기 패널의 sticky가 작동한다 */}
+      <div className="h-screen bg-gray-50 flex">
         {/* Left Sidebar */}
         <aside
-          className={`bg-indigo-950 text-gray-300 w-64 flex-shrink-0 transition-all flex flex-col justify-between ${
+          className={`bg-indigo-950 text-gray-300 w-64 flex-shrink-0 transition-all flex flex-col justify-between overflow-y-auto ${
             isSidebarOpen ? "block" : "hidden"
           } md:flex`}
         >
