@@ -34,6 +34,7 @@ const ClassroomCleanupTab = dynamic(() => import("@/components/admin/ClassroomCl
 const DisciplineSection = dynamic(() => import("@/components/admin/discipline/DisciplineSection"), { loading: TabLoading });
 const TimetableSection = dynamic(() => import("@/components/admin/timetable/TimetableSection"), { loading: TabLoading });
 const TeacherPortalSection = dynamic(() => import("@/components/admin/timetable/TeacherPortalSection"), { loading: TabLoading });
+import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt";
 
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { TimetableSettings } from "@/lib/timetable/types";
@@ -756,6 +757,7 @@ export default function AdminPage() {
               </h1>
             </div>
             <div className="flex items-center gap-3">
+              <PWAInstallPrompt />
               <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
                 isSuperAdmin ? "bg-indigo-100 text-indigo-800" : "bg-gray-100 text-gray-800"
               }`}>

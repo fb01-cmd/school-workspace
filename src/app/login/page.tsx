@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signInWithGoogle, logOut } from "@/lib/firebase/auth";
 import { useAuth } from "@/context/AuthContext";
+import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -92,6 +93,9 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-gray-600">
             구글 워크스페이스 계정 및 학적 관리 시스템
           </p>
+          <div className="mt-3 flex justify-center">
+            <PWAInstallPrompt />
+          </div>
         </div>
         
         <div className="mt-8 space-y-6">
