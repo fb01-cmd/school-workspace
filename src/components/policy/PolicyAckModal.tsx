@@ -1,14 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { POLICY_VERSION, POLICY_EFFECTIVE_DATE } from "@/lib/policy/version";
 import Link from "next/link";
 
 export default function PolicyAckModal() {
   const { userData, refreshUserData } = useAuth();
+  const pathname = usePathname();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 전체 고지 페이지에서는 모달을 띄우지 않는다 — 확인 전에 전문을 자세히 읽으러
+  // 들어온 페이지를 모달이 가로막으면 고지 취지가 훼손된다. 앱 화면으로 돌아오면 다시 뜬다.
+  if (pathname === "/privacy") return null;
 
   if (!userData) return null;
 
