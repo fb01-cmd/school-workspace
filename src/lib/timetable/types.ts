@@ -423,6 +423,7 @@ export interface SwapDraft {
   consentStatus: ConsentStatus;
   createdAt: number;
   updatedAt: number;
+  conditional?: boolean; // 조건부 후보 여부 (2026-08-05)
 }
 
 // ── 주간 합성 (weekly.ts 출력) ────────────────────────────────
@@ -511,6 +512,7 @@ export interface SwapCandidate {
   penalties: string[]; // 사람이 읽는 감점 사유 전체 (일과계 요청대장 표시용 유지)
   penaltyDetails: PenaltyDetail[]; // 분류된 감점 (§14-2 v2 — 교사 화면은 scope==="counterpart"만)
   counterpartScore: number; // 상대 교사 관련 감점 합 — 교사 화면 표시·1차 정렬 기준
+  conditional?: boolean; // 내 대기 신청 승인 전제 성립 여부 (2026-08-05)
 }
 
 export interface SubstituteCandidate {

@@ -1113,6 +1113,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               penalties: sc.penalties,
             },
             reason: reason,
+            conditional: !!sc.conditional,
           },
         }),
       });
@@ -1841,7 +1842,7 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
         const data = await res.json();
         const loadedDrafts: SwapDraft[] = data.drafts || [];
         setDrafts(loadedDrafts);
-        setSelectedDraftIds(loadedDrafts.map((d) => d.id));
+        setSelectedDraftIds(loadedDrafts.filter((d) => !d.conditional).map((d) => d.id));
       }
     } catch (e) {
       console.error("fetchDrafts error:", e);
@@ -2300,12 +2301,15 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      checked={selectedDraftIds.length === drafts.length && drafts.length > 0}
+                      checked={
+                        drafts.filter((d) => !d.conditional).length > 0 &&
+                        drafts.filter((d) => !d.conditional).every((d) => selectedDraftIds.includes(d.id))
+                      }
                       onChange={(e) => {
-                        if (e.target.checked) setSelectedDraftIds(drafts.map((d) => d.id));
+                        if (e.target.checked) setSelectedDraftIds(drafts.filter((d) => !d.conditional).map((d) => d.id));
                         else setSelectedDraftIds([]);
                       }}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                     />
                     <span className="text-xs font-bold text-gray-800">
                       전체 선택 ({selectedDraftIds.length}/{drafts.length}건 선택됨)
@@ -2379,7 +2383,7 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
 
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1 text-xs">
-                        <div className="font-bold text-gray-900 flex items-center gap-2">
+                        <div className="font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                           <input
                             type="checkbox"
                             checked={selectedDraftIds.includes(draft.id)}
@@ -2387,12 +2391,17 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                               if (e.target.checked) setSelectedDraftIds((prev) => [...prev, draft.id]);
                               else setSelectedDraftIds((prev) => prev.filter((id) => id !== draft.id));
                             }}
-                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0"
+                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0 cursor-pointer"
                           />
                           <span className="text-indigo-900">{draft.sourceWeekId} 주</span>
                           {draft.targetWeekId && draft.targetWeekId !== draft.sourceWeekId && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">
                               ↔ {draft.targetWeekId} 주 교차 주
+                            </span>
+                          )}
+                          {draft.conditional && (
+                            <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-extrabold px-1.5 py-0.5 rounded">
+                              ⏳ 조건부 — 내 대기 신청 승인 전제
                             </span>
                           )}
                           <span className="text-gray-400 text-[10px]">
@@ -2408,6 +2417,11 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                         {draft.reason && (
                           <div className="text-gray-500 text-[11px]">
                             저장 사유: {draft.reason.type}{draft.reason.note ? ` (${draft.reason.note})` : ""}
+                          </div>
+                        )}
+                        {draft.conditional && (
+                          <div className="text-[11px] font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1">
+                            ⚠️ 내 대기 신청이 모두 승인된 후 신청 가능
                           </div>
                         )}
                       </div>

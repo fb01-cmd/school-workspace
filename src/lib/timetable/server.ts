@@ -1399,6 +1399,43 @@ export async function computeCandidates(
   const sourceSubjectName = src.lesson!.subjectName;
   const fullSource: SwapSourceSlot = { ...source, subjectName: sourceSubjectName };
 
+  // 조건부 판별을 위해 base (가상 합성 없는 확정 시간표) 교환 후보 키 Set 추출 (overlay 항목이 1건 이상일 때만)
+  let baseKeySet: Set<string> | null = null;
+  const overlayCount = overlay ? (overlay.pendingCount + overlay.draftCount) : 0;
+  if (overlayCount > 0) {
+    try {
+      if (targetWeekId && targetWeekId !== weekId) {
+        const targetWeekForBase = await loadWeek(domain, targetWeekId);
+        if (targetWeekForBase && targetWeekForBase.termId === week.termId) {
+          const { grids: baseGrids } = await synthesizeWeek(domain, week);
+          const { grids: baseTargetGrids } = await synthesizeWeek(domain, targetWeekForBase);
+          const baseCrossRes = findCrossSwapCandidates(
+            baseGrids, week, baseTargetGrids, targetWeekForBase, settings, requesterEmail, fullSource
+          );
+          if (!baseCrossRes.error) {
+            baseKeySet = new Set(
+              baseCrossRes.candidates.map(
+                (c) => `${c.targetDay}-${c.targetPeriod}-${c.counterpartEmail.toLowerCase()}`
+              )
+            );
+          }
+        }
+      } else {
+        const { grids: baseGrids } = await synthesizeWeek(domain, week);
+        const baseSwapRes = findSwapCandidates(baseGrids, week, settings, requesterEmail, fullSource);
+        if (!baseSwapRes.error) {
+          baseKeySet = new Set(
+            baseSwapRes.candidates.map(
+              (c) => `${c.targetDay}-${c.targetPeriod}-${c.counterpartEmail.toLowerCase()}`
+            )
+          );
+        }
+      }
+    } catch {
+      // base 계산 실패 시 무시
+    }
+  }
+
   // ── 교차 주 맞교환 (§4-3b): 두 합성본 기준 별도 엔진. 특별보강은 교차 주 개념이 없음 ──
   if (targetWeekId && targetWeekId !== weekId) {
     const targetWeek = await loadWeek(domain, targetWeekId);
@@ -1417,8 +1454,20 @@ export async function computeCandidates(
         error: crossRes.error,
       };
     }
+
+    let finalCandidates = crossRes.candidates;
+    if (baseKeySet) {
+      finalCandidates = finalCandidates.map((c) => {
+        const key = `${c.targetDay}-${c.targetPeriod}-${c.counterpartEmail.toLowerCase()}`;
+        if (!baseKeySet!.has(key)) {
+          return { ...c, conditional: true };
+        }
+        return c;
+      });
+    }
+
     return {
-      swapCandidates: crossRes.candidates,
+      swapCandidates: finalCandidates,
       substituteCandidates: [],
       sourceSubjectName,
       targetWeekId,
@@ -1438,6 +1487,17 @@ export async function computeCandidates(
     return { swapCandidates: [], substituteCandidates: [], sourceSubjectName, error: swapRes.error };
   }
 
+  let finalCandidates = swapRes.candidates;
+  if (baseKeySet) {
+    finalCandidates = finalCandidates.map((c) => {
+      const key = `${c.targetDay}-${c.targetPeriod}-${c.counterpartEmail.toLowerCase()}`;
+      if (!baseKeySet!.has(key)) {
+        return { ...c, conditional: true };
+      }
+      return c;
+    });
+  }
+
   const allTeachers = collectTermTeachers(term, grids);
   const termChanges = await loadTermChanges(domain, week.termId);
   const substituteTotals = countSubstituteTotals(termChanges);
@@ -1452,7 +1512,7 @@ export async function computeCandidates(
   );
 
   return {
-    swapCandidates: swapRes.candidates,
+    swapCandidates: finalCandidates,
     substituteCandidates: subRes.candidates,
     sourceSubjectName,
     ...(overlay
@@ -1508,7 +1568,33 @@ export async function createSwapRequest(
         c.targetPeriod === params.candidate.targetPeriod &&
         c.counterpartEmail === (params.candidate.counterpartEmail || "").trim().toLowerCase()
     );
-    if (!match) throw new Error("선택한 후보가 더 이상 유효하지 않습니다. 후보를 다시 조회해 주세요.");
+    if (!match) {
+      // 실패 시에만 whatIf: { includeMyPending: true, includeDrafts: false }로 한 번 더 계산해, 거기에 해당 후보가 존재하면 구분된 사유 던짐
+      try {
+        const whatIfComputed = await computeCandidates(
+          domain,
+          requesterEmail,
+          params.weekId,
+          params.source,
+          targetWeekId,
+          { includeMyPending: true, includeDrafts: false }
+        );
+        const conditionalMatch = whatIfComputed.swapCandidates.find(
+          (c) =>
+            c.targetDay === params.candidate.targetDay &&
+            c.targetPeriod === params.candidate.targetPeriod &&
+            c.counterpartEmail === (params.candidate.counterpartEmail || "").trim().toLowerCase()
+        );
+        if (conditionalMatch) {
+          throw new Error(
+            "이 후보는 본인의 다른 대기 신청이 승인되어야 성립하는 조건부 후보입니다. 해당 신청이 승인된 뒤 다시 신청해 주세요."
+          );
+        }
+      } catch (e: any) {
+        if (e.message.includes("조건부 후보입니다")) throw e;
+      }
+      throw new Error("선택한 후보가 더 이상 유효하지 않습니다. 후보를 다시 조회해 주세요.");
+    }
     candidate = { ...match, ...(targetWeekId ? { targetWeekId } : {}) }; // 서버 계산값 스냅샷 (점수·감점 포함)
   } else {
     const match = computed.substituteCandidates.find(
@@ -2381,6 +2467,7 @@ export async function saveSwapDraft(
     note: draftData.note || "",
     consentStatus: "NONE" as const,
     updatedAt: now,
+    conditional: !!draftData.conditional,
     ...(draftId ? {} : { createdAt: now }),
   };
 
@@ -2403,6 +2490,7 @@ export async function saveSwapDraft(
     consentStatus: savedData.consentStatus || "NONE",
     createdAt: toMillis(savedData.createdAt) || now,
     updatedAt: toMillis(savedData.updatedAt) || now,
+    conditional: !!savedData.conditional,
   };
 }
 
@@ -2425,6 +2513,7 @@ export async function listSwapDrafts(domain: string, userEmail: string): Promise
       consentStatus: data.consentStatus || "NONE",
       createdAt: toMillis(data.createdAt) || Date.now(),
       updatedAt: toMillis(data.updatedAt) || Date.now(),
+      conditional: !!data.conditional,
     };
   });
   return drafts.sort((a, b) => b.updatedAt - a.updatedAt);

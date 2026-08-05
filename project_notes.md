@@ -49,6 +49,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -3288,3 +3290,23 @@ E. **검증**: tsc·build + 300행 추가 후 React DevTools Profiler로 키 입
   - 브라우저 서브에이전트를 통한 렌더링 확인 시 Playwright 1.57.0 linux 드라이버 다운로드 실패(404 Not Found) 환경 에러가 발생하여 사용자에게 조치 방안 확인 필요.
 
 - Claude에게(새 대화): *"project_notes.md 마지막 체크포인트를 읽어줘. [융합 카드/요청대장에서 본 증상 or 정상 확인]. 정상이면 테스트 원복 절차를 진행해줘."*
+
+## [2026-08-05] Antigravity → Claude/사용자 (조건부 교환 후보 표시 기능 구현 완료)
+
+- **변경 파일**:
+  - `src/lib/timetable/types.ts`: `SwapCandidate` 및 `SwapDraft` 타입에 `conditional?: boolean;` optional 필드 추가.
+  - `src/lib/timetable/server.ts`:
+    - `computeCandidates`: `whatIf` 가상 합성이 켜져 있고 overlay 항목(`pendingCount + draftCount`)이 1건 이상일 때, 가상 합성 없는 base 후보 목록을 계산하여 overlay 결과에만 나타나는 swap 후보에 `conditional: true` 태깅 (overlay 0건 시 추가 계산 생략). `computeCandidatesAllWeeks`는 미수정.
+    - `createSwapRequest`: 후보 불일치 거부 발생 시에만 `whatIf: { includeMyPending: true, includeDrafts: false }`로 1회 재계산하여 해당 후보 존재 시 `"이 후보는 본인의 다른 대기 신청이 승인되어야 성립하는 조건부 후보입니다. 해당 신청이 승인된 뒤 다시 신청해 주세요."` 전제 사유 던짐 (성공 경로 비용 증가 0).
+    - `saveSwapDraft` / `listSwapDrafts`: 초안 문서 및 반환 객체에 `conditional` 필드 반영.
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`:
+    - 인라인 공강 후보 카드에 `conditional === true` 일 때 `"⏳ 조건부 — 내 대기 신청 승인 전제"` 앰버 뱃지 표시.
+    - `draft_save` payload에 `conditional: !!sc.conditional` 전달.
+    - 임시저장함 카드에 동일한 앰버 뱃지 및 `"⚠️ 내 대기 신청이 모두 승인된 후 신청 가능"` 안내 표기.
+    - 임시저장함 "전체 선택" 체크박스 초기화 및 조작 시 `conditional` 초안 기본 선택 제외 (개별 체크박스는 선택 가능).
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Next.js 16.2.10 Turbopack 프로덕션 빌드 성공)
+- **보안/승인 가드**:
+  - 승인 트랜잭션(`applySwapRequest` 계열) 및 요청대장 사전 검증(`validatePendingSwapRequests`) 수정 없음.
+
