@@ -373,7 +373,7 @@ export default function RosterApiKeyManager() {
                   <p className="font-bold">명렬표 마스터 시트 갱신 성공!</p>
                   <p className="mt-0.5 text-emerald-800">
                     총 {sheetSyncResult.totalStudentsCount}명의 학생 데이터를 {sheetSyncResult.updatedGrades?.join(", ")}학년 탭에 성공적으로 작성하였습니다.
-                    {sheetSyncResult.isMock && " (가짜 데이터 모드)"}
+                    {sheetSyncResult.isMock && " (테스트 모드)"}
                   </p>
                 </div>
               </div>
