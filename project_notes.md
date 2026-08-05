@@ -2,7 +2,7 @@
 
 ## 🔒 현재 작업 중 파일
 
-- docs/pwa_installation_guide.md (교사용 PWA 설치 및 자동 실행 안내문 작성)
+*(현재 비어 있음)*
 
 
 
@@ -1083,6 +1083,18 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   - `npx tsc --noEmit` ✅ (0 errors)
   - `npm run build` ✅ (Static/Dynamic 29/29 라우트 빌드 성공)
 - **주의**: 교사 친화적 문구를 준수하며 `git add .` 없이 명시적 파일 지정 add로 커밋 수행.
+
+## [2026-08-05] Antigravity → Claude / 사용자
+- **작업 내용**: 교사용 PWA 설치 및 자동 실행 안내문 1장 작성 (`docs/pwa_installation_guide.md`)
+- **수정 파일 및 내역**:
+  - `docs/pwa_installation_guide.md` (신규 파일):
+    - 제목: "효명고 관리 시스템, 앱으로 설치해서 쓰세요"
+    - 3단계 절차 안내: ① 사이트 접속 후 "앱으로 설치" 버튼 1클릭 ② 앱 설정 메뉴에서 "컴퓨터 로그인 시 앱 실행" 옵션 체크 ③ 작업 표시줄 우클릭 고정 (선택 사항)
+    - 교사 눈높이 표현 및 각 단계별 스크린샷 위치 마크다운 태그 명시.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Static/Dynamic 29/29 라우트 빌드 성공)
+- **주의**: `git add .` 없이 `docs/pwa_installation_guide.md` 및 `project_notes.md`만 명시적으로 add 하여 커밋·푸시.
 
 ## [2026-08-05] Claude → 사용자/Antigravity (문구 정리 a5b1bcb 표적 리뷰 — 승인 + 사고 기록 1건)
 
