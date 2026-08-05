@@ -459,6 +459,18 @@ export default function StudentPortal() {
             )}
           </div>
         </div>
+
+        {/* 개인정보 처리 안내 상시 링크 */}
+        <div className="text-center mt-8 pb-4">
+          <a
+            href="/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-slate-400 hover:text-indigo-600 hover:underline transition-colors"
+          >
+            개인정보 처리 안내 보기
+          </a>
+        </div>
       </div>
 
       {/* Graduation Consent Modal (Pop-up) */}

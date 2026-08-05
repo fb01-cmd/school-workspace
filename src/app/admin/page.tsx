@@ -742,6 +742,14 @@ export default function AdminPage() {
             >
               로그아웃
             </button>
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-center mt-2 text-[11px] text-gray-500 hover:text-gray-300 hover:underline transition-colors"
+            >
+              개인정보 처리 안내
+            </a>
           </div>
         </aside>
 
