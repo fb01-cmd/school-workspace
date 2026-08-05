@@ -226,7 +226,7 @@ export default function TransferDeadlinePage() {
         </div>
 
         <p className="text-center text-slate-500 text-xs mt-4">
-          궁금하신 점은 학교 정보부에 문의해 주세요.
+          궁금하신 점은 playviolin@hmh.or.kr 로 문의해 주세요.
         </p>
       </div>
     </div>

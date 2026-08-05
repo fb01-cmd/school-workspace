@@ -59,7 +59,7 @@ const DEFAULT_EMAIL_BODY = `안녕하세요, {name}님.
 
   → https://gw.googleforeducation.org/관리하기/학년을-마무리-하며-할-일/졸업생을-위한-안내자료
 
-궁금하신 점은 학교 정보부에 문의해 주세요.
+궁금하신 점은 playviolin@hmh.or.kr 로 문의해 주세요.
 감사합니다.
 
 효명고등학교 드림`;

@@ -87,8 +87,8 @@ export default function PolicyAckModal() {
               <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/60 text-xs text-indigo-900 dark:text-indigo-200 leading-relaxed">
                 <strong>효명고등학교 관리 시스템 개인정보 처리 안내 (교직원용)</strong>
                 <p className="mt-1">
-                  이 시스템은 효명고등학교가 학교 업무(학생 계정 관리, 생활지도, 시간표 운영 등)를 처리하기 위해 운영합니다.
-                  학교의 법령상 사무 수행을 위한 것으로, 처리하는 정보와 방법을 아래와 같이 알려드립니다.
+                  본 시스템은 효명고등학교가 학생 계정 관리, 생활지도, 시간표 운영 등 학교의 법령상 사무를
+                  수행하기 위하여 운영합니다. 처리하는 개인정보의 항목과 방법을 다음과 같이 고지합니다.
                 </p>
               </div>
 
@@ -96,29 +96,29 @@ export default function PolicyAckModal() {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700">
                     <tr>
-                      <th className="p-2.5 w-1/4">무엇을 저장하나</th>
-                      <th className="p-2.5 w-1/4">왜</th>
-                      <th className="p-2.5 w-1/4">누가 볼 수 있나</th>
-                      <th className="p-2.5 w-1/4">언제까지</th>
+                      <th className="p-2.5 w-1/4">저장 항목</th>
+                      <th className="p-2.5 w-1/4">처리 목적</th>
+                      <th className="p-2.5 w-1/4">열람 범위</th>
+                      <th className="p-2.5 w-1/4">보유 기간</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-600 dark:text-slate-300">
                     <tr>
-                      <td className="p-2.5 font-semibold text-slate-900 dark:text-white">선생님의 이메일·이름·업무</td>
-                      <td className="p-2.5">로그인·권한 구분, 조직도</td>
+                      <td className="p-2.5 font-semibold text-slate-900 dark:text-white">교직원 이메일·성명·담당 업무</td>
+                      <td className="p-2.5">로그인 인증·권한 구분, 조직도 관리</td>
                       <td className="p-2.5">교직원</td>
                       <td className="p-2.5">전출·퇴직 시 삭제</td>
                     </tr>
                     <tr>
-                      <td className="p-2.5 font-semibold text-slate-900 dark:text-white">학생 이메일·이름·학번</td>
+                      <td className="p-2.5 font-semibold text-slate-900 dark:text-white">학생 이메일·성명·학번</td>
                       <td className="p-2.5">계정 관리, 명렬표, 수업 정리</td>
                       <td className="p-2.5">교직원</td>
                       <td className="p-2.5">졸업·전출 시 삭제</td>
                     </tr>
                     <tr>
                       <td className="p-2.5 font-semibold text-slate-900 dark:text-white">학생 생활지도 기록</td>
-                      <td className="p-2.5">학생 생활지도 (민감)</td>
-                      <td className="p-2.5">담임/권한 교사만</td>
+                      <td className="p-2.5">학생 생활지도(민감 정보)</td>
+                      <td className="p-2.5">담임(담당 학급)·권한 부여 교사</td>
                       <td className="p-2.5">졸업·제적 시 파기</td>
                     </tr>
                     <tr>
@@ -129,58 +129,58 @@ export default function PolicyAckModal() {
                     </tr>
                     <tr>
                       <td className="p-2.5 font-semibold text-slate-900 dark:text-white">시스템 작업 감사 로그</td>
-                      <td className="p-2.5">안전한 운영 확인</td>
-                      <td className="p-2.5">교직원 (수정 불가)</td>
-                      <td className="p-2.5">5년 보존 후 자동 파기</td>
+                      <td className="p-2.5">시스템 운영 감사</td>
+                      <td className="p-2.5">교직원. 수정·삭제 불가</td>
+                      <td className="p-2.5">5년 보존 후 파기</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
               <div className="text-xs text-slate-500 space-y-1">
-                <p>• 주민등록번호, 전화번호, 주소, 학부모 정보는 <strong>저장하지 않습니다</strong>.</p>
-                <p>• <strong>이 시스템은 계속 개발 중입니다.</strong> 새 기능으로 처리 정보가 늘어나면 로그인 시 다시 알려드립니다.</p>
+                <p>• 주민등록번호, 전화번호, 주소, 학부모 정보는 수집·저장하지 않습니다.</p>
+                <p>• 처리하는 개인정보가 변경되는 경우 본 안내를 개정하고 로그인 시 재고지합니다.</p>
               </div>
             </div>
           ) : (
             /* 학생용 고지 문안 */
             <div className="space-y-4">
-              <div className="bg-blue-50/80 dark:bg-blue-950/40 p-4 rounded-xl border border-blue-100 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200 leading-relaxed">
-                <strong>효명고 관리 시스템이 여러분의 정보를 다루는 방법</strong>
+              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
+                <strong>효명고등학교 관리 시스템 개인정보 처리 안내 (학생용)</strong>
                 <p className="mt-1">
-                  이 시스템은 학교가 여러분의 구글 계정과 학교 생활을 관리하기 위해 운영합니다.
+                  본 시스템은 학교가 학생 계정과 학사 운영을 관리하기 위하여 운영합니다.
                 </p>
               </div>
 
               <div className="space-y-2.5 text-xs">
-                <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <strong className="text-indigo-600 dark:text-indigo-400">📌 저장하는 것:</strong> 학교 이메일, 이름, 학번. 생활지도가 있었던 경우 그 기록(담당 선생님만 볼 수 있습니다). 졸업할 때 계정 정리를 위한 안내 확인 기록.
+                <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <strong className="text-slate-900 dark:text-white">저장 항목:</strong> 학교 이메일, 성명, 학번. 생활지도 기록(담임 및 권한을 부여받은 교사만 열람 가능). 졸업 계정 정리 안내 확인 기록.
                 </div>
-                <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <strong className="text-emerald-600 dark:text-emerald-400">🚫 저장하지 않는 것:</strong> 주민등록번호, 전화번호, 집 주소, 부모님 정보.
+                <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <strong className="text-slate-900 dark:text-white">수집하지 않는 항목:</strong> 주민등록번호, 전화번호, 주소, 학부모 정보.
                 </div>
-                <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <strong className="text-purple-600 dark:text-purple-400">⏳ 언제까지:</strong> 졸업하거나 전학 가면 계정과 함께 정리됩니다.
+                <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <strong className="text-slate-900 dark:text-white">보유 기간:</strong> 졸업·전학 시 계정과 함께 정리됩니다.
                 </div>
               </div>
 
               <div className="text-xs text-slate-500">
-                • 이 시스템은 계속 새로운 기능이 더해지고 있습니다. 다루는 정보가 달라지면 로그인할 때 다시 알려줍니다.
+                • 처리하는 개인정보가 변경되는 경우 본 안내를 개정하고 로그인 시 재고지합니다.
               </div>
             </div>
           )}
 
           {/* 공통 조항 요약 — 위탁·이용자 권리·보호 조치 (전문은 /privacy) */}
           <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-lg border border-slate-100 dark:border-slate-700 leading-relaxed">
-            <p>• 이 시스템은 Google(Firebase)과 Vercel(미국 서버)을 이용해 운영되며, 그 외 제3자에게 개인정보를 제공하지 않습니다.</p>
-            <p>• 내 정보의 열람·정정·삭제는 담임 선생님 또는 정보부에 언제든 요청할 수 있습니다.</p>
-            <p>• 학교 계정으로만 로그인할 수 있고, 권한에 따라 볼 수 있는 정보가 제한되며, 중요한 작업은 감사 기록으로 남습니다.</p>
+            <p>• 본 시스템은 Google(Firebase)과 Vercel(미국 서버)을 이용하여 운영되며, 그 외 제3자에게 개인정보를 제공하지 않습니다.</p>
+            <p>• 자신의 개인정보에 대한 열람·정정·삭제는 담임 교사 또는 개인정보 보호 담당(playviolin@hmh.or.kr)에게 요청할 수 있습니다.</p>
+            <p>• 학교 계정으로만 로그인할 수 있으며, 권한에 따라 열람 범위가 제한되고, 중요한 작업은 감사 기록으로 남습니다.</p>
           </div>
 
           <div className="text-xs text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
-            <span>자세한 내용은 전체 안내 페이지를 참조하세요.</span>
+            <span>전체 문안은 안내 페이지에서 확인할 수 있습니다.</span>
             <Link href="/privacy" target="_blank" className="text-indigo-600 dark:text-indigo-400 hover:underline">
-              전체 고지 페이지 보기 ↗
+              전체 안내 페이지 보기
             </Link>
           </div>
         </div>
@@ -200,7 +200,7 @@ export default function PolicyAckModal() {
             {loading ? (
               <span>처리 중...</span>
             ) : (
-              <span>✓ 확인했습니다</span>
+              <span>확인했습니다</span>
             )}
           </button>
         </div>

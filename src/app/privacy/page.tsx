@@ -6,202 +6,200 @@ export const metadata = {
   description: "효명고등학교 관리 시스템의 개인정보 처리 방침 및 고지 사항입니다.",
 };
 
+const thClass = "p-3 sm:p-4 font-bold text-slate-700";
+const tdClass = "p-3 sm:p-4 align-top";
+const tdHeadClass = "p-3 sm:p-4 align-top font-semibold text-slate-900";
+const sectionClass = "bg-white rounded-xl p-8 shadow-sm border border-slate-200/80 space-y-4";
+const sectionTitleClass = "text-lg font-bold text-slate-900";
+const bodyTextClass = "text-xs sm:text-sm text-slate-600 leading-relaxed";
+
 export default function PrivacyPolicyPage() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto space-y-8">
-        {/* 상단 네비게이션 & 헤더 */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200/80">
-          <div className="flex flex-wrap justify-between items-center gap-4 border-b border-slate-100 pb-6 mb-6">
-            <div>
-              <span className="inline-block px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-full mb-2">
-                공개 개인정보 안내
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                효명고등학교 관리 시스템 개인정보 처리 안내
-              </h1>
-            </div>
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* 헤더 */}
+        <div className={sectionClass}>
+          <div className="flex flex-wrap justify-between items-center gap-4 border-b border-slate-100 pb-6">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              효명고등학교 관리 시스템 개인정보 처리 안내
+            </h1>
             <div className="text-right text-xs text-slate-500">
-              <div>버전: <strong className="text-indigo-600 font-mono">v{POLICY_VERSION}</strong></div>
+              <div>버전: <strong className="text-slate-800 font-mono">v{POLICY_VERSION}</strong></div>
               <div>시행일: {POLICY_EFFECTIVE_DATE}</div>
             </div>
           </div>
 
-          <p className="text-sm text-slate-600 leading-relaxed">
-            이 시스템은 효명고등학교가 학교 업무(학생 계정 관리, 생활지도, 시간표 운영 등)를 처리하기 위해 운영합니다.
-            학교의 법령상 사무 수행을 위한 것으로, 처리하는 정보와 방법을 아래와 같이 고지해 드립니다.
+          <p className={bodyTextClass}>
+            본 시스템은 효명고등학교(이하 &ldquo;학교&rdquo;)가 학생 계정 관리, 생활지도, 시간표 운영 등
+            학교의 법령상 사무를 수행하기 위하여 운영합니다. 처리하는 개인정보의 항목과 방법을 다음과 같이 고지합니다.
           </p>
         </div>
 
-        {/* 1. 교직원용 안내 */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200/80 space-y-4">
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <span>👩‍🏫 교직원용 개인정보 처리 안내</span>
-          </h2>
-          
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+        {/* 1. 교직원 */}
+        <div className={sectionClass}>
+          <h2 className={sectionTitleClass}>1. 교직원 개인정보의 처리</h2>
+          <div className="overflow-x-auto border border-slate-200 rounded-lg">
             <table className="w-full text-left text-xs sm:text-sm">
-              <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="p-3 sm:p-4 w-1/4">무엇을 저장하나</th>
-                  <th className="p-3 sm:p-4 w-1/4">왜</th>
-                  <th className="p-3 sm:p-4 w-1/4">누가 볼 수 있나</th>
-                  <th className="p-3 sm:p-4 w-1/4">언제까지</th>
+                  <th className={`${thClass} w-1/4`}>저장 항목</th>
+                  <th className={`${thClass} w-1/4`}>처리 목적</th>
+                  <th className={`${thClass} w-1/4`}>열람 범위</th>
+                  <th className={`${thClass} w-1/4`}>보유 기간</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
                 <tr>
-                  <td className="p-3 sm:p-4 font-semibold text-slate-900">선생님의 학교 이메일·이름·담당 업무</td>
-                  <td className="p-3 sm:p-4">로그인과 권한 구분, 교직원 조직도</td>
-                  <td className="p-3 sm:p-4">교직원</td>
-                  <td className="p-3 sm:p-4">전출·퇴직 처리 시 삭제</td>
+                  <td className={tdHeadClass}>교직원 이메일·성명·담당 업무</td>
+                  <td className={tdClass}>로그인 인증·권한 구분, 교직원 조직도 관리</td>
+                  <td className={tdClass}>교직원</td>
+                  <td className={tdClass}>전출·퇴직 처리 시 삭제</td>
                 </tr>
                 <tr>
-                  <td className="p-3 sm:p-4 font-semibold text-slate-900">학생의 학교 이메일·이름·학번</td>
-                  <td className="p-3 sm:p-4">계정 관리, 명렬표, 수업 도구 정리</td>
-                  <td className="p-3 sm:p-4">교직원</td>
-                  <td className="p-3 sm:p-4">졸업·전출 계정 정리 시 함께 삭제</td>
+                  <td className={tdHeadClass}>시간표·수업 교환 신청 내역</td>
+                  <td className={tdClass}>시간표 운영</td>
+                  <td className={tdClass}>교직원</td>
+                  <td className={tdClass}>학년도 경과 후 정리</td>
                 </tr>
                 <tr>
-                  <td className="p-3 sm:p-4 font-semibold text-slate-900">학생 생활지도 기록 (지도 항목·날짜·메모)</td>
-                  <td className="p-3 sm:p-4">학생 생활지도 (민감 정보로 취급)</td>
-                  <td className="p-3 sm:p-4">담임은 자기 반, 그 외에는 별도 권한을 받은 선생님만</td>
-                  <td className="p-3 sm:p-4">졸업·제적 시 파기</td>
-                </tr>
-                <tr>
-                  <td className="p-3 sm:p-4 font-semibold text-slate-900">시간표·수업 교환 신청 내역</td>
-                  <td className="p-3 sm:p-4">시간표 운영</td>
-                  <td className="p-3 sm:p-4">교직원</td>
-                  <td className="p-3 sm:p-4">학년도 경과 후 정리</td>
-                </tr>
-                <tr>
-                  <td className="p-3 sm:p-4 font-semibold text-slate-900">시스템 사용 기록 (작업 감사 로그)</td>
-                  <td className="p-3 sm:p-4">안전한 운영 확인(감사)</td>
-                  <td className="p-3 sm:p-4">교직원 열람, 수정·삭제 불가</td>
-                  <td className="p-3 sm:p-4">별도 방침으로 보존 (5년)</td>
+                  <td className={tdHeadClass}>시스템 사용 기록(감사 기록)</td>
+                  <td className={tdClass}>시스템 운영 감사</td>
+                  <td className={tdClass}>교직원 열람. 수정·삭제 불가</td>
+                  <td className={tdClass}>5년 보존 후 파기</td>
                 </tr>
               </tbody>
             </table>
           </div>
+        </div>
 
-          <ul className="list-disc list-inside text-xs sm:text-sm text-slate-600 space-y-1.5 pt-2">
-            <li>주민등록번호, 전화번호, 주소, 학부모 정보는 <strong>저장하지 않습니다</strong>.</li>
-            <li>구글 계정 안의 메일·드라이브 원본은 이 시스템이 아니라 학교–Google 간 교육용 계약에 따라 관리됩니다.</li>
+        {/* 2. 학생 */}
+        <div className={sectionClass}>
+          <h2 className={sectionTitleClass}>2. 학생 개인정보의 처리</h2>
+          <div className="overflow-x-auto border border-slate-200 rounded-lg">
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className={`${thClass} w-1/4`}>저장 항목</th>
+                  <th className={`${thClass} w-1/4`}>처리 목적</th>
+                  <th className={`${thClass} w-1/4`}>열람 범위</th>
+                  <th className={`${thClass} w-1/4`}>보유 기간</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-600">
+                <tr>
+                  <td className={tdHeadClass}>학생 이메일·성명·학번</td>
+                  <td className={tdClass}>계정 관리, 명렬표 작성, 수업 도구 정리</td>
+                  <td className={tdClass}>교직원</td>
+                  <td className={tdClass}>졸업·전출 계정 정리 시 함께 삭제</td>
+                </tr>
+                <tr>
+                  <td className={tdHeadClass}>생활지도 기록(지도 항목·발생일·비고)</td>
+                  <td className={tdClass}>학생 생활지도. 민감 정보로 취급</td>
+                  <td className={tdClass}>담임 교사는 담당 학급에 한함. 그 외 별도 권한을 부여받은 교사</td>
+                  <td className={tdClass}>졸업·제적 시 파기</td>
+                </tr>
+                <tr>
+                  <td className={tdHeadClass}>졸업 계정 정리 안내 확인 기록(서명 포함)</td>
+                  <td className={tdClass}>계정 삭제 안내 고지 증빙</td>
+                  <td className={tdClass}>교직원</td>
+                  <td className={tdClass}>제출 후 3년 보존 후 파기</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ul className={`list-disc list-inside ${bodyTextClass} space-y-1 pt-1`}>
+            <li>주민등록번호, 전화번호, 주소, 학부모 정보는 수집·저장하지 않습니다.</li>
+            <li>
+              구글 계정 내 메일·드라이브 등의 원본 데이터는 본 시스템이 아닌 학교–Google 간
+              교육용 계약(Google Workspace for Education)에 따라 관리됩니다.
+            </li>
           </ul>
         </div>
 
-        {/* 2. 학생용 안내 */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200/80 space-y-4">
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <span>🎓 학생용 개인정보 처리 안내</span>
-          </h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-blue-50/60 border border-blue-100 p-4 rounded-xl">
-              <h3 className="font-bold text-blue-900 text-sm mb-2">📌 저장하는 것</h3>
-              <p className="text-xs text-blue-800 leading-relaxed">
-                학교 이메일, 이름, 학번. 생활지도가 있었던 경우 그 기록(담당 선생님만 볼 수 있습니다). 졸업할 때 계정 정리를 위한 안내 확인 기록.
-              </p>
-            </div>
-
-            <div className="bg-emerald-50/60 border border-emerald-100 p-4 rounded-xl">
-              <h3 className="font-bold text-emerald-900 text-sm mb-2">🚫 저장하지 않는 것</h3>
-              <p className="text-xs text-emerald-800 leading-relaxed">
-                주민등록번호, 전화번호, 집 주소, 부모님 정보.
-              </p>
-            </div>
-
-            <div className="bg-purple-50/60 border border-purple-100 p-4 rounded-xl">
-              <h3 className="font-bold text-purple-900 text-sm mb-2">⏳ 언제까지 보관하나</h3>
-              <p className="text-xs text-purple-800 leading-relaxed">
-                졸업하거나 전학 가면 계정과 함께 정리됩니다.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* 3. 처리 위탁 및 제3자 제공 */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200/80 space-y-4">
-          <h2 className="text-xl font-bold text-slate-900">🤝 개인정보의 위탁 및 제3자 제공</h2>
-          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-            이 시스템은 아래 외부 서비스를 이용해 운영됩니다. 저장·처리는 아래 업체의 서버에서 이루어집니다.
+        {/* 3. 위탁 및 제3자 제공 */}
+        <div className={sectionClass}>
+          <h2 className={sectionTitleClass}>3. 개인정보의 위탁 및 제3자 제공</h2>
+          <p className={bodyTextClass}>
+            본 시스템은 다음의 외부 서비스를 이용하여 운영되며, 데이터의 저장·처리는 해당 업체의 서버에서 이루어집니다.
           </p>
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+          <div className="overflow-x-auto border border-slate-200 rounded-lg">
             <table className="w-full text-left text-xs sm:text-sm">
-              <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="p-3 sm:p-4 w-1/4">위탁 업체</th>
-                  <th className="p-3 sm:p-4 w-2/4">맡기는 일</th>
-                  <th className="p-3 sm:p-4 w-1/4">보관 위치</th>
+                  <th className={`${thClass} w-1/4`}>위탁 업체</th>
+                  <th className={`${thClass} w-2/4`}>위탁 업무</th>
+                  <th className={`${thClass} w-1/4`}>보관 위치</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
                 <tr>
-                  <td className="p-3 sm:p-4 font-semibold text-slate-900">Google (Firebase)</td>
-                  <td className="p-3 sm:p-4">로그인 인증, 이 시스템의 데이터 저장</td>
-                  <td className="p-3 sm:p-4">Google Cloud 서버</td>
+                  <td className={tdHeadClass}>Google (Firebase)</td>
+                  <td className={tdClass}>로그인 인증, 시스템 데이터 저장</td>
+                  <td className={tdClass}>Google Cloud 서버</td>
                 </tr>
                 <tr>
-                  <td className="p-3 sm:p-4 font-semibold text-slate-900">Vercel</td>
-                  <td className="p-3 sm:p-4">웹 애플리케이션 호스팅</td>
-                  <td className="p-3 sm:p-4">Vercel 서버 (미국)</td>
+                  <td className={tdHeadClass}>Vercel</td>
+                  <td className={tdClass}>웹 애플리케이션 호스팅</td>
+                  <td className={tdClass}>Vercel 서버(미국)</td>
                 </tr>
                 <tr>
-                  <td className="p-3 sm:p-4 font-semibold text-slate-900">Google (Workspace)</td>
-                  <td className="p-3 sm:p-4">학교 계정·메일·수업 도구 관리, 알림 발송</td>
-                  <td className="p-3 sm:p-4">Google 서버 (학교–Google 교육용 계약)</td>
+                  <td className={tdHeadClass}>Google (Workspace)</td>
+                  <td className={tdClass}>학교 계정·메일·수업 도구 관리, 알림 발송</td>
+                  <td className={tdClass}>Google 서버(학교–Google 교육용 계약)</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-slate-500">
-            ※ 위 서비스 외에 개인정보를 제3자에게 제공하지 않습니다.
-          </p>
+          <p className="text-xs text-slate-500">위 서비스 외에 개인정보를 제3자에게 제공하지 않습니다.</p>
         </div>
 
         {/* 4. 이용자의 권리 */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200/80 space-y-3">
-          <h2 className="text-xl font-bold text-slate-900">🙋 이용자의 권리</h2>
-          <ul className="list-disc list-inside text-xs sm:text-sm text-slate-600 space-y-1.5 leading-relaxed">
-            <li>학생·학부모·교직원은 언제든지 자신의 개인정보에 대한 <strong>열람·정정·삭제를 요청</strong>할 수 있습니다.</li>
-            <li>요청은 담임 선생님 또는 학교 정보부(개인정보 보호 담당)로 문의해 주세요.</li>
-            <li>법령에 따라 학교가 보존해야 하는 기록은 삭제 요청이 제한될 수 있으며, 이 경우 사유를 알려드립니다.</li>
+        <div className={sectionClass}>
+          <h2 className={sectionTitleClass}>4. 이용자의 권리</h2>
+          <ul className={`list-disc list-inside ${bodyTextClass} space-y-1.5`}>
+            <li>학생·학부모·교직원은 언제든지 자신의 개인정보에 대한 열람·정정·삭제를 요청할 수 있습니다.</li>
+            <li>요청은 담임 교사 또는 개인정보 보호 담당(playviolin@hmh.or.kr)에게 합니다.</li>
+            <li>법령에 따라 학교가 보존하여야 하는 기록은 삭제가 제한될 수 있으며, 이 경우 그 사유를 안내합니다.</li>
           </ul>
         </div>
 
-        {/* 5. 개인정보 보호를 위한 조치 */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200/80 space-y-3">
-          <h2 className="text-xl font-bold text-slate-900">🛡️ 개인정보 보호를 위한 조치</h2>
-          <ul className="list-disc list-inside text-xs sm:text-sm text-slate-600 space-y-1.5 leading-relaxed">
+        {/* 5. 보호 조치 */}
+        <div className={sectionClass}>
+          <h2 className={sectionTitleClass}>5. 개인정보 보호를 위한 조치</h2>
+          <ul className={`list-disc list-inside ${bodyTextClass} space-y-1.5`}>
             <li>학교 구글 계정(@hmh.or.kr)으로만 로그인할 수 있습니다.</li>
-            <li>역할과 권한에 따라 볼 수 있는 정보가 다릅니다. 예를 들어 생활지도 기록은 담임 선생님과 별도 권한을 받은 선생님만 볼 수 있습니다.</li>
-            <li>생활지도 기록 같은 민감한 정보는 화면에서 저장소에 직접 접근할 수 없고, 반드시 서버의 권한 검사를 거쳐야만 다룰 수 있습니다.</li>
-            <li>모든 통신은 암호화(HTTPS)되어 전송됩니다.</li>
-            <li>중요한 작업(계정 삭제, 기록 무효화 등)은 누가 언제 했는지 감사 기록으로 남습니다.</li>
+            <li>역할과 권한에 따라 열람 범위를 제한합니다. 생활지도 기록은 담임 교사와 별도 권한을 부여받은 교사만 열람할 수 있습니다.</li>
+            <li>민감 정보는 화면에서 저장소에 직접 접근할 수 없으며, 서버의 권한 검사를 거쳐야만 처리됩니다.</li>
+            <li>모든 통신은 암호화(HTTPS)하여 전송합니다.</li>
+            <li>계정 삭제, 기록 무효화 등 중요한 작업은 작업자와 일시를 감사 기록으로 남깁니다.</li>
           </ul>
         </div>
 
-        {/* 6. 공통 개정 및 문의 조항 */}
-        <div className="bg-slate-900 text-white rounded-2xl p-8 shadow-md space-y-4">
-          <h3 className="text-lg font-bold text-indigo-300">🔄 안내 개정 및 문의사항</h3>
-          <div className="text-xs sm:text-sm text-slate-300 space-y-2 leading-relaxed">
-            <p>
-              <strong>이 시스템은 계속 새로운 기능이 더해지고 있습니다.</strong> 처리하는 정보가 늘어나거나 달라지면
-              이 안내를 고쳐서 로그인할 때 다시 알려드리고, 법적으로 동의가 필요한 일이 생기면 그때 따로 여쭙습니다.
-            </p>
-            <p className="pt-2 border-t border-slate-800 text-slate-400">
-              개인정보 보호 담당(문의처): 효명고등학교 정보부 (관리자 계정 운영 부서)
-            </p>
-          </div>
+        {/* 6. 개정 */}
+        <div className={sectionClass}>
+          <h2 className={sectionTitleClass}>6. 안내의 개정</h2>
+          <p className={bodyTextClass}>
+            본 시스템은 기능이 지속적으로 추가되고 있습니다. 처리하는 개인정보가 변경되는 경우
+            본 안내를 개정하고 로그인 시 재고지하며, 별도의 동의가 필요한 사항이 발생하는 경우
+            그 시점에 동의 절차를 거칩니다.
+          </p>
         </div>
 
-        {/* 하단 홈 이동 버튼 */}
+        {/* 7. 문의처 */}
+        <div className={sectionClass}>
+          <h2 className={sectionTitleClass}>7. 개인정보 보호 담당</h2>
+          <p className={bodyTextClass}>
+            개인정보 처리에 관한 문의는 개인정보 보호 담당(playviolin@hmh.or.kr)에게 합니다.
+          </p>
+        </div>
+
+        {/* 하단 이동 */}
         <div className="text-center pt-4">
           <Link
             href="/login"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-lg transition-all shadow-sm"
           >
-            ← 로그인 페이지로 돌아가기
+            로그인 페이지로 돌아가기
           </Link>
         </div>
       </div>

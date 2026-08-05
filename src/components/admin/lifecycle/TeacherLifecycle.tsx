@@ -223,13 +223,13 @@ function EnrollTeacherPanel({ domain, operatorEmail, operatorName }: { domain: s
 
 2단계 인증 미등록 시 보안그룹 정책에 의해 구글 서비스 접근이 자동 제한되니 꼭 등록해 주시기 바랍니다.
 
-궁금하신 점은 정보부로 문의해 주세요.`}
+궁금하신 점은 playviolin@hmh.or.kr 로 문의해 주세요.`}
               </div>
 
               <button
                 type="button"
                 onClick={() => {
-                  const msg = `효명고등학교에 오신 것을 환영합니다! 🎉\n\n효명고등학교의 구글 워크스페이스 교직원 계정이 생성되어 안내해 드립니다.\n아래 계정 정보로 구글(google.com)에 로그인하세요.\n\n▪ 아이디(이메일): ${enrolledEmail}\n▪ 초기 비밀번호: 1234abcd!!!!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━\n⚠️  필수 보안 설정 안내 (중요!)\n━━━━━━━━━━━━━━━━━━━━━━━━━\n최초 로그인 및 비밀번호 재설정 완료 후, 아래 절차를 반드시 완료하셔야 정상적인 메일/클래스룸 등 교사 보안그룹 권한이 연동됩니다.\n\n1. 구글 메인화면 우측 상단 프로필 클릭 ＞ [Google 계정 관리] 로 이동\n2. 좌측 메뉴의 [보안] 탭 클릭\n3. [2단계 인증] 설정을 완료하여 본인 휴대폰 번호 인증 등록\n\n2단계 인증 미등록 시 보안그룹 정책에 의해 구글 서비스 접근이 자동 제한되니 꼭 등록해 주시기 바랍니다.\n\n궁금하신 점은 정보부로 문의해 주세요.`;
+                  const msg = `효명고등학교에 오신 것을 환영합니다! 🎉\n\n효명고등학교의 구글 워크스페이스 교직원 계정이 생성되어 안내해 드립니다.\n아래 계정 정보로 구글(google.com)에 로그인하세요.\n\n▪ 아이디(이메일): ${enrolledEmail}\n▪ 초기 비밀번호: 1234abcd!!!!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━\n⚠️  필수 보안 설정 안내 (중요!)\n━━━━━━━━━━━━━━━━━━━━━━━━━\n최초 로그인 및 비밀번호 재설정 완료 후, 아래 절차를 반드시 완료하셔야 정상적인 메일/클래스룸 등 교사 보안그룹 권한이 연동됩니다.\n\n1. 구글 메인화면 우측 상단 프로필 클릭 ＞ [Google 계정 관리] 로 이동\n2. 좌측 메뉴의 [보안] 탭 클릭\n3. [2단계 인증] 설정을 완료하여 본인 휴대폰 번호 인증 등록\n\n2단계 인증 미등록 시 보안그룹 정책에 의해 구글 서비스 접근이 자동 제한되니 꼭 등록해 주시기 바랍니다.\n\n궁금하신 점은 playviolin@hmh.or.kr 로 문의해 주세요.`;
                   navigator.clipboard.writeText(msg);
                   alert("안내 문구가 클립보드에 복사되었습니다.");
                 }}
@@ -283,7 +283,7 @@ const DEFAULT_TEACHER_EMAIL_BODY = `안녕하세요, {name}님.
 📦  데이터 이전 및 다운로드 방법:
 → https://gw.googleforeducation.org/%EA%B4%80%EB%A6%AC%ED%95%98%EA%B8%B0/%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%9D%B4%EC%A0%84%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-%EC%95%88%EB%82%B4
 
-궁금하신 점은 학교 정보부에 문의해 주세요. 감사합니다.
+궁금하신 점은 playviolin@hmh.or.kr 로 문의해 주세요. 감사합니다.
 
 효명고등학교 드림`;
 const DEFAULT_TEACHER_CHAT_BODY = `📢 *[효명고등학교 구글 계정 전출 처리 안내]*
@@ -304,7 +304,7 @@ const DEFAULT_TEACHER_CHAT_BODY = `📢 *[효명고등학교 구글 계정 전�
 *📦  데이터 이전 및 다운로드 방법:*
 → https://gw.googleforeducation.org/%EA%B4%80%EB%A6%AC%ED%95%98%EA%B8%B0/%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%9D%B4%EC%A0%84%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-%EC%95%88%EB%82%B4
 
-궁금하신 점은 학교 정보부에 문의해 주세요. 감사합니다.`;
+궁금하신 점은 playviolin@hmh.or.kr 로 문의해 주세요. 감사합니다.`;
 const DEFAULT_TEACHER_REMINDER_CHAT_BODY = `📢 *[효명고등학교 - 데이터 백업 기한 설정 안내 {warnedCount}차]*
 
 안녕하세요, *{name}*님.
