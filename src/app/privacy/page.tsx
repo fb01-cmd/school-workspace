@@ -158,7 +158,7 @@ export default function PrivacyPolicyPage() {
           <h2 className={sectionTitleClass}>4. 이용자의 권리</h2>
           <ul className={`list-disc list-inside ${bodyTextClass} space-y-1.5`}>
             <li>학생·학부모·교직원은 언제든지 자신의 개인정보에 대한 열람·정정·삭제를 요청할 수 있습니다.</li>
-            <li>요청은 담임 교사 또는 개인정보 보호 담당(playviolin@hmh.or.kr)에게 합니다.</li>
+            <li>요청은 담임 교사 또는 플랫폼 담당자(playviolin@hmh.or.kr)에게 합니다.</li>
             <li>법령에 따라 학교가 보존하여야 하는 기록은 삭제가 제한될 수 있으며, 이 경우 그 사유를 안내합니다.</li>
           </ul>
         </div>
@@ -187,9 +187,9 @@ export default function PrivacyPolicyPage() {
 
         {/* 7. 문의처 */}
         <div className={sectionClass}>
-          <h2 className={sectionTitleClass}>7. 개인정보 보호 담당</h2>
+          <h2 className={sectionTitleClass}>7. 문의처</h2>
           <p className={bodyTextClass}>
-            개인정보 처리에 관한 문의는 개인정보 보호 담당(playviolin@hmh.or.kr)에게 합니다.
+            개인정보 처리에 관한 문의는 플랫폼 담당자(playviolin@hmh.or.kr)에게 합니다.
           </p>
         </div>
 

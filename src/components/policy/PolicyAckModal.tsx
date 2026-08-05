@@ -173,7 +173,7 @@ export default function PolicyAckModal() {
           {/* 공통 조항 요약 — 위탁·이용자 권리·보호 조치 (전문은 /privacy) */}
           <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1.5 bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-lg border border-slate-100 dark:border-slate-700 leading-relaxed">
             <p>• 본 시스템은 Google(Firebase)과 Vercel(미국 서버)을 이용하여 운영되며, 그 외 제3자에게 개인정보를 제공하지 않습니다.</p>
-            <p>• 자신의 개인정보에 대한 열람·정정·삭제는 담임 교사 또는 개인정보 보호 담당(playviolin@hmh.or.kr)에게 요청할 수 있습니다.</p>
+            <p>• 자신의 개인정보에 대한 열람·정정·삭제는 담임 교사 또는 플랫폼 담당자(playviolin@hmh.or.kr)에게 요청할 수 있습니다.</p>
             <p>• 학교 계정으로만 로그인할 수 있으며, 권한에 따라 열람 범위가 제한되고, 중요한 작업은 감사 기록으로 남습니다.</p>
           </div>
 
