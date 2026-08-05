@@ -662,6 +662,48 @@ export async function GET(req: NextRequest) {
 
     console.log(`[Cron] 자동 처리 완료 - 정지: ${results.suspended.length}명, 삭제: ${results.deleted.length}명, 오류: ${results.errors.length}건`);
 
+    // ── Phase 11 산출물 E: 보존 기한 경과 데이터 파기 (2026-08-05 확정: 서명 증빙 3년·감사 로그 5년) ──
+    // mockToday와 무관하게 실제 시각 기준으로만 판정 — 테스트용 날짜 조작이 조기 파기를 유발하면 안 된다.
+    const retentionNow = new Date();
+    const purgeCounts = { graduationConsents: 0, auditLogs: 0 };
+    const purgeExpiredDocs = async (query: FirebaseFirestore.Query, label: string) => {
+      let total = 0;
+      // 회당 300건 × 최대 10회 — Vercel 실행 한도 내 안전. 잔여분은 다음날 크론이 이어서 파기.
+      for (let i = 0; i < 10; i++) {
+        const snap = await query.limit(300).get();
+        if (snap.empty) break;
+        const batch = adminDb.batch();
+        snap.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+        total += snap.size;
+      }
+      if (total > 0) dbg(`[Retention] ${label} ${total}건 파기`);
+      return total;
+    };
+    try {
+      purgeCounts.graduationConsents = await purgeExpiredDocs(
+        adminDb.collection("graduation_consents").where("expiresAt", "<=", retentionNow),
+        "졸업 서명 증빙(3년 경과)"
+      );
+      const auditCutoff = new Date(retentionNow.getTime() - 5 * 365 * 24 * 60 * 60 * 1000);
+      purgeCounts.auditLogs = await purgeExpiredDocs(
+        adminDb.collection("audit_logs").where("timestamp", "<=", auditCutoff),
+        "감사 로그(5년 경과)"
+      );
+      // 파기 실행 사실만 기록(건수·기준일) — 파기된 내용 자체는 재기록하지 않는다.
+      if (purgeCounts.graduationConsents > 0 || purgeCounts.auditLogs > 0) {
+        await writeAuditLog({
+          operatorEmail: "system-cron",
+          operatorName: "보존 기한 파기 크론",
+          action: "보존 기한 경과 데이터 파기",
+          targetEmail: "-",
+          details: `졸업 서명 증빙 ${purgeCounts.graduationConsents}건·감사 로그 ${purgeCounts.auditLogs}건 파기 (방침: 3년/5년)`,
+          status: "success",
+        });
+      }
+    } catch (retentionErr: any) {
+      dbg(`[Retention] 파기 스텝 오류: ${retentionErr.message}`);
+    }
 
     return NextResponse.json({
       success: true,
@@ -670,6 +712,7 @@ export async function GET(req: NextRequest) {
       deleted: results.deleted,
       warned: results.warned,
       errors: results.errors,
+      retention: purgeCounts,
       debug: results.debug,
     });
   } catch (err: any) {

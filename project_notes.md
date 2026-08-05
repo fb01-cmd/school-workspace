@@ -1237,3 +1237,10 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - 수정 파일: `src/lib/policy/version.ts`, `src/app/privacy/page.tsx`, `src/app/api/policy/ack/route.ts`, `src/components/policy/PolicyAckModal.tsx`, `src/components/admin/PolicyAckStatusTab.tsx`, `src/app/admin/page.tsx`, `src/context/AuthContext.tsx`, `src/lib/firebase/auth.ts`, `firestore.rules`, `project_notes.md`
 - 다음 할 일: 산출물 A·B·C 표적 리뷰 (Claude 담당 산출물 D·E 구현 대기)
 
+
+## [2026-08-05] Claude → Phase 11 A·B·C(20bf294) 표적 리뷰 승인 + 산출물 D·E 직접 구현
+
+- **A·B·C 리뷰 (승인)**: rules — policy_acks 전면 차단 ✓(캐치올 기본 거부 덕에 규칙 재배포 전에도 안전, 다음 배포 때 반영). ack API — 서버가 uid 기준 본인만 처리·이력 문서·감사 로그 ✓, list는 수퍼어드민 403 게이트 ✓. 버전 가드 — `policyAck.version !== POLICY_VERSION` 비교, 루트 레이아웃 AuthProvider 마운트로 admin·student-portal 공통 커버 ✓. 사이드바 버튼도 isSuperAdmin 블록 내 ✓. 문안 재고지 조항 포함 ✓. 경미: API 오타("이현황을") Claude 수정. 핸드오버 ④ 양식 준수 확인(재발 3회 후 정상화).
+- **산출물 D (records 실이메일 검증)**: create가 합성(`학번@도메인`)을 중단 — 클라이언트가 명단의 실이메일 전송(RecordTab payload에 studentEmail 추가), 서버가 Directory getUser로 familyName(학번) 대조 후 저장. 불일치·조회 실패 시 400, 합성 저장 경로 소멸.
+- **산출물 E (보존 기한 파기 크론)**: lifecycle 크론 말미에 파기 스텝 — graduation_consents `expiresAt`(양 쓰기 경로 모두 존재 확인) 경과분·audit_logs 5년 경과분을 회당 300건×10회 배치 삭제(잔여분 익일 계속). mockToday와 무관하게 실시각 기준(테스트 날짜 조작이 조기 파기 유발 금지). 파기 사실만 감사 로그 1줄. 현재 대상 0건 예상 — 로직만 대기.
+- **검증**: tsc 0 에러·build 31/31 ✅. 실기기 확인 2가지: ① 첫 로그인 시 고지 화면→확인→재로그인 시 안 뜸 ② 기록 입력이 정상 동작(실이메일 검증 추가 후).

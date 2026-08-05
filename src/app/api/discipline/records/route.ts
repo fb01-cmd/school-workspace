@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import { verifyAuthAccess } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
+import { getUser } from "@/lib/google/workspace";
 import {
   loadAuthzContext,
   parseStudentIdStrict,
@@ -141,8 +142,34 @@ export async function POST(req: NextRequest) {
       const studentName =
         typeof body.studentName === "string" ? body.studentName.trim().slice(0, 50) : "";
 
+      // 학생 실이메일 검증 (Phase 11 산출물 D) — 합성 주소(학번@도메인) 저장 금지.
+      // 학생 실계정은 입학년도 기반(예: 26027@)이라 학번과 다르다. 클라이언트가 명단에서
+      // 고른 실이메일을 보내고, 서버는 Directory의 familyName(학번)과 대조해 위조를 막는다.
+      const studentEmail =
+        typeof body.studentEmail === "string" ? body.studentEmail.trim().toLowerCase() : "";
+      if (!studentEmail || !studentEmail.endsWith(`@${domain}`))
+        return NextResponse.json(
+          { error: "학생 이메일이 없거나 학교 도메인이 아닙니다. 명단에서 학생을 선택해 주세요." },
+          { status: 400 }
+        );
+      let dirFamilyName = "";
+      try {
+        const dirUser = await getUser(studentEmail);
+        dirFamilyName =
+          typeof dirUser?.name === "object" ? String(dirUser.name?.familyName || "").trim() : "";
+      } catch {
+        dirFamilyName = "";
+      }
+      if (dirFamilyName !== studentId)
+        return NextResponse.json(
+          {
+            error:
+              "학생 계정 확인에 실패했거나 이메일과 학번이 명단과 일치하지 않습니다. 명단에서 학생을 다시 선택해 주세요.",
+          },
+          { status: 400 }
+        );
+
       const recordId = "rec_" + Date.now() + "_" + crypto.randomBytes(4).toString("hex");
-      const studentEmail = `${studentId}@${domain}`;
 
       await recordsColRef(domain).doc(recordId).set({
         studentId,

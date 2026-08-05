@@ -243,6 +243,7 @@ export default function DisciplineRecordTab({
         body: JSON.stringify({
           action: "create",
           studentId,
+          studentEmail: selectedStudentEmail,
           studentName: selectedStudentName,
           itemId: selectedItemId,
           occurredAt: occurredAtIso,

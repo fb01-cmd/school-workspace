@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     if (action === "list") {
       if (auth.role !== "super_admin") {
         return NextResponse.json(
-          { error: "수퍼어드민 권한만 이현황을 조회할 수 있습니다." },
+          { error: "수퍼어드민 권한만 이 현황을 조회할 수 있습니다." },
           { status: 403 }
         );
       }
