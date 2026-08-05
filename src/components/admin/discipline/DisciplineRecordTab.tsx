@@ -1,36 +1,178 @@
 import { useState, useEffect } from "react";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
-import { DisciplineItem } from "@/lib/discipline/types";
+import { DisciplineItem, DisciplineGrant } from "@/lib/discipline/types";
+import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
+
+interface HomeroomStudent {
+  email: string;
+  name: string;
+  studentId: string;
+  numStr: string;
+  label: string;
+}
+
+interface UserPermissions {
+  role?: string;
+  email?: string;
+  canView?: boolean;
+  canRecord?: boolean;
+  canResolve?: boolean;
+  canManageRules?: boolean;
+  canManagePermissions?: boolean;
+  isHomeroom?: boolean;
+  homeroomClasses?: string[];
+  grants?: DisciplineGrant[];
+  myGrants?: DisciplineGrant[];
+}
 
 interface DisciplineRecordTabProps {
   domain: string;
   configItems: DisciplineItem[];
+  permissions?: UserPermissions | null;
 }
 
-export default function DisciplineRecordTab({ domain, configItems }: DisciplineRecordTabProps) {
+export default function DisciplineRecordTab({
+  domain,
+  configItems,
+  permissions,
+}: DisciplineRecordTabProps) {
   const [studentInput, setStudentInput] = useState("");
   const [selectedStudentEmail, setSelectedStudentEmail] = useState("");
   const [selectedStudentName, setSelectedStudentName] = useState("");
-  const [selectedItemId, setSelectedItemId] = useState("");
-  const [occurredAtStr, setOccurredAtStr] = useState(() => {
+  const [selectedHomeroomEmail, setSelectedHomeroomEmail] = useState("");
+
+  // KST 오늘 날짜 (YYYY-MM-DD)
+  const getTodayKSTStr = () => {
     const now = new Date();
-    const tzOffset = now.getTimezoneOffset() * 60000;
-    return new Date(now.getTime() - tzOffset).toISOString().slice(0, 16);
-  });
+    const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    return kst.toISOString().slice(0, 10);
+  };
+
+  const [occurredDateStr, setOccurredDateStr] = useState(getTodayKSTStr);
   const [note, setNote] = useState("");
+  const [selectedItemId, setSelectedItemId] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // 우리 반 학생 목록 & 권한 상태
+  const [homeroomStudents, setHomeroomStudents] = useState<HomeroomStudent[]>([]);
+  const [loadingHomeroom, setLoadingHomeroom] = useState(false);
+
+  const hasHomeroom = Boolean(permissions?.homeroomClasses && permissions.homeroomClasses.length > 0);
+
+  // grant로 기록 범위가 반을 넘는 사용자 (all 또는 grade 권한 보유)
+  const hasBroaderRecordGrant = Boolean(
+    permissions?.role === "admin" ||
+    permissions?.role === "superadmin" ||
+    (permissions?.grants || permissions?.myGrants || []).some((g) => {
+      const hasRecordRight = g.rights?.includes("record");
+      const isBroaderScope = g.scope?.type === "all" || g.scope?.type === "grade";
+      return hasRecordRight && isBroaderScope;
+    })
+  );
+
   // active인 항목만 필터링
   const activeItems = configItems.filter((it) => it.active !== false);
-
-  // 카테고리별 그룹화
   const categories = Array.from(new Set(activeItems.map((it) => it.category || "기타")));
 
+  // 담임 교사인 경우 우리 반 학생 목록 로딩 (users:all 캐시 활용)
+  useEffect(() => {
+    if (!hasHomeroom || !permissions?.homeroomClasses) return;
+
+    const targetPrefixes = permissions.homeroomClasses
+      .map((hc) => {
+        const match = hc.match(/(\d+)\s*[-학년\s]\s*(\d+)/);
+        if (match) {
+          const g = match[1];
+          const c = match[2].padStart(2, "0");
+          return `${g}${c}`; // 예: "101"
+        }
+        return "";
+      })
+      .filter(Boolean);
+
+    if (targetPrefixes.length === 0) return;
+
+    const processUsers = (users: any[]) => {
+      const filtered: HomeroomStudent[] = [];
+      for (const u of users) {
+        const email = u.primaryEmail || u.email || "";
+        const familyName = typeof u.name === "object" ? u.name?.familyName || "" : "";
+        const givenName = typeof u.name === "object" ? u.name?.givenName || "" : u.name || "";
+
+        // 학번(familyName) 5자리 정규식 대조
+        if (/^\d{5}$/.test(familyName)) {
+          const isTargetClass = targetPrefixes.some((p) => familyName.startsWith(p));
+          if (isTargetClass) {
+            const numStr = familyName.slice(3, 5); // 번호 2자리 (01, 02...)
+            const studentName = givenName.trim() || familyName;
+            filtered.push({
+              email,
+              name: studentName,
+              studentId: familyName,
+              numStr,
+              label: `${numStr} ${studentName}`,
+            });
+          }
+        }
+      }
+
+      // 번호순 정렬
+      filtered.sort((a, b) => parseInt(a.numStr, 10) - parseInt(b.numStr, 10));
+      setHomeroomStudents(filtered);
+    };
+
+    const cachedUsers = getClientCache("users:all");
+    if (cachedUsers) {
+      processUsers(cachedUsers);
+    } else {
+      setLoadingHomeroom(true);
+      fetch("/api/workspace/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list", orgUnitPaths: ["all"] }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.users) {
+            setClientCache("users:all", data.users);
+            processUsers(data.users);
+          }
+        })
+        .catch((err) => console.error("Failed to load users for homeroom dropdown", err))
+        .finally(() => setLoadingHomeroom(false));
+    }
+  }, [hasHomeroom, permissions?.homeroomClasses]);
+
+  // 학생 선택 핸들러
   const handleSelectStudent = (email: string, name?: string) => {
     setSelectedStudentEmail(email);
     setSelectedStudentName(name || email);
     setStudentInput(email);
+
+    // 반 드롭다운 동기화
+    const homeroomMatch = homeroomStudents.find(
+      (s) => s.email.toLowerCase() === email.toLowerCase()
+    );
+    if (homeroomMatch) {
+      setSelectedHomeroomEmail(homeroomMatch.email);
+    } else {
+      setSelectedHomeroomEmail("");
+    }
+  };
+
+  const handleSelectHomeroomStudent = (email: string) => {
+    setSelectedHomeroomEmail(email);
+    if (!email) {
+      setSelectedStudentEmail("");
+      setSelectedStudentName("");
+      setStudentInput("");
+      return;
+    }
+    const student = homeroomStudents.find((s) => s.email === email);
+    if (student) {
+      handleSelectStudent(student.email, student.name);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -41,25 +183,36 @@ export default function DisciplineRecordTab({ domain, configItems }: DisciplineR
       setMessage({ type: "error", text: "학생을 선택해주세요." });
       return;
     }
-    // 서버는 학번(5자리)만 신뢰한다 — 학생 계정 이메일(학번@도메인)에서 학번을 추출
+
     const studentIdMatch = selectedStudentEmail.trim().match(/^(\d{5})@/);
     if (!studentIdMatch) {
       setMessage({
         type: "error",
-        text: "학생 계정(학번@도메인 형식)만 선택할 수 있습니다. 자동완성 목록에서 학생을 선택해주세요.",
+        text: "학생 계정(학번@도메인 형식)만 선택할 수 있습니다. 목록에서 학생을 선택해주세요.",
       });
       return;
     }
+
     if (!selectedItemId) {
       setMessage({ type: "error", text: "지도 항목을 선택해주세요." });
       return;
     }
 
-    const occurredAtDate = new Date(occurredAtStr);
-    if (isNaN(occurredAtDate.getTime())) {
-      setMessage({ type: "error", text: "올바른 발생 일시를 입력해주세요." });
+    if (!occurredDateStr) {
+      setMessage({ type: "error", text: "발생일을 선택해주세요." });
       return;
     }
+
+    const dateParts = occurredDateStr.split("-").map(Number);
+    if (dateParts.length !== 3 || dateParts.some(isNaN)) {
+      setMessage({ type: "error", text: "올바른 발생일을 입력해주세요." });
+      return;
+    }
+
+    const [year, month, day] = dateParts;
+    // 선택 날짜의 12:00 KST = UTC 03:00
+    const occurredAtMs = Date.UTC(year, month - 1, day, 3, 0, 0, 0);
+    const occurredAtIso = new Date(occurredAtMs).toISOString();
 
     setLoading(true);
     try {
@@ -71,7 +224,7 @@ export default function DisciplineRecordTab({ domain, configItems }: DisciplineR
           studentId: studentIdMatch[1],
           studentName: selectedStudentName,
           itemId: selectedItemId,
-          occurredAt: occurredAtDate.toISOString(),
+          occurredAt: occurredAtIso,
           note: note.trim(),
         }),
       });
@@ -92,8 +245,10 @@ export default function DisciplineRecordTab({ domain, configItems }: DisciplineR
       setStudentInput("");
       setSelectedStudentEmail("");
       setSelectedStudentName("");
+      setSelectedHomeroomEmail("");
       setSelectedItemId("");
       setNote("");
+      setOccurredDateStr(getTodayKSTStr());
     } catch (err: any) {
       setMessage({ type: "error", text: err.message || "오류가 발생했습니다." });
     } finally {
@@ -123,22 +278,59 @@ export default function DisciplineRecordTab({ domain, configItems }: DisciplineR
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* 1. 대상 학생 선택 */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+          <div className="space-y-3">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
               대상 학생 <span className="text-red-500">*</span>
             </label>
-            <AutocompleteInput
-              type="user"
-              domain={domain}
-              value={studentInput}
-              onChange={(val) => {
-                setStudentInput(val);
-                setSelectedStudentEmail(val);
-              }}
-              onSelect={handleSelectStudent}
-              placeholder="학생 이름 또는 이메일/학번 검색"
-              className="w-full"
-            />
+
+            {/* 우리 반 학생 드롭다운 (담임 교사일 때 기본 표시) */}
+            {hasHomeroom && (
+              <div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                  🏫 우리 반 학생 목록 ({permissions?.homeroomClasses?.join(", ")})
+                </div>
+                {loadingHomeroom ? (
+                  <div className="text-xs text-gray-400 p-2">우리 반 학생 목록을 불러오는 중...</div>
+                ) : (
+                  <select
+                    value={selectedHomeroomEmail}
+                    onChange={(e) => handleSelectHomeroomStudent(e.target.value)}
+                    className="w-full p-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- 우리 반 학생 선택 --</option>
+                    {homeroomStudents.map((student) => (
+                      <option key={student.email} value={student.email}>
+                        {student.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
+            {/* 검색창 AutocompleteInput: grant로 기록 범위가 반을 넘는 사용자에게만 병행 노출 (담임이 아닌 사용자는 필수 노출) */}
+            {(!hasHomeroom || hasBroaderRecordGrant) && (
+              <div>
+                {hasHomeroom && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium pt-1">
+                    🔍 타 학급 / 전체 학생 직접 검색
+                  </div>
+                )}
+                <AutocompleteInput
+                  type="user"
+                  domain={domain}
+                  value={studentInput}
+                  onChange={(val) => {
+                    setStudentInput(val);
+                    setSelectedStudentEmail(val);
+                  }}
+                  onSelect={handleSelectStudent}
+                  placeholder="학생 이름 또는 이메일/학번 검색"
+                  className="w-full"
+                />
+              </div>
+            )}
+
             {selectedStudentEmail && (
               <div className="mt-2 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-md inline-block">
                 선택된 학생: {selectedStudentName} ({selectedStudentEmail})
@@ -193,18 +385,21 @@ export default function DisciplineRecordTab({ domain, configItems }: DisciplineR
             )}
           </div>
 
-          {/* 3. 발생 일시 */}
+          {/* 3. 발생일 */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              발생 일시 <span className="text-red-500">*</span>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              발생일 <span className="text-red-500">*</span>
             </label>
             <input
-              type="datetime-local"
-              value={occurredAtStr}
-              onChange={(e) => setOccurredAtStr(e.target.value)}
+              type="date"
+              value={occurredDateStr}
+              onChange={(e) => setOccurredDateStr(e.target.value)}
               className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              사안이 발생한 날짜를 선택하세요. (기본값: 오늘)
+            </p>
           </div>
 
           {/* 4. 비고 */}

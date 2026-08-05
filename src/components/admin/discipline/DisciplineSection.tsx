@@ -219,7 +219,11 @@ export default function DisciplineSection() {
       {/* 탭 콘텐츠 렌더링 */}
       <div>
         {activeTab === "record" && permissions.canRecord && (
-          <DisciplineRecordTab domain={domain} configItems={config?.items || []} />
+          <DisciplineRecordTab
+            domain={domain}
+            configItems={config?.items || []}
+            permissions={permissions}
+          />
         )}
 
         {activeTab === "status" && permissions.canView && config && (
