@@ -211,6 +211,15 @@ export default function StudentRoster() {
     setColumnWidths((prev) => ({ ...prev, [newColId]: 120 }));
   };
 
+  // Toggle email column — same A4 width guard as handleAddColumn (checkbox was an unguarded bypass)
+  const handleToggleEmail = (checked: boolean) => {
+    if (checked && totalTableWidth + (columnWidths.email || 160) > 710) {
+      alert("A4 인쇄 용지 폭 한계(710px)를 초과하여 이메일 열을 표시할 수 없습니다. 기존 열 너비를 드래그해서 줄이거나 열을 삭제한 뒤 다시 시도해 주세요.");
+      return;
+    }
+    setShowEmail(checked);
+  };
+
   // Edit custom column title
   const handleEditColumnTitle = (colId: string, currentTitle: string) => {
     const newTitle = prompt("수정할 열 이름을 입력해 주세요:", currentTitle);
@@ -476,7 +485,7 @@ export default function StudentRoster() {
               type="checkbox"
               id="showEmailCheckbox"
               checked={showEmail}
-              onChange={(e) => setShowEmail(e.target.checked)}
+              onChange={(e) => handleToggleEmail(e.target.checked)}
               className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
             />
             <label htmlFor="showEmailCheckbox" className="text-xs text-slate-700 font-semibold cursor-pointer select-none">
