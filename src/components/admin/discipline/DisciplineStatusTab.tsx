@@ -114,8 +114,9 @@ export default function DisciplineStatusTab({ config, canManageRules }: Discipli
   const stageMap = new Map((config.stages || []).map((s) => [s.id, s.label]));
   const itemMap = new Map((config.items || []).map((it) => [it.id, it.label]));
 
-  // 검색어 필터링
+  // 검색어 필터링 — 유효 기록이 하나도 없는 학생(전건 무효화)은 현황에서 제외 (무효화 보관함 전용)
   const filteredStudents = students.filter((s) => {
+    if (!(s.records || []).some((r) => !r.voided)) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
