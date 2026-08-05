@@ -40,6 +40,7 @@ import {
   formatSlotWithDate,
   buildShareCardMessage,
 } from "@/lib/timetable/utils";
+import PaginationControls from "./PaginationControls";
 
 const DAYS = [
   { num: 1, label: "월" },
@@ -1767,6 +1768,28 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   CANCELED: { label: "취소됨",   className: "bg-gray-100 text-gray-600 border-gray-200" },
 };
 
+function formatDateTimeCompact(timestamp: number | string | Date): string {
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return "";
+  const month = d.getMonth() + 1;
+  const date = d.getDate();
+  const days = ["일", "월", "화", "수", "목", "금", "토"];
+  const dayStr = days[d.getDay()];
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${month}/${date}(${dayStr}) ${hours}:${minutes}`;
+}
+
+function formatShortDate(timestamp: number | string | Date): string {
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return "";
+  const month = d.getMonth() + 1;
+  const date = d.getDate();
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${month}/${date} ${hours}:${minutes}`;
+}
+
 function MyRequestsTab({ settings }: MyRequestsTabProps) {
   const { user, userData, teacherProfile } = useAuth();
   const userEmail = userData?.email || "";
@@ -1778,6 +1801,15 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
   const [error, setError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // 페이지네이션 상태 (처리 완료 내역용)
+  const [completedPage, setCompletedPage] = useState(1);
+  const [completedPageSize, setCompletedPageSize] = useState(20);
+
+  // 주 선택 필터 변경 시 1페이지로 리셋
+  useEffect(() => {
+    setCompletedPage(1);
+  }, [selectedWeekId]);
 
   // 사전 양해 임시저장함 상태 (phase9b_spec §13-1)
   const [drafts, setDrafts] = useState<SwapDraft[]>([]);
@@ -2095,10 +2127,146 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
     }
   };
 
+  // 데이터 분류
+  // 1) 대기 중 (PENDING) 신청: 오래된 것 먼저 (생성일시 오름차순) - 페이지네이션 없이 상단 전부
+  const pendingRequests = requests
+    .filter((r) => r.status === "PENDING")
+    .sort((a, b) => a.createdAt - b.createdAt);
+
+  // 2) 처리 완료 기록 (PENDING 제외): 최신순 (생성일시 내림차순) 정렬 후 클라이언트 페이지네이션
+  const completedRequests = requests
+    .filter((r) => r.status !== "PENDING")
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+  const totalCompletedPages = Math.ceil(completedRequests.length / completedPageSize) || 1;
+  const safeCompletedPage = Math.min(Math.max(1, completedPage), totalCompletedPages);
+  const completedStartIndex = (safeCompletedPage - 1) * completedPageSize;
+  const paginatedCompletedRequests = completedRequests.slice(
+    completedStartIndex,
+    completedStartIndex + completedPageSize
+  );
+
+  const renderMyRequestRow = (req: SwapRequest) => {
+    const statusInfo = STATUS_LABELS[req.status] || {
+      label: req.status,
+      className: "bg-gray-100 text-gray-600 border-gray-200",
+    };
+    const isCross =
+      req.type === "cross_swap" ||
+      (req.targetWeekId && req.targetWeekId !== req.weekId) ||
+      !!(req.candidate as any).targetWeekId;
+    const targetWeekVal = req.targetWeekId || (req.candidate as any).targetWeekId;
+    const isPending = req.status === "PENDING";
+
+    return (
+      <div
+        key={req.id}
+        className={`p-2.5 space-y-1 rounded-lg border transition-all text-xs ${
+          isPending
+            ? "border-amber-200 bg-amber-50/20"
+            : "border-gray-200 bg-white hover:bg-gray-50/50"
+        }`}
+      >
+        {/* 1줄째: 신청일시(진하게) -> 상태 뱃지 -> 유형 뱃지 -> 주 정보 */}
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-extrabold text-gray-900 text-xs shrink-0">
+              {formatDateTimeCompact(req.createdAt)}
+            </span>
+            <span
+              className={`px-1.5 py-0.5 rounded text-[11px] font-bold border shrink-0 ${statusInfo.className}`}
+            >
+              {statusInfo.label}
+            </span>
+            <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-semibold text-[11px] rounded border border-indigo-100 shrink-0">
+              {isCross
+                ? "↔️ 교차주"
+                : req.type === "swap"
+                ? "↔️ 맞교환"
+                : "👤 보강"}
+            </span>
+          </div>
+
+          <span className="text-[11px] text-gray-400 shrink-0">
+            신청 주: <strong className="text-gray-700">{req.weekId} 주</strong>
+            {isCross && targetWeekVal ? ` ↔ ${targetWeekVal} 주` : ""}
+          </span>
+        </div>
+
+        {/* 2줄째: 수업 정보 + 취소 버튼 */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-1.5 text-xs text-gray-700">
+          <div className="flex items-center gap-1 flex-wrap font-medium">
+            <span className="text-gray-500">원 수업:</span>
+            <span className="font-bold text-gray-900">
+              {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
+            </span>
+            <span className="text-gray-600">
+              ({req.source.subjectName}, {req.source.grade}-{req.source.classNum}반)
+            </span>
+
+            {(req.type === "swap" || req.type === "cross_swap") && req.candidate.targetDay != null && (
+              <>
+                <span className="text-gray-400 font-bold px-0.5">→</span>
+                <span className="font-bold text-indigo-800">
+                  {formatSlotWithDate(
+                    targetWeekVal || req.weekId,
+                    req.candidate.targetDay!,
+                    req.candidate.targetPeriod!
+                  )}
+                </span>
+                <span className="text-gray-600">
+                  · 상대 <strong className="text-gray-900">{req.candidate.counterpartName}</strong>
+                </span>
+              </>
+            )}
+
+            {req.type === "substitute" && (
+              <>
+                <span className="text-gray-400 font-bold px-0.5">→</span>
+                <span className="font-bold text-indigo-800">특별보강</span>
+                <span className="text-gray-600">
+                  · 보강 <strong className="text-gray-900">{req.candidate.counterpartName}</strong>
+                </span>
+              </>
+            )}
+
+            <span className="text-indigo-900 font-semibold ml-1">
+              + 사유 [{req.reason.type}]
+            </span>
+            {req.reason.note && <span className="text-gray-600">({req.reason.note})</span>}
+
+            {/* 처리 정보 및 결정 사유 */}
+            {req.decidedAt && (
+              <span className="text-gray-500 text-[11px] ml-1">
+                · 결정일: {formatShortDate(req.decidedAt)}
+              </span>
+            )}
+            {req.decisionNote && (
+              <span className="text-red-700 font-bold text-[11px] ml-1">
+                — 사유: {req.decisionNote}
+              </span>
+            )}
+          </div>
+
+          {/* 대기 중 신청 취소 버튼 */}
+          {isPending && (
+            <button
+              onClick={() => handleCancel(req.id)}
+              disabled={cancellingId === req.id}
+              className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded text-xs transition-colors disabled:opacity-50 border border-red-200 shrink-0 self-end md:self-auto cursor-pointer"
+            >
+              {cancellingId === req.id ? "취소 중..." : "신청 취소"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-5">
+    <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
       {/* 📁 사전 양해 임시저장함 (phase9b_spec §13-1) */}
-      <div className="border border-indigo-200 bg-indigo-50/40 rounded-xl p-4 space-y-3">
+      <div className="border border-indigo-200 bg-indigo-50/40 rounded-xl p-3.5 space-y-3">
         <div className="flex items-center justify-between">
           <button
             onClick={() => setDraftsOpen(!draftsOpen)}
@@ -2127,7 +2295,7 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
               </div>
             )}
             {!draftsLoading && drafts.length > 0 && (
-              <div className="bg-white border border-indigo-200 rounded-xl p-3.5 space-y-3 shadow-sm">
+              <div className="bg-white border border-indigo-200 rounded-xl p-3.5 space-y-3 shadow-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
                   <div className="flex items-center gap-2">
                     <input
@@ -2171,7 +2339,7 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                 <button
                   onClick={handleBatchSubmit}
                   disabled={submittingBatch || selectedDraftIds.length === 0}
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5"
                 >
                   <span>🚀</span>
                   <span>{submittingBatch ? "일괄 신청 제출 중..." : `선택 항목 ${selectedDraftIds.length}건 한 번에 일괄 신청하기 (일과계 제출)`}</span>
@@ -2192,7 +2360,7 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                 return (
                   <div
                     key={draft.id}
-                    className={`bg-white border rounded-xl p-3.5 space-y-2.5 shadow-sm transition-colors ${
+                    className={`bg-white border rounded-xl p-3.5 space-y-2.5 shadow-xs transition-colors ${
                       errorMsg ? "border-red-300 bg-red-50/30" : "border-indigo-150 hover:border-indigo-300"
                     }`}
                   >
@@ -2253,23 +2421,23 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                           setDraftReason(draft.reason || { type: "출장" });
                         }}
                         disabled={submittingDraftId === draft.id}
-                        className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors shadow-sm disabled:opacity-50"
+                        className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
                       >
                         {submittingDraftId === draft.id ? "신청 중..." : "이 안으로 신청"}
                       </button>
 
                       <button
                         onClick={() => handleCopyDraftShareImage(draft)}
-                        className="py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs border border-indigo-200 transition-colors shrink-0"
+                        className="py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs border border-indigo-200 transition-colors shrink-0 cursor-pointer"
                       >
                         📋 양해 이미지 복사
                       </button>
 
                       <button
                         onClick={() => handleDeleteDraft(draft.id)}
-                        className={`py-1.5 px-3 font-bold rounded-lg text-xs transition-colors shrink-0 ${
+                        className={`py-1.5 px-3 font-bold rounded-lg text-xs transition-colors shrink-0 cursor-pointer ${
                           errorMsg
-                            ? "bg-red-600 hover:bg-red-700 text-white shadow-sm ring-2 ring-red-400 animate-pulse"
+                            ? "bg-red-600 hover:bg-red-700 text-white shadow-xs ring-2 ring-red-400 animate-pulse"
                             : "bg-gray-100 hover:bg-gray-200 text-gray-600"
                         }`}
                       >
@@ -2337,115 +2505,93 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
               <button
                 onClick={() => setConfirmingDraft(null)}
-                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700"
+                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
               >
                 취소
               </button>
               <button
                 onClick={handleSubmitDraftConfirm}
                 disabled={submittingDraftId === confirmingDraft.id || (draftReason.type === "기타" && !draftReason.note?.trim())}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-sm disabled:opacity-50 transition-colors"
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
               >
-                {submittingDraftId === confirmingDraft.id ? "제출 중..." : "확인 및 수업교환 신청"}
+                {submittingDraftId === confirmingDraft.id ? "신청 중..." : "확인 및 수업교환 신청"}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* 헤더 & 주선택 필터 */}
       <div className="flex flex-wrap items-center gap-3 pb-2 border-b border-gray-100">
         <h3 className="text-base font-bold text-gray-900">📋 내 수업교환 신청 내역</h3>
         <select
           value={selectedWeekId}
           onChange={(e) => setSelectedWeekId(e.target.value)}
-          className="ml-auto border border-gray-200 rounded-lg px-3 py-1.5 text-xs"
+          className="ml-auto border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-800"
         >
           <option value="">전체 주</option>
           {weeks.map((w) => <option key={w.id} value={w.id}>{w.startDate} 주</option>)}
         </select>
         <button
           onClick={fetchMyList}
-          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition-colors"
+          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
         >
           새로고침
         </button>
       </div>
 
       {successMsg && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs font-semibold text-green-800">
-          {successMsg}
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs font-semibold text-emerald-800">
+          ✅ {successMsg}
         </div>
       )}
-      {error && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800">{error}</div>}
+      {error && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800">⚠️ {error}</div>}
       {loading && <div className="text-center py-6 text-xs text-indigo-500 animate-pulse">불러오는 중...</div>}
 
+      {/* 내 신청 내역 리스트 */}
       {!loading && requests.length === 0 && (
-        <div className="text-center py-8 text-sm text-gray-400">수업교환 신청 내역이 없습니다.</div>
+        <div className="text-center py-8 text-xs text-gray-400 bg-white rounded-xl border border-gray-100">
+          수업교환 신청 내역이 없습니다.
+        </div>
       )}
 
       {!loading && requests.length > 0 && (
-        <div className="space-y-3">
-          {requests.map((req) => {
-            const statusInfo = STATUS_LABELS[req.status] || { label: req.status, className: "bg-gray-100 text-gray-600 border-gray-200" };
-            const isCross = req.type === "cross_swap" || (req.targetWeekId && req.targetWeekId !== req.weekId) || !!(req.candidate as any).targetWeekId;
-            const targetWeekVal = req.targetWeekId || (req.candidate as any).targetWeekId;
-
-            return (
-              <div key={req.id} className="border border-gray-200 rounded-xl p-4 space-y-2 hover:bg-gray-50/50 transition-colors">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="space-y-1">
-                    <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
-                      <span>{req.weekId} 주</span>
-                      {isCross ? (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">
-                          ↔ {targetWeekVal ? `${targetWeekVal} 주` : ""} 교차 주 맞교환
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-gray-500 font-normal">
-                          — {req.type === "swap" ? "맞교환" : "특별보강"}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-gray-600">
-                      원 수업: {formatSlotWithDate(req.weekId, req.source.day, req.source.period)} ({req.source.subjectName}, {req.source.grade}-{req.source.classNum}반)
-                    </div>
-                    {(req.type === "swap" || req.type === "cross_swap") && req.candidate.targetDay != null && (
-                      <div className="text-[11px] text-gray-600">
-                        교환: {formatSlotWithDate(targetWeekVal || req.weekId, req.candidate.targetDay!, req.candidate.targetPeriod!)} ({req.candidate.counterpartName})
-                      </div>
-                    )}
-                    {req.type === "substitute" && (
-                      <div className="text-[11px] text-gray-600">보강 교사: {req.candidate.counterpartName}</div>
-                    )}
-                    <div className="text-[11px] text-gray-500">
-                      사유: {req.reason.type}{req.reason.note && ` — ${req.reason.note}`}
-                    </div>
-                    {req.decisionNote && (
-                      <div className="text-[11px] text-red-700 font-medium">결정 사유: {req.decisionNote}</div>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-2 shrink-0">
-                    <span className={`px-2.5 py-1 rounded-full border text-[11px] font-bold ${statusInfo.className}`}>
-                      {statusInfo.label}
-                    </span>
-                    {req.status === "PENDING" && (
-                      <button
-                        onClick={() => handleCancel(req.id)}
-                        disabled={cancellingId === req.id}
-                        className="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-lg text-[11px] transition-colors disabled:opacity-50 border border-red-200"
-                      >
-                        {cancellingId === req.id ? "취소 중..." : "신청 취소"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="text-[10px] text-gray-400">
-                  신청일: {new Date(req.createdAt).toLocaleString("ko-KR")}
-                  {req.decidedAt && ` · 결정일: ${new Date(req.decidedAt).toLocaleString("ko-KR")}`}
-                </div>
+        <div className="space-y-4">
+          {/* ① 대기 중 신청 (PENDING) - 페이지 없이 항상 상단 전부 표시 */}
+          {pendingRequests.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-amber-900 px-1">
+                ⏳ 대기 중 신청 ({pendingRequests.length}건)
+              </h4>
+              <div className="space-y-1.5">
+                {pendingRequests.map((req) => renderMyRequestRow(req))}
               </div>
-            );
-          })}
+            </div>
+          )}
+
+          {/* ② 처리 완료 기록 (PENDING 제외 - 최신순 정렬 및 클라이언트 페이지네이션) */}
+          {completedRequests.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-gray-100">
+              <h4 className="text-xs font-bold text-gray-700 px-1">
+                📜 처리 완료 기록 ({completedRequests.length}건)
+              </h4>
+              <div className="space-y-1.5">
+                {paginatedCompletedRequests.map((req) => renderMyRequestRow(req))}
+              </div>
+
+              <PaginationControls
+                currentPage={safeCompletedPage}
+                totalPages={totalCompletedPages}
+                pageSize={completedPageSize}
+                totalCount={completedRequests.length}
+                onPageChange={(page) => setCompletedPage(page)}
+                onPageSizeChange={(size) => {
+                  setCompletedPageSize(size);
+                  setCompletedPage(1);
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

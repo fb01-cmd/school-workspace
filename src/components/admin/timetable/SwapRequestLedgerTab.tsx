@@ -3,9 +3,32 @@
 import { useEffect, useState } from "react";
 import { SwapRequest, SwapRequestStatus, TimetableWeek } from "@/lib/timetable/types";
 import { formatSlotWithDate } from "@/lib/timetable/utils";
+import PaginationControls from "./PaginationControls";
 
 interface SwapRequestLedgerTabProps {
   activeTermId: string | null;
+}
+
+function formatDateTimeCompact(timestamp: number | string | Date): string {
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return "";
+  const month = d.getMonth() + 1;
+  const date = d.getDate();
+  const days = ["일", "월", "화", "수", "목", "금", "토"];
+  const dayStr = days[d.getDay()];
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${month}/${date}(${dayStr}) ${hours}:${minutes}`;
+}
+
+function formatShortDate(timestamp: number | string | Date): string {
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return "";
+  const month = d.getMonth() + 1;
+  const date = d.getDate();
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${month}/${date} ${hours}:${minutes}`;
 }
 
 export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedgerTabProps) {
@@ -21,6 +44,10 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
   // 필터 상태
   const [selectedWeekId, setSelectedWeekId] = useState<string>("");
   const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
+
+  // 페이지네이션 상태 (처리 완료 목록용)
+  const [completedPage, setCompletedPage] = useState(1);
+  const [completedPageSize, setCompletedPageSize] = useState(20);
 
   // 반려 모달 상태
   const [rejectingReq, setRejectingReq] = useState<SwapRequest | null>(null);
@@ -151,6 +178,11 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
     fetchRequests();
   }, [selectedWeekId, selectedStatus]);
 
+  // 주간·상태 필터 변경 시 1페이지로 리셋
+  useEffect(() => {
+    setCompletedPage(1);
+  }, [selectedWeekId, selectedStatus]);
+
   // 승인 처리
   const handleApprove = async (req: SwapRequest) => {
     if (!confirm(`[${req.requesterName}] 선생님의 수업교환 신청을 승인하시겠습니까?`)) {
@@ -262,207 +294,194 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
     }
   };
 
-  // PENDING을 상단에, 그 안에서는 **신청 시간순(먼저 신청한 것 먼저)** — 먼저 온 신청부터
-  // 처리해야 나중 신청이 꼬였는지(사전 검증 배지)를 순서대로 판단할 수 있다.
+  // 데이터 분류
+  // 1) PENDING (대기 중): 오래된 신청 먼저 (createdAt 오름차순) - 작업 큐 형태
   const pendingRequests = requests
     .filter((r) => r.status === "PENDING")
     .sort((a, b) => a.createdAt - b.createdAt);
-  const otherRequests = requests.filter((r) => r.status !== "PENDING");
-  const sortedRequests = [...pendingRequests, ...otherRequests];
 
-  // PENDING 중 batchId가 있는 항목 그룹화
   const pendingBatchGroups: Record<string, SwapRequest[]> = {};
-  const ungroupedRequests: SwapRequest[] = [];
+  const ungroupedPendingRequests: SwapRequest[] = [];
 
-  sortedRequests.forEach((req) => {
-    if (req.status === "PENDING" && req.batchId) {
+  pendingRequests.forEach((req) => {
+    if (req.batchId) {
       if (!pendingBatchGroups[req.batchId]) {
         pendingBatchGroups[req.batchId] = [];
       }
       pendingBatchGroups[req.batchId].push(req);
     } else {
-      ungroupedRequests.push(req);
+      ungroupedPendingRequests.push(req);
     }
   });
 
-  const renderRequestCard = (req: SwapRequest) => {
+  // 2) 처리 완료 목록 (PENDING 제외): 최신순 (createdAt 내림차순)
+  const completedRequests = requests
+    .filter((r) => r.status !== "PENDING")
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+  const totalCompletedPages = Math.ceil(completedRequests.length / completedPageSize) || 1;
+  const safeCompletedPage = Math.min(Math.max(1, completedPage), totalCompletedPages);
+  const completedStartIndex = (safeCompletedPage - 1) * completedPageSize;
+  const paginatedCompletedRequests = completedRequests.slice(
+    completedStartIndex,
+    completedStartIndex + completedPageSize
+  );
+
+  const renderRequestRow = (req: SwapRequest) => {
     const isPending = req.status === "PENDING";
     const isApproved = req.status === "APPROVED";
     const isRejected = req.status === "REJECTED";
-    // 사전 검증: 먼저 승인된 다른 건 때문에 이미 성립 불가해진 신청
     const invalid = isPending && validity[req.id]?.ok === false;
     const invalidReason = invalid ? validity[req.id]?.reason : undefined;
 
     return (
       <div
         key={req.id}
-        className={`bg-white rounded-xl shadow-sm border transition-all p-5 space-y-4 ${
+        className={`p-2.5 space-y-1 rounded-lg border transition-all text-xs ${
           invalid
-            ? "border-red-300 ring-2 ring-red-100"
+            ? "border-red-300 bg-red-50/30"
             : isPending
-            ? "border-amber-300 ring-2 ring-amber-100"
-            : "border-gray-200"
+            ? "border-amber-200 bg-amber-50/20"
+            : "border-gray-200 bg-white hover:bg-gray-50/50"
         }`}
       >
-        {/* 상단 뱃지 & 신청자 정보 */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
-          <div className="flex items-center gap-2">
+        {/* 1줄째: 신청일시(맨 앞 진하게) -> 상태 뱃지 -> 유형 뱃지 -> 신청자 이름 */}
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-extrabold text-gray-900 text-xs shrink-0">
+              {formatDateTimeCompact(req.createdAt)}
+            </span>
             <span
-              className={`px-2.5 py-1 rounded-md text-xs font-bold ${
+              className={`px-1.5 py-0.5 rounded text-[11px] font-bold border shrink-0 ${
                 isPending
-                  ? "bg-amber-100 text-amber-900 border border-amber-300"
+                  ? "bg-amber-100 text-amber-900 border-amber-300"
                   : isApproved
-                  ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                  ? "bg-emerald-100 text-emerald-900 border-emerald-300"
                   : isRejected
-                  ? "bg-red-100 text-red-900 border border-red-300"
-                  : "bg-gray-100 text-gray-700"
+                  ? "bg-red-100 text-red-900 border-red-300"
+                  : "bg-gray-100 text-gray-700 border-gray-300"
               }`}
             >
-              {isPending
-                ? "⏳ 대기 중"
-                : isApproved
-                ? "✅ 승인됨"
-                : isRejected
-                ? "❌ 반려됨"
-                : "⚪ 취소됨"}
+              {isPending ? "⏳ 대기" : isApproved ? "✅ 승인됨" : isRejected ? "❌ 반려됨" : "⚪ 취소됨"}
             </span>
 
-            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 font-semibold text-[11px] rounded border border-indigo-100">
+            <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-semibold text-[11px] rounded border border-indigo-100 shrink-0">
               {req.type === "cross_swap" || (req.targetWeekId && req.targetWeekId !== req.weekId)
-                ? "↔️ 교차 주 맞교환"
+                ? "↔️ 교차주"
                 : req.type === "swap"
                 ? "↔️ 맞교환"
-                : "👤 특별보강"}
+                : "👤 보강"}
             </span>
 
-            <span className="text-xs font-bold text-gray-900">
-              {req.requesterName} ({req.requesterEmail})
+            <span className="text-xs font-bold text-gray-900 truncate">
+              {req.requesterName} <span className="text-gray-500 font-normal text-[11px]">({req.requesterEmail})</span>
             </span>
-
-            {req.batchId && (
-              <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded border border-indigo-200">
-                📦 묶음 ID: {req.batchId.slice(0, 8)}
-              </span>
-            )}
           </div>
 
-          <span className="text-[11px] text-gray-400">
-            신청일시: {new Date(req.createdAt).toLocaleString("ko-KR")} (주: {req.weekId}{req.targetWeekId && req.targetWeekId !== req.weekId ? ` ↔ ${req.targetWeekId}` : ""})
+          <span className="text-[11px] text-gray-400 shrink-0">
+            주: {req.weekId}{req.targetWeekId && req.targetWeekId !== req.weekId ? ` ↔ ${req.targetWeekId}` : ""}
           </span>
         </div>
 
-        {/* 핵심 변경 내역 한 줄: 어느 수업을 언제에서 언제로 (승인자 관점 필수 정보만) */}
-        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 bg-gray-50/60 rounded-lg p-4 border border-gray-200">
-          <div className="flex-1">
-            <div className="font-black text-gray-900 text-base">
+        {/* 2줄째: 교환 내용 한 줄 + 처리결과 인라인 + 반려/승인 버튼 */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-1.5 text-xs text-gray-700">
+          <div className="flex items-center gap-1 flex-wrap font-medium">
+            <span className="font-bold text-gray-900">
               {req.source.grade}-{req.source.classNum}반 {req.source.subjectName}
-            </div>
-            <div className="text-indigo-700 font-bold text-sm mt-0.5">
+            </span>
+            <span className="text-indigo-700 font-bold">
               {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
-            </div>
-          </div>
-
-          <div className="text-2xl font-black text-indigo-300 text-center shrink-0">→</div>
-
-          <div className="flex-1">
+            </span>
+            <span className="text-gray-400 font-bold px-0.5">→</span>
             {req.type === "swap" || req.type === "cross_swap" ? (
               <>
-                <div className="font-black text-indigo-800 text-base">
+                <span className="font-bold text-indigo-800">
                   {formatSlotWithDate(
                     req.targetWeekId || (req.candidate as any).targetWeekId || req.weekId,
                     req.candidate.targetDay,
                     req.candidate.targetPeriod
                   )}
-                </div>
-                <div className="text-gray-600 font-semibold text-xs mt-0.5">
-                  맞교환 상대: <strong className="text-gray-900">{req.candidate.counterpartName}</strong>
-                  {req.candidate.counterpartSubjectName ? ` (${req.candidate.counterpartSubjectName})` : ""}
-                </div>
+                </span>
+                <span className="text-gray-600">
+                  · 상대 <strong className="text-gray-900">{req.candidate.counterpartName}</strong>
+                  {req.candidate.counterpartSubjectName ? `(${req.candidate.counterpartSubjectName})` : ""}
+                </span>
               </>
             ) : (
               <>
-                <div className="font-black text-indigo-800 text-base">같은 교시 특별보강</div>
-                <div className="text-gray-600 font-semibold text-xs mt-0.5">
-                  보강 담당: <strong className="text-gray-900">{req.candidate.counterpartName}</strong> 선생님
-                </div>
+                <span className="font-bold text-indigo-800">특별보강</span>
+                <span className="text-gray-600">
+                  · 보강 <strong className="text-gray-900">{req.candidate.counterpartName}</strong>
+                </span>
               </>
             )}
-          </div>
-        </div>
-
-        {/* 사전 검증 실패: 먼저 승인된 다른 건 때문에 성립 불가 — 화면에서 즉시 표시 */}
-        {invalid && (
-          <div className="bg-red-50 border-2 border-red-300 rounded-lg p-3 text-xs font-bold text-red-900">
-            ⚠️ <span className="font-black">승인 불가 상태</span> — {invalidReason}
-            <span className="block mt-1 font-semibold text-red-700">
-              반려 처리 후 신청자에게 재신청을 안내해 주세요.
+            <span className="text-indigo-900 font-semibold">
+              + 사유 [{req.reason.type}]
             </span>
-          </div>
-        )}
+            {req.reason.note && <span className="text-gray-600">({req.reason.note})</span>}
 
-        {/* 사유 & 처리 결과 정보 */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs bg-gray-50/70 p-3 rounded-lg border border-gray-100">
-          <div>
-            <span className="font-bold text-gray-700">신청 사유: </span>
-            <span className="font-semibold text-indigo-900">
-              [{req.reason.type}]
-            </span>{" "}
-            <span className="text-gray-700">{req.reason.note || ""}</span>
+            {/* 처리 완료 건 인라인 정보 */}
+            {req.decidedBy && (
+              <span className="text-gray-500 text-[11px] ml-1">
+                · 처리: <strong className="text-gray-700">{req.decidedBy}</strong>
+                {req.decidedAt ? ` (${formatShortDate(req.decidedAt)})` : ""}
+                {req.decisionNote && (
+                  <span className="text-red-700 font-bold ml-1">
+                    — 사유: {req.decisionNote}
+                  </span>
+                )}
+              </span>
+            )}
           </div>
 
-          {req.decidedBy && (
-            <div className="text-gray-500 text-[11px]">
-              처리: <strong>{req.decidedBy}</strong> (
-              {req.decidedAt ? new Date(req.decidedAt).toLocaleString("ko-KR") : ""})
-              {req.decisionNote && (
-                <span className="ml-1 text-red-700 font-bold">
-                  — 사유: {req.decisionNote}
-                </span>
+          {/* 결재 버튼 영역 */}
+          {!readOnly && (
+            <div className="flex items-center gap-1.5 shrink-0 self-end md:self-auto">
+              {isPending && (
+                <>
+                  <button
+                    onClick={() => {
+                      setRejectingReq(req);
+                      setRejectReason("");
+                      setRejectError(null);
+                    }}
+                    className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded text-xs transition-colors cursor-pointer"
+                  >
+                    ❌ 반려
+                  </button>
+                  <button
+                    onClick={() => handleApprove(req)}
+                    disabled={approvingId === req.id || invalid}
+                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-xs shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {invalid ? "🚫 승인 불가" : approvingId === req.id ? "승인 중..." : "✅ 승인"}
+                  </button>
+                </>
+              )}
+
+              {isApproved && req.appliedChangeIds?.[0] && (
+                revertedReqIds.has(req.id) ? (
+                  <span className="px-2.5 py-1 bg-gray-100 text-gray-500 font-bold rounded text-xs border border-gray-200 cursor-not-allowed">
+                    ↩️ 취소됨
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleRevert(req)}
+                    disabled={revertingId === req.id}
+                    className="px-2.5 py-1 bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 border border-gray-300 font-bold rounded text-xs transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {revertingId === req.id ? "취소 중..." : "↩️ 승인 취소"}
+                  </button>
+                )
               )}
             </div>
           )}
         </div>
 
-        {/* 결재 버튼 영역 */}
-        {!readOnly && (
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-            {isPending && (
-              <>
-                <button
-                  onClick={() => {
-                    setRejectingReq(req);
-                    setRejectReason("");
-                    setRejectError(null);
-                  }}
-                  className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded-lg text-xs transition-colors"
-                >
-                  ❌ 반려
-                </button>
-                <button
-                  onClick={() => handleApprove(req)}
-                  disabled={approvingId === req.id || invalid}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {invalid ? "🚫 승인 불가" : approvingId === req.id ? "승인 처리 중..." : "✅ 승인 확정"}
-                </button>
-              </>
-            )}
-
-            {isApproved && req.appliedChangeIds?.[0] && (
-              revertedReqIds.has(req.id) ? (
-                <span className="px-3.5 py-2 bg-gray-100 text-gray-500 font-bold rounded-lg text-xs border border-gray-200 cursor-not-allowed">
-                  ↩️ 승인 취소 완료
-                </span>
-              ) : (
-                <button
-                  onClick={() => handleRevert(req)}
-                  disabled={revertingId === req.id}
-                  className="px-4 py-2 bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 border border-gray-300 font-bold rounded-lg text-xs transition-colors disabled:opacity-50"
-                >
-                  {revertingId === req.id ? "취소 처리 중..." : "↩️ 승인 취소 (revert)"}
-                </button>
-              )
-            )}
+        {/* 성립 불가 경고 줄 */}
+        {invalid && (
+          <div className="mt-1 bg-red-50 border border-red-200 rounded px-2.5 py-1 text-[11px] font-bold text-red-800">
+            ⚠️ <span className="font-extrabold text-red-900">승인 불가 상태</span> — {invalidReason} (반려 처리 후 재신청 안내 필요)
           </div>
         )}
       </div>
@@ -470,10 +489,10 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* 헤더 & 필터 */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
               <span>📋</span>
@@ -484,14 +503,14 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                 </span>
               )}
             </h2>
-            <p className="text-xs text-gray-500 mt-1">
-              교사들이 제출한 수업교환 및 특별보강 신청을 검토하고 승인·반려·취소를 처리합니다.
+            <p className="text-xs text-gray-500 mt-0.5">
+              교사들의 수업교환 신청을 검토하고 승인·반려·취소를 처리합니다.
             </p>
           </div>
 
           <button
             onClick={fetchRequests}
-            className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 self-start md:self-auto"
+            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 self-start md:self-auto cursor-pointer"
           >
             <span>🔄</span>
             <span>새로고침</span>
@@ -505,7 +524,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
             <select
               value={selectedWeekId}
               onChange={(e) => setSelectedWeekId(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white font-semibold text-gray-800 focus:ring-2 focus:ring-indigo-500"
+              className="px-2.5 py-1 border border-gray-300 rounded-lg bg-white font-semibold text-gray-800 focus:ring-1 focus:ring-indigo-500"
             >
               <option value="">전체 주간</option>
               {weeks.map((w) => (
@@ -521,7 +540,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white font-semibold text-gray-800 focus:ring-2 focus:ring-indigo-500"
+              className="px-2.5 py-1 border border-gray-300 rounded-lg bg-white font-semibold text-gray-800 focus:ring-1 focus:ring-indigo-500"
             >
               <option value="ALL">전체 상태</option>
               <option value="PENDING">대기 중 (PENDING)</option>
@@ -532,7 +551,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
           </div>
 
           {pendingRequests.length > 0 && (
-            <span className="ml-auto font-bold text-xs bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-full animate-pulse">
+            <span className="ml-auto font-bold text-xs bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full animate-pulse">
               🔔 대기 중 신청 {pendingRequests.length}건
             </span>
           )}
@@ -541,12 +560,12 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
 
       {/* 메시지 알림 */}
       {successMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-4 rounded-xl text-xs font-bold">
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-xl text-xs font-bold">
           ✅ {successMsg}
         </div>
       )}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-900 p-4 rounded-xl text-xs font-bold">
+        <div className="bg-red-50 border border-red-200 text-red-900 p-3 rounded-xl text-xs font-bold">
           ⚠️ {error}
         </div>
       )}
@@ -554,68 +573,110 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
       {/* 요청대장 리스트 */}
       <div className="space-y-4">
         {loading ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-xs font-semibold text-gray-500">
-            <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-indigo-600 border-t-transparent mb-2"></div>
+          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-8 text-center text-xs font-semibold text-gray-500">
+            <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-indigo-600 border-t-transparent mb-2"></div>
             <p>수업교환 신청 목록을 불러오는 중입니다...</p>
           </div>
-        ) : sortedRequests.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-xs text-gray-500">
+        ) : requests.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-8 text-center text-xs text-gray-500">
             <p className="font-semibold mb-1">조회된 수업교환 신청이 없습니다.</p>
             <p className="text-gray-400">필터 조건을 변경하거나 교사들의 신청을 기다려 주세요.</p>
           </div>
         ) : (
           <>
-            {/* ① batchId 묶음 그룹 카드 렌더링 */}
-            {Object.entries(pendingBatchGroups).map(([bId, bReqs]) => (
-              <div
-                key={`batch-${bId}`}
-                className="border-2 border-indigo-300 bg-indigo-50/20 rounded-2xl p-4 space-y-3 shadow-md"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-200 pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-md text-xs font-black bg-indigo-600 text-white shadow-xs">
-                      📦 묶음 일괄 신청 ({bReqs.length}건)
+            {/* ① 대기 중(PENDING) 영역 - 작업 큐 (페이지네이션 없음) */}
+            {pendingRequests.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <h3 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                    <span>🔔 처리 대기 중 신청 ({pendingRequests.length}건)</span>
+                    <span className="text-[10px] text-amber-700 font-normal">
+                      · 오래된 신청순 (상단부터 순차 처리)
                     </span>
-                    <span className="text-sm font-extrabold text-indigo-950">
-                      {bReqs[0].requesterName} ({bReqs[0].requesterEmail})
-                    </span>
-                    <span className="text-xs font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
-                      🔔 동일 주 대기 {bReqs.length}건
-                    </span>
-                    {bReqs.some((r) => validity[r.id]?.ok === false) && (
-                      <span className="text-xs font-black text-red-900 bg-red-100 border border-red-300 px-2 py-0.5 rounded-full">
-                        ⚠️ 성립 불가 {bReqs.filter((r) => validity[r.id]?.ok === false).length}건 포함
-                      </span>
-                    )}
+                  </h3>
+                </div>
+
+                {/* 묶음 일괄 그룹 렌더링 */}
+                {Object.entries(pendingBatchGroups).map(([bId, bReqs]) => (
+                  <div
+                    key={`batch-${bId}`}
+                    className="border-2 border-indigo-300 bg-indigo-50/20 rounded-xl p-2.5 space-y-2"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-200 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-xs font-black bg-indigo-600 text-white shadow-xs">
+                          📦 묶음 신청 ({bReqs.length}건)
+                        </span>
+                        <span className="text-xs font-extrabold text-indigo-950">
+                          {bReqs[0].requesterName} ({bReqs[0].requesterEmail})
+                        </span>
+                        {bReqs.some((r) => validity[r.id]?.ok === false) && (
+                          <span className="text-[11px] font-black text-red-900 bg-red-100 border border-red-300 px-2 py-0.5 rounded-full">
+                            ⚠️ 성립 불가 {bReqs.filter((r) => validity[r.id]?.ok === false).length}건 포함
+                          </span>
+                        )}
+                      </div>
+
+                      {!readOnly && (
+                        <button
+                          onClick={() => handleBatchApprove(bId, bReqs)}
+                          disabled={batchApprovingId === bId}
+                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>⚡</span>
+                          <span>{batchApprovingId === bId ? "일괄 승인 중..." : "묶음 일괄 승인"}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {bReqs.map((req) => renderRequestRow(req))}
+                    </div>
                   </div>
+                ))}
 
-                  {!readOnly && (
-                    <button
-                      onClick={() => handleBatchApprove(bId, bReqs)}
-                      disabled={batchApprovingId === bId}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl transition-colors shadow-sm flex items-center gap-1.5"
-                    >
-                      <span>⚡</span>
-                      <span>{batchApprovingId === bId ? "일괄 승인 중..." : "묶음 일괄 승인"}</span>
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  {bReqs.map((req) => renderRequestCard(req))}
-                </div>
+                {/* 개별 대기 건 렌더링 */}
+                {ungroupedPendingRequests.length > 0 && (
+                  <div className="space-y-1.5">
+                    {ungroupedPendingRequests.map((req) => renderRequestRow(req))}
+                  </div>
+                )}
               </div>
-            ))}
+            )}
 
-            {/* ② 기타 일반/개별 신청 렌더링 */}
-            {ungroupedRequests.map((req) => renderRequestCard(req))}
+            {/* ② 처리 완료 목록 영역 (PENDING 제외 - 클라이언트 페이지네이션) */}
+            {completedRequests.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-gray-200">
+                <div className="flex items-center justify-between px-1">
+                  <h3 className="text-xs font-bold text-gray-700">
+                    📜 처리 완료 내역 ({completedRequests.length}건)
+                  </h3>
+                </div>
+
+                <div className="space-y-1.5">
+                  {paginatedCompletedRequests.map((req) => renderRequestRow(req))}
+                </div>
+
+                <PaginationControls
+                  currentPage={safeCompletedPage}
+                  totalPages={totalCompletedPages}
+                  pageSize={completedPageSize}
+                  totalCount={completedRequests.length}
+                  onPageChange={(page) => setCompletedPage(page)}
+                  onPageSizeChange={(size) => {
+                    setCompletedPageSize(size);
+                    setCompletedPage(1);
+                  }}
+                />
+              </div>
+            )}
           </>
         )}
       </div>
 
       {/* 반려 사유 입력 모달 */}
       {rejectingReq && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-md p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -659,14 +720,14 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                 <button
                   type="button"
                   onClick={() => setRejectingReq(null)}
-                  className="px-4 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold rounded-lg"
+                  className="px-4 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold rounded-lg cursor-pointer"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
                   disabled={rejectSubmitting}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-sm disabled:opacity-50"
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-xs disabled:opacity-50 cursor-pointer"
                 >
                   {rejectSubmitting ? "반려 처리 중..." : "반려 확정"}
                 </button>
