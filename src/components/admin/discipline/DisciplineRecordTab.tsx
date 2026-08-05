@@ -20,7 +20,8 @@ interface UserPermissions {
   canManageRules?: boolean;
   canManagePermissions?: boolean;
   isHomeroom?: boolean;
-  homeroomClasses?: string[];
+  // 서버(permissions my)는 { grade, classNum } 객체 배열을 반환한다 — 문자열 가정 금지
+  homeroomClasses?: Array<{ grade: number; classNum: number } | string>;
   grants?: DisciplineGrant[];
   myGrants?: DisciplineGrant[];
 }
@@ -39,6 +40,7 @@ export default function DisciplineRecordTab({
   const [studentInput, setStudentInput] = useState("");
   const [selectedStudentEmail, setSelectedStudentEmail] = useState("");
   const [selectedStudentName, setSelectedStudentName] = useState("");
+  const [selectedStudentId, setSelectedStudentId] = useState(""); // 학번 5자리 (명단 familyName 원본)
   const [selectedHomeroomEmail, setSelectedHomeroomEmail] = useState("");
 
   // KST 오늘 날짜 (YYYY-MM-DD)
@@ -58,12 +60,25 @@ export default function DisciplineRecordTab({
   const [homeroomStudents, setHomeroomStudents] = useState<HomeroomStudent[]>([]);
   const [loadingHomeroom, setLoadingHomeroom] = useState(false);
 
-  const hasHomeroom = Boolean(permissions?.homeroomClasses && permissions.homeroomClasses.length > 0);
+  // 서버 응답의 객체 배열을 정규화 (방어적으로 문자열 형태도 허용)
+  const homeroomClassList = (permissions?.homeroomClasses || [])
+    .map((hc) => {
+      if (hc && typeof hc === "object") {
+        const grade = Number((hc as any).grade);
+        const classNum = Number((hc as any).classNum);
+        return Number.isInteger(grade) && Number.isInteger(classNum) ? { grade, classNum } : null;
+      }
+      const m = String(hc).match(/(\d+)\s*[-학년\s]\s*(\d+)/);
+      return m ? { grade: Number(m[1]), classNum: Number(m[2]) } : null;
+    })
+    .filter((v): v is { grade: number; classNum: number } => v !== null);
+
+  const hasHomeroom = homeroomClassList.length > 0;
+  const homeroomLabel = homeroomClassList.map((h) => `${h.grade}-${h.classNum}`).join(", ");
 
   // grant로 기록 범위가 반을 넘는 사용자 (all 또는 grade 권한 보유)
   const hasBroaderRecordGrant = Boolean(
-    permissions?.role === "admin" ||
-    permissions?.role === "superadmin" ||
+    permissions?.role === "super_admin" ||
     (permissions?.grants || permissions?.myGrants || []).some((g) => {
       const hasRecordRight = g.rights?.includes("record");
       const isBroaderScope = g.scope?.type === "all" || g.scope?.type === "grade";
@@ -79,17 +94,9 @@ export default function DisciplineRecordTab({
   useEffect(() => {
     if (!hasHomeroom || !permissions?.homeroomClasses) return;
 
-    const targetPrefixes = permissions.homeroomClasses
-      .map((hc) => {
-        const match = hc.match(/(\d+)\s*[-학년\s]\s*(\d+)/);
-        if (match) {
-          const g = match[1];
-          const c = match[2].padStart(2, "0");
-          return `${g}${c}`; // 예: "101"
-        }
-        return "";
-      })
-      .filter(Boolean);
+    const targetPrefixes = homeroomClassList.map(
+      (h) => `${h.grade}${String(h.classNum).padStart(2, "0")}` // 예: "101"
+    );
 
     if (targetPrefixes.length === 0) return;
 
@@ -144,11 +151,24 @@ export default function DisciplineRecordTab({
     }
   }, [hasHomeroom, permissions?.homeroomClasses]);
 
+  // 학번 해석: 이메일 앞자리가 아니라 명단 데이터의 학번(familyName)이 단일 원본이다.
+  // (학생 실계정 이메일은 입학년도 기반(예: 26027@)이라 학번과 다름 — 이메일 파싱 금지)
+  const resolveStudentId = (email: string): string => {
+    const lower = email.trim().toLowerCase();
+    const hs = homeroomStudents.find((s) => s.email.toLowerCase() === lower);
+    if (hs) return hs.studentId;
+    const users: any[] = getClientCache("users:all") || [];
+    const u = users.find((x) => (x.primaryEmail || x.email || "").toLowerCase() === lower);
+    const fam = typeof u?.name === "object" ? (u.name?.familyName || "").trim() : "";
+    return /^\d{5}$/.test(fam) ? fam : "";
+  };
+
   // 학생 선택 핸들러
   const handleSelectStudent = (email: string, name?: string) => {
     setSelectedStudentEmail(email);
     setSelectedStudentName(name || email);
     setStudentInput(email);
+    setSelectedStudentId(resolveStudentId(email));
 
     // 반 드롭다운 동기화
     const homeroomMatch = homeroomStudents.find(
@@ -166,6 +186,7 @@ export default function DisciplineRecordTab({
     if (!email) {
       setSelectedStudentEmail("");
       setSelectedStudentName("");
+      setSelectedStudentId("");
       setStudentInput("");
       return;
     }
@@ -184,11 +205,11 @@ export default function DisciplineRecordTab({
       return;
     }
 
-    const studentIdMatch = selectedStudentEmail.trim().match(/^(\d{5})@/);
-    if (!studentIdMatch) {
+    const studentId = selectedStudentId || resolveStudentId(selectedStudentEmail);
+    if (!studentId) {
       setMessage({
         type: "error",
-        text: "학생 계정(학번@도메인 형식)만 선택할 수 있습니다. 목록에서 학생을 선택해주세요.",
+        text: "학번을 확인할 수 없습니다. 목록에서 학생을 다시 선택해주세요.",
       });
       return;
     }
@@ -221,7 +242,7 @@ export default function DisciplineRecordTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create",
-          studentId: studentIdMatch[1],
+          studentId,
           studentName: selectedStudentName,
           itemId: selectedItemId,
           occurredAt: occurredAtIso,
@@ -245,6 +266,7 @@ export default function DisciplineRecordTab({
       setStudentInput("");
       setSelectedStudentEmail("");
       setSelectedStudentName("");
+      setSelectedStudentId("");
       setSelectedHomeroomEmail("");
       setSelectedItemId("");
       setNote("");
@@ -287,7 +309,7 @@ export default function DisciplineRecordTab({
             {hasHomeroom && (
               <div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-                  🏫 우리 반 학생 목록 ({permissions?.homeroomClasses?.join(", ")})
+                  🏫 우리 반 학생 목록 ({homeroomLabel})
                 </div>
                 {loadingHomeroom ? (
                   <div className="text-xs text-gray-400 p-2">우리 반 학생 목록을 불러오는 중...</div>
