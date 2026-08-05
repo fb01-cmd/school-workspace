@@ -131,6 +131,7 @@ function parseNoteDate(note: string): number | null {
 }
 
 async function run() {
+  if (process.argv.includes("--execute")) return; // 실행 모드는 하단 executeMigration이 담당
   console.log("① 플랫폼 학생 명단 로드…");
   const roster = await loadRoster();
   console.log(`  학번 파싱된 학생 ${roster.size}명`);
@@ -193,4 +194,72 @@ async function run() {
   fs.writeFileSync(out, JSON.stringify({ records, excluded, generatedAt: null }, null, 2));
   console.log(`\n미리보기 JSON 저장: ${out} (실행 단계에서 이 파일을 그대로 사용)`);
 }
-run().then(()=>process.exit(0)).catch(e=>{console.error(e?.response?.data || e);process.exit(1);});
+if (!process.argv.includes("--execute")) run().then(()=>process.exit(0)).catch(e=>{console.error(e?.response?.data || e);process.exit(1);});
+
+// ── 실행 모드: PREVIEW_OUT의 JSON을 그대로 기록으로 이관 (node … --execute) ──
+export async function executeMigration() {
+  const crypto = await import("crypto");
+  const { adminDb } = await import("../src/lib/firebase/admin");
+  const { Timestamp } = await import("firebase-admin/firestore");
+  const { writeAuditLog } = await import("../src/lib/firebase/audit-server");
+  const domain = "hmh.or.kr";
+  const data = JSON.parse(fs.readFileSync(process.env.PREVIEW_OUT!, "utf8"));
+  const records: SheetRecord[] = data.records;
+
+  const col = adminDb.collection("discipline_records").doc(domain).collection("records");
+  const existing = await col.limit(1).get();
+  if (!existing.empty && !process.argv.includes("--force")) {
+    console.error("중단: 기존 기록이 존재합니다. 중복 이관 방지 — 확인 후 --force로 재시도.");
+    process.exit(1);
+  }
+
+  console.log(`이관 시작: ${records.length}건 (단계 이벤트는 생성하지 않음 — 시트 시절 기처리)`);
+  let batch = adminDb.batch(); let n = 0; let written = 0;
+  for (const r of records) {
+    const id = "rec_mig_" + crypto.randomBytes(6).toString("hex");
+    const noteParts = [r.note].filter(Boolean);
+    noteParts.push(r.dateSource === "fallback" ? "[1학기 시트 이관 · 날짜 미상(근사)]" : "[1학기 시트 이관]");
+    batch.set(col.doc(id), {
+      studentId: r.studentId,
+      studentEmail: r.studentEmail, // 실계정 이메일 (합성 아님)
+      studentName: r.name,
+      grade: r.grade,
+      classNum: r.classNum,
+      itemId: r.itemId,
+      occurredAt: Timestamp.fromMillis(r.occurredAt),
+      note: noteParts.join(" ").slice(0, 500),
+      recordedBy: "admin@hmh.or.kr",
+      recordedAt: Timestamp.now(),
+      voided: false,
+    });
+    if (++n >= 400) { await batch.commit(); written += n; n = 0; batch = adminDb.batch(); }
+  }
+  if (n > 0) { await batch.commit(); written += n; }
+  console.log(`쓰기 완료: ${written}건`);
+
+  await writeAuditLog({
+    operatorEmail: "admin@hmh.or.kr",
+    operatorName: "Claude (1학기 시트 이관)",
+    action: "생활지도 기록 일괄 이관",
+    targetEmail: `${domain} 학생 ${new Set(records.map(r=>r.studentId)).size}명`,
+    details: `2026 1학기 생활지도 시트 3부 → 기록 ${written}건 이관 (버전복원 ${records.filter(r=>r.dateSource==="revision").length} · 근사 ${records.filter(r=>r.dateSource==="fallback").length}건, 단계 이벤트 미생성)`,
+  } as any);
+
+  // 재실측 검증
+  const after = await col.get();
+  console.log(`재실측: 컬렉션 총 ${after.size}건`);
+  const { recordFromDoc } = await import("../src/lib/discipline/server");
+  const { computeStudentStatus } = await import("../src/lib/discipline/engine");
+  const cfgSnap = await adminDb.collection("discipline_config").doc(domain).get();
+  const config = cfgSnap.data() as any;
+  for (const probe of ["30307", "20919", "10101"]) {
+    const snap = await col.where("studentId", "==", probe).get();
+    const recs = snap.docs.map((d) => recordFromDoc(d.id, d.data()));
+    const grade = Number(probe[0]);
+    const st = computeStudentStatus(config, probe, grade, recs.filter((r: any) => r.grade === grade), []);
+    console.log(`  검증 ${probe}: 기록 ${recs.length}건 → 현재 단계 ${st.computedStageId || "(없음)"}`);
+  }
+}
+if (process.argv.includes("--execute")) {
+  executeMigration().then(()=>process.exit(0)).catch(e=>{console.error(e?.response?.data||e);process.exit(1);});
+}
