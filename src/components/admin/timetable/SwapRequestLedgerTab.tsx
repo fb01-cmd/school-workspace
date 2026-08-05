@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SwapRequest, SwapRequestStatus, TimetableWeek } from "@/lib/timetable/types";
 import { formatSlotWithDate } from "@/lib/timetable/utils";
 import PaginationControls from "./PaginationControls";
@@ -9,7 +9,7 @@ interface SwapRequestLedgerTabProps {
   activeTermId: string | null;
 }
 
-function formatDateTimeCompact(timestamp: number | string | Date): string {
+function formatDateTimeCompact(timestamp: number | string | Date, showSeconds = false): string {
   const d = new Date(timestamp);
   if (isNaN(d.getTime())) return "";
   const month = d.getMonth() + 1;
@@ -18,7 +18,9 @@ function formatDateTimeCompact(timestamp: number | string | Date): string {
   const dayStr = days[d.getDay()];
   const hours = String(d.getHours()).padStart(2, "0");
   const minutes = String(d.getMinutes()).padStart(2, "0");
-  return `${month}/${date}(${dayStr}) ${hours}:${minutes}`;
+  const seconds = String(d.getSeconds()).padStart(2, "0");
+  const timeStr = showSeconds ? `${hours}:${minutes}:${seconds}` : `${hours}:${minutes}`;
+  return `신청 ${month}/${date}(${dayStr}) ${timeStr}`;
 }
 
 function formatShortDate(timestamp: number | string | Date): string {
@@ -58,6 +60,26 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
   // 승인 처리 중 상태
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [batchApprovingId, setBatchApprovingId] = useState<string | null>(null);
+
+  // 동일 분 단위 중복 존재 여부 계산 (같은 분 내 여러 건이면 초까지 표시)
+  const duplicateMinutesMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const r of requests) {
+      if (!r.createdAt) continue;
+      const d = new Date(r.createdAt);
+      if (isNaN(d.getTime())) continue;
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
+      map[key] = (map[key] || 0) + 1;
+    }
+    return map;
+  }, [requests]);
+
+  const isSameMinuteDuplicate = (timestamp: number | string | Date) => {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return false;
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
+    return (duplicateMinutesMap[key] || 0) > 1;
+  };
 
   // 묶음 일괄 승인 처리 (phase9b_spec §14-3)
   const handleBatchApprove = async (batchId: string, allReqs: SwapRequest[]) => {
@@ -349,7 +371,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-extrabold text-gray-900 text-xs shrink-0">
-              {formatDateTimeCompact(req.createdAt)}
+              {formatDateTimeCompact(req.createdAt, isSameMinuteDuplicate(req.createdAt))}
             </span>
             <span
               className={`px-1.5 py-0.5 rounded text-[11px] font-bold border shrink-0 ${

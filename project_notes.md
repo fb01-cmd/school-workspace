@@ -1067,8 +1067,22 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
      - `(GCP 연동 완료)` → `(구글 서비스 연동 완료)`
 - **검증 상태**:
   - `npx tsc --noEmit` ✅ (0 errors)
-  - `npm run build` 진행 완료 / 확인 예정
+  - `npm run build` ✅ (성공)
 - **주의**: 기능 및 백엔드 API/로직은 일절 수정하지 않으며 사용자 렌더링 문자열만 수정함.
+
+## [2026-08-05] Antigravity → Claude / 사용자
+- **작업 내용**: 백로그 소품 2건 개선 (요청대장 일시 표기 및 조건부 신청 거부 문구 정리)
+- **수정 파일 및 내역**:
+  1. `src/components/admin/timetable/SwapRequestLedgerTab.tsx`:
+     - `formatDateTimeCompact`에 `"신청 "` 접두어 추가 (`신청 M/D(요일) HH:mm`).
+     - 같은 분(HH:mm) 안에 2건 이상의 요청이 존재하면 초단위(`:ss`)를 추가로 표시하도록 개선.
+  2. `src/components/admin/timetable/TeacherPortalSection.tsx`:
+     - 내 신청 내역 일시 표시에도 `"신청 "` 접두어 및 동일 분 중복 시 초단위 표시 적용.
+     - `isConditionalError` 헬퍼 함수를 추가하여, 서버에서 조건부 거부 사유(예: 선행 신청 승인 전제)를 반환할 때 옛 안내 문구(`"시간표 변경 등으로 신청이 불가합니다. [이 초안 삭제] 버튼으로 정리해 주세요."` 및 `"이 초안 삭제 권장"` 강조 알람)를 덧붙이지 않고, 서버 사유 자체만 명확히 노출되도록 정리.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Static/Dynamic 29/29 라우트 빌드 성공)
+- **주의**: 교사 친화적 문구를 준수하며 `git add .` 없이 명시적 파일 지정 add로 커밋 수행.
 
 ## [2026-08-05] Claude → 사용자/Antigravity (문구 정리 a5b1bcb 표적 리뷰 — 승인 + 사고 기록 1건)
 

@@ -1769,7 +1769,12 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   CANCELED: { label: "취소됨",   className: "bg-gray-100 text-gray-600 border-gray-200" },
 };
 
-function formatDateTimeCompact(timestamp: number | string | Date): string {
+function isConditionalError(msg?: string): boolean {
+  if (!msg) return false;
+  return msg.includes("조건부") || msg.includes("대기 신청이 승인되어야") || msg.includes("전제 사유");
+}
+
+function formatDateTimeCompact(timestamp: number | string | Date, showSeconds = false): string {
   const d = new Date(timestamp);
   if (isNaN(d.getTime())) return "";
   const month = d.getMonth() + 1;
@@ -1778,7 +1783,9 @@ function formatDateTimeCompact(timestamp: number | string | Date): string {
   const dayStr = days[d.getDay()];
   const hours = String(d.getHours()).padStart(2, "0");
   const minutes = String(d.getMinutes()).padStart(2, "0");
-  return `${month}/${date}(${dayStr}) ${hours}:${minutes}`;
+  const seconds = String(d.getSeconds()).padStart(2, "0");
+  const timeStr = showSeconds ? `${hours}:${minutes}:${seconds}` : `${hours}:${minutes}`;
+  return `신청 ${month}/${date}(${dayStr}) ${timeStr}`;
 }
 
 function formatShortDate(timestamp: number | string | Date): string {
@@ -1823,6 +1830,26 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
 
   // 장바구니 일괄 제출 상태 (phase9b_spec §14-2)
   const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
+
+  // 동일 분 단위 중복 존재 여부 계산 (같은 분 내 여러 건이면 초까지 표시)
+  const duplicateMinutesMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const r of requests) {
+      if (!r.createdAt) continue;
+      const d = new Date(r.createdAt);
+      if (isNaN(d.getTime())) continue;
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
+      map[key] = (map[key] || 0) + 1;
+    }
+    return map;
+  }, [requests]);
+
+  const isSameMinuteDuplicate = useCallback((timestamp: number | string | Date) => {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return false;
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
+    return (duplicateMinutesMap[key] || 0) > 1;
+  }, [duplicateMinutesMap]);
   const [batchReason, setBatchReason] = useState<SwapRequestReason>({ type: "출장" });
   const [submittingBatch, setSubmittingBatch] = useState(false);
 
@@ -1987,7 +2014,11 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
         const errMsg = err.error || "신청에 실패했습니다.";
         setDraftErrors((prev) => ({ ...prev, [draft.id]: errMsg }));
         setConfirmingDraft(null);
-        alert(`신청 거부: ${errMsg}\n시간표 변경 등으로 신청이 불가합니다. 초안 카드에 표기된 사유를 확인하시고 [이 초안 삭제] 버튼으로 정리해 주세요.`);
+        if (isConditionalError(errMsg)) {
+          alert(`신청할 수 없음: ${errMsg}`);
+        } else {
+          alert(`신청 거부: ${errMsg}\n시간표 변경 등으로 신청이 불가합니다. 초안 카드에 표기된 사유를 확인하시고 [이 초안 삭제] 버튼으로 정리해 주세요.`);
+        }
       }
     } catch (e: any) {
       alert(`오류: ${e.message}`);
@@ -2172,7 +2203,7 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-extrabold text-gray-900 text-xs shrink-0">
-              {formatDateTimeCompact(req.createdAt)}
+              {formatDateTimeCompact(req.createdAt, isSameMinuteDuplicate(req.createdAt))}
             </span>
             <span
               className={`px-1.5 py-0.5 rounded text-[11px] font-bold border shrink-0 ${statusInfo.className}`}
@@ -2450,12 +2481,12 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                       <button
                         onClick={() => handleDeleteDraft(draft.id)}
                         className={`py-1.5 px-3 font-bold rounded-lg text-xs transition-colors shrink-0 cursor-pointer ${
-                          errorMsg
+                          errorMsg && !isConditionalError(errorMsg)
                             ? "bg-red-600 hover:bg-red-700 text-white shadow-xs ring-2 ring-red-400 animate-pulse"
                             : "bg-gray-100 hover:bg-gray-200 text-gray-600"
                         }`}
                       >
-                        {errorMsg ? "이 초안 삭제 권장" : "삭제"}
+                        {errorMsg && !isConditionalError(errorMsg) ? "이 초안 삭제 권장" : "삭제"}
                       </button>
                     </div>
                   </div>
