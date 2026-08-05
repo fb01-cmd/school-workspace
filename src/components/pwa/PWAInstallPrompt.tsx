@@ -50,7 +50,7 @@ export function PWAInstallPrompt() {
         <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
         </svg>
-        <span>독립 창 (PWA 앱)</span>
+        <span>앱으로 실행 중</span>
       </div>
     );
   }
