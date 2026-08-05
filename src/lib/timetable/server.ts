@@ -1321,6 +1321,23 @@ export async function computeCandidatesAllWeeks(
     synthByWeek.set(week.id, grids);
   }
 
+  // 조건부 태깅용 base(가상 합성 없는 확정 시간표) 합성 — 가상 변경이 없는 주는 동일 참조를 재사용해
+  // 아래 후보 루프에서 참조 비교로 base 재계산 자체를 건너뛴다 (추가 DB 조회 없음, CPU만)
+  const overlayCount = overlay ? overlay.pendingCount + overlay.draftCount : 0;
+  let baseSynthByWeek: Map<string, WeeklyClassGrid[]> | null = null;
+  if (overlayCount > 0) {
+    baseSynthByWeek = new Map();
+    for (const week of allWeeks) {
+      const virtual = overlay!.byWeek.get(week.id) || [];
+      baseSynthByWeek.set(
+        week.id,
+        virtual.length === 0
+          ? synthByWeek.get(week.id)!
+          : synthesizeWeeklyGrids(baseGrids, week, changesByWeek.get(week.id) || [], settings).grids
+      );
+    }
+  }
+
   const srcGrids = synthByWeek.get(sourceWeekId)!;
   const src = resolveSourceLesson(srcGrids, requesterEmail, source);
   if (!src.ok) {
@@ -1332,17 +1349,40 @@ export async function computeCandidatesAllWeeks(
   const sourceSubjectName = src.lesson!.subjectName;
   const fullSource: SwapSourceSlot = { ...source, subjectName: sourceSubjectName };
 
+  // base에 없는 후보 = 내 대기·초안 승인을 전제로만 성립하는 조건부 후보 (base 계산 실패 시 전 후보 조건부)
+  const keyOf = (c: SwapCandidate) => `${c.targetDay}-${c.targetPeriod}-${c.counterpartEmail.toLowerCase()}`;
+  const markConditional = (cands: SwapCandidate[], baseCands: SwapCandidate[]): SwapCandidate[] => {
+    const baseKeys = new Set(baseCands.map(keyOf));
+    return cands.map((c) => (baseKeys.has(keyOf(c)) ? c : { ...c, conditional: true }));
+  };
+
   const weeks: Array<{ weekId: string; startDate: string; swapCandidates: SwapCandidate[] }> = [];
   for (const week of allWeeks) {
     if (week.id === sourceWeekId) {
       const res = findSwapCandidates(srcGrids, sourceWeek, settings, requesterEmail, fullSource);
       // 소스 레벨 오류는 위 resolveSourceLesson에서 이미 걸렀으므로 여기 error는 후보 0건으로 취급
-      weeks.push({ weekId: week.id, startDate: week.startDate, swapCandidates: res.candidates || [] });
+      let cands = res.candidates || [];
+      const baseSrc = baseSynthByWeek?.get(sourceWeekId);
+      if (baseSrc && baseSrc !== srcGrids) {
+        const baseRes = findSwapCandidates(baseSrc, sourceWeek, settings, requesterEmail, fullSource);
+        cands = markConditional(cands, baseRes.error ? [] : baseRes.candidates || []);
+      }
+      weeks.push({ weekId: week.id, startDate: week.startDate, swapCandidates: cands });
     } else {
+      const tgtGrids = synthByWeek.get(week.id)!;
       const res = findCrossSwapCandidates(
-        srcGrids, sourceWeek, synthByWeek.get(week.id)!, week, settings, requesterEmail, fullSource
+        srcGrids, sourceWeek, tgtGrids, week, settings, requesterEmail, fullSource
       );
-      weeks.push({ weekId: week.id, startDate: week.startDate, swapCandidates: res.candidates || [] });
+      let cands = res.candidates || [];
+      const baseSrc = baseSynthByWeek?.get(sourceWeekId);
+      const baseTgt = baseSynthByWeek?.get(week.id);
+      if (baseSrc && baseTgt && (baseSrc !== srcGrids || baseTgt !== tgtGrids)) {
+        const baseRes = findCrossSwapCandidates(
+          baseSrc, sourceWeek, baseTgt, week, settings, requesterEmail, fullSource
+        );
+        cands = markConditional(cands, baseRes.error ? [] : baseRes.candidates || []);
+      }
+      weeks.push({ weekId: week.id, startDate: week.startDate, swapCandidates: cands });
     }
   }
 
