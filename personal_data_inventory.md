@@ -33,6 +33,16 @@
 | ~~`homeroom_assignments`~~ | *(폐기 2026-07-25)* 담임 판정은 `teacher_profiles`의 승인 프로필로 일원화 — 별도 저장 없음 | — | — | 컬렉션 삭제됨 |
 | `discipline_config` | 개인정보 없음 (규정·단계·규칙) | 생활지도 규정 설정 | 클라이언트 전면 차단 | 해당 없음 |
 
+## 처리 위탁 현황 (2026-08-05 추가 — 고지 문안의 단일 원본)
+
+| 위탁 업체 | 맡기는 일 | 보관 위치 |
+|---|---|---|
+| Google (Firebase) | 로그인 인증, 시스템 데이터 저장(Firestore) | Google Cloud 서버 |
+| Vercel | 웹 애플리케이션 호스팅 | Vercel 서버 (미국) |
+| Google (Workspace) | 학교 계정·메일·수업 도구 관리, 알림 발송 | Google 서버 (학교–Google 교육용 계약) |
+
+그 외 제3자 제공 없음. 새 외부 서비스를 붙이면 이 표 갱신 → 문안 갱신 → `POLICY_VERSION` 상향.
+
 ## 열려 있는 결정 사항
 
 - (2026-08-05 해소) `graduation_consents` 파기 주기 → 3년, `audit_logs` 보존 상한 → 5년으로 확정.

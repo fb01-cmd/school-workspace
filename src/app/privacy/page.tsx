@@ -120,7 +120,68 @@ export default function PrivacyPolicyPage() {
           </div>
         </div>
 
-        {/* 3. 공통 개정 및 문의 조항 */}
+        {/* 3. 처리 위탁 및 제3자 제공 */}
+        <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200/80 space-y-4">
+          <h2 className="text-xl font-bold text-slate-900">🤝 개인정보의 위탁 및 제3자 제공</h2>
+          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+            이 시스템은 아래 외부 서비스를 이용해 운영됩니다. 저장·처리는 아래 업체의 서버에서 이루어집니다.
+          </p>
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                <tr>
+                  <th className="p-3 sm:p-4 w-1/4">위탁 업체</th>
+                  <th className="p-3 sm:p-4 w-2/4">맡기는 일</th>
+                  <th className="p-3 sm:p-4 w-1/4">보관 위치</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-600">
+                <tr>
+                  <td className="p-3 sm:p-4 font-semibold text-slate-900">Google (Firebase)</td>
+                  <td className="p-3 sm:p-4">로그인 인증, 이 시스템의 데이터 저장</td>
+                  <td className="p-3 sm:p-4">Google Cloud 서버</td>
+                </tr>
+                <tr>
+                  <td className="p-3 sm:p-4 font-semibold text-slate-900">Vercel</td>
+                  <td className="p-3 sm:p-4">웹 애플리케이션 호스팅</td>
+                  <td className="p-3 sm:p-4">Vercel 서버 (미국)</td>
+                </tr>
+                <tr>
+                  <td className="p-3 sm:p-4 font-semibold text-slate-900">Google (Workspace)</td>
+                  <td className="p-3 sm:p-4">학교 계정·메일·수업 도구 관리, 알림 발송</td>
+                  <td className="p-3 sm:p-4">Google 서버 (학교–Google 교육용 계약)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-slate-500">
+            ※ 위 서비스 외에 개인정보를 제3자에게 제공하지 않습니다.
+          </p>
+        </div>
+
+        {/* 4. 이용자의 권리 */}
+        <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200/80 space-y-3">
+          <h2 className="text-xl font-bold text-slate-900">🙋 이용자의 권리</h2>
+          <ul className="list-disc list-inside text-xs sm:text-sm text-slate-600 space-y-1.5 leading-relaxed">
+            <li>학생·학부모·교직원은 언제든지 자신의 개인정보에 대한 <strong>열람·정정·삭제를 요청</strong>할 수 있습니다.</li>
+            <li>요청은 담임 선생님 또는 학교 정보부(개인정보 보호 담당)로 문의해 주세요.</li>
+            <li>법령에 따라 학교가 보존해야 하는 기록은 삭제 요청이 제한될 수 있으며, 이 경우 사유를 알려드립니다.</li>
+          </ul>
+        </div>
+
+        {/* 5. 개인정보 보호를 위한 조치 */}
+        <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200/80 space-y-3">
+          <h2 className="text-xl font-bold text-slate-900">🛡️ 개인정보 보호를 위한 조치</h2>
+          <ul className="list-disc list-inside text-xs sm:text-sm text-slate-600 space-y-1.5 leading-relaxed">
+            <li>학교 구글 계정(@hmh.or.kr)으로만 로그인할 수 있습니다.</li>
+            <li>역할과 권한에 따라 볼 수 있는 정보가 다릅니다. 예를 들어 생활지도 기록은 담임 선생님과 별도 권한을 받은 선생님만 볼 수 있습니다.</li>
+            <li>생활지도 기록 같은 민감한 정보는 화면에서 저장소에 직접 접근할 수 없고, 반드시 서버의 권한 검사를 거쳐야만 다룰 수 있습니다.</li>
+            <li>모든 통신은 암호화(HTTPS)되어 전송됩니다.</li>
+            <li>중요한 작업(계정 삭제, 기록 무효화 등)은 누가 언제 했는지 감사 기록으로 남습니다.</li>
+          </ul>
+        </div>
+
+        {/* 6. 공통 개정 및 문의 조항 */}
         <div className="bg-slate-900 text-white rounded-2xl p-8 shadow-md space-y-4">
           <h3 className="text-lg font-bold text-indigo-300">🔄 안내 개정 및 문의사항</h3>
           <div className="text-xs sm:text-sm text-slate-300 space-y-2 leading-relaxed">
@@ -129,7 +190,7 @@ export default function PrivacyPolicyPage() {
               이 안내를 고쳐서 로그인할 때 다시 알려드리고, 법적으로 동의가 필요한 일이 생기면 그때 따로 여쭙습니다.
             </p>
             <p className="pt-2 border-t border-slate-800 text-slate-400">
-              문의처: 효명고등학교 정보부 (관리자 계정 운영 부서)
+              개인정보 보호 담당(문의처): 효명고등학교 정보부 (관리자 계정 운영 부서)
             </p>
           </div>
         </div>
