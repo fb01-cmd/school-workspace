@@ -2,12 +2,7 @@
 
 ## 🔒 현재 작업 중 파일
 
-- `public/manifest.json` (신규)
-- `public/sw.js` (신규)
-- `src/components/pwa/ServiceWorkerRegister.tsx` (신규)
-- `src/components/pwa/PWAInstallPrompt.tsx` (신규)
-- `src/app/layout.tsx`
-- `src/lib/firebase/auth.ts`
+*(현재 비어 있음)*
 
 
 
