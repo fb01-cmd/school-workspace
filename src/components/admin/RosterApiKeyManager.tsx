@@ -81,7 +81,7 @@ export default function RosterApiKeyManager() {
   const handleCreateKey = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newKeyName.trim()) {
-      alert("API 키 용도를 입력해 주세요. (예: 지필평가 현황판)");
+      alert("연동 키 용도를 입력해 주세요. (예: 지필평가 현황판)");
       return;
     }
 
@@ -99,11 +99,11 @@ export default function RosterApiKeyManager() {
         setNewKeyName("");
         fetchKeys();
       } else {
-        alert(`API 키 발급 실패: ${data.error}`);
+        alert(`연동 키 발급에 실패했습니다. (${data.error})`);
       }
     } catch (err: any) {
       console.error(err);
-      alert(`API 키 발급 처리 중 오류 발생: ${err.message}`);
+      alert(`연동 키 발급 과정에서 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.`);
     } finally {
       setCreating(false);
     }
@@ -112,7 +112,7 @@ export default function RosterApiKeyManager() {
   const handleRevokeKey = async (keyId: string, keyName: string) => {
     if (
       !confirm(
-        `정말로 API 키 '${keyName}'을(를) 폐기하시겠습니까?\n\n이 키를 사용하는 외부 애플리케이션의 학생 명단 공급이 즉시 차단됩니다.`
+        `정말로 연동 키 '${keyName}'을(를) 폐기하시겠습니까?\n\n이 키를 사용하는 외부 서비스·앱의 학생 명단 자동 공급이 즉시 차단됩니다.`
       )
     ) {
       return;
@@ -127,14 +127,14 @@ export default function RosterApiKeyManager() {
 
       const data = await res.json();
       if (res.ok && data.success) {
-        alert("API 키가 성공적으로 폐기되었습니다.");
+        alert("연동 키가 성공적으로 폐기되었습니다.");
         fetchKeys();
       } else {
-        alert(`API 키 폐기 실패: ${data.error}`);
+        alert(`연동 키 폐기 실패: ${data.error}`);
       }
     } catch (err: any) {
       console.error(err);
-      alert(`API 키 폐기 중 오류 발생: ${err.message}`);
+      alert(`연동 키 폐기 중 오류가 발생했습니다: ${err.message}`);
     }
   };
 
@@ -252,7 +252,7 @@ export default function RosterApiKeyManager() {
         {/* Technical API Specification Collapsible Box */}
         <details className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-xs text-slate-700 space-y-3">
           <summary className="font-bold text-slate-800 cursor-pointer hover:text-indigo-600 select-none">
-            📡 연동 API 상세 규격 보기
+            📡 연동 API 상세 규격 보기 (개발자용)
           </summary>
           <div className="pt-3 border-t border-slate-200/60 space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -263,7 +263,7 @@ export default function RosterApiKeyManager() {
                 </code>
               </div>
               <div>
-                <span className="font-semibold text-slate-500 block mb-1">인증 방식 (HTTP Header)</span>
+                <span className="font-semibold text-slate-500 block mb-1">인증 방식 (요청 헤더에 연동 키 포함)</span>
                 <code className="bg-white border border-slate-200 px-2 py-1 rounded font-mono text-emerald-600 block truncate">
                   Authorization: Bearer &lt;API키&gt;
                 </code>
@@ -388,18 +388,18 @@ export default function RosterApiKeyManager() {
                 {/* Friendly OAuth / Scope Registration Guide Banner if scope error occurs */}
                 {sheetSyncResult.isScopeError && (
                   <div className="mt-3 bg-amber-50 border border-amber-300 rounded-md p-3.5 text-amber-950 text-xs space-y-1.5">
-                    <p className="font-bold">💡 관리자 사전에 필요한 구글 권한 설정 안내 (최초 1회)</p>
+                    <p className="font-bold">💡 관리자 사전 설정 안내 (최초 1회)</p>
                     <p className="text-amber-900 leading-normal">
-                      서비스 계정이 공유 드라이브 시트에 접근 및 쓰기를 수행하기 위해 아래 2가지 사전 설정이 필수적입니다:
+                      학교 관리 서비스가 공유 드라이브 스프레드시트에 자동 접근·쓰기를 하려면 아래 2가지 구글 권한 설정이 필요합니다:
                     </p>
                     <ol className="list-decimal pl-5 space-y-1 mt-1 font-medium text-amber-900">
                       <li>
-                        <strong>Google Workspace Admin Console (admin.google.com)</strong>: [보안] &gt; [API 제어] &gt; [도메인 전체 위임]에 
-                        <code className="bg-white px-1.5 py-0.5 rounded border border-amber-300 font-mono text-[11px] text-amber-950 ml-1">https://www.googleapis.com/auth/spreadsheets</code> 스코프 추가 등록
+                        <strong>Google Workspace 관리자 콘솔 (admin.google.com)</strong>: [보안] &gt; [API 제어] &gt; [도메인 전체 위임]에 
+                        <code className="bg-white px-1.5 py-0.5 rounded border border-amber-300 font-mono text-[11px] text-amber-950 ml-1">https://www.googleapis.com/auth/spreadsheets</code> 접근 권한 추가
                       </li>
                       <li>
-                        <strong>GCP Console (console.cloud.google.com)</strong>: [API 및 서비스] &gt; [라이브러리]에서 
-                        <strong>Google Sheets API</strong>를 <strong>[사용(ENABLE)]</strong> 상태로 클릭
+                        <strong>Google Cloud 콘솔 (console.cloud.google.com)</strong>: [API 및 서비스] &gt; [라이브러리]에서 
+                        <strong>Google Sheets API</strong>를 <strong>[사용(ENABLE)]</strong> 상태로 활성화
                       </li>
                     </ol>
                   </div>
@@ -414,7 +414,7 @@ export default function RosterApiKeyManager() {
       <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
         <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-1.5">
           <span>➕</span>
-          <span>새 명단 API 키 발급</span>
+          <span>새 명단 연동 키 발급</span>
         </h3>
         <form onSubmit={handleCreateKey} className="flex flex-col sm:flex-row gap-3 items-end">
           <div className="flex-1 w-full">
@@ -434,7 +434,7 @@ export default function RosterApiKeyManager() {
             disabled={creating}
             className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-5 py-2.5 rounded-md transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5 shrink-0"
           >
-            {creating ? "발급 처리 중..." : "🔑 API 키 발급하기"}
+            {creating ? "발급 처리 중..." : "🔑 연동 키 발급하기"}
           </button>
         </form>
       </div>
@@ -445,7 +445,7 @@ export default function RosterApiKeyManager() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
               <span className="text-xl">⚠️</span>
-              <span>API 키가 발급되었습니다 ({issuedKey.name})</span>
+              <span>연동 키가 발급되었습니다 ({issuedKey.name})</span>
             </div>
             <button
               onClick={() => setIssuedKey(null)}
@@ -455,7 +455,7 @@ export default function RosterApiKeyManager() {
             </button>
           </div>
           <p className="text-xs text-amber-800 leading-relaxed">
-            보안을 위해 <strong>평문 API 키는 지금 단 1회만 표시</strong>되며, 저장소에는 SHA-256 해시값만 보관됩니다. 이 창을 닫으면 키를 다시 확인할 수 없으니 <strong>지금 즉시 복사하여 외부 앱 설정에 안전하게 보관</strong>해 주세요.
+            보안을 위해 <strong>발급된 연동 키는 지금 단 1회만 표시</strong>되며, 시스템에는 암호화된 형태로만 저장됩니다. 이 창을 닫으면 키를 다시 확인할 수 없으니 <strong>지금 즉시 복사하여 외부 서비스 설정에 안전하게 보관</strong>해 주세요.
           </p>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
@@ -470,7 +470,7 @@ export default function RosterApiKeyManager() {
                   : "bg-amber-600 hover:bg-amber-700 text-white"
               }`}
             >
-              {copied ? "✅ 복사 완료!" : "📋 키 복사하기"}
+              {copied ? "✅ 복사 완료!" : "📋 연동 키 복사하기"}
             </button>
           </div>
         </div>
@@ -480,17 +480,17 @@ export default function RosterApiKeyManager() {
       <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-800">
-            발급된 명단 API 키 목록 ({keys.length}개)
+            발급된 명단 연동 키 목록 ({keys.length}개)
           </h3>
         </div>
 
         {loading ? (
           <div className="py-12 text-center text-slate-400 text-xs">
-            API 키 목록을 불러오는 중입니다...
+            연동 키 목록을 불러오는 중입니다...
           </div>
         ) : keys.length === 0 ? (
           <div className="py-12 text-center text-slate-400 text-xs">
-            발급된 명단 API 키가 없습니다. 위 입력 폼에서 새 API 키를 발급해 주세요.
+            발급된 명단 연동 키가 없습니다. 위 입력란에서 새 연동 키를 발급해 주세요.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -498,7 +498,7 @@ export default function RosterApiKeyManager() {
               <thead className="bg-slate-100 border-b border-slate-200 text-slate-800 font-bold">
                 <tr>
                   <th className="px-4 py-3">용도 (라벨)</th>
-                  <th className="px-4 py-3">키 식별자 (Prefix)</th>
+                  <th className="px-4 py-3">키 앞자리</th>
                   <th className="px-4 py-3">발급 일시</th>
                   <th className="px-4 py-3">최근 사용 시각</th>
                   <th className="px-4 py-3 text-center">상태</th>
@@ -542,10 +542,10 @@ export default function RosterApiKeyManager() {
                           onClick={() => handleRevokeKey(k.id, k.name)}
                           className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[11px] font-bold px-2.5 py-1 rounded transition-colors"
                         >
-                          키 폐기
+                          사용 중단
                         </button>
                       ) : (
-                        <span className="text-[11px] text-slate-400 select-none">폐기완료</span>
+                        <span className="text-[11px] text-slate-400 select-none">사용 중단됨</span>
                       )}
                     </td>
                   </tr>
