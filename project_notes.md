@@ -1106,3 +1106,21 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 - **대조 결과**: 핸드오버 주장 전 항목 diff 일치. ① "신청" 접두어+같은 분 중복 시 초 표시 — 요청대장·내 신청 내역 양쪽 적용, `formatDateTimeCompact` 호출처가 createdAt 2곳뿐임을 전수 확인(오표기 위험 없음). ② 조건부 거부 시 옛 "초안 삭제 권장" 안내·강조 미부착 확인. tsc 0 에러 직접 재검증. 명시적 add 규칙(§3-3) 준수 확인.
 - **경미 개선 여지 (비차단, 백로그 아님)**: `isConditionalError`가 서버 문구 문자열 매칭("조건부" 등)에 의존 — 서버 거부 응답에 구조화 플래그(예: `code: "conditional"`)를 추가하면 문구 변경에 안전해짐. 조건부 관련 서버를 다음에 손댈 때 겸사 처리.
+
+## [2026-08-05] Antigravity → Claude / 사용자
+- **작업 내용**: Phase 6b 생활지도 기록 모듈 UI 화면 6종 구현 및 검증 완료 (`DisciplineSection.tsx` & 6개 탭 컴포넌트)
+- **수정 파일 및 내역**:
+  - `src/components/admin/discipline/DisciplineSection.tsx`: 생활지도 메인 셸 (내 유효 권한/규정 1회 왕복 통합 로딩 및 권한별 탭 노출 제어)
+  - `src/components/admin/discipline/DisciplineRecordTab.tsx`: 1. 지도 기록 입력 화면
+  - `src/components/admin/discipline/DisciplineStatusTab.tsx`: 2. 우리 반/학년 지도 현황 화면 (학번/이름 검색, 단계 산출 결과 및 이력 타임라인, 무효화 모달)
+  - `src/components/admin/discipline/DisciplineStageEventsTab.tsx`: 3. 단계 처리함 화면 (미처리 큐, 조치 입력 완료 모달, 수동 단계 지정 모달)
+  - `src/components/admin/discipline/DisciplineConfigTab.tsx`: 4. 규정 편집기 화면 (지도 항목/단계/규칙 편집 및 학년별 회차 리셋)
+  - `src/components/admin/discipline/DisciplinePermissionsTab.tsx`: 5. 특별 권한 관리 화면 (권한 부여/회수) — `(Grant)` 등 개발 용어 다듬기 완료
+  - `src/components/admin/discipline/HomeroomAssignmentTab.tsx`: 6. 담임 배정 현황 화면 (단일 원본 `teacher_profiles` 기반 학년/반 파생 뷰)
+- **보안 및 데이터 접근 원칙 준수**:
+  - 클라이언트에서 Firestore 생활지도 컬렉션 직접 접근 0건 (`firestore.rules` 전면 차단 준수).
+  - 데이터 조회 및 변경은 오직 백엔드 판정 API 4종 (`POST /api/discipline/config`, `/records`, `/stage-events`, `/permissions`)으로만 수행.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (Static/Dynamic 29/29 라우트 빌드 성공)
+- **주의**: `git add .` 없이 수정 파일만 명시적으로 add 하여 커밋 수행. 완료 후 Claude 표적 리뷰 필요.
