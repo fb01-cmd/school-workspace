@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { signInWithGoogle, logOut } from "@/lib/firebase/auth";
 import { useAuth } from "@/context/AuthContext";
 import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt";
@@ -121,6 +122,47 @@ export default function LoginPage() {
             </span>
             {isSigningIn ? "로그인 중..." : "Google 계정으로 로그인"}
           </button>
+
+          {/* 사전 개인정보 처리 안내 요약 박스 */}
+          <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600 space-y-2.5">
+            <div className="flex items-center justify-between font-semibold text-slate-800 border-b border-slate-200/80 pb-2">
+              <span className="flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                개인정보 처리 안내
+              </span>
+              <span className="text-[11px] text-slate-400 font-normal">사전 고지</span>
+            </div>
+            
+            <ul className="space-y-1.5 text-slate-600 leading-snug">
+              <li className="flex items-start gap-1.5">
+                <span className="text-slate-400 select-none">•</span>
+                <span><strong>목적</strong>: Google Workspace 계정·학적 관리 및 학교 행정 업무</span>
+              </li>
+              <li className="flex items-start gap-1.5">
+                <span className="text-slate-400 select-none">•</span>
+                <span><strong>항목</strong>: 학교 이메일, 이름, 학번/부서 등 최소 필요 정보</span>
+              </li>
+              <li className="flex items-start gap-1.5">
+                <span className="text-slate-400 select-none">•</span>
+                <span><strong>근거</strong>: 초·중등교육법 및 관계 법령에 따른 법정 사무 수행</span>
+              </li>
+            </ul>
+
+            <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-[11px]">
+              <span className="text-slate-500">자세한 내용은 처리 안내 전문을 확인하세요.</span>
+              <Link 
+                href="/privacy" 
+                className="font-medium text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-0.5 transition-colors"
+              >
+                전문 보기
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>
