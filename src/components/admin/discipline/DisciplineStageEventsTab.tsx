@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import { DisciplineConfig, DisciplineStageEvent } from "@/lib/discipline/types";
+import { getClientCache } from "@/lib/cache/clientCache";
 
 interface DisciplineStageEventsTabProps {
   domain: string;
@@ -91,10 +92,14 @@ export default function DisciplineStageEventsTab({ domain, config }: DisciplineS
     e.preventDefault();
     if (!manualStudentEmail || !manualStageId || !manualReason.trim()) return;
 
-    // 서버는 학번(5자리)만 신뢰한다 — 학생 계정 이메일(학번@도메인)에서 학번을 추출
-    const studentIdMatch = manualStudentEmail.trim().match(/^(\d{5})@/);
-    if (!studentIdMatch) {
-      alert("학생 계정(학번@도메인 형식)만 선택할 수 있습니다. 자동완성 목록에서 학생을 선택해주세요.");
+    // 학번 해석: 이메일 앞자리가 아니라 명단 데이터의 학번(familyName)이 단일 원본이다.
+    // (학생 실계정 이메일은 입학년도 기반(예: 26027@)이라 학번과 다름 — 이메일 파싱 금지, bbbb1be·산출물 D 참조)
+    const lower = manualStudentEmail.trim().toLowerCase();
+    const users: any[] = getClientCache("users:all") || [];
+    const matched = users.find((x) => (x.primaryEmail || x.email || "").toLowerCase() === lower);
+    const fam = typeof matched?.name === "object" ? (matched.name?.familyName || "").trim() : "";
+    if (!/^\d{5}$/.test(fam)) {
+      alert("명단에서 학생의 학번을 확인하지 못했습니다. 자동완성 목록에서 학생을 선택해 주세요.");
       return;
     }
 
@@ -105,7 +110,8 @@ export default function DisciplineStageEventsTab({ domain, config }: DisciplineS
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create_manual",
-          studentId: studentIdMatch[1],
+          studentId: fam,
+          studentEmail: manualStudentEmail.trim(),
           studentName: manualStudentName,
           stageId: manualStageId,
           reason: manualReason.trim(),
