@@ -1556,7 +1556,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                     const counterpartPenalties = (candidate.penaltyDetails || []).filter((p) => p.scope === "counterpart");
                                     const tooltipText = `[${candidate.counterpartSubjectName}] ${candidate.counterpartName} 교사 · 상대 감점 ${cpScore}점${
                                       counterpartPenalties.length > 0 ? ` (${counterpartPenalties.map((p) => p.text).join(", ")})` : ""
-                                    }`;
+                                    }${candidate.conditional ? " · ⏳ 조건부 — 내 대기 신청 승인 전제" : ""}`;
 
                                     let badgeStyle = "bg-emerald-100 border-emerald-300 text-emerald-950";
                                     if (cpScore >= 3) badgeStyle = "bg-rose-100 border-rose-300 text-rose-950";
@@ -1586,7 +1586,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                         ) : (
                                           <>
                                             <div className="font-extrabold text-xs truncate">
-                                              {candidate.counterpartName}
+                                              {candidate.conditional ? "⏳ " : ""}{candidate.counterpartName}
                                             </div>
                                             <div className="text-[10px] font-black underline mt-0.5">
                                               {cpScore === 0 ? "✓ 0점" : `⚠ ${cpScore}점`}

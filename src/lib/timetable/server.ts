@@ -1403,6 +1403,9 @@ export async function computeCandidates(
   let baseKeySet: Set<string> | null = null;
   const overlayCount = overlay ? (overlay.pendingCount + overlay.draftCount) : 0;
   if (overlayCount > 0) {
+    // 기본값 빈 Set: base 계산이 실패하면(소스 수업 자체가 가상 이동분인 경우 등) 확정 시간표에는
+    // 어떤 후보도 성립하지 않는 것이므로 전 후보를 조건부로 표시하는 것이 맞다
+    baseKeySet = new Set();
     try {
       if (targetWeekId && targetWeekId !== weekId) {
         const targetWeekForBase = await loadWeek(domain, targetWeekId);
