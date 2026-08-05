@@ -299,71 +299,63 @@ export default function DisciplineStatusTab({ config, canManageRules }: Discipli
 
               {/* 기록 이력 목록 */}
               <div>
-                <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center justify-between">
-                  <span>지도 기록 (총 {selectedStudent.records.length}건)</span>
-                </h4>
+                {(() => {
+                  const validRecords = selectedStudent.records.filter((rec) => !rec.voided);
+                  return (
+                    <>
+                      <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center justify-between">
+                        <span>지도 기록 (총 {validRecords.length}건)</span>
+                      </h4>
 
-                {selectedStudent.records.length === 0 ? (
-                  <div className="text-center py-6 text-sm text-gray-500 border border-dashed rounded-lg">
-                    등록된 지도 기록이 없습니다.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {selectedStudent.records.map((rec) => (
-                      <div
-                        key={rec.id}
-                        className={`p-4 rounded-xl border transition-all ${
-                          rec.voided
-                            ? "bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-800 opacity-60"
-                            : "bg-white dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 shadow-sm"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-1">
-                            <div className="flex items-center space-x-2">
-                              <span className="font-bold text-sm text-gray-900 dark:text-white">
-                                {itemMap.get(rec.itemId) || rec.itemId}
-                              </span>
-                              {rec.voided && (
-                                <span className="text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2 py-0.5 rounded">
-                                  [무효화됨]
-                                </span>
+                      {validRecords.length === 0 ? (
+                        <div className="text-center py-6 text-sm text-gray-500 border border-dashed rounded-lg">
+                          등록된 지도 기록이 없습니다.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {validRecords.map((rec) => (
+                            <div
+                              key={rec.id}
+                              className="bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 shadow-sm p-4 rounded-xl transition-all"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="space-y-1">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-bold text-sm text-gray-900 dark:text-white">
+                                      {itemMap.get(rec.itemId) || rec.itemId}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    발생일: {new Date(rec.occurredAt).toLocaleDateString("ko-KR")} | 작성자: {rec.recordedBy}
+                                  </div>
+                                </div>
+
+                                {(() => {
+                                  const isOwner = rec.recordedBy === userData?.email;
+                                  const canVoid = isOwner || canManageRules || userData?.role === "super_admin";
+                                  return canVoid ? (
+                                    <button
+                                      onClick={() => setVoidModalRecord(rec)}
+                                      className="text-xs text-red-600 dark:text-red-400 hover:underline font-medium px-2 py-1 bg-red-50 dark:bg-red-900/20 rounded"
+                                    >
+                                      무효화
+                                    </button>
+                                  ) : null;
+                                })()}
+                              </div>
+
+                              {rec.note && (
+                                <div className="mt-2 text-xs bg-gray-50 dark:bg-gray-800 p-2.5 rounded-lg text-gray-700 dark:text-gray-300">
+                                  {rec.note}
+                                </div>
                               )}
                             </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                              발생 일시: {new Date(rec.occurredAt).toLocaleString("ko-KR")} | 작성자: {rec.recordedBy}
-                            </div>
-                          </div>
-
-                          {(() => {
-                            const isOwner = rec.recordedBy === userData?.email;
-                            const canVoid = !rec.voided && (isOwner || canManageRules || userData?.role === "super_admin");
-                            return canVoid ? (
-                              <button
-                                onClick={() => setVoidModalRecord(rec)}
-                                className="text-xs text-red-600 dark:text-red-400 hover:underline font-medium px-2 py-1 bg-red-50 dark:bg-red-900/20 rounded"
-                              >
-                                무효화
-                              </button>
-                            ) : null;
-                          })()}
+                          ))}
                         </div>
-
-                        {rec.note && (
-                          <div className="mt-2 text-xs bg-gray-50 dark:bg-gray-800 p-2.5 rounded-lg text-gray-700 dark:text-gray-300">
-                            {rec.note}
-                          </div>
-                        )}
-
-                        {rec.voided && rec.voidReason && (
-                          <div className="mt-2 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 p-2 rounded">
-                            무효화 사유: {rec.voidReason} ({rec.voidedBy})
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>

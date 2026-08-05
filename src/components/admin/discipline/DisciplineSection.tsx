@@ -4,6 +4,7 @@ import { DisciplineConfig, DisciplineGrant } from "@/lib/discipline/types";
 import { getClientCache, setClientCache, invalidateClientCache } from "@/lib/cache/clientCache";
 import DisciplineRecordTab from "./DisciplineRecordTab";
 import DisciplineStatusTab from "./DisciplineStatusTab";
+import DisciplineVoidedTab from "./DisciplineVoidedTab";
 import DisciplineStageEventsTab from "./DisciplineStageEventsTab";
 import DisciplineConfigTab from "./DisciplineConfigTab";
 import DisciplinePermissionsTab from "./DisciplinePermissionsTab";
@@ -30,7 +31,7 @@ export default function DisciplineSection() {
   const [tabInitialized, setTabInitialized] = useState(false);
 
   const [activeTab, setActiveTab] = useState<
-    "record" | "status" | "stage_events" | "config" | "permissions" | "homeroom"
+    "record" | "status" | "voided" | "stage_events" | "config" | "permissions" | "homeroom"
   >("record");
 
   const setInitialTabIfNeeded = (permData: UserPermissions) => {
@@ -151,16 +152,29 @@ export default function DisciplineSection() {
         )}
 
         {permissions.canView && (
-          <button
-            onClick={() => setActiveTab("status")}
-            className={`pb-3 px-5 font-bold text-sm border-b-2 whitespace-nowrap transition-all flex items-center space-x-1.5 ${
-              activeTab === "status"
-                ? "border-blue-600 text-blue-600 dark:text-blue-400"
-                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
-            }`}
-          >
-            <span>📊 지도 현황</span>
-          </button>
+          <>
+            <button
+              onClick={() => setActiveTab("status")}
+              className={`pb-3 px-5 font-bold text-sm border-b-2 whitespace-nowrap transition-all flex items-center space-x-1.5 ${
+                activeTab === "status"
+                  ? "border-blue-600 text-blue-600 dark:text-blue-400"
+                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              }`}
+            >
+              <span>📊 지도 현황</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("voided")}
+              className={`pb-3 px-5 font-bold text-sm border-b-2 whitespace-nowrap transition-all flex items-center space-x-1.5 ${
+                activeTab === "voided"
+                  ? "border-blue-600 text-blue-600 dark:text-blue-400"
+                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              }`}
+            >
+              <span>🗑️ 무효화 보관함</span>
+            </button>
+          </>
         )}
 
         {permissions.canResolve && (
@@ -228,6 +242,10 @@ export default function DisciplineSection() {
 
         {activeTab === "status" && permissions.canView && config && (
           <DisciplineStatusTab config={config} canManageRules={permissions.canManageRules} />
+        )}
+
+        {activeTab === "voided" && permissions.canView && config && (
+          <DisciplineVoidedTab config={config} />
         )}
 
         {activeTab === "stage_events" && permissions.canResolve && config && (
