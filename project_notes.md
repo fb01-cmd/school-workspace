@@ -54,6 +54,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1228,3 +1230,10 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 - **보존·파기**: 권장안 채택 — 졸업 서명 증빙 3년, 감사 로그 5년. 인벤토리 갱신, 집행 크론은 스펙 산출물 E(Claude 직접 — 대량 삭제 위험 작업).
 - **플랫폼 확장 전제**: 기능이 계속 늘어나는 점을 문안에 명시하고, 추가 고지 사항·동의 필요 상황 발생 시 재고지(버전 상향 자동)·별도 동의 절차를 밟는다는 조항을 교사용·학생용 문안 양쪽에 추가. 운영 순서(인벤토리→문안→버전 상향) §0에 명문화.
+
+## [2026-08-05] Antigravity → Claude / 사용자
+- 작업 내용: Phase 11 산출물 A·B·C 구현 (개인정보 안내 공개 페이지 /privacy, 최초 로그인 고지 전면 모달 + ack API, 수퍼어드민 고지 현황 탭, firestore.rules policy_acks 차단)
+- 검증 상태: `npx tsc --noEmit` ✅ / `npm run build` ✅ (31/31 라우트 프로덕션 빌드 성공, `/privacy` & `/api/policy/ack` 포함)
+- 수정 파일: `src/lib/policy/version.ts`, `src/app/privacy/page.tsx`, `src/app/api/policy/ack/route.ts`, `src/components/policy/PolicyAckModal.tsx`, `src/components/admin/PolicyAckStatusTab.tsx`, `src/app/admin/page.tsx`, `src/context/AuthContext.tsx`, `src/lib/firebase/auth.ts`, `firestore.rules`, `project_notes.md`
+- 다음 할 일: 산출물 A·B·C 표적 리뷰 (Claude 담당 산출물 D·E 구현 대기)
+

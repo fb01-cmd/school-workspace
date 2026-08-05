@@ -5,6 +5,7 @@ import { User, onIdTokenChanged } from "firebase/auth";
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
 import { UserData, handleUserRoles } from "@/lib/firebase/auth";
+import PolicyAckModal from "@/components/policy/PolicyAckModal";
 
 export interface TeacherProfile {
   email: string;
@@ -58,6 +59,7 @@ interface AuthContextType {
   orgUnits: OrgUnit[];
   teacherProfile: TeacherProfile | null;
   loading: boolean;
+  refreshUserData?: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -257,9 +259,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
+  const refreshUserData = async () => {
+    if (user) {
+      const userRef = doc(db, "users", user.uid);
+      const snap = await getDoc(userRef);
+      if (snap.exists()) {
+        setUserData(snap.data() as UserData);
+      }
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, userData, schoolSettings, orgUnits, teacherProfile, loading }}>
+    <AuthContext.Provider value={{ user, userData, schoolSettings, orgUnits, teacherProfile, loading, refreshUserData }}>
       {children}
+      {user && userData && <PolicyAckModal />}
     </AuthContext.Provider>
   );
 };

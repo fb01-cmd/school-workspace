@@ -34,6 +34,7 @@ const ClassroomCleanupTab = dynamic(() => import("@/components/admin/ClassroomCl
 const DisciplineSection = dynamic(() => import("@/components/admin/discipline/DisciplineSection"), { loading: TabLoading });
 const TimetableSection = dynamic(() => import("@/components/admin/timetable/TimetableSection"), { loading: TabLoading });
 const TeacherPortalSection = dynamic(() => import("@/components/admin/timetable/TeacherPortalSection"), { loading: TabLoading });
+const PolicyAckStatusTab = dynamic(() => import("@/components/admin/PolicyAckStatusTab"), { loading: TabLoading });
 import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt";
 
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
@@ -42,7 +43,7 @@ import { TimetableSettings } from "@/lib/timetable/types";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable" | "my_timetable";
+type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable" | "my_timetable" | "policy_ack";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
@@ -159,6 +160,8 @@ export default function AdminPage() {
         return <TeacherPortalSection />;
       case "logs":
         return <AuditLogViewer />;
+      case "policy_ack":
+        return isSuperAdmin ? <PolicyAckStatusTab /> : null;
       case "roster":
         return <StudentRoster />;
       case "lifecycle":
@@ -598,6 +601,19 @@ export default function AdminPage() {
                         </span>
                       )}
                     </button>
+
+                    {/* 개인정보 고지 현황 (수퍼어드민) */}
+                    <button
+                      onClick={() => setActiveMenu("policy_ack")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "policy_ack"
+                          ? "bg-indigo-800 text-white"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>🔒</span>
+                      <span>개인정보 고지 현황</span>
+                    </button>
                   </div>
 
                   {/* 사용자 및 조직 관리 */}
@@ -750,6 +766,7 @@ export default function AdminPage() {
                 {activeMenu === "bulk" && "명단 벌크 업로드"}
                 {activeMenu === "forms" && "생활지도 기록 작성"}
                 {activeMenu === "logs" && "작업 감사 로그"}
+                {activeMenu === "policy_ack" && "개인정보 처리 안내 고지 현황"}
                 {activeMenu === "roster" && "학급 명렬표 인쇄 & 관리"}
                 {activeMenu === "classroom" && "구글 클래스룸 학생 즉시 배정"}
                 {activeMenu === "teachers" && "교직원 계정 및 생애주기 관리"}

@@ -9,6 +9,10 @@ export interface UserData {
   isSecurityGroupJoined?: boolean;
   orgUnitPath?: string;
   createdAt?: any;
+  policyAck?: {
+    version: string;
+    ackedAt: any;
+  };
 }
 
 export const signInWithGoogle = async () => {

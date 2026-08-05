@@ -97,6 +97,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ── policy_acks — 개인정보 고지 확인 이력 문서 (Phase 11) ─
+    // 이력 증빙용 문서. 서버 API에서만 생성/조회 (위조 방지). 클라이언트 전면 차단.
+    match /policy_acks/{ackId} {
+      allow read, write: if false;
+    }
+
     // ── transfer_out_tasks/{domain}/students/{email} — 전출/자퇴 ──
     match /transfer_out_tasks/{domain}/students/{email} {
       allow read, write: if isTeacher();
