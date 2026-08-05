@@ -17,6 +17,7 @@ interface UserPermissions {
   canManageRules: boolean;
   canManagePermissions: boolean;
   isHomeroom: boolean;
+  homeroomClasses?: Array<{ grade: number; classNum: number }>;
   myGrants: DisciplineGrant[];
 }
 
@@ -241,7 +242,11 @@ export default function DisciplineSection() {
         )}
 
         {activeTab === "status" && permissions.canView && config && (
-          <DisciplineStatusTab config={config} canManageRules={permissions.canManageRules} />
+          <DisciplineStatusTab
+            config={config}
+            canManageRules={permissions.canManageRules}
+            homeroomClasses={permissions.homeroomClasses}
+          />
         )}
 
         {activeTab === "voided" && permissions.canView && config && (

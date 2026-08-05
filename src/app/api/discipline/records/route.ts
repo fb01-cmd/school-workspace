@@ -242,12 +242,16 @@ export async function POST(req: NextRequest) {
       if (record.voided)
         return NextResponse.json({ error: "이미 무효화된 기록입니다." }, { status: 400 });
 
-      // 무효화 권한: 본인이 입력한 기록이거나 규정 관리 권한 보유자
+      // 무효화 권한: 본인이 입력한 기록, 담임의 자기 반 학생 기록, 또는 규정 관리 권한 보유자
+      // (담임 자기 반 확대는 2026-08-05 사용자 결정 — grant의 record 권한으로는 확대하지 않는다)
       const isSelf = record.recordedBy.toLowerCase() === auth.email.toLowerCase();
+      const isOwnClassHomeroom = ctx.homeroomClasses.some(
+        (h) => h.grade === record.grade && h.classNum === record.classNum
+      );
       const manageJudgment = judgeDiscipline(ctx, "manage_rules");
-      if (!isSelf && !manageJudgment.allowed)
+      if (!isSelf && !isOwnClassHomeroom && !manageJudgment.allowed)
         return NextResponse.json(
-          { error: "본인이 입력한 기록 또는 규정 관리 권한자만 무효화할 수 있습니다." },
+          { error: "본인이 입력한 기록, 담임의 자기 반 기록, 또는 규정 관리 권한자만 무효화할 수 있습니다." },
           { status: 403 }
         );
 
@@ -264,7 +268,7 @@ export async function POST(req: NextRequest) {
         action: "생활지도 기록 무효화",
         targetEmail: record.studentEmail,
         details: `기록 ${recordId} (${record.itemId}) 무효화 — 사유: ${voidReason} (근거: ${
-          isSelf ? "본인 기록" : manageJudgment.basis
+          isSelf ? "본인 기록" : isOwnClassHomeroom ? "담임(자기 반)" : manageJudgment.basis
         })`,
         status: "success",
       });

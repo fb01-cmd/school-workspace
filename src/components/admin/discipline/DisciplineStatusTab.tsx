@@ -16,10 +16,25 @@ interface StudentItem {
 interface DisciplineStatusTabProps {
   config: DisciplineConfig;
   canManageRules?: boolean;
+  homeroomClasses?: Array<{ grade: number; classNum: number } | string>;
 }
 
-export default function DisciplineStatusTab({ config, canManageRules }: DisciplineStatusTabProps) {
+export default function DisciplineStatusTab({
+  config,
+  canManageRules,
+  homeroomClasses,
+}: DisciplineStatusTabProps) {
   const { userData } = useAuth();
+
+  // 담임의 자기 반 여부 — 서버는 {grade, classNum} 객체 배열, "1-1" 문자열도 방어적 허용 (bbbb1be 계약 참조)
+  const isMyHomeroomRecord = (rec: DisciplineRecord) =>
+    (homeroomClasses || []).some((h) => {
+      if (typeof h === "string") {
+        const m = h.match(/^(\d+)-(\d+)$/);
+        return m ? Number(m[1]) === rec.grade && Number(m[2]) === rec.classNum : false;
+      }
+      return h.grade === rec.grade && h.classNum === rec.classNum;
+    });
   const [gradeFilter, setGradeFilter] = useState<number | "all">("all");
   const [classFilter, setClassFilter] = useState<number | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -333,7 +348,11 @@ export default function DisciplineStatusTab({ config, canManageRules }: Discipli
 
                                 {(() => {
                                   const isOwner = rec.recordedBy === userData?.email;
-                                  const canVoid = isOwner || canManageRules || userData?.role === "super_admin";
+                                  const canVoid =
+                                    isOwner ||
+                                    isMyHomeroomRecord(rec) ||
+                                    canManageRules ||
+                                    userData?.role === "super_admin";
                                   return canVoid ? (
                                     <button
                                       onClick={() => setVoidModalRecord(rec)}
