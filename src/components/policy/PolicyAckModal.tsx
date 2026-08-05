@@ -87,8 +87,9 @@ export default function PolicyAckModal() {
               <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/60 text-xs text-indigo-900 dark:text-indigo-200 leading-relaxed">
                 <strong>효명고등학교 관리 시스템 개인정보 처리 안내 (교직원용)</strong>
                 <p className="mt-1">
-                  본 시스템은 효명고등학교가 학생 계정 관리, 생활지도, 시간표 운영 등 학교의 법령상 사무를
-                  수행하기 위하여 운영합니다. 처리하는 개인정보의 항목과 방법을 다음과 같이 고지합니다.
+                  본 시스템은 효명고등학교가 학생 계정 관리, 생활지도, 시간표 운영 등 학교 업무를
+                  수행하기 위하여 운영하며, 개인정보는 그에 필요한 최소한의 범위에서만 처리합니다.
+                  처리하는 개인정보의 항목과 방법을 다음과 같이 고지합니다.
                 </p>
               </div>
 

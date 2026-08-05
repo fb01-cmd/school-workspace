@@ -31,7 +31,8 @@ export default function PrivacyPolicyPage() {
 
           <p className={bodyTextClass}>
             본 시스템은 효명고등학교(이하 &ldquo;학교&rdquo;)가 학생 계정 관리, 생활지도, 시간표 운영 등
-            학교의 법령상 사무를 수행하기 위하여 운영합니다. 처리하는 개인정보의 항목과 방법을 다음과 같이 고지합니다.
+            학교 업무를 수행하기 위하여 운영하며, 개인정보는 그에 필요한 최소한의 범위에서만 처리합니다.
+            처리하는 개인정보의 항목과 방법을 다음과 같이 고지합니다.
           </p>
         </div>
 
@@ -159,7 +160,7 @@ export default function PrivacyPolicyPage() {
           <ul className={`list-disc list-inside ${bodyTextClass} space-y-1.5`}>
             <li>학생·학부모·교직원은 언제든지 자신의 개인정보에 대한 열람·정정·삭제를 요청할 수 있습니다.</li>
             <li>요청은 담임 교사 또는 플랫폼 담당자(playviolin@hmh.or.kr)에게 합니다.</li>
-            <li>법령에 따라 학교가 보존하여야 하는 기록은 삭제가 제한될 수 있으며, 이 경우 그 사유를 안내합니다.</li>
+            <li>학교가 의무적으로 보존하여야 하는 기록은 삭제가 제한될 수 있으며, 이 경우 그 사유를 안내합니다.</li>
           </ul>
         </div>
 

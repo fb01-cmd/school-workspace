@@ -146,7 +146,7 @@ export default function LoginPage() {
               </li>
               <li className="flex items-start gap-1.5">
                 <span className="text-slate-400 select-none">•</span>
-                <span><strong>근거</strong>: 초·중등교육법 및 관계 법령에 따른 법정 사무 수행</span>
+                <span><strong>원칙</strong>: 학교 업무 수행에 필요한 최소한의 범위에서만 처리</span>
               </li>
             </ul>
 
