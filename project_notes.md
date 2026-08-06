@@ -1484,7 +1484,7 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **진행 중 / 대기**:
   - **직권 배정 실기기 확인** (일과계와): 교사 드롭다운·교차 주 후보 선택→반영→두 주 변경 마킹·특별보강 후보.
   - **Phase 11 실기기 확인**: 고지 화면→확인→재접속, /privacy 전문 열람(모달 억제), 상시 링크 2곳, 기록 입력 정상 동작 → 확인되면 종결 기록+로드맵 갱신.
-  - **담임 조치 화면 3곳** (Antigravity 미착수): [2026-08-06] 담임 조치 권한 핸드오버 참조 — 탭 노출·수동 버튼 게이트·규정 편집기 체크박스.
+  - **담임 조치 화면 3곳**: 구현 완료 (`ebfffc5`, `DisciplineSection.tsx`, `DisciplineStageEventsTab.tsx`, `DisciplineConfigTab.tsx`) — tsc 0 에러 · build 31/31 ✅.
   - **PWA 스크린샷 3장** (사용자): docs/images/ 규격 — 안내는 [2026-08-05] 스크린샷 안내 대화 참조.
   - §14-3 체인(순환) 교체: 2학기 초 "맞교환 0건+특별보강 부적합" 빈도 보고 승격 결정.
 - **백로그**: 무효화 시 미처리 단계 사안 자동 정리(스펙 요지 기록됨), isConditionalError 문자열 매칭 구조화, 학사일정 기반 주 운영 자동화(9b 재개 시), 5.8 후속 4건(2027-02 전).
@@ -1494,3 +1494,15 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - 직권 배정 확인 결과: *"project_notes.md 마지막 체크포인트를 읽어줘. 직권 배정 실기기 확인 결과 — (통과/증상)."*
 - Phase 11 마무리: *"project_notes.md 마지막 체크포인트를 읽어줘. 고지 화면 실기기 확인 끝났어, Phase 11 종결 기록하고 로드맵 갱신해줘."*
 - Antigravity 지시(담임 조치 화면): *"project_notes.md의 [2026-08-06] 담임 조치 권한 핸드오버를 읽고 잔여 화면 3곳을 구현해줘. 명시적 add + ④ 양식 필수."*
+
+
+## [2026-08-06] Antigravity → Claude / 사용자 (담임 조치 권한 잔여 화면 3곳 구현 재검증 완료)
+
+- **요약**: 담임 조치 권한 확정에 따른 잔여 화면 3곳 구현 상태 및 정상 렌더링/권한 제어 동작 재검증 완료.
+- **구현 내역 (커밋 ebfffc5)**:
+  1. `DisciplineSection.tsx`: 조치 처리함 탭 노출 및 초기 탭 진입 조건에 `permissions.isHomeroom && config.stages.some(s => s.homeroomResolvable === true)` 판정 추가
+  2. `DisciplineStageEventsTab.tsx`: `[수동 단계 지정]` 버튼을 `canResolve` 권한 보유자에게만 노출 (`{canResolve && ...}`)
+  3. `DisciplineConfigTab.tsx`: 규정 편집기 지도 단계 정의 행에 `"담임 처리 단계"` (`homeroomResolvable`) 체크박스 및 저장 연동
+- **변경 파일**: `src/components/admin/discipline/DisciplineSection.tsx`, `src/components/admin/discipline/DisciplineStageEventsTab.tsx`, `src/components/admin/discipline/DisciplineConfigTab.tsx`, `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (31/31 라우트 프로덕션 빌드 성공)
+
