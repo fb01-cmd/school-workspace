@@ -436,30 +436,6 @@ export default function AdminPage() {
                     </button>
 
                     <button
-                      onClick={() => setActiveMenu("classroom")}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        activeMenu === "classroom"
-                          ? "bg-indigo-800 text-white"
-                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      <span>🏫</span>
-                      <span>클래스룸 학생 강제 배정</span>
-                    </button>
-
-                    <button
-                      onClick={() => setActiveMenu("classroom_cleanup")}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        activeMenu === "classroom_cleanup"
-                          ? "bg-indigo-800 text-white"
-                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      <span>📦</span>
-                      <span>학기말 클래스룸 정리</span>
-                    </button>
-
-                    <button
                       onClick={() => setActiveMenu("chrome_bookmarks")}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                         activeMenu === "chrome_bookmarks"
@@ -469,6 +445,18 @@ export default function AdminPage() {
                     >
                       <span>🔖</span>
                       <span>크롬 북마크 배정</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveMenu("classroom")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "classroom"
+                          ? "bg-indigo-800 text-white"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>🏫</span>
+                      <span>클래스룸 학생 강제 배정</span>
                     </button>
 
                     <button
@@ -493,6 +481,19 @@ export default function AdminPage() {
                     >
                       <span>🌳</span>
                       <span>교직원 조직도</span>
+                    </button>
+
+                    {/* 학기말 클래스룸 정리 — 시기성 기능이라 사용 빈도 기준 맨 아래 (2026-08-06 사용자 확정) */}
+                    <button
+                      onClick={() => setActiveMenu("classroom_cleanup")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "classroom_cleanup"
+                          ? "bg-indigo-800 text-white"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>📦</span>
+                      <span>학기말 클래스룸 정리</span>
                     </button>
 
                     {/* 조직 정보 신청 (교사 본인) */}
