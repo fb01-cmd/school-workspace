@@ -287,7 +287,7 @@ export default function GraduationTab({ s, ud }: any) {
 
   const handleSyncCandidates = async () => {
     if (!domain) return;
-    if (!confirm("구글 워크스페이스에서 3학년 및 졸업생 OU 학생들을 가져와 데이터베이스를 동기화하시겠습니까? (기존 동의 내역은 그대로 유지됩니다)")) return;
+    if (!confirm("구글 워크스페이스에서 3학년 및 졸업생 학생 목록을 가져와 플랫폼에 반영하시겠습니까? (기존 동의 내역은 그대로 유지됩니다)")) return;
     setSyncing(true);
     setErr("");
     setSuccess("");
@@ -305,7 +305,7 @@ export default function GraduationTab({ s, ud }: any) {
   };
 
   const handleClearCandidates = async () => {
-    if (!confirm("⚠️ 경고: 현재 등록된 모든 일반 졸업 대상자(동기화된 학생) 목록을 데이터베이스에서 비우시겠습니까?\n\n※ 직접 수동 등록한 테스트용 학생들은 삭제되지 않고 그대로 유지됩니다. 테스트를 종료하거나 목록을 깔끔하게 초기화할 때 유용합니다.")) return;
+    if (!confirm("⚠️ 경고: 현재 등록된 모든 일반 졸업 대상자(동기화된 학생) 목록을 플랫폼에서 비우시겠습니까?\n\n※ 직접 수동 등록한 테스트용 학생들은 삭제되지 않고 그대로 유지됩니다. 테스트를 종료하거나 목록을 깔끔하게 초기화할 때 유용합니다.")) return;
     setSyncing(true);
     setErr("");
     setSuccess("");
@@ -1069,7 +1069,7 @@ export default function GraduationTab({ s, ud }: any) {
                     </div>
                   </details>
                 )}
-                <div className="text-[10px] text-slate-400 mt-2 font-sans leading-relaxed">※ 이 시뮬레이션은 구글 API 모크 환경에 상관없이 실제 Firestore 데이터 및 API 액션을 수행하므로, 실제로 지정한 테스트 대상 계정에 대해 정지/삭제/알림 발송이 수행됩니다.</div>
+                <div className="text-[10px] text-slate-400 mt-2 font-sans leading-relaxed">※ 이 시뮬레이션은 테스트 모드 여부와 상관없이 실제 데이터를 그대로 변경하므로, 지정한 테스트 대상 계정에 대해 정지·삭제·알림 발송이 실제로 수행됩니다.</div>
               </div>
             )}
           </div>

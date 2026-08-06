@@ -46,7 +46,7 @@ export default function TimetableImportTab({
   const [fullScheduleSummary, setFullScheduleSummary] = useState("");
   const [weeklyScheduleSummary, setWeeklyScheduleSummary] = useState("");
 
-  // 주간시간표 파싱 결과 보관 (업로드 순서 독립적 교차 검증용)
+  // 주간시간표 분석 결과 보관 (업로드 순서 독립적 교차 검증용)
   const [weeklyTeachersData, setWeeklyTeachersData] = useState<{
     teachers: { seq: number; name: string; teacherRaw: string; lessons: any[] }[];
     duplicateWarnings: { name: string; seq: number; prevSeq: number }[];
@@ -70,7 +70,7 @@ export default function TimetableImportTab({
   const [gridRawText, setGridRawText] = useState("");
   const [timeCountRawText, setTimeCountRawText] = useState("");
 
-  // 파싱된 중간 데이터
+  // 분석된 중간 데이터
   const [parsedGrids, setParsedGrids] = useState<IntermediateClassGrid[]>([]);
   const [parsedTimeCounts, setParsedTimeCounts] = useState<TeacherTimeCount[]>([]);
 
@@ -120,7 +120,7 @@ export default function TimetableImportTab({
     }
   }, []);
 
-  // 요일 텍스트/숫자 파싱 헬퍼
+  // 요일 텍스트/숫자 분석 헬퍼
   const parseDayNumber = (val: string): number => {
     const clean = val.trim().replace("요일", "");
     if (clean === "월" || clean === "1") return 1;
@@ -454,7 +454,7 @@ export default function TimetableImportTab({
         const buffer = evt.target?.result as ArrayBuffer;
         const { grids, totalOccupiedCells } = parseFullScheduleBuffer(buffer);
         setParsedGrids(grids);
-        setFullScheduleSummary(`학급 ${grids.length}개, 수업 셀 ${totalOccupiedCells}개 파싱 완료`);
+        setFullScheduleSummary(`학급 ${grids.length}개, 수업 셀 ${totalOccupiedCells}개 분석 완료`);
         setSourceNote(`컴시간 엑셀 업로드 (${file.name})`);
 
         if (weeklyTeachersData) {
@@ -467,7 +467,7 @@ export default function TimetableImportTab({
           );
         }
       } catch (err: any) {
-        alert(`전체시간표.xlsx 파싱 실패: ${err.message}`);
+        alert(`전체시간표.xlsx 분석 실패: ${err.message}`);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -494,13 +494,13 @@ export default function TimetableImportTab({
           performCrossValidation(parsedGrids, teachers, duplicateWarnings, occupiedCells, freeCells);
         }
       } catch (err: any) {
-        alert(`주간시간표.xlsx 파싱 실패: ${err.message}`);
+        alert(`주간시간표.xlsx 분석 실패: ${err.message}`);
       }
     };
     reader.readAsArrayBuffer(file);
   };
 
-  // 2. 전체시간표 붙여넣기 텍스트 파싱 (폴백)
+  // 2. 전체시간표 붙여넣기 텍스트 분석 (폴백)
   const parseGridText = (text: string) => {
     if (!text.trim()) {
       setParsedGrids([]);
@@ -548,7 +548,7 @@ export default function TimetableImportTab({
     setParsedGrids(result);
   };
 
-  // 3. 교사별 시수표 붙여넣기 텍스트 파싱 (폴백)
+  // 3. 교사별 시수표 붙여넣기 텍스트 분석 (폴백)
   const parseTimeCountText = (text: string) => {
     if (!text.trim()) {
       setParsedTimeCounts([]);
@@ -695,7 +695,7 @@ export default function TimetableImportTab({
       return;
     }
 
-    if (!confirm(`'${termName} (${termId})' 기초시간표를 초안(draft) 상태로 저장하시겠습니까?`)) {
+    if (!confirm(`'${termName} (${termId})' 기초시간표를 초안 상태로 저장하시겠습니까?`)) {
       return;
     }
 
@@ -975,13 +975,13 @@ export default function TimetableImportTab({
             <span className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-[10px]">
               1
             </span>
-            <span>데이터 파싱</span>
+            <span>데이터 분석</span>
           </button>
 
           <button
             onClick={() => {
               if (parsedGrids.length > 0) autoMatchTeachers();
-              else alert("먼저 1단계에서 엑셀 파일이나 텍스트를 파싱해 주세요.");
+              else alert("먼저 1단계에서 엑셀 파일이나 텍스트를 분석해 주세요.");
             }}
             className={`py-2.5 px-2 rounded-lg transition-all flex items-center justify-center gap-2 ${
               activeStep === 2
@@ -1028,13 +1028,13 @@ export default function TimetableImportTab({
         </div>
       </div>
 
-      {/* ── 1단계: 엑셀 파싱 ──────────────────────────── */}
+      {/* ── 1단계: 엑셀 분석 ──────────────────────────── */}
       {activeStep === 1 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
           <div className="border-b border-gray-100 pb-4 flex justify-between items-center flex-wrap gap-4">
             <div>
               <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <span>Step 1. 학기 설정 및 컴시간 엑셀 파싱</span>
+                <span>Step 1. 학기 설정 및 컴시간 엑셀 분석</span>
               </h3>
               <p className="text-xs text-gray-500 mt-1">
                 컴시간에서 내보낸 엑셀(.xlsx) 파일 2종을 업로드하거나, 기존 TSV 텍스트 붙여넣기를 이용하세요.
@@ -1063,7 +1063,7 @@ export default function TimetableImportTab({
                     : "text-gray-600 hover:text-gray-900"
                 }`}
               >
-                📋 텍스트 붙여넣기 (폴백)
+                📋 텍스트 붙여넣기 (엑셀 업로드가 안 될 때)
               </button>
             </div>
           </div>
@@ -1222,7 +1222,7 @@ export default function TimetableImportTab({
                       : "border-transparent text-gray-500 hover:text-gray-700"
                   }`}
                 >
-                  1️⃣ 전체시간표 복사-붙여넣기 ({parsedGrids.length}개 학급, {totalParsedLessons}개 수업 파싱됨)
+                  1️⃣ 전체시간표 복사-붙여넣기 ({parsedGrids.length}개 학급, {totalParsedLessons}개 수업 분석됨)
                 </button>
                 <button
                   onClick={() => setPasteTab("timeCount")}
@@ -1232,7 +1232,7 @@ export default function TimetableImportTab({
                       : "border-transparent text-gray-500 hover:text-gray-700"
                   }`}
                 >
-                  2️⃣ 교사별 시수표 복사-붙여넣기 ({parsedTimeCounts.length}건 파싱됨)
+                  2️⃣ 교사별 시수표 복사-붙여넣기 ({parsedTimeCounts.length}건 분석됨)
                 </button>
               </div>
 
@@ -1278,12 +1278,12 @@ export default function TimetableImportTab({
             </div>
           )}
 
-          {/* 파싱 미리보기 요약 */}
+          {/* 분석 미리보기 요약 */}
           {parsedGrids.length > 0 && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-xs text-emerald-900 flex justify-between items-center">
               <div>
-                <span className="font-bold">✅ 파싱 성공: </span>
-                총 {parsedGrids.length}개 학급 ({totalParsedLessons}시간 수업 데이터) 파싱 완료.
+                <span className="font-bold">✅ 분석 성공: </span>
+                총 {parsedGrids.length}개 학급 ({totalParsedLessons}시간 수업 데이터) 분석 완료.
               </div>
               <button
                 onClick={autoMatchTeachers}
@@ -1329,7 +1329,7 @@ export default function TimetableImportTab({
                 {Object.keys(teacherEmailMap).length === 0 ? (
                   <tr>
                     <td colSpan={3} className="px-4 py-8 text-center text-gray-500">
-                      매핑할 교사 목록이 없습니다. 1단계 파싱을 먼저 진행하세요.
+                      매핑할 교사 목록이 없습니다. 1단계 분석을 먼저 진행하세요.
                     </td>
                   </tr>
                 ) : (

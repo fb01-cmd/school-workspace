@@ -1291,7 +1291,7 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
         }
 
         if (okCount > 0) {
-          setSuccessMsg(`🚀 ${okCount}건의 수업교환 신청이 성공적으로 일괄 접수되었습니다. (배치 ID: ${data.batchId || ""})`);
+          setSuccessMsg(`🚀 ${okCount}건의 수업교환 신청이 성공적으로 일괄 접수되었습니다.`);
         }
 
         if (failResults.length > 0) {
@@ -2308,7 +2308,7 @@ export default function TeacherPortalSection() {
       <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 rounded-xl p-5 text-white shadow-md border border-indigo-700/40">
         <h2 className="text-lg font-bold">📅 내 시간표 &amp; 수업교환 신청</h2>
         <p className="text-sm text-indigo-200/80 mt-1">
-          주간 합성 시간표를 확인하고 수업교환을 신청합니다. 후보는 엔진이 제시한 슬롯만 선택 가능합니다.
+          내 주간 시간표를 확인하고 수업교환을 신청합니다. 교체가 가능한 자리만 후보로 표시됩니다.
         </p>
       </div>
 

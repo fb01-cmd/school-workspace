@@ -457,7 +457,7 @@ export default function GroupList() {
 
       {isMock && (
         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-xl text-xs">
-          ✨ <strong>테스트 모드 활성화됨:</strong> 로컬 테스트 데이터베이스를 사용하고 있습니다. 구글 API 서버에 영향을 주지 않고 안전하게 CRUD 테스트가 가능합니다.
+          ✨ <strong>테스트 모드 활성화됨:</strong> 실제 구글 서버에는 반영되지 않는 연습용 저장 공간을 사용 중입니다. 안심하고 만들기·수정·삭제를 시험해 볼 수 있습니다.
         </div>
       )}
 

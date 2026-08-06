@@ -35,7 +35,7 @@ export default function StudentTimetableCard() {
 
     try {
       // 학생 API는 서버가 학번 기반으로 본인 반을 강제 도출하므로 action만 전달
-      // weekId 미지정 시 서버가 현재 주(currentWeek)를 찾아 주간 합성본으로 반환함
+      // weekId 미지정 시 서버가 현재 주(currentWeek)를 찾아 주간 시간표으로 반환함
       const res = await fetch("/api/timetable/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -105,7 +105,7 @@ export default function StudentTimetableCard() {
             </span>
             {weekMeta && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-100">
-                🗓️ {weekMeta.startDate} 주간 합성본
+                🗓️ {weekMeta.startDate} 주간 시간표
               </span>
             )}
           </div>

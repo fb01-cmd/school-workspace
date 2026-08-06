@@ -271,7 +271,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const handleAddToCart = () => {
     if (!selectedCandidate || !selectedSlot) { setSubmitError("담을 후보(맞교환 또는 특별보강)를 선택해 주세요."); return; }
     const isDuplicate = cartItems.some((ci) => ci.weekId === selectedSlot.weekId && ci.source.grade === selectedSlot.grade && ci.source.classNum === selectedSlot.classNum && ci.source.day === selectedSlot.day && ci.source.period === selectedSlot.period);
-    if (isDuplicate) { setSubmitError("이미 담기 목록에 포함된 원 수업 슬롯입니다."); return; }
+    if (isDuplicate) { setSubmitError("이미 담기 목록에 있는 수업입니다."); return; }
     if (cartItems.length >= 20) { setSubmitError("한 번에 최대 20건까지 담을 수 있습니다."); return; }
     const targetWId = activeCandidateType === "swap" ? (selectedCandidate as any).targetWeekId : undefined;
     const newItem: CartItem = {

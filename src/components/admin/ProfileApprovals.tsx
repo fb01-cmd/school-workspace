@@ -187,7 +187,7 @@ export default function ProfileApprovals() {
             }`}
           >
             <span>🏗️</span>
-            <span>조직도 빌더 (수동 배치)</span>
+            <span>조직도 편집 (수동 배치)</span>
           </button>
         )}
 

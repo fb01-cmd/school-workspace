@@ -187,7 +187,7 @@ export default function ChromeBookmarks() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccess(`[${selectedOU}] 조직단위 크롬 관리 북마크 설정이 반영되었습니다.${data.isLocalFallback ? " (구글 API 연동 불가로 로컬 DB 임시 저장)" : ""}`);
+        setSuccess(`[${selectedOU}] 조직단위 크롬 관리 북마크 설정이 반영되었습니다.${data.isLocalFallback ? " (구글 연동이 안 되어 플랫폼에 임시 저장됨)" : ""}`);
         setIsLocalFallback(!!data.isLocalFallback);
       } else {
         throw new Error(data.error);
@@ -246,7 +246,7 @@ export default function ChromeBookmarks() {
             접근 권한이 구글 관리자 화면에 등록되지 않았거나 승인되지 않아 <strong>[오프라인 임시 저장 모드]</strong>로 자동 전환하여 작동 중입니다.
           </p>
           <p className="text-[10px] text-amber-600 font-medium">
-            (북마크 편집 정보는 플랫폼 데이터베이스와 수정 이력에 정상 보관되나, 실제 학생 기기 크롬 브라우저 상단바에 즉시 배포되지는 않습니다. 서비스 연동 권한이 활성화되면 실시간 동기화가 재개됩니다.)
+            (북마크 편집 정보는 플랫폼과 수정 이력에 정상 보관되나, 실제 학생 기기 크롬 브라우저 상단바에 즉시 배포되지는 않습니다. 서비스 연동 권한이 활성화되면 실시간 동기화가 재개됩니다.)
           </p>
           {authWarning && (
             <p className="text-[10px] font-mono text-amber-500 mt-1.5 border-t border-amber-200/50 pt-1">

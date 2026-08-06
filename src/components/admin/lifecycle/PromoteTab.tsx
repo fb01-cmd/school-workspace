@@ -196,7 +196,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
         <>
           <div className="bg-gray-50 rounded-xl border p-4 text-sm space-y-2">
             <p className="font-semibold">
-              파싱: <span className="text-green-700">{parsed.length}행</span>
+              읽음: <span className="text-green-700">{parsed.length}행</span>
             </p>
             {pErr.length > 0 && (
               <details className="mt-1">

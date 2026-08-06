@@ -584,7 +584,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
           <div>
             <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
               <span>🏗️</span>
-              <span>교직원 조직도 빌더 (수동 인사 배치 v2)</span>
+              <span>교직원 조직도 편집 (수동 배치)</span>
             </h2>
             <p className="text-xs text-indigo-200/80 mt-1">
               <strong>주력 동선:</strong> 왼쪽 트리에서 [받는 부서]를 클릭 고정한 후, 오른쪽 명단에서 교사를 클릭하여 편하게 편집하세요. (로컬에서 편집 후 상단 반영 버튼으로 일괄 저장)

@@ -107,7 +107,7 @@ export default function HourTotalsTab({ activeTermId }: HourTotalsTabProps) {
             </span>
           </h3>
           <p className="text-xs text-gray-500 mt-1">
-            고교학점제 이수시수 판정을 위해 DB에 별도 저장하지 않고 등록된 주의 합성본에서 실제 운영된 수업시수만 동적으로 계산합니다.
+            고교학점제 이수시수 판정용 집계로, 따로 저장된 값이 아니라 등록된 주의 시간표에서 실제 운영된 수업시수를 그때그때 계산해 보여줍니다.
           </p>
         </div>
 

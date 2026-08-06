@@ -149,7 +149,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
         <>
           <div className="bg-gray-50 rounded-xl border p-4 text-sm">
             <p className="font-semibold">
-              파싱: <span className="text-green-700">{parsed.length}명</span>
+              읽음: <span className="text-green-700">{parsed.length}명</span>
             </p>
             <p className="text-xs text-gray-500 mt-0.5">
               이메일 범위:{" "}
