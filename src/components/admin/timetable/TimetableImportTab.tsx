@@ -365,8 +365,10 @@ export default function TimetableImportTab({
     });
 
     // 1. 순방향 검증 (주간시간표 -> 전체시간표)
+    let weeklySkipped = 0; // 반 코드 해석 실패로 검증에서 빠진 주간 수업 — 조용히 버리면 검증이 통째로 무력화된다
     weeklyTeachers.forEach((t) => {
       t.lessons.forEach((l) => {
+        if (!(l.grade && l.classNum)) weeklySkipped++;
         if (l.grade && l.classNum) {
           const key = `${l.grade}-${l.classNum}-${l.day}-${l.period}`;
           const fullCell = fullMap.get(key);
@@ -392,6 +394,7 @@ export default function TimetableImportTab({
     });
 
     // 2. 역방향 누락 검증 (전체시간표 -> 주간시간표) — 가상 교사 셀 제외
+    let virtualExcluded = 0;
     fullMap.forEach((cell, key) => {
       const isVirtualTeacher =
         cell.teacherName === cell.subjectName ||
@@ -400,6 +403,7 @@ export default function TimetableImportTab({
         cell.subjectName.includes("SLAT") ||
         cell.subjectName.includes("창체");
 
+      if (isVirtualTeacher) virtualExcluded++;
       if (!isVirtualTeacher && !matchedFullKeys.has(key)) {
         const dayStr = getDayName(cell.day);
         mismatchList.push(
@@ -407,6 +411,22 @@ export default function TimetableImportTab({
         );
       }
     });
+
+    // ── fail-open 방지 가드 (2026-08-06): 비교가 성립하지 않은 검증을 "문제없음"으로 통과시키지 않는다.
+    // (실사고: 줄바꿈 없는 파일 2종 → 전체는 전부 가상 교사로 오분류, 주간은 반 코드 해석 실패로 전량 제외
+    //  → 일치 0·불일치 0의 초록 리포트가 떴다. 비교 0건은 성공이 아니라 형식 오류다.)
+    if (weeklySkipped > 0)
+      mismatchList.unshift(
+        `[형식 경고] 주간시간표 수업 ${weeklySkipped}건의 반 코드를 해석하지 못해 검증에서 제외되었습니다 — 셀이 "반코드 줄바꿈 과목" 형식인지 확인하세요.`
+      );
+    if (occupiedCells > 0 && virtualExcluded > occupiedCells * 0.3)
+      mismatchList.unshift(
+        `[형식 경고] 전체시간표 ${virtualExcluded}건이 과목·교사 분리 실패(또는 가상 수업)로 검증에서 제외되었습니다 — 셀이 "과목 줄바꿈 교사" 형식인지 확인하세요.`
+      );
+    if (occupiedCells > 0 && matchCount === 0)
+      mismatchList.unshift(
+        `[검증 불성립] 일치한 수업 셀이 0개입니다 — 두 파일의 셀 형식이 맞지 않아 교차 검증이 전혀 수행되지 못했습니다. 이 상태의 "불일치 0건"은 정상이 아니므로 저장 전에 파일 형식을 확인하세요.`
+      );
 
     const realTeacherCount = weeklyTeachers.filter((t) => !t.name.includes("SLAT") && !t.name.includes("창체")).length;
     const virtualTeacherCount = weeklyTeachers.length - realTeacherCount;
