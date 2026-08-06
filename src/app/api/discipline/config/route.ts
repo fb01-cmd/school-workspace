@@ -70,7 +70,12 @@ function validateConfigPayload(
     if (!Number.isFinite(order))
       return { ok: false, error: `단계 순서(order)가 숫자가 아닙니다: ${st.id}` };
     stageIds.add(st.id);
-    cleanStages.push({ id: st.id, label: st.label.trim(), order });
+    cleanStages.push({
+      id: st.id,
+      label: st.label.trim(),
+      order,
+      homeroomResolvable: st.homeroomResolvable === true,
+    });
   }
 
   const cleanRules = [];

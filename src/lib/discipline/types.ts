@@ -20,6 +20,8 @@ export interface DisciplineStage {
   id: string;
   order: number;      // 클수록 상위 단계 (예: 담임 1 → 생활교육위원회 4)
   label: string;      // 예: "담임", "생활교육위원회"
+  /** 담임 처리 단계 — true면 담임이 자기 반 학생의 이 단계 사안을 grant 없이 조치할 수 있다 (2026-08-05 사용자 확정) */
+  homeroomResolvable?: boolean;
 }
 
 /** 규칙 = "회차 → 처리 단계" 매핑. trigger는 itemId 또는 category 중 하나만 지정. */

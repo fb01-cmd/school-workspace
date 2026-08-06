@@ -125,8 +125,19 @@ export async function POST(req: NextRequest) {
         grade: event.grade,
         classNum: event.classNum,
       });
-      if (!judgment.allowed)
-        return NextResponse.json({ error: "단계 처리 권한이 없습니다." }, { status: 403 });
+      // 담임 처리 단계 — 규정에서 homeroomResolvable로 표시된 단계는 담임이 자기 반 사안에 한해
+      // grant 없이 조치할 수 있다 (2026-08-05 사용자 확정: 단계별 처리 주체 방식. 수동 지정에는 미적용).
+      const isHomeroomStage =
+        config.stages.find((s) => s.id === event.stageId)?.homeroomResolvable === true;
+      const isOwnClassHomeroom = ctx.homeroomClasses.some(
+        (h) => h.grade === event.grade && h.classNum === event.classNum
+      );
+      const homeroomAllowed = isHomeroomStage && isOwnClassHomeroom;
+      if (!judgment.allowed && !homeroomAllowed)
+        return NextResponse.json(
+          { error: "이 단계를 처리할 권한이 없습니다. (담임 처리 단계는 담임이 자기 반 사안만 처리할 수 있습니다.)" },
+          { status: 403 }
+        );
 
       await stageEventsColRef(domain).doc(eventId).update({
         resolved: true,
@@ -142,7 +153,7 @@ export async function POST(req: NextRequest) {
         operatorName: "생활지도 단계 처리자",
         action: "생활지도 단계 처리",
         targetEmail: event.studentEmail,
-        details: `${event.grade}학년 ${event.classNum}반 ${event.studentId} — ${stageLabel} 처리 완료 (판정 근거: ${judgment.basis})`,
+        details: `${event.grade}학년 ${event.classNum}반 ${event.studentId} — ${stageLabel} 처리 완료 (판정 근거: ${judgment.allowed ? judgment.basis : "homeroom_stage(담임 처리 단계)"})`,
         status: "success",
       });
       return NextResponse.json({ success: true, eventId });

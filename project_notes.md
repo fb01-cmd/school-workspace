@@ -1320,3 +1320,11 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   - `npx tsc --noEmit` ✅ (0 errors)
   - `npm run build` ✅ (31/31 라우트 프로덕션 빌드 성공)
 
+
+## [2026-08-06] Claude → 담임 조치 권한: 단계별 처리 주체 방식 서버 구현 (사용자 확정안)
+
+- **결정**: 규정의 각 단계에 `homeroomResolvable`(담임 처리 단계) 플래그 — 담임은 자기 반 학생의 해당 단계 사안만 grant 없이 조치 가능. 수동 단계 지정에는 미적용(grant/수퍼어드민 전용 유지). 상위 단계(생활지도교사·생활교육위원회 등)는 기존 권한 체계 그대로.
+- **구현(서버·타입)**: ① types.ts DisciplineStage에 플래그 추가 ② config API 저장 검증에 통과 ③ stage-events resolve 판정에 담임+플래그 검사 추가(감사 로그 근거 "homeroom_stage"). 목록 조회는 이미 view 권한 기준이라 무변경. 현행 규정의 "담임" 단계(stage_homeroom)에 플래그 실반영 완료(admin 스크립트, 미리보기→실행).
+- **잔여(화면 3곳, Antigravity 몫)**: ① Section의 조치 처리함 탭 노출 — canResolve 외에 `담임 && config.stages에 homeroomResolvable 단계 존재` 조건 추가 ② StageEventsTab [수동 단계 지정] 버튼은 canResolve일 때만 노출 ③ 규정 편집기 단계 행에 "담임 처리 단계" 체크박스(저장 payload에 homeroomResolvable 포함). 서버가 최종 강제하므로 화면은 노출 제어만.
+- **검증**: tsc 0 에러·build ✅ (7b2a20a 문구 정비와 동시 작업 — 서버·타입 파일만 명시 add, 충돌 없음).
+- **비고**: 저장소 루트에 사용자 xlsx 2개(2026-2 임시시간표 수정본) 미추적 상태로 있음 — 커밋 안 함, 9b 작업용으로 보임.
