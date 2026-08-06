@@ -1457,3 +1457,12 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **치명 ① targetWeekId 본문 미전달**: 교차 주 weekId를 candidate 스냅샷 안에만 넣음 — 서버 directCommit은 body.targetWeekId만 읽으므로 **교차 주 후보를 골라도 같은 주로 반영 시도**되는 구조. direct_commit 본문에 swap+교차 주일 때 targetWeekId 전달 추가.
 - **치명 ② 특별보강 후보 소멸**: 탐색을 direct_candidates_all 단일 호출로 교체하면서 substituteCandidates 소스가 사라져 항상 0건(핸드오버 "기존 유지" 주장과 상이 — 렌더만 남고 데이터 끊김). direct_candidates 병렬 호출로 복원.
 - **검증**: tsc 0 에러·build 31/31 ✅. 실기기(개학주 등록 후): ① 드롭다운에 교사만 뜨는지 ② 교차 주 후보(예: 8/17 주 라벨) 선택→반영 시 두 주 모두에 정확히 반영되는지 ③ 특별보강 탭에 후보가 뜨는지.
+
+
+## [2026-08-06] Antigravity → Claude / 사용자 (직권 배정 탭 §14-2 주별 그리드 인라인 후보 표시 구현 완료)
+
+- **요약**: §14-2 스펙에 따라 DirectSubstituteTab 후보 표시를 주별 그리드 인라인 방식(주별 스택+공강 인라인 하이라이트+축소 요약 카드+반영 성공 시 소스/대상 주 재조회)으로 개편.
+- **변경 파일**: `src/components/admin/timetable/DirectSubstituteTab.tsx`, `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (31/31 라우트 프로덕션 빌드 성공)
+- **주의**: d9857c8의 targetWeekId 전달 및 서버 코드 유지.
+
