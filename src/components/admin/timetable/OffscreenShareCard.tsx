@@ -350,7 +350,7 @@ export async function copyShareImageElement(node: HTMLDivElement | null): Promis
     }
     if (blob && typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      alert("📋 수업교환 양해 요청 카드가 클립보드에 복사되었습니다!\n메신저(카카오톡, 구글 챗 등)에 바로 붙여넣기(Ctrl+V)하세요.");
+      alert("📋 수업교환 양해 이미지가 클립보드에 복사되었습니다!\n메신저(카카오톡, 구글 챗 등)에 바로 붙여넣기(Ctrl+V)하세요.");
       return;
     }
   } catch (clipboardErr) {
@@ -365,8 +365,8 @@ export async function copyShareImageElement(node: HTMLDivElement | null): Promis
     link.download = `수업교환_양해요청카드_${Date.now()}.png`;
     link.href = dataUrl;
     link.click();
-    alert("📥 클립보드 복사 미지원 환경으로 인해 카드가 PNG 이미지 파일로 다운로드되었습니다.");
+    alert("📥 클립보드 복사가 안 되는 환경이라 양해 이미지를 PNG 파일로 다운로드했습니다.");
   } catch (err: any) {
-    alert(`카드를 이미지로 변환할 수 없습니다: ${err.message}`);
+    alert(`양해 이미지를 만들 수 없습니다: ${err.message}`);
   }
 }

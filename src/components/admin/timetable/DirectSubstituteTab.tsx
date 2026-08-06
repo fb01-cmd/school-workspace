@@ -351,7 +351,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       };
       setConsolidatedShareData(shareData);
       setTimeout(() => { copyShareImageElement(consolidatedCardRef.current).finally(() => setGeneratingShareFor(null)); }, 100);
-    } catch (err: any) { alert(`양해 요청 카드 생성 실패: ${err.message}`); setGeneratingShareFor(null); }
+    } catch (err: any) { alert(`양해 이미지 생성 실패: ${err.message}`); setGeneratingShareFor(null); }
   };
 
   const handleBatchCommit = async () => {
@@ -425,10 +425,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
           <span>⚡</span>
-          <span>일과계 직권 배정 (일반 교사 동등성 원칙)</span>
+          <span>일과계 직권 배정</span>
         </h2>
         <p className="text-xs text-gray-500 mt-1">
-          교사를 선택하면 해당 교사의 등록된 전 주 시간표가 스택으로 표시됩니다. 후보 선택 시 상대 교사 시간표 미리보기 및 감점 사유가 제공되며, 다건 [담기] 후 일괄 반영 및 상대교사별 양해 요청 카드를 생성할 수 있습니다.
+          교사를 선택하면 그 교사의 모든 주 시간표가 함께 표시됩니다. 수업을 고르고 후보를 선택해 여러 건을 [담기]로 모은 뒤 한 번에 반영할 수 있으며, 상대 선생님께 보낼 양해 이미지도 만들 수 있습니다.
         </p>
       </div>
 
@@ -470,7 +470,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                   <span>🗓️</span>
                   <span>{selectedTeacherName} 교사의 등록 주별 시간표 ({weeks.length}개 주간)</span>
                 </h3>
-                <p className="text-xs text-gray-500 mt-0.5">수업 셀을 클릭하면 모든 주의 공강 셀 위에 맞교환 가능 후보가 인라인 하이라이트로 표시됩니다.</p>
+                <p className="text-xs text-gray-500 mt-0.5">수업 칸을 클릭하면 그 수업이 옮겨 갈 수 있는 자리가 모든 주의 빈 칸 위에 바로 표시됩니다.</p>
               </div>
               {loadingTimetable && <span className="text-xs text-indigo-600 font-semibold animate-pulse">시간표 로딩 중...</span>}
             </div>
@@ -634,10 +634,12 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                     ))}
                   </div>
                   <div className="pt-2 border-t border-gray-100 space-y-2">
-                    <div className="text-[11px] font-bold text-gray-700">📋 카드:</div>
+                    <div className="text-[11px] font-bold text-gray-700">📨 양해 구하기 (상대별 이미지 복사):</div>
                     <div className="flex flex-wrap gap-1.5">
                       {Object.keys(groupedCartByCounterpart).map((cpEmail) => (
-                        <button key={cpEmail} type="button" onClick={() => handleGenerateConsolidatedCard(cpEmail)} disabled={generatingShareFor === cpEmail} className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-[11px] rounded-lg">📸 {groupedCartByCounterpart[cpEmail][0]?.counterpartName} 카드</button>
+                        <button key={cpEmail} type="button" onClick={() => handleGenerateConsolidatedCard(cpEmail)} disabled={generatingShareFor === cpEmail} className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-[11px] rounded-lg disabled:opacity-60">
+                          {generatingShareFor === cpEmail ? "이미지 생성 중…" : `📸 ${groupedCartByCounterpart[cpEmail][0]?.counterpartName} 선생님 (${groupedCartByCounterpart[cpEmail].length}건)`}
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -653,7 +655,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500 space-y-2">
           <span className="text-3xl">👈</span>
           <p className="font-bold text-gray-800 text-sm">위 드롭다운에서 직권 배정할 대상 교사를 선택해 주세요.</p>
-          <p className="text-xs text-gray-400">교사를 선택하면 해당 교사의 등록된 전 주 시간표가 주별 스택으로 표시되고 사이드바 미리보기가 활성화됩니다.</p>
+          <p className="text-xs text-gray-400">교사를 선택하면 그 교사의 모든 주 시간표가 표시됩니다.</p>
         </div>
       )}
     </div>

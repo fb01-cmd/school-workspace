@@ -664,7 +664,6 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-sm font-extrabold text-indigo-950 flex items-center gap-1.5">
               <span>🗓️ 등록 주간 전체 예상 시간표</span>
-              <span className="text-xs text-indigo-500 font-medium">(v2.1 전 주 인라인 후보 하이라이트)</span>
             </h2>
 
             {projectedData && (
@@ -994,7 +993,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
               {!candidatesLoading && !applyingCandidate && (
                 <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-lg text-xs text-indigo-900 space-y-1">
-                  <p className="font-bold">💡 인라인 후보 선택 안내</p>
+                  <p className="font-bold">💡 후보 선택 안내</p>
                   <p className="text-[11px] text-indigo-800">
                     좌측 전 주 시간표 그리드의 <b>공강 칸(초록/주황/빨간 배지)</b>을 직접 클릭하면 해당 교시로 교체안이 자동 저장됩니다.
                   </p>
