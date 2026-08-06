@@ -133,7 +133,8 @@ export default function AdminPage() {
     );
     const unsub = onSnapshot(q, snap => setPendingProfileCount(snap.size));
     return () => unsub();
-  }, []);
+    // 인증 로딩이 끝난 뒤(userData 도착 후) 구독을 시작해야 함 — []이면 마운트 시 조기 return으로 영영 미구독
+  }, [userData?.role]);
 
   const handleLogout = async () => {
     await logOut();
