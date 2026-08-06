@@ -169,13 +169,22 @@ export default function AutocompleteInput({
     }
   };
 
+  const formatDisplayName = (nameObj: any): string => {
+    if (!nameObj) return "";
+    if (typeof nameObj === "object") {
+      const familyName = (nameObj.familyName || "").trim();
+      const givenName = (nameObj.givenName || "").trim();
+      if (/^\d{5}$/.test(familyName)) {
+        return givenName;
+      }
+      return `${familyName}${givenName}`;
+    }
+    return String(nameObj);
+  };
+
   const handleSelectItem = (item: any) => {
     const email = item.primaryEmail || item.email;
-    const name = item.name 
-      ? typeof item.name === "object" 
-        ? `${item.name.familyName || ""}${item.name.givenName || ""}` 
-        : item.name 
-      : "";
+    const name = formatDisplayName(item.name);
     onSelect(email, name);
     setIsOpen(false);
     setActiveIndex(-1);
@@ -212,11 +221,7 @@ export default function AutocompleteInput({
           ) : (
             suggestions.map((item, index) => {
               const email = item.primaryEmail || item.email;
-              const name = item.name 
-                ? typeof item.name === "object" 
-                  ? `${item.name.familyName || ""}${item.name.givenName || ""}` 
-                  : item.name 
-                : "";
+              const name = formatDisplayName(item.name);
               const details = item.orgUnitPath || item.description || "";
               
               return (

@@ -289,6 +289,34 @@ export async function POST(req: NextRequest) {
         voidReason,
       });
 
+      // ── 무효화 시 미처리 단계 사안 자동 정리 (causeRecordIds에 해당 recordId 포함 + resolved=false) ──
+      const eventsSnap = await stageEventsColRef(domain)
+        .where("studentEmail", "==", record.studentEmail)
+        .get();
+
+      const affectedEvents = eventsSnap.docs
+        .map((doc) => stageEventFromDoc(doc.id, doc.data()))
+        .filter(
+          (evt) =>
+            !evt.resolved &&
+            Array.isArray(evt.causeRecordIds) &&
+            evt.causeRecordIds.includes(recordId)
+        );
+
+      const cleanedEventIds: string[] = [];
+      for (const evt of affectedEvents) {
+        await stageEventsColRef(domain).doc(evt.id).delete();
+        cleanedEventIds.push(evt.id);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          operatorName: "생활지도 관리자",
+          action: "생활지도 미처리 사안 자동 삭제 (무효화 연동)",
+          targetEmail: record.studentEmail,
+          details: `기록 ${recordId} 무효화로 인해 원인 기록에 포함된 미처리 단계 사안 ${evt.id} (${evt.stageId} 단계) 자동 삭제`,
+          status: "success",
+        });
+      }
+
       await writeAuditLog({
         operatorEmail: auth.email,
         operatorName: "생활지도 기록자",
@@ -296,10 +324,10 @@ export async function POST(req: NextRequest) {
         targetEmail: record.studentEmail,
         details: `기록 ${recordId} (${record.itemId}) 무효화 — 사유: ${voidReason} (근거: ${
           isSelf ? "본인 기록" : isOwnClassHomeroom ? "담임(자기 반)" : manageJudgment.basis
-        })`,
+        })${cleanedEventIds.length > 0 ? ` [연동 삭제된 미처리 사안: ${cleanedEventIds.join(", ")}]` : ""}`,
         status: "success",
       });
-      return NextResponse.json({ success: true, recordId });
+      return NextResponse.json({ success: true, recordId, cleanedEventIds });
     }
 
     // ── 기록·현황 조회 ──
