@@ -296,6 +296,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
   const handleClearCart = () => {
     setCartItems([]);
+    setSuccessMsg(null); setSubmitError(null); // 담기 완료 등 이전 메시지도 함께 정리
     // 가상 반영 그리드를 빈 cart 기준으로 되돌린다 — 상태만 비우면 "담김 이동" 셀이 화면에 잔존
     fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, []);
     if (selectedSlot) fetchCandidates(selectedSlot.weekId, selectedSlot.grade, selectedSlot.classNum, selectedSlot.day, selectedSlot.period, sourceLessonInfo?.subjectName || "", []);
@@ -304,6 +305,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const handleRemoveFromCart = (id: string) => {
     const updatedCart = cartItems.filter((ci) => ci.id !== id);
     setCartItems(updatedCart);
+    setSuccessMsg(null); setSubmitError(null); // 담기 완료 등 이전 메시지도 함께 정리
     fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
     if (selectedSlot) fetchCandidates(selectedSlot.weekId, selectedSlot.grade, selectedSlot.classNum, selectedSlot.day, selectedSlot.period, sourceLessonInfo?.subjectName || "", updatedCart);
   };
