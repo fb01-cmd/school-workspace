@@ -1193,6 +1193,98 @@ function isSameSourceSlot(it: VirtualSwapItem, weekId: string, s: SwapSourceSlot
   );
 }
 
+/**
+ * §14-4: 직권 담기 누적분(extraItems)을 주별 가상 change로 변환.
+ * loadMyVirtualOverlay와 같은 규약이되 입력이 DB가 아니라 호출부 명시 전달이라는 점만 다르다.
+ * appliedAt은 오버레이(+10M)보다 뒤(+20M)로 두어 담기 순서가 실 변경·대기분 뒤에 적용됨을 보장.
+ * excludeSource: 현재 후보를 탐색 중인 소스 셀과 같은 항목 제외(자기 충돌 방지) — 불필요하면 null.
+ */
+function buildDirectExtraOverlay(
+  extraItems: DirectPendingOverlayItem[] | undefined,
+  termId: string,
+  requesterEmail: string,
+  weekIds: string[],
+  excludeSource: { weekId: string; source: SwapSourceSlot } | null
+): { byWeek: Map<string, TimetableChange[]>; count: number } {
+  const byWeek = new Map<string, TimetableChange[]>();
+  let count = 0;
+  if (!extraItems?.length) return { byWeek, count };
+  const futureBase = Date.now() + 20_000_000;
+  let seq = 0;
+  extraItems.forEach((e, i) => {
+    const isExcluded =
+      excludeSource !== null &&
+      e.weekId === excludeSource.weekId &&
+      e.source.grade === excludeSource.source.grade && e.source.classNum === excludeSource.source.classNum &&
+      e.source.day === excludeSource.source.day && e.source.period === excludeSource.source.period;
+    if (isExcluded) return;
+    const it: VirtualSwapItem = {
+      key: `direct-${i}`,
+      termId,
+      weekId: e.weekId,
+      targetWeekId: e.targetWeekId,
+      type: e.type,
+      requesterEmail,
+      requesterName: requesterEmail.split("@")[0],
+      source: e.source,
+      candidate: e.candidate,
+    };
+    let touched = false;
+    for (const wid of weekIds) {
+      const chs = buildVirtualChanges(it, wid, futureBase + seq);
+      if (chs.length) {
+        byWeek.set(wid, [...(byWeek.get(wid) || []), ...chs]);
+        seq += chs.length;
+        touched = true;
+      }
+    }
+    if (touched) count++;
+  });
+  return { byWeek, count };
+}
+
+/**
+ * §14-4: 직권 담기 가상 반영 그리드 — 대상 교사의 등록 전 주 시간표에 담기 누적분을 가상 적용해 반환.
+ * 교사 포털 my_projected(computeMyProjectedWeeks)의 직권 대응. 확정 상태 + extraItems만 반영하며
+ * DB의 PENDING·초안은 반영하지 않는다(직권 확정 상태 기준 원칙 유지). 가상 셀은 changed.changeId가
+ * "virtual-direct-" 접두어로 표시되어 UI가 담김 이동분을 구분한다.
+ */
+export async function computeDirectProjectedWeeks(
+  domain: string,
+  teacherEmail: string,
+  extraItems: DirectPendingOverlayItem[]
+): Promise<{
+  termId: string | null;
+  weeks: Array<{ weekId: string; startDate: string; cells: TeacherTimetableCell[] }>;
+  appliedCount: number;
+}> {
+  const term = await loadActiveTerm(domain);
+  if (!term) return { termId: null, weeks: [], appliedCount: 0 };
+
+  const weeks = await listWeeks(domain, term.id);
+  weeks.sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const extra = buildDirectExtraOverlay(extraItems, term.id, teacherEmail, weeks.map((w) => w.id), null);
+
+  const [baseGrids, settings] = await Promise.all([
+    loadAllClassGrids(domain, term.id),
+    loadTimetableSettings(domain),
+  ]);
+  const changesByWeek = new Map(
+    await Promise.all(
+      weeks.map(async (w) => [w.id, await loadWeekChanges(domain, w.id)] as const)
+    )
+  );
+
+  const out: Array<{ weekId: string; startDate: string; cells: TeacherTimetableCell[] }> = [];
+  for (const week of weeks) {
+    const changes = changesByWeek.get(week.id) || [];
+    const virtual = extra.byWeek.get(week.id) || [];
+    const { grids } = synthesizeWeeklyGrids(baseGrids, week, [...changes, ...virtual], settings);
+    out.push({ weekId: week.id, startDate: week.startDate, cells: synthesizeTeacherTimetable(grids, teacherEmail) });
+  }
+  return { termId: term.id, weeks: out, appliedCount: extra.count };
+}
+
 /** 가상 합성본에서 본인 요일별 시수 집계 (§14-1 projectedDayLoads) */
 function countMyDayLoads(grids: WeeklyClassGrid[], email: string): ProjectedDayLoad[] {
   const counts = new Map<number, number>();
@@ -1309,44 +1401,11 @@ export async function computeCandidatesAllWeeks(
       )
     : null;
 
-  // §14-4: 직권 담기 누적분 가상 적용 — loadMyVirtualOverlay와 같은 규약으로 변환하되,
-  // 현재 탐색 중인 소스 셀과 같은 항목은 제외(자기 충돌 방지). appliedAt은 오버레이(+10M)보다
-  // 뒤(+20M)로 두어 담기 순서가 실 변경·대기분 뒤에 적용됨을 보장한다.
-  const extraByWeek = new Map<string, TimetableChange[]>();
-  let extraCount = 0;
-  if (whatIf?.extraItems?.length) {
-    const weekIds = allWeeks.map((w) => w.id);
-    const futureBase = Date.now() + 20_000_000;
-    let seq = 0;
-    whatIf.extraItems.forEach((e, i) => {
-      const isSelf =
-        e.weekId === sourceWeekId &&
-        e.source.grade === source.grade && e.source.classNum === source.classNum &&
-        e.source.day === source.day && e.source.period === source.period;
-      if (isSelf) return;
-      const it: VirtualSwapItem = {
-        key: `direct-${i}`,
-        termId: term.id,
-        weekId: e.weekId,
-        targetWeekId: e.targetWeekId,
-        type: e.type,
-        requesterEmail,
-        requesterName: requesterEmail.split("@")[0],
-        source: e.source,
-        candidate: e.candidate,
-      };
-      let touched = false;
-      for (const wid of weekIds) {
-        const chs = buildVirtualChanges(it, wid, futureBase + seq);
-        if (chs.length) {
-          extraByWeek.set(wid, [...(extraByWeek.get(wid) || []), ...chs]);
-          seq += chs.length;
-          touched = true;
-        }
-      }
-      if (touched) extraCount++;
-    });
-  }
+  // §14-4: 직권 담기 누적분 가상 적용 — 현재 탐색 중인 소스 셀과 같은 항목은 제외(자기 충돌 방지)
+  const { byWeek: extraByWeek, count: extraCount } = buildDirectExtraOverlay(
+    whatIf?.extraItems, term.id, requesterEmail, allWeeks.map((w) => w.id),
+    { weekId: sourceWeekId, source }
+  );
   const virtualOf = (weekId: string): TimetableChange[] => [
     ...(overlay?.byWeek.get(weekId) || []),
     ...(extraByWeek.get(weekId) || []),

@@ -216,6 +216,7 @@ export type ManageAction =
   | "direct_candidates_all" // §14 직권 배정 교사 기점 — 소스 셀 1개 → 등록 전 주 맞교환 후보 일괄
   | "direct_commit"
   | "direct_commit_batch" // §14-4 직권 담기 일괄 반영 — direct_commit을 항목별 순차 실행 (부분 성공 허용)
+  | "direct_projected" // §14-4 담기 가상 반영 그리드 — 대상 교사 전 주 시간표에 pendingItems 가상 적용 (my_projected의 직권 대응)
   // ── Phase 9b 순서 5 운영 도구 (phase9b_spec §8) ──
   | "neis_list"
   | "hour_totals";

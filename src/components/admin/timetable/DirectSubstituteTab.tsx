@@ -157,39 +157,40 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     fetchWeeks();
   }, [activeTermId]);
 
-  const fetchTeacherTimetablesForAllWeeks = async (email: string, targetWeeks: TimetableWeek[] = weeks) => {
+  const toPendingPayload = (cart: CartItem[]) =>
+    cart.map((item) => ({ weekId: item.weekId, ...(item.targetWeekId ? { targetWeekId: item.targetWeekId } : {}), type: item.type, source: item.source, candidate: item.candidate }));
+
+  // §14-4: 그리드는 "담긴 상태의 예상 시간표" — 담기 누적분을 가상 적용한 direct_projected로 로드한다.
+  // cart 인자를 명시하는 이유: setCartItems 직후에는 cartItems 바인딩이 구값이라 갱신분을 못 싣는다.
+  const fetchTeacherTimetablesForAllWeeks = async (email: string, targetWeeks: TimetableWeek[] = weeks, cart: CartItem[] = cartItems) => {
     if (!email || targetWeeks.length === 0) return;
     setLoadingTimetable(true);
     setTimetableError(null);
     try {
-      const results = await Promise.all(
-        targetWeeks.map(async (w) => {
-          const res = await fetch("/api/timetable/view", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "teacher", teacherEmail: email, weekId: w.id }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            return { weekId: w.id, cells: (data.data?.cells || []) as TeacherTimetableCell[], teacherName: data.data?.teacherName as string | undefined };
-          }
-          return { weekId: w.id, cells: [], teacherName: undefined };
-        })
-      );
-      const newMap: Record<string, TeacherTimetableCell[]> = {};
-      let foundName = "";
-      results.forEach((r) => { newMap[r.weekId] = r.cells; if (r.teacherName) foundName = r.teacherName; });
-      setTeacherWeekCellsMap(newMap);
-      if (foundName) setSelectedTeacherName(foundName);
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "direct_projected", teacherEmail: email, pendingItems: toPendingPayload(cart) }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const newMap: Record<string, TeacherTimetableCell[]> = {};
+        (data.weeks || []).forEach((w: { weekId: string; cells: TeacherTimetableCell[] }) => { newMap[w.weekId] = w.cells || []; });
+        setTeacherWeekCellsMap(newMap);
+      } else {
+        setTimetableError(data.error || "시간표를 불러올 수 없습니다.");
+      }
     } catch (err: any) { setTimetableError(`네트워크 오류: ${err.message}`); } finally { setLoadingTimetable(false); }
   };
 
   const handleSelectTeacher = (email: string, name?: string) => {
     // 담기 목록은 선택 교사의 시간표를 전제로 누적된 상태 — 다른 교사로 전환하면
     // pendingItems 가상 반영·양해 카드 명의가 어긋나므로 반드시 비우고 시작한다.
+    let effectiveCart = cartItems;
     if (cartItems.length > 0 && email.toLowerCase() !== selectedTeacherEmail.toLowerCase()) {
       if (!confirm(`담기 목록 ${cartItems.length}건은 현재 선택된 교사 기준입니다. 교사를 전환하면 목록이 비워집니다. 계속할까요?`)) return;
       setCartItems([]);
+      effectiveCart = [];
     }
     if (!email) {
       setSelectedTeacherEmail(""); setSelectedTeacherName(""); setTeacherWeekCellsMap({}); setSelectedSlot(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setSelectedCandidate(null); return;
@@ -198,7 +199,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setSelectedTeacherEmail(email); setSelectedTeacherName(finalName);
     setRecentTeachers((prev) => { const filtered = prev.filter((t) => t.email.toLowerCase() !== email.toLowerCase()); return [{ email, name: finalName }, ...filtered].slice(0, 5); });
     setSelectedSlot(null); setSourceLessonInfo(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setSelectedCandidate(null); setCandidateError(null); setSuccessMsg(null); setSubmitError(null);
-    fetchTeacherTimetablesForAllWeeks(email, weeks);
+    fetchTeacherTimetablesForAllWeeks(email, weeks, effectiveCart);
     // ref 존재 검사는 timeout 안에서 — 첫 선택 시점엔 그리드가 아직 렌더 전이라 밖에서 검사하면 스크롤이 무산된다
     const initWeekId = getInitialWeekId(weeks);
     if (initWeekId) {
@@ -210,7 +211,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     if (!weekId) { setCandidateError("주간(Week)을 선택해 주세요."); return; }
     setLoadingCandidates(true); setCandidateError(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setSelectedCandidate(null); setPreviewCells(null); setCounterpartSourceCells(null); setCounterpartTargetCells(null); setSuccessMsg(null); setSubmitError(null);
     try {
-      const pendingPayload = currentCart.map((item) => ({ weekId: item.weekId, ...(item.targetWeekId ? { targetWeekId: item.targetWeekId } : {}), type: item.type, source: item.source, candidate: item.candidate }));
+      const pendingPayload = toPendingPayload(currentCart);
       const [res, subRes] = await Promise.all([
         fetch("/api/timetable/manage", {
           method: "POST",
@@ -289,11 +290,14 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     // 담기 후에는 아이들 상태로 — 같은 슬롯 재탐색은 서버가 그 항목을 자기 충돌 방지로 제외해
     // 담기 전과 동일한 결과(선택·후보 하이라이트 잔존)만 재현한다. 재탐색은 다음 셀 클릭 때 cart 반영으로 수행.
     setSelectedSlot(null); setSourceLessonInfo(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setCandidateError(null);
+    // 그리드를 "담긴 상태의 예상 시간표"로 갱신 — 담긴 수업이 옮겨간 자리에 가상 마킹으로 나타난다
+    fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
   };
 
   const handleRemoveFromCart = (id: string) => {
     const updatedCart = cartItems.filter((ci) => ci.id !== id);
     setCartItems(updatedCart);
+    fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
     if (selectedSlot) fetchCandidates(selectedSlot.weekId, selectedSlot.grade, selectedSlot.classNum, selectedSlot.day, selectedSlot.period, sourceLessonInfo?.subjectName || "", updatedCart);
   };
 
@@ -355,7 +359,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       setSuccessMsg(`⚡ 일괄 반영 완료! (성공 ${successCount}건${failCount > 0 ? `, 실패 ${failCount}건` : ""})`);
       const affectedWeeks = Array.from(new Set(cartItems.filter((_, idx) => successIndices.has(idx)).flatMap((item) => [item.weekId, item.targetWeekId].filter(Boolean) as string[])));
       setRecentlyUpdatedWeeks(affectedWeeks);
-      if (selectedTeacherEmail) await fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks);
+      // 성공분은 실 반영됐으므로 남은(실패) 항목만 가상 적용해 갱신 — 구 cartItems를 넘기면 이중 반영된다
+      if (selectedTeacherEmail) await fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, remainingCart);
     } catch (err: any) { setSubmitError(err.message || "일괄 반영 실패"); } finally { setSubmitting(false); }
   };
 
@@ -493,12 +498,22 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                     {hasLesson ? (
                                       <div className="space-y-1">
                                         {matchedCells.map((cell, cIdx) => {
+                                          // 담기 가상 반영으로 옮겨온 셀 — 실제 시간표가 아니므로 원 수업으로 선택(클릭) 불가
+                                          const isVirtualMoved = Boolean(cell.changed?.changeId?.startsWith("virtual-direct"));
+                                          if (isVirtualMoved) {
+                                            return (
+                                              <div key={cIdx} title="담기 가상 반영 — 일괄 반영 전까지는 실제 시간표가 아닙니다" className="w-full p-1.5 rounded-lg text-left border bg-amber-100 border-amber-400 text-amber-950">
+                                                <div className="font-black text-xs text-amber-950">{cell.subjectShort || cell.subjectName}</div>
+                                                <div className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5 bg-amber-200 text-amber-900">{cell.grade}-{cell.classNum}반</div>
+                                                <div className="text-[9px] bg-amber-200 text-amber-900 font-extrabold px-1 rounded mt-0.5 inline-block">🛒 담김 이동</div>
+                                              </div>
+                                            );
+                                          }
                                           const isSelected = selectedSlot?.weekId === w.id && selectedSlot?.grade === cell.grade && selectedSlot?.classNum === cell.classNum && selectedSlot?.day === cell.day && selectedSlot?.period === cell.period;
                                           return (
-                                            <button key={cIdx} type="button" onClick={() => handleSlotClick(w.id, cell)} className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${isSelected ? "bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-300 scale-[1.02]" : cartMatch ? "bg-amber-100 border-amber-400 text-amber-950 font-bold" : "bg-white hover:bg-indigo-100/60 border-indigo-200 hover:border-indigo-400 text-gray-900 shadow-2xs"}`}>
+                                            <button key={cIdx} type="button" onClick={() => handleSlotClick(w.id, cell)} className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${isSelected ? "bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-300 scale-[1.02]" : "bg-white hover:bg-indigo-100/60 border-indigo-200 hover:border-indigo-400 text-gray-900 shadow-2xs"}`}>
                                               <div className={`font-black text-xs ${isSelected ? "text-white" : "text-indigo-950"}`}>{cell.subjectShort || cell.subjectName}</div>
                                               <div className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5 ${isSelected ? "bg-indigo-800 text-indigo-100" : "bg-indigo-100 text-indigo-800"}`}>{cell.grade}-{cell.classNum}반</div>
-                                              {cartMatch && <div className="text-[9px] bg-amber-200 text-amber-900 font-extrabold px-1 rounded mt-0.5">🛒 담김</div>}
                                             </button>
                                           );
                                         })}
@@ -511,6 +526,12 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                         </div>
                                         <div className="text-[10px] mt-0.5 font-bold truncate text-emerald-800">{inlineCand.counterpartSubjectName}</div>
                                       </button>
+                                    ) : cartMatch ? (
+                                      /* 담긴 수업이 빠져나간 원래 자리 — 이동 사실만 흐리게 남긴다 */
+                                      <div className="w-full p-1.5 rounded-lg border border-dashed border-amber-400 bg-amber-50/60 text-center">
+                                        <div className="text-[9px] font-extrabold text-amber-800">🛒 담김 (이동됨)</div>
+                                        <div className="text-[10px] font-bold text-amber-900 truncate">{cartMatch.source.subjectName || "수업"}</div>
+                                      </div>
                                     ) : (<span className="text-[11px] text-gray-300 font-light block py-2">-</span>)}
                                   </td>
                                 );

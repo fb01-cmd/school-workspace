@@ -7,6 +7,7 @@ import {
   commitTimetableImport,
   computeCandidatesAllWeeks,
   computeDirectCandidates,
+  computeDirectProjectedWeeks,
   computeHourTotals,
   deleteTerm,
   directCommit,
@@ -417,6 +418,34 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
         return NextResponse.json({ success: true, action, request, change });
+      }
+
+      // §14-4 담기 가상 반영 그리드 — 대상 교사의 등록 전 주 시간표에 pendingItems를 가상 적용해 반환.
+      // 그리드가 "담긴 상태의 예상 시간표"를 그리기 위한 읽기 전용 액션 (my_projected의 직권 대응).
+      case "direct_projected": {
+        if (!body.teacherEmail) {
+          return NextResponse.json({ error: "teacherEmail이 필요합니다." }, { status: 400 });
+        }
+        const pendingItems = Array.isArray(body.pendingItems) ? body.pendingItems : [];
+        const shapeOk =
+          pendingItems.length <= 20 &&
+          pendingItems.every(
+            (p) =>
+              p?.weekId && p.source && p.candidate &&
+              [p.source.grade, p.source.classNum, p.source.day, p.source.period].every(
+                (n) => Number.isInteger(n) && n > 0
+              )
+          );
+        if (!shapeOk) {
+          return NextResponse.json(
+            { error: "pendingItems 형식이 유효하지 않습니다 (최대 20건)." },
+            { status: 400 }
+          );
+        }
+        const result = await computeDirectProjectedWeeks(
+          domain, String(body.teacherEmail).trim().toLowerCase(), pendingItems
+        );
+        return NextResponse.json({ success: true, action, ...result });
       }
 
       // §14-4 직권 담기 일괄 반영 — 항목별로 directCommit(생성+즉시 승인)을 순차 실행.
