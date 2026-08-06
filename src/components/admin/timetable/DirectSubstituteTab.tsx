@@ -403,19 +403,18 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       const updatedWeeks = [sourceWeekId, targetWeekId].filter((wId): wId is string => Boolean(wId));
       setRecentlyUpdatedWeeks(updatedWeeks);
 
-      // 리프레시: 전체 주 그리드 병렬 재조회 및 후보 초기화/재탐색
+      // 리프레시: 전체 주 그리드 병렬 재조회 + 선택 상태 정리.
+      // 같은 슬롯으로 후보를 재탐색하면 안 된다 — 반영 직후 그 슬롯은 더 이상 선택 교사의
+      // 수업이 아니므로(교체/보강 반영됨) 서버가 소유 검증 오류를 반환해 성공 배너 밑에
+      // 오류 문구가 뜬다. 결과 확인은 변경 마킹된 그리드가 담당한다.
       setSelectedCandidate(null);
+      setSelectedSlot(null);
+      setSourceLessonInfo(null);
+      setSwapCandidateWeeks([]);
+      setSubstituteCandidates([]);
       if (selectedTeacherEmail) {
         await fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks);
       }
-      fetchCandidates(
-        sourceWeekId,
-        selectedSlot.grade,
-        selectedSlot.classNum,
-        selectedSlot.day,
-        selectedSlot.period,
-        sourceLessonInfo?.subjectName || ""
-      );
     } catch (err: any) {
       setSubmitError(err.message || "직권 배정 실패");
     } finally {
