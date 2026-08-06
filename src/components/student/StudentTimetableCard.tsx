@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ClassGrid } from "@/lib/timetable/types";
+import { SimulGroup, isSimulCell, fetchSimulGroups } from "@/lib/timetable/simul";
 
 const DAY_LABEL: Record<number, string> = { 1: "월", 2: "화", 3: "수", 4: "목", 5: "금" };
 
@@ -9,6 +10,7 @@ export default function StudentTimetableCard() {
   const [classGrid, setClassGrid] = useState<ClassGrid | null>(null);
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
   const [weekMeta, setWeekMeta] = useState<{ id: string; startDate: string } | null>(null);
+  const [simulGroups, setSimulGroups] = useState<SimulGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +66,7 @@ export default function StudentTimetableCard() {
 
   useEffect(() => {
     fetchStudentTimetable();
+    fetchSimulGroups().then((grps) => setSimulGroups(grps));
   }, []);
 
   const getLessonsForSlot = (day: number, period: number) => {
@@ -160,10 +163,19 @@ export default function StudentTimetableCard() {
                       const changedType = lesson.changed?.type;
                       const origin = lesson.changed?.origin;
 
+                      const simulCheck = isSimulCell(
+                        classGrid.grade,
+                        classGrid.classNum,
+                        activeDay,
+                        period,
+                        lesson.subjectName,
+                        simulGroups
+                      );
+
                       return (
                         <div key={idx} className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <span className={`font-bold text-sm ${isChanged ? "text-red-700" : "text-slate-900"}`}>
+                            <span className={`font-bold text-sm ${isChanged ? "text-red-700" : simulCheck.hit ? "text-purple-950 font-black" : "text-slate-900"}`}>
                               {lesson.subjectName}
                             </span>
                             <span className="text-xs text-slate-500">
@@ -176,20 +188,32 @@ export default function StudentTimetableCard() {
                             )}
                           </div>
 
-                          {/* 주간 변경 오버레이 마커 */}
-                          {isChanged && (
-                            <span
-                              className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200"
-                              title={
-                                origin
-                                  ? `${DAY_LABEL[origin.day]}요일 ${origin.period}교시에서 이동`
-                                  : "수업 변경"
-                              }
-                            >
-                              ▲ {changedType === "swap" ? "맞교환" : "보강"}
-                              {origin && ` (${DAY_LABEL[origin.day]}${origin.period}에서 이동)`}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {/* 이동수업(분반) 배지 마커 */}
+                            {simulCheck.hit && (
+                              <span
+                                className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 shadow-2xs"
+                                title={simulCheck.groupLabel || "이동수업(분반) 지정 교시"}
+                              >
+                                🔀 이동수업
+                              </span>
+                            )}
+
+                            {/* 주간 변경 오버레이 마커 */}
+                            {isChanged && (
+                              <span
+                                className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200"
+                                title={
+                                  origin
+                                    ? `${DAY_LABEL[origin.day]}요일 ${origin.period}교시에서 이동`
+                                    : "수업 변경"
+                                }
+                              >
+                                ▲ {changedType === "swap" ? "맞교환" : "보강"}
+                                {origin && ` (${DAY_LABEL[origin.day]}${origin.period}에서 이동)`}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}

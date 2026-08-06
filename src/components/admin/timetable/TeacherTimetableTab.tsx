@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { TeacherTimetableCell } from "@/lib/timetable/types";
+import { SimulGroup, isSimulCell, fetchSimulGroups } from "@/lib/timetable/simul";
 
 interface TeacherTimetableTabProps {
   periodsPerDay?: number;
@@ -17,6 +18,7 @@ export default function TeacherTimetableTab({ periodsPerDay = 7 }: TeacherTimeta
   const [teacherName, setTeacherName] = useState((userData as any)?.displayName || (userData as any)?.name || myEmail.split("@")[0]);
   const [cells, setCells] = useState<TeacherTimetableCell[]>([]);
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
+  const [simulGroups, setSimulGroups] = useState<SimulGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,6 +27,7 @@ export default function TeacherTimetableTab({ periodsPerDay = 7 }: TeacherTimeta
   const [teacherListLoading, setTeacherListLoading] = useState(false);
 
   useEffect(() => {
+    fetchSimulGroups().then((grps) => setSimulGroups(grps));
     setTeacherListLoading(true);
     fetch("/api/timetable/view", {
       method: "POST",
@@ -201,24 +204,39 @@ export default function TeacherTimetableTab({ periodsPerDay = 7 }: TeacherTimeta
                         >
                           {hasLesson ? (
                             <div className="space-y-1.5">
-                              {matched.map((cell, cIdx) => (
-                                <div
-                                  key={cIdx}
-                                  className="p-2 rounded-lg bg-white border border-indigo-200 shadow-2xs space-y-1"
-                                >
-                                  <div className="font-black text-indigo-950 text-xs">
-                                    {cell.subjectShort || cell.subjectName}
-                                  </div>
-                                  <div className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800">
-                                    {cell.grade}-{cell.classNum}반
-                                  </div>
-                                  {cell.room && (
-                                    <div className="text-[10px] text-gray-500 truncate">
-                                      📍 {cell.room}
+                              {matched.map((cell, cIdx) => {
+                                const subjName = cell.subjectShort || cell.subjectName || "";
+                                const simulCheck = isSimulCell(cell.grade, cell.classNum, cell.day, cell.period, subjName, simulGroups);
+                                return (
+                                  <div
+                                    key={cIdx}
+                                    className={`p-2 rounded-lg border shadow-2xs space-y-1 ${
+                                      simulCheck.hit
+                                        ? "bg-purple-50/90 border-purple-300"
+                                        : "bg-white border-indigo-200"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                                      <div className={`font-black text-xs ${simulCheck.hit ? "text-purple-950" : "text-indigo-950"}`}>
+                                        {subjName}
+                                      </div>
+                                      {simulCheck.hit && (
+                                        <span className="text-[9px] bg-purple-700 text-white font-extrabold px-1 rounded" title={simulCheck.groupLabel || "이동수업 그룹"}>
+                                          🔀 이동수업
+                                        </span>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
-                              ))}
+                                    <div className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold ${simulCheck.hit ? "bg-purple-200 text-purple-900" : "bg-indigo-100 text-indigo-800"}`}>
+                                      {cell.grade}-{cell.classNum}반
+                                    </div>
+                                    {cell.room && (
+                                      <div className="text-[10px] text-gray-500 truncate">
+                                        📍 {cell.room}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           ) : (
                             <span className="text-[11px] text-gray-300 font-light block py-2">

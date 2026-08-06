@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ClassGrid, TimetableCell } from "@/lib/timetable/types";
+import { SimulGroup, isSimulCell, fetchSimulGroups } from "@/lib/timetable/simul";
 
 interface ClassTimetableTabProps {
   periodsPerDay?: number;
@@ -10,7 +11,7 @@ interface ClassTimetableTabProps {
 export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableTabProps) {
   const [selectedGrade, setSelectedGrade] = useState<number>(1);
   const [selectedClassNum, setSelectedClassNum] = useState<number>(1);
-
+  const [simulGroups, setSimulGroups] = useState<SimulGroup[]>([]);
   const [classGrid, setClassGrid] = useState<ClassGrid | null>(null);
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -57,6 +58,10 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchSimulGroups().then((grps) => setSimulGroups(grps));
+  }, []);
 
   useEffect(() => {
     fetchClassTimetable(selectedGrade, selectedClassNum);
@@ -181,24 +186,39 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
                         >
                           {hasLessons ? (
                             <div className="space-y-1.5">
-                              {cell.lessons.map((lesson, lIdx) => (
-                                <div
-                                  key={lIdx}
-                                  className="p-2 rounded-lg bg-white border border-indigo-200 shadow-2xs space-y-1"
-                                >
-                                  <div className="font-black text-indigo-950 text-xs">
-                                    {lesson.subjectShort || lesson.subjectName}
-                                  </div>
-                                  <div className="text-[10px] text-indigo-800 font-semibold truncate">
-                                    👤 {lesson.teachers.map((t) => t.name).join(", ")}
-                                  </div>
-                                  {lesson.room && (
-                                    <div className="text-[10px] text-gray-500 truncate">
-                                      📍 {lesson.room}
+                              {cell.lessons.map((lesson, lIdx) => {
+                                const subjName = lesson.subjectShort || lesson.subjectName || "";
+                                const simulCheck = isSimulCell(selectedGrade, selectedClassNum, d.num, period, subjName, simulGroups);
+                                return (
+                                  <div
+                                    key={lIdx}
+                                    className={`p-2 rounded-lg border shadow-2xs space-y-1 ${
+                                      simulCheck.hit
+                                        ? "bg-purple-50/90 border-purple-300"
+                                        : "bg-white border-indigo-200"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                                      <div className={`font-black text-xs ${simulCheck.hit ? "text-purple-950" : "text-indigo-950"}`}>
+                                        {subjName}
+                                      </div>
+                                      {simulCheck.hit && (
+                                        <span className="text-[9px] bg-purple-700 text-white font-extrabold px-1 rounded" title={simulCheck.groupLabel || "이동수업 그룹"}>
+                                          🔀 이동수업
+                                        </span>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
-                              ))}
+                                    <div className="text-[10px] text-indigo-800 font-semibold truncate">
+                                      👤 {lesson.teachers.map((t) => t.name).join(", ")}
+                                    </div>
+                                    {lesson.room && (
+                                      <div className="text-[10px] text-gray-500 truncate">
+                                        📍 {lesson.room}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           ) : (
                             <span className="text-[11px] text-gray-300 font-light block py-2">

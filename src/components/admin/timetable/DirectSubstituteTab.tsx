@@ -18,6 +18,7 @@ import {
   OffscreenConsolidatedCard as OffscreenConsolidatedShareCard,
   copyShareImageElement,
 } from "./OffscreenShareCard";
+import { SimulGroup, isSimulCell, fetchSimulGroups } from "@/lib/timetable/simul";
 
 interface DirectSubstituteTabProps {
   activeTermId: string | null;
@@ -53,6 +54,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const [recentTeachers, setRecentTeachers] = useState<Array<{ email: string; name: string }>>([]);
 
   const [teacherWeekCellsMap, setTeacherWeekCellsMap] = useState<Record<string, TeacherTimetableCell[]>>({});
+  const [simulGroups, setSimulGroups] = useState<SimulGroup[]>([]);
   const [loadingTimetable, setLoadingTimetable] = useState(false);
   const [timetableError, setTimetableError] = useState<string | null>(null);
 
@@ -127,6 +129,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       });
       if (res.ok) {
         const data = await res.json();
+        setWeeks(data.weeks || []);
+        fetchSimulGroups(activeTermId || undefined).then((grps) => setSimulGroups(grps));
         if (Array.isArray(data.data)) setTeacherList(data.data);
       }
     } catch {} finally {
@@ -261,9 +265,15 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   };
 
   const handleSlotClick = (weekId: string, cell: TeacherTimetableCell) => {
+    const subj = cell.subjectShort || cell.subjectName || "수업";
+    const simulCheck = isSimulCell(cell.grade, cell.classNum, cell.day, cell.period, subj, simulGroups);
+    if (simulCheck.hit) {
+      alert(`이동수업(분반) 수업은 교체할 수 없습니다. 일과계에 문의해 주세요.\n그룹: ${simulCheck.groupLabel || "이동수업 그룹"}`);
+      return;
+    }
+
     const slot = { weekId, grade: cell.grade, classNum: cell.classNum, day: cell.day, period: cell.period };
     setSelectedSlot(slot); setSelectedWeekId(weekId);
-    const subj = cell.subjectShort || cell.subjectName || "수업";
     setSourceLessonInfo({ subjectName: subj, teacherName: selectedTeacherName });
     fetchCandidates(weekId, cell.grade, cell.classNum, cell.day, cell.period, subj);
   };
@@ -530,10 +540,18 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                             );
                                           }
                                           const isSelected = selectedSlot?.weekId === w.id && selectedSlot?.grade === cell.grade && selectedSlot?.classNum === cell.classNum && selectedSlot?.day === cell.day && selectedSlot?.period === cell.period;
+                                          const subjName = cell.subjectShort || cell.subjectName || "";
+                                          const simulCheck = isSimulCell(cell.grade, cell.classNum, cell.day, cell.period, subjName, simulGroups);
+
                                           return (
-                                            <button key={cIdx} type="button" onClick={() => handleSlotClick(w.id, cell)} className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${isSelected ? "bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-300 scale-[1.02]" : "bg-white hover:bg-indigo-100/60 border-indigo-200 hover:border-indigo-400 text-gray-900 shadow-2xs"}`}>
-                                              <div className={`font-black text-xs ${isSelected ? "text-white" : "text-indigo-950"}`}>{cell.subjectShort || cell.subjectName}</div>
-                                              <div className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5 ${isSelected ? "bg-indigo-800 text-indigo-100" : "bg-indigo-100 text-indigo-800"}`}>{cell.grade}-{cell.classNum}반</div>
+                                            <button key={cIdx} type="button" onClick={() => handleSlotClick(w.id, cell)} className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${isSelected ? "bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-300 scale-[1.02]" : simulCheck.hit ? "bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-950 shadow-2xs" : "bg-white hover:bg-indigo-100/60 border-indigo-200 hover:border-indigo-400 text-gray-900 shadow-2xs"}`}>
+                                              <div className={`font-black text-xs ${isSelected ? "text-white" : simulCheck.hit ? "text-purple-950 font-black" : "text-indigo-950"}`}>{subjName}</div>
+                                              <div className="flex items-center justify-between gap-1 flex-wrap mt-0.5">
+                                                <div className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold ${isSelected ? "bg-indigo-800 text-indigo-100" : simulCheck.hit ? "bg-purple-200 text-purple-900" : "bg-indigo-100 text-indigo-800"}`}>{cell.grade}-{cell.classNum}반</div>
+                                                {simulCheck.hit && (
+                                                  <span className="text-[9px] bg-purple-700 text-white font-extrabold px-1 rounded" title={simulCheck.groupLabel || "이동수업 그룹"}>🔀 이동수업</span>
+                                                )}
+                                              </div>
                                             </button>
                                           );
                                         })}
