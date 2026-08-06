@@ -1616,3 +1616,12 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - 담임 조치 확인 결과: *"project_notes.md 마지막 체크포인트를 읽어줘. 담임 계정 실기기 확인 결과 — (통과/증상)."*
 - 개학 준비 착수: *"project_notes.md 마지막 체크포인트를 읽어줘. 개학 오픈 준비 시작하자."*
 - Antigravity에게(경미 2건 정리): *"project_notes.md의 [2026-08-06] Phase 11 종결 체크포인트를 읽고, ① AutocompleteInput 학생 이름 합성 결함(학번 5자리면 givenName만), ② 무효화 시 미처리 단계 사안 자동 정리(8/5 백로그 스펙: void 액션에서 causeRecordIds 포함 resolved=false 이벤트 동반 삭제+감사 로그 부기)를 구현해줘. tsc·build 검증 후 ④ 양식으로 보고."*
+
+## [2026-08-06] Claude → 경미 백로그 2건(8685a5d) 표적 리뷰 — 승인 (수정 0건)
+
+- **① AutocompleteInput 이름 합성 보정**: `formatDisplayName` 헬퍼 — familyName이 5자리 학번 패턴이면 givenName만, 아니면 기존 성+이름 합성 유지. 선택 경로뿐 아니라 제안 목록 표시에도 동일 적용(일관성 보너스 — 수용). 교사 표시 영향 0.
+- **② 무효화 연동 미처리 사안 자동 정리**: 8/5 백로그 스펙 그대로 — void 반영 후 studentEmail로 사안 조회, resolved=false ∧ causeRecordIds에 해당 recordId 포함만 삭제. 사안별 감사 로그 + 본 무효화 감사 로그에 부기, 응답에 cleanedEventIds 포함. 수동 사안(causeRecordIds 빈 배열)·처리 완료 사안 비영향 확인.
+- **데이터 정합 실측 (admin SDK)**: 기록 173건 전부 실계정 이메일(합성 0건) — studentEmail 조회 키의 신구 체계 혼재 누락 우려는 실측으로 해소(이관분도 실계정). 단계 사안 현재 0건.
+- **경미 메모 (비차단)**: ⓐ void 반영 후 사안 삭제 중 예외 시 500이지만 재시도는 "이미 무효화" 400이라 잔존 사안을 재정리할 경로가 없음 — 발생 확률 극히 낮아 메모만. ⓑ 다중 원인 사안은 원인 기록 1건만 무효화돼도 삭제됨 — 스펙 결정 사항(단계는 다음 기록 입력 시 재산출), 의도된 동작.
+- **지적 (재발 2번째)**: ④ 양식 보고를 project_notes에 남기지 않고 커밋만 함 — 다음 작업부터 준수 재요청.
+- **검증**: tsc 0 에러 · build 성공 (Claude 실측 — Antigravity 보고 부재로 직접 확인). 배포는 push 후 deployments API로 확인.
