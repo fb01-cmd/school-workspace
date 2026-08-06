@@ -185,6 +185,12 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   };
 
   const handleSelectTeacher = (email: string, name?: string) => {
+    // 담기 목록은 선택 교사의 시간표를 전제로 누적된 상태 — 다른 교사로 전환하면
+    // pendingItems 가상 반영·양해 카드 명의가 어긋나므로 반드시 비우고 시작한다.
+    if (cartItems.length > 0 && email.toLowerCase() !== selectedTeacherEmail.toLowerCase()) {
+      if (!confirm(`담기 목록 ${cartItems.length}건은 현재 선택된 교사 기준입니다. 교사를 전환하면 목록이 비워집니다. 계속할까요?`)) return;
+      setCartItems([]);
+    }
     if (!email) {
       setSelectedTeacherEmail(""); setSelectedTeacherName(""); setTeacherWeekCellsMap({}); setSelectedSlot(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setSelectedCandidate(null); return;
     }
@@ -193,9 +199,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setRecentTeachers((prev) => { const filtered = prev.filter((t) => t.email.toLowerCase() !== email.toLowerCase()); return [{ email, name: finalName }, ...filtered].slice(0, 5); });
     setSelectedSlot(null); setSourceLessonInfo(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setSelectedCandidate(null); setCandidateError(null); setSuccessMsg(null); setSubmitError(null);
     fetchTeacherTimetablesForAllWeeks(email, weeks);
+    // ref 존재 검사는 timeout 안에서 — 첫 선택 시점엔 그리드가 아직 렌더 전이라 밖에서 검사하면 스크롤이 무산된다
     const initWeekId = getInitialWeekId(weeks);
-    if (initWeekId && weekGridRefs.current[initWeekId]) {
-      setTimeout(() => { weekGridRefs.current[initWeekId]?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 200);
+    if (initWeekId) {
+      setTimeout(() => { weekGridRefs.current[initWeekId]?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 250);
     }
   };
 
@@ -306,11 +313,13 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         }
         const markers: ConsolidatedShareData["weekBlocks"][number]["markers"] = [];
         counterpartItems.forEach((item) => {
+          // out(빠짐) 라벨도 반 코드로 — 맞교환은 같은 반 안에서 일어나므로 source의 반이 곧 상대 수업의 반
+          const outLabel = `${item.source.grade}-${item.source.classNum}`;
           if (item.targetWeekId && item.targetWeekId !== item.weekId) {
             if (wId === item.weekId) markers.push({ day: item.source.day, period: item.source.period, kind: "in", label: `${item.source.grade}-${item.source.classNum}반 ${item.source.subjectName}` });
-            if (wId === item.targetWeekId && item.candidate.targetDay && item.candidate.targetPeriod) markers.push({ day: item.candidate.targetDay, period: item.candidate.targetPeriod, kind: "out", label: "수업" });
+            if (wId === item.targetWeekId && item.candidate.targetDay && item.candidate.targetPeriod) markers.push({ day: item.candidate.targetDay, period: item.candidate.targetPeriod, kind: "out", label: outLabel });
           } else {
-            if (wId === item.weekId) { markers.push({ day: item.source.day, period: item.source.period, kind: "in", label: `${item.source.grade}-${item.source.classNum}반 ${item.source.subjectName}` }); if (item.candidate.targetDay && item.candidate.targetPeriod) markers.push({ day: item.candidate.targetDay, period: item.candidate.targetPeriod, kind: "out", label: "수업" }); }
+            if (wId === item.weekId) { markers.push({ day: item.source.day, period: item.source.period, kind: "in", label: `${item.source.grade}-${item.source.classNum}반 ${item.source.subjectName}` }); if (item.candidate.targetDay && item.candidate.targetPeriod) markers.push({ day: item.candidate.targetDay, period: item.candidate.targetPeriod, kind: "out", label: outLabel }); }
           }
         });
         return { weekId: wId, startDate: wObj?.startDate || wId, cells, markers };
@@ -333,7 +342,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       if (!res.ok || !data.success) throw new Error(data.error || "일괄 반영 처리 중 오류가 발생했습니다.");
       const results: DirectCommitBatchItemResult[] = data.results || [];
       const successIndices = new Set(results.filter((r) => r.ok).map((r) => r.index));
-      const remainingCart = cartItems.filter((_, idx) => !successIndices.has(idx)).map((item, idx) => { const resItem = results.find((r) => r.index === idx); return { ...item, lastError: resItem?.error || "반영 실패" }; });
+      // 실패 항목의 오류 사유는 원본 배열 인덱스로 대조해야 함 — filter 후 인덱스는 어긋난다
+      const remainingCart = cartItems
+        .map((item, origIdx) => ({ item, origIdx }))
+        .filter(({ origIdx }) => !successIndices.has(origIdx))
+        .map(({ item, origIdx }) => ({ ...item, lastError: results.find((r) => r.index === origIdx)?.error || "반영 실패" }));
       setCartItems(remainingCart);
       const successCount = successIndices.size;
       const failCount = results.length - successCount;
@@ -492,7 +505,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                       <button type="button" onClick={() => handleSelectCandidate(inlineCand, w.id, w.startDate)} className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${activeCandidateType === "swap" && selectedCandidate?.targetWeekId === w.id && selectedCandidate?.targetDay === inlineCand.targetDay && selectedCandidate?.targetPeriod === inlineCand.targetPeriod && selectedCandidate?.counterpartEmail === inlineCand.counterpartEmail ? "bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-300 scale-[1.02]" : "bg-emerald-50 hover:bg-emerald-100/90 border-emerald-300 hover:border-emerald-500 text-emerald-950 shadow-2xs"}`}>
                                         <div className="flex items-center justify-between gap-1">
                                           <span className="font-black text-[11px] truncate">{inlineCand.counterpartName}</span>
-                                          <span className="px-1 py-0.5 rounded text-[9px] font-extrabold shrink-0 bg-emerald-200 text-emerald-900">0점</span>
+                                          <span className={`px-1 py-0.5 rounded text-[9px] font-extrabold shrink-0 ${inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0) ? "bg-amber-100 text-amber-900 border border-amber-300" : "bg-emerald-200 text-emerald-900"}`}>{inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0) ? `감점 ${inlineCand.score}` : "0점"}</span>
                                         </div>
                                         <div className="text-[10px] mt-0.5 font-bold truncate text-emerald-800">{inlineCand.counterpartSubjectName}</div>
                                       </button>
@@ -528,6 +541,19 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                       <div className="flex items-center justify-between">
                         <span className="font-extrabold text-xs text-indigo-950">{activeCandidateType === "swap" ? `🔄 ${selectedCandidate.counterpartName} 교사 (${selectedCandidate.counterpartSubjectName})` : `👤 ${selectedCandidate.teacherName} 선생님`}</span>
                       </div>
+                      {activeCandidateType === "swap" && (
+                        (selectedCandidate.penalties?.length ?? 0) > 0 || selectedCandidate.score > 0 ? (
+                          <div className="text-[11px] space-y-0.5 pt-1 border-t border-indigo-100">
+                            <div className="font-extrabold text-amber-900">⚠️ 감점 {selectedCandidate.score}점 — 사유</div>
+                            <ul className="list-disc list-inside text-amber-800 space-y-0.5">
+                              {(selectedCandidate.penalties || []).map((p: string, i: number) => (<li key={i}>{p}</li>))}
+                              {(selectedCandidate.penalties?.length ?? 0) === 0 && <li>사유 정보 없음</li>}
+                            </ul>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] font-bold text-emerald-700 pt-1 border-t border-indigo-100">✨ 감점 없음 (0점) — 상대 교사 부담 없는 교환입니다.</div>
+                        )
+                      )}
                     </div>
                     {activeCandidateType === "swap" && (
                       <div className="space-y-2">
@@ -554,10 +580,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                     {cartItems.map((item, idx) => (
                       <div key={item.id} className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1.5">
                         <div className="flex items-center justify-between font-bold">
-                          <span className="text-indigo-900">#{idx + 1} {item.source.grade}-{item.source.classNum}반 {DAY_LABEL[item.source.day]}월{item.source.period}교시</span>
+                          <span className="text-indigo-900">#{idx + 1} {item.source.grade}-{item.source.classNum}반 {DAY_LABEL[item.source.day]}요일 {item.source.period}교시</span>
                           <button type="button" onClick={() => handleRemoveFromCart(item.id)} className="text-gray-400 hover:text-red-600 text-xs">✕</button>
                         </div>
                         <div className="text-[11px] text-gray-700">➔ 상대: <strong className="text-gray-900">{item.counterpartName}</strong> ({item.counterpartSubjectName})</div>
+                        {item.lastError && <div className="text-[10px] text-red-700 font-bold bg-red-50 border border-red-200 rounded px-1.5 py-1">⚠️ 반영 실패: {item.lastError}</div>}
                         <label className="flex items-center gap-1.5 text-[10px] text-gray-600 cursor-pointer pt-1 border-t border-gray-100">
                           <input type="checkbox" checked={item.consentChecked === true} onChange={(e) => { const checked = e.target.checked; setCartItems((prev) => prev.map((ci) => (ci.id === item.id ? { ...ci, consentChecked: checked } : ci))); }} />
                           <span>사전 양해 확인</span>

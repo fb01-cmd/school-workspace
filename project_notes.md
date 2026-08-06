@@ -1513,6 +1513,23 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **서버 구현 ✅ (Claude)**: `computeCandidatesAllWeeks`에 whatIf.extraItems(§14-1 buildVirtualChanges 재사용, 자기 소스 셀 제외, +20M 적용 순서 보장, 조건부 태깅 extraCount 반영, 응답 assumedExtraCount 추가) / manage `direct_candidates_all`에 pendingItems(≤20건 검증) 전달 / manage `direct_commit_batch` 신설(1~20건 순차 directCommit, 부분 성공, 항목별 results, 반영 1건=감사 로그 1건+batchId 병기) / `directCommit`에 batchId 전달(요청대장 묶음 표시 정합). 타입 3종 신설(DirectPendingOverlayItem/DirectCommitBatchItem/DirectCommitBatchItemResult). tsc ✅.
 - **잔여 (Antigravity 몫, §14-4 개편안 1~6)**: MiniPreviewGrid·양해 카드 공용 추출(동작 무변경) → 직권 탭 사이드바(전후 미리보기+감점 사유 나열)·담기(클라이언트 상태, 그리드 가상 마킹, pendingItems 재탐색)·상대 교사별 양해 카드·direct_commit_batch 일괄 반영·주간 드롭다운 제거+오늘 주 자동 스크롤.
 
+## [2026-08-06] Claude → §14-4 구현(e7e6f6e) 표적 리뷰 — 결함 8건 수정 후 조건부 승인
+
+- **리뷰 범위**: 추출 리팩터 동작 보존(정규화 diff 전량 대조), pendingItems 전달 무결성, direct_commit_batch 결과 처리, 스펙 1~6 충족.
+- **구조 판정 ✅**: TeacherPortalSection은 훅 2개(import 추가+블록 삭제)뿐 — 사용부 무변경. pendingItems 전 항목 전달·담기/제거 시 즉시 재탐색·20건 상한·같은 소스 슬롯 중복 차단·부분 성공 후 성공 주만 변경 마킹 등 골격은 스펙대로.
+- **수정한 결함 (Claude 직접, 리뷰 후속)**:
+  1. **(중대) 일괄 반영 실패 사유 오귀속**: filter 후 map의 인덱스로 results를 대조해 실패 항목에 남의 결과/엉뚱한 사유가 붙음 → 원본 인덱스 보존 매핑으로 수정.
+  2. **(중대) lastError 미표시**: 실패 사유를 저장만 하고 카드에 렌더하지 않음(스펙 5항 위반) → 담기 카드에 ⚠️ 표시 추가.
+  3. **(중대) 감점 뱃지 회귀**: 인라인 후보 뱃지가 전부 "0점" 하드코딩(구판은 감점 시 amber "감점 N") → 조건부 뱃지 복원.
+  4. **(중대) 감점 사유 나열 누락**: 스펙 2항(penalties[] 사유 나열 — "AI 점수를 믿어라" 구조 해소의 핵심)이 통째로 미구현 → 사이드바 선택 정보에 사유 목록 추가.
+  5. **(중대) 교사 전환 시 담기 목록 잔존**: 다른 교사로 전환해도 cart 유지 → pendingItems 가상 반영이 엉뚱한 교사 명의로 합성(그리드 오염)·양해 카드 명의 오류 → 전환 시 확인 후 비우기.
+  6. (경미) 담기 카드 "화월3교시" 오타 → "화요일 3교시".
+  7. (경미) 융합 카드 out 마커 라벨 "수업" 고정 → 반 코드로(교사 포털 렌더와 일치).
+  8. (경미) 첫 교사 선택 시 자동 스크롤 무산(렌더 전 ref 검사) → timeout 내부 검사로 이동.
+- **허용 편차 (기록만)**: `copyShareImageElement`가 이동이 아니라 재작성됨(toPng 폴백 추가·알림 문구·파일명 변경) — "동작 무변경" 조건 위반이나 실질 개선으로 수용. 교사 포털의 양해 카드 알림 문구/다운로드 파일명이 바뀌었음을 실기기 확인 시 참고.
+- **한계 (백로그)**: 특별보강 후보(direct_candidates)는 담기 누적 미반영(스펙도 미요구) — 같은 슬롯에 보강·교환을 겹쳐 담으면 서버 승인 재검증이 최종 방어. conditional 후보 뱃지 미표시(후보가 담기 전제일 때 구분 없음).
+- **검증**: tsc 0 에러·build 31/31 ✅. 실기기 확인 필요(일과계와): 담기 2건+교차 주 1건 일괄 반영→두 주 변경 마킹, 일부러 충돌 항목 담아 부분 실패 사유 표시, 상대 교사별 양해 카드 생성, 교사 전환 시 비우기 확인 동작.
+
 
 ## [2026-08-06] Antigravity → Claude / 사용자 (직권 배정 §14-4 일반 교사 동등성 원칙 개편안 1~6 구현 완료)
 
