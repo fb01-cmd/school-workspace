@@ -294,6 +294,13 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
   };
 
+  const handleClearCart = () => {
+    setCartItems([]);
+    // 가상 반영 그리드를 빈 cart 기준으로 되돌린다 — 상태만 비우면 "담김 이동" 셀이 화면에 잔존
+    fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, []);
+    if (selectedSlot) fetchCandidates(selectedSlot.weekId, selectedSlot.grade, selectedSlot.classNum, selectedSlot.day, selectedSlot.period, sourceLessonInfo?.subjectName || "", []);
+  };
+
   const handleRemoveFromCart = (id: string) => {
     const updatedCart = cartItems.filter((ci) => ci.id !== id);
     setCartItems(updatedCart);
@@ -335,7 +342,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       const operatorName = teacherProfile?.name || user?.displayName || "일과 담당자";
       const shareData: ConsolidatedShareData = {
         requesterName: operatorName,
-        senderLabel: `일과계 ${operatorName}`,
+        senderLabel: operatorName, // 직책 없이 이름만 — "○○○입니다" (2026-08-06 사용자 확정: "일과계" 표기도 제외)
         ownerLabel: selectedTeacherName ? `${selectedTeacherName} 선생님의` : "해당",
         counterpartName,
         items: counterpartItems.map((ci) => ({ id: ci.id, sourceWeekId: ci.weekId, targetWeekId: ci.targetWeekId, source: ci.source, candidate: ci.candidate })),
@@ -606,7 +613,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             <div className="bg-white rounded-xl shadow-md border border-gray-200 p-5 space-y-4">
               <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                 <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5"><span>🛒 담기 목록 ({cartItems.length}건)</span></h3>
-                {cartItems.length > 0 && <button type="button" onClick={() => setCartItems([])} className="text-[10px] text-gray-400 hover:text-red-600 font-bold">전체 비우기</button>}
+                {cartItems.length > 0 && <button type="button" onClick={handleClearCart} className="text-[10px] text-gray-400 hover:text-red-600 font-bold">전체 비우기</button>}
               </div>
               {cartItems.length === 0 ? <div className="p-6 text-center text-xs text-gray-400 bg-gray-50 rounded-xl space-y-1"><p className="font-bold text-gray-600">담긴 항목이 없습니다.</p></div> : (
                 <div className="space-y-3">
