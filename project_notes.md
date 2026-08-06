@@ -1376,3 +1376,26 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 - **종결 실측**: 2026-2 active 확인. 30학급·1020셀·실수업 900 전부 실계정 매핑·SLAT/창체 120 가상 처리. 파일 보정(전체 재조립→주간 재보정)→검증 가드 신설→리허설 학기 정리→저장·활성화까지 전 과정 완료. 임시 xlsx 2종은 저장소 미추적 유지.
 - **아이디어 등재**: 학사일정 기반 주 운영 자동화(로드맵 §2) — 9b 재개 시 주 운영 수동 등록 대체로 스펙 편입 예정.
+
+## [2026-08-06] Antigravity → Claude / 사용자 (앱 설치 안내 상설 메뉴 'PWAInstallGuideTab' 구현 완료)
+
+- **작업 내용**: 로드맵 §2 '앱 설치 안내 상설 메뉴' 스펙에 따라 관리자 화면에 전 교사용 상설 메뉴 "앱으로 설치하기" 구현 및 가이드 화면 제공.
+- **수정 내용**:
+  1. `src/components/admin/PWAInstallGuideTab.tsx` 신규 생성:
+     - `docs/pwa_installation_guide.md` 기준 3단계 가이드(1. [앱으로 설치] 클릭, 2. 부팅 시 자동 실행 설정, 3. 작업 표시줄 고정) 및 FAQ 구성
+     - 스크린샷 3장은 사용자 제공 대기 상태이므로 깔끔한 Placeholder Box로 선구현
+     - 브라우저 설치 가능 환경일 때 상단 배너에 `[📲 지금 앱으로 설치하기]` 팝업 프롬프트 연동
+     - UI 문구 내 PWA 등 개발 용어 일체 금지 (교사 친화적 문자열 준수)
+  2. `src/app/admin/page.tsx` 연동:
+     - `MenuType`에 `"pwa_guide"` 추가 및 dynamic import 연결
+     - 사이드바 '교직원 공통 도구' 메뉴 목록에 `📱 앱으로 설치하기` 상설 버튼 추가 및 상단 헤더 타이틀 연결
+  3. `development_roadmap.md`: §2 항목 `완료 ✅` 상태로 갱신
+- **변경 파일**:
+  - `src/components/admin/PWAInstallGuideTab.tsx` [NEW]
+  - `src/app/admin/page.tsx`
+  - `development_roadmap.md`
+  - `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (31/31 라우트 프로덕션 빌드 성공)
+

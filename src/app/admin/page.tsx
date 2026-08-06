@@ -35,6 +35,7 @@ const DisciplineSection = dynamic(() => import("@/components/admin/discipline/Di
 const TimetableSection = dynamic(() => import("@/components/admin/timetable/TimetableSection"), { loading: TabLoading });
 const TeacherPortalSection = dynamic(() => import("@/components/admin/timetable/TeacherPortalSection"), { loading: TabLoading });
 const PolicyAckStatusTab = dynamic(() => import("@/components/admin/PolicyAckStatusTab"), { loading: TabLoading });
+const PWAInstallGuideTab = dynamic(() => import("@/components/admin/PWAInstallGuideTab"), { loading: TabLoading });
 import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt";
 
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
@@ -43,7 +44,7 @@ import { TimetableSettings } from "@/lib/timetable/types";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable" | "my_timetable" | "policy_ack";
+type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable" | "my_timetable" | "policy_ack" | "pwa_guide";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
@@ -162,6 +163,8 @@ export default function AdminPage() {
         return <AuditLogViewer />;
       case "policy_ack":
         return isSuperAdmin ? <PolicyAckStatusTab /> : null;
+      case "pwa_guide":
+        return <PWAInstallGuideTab />;
       case "roster":
         return <StudentRoster />;
       case "lifecycle":
@@ -485,6 +488,18 @@ export default function AdminPage() {
                     <span>교직원 조직도</span>
                   </button>
 
+                  <button
+                    onClick={() => setActiveMenu("pwa_guide")}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      activeMenu === "pwa_guide"
+                        ? "bg-indigo-800 text-white"
+                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    <span>📱</span>
+                    <span>앱으로 설치하기</span>
+                  </button>
+
                   {/* 조직 정보 신청 (교사 본인) */}
                   {!isSuperAdmin && (
                     <button
@@ -775,6 +790,7 @@ export default function AdminPage() {
                 {activeMenu === "forms" && "생활지도 기록 작성"}
                 {activeMenu === "logs" && "작업 감사 로그"}
                 {activeMenu === "policy_ack" && "개인정보 처리 안내 고지 현황"}
+                {activeMenu === "pwa_guide" && "앱으로 설치하기 안내"}
                 {activeMenu === "roster" && "학급 명렬표 인쇄 & 관리"}
                 {activeMenu === "classroom" && "구글 클래스룸 학생 즉시 배정"}
                 {activeMenu === "teachers" && "교직원 계정 및 생애주기 관리"}
