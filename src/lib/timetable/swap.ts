@@ -5,11 +5,13 @@
  * 모든 계산은 "주간 합성본" 기준 (이미 승인된 변경 위에서 탐색해야 이중 배정이 원천 차단됨).
  *
  * 하드 제외 (§4-3 — 컴시간도 중대 속성 셀은 이동 자체를 차단):
- *   동시수업(한 셀 lessons 2+), 복수교사(teachers 2+), 가상 교사(이메일 없음), 특별실 충돌.
+ *   동시수업(한 셀 lessons 2+ 또는 등록부 판정 lesson.simul — pre_opening_3features_spec §A),
+ *   복수교사(teachers 2+), 가상 교사(이메일 없음), 특별실 충돌.
  * 감점 (소프트 — 주간시간표설명서 p.27 정의 계승): 중복·최적·연속3·점심.
  *   '학년'·'오후'는 2026-08-04 파일럿 확정으로 삭제 (원배정 품질 조건 — 일회성 교체에 부적합).
  */
 
+import { SIMUL_BLOCK_MESSAGE } from "./simul";
 import { isSlotWithinWeek, periodsForGradeDay } from "./weekly";
 import {
   PenaltyDetail,
@@ -223,6 +225,7 @@ export function resolveSourceLesson(
   if (cell.lessons.length > 1)
     return { ok: false, error: "동시수업(분반) 교시는 교환할 수 없습니다. 일과계에 직접 요청하세요." };
   const lesson = cell.lessons[0];
+  if (lesson.simul) return { ok: false, error: SIMUL_BLOCK_MESSAGE };
   if ((lesson.teachers || []).length > 1)
     return { ok: false, error: "복수교사 수업은 교환할 수 없습니다. 일과계에 직접 요청하세요." };
   const teacher = lesson.teachers[0];
@@ -269,6 +272,7 @@ export function findSwapCandidates(
       if (!targetCell || targetCell.lessons.length === 0) continue; // 학급도 비면 교환 상대 없음
       if (targetCell.lessons.length > 1) continue; // 하드: 동시수업
       const l2 = targetCell.lessons[0];
+      if (l2.simul) continue; // 하드: 동시수업 그룹(분반 이동수업 — 등록부 판정, §A)
       if ((l2.teachers || []).length > 1) continue; // 하드: 복수교사
       const b = l2.teachers[0];
       if (!b || !norm(b.email) || norm(b.email) === me) continue; // 하드: 가상 교사·본인
@@ -381,6 +385,7 @@ export function findCrossSwapCandidates(
       if (!targetCell || targetCell.lessons.length === 0) continue;
       if (targetCell.lessons.length > 1) continue; // 하드: 동시수업
       const l2 = targetCell.lessons[0];
+      if (l2.simul) continue; // 하드: 동시수업 그룹(분반 이동수업 — 등록부 판정, §A)
       if ((l2.teachers || []).length > 1) continue; // 하드: 복수교사
       const b = l2.teachers[0];
       if (!b || !norm(b.email) || norm(b.email) === me) continue; // 하드: 가상 교사·본인

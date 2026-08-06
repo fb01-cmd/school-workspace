@@ -175,8 +175,8 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
       alert("그룹명을 입력해 주세요.");
       return;
     }
-    if (classNums.length === 0) {
-      alert("묶인 반을 최소 1개 이상 선택해 주세요.");
+    if (classNums.length < 2) {
+      alert("묶인 반을 2개 이상 선택해 주세요 (이동수업은 여러 반이 함께 듣는 수업입니다).");
       return;
     }
     if (subjectNames.length === 0 && !subjectInput.trim()) {
@@ -205,7 +205,11 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "simul_save", group: payload }),
+        body: JSON.stringify({
+          action: "simul_save",
+          simulGroup: payload,
+          ...(editingGroupId ? { simulGroupId: editingGroupId } : {}),
+        }),
       });
 
       const data = await res.json();
@@ -230,7 +234,7 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "simul_delete", groupId }),
+        body: JSON.stringify({ action: "simul_delete", simulGroupId: groupId }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "삭제에 실패했습니다.");

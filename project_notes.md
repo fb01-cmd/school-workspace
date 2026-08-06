@@ -1688,3 +1688,20 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - 검증 상태: tsc ✅ / build ✅
 - 다음 할 일: 서버 액션(simul_list/save/delete) 및 하드 제외/커밋 검증 구현(Claude)
 - 주의: 이동수업 등록부 탭에 스펙 A-4 저장 전 그리드 미리보기 검증이 적용되어 있으며, 교사/직권/학생 카드에 연보라 배지 및 선택 차단이 내장됨
+
+## [2026-08-06] Claude → 스펙 A(동시수업) 서버부 구현 완료 + Antigravity 병행 구현(149d1dc) 정합화
+
+- **서버부 (Claude)**: ① `simul.ts` — buildSimulMatcher/applySimulMarks/listSimulCells/isSimulCell/SIMUL_BLOCK_MESSAGE (판정 단일 통로, 과목명 NFC·공백 제거·대소문자 무시 정규화) ② 그리드 로더(loadAllClassGrids/loadClassGrid)에서 등록부 대조 후 `lesson.simul` 라벨 스탬프 — 저장 데이터 무표기, 읽기 시점 계산이라 등록부 수정 즉시 전 경로 반영 ③ swap.ts 하드 제외 4곳(소스·맞교환 target·교차 주 target·특별보강은 소스 경유)+resolveDirectSource ④ 커밋 검증은 전 경로(신청 생성·승인·직권 단건·일괄)가 스탬프된 그리드 위 엔진 재계산이라 자동 이중 방어 ⑤ manage 액션 simul_list(+저장 전 previewCells)/simul_save/simul_delete — 일과계 게이트(기존 규칙 4 자동), 감사 로그 ⑥ `scripts/register_simul_groups.ts`(드라이런 기본·검증 전용 모드·판정 0셀 경고) ⑦ TeacherTimetableCell에 simul 전달(교사 뷰·직권 그리드용).
+- **실측**: tsc 0 에러 · build 성공 · 실데이터 스모크(임시 그룹 메모리 적용, DB 무변경) — 판정 9셀 정확, 합성 후 마크 유지, 소스 차단 문구 정상, 후보 탐색서 동시수업 target 0건.
+- **Antigravity 병행 커밋(149d1dc·004166a) 리뷰 — 등록부 탭 수용, 결함 4종 수정(Claude)**:
+  1. **교사·학생 배지 불발(치명)**: 표시 4곳(교사·학급·학생 카드·직권)이 manage simul_list를 클라이언트에서 fetch — 교사·학생은 403이라 그룹이 항상 빈 배열 → 배지·차단 영원히 미표시. 전부 서버 스탬프(`lesson.simul`/`cell.simul`) 읽기로 교정, fetch 제거.
+  2. **약칭 매칭 결함**: 판정에 `subjectShort||subjectName`을 넣어 정식 과목명 등록부와 불일치. 스탬프 경로 전환으로 해소.
+  3. **계약 필드명**: simul_save `group`→`simulGroup`(+수정 시 `simulGroupId` 미전달 → 수정이 신규 등록되는 결함), simul_delete `groupId`→`simulGroupId`.
+  4. **반 1개 허용**: 클라이언트 검증 최소 1개 → 서버와 동일하게 2개 이상.
+  - 수용: SimulGroupTab 등록부 UI(미리보기 포함)·연보라 배지 디자인·TimetableSection 배선. isSimulCell·fetchSimulGroups는 등록부 화면 전용으로 존치(주석으로 용도 제한 명시).
+  - **주의**: Antigravity가 세션 도중 로컬 커밋을 쌓아 Claude의 미커밋 작업과 같은 파일(simul.ts)이 충돌 — Claude 신규 작성분이 그들 버전을 덮어썼고 병합으로 해소. AGENTS.md §3 동시 작업 목록에 안 올라온 채 진행된 사례.
+- **잔여**: 8/7 일과계 목록 수령 → 스크립트 GROUPS 채워 드라이런→눈 대조→APPLY=1 등재 → 실기기 확인(배지·후보 소멸·등록부 저장). 배포는 이번 푸시에 포함.
+
+## [2026-08-06] 사용자 → 기초시간표 개정 요구 (개학 첫 주 수정 → 다음 주 적용) — 로드맵 등재
+
+- 실무: 개학 첫 주에 학기 시간표 자체를 바꾸는 교사들이 있음 → 일과계가 기초시간표를 주간 변경처럼 수정하되, **반영은 다음 주부터**(그 주의 출장 교체와 꼬임 방지 — 실무 관행 그대로). 로드맵 §2 등재, 설계 방향(개정판+effectiveFrom, integrityWarnings 안전망) 포함. 스펙·구현은 개학 첫 주 내(§B와 같은 사이클).

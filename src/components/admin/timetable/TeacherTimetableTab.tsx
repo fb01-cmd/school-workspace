@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { TeacherTimetableCell } from "@/lib/timetable/types";
-import { SimulGroup, isSimulCell, fetchSimulGroups } from "@/lib/timetable/simul";
 
 interface TeacherTimetableTabProps {
   periodsPerDay?: number;
@@ -18,7 +17,6 @@ export default function TeacherTimetableTab({ periodsPerDay = 7 }: TeacherTimeta
   const [teacherName, setTeacherName] = useState((userData as any)?.displayName || (userData as any)?.name || myEmail.split("@")[0]);
   const [cells, setCells] = useState<TeacherTimetableCell[]>([]);
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
-  const [simulGroups, setSimulGroups] = useState<SimulGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +25,6 @@ export default function TeacherTimetableTab({ periodsPerDay = 7 }: TeacherTimeta
   const [teacherListLoading, setTeacherListLoading] = useState(false);
 
   useEffect(() => {
-    fetchSimulGroups().then((grps) => setSimulGroups(grps));
     setTeacherListLoading(true);
     fetch("/api/timetable/view", {
       method: "POST",
@@ -206,7 +203,8 @@ export default function TeacherTimetableTab({ periodsPerDay = 7 }: TeacherTimeta
                             <div className="space-y-1.5">
                               {matched.map((cell, cIdx) => {
                                 const subjName = cell.subjectShort || cell.subjectName || "";
-                                const simulCheck = isSimulCell(cell.grade, cell.classNum, cell.day, cell.period, subjName, simulGroups);
+                                // 판정 단일 통로: 서버가 시간표 응답에 실어 보낸 동시수업 라벨 (cell.simul)
+                                const simulCheck = { hit: !!cell.simul, groupLabel: cell.simul };
                                 return (
                                   <div
                                     key={cIdx}

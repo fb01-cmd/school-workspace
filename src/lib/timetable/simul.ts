@@ -1,26 +1,112 @@
 /**
- * 동시수업(분반 이동수업) 데이터 모델 및 판정 로직
- * 스펙 문서: docs/pre_opening_3features_spec.md §A
+ * 동시수업(분반 이동수업) 판정 — 순수 함수, Firestore 의존 없음
+ *
+ * 상위 스펙: docs/pre_opening_3features_spec.md §A
+ * 제2외국어·일부 과학처럼 여러 반을 묶어 같은 교시에 진행하는 수업은 단일 반 교체가
+ * 불가능하다. 변환된 기초 그리드에서는 반마다 평범한 단일 lesson으로 보여 기존
+ * 하드 제외(한 셀 lessons 2+)에 걸리지 않으므로, 등록부(SimulGroup)가 유일한 판정 원본이다.
+ *
+ * 적용 방식: 그리드 로드 시 일치 lesson에 `simul`(그룹 라벨)을 스탬프하고,
+ * 엔진·커밋 검증·화면은 이 필드 하나만 본다 (판정 단일 통로).
  */
 
-export interface SimulSlot {
-  day: number; // 1=월..5=금
-  period: number; // 1~7교시
+import { ClassGrid, SimulGroup, SimulSlot, TimetableLesson } from "./types";
+
+export type { SimulGroup, SimulSlot };
+
+const normSubject = (s: string) =>
+  (s || "").normalize("NFC").replace(/\s+/g, "").trim().toLowerCase();
+
+export type SimulMatcher = (
+  grade: number,
+  classNum: number,
+  day: number,
+  period: number,
+  subjectName: string
+) => string | null;
+
+/** 등록부에서 판정 함수 생성 — active 그룹만. 반환값은 그룹 라벨(미해당 시 null). */
+export function buildSimulMatcher(groups: SimulGroup[]): SimulMatcher {
+  const active = groups.filter((g) => g.active);
+  const prepared = active.map((g) => ({
+    label: g.label,
+    grade: g.grade,
+    classNums: new Set(g.classNums),
+    subjects: new Set(g.subjectNames.map(normSubject)),
+    slots: g.slots?.length ? new Set(g.slots.map((s) => `${s.day}-${s.period}`)) : null,
+  }));
+  return (grade, classNum, day, period, subjectName) => {
+    const subj = normSubject(subjectName);
+    for (const g of prepared) {
+      if (g.grade !== grade || !g.classNums.has(classNum)) continue;
+      if (!g.subjects.has(subj)) continue;
+      if (g.slots && !g.slots.has(`${day}-${period}`)) continue;
+      return g.label;
+    }
+    return null;
+  };
 }
 
-export interface SimulGroup {
-  id?: string;
-  termId: string;
-  label: string; // 사람용 이름 (예: "1학년 제2외국어")
-  grade: number; // 1~3학년
-  classNums: number[]; // 묶인 반 (예: [1, 2, 3])
-  subjectNames: string[]; // 대상 과목명 (예: ["중국어Ⅰ", "일본어Ⅰ"])
-  slots?: SimulSlot[]; // 선택 (지정 시 특정 교시만, 미지정 시 해당 과목 전부)
-  active: boolean;
-  createdBy?: string;
-  createdAt?: any;
-  updatedBy?: string;
-  updatedAt?: any;
+/** 기초 그리드에 simul 라벨 스탬프 (제자리 수정) — 로더가 호출. 판정은 기초 위치 기준(§A-2). */
+export function applySimulMarks(grids: ClassGrid[], groups: SimulGroup[]): void {
+  if (!groups.some((g) => g.active)) return;
+  const match = buildSimulMatcher(groups);
+  for (const grid of grids) {
+    for (const cell of grid.cells || []) {
+      for (const lesson of cell.lessons || []) {
+        const label = match(grid.grade, grid.classNum, cell.day, cell.period, lesson.subjectName);
+        if (label) lesson.simul = label;
+        else if (lesson.simul) delete lesson.simul;
+      }
+    }
+  }
+}
+
+export interface SimulCellListing {
+  grade: number;
+  classNum: number;
+  day: number;
+  period: number;
+  subjectName: string;
+  teacherNames: string[];
+  groupLabel: string;
+}
+
+/** 판정에 걸리는 셀 전수 나열 — 등재 검증(눈 대조)·등록부 미리보기용 (§A-5) */
+export function listSimulCells(grids: ClassGrid[], groups: SimulGroup[]): SimulCellListing[] {
+  const match = buildSimulMatcher(groups);
+  const out: SimulCellListing[] = [];
+  for (const grid of grids) {
+    for (const cell of grid.cells || []) {
+      for (const lesson of cell.lessons || []) {
+        const label = match(grid.grade, grid.classNum, cell.day, cell.period, lesson.subjectName);
+        if (!label) continue;
+        out.push({
+          grade: grid.grade,
+          classNum: grid.classNum,
+          day: cell.day,
+          period: cell.period,
+          subjectName: lesson.subjectName,
+          teacherNames: (lesson.teachers || []).map((t) => t.name),
+          groupLabel: label,
+        });
+      }
+    }
+  }
+  out.sort(
+    (a, b) =>
+      a.grade - b.grade || a.classNum - b.classNum || a.day - b.day || a.period - b.period
+  );
+  return out;
+}
+
+/** 교체 차단 안내 문구 (단일 원본 — 엔진·직권·커밋 검증 공용) */
+export const SIMUL_BLOCK_MESSAGE =
+  "여러 반이 함께 듣는 이동수업이라 교체할 수 없습니다. 부득이한 경우 일과계에 문의해 주세요.";
+
+/** lesson이 동시수업인지 (스탬프 기준 판정 — 합성 이후 단계 공용) */
+export function isSimulLesson(lesson: Pick<TimetableLesson, "simul">): boolean {
+  return !!lesson.simul;
 }
 
 export interface SimulCheckResult {
@@ -29,7 +115,9 @@ export interface SimulCheckResult {
 }
 
 /**
- * 단일 셀이 동시수업(분반) 그룹에 해당하는지 판정하는 순수 함수
+ * 단일 셀 판정 (클라이언트 미리보기 등 그룹 목록을 직접 쥔 화면용).
+ * 서버가 그리드에 스탬프한 `lesson.simul`이 판정 단일 통로이므로, 셀 표시·차단은
+ * 이 함수가 아니라 lesson.simul을 읽어야 한다 — 여기는 등록부 폼 미리보기 전용.
  */
 export function isSimulCell(
   grade: number,
@@ -39,65 +127,25 @@ export function isSimulCell(
   subjectName: string,
   groups: SimulGroup[]
 ): SimulCheckResult {
-  if (!subjectName || !groups || groups.length === 0) {
-    return { hit: false };
-  }
-
-  const cleanSubject = subjectName.trim().toLowerCase();
-
-  for (const group of groups) {
-    if (!group.active) continue;
-    if (group.grade !== grade) continue;
-    if (!group.classNums || !group.classNums.includes(classNum)) continue;
-
-    const matchedSubject = group.subjectNames?.some(
-      (s) => s.trim().toLowerCase() === cleanSubject
-    );
-    if (!matchedSubject) continue;
-
-    if (group.slots && group.slots.length > 0) {
-      const slotMatched = group.slots.some(
-        (slot) => slot.day === day && slot.period === period
-      );
-      if (!slotMatched) continue;
-    }
-
-    return {
-      hit: true,
-      groupLabel: group.label,
-    };
-  }
-
-  return { hit: false };
+  const label = buildSimulMatcher(groups)(grade, classNum, day, period, subjectName);
+  return label ? { hit: true, groupLabel: label } : { hit: false };
 }
 
 /**
- * 클라이언트에서 이동수업 그룹 목록(simul_list)을 fetch하는 헬퍼 함수
+ * 이동수업 그룹 목록 조회 (일과계 등록부 화면 전용 — manage simul_list는 일과계·super_admin만 허용).
+ * 교사·학생 화면은 이 함수를 쓰지 말 것: 권한이 없어 403이 나며, 애초에 필요 없다 —
+ * 시간표 응답의 lesson.simul(교사 뷰는 cell.simul)에 서버가 라벨을 실어 보낸다.
  */
 export async function fetchSimulGroups(termId?: string): Promise<SimulGroup[]> {
   try {
     const res = await fetch("/api/timetable/manage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "simul_list", termId }),
+      body: JSON.stringify({ action: "simul_list", ...(termId ? { termId } : {}) }),
     });
-
-    if (!res.ok) {
-      // manage가 접근 제한될 경우 view 백업 액션 호출 시도
-      const viewRes = await fetch("/api/timetable/view", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "simul_list", termId }),
-      });
-      if (viewRes.ok) {
-        const data = await viewRes.json();
-        return data.groups || data.data || [];
-      }
-      return [];
-    }
-
+    if (!res.ok) return [];
     const data = await res.json();
-    return data.groups || data.data || [];
+    return data.groups || [];
   } catch (err) {
     console.error("Failed to fetch simul groups:", err);
     return [];

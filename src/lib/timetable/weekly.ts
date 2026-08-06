@@ -62,6 +62,7 @@ function deepCopyGrids(grids: ClassGrid[]): WeeklyClassGrid[] {
         subjectShort: l.subjectShort,
         teachers: (l.teachers || []).map((t) => ({ email: t.email, name: t.name })),
         ...(l.room ? { room: l.room } : {}),
+        ...(l.simul ? { simul: l.simul } : {}),
       })),
     })),
   }));

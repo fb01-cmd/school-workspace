@@ -35,6 +35,32 @@ export interface TimetableLesson {
   subjectShort: string;
   teachers: TimetableTeacher[];
   room?: string;
+  /** 동시수업(분반 이동수업) 그룹 라벨 — 저장 필드가 아니라 로드 시 등록부 대조로 스탬프 (pre_opening_3features_spec §A) */
+  simul?: string;
+}
+
+/** 동시수업 교시 제한 (pre_opening_3features_spec §A-2) */
+export interface SimulSlot {
+  day: number; // 1=월..5=금
+  period: number;
+}
+
+/** 동시수업(분반 이동수업) 그룹 — timetable_simul_groups/{domain}/groups (pre_opening_3features_spec §A-2).
+ *  id·생성 정보는 서버 로더가 채우므로 클라이언트 폼 상태에서는 없을 수 있다 (선택 필드). */
+export interface SimulGroup {
+  id?: string;
+  termId: string;
+  label: string;
+  grade: number;
+  classNums: number[];
+  subjectNames: string[];
+  /** 지정 시 이 교시들만 대상 (과목명만으로 모호할 때). 미지정이면 과목명 일치 셀 전부 */
+  slots?: SimulSlot[];
+  active: boolean;
+  createdBy?: string;
+  createdAt?: number;
+  updatedBy?: string;
+  updatedAt?: number;
 }
 
 export interface TimetableCell {
@@ -160,6 +186,7 @@ export interface TeacherTimetableCell {
   subjectShort: string;
   room?: string;
   changed?: WeeklyLessonChange; // 주간 합성 시 변경 셀 표시 (phase9b_spec §3)
+  simul?: string; // 동시수업(분반) 그룹 라벨 — 그리드 구분 표시용 (pre_opening_3features_spec §A)
 }
 
 export interface TeacherTimetable {
@@ -219,7 +246,11 @@ export type ManageAction =
   | "direct_projected" // §14-4 담기 가상 반영 그리드 — 대상 교사 전 주 시간표에 pendingItems 가상 적용 (my_projected의 직권 대응)
   // ── Phase 9b 순서 5 운영 도구 (phase9b_spec §8) ──
   | "neis_list"
-  | "hour_totals";
+  | "hour_totals"
+  // ── 동시수업(분반) 그룹 등록부 (pre_opening_3features_spec §A-4) ──
+  | "simul_list"
+  | "simul_save"
+  | "simul_delete";
 
 export interface ManageTimetableRequest {
   action: ManageAction;
@@ -247,6 +278,9 @@ export interface ManageTimetableRequest {
   // 운영 도구 (neis_list / hour_totals) — phase9b_spec §8
   startDate?: string; // "YYYY-MM-DD"
   endDate?: string;
+  // 동시수업(분반) 그룹 등록부 (pre_opening_3features_spec §A-4)
+  simulGroup?: Partial<SimulGroup>; // simul_save 본문 / simul_list 미리보기(previewCells) 요청
+  simulGroupId?: string; // simul_save(수정)·simul_delete 대상
 }
 
 export interface ManageTimetableResponse {

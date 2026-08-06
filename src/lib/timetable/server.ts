@@ -6,12 +6,14 @@
 
 import { adminDb, DecodedAuthAccess } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
+import { applySimulMarks } from "./simul";
 import {
   ClassCellIssue,
   ClassGrid,
   FreeTeacher,
   IntermediateClassGrid,
   IntermediateImportPayload,
+  SimulGroup,
   SwapDraft,
   SuspiciousMappingIssue,
   TeacherOverlapIssue,
@@ -46,6 +48,9 @@ export const classGridsColRef = (domain: string, termId: string) =>
     .collection("terms")
     .doc(termId)
     .collection("classGrids");
+
+export const simulGroupsColRef = (domain: string) =>
+  adminDb.collection("timetable_simul_groups").doc(domain).collection("groups");
 
 // ── 직렬화 헬퍼 ────────────────────────────────────────────────
 
@@ -169,11 +174,80 @@ export async function loadActiveTerm(domain: string): Promise<TimetableTerm | nu
   };
 }
 
+// ── 동시수업(분반) 그룹 등록부 (pre_opening_3features_spec §A) ──
+
+export async function loadSimulGroups(domain: string, termId: string): Promise<SimulGroup[]> {
+  const snap = await simulGroupsColRef(domain).where("termId", "==", termId).get();
+  return snap.docs.map((doc) => {
+    const data = doc.data() || {};
+    return {
+      id: doc.id,
+      termId: data.termId || termId,
+      label: data.label || "",
+      grade: Number(data.grade) || 0,
+      classNums: Array.isArray(data.classNums) ? data.classNums.map(Number).filter(Boolean) : [],
+      subjectNames: Array.isArray(data.subjectNames) ? data.subjectNames.map(String) : [],
+      ...(Array.isArray(data.slots) && data.slots.length
+        ? { slots: data.slots.map((s: any) => ({ day: Number(s.day), period: Number(s.period) })) }
+        : {}),
+      active: data.active !== false,
+      createdBy: data.createdBy || "",
+      createdAt: toMillis(data.createdAt) || 0,
+      ...(data.updatedBy ? { updatedBy: data.updatedBy } : {}),
+      ...(toMillis(data.updatedAt) ? { updatedAt: toMillis(data.updatedAt)! } : {}),
+    };
+  });
+}
+
+export function validateSimulGroupPayload(raw: any): { ok: true; group: Omit<SimulGroup, "id" | "createdBy" | "createdAt"> } | { ok: false; error: string } {
+  const label = typeof raw?.label === "string" ? raw.label.trim().slice(0, 60) : "";
+  if (!label) return { ok: false, error: "그룹 이름을 입력해 주세요." };
+  const termId = typeof raw?.termId === "string" ? raw.termId.trim() : "";
+  if (!termId) return { ok: false, error: "학기가 지정되지 않았습니다." };
+  const grade = Number(raw?.grade);
+  if (![1, 2, 3].includes(grade)) return { ok: false, error: "학년은 1~3 중에서 지정해야 합니다." };
+  const classNums: number[] = Array.isArray(raw?.classNums)
+    ? [...new Set<number>(raw.classNums.map(Number))].filter((n) => Number.isInteger(n) && n >= 1 && n <= 15)
+    : [];
+  if (classNums.length < 2)
+    return { ok: false, error: "묶인 반을 2개 이상 지정해야 합니다 (이동수업은 여러 반이 함께 듣는 수업입니다)." };
+  const subjectNames = Array.isArray(raw?.subjectNames)
+    ? [...new Set(raw.subjectNames.map((s: any) => String(s).trim()).filter(Boolean))]
+    : [];
+  if (subjectNames.length === 0) return { ok: false, error: "대상 과목을 1개 이상 지정해야 합니다." };
+  let slots: { day: number; period: number }[] | undefined;
+  if (Array.isArray(raw?.slots) && raw.slots.length) {
+    slots = [];
+    for (const s of raw.slots) {
+      const day = Number(s?.day);
+      const period = Number(s?.period);
+      if (!Number.isInteger(day) || day < 1 || day > 5 || !Number.isInteger(period) || period < 1 || period > 8)
+        return { ok: false, error: "교시 제한 값이 올바르지 않습니다." };
+      slots.push({ day, period });
+    }
+  }
+  return {
+    ok: true,
+    group: {
+      termId,
+      label,
+      grade,
+      classNums: (classNums as number[]).sort((a, b) => a - b),
+      subjectNames: subjectNames as string[],
+      ...(slots ? { slots } : {}),
+      active: raw?.active !== false,
+    },
+  };
+}
+
 // ── 학급 시간표 그리드 (ClassGrid) Operations ─────────────────
 
 export async function loadAllClassGrids(domain: string, termId: string): Promise<ClassGrid[]> {
-  const snap = await classGridsColRef(domain, termId).get();
-  return snap.docs.map((doc) => {
+  const [snap, simulGroups] = await Promise.all([
+    classGridsColRef(domain, termId).get(),
+    loadSimulGroups(domain, termId),
+  ]);
+  const grids = snap.docs.map((doc) => {
     const data = doc.data() || {};
     return {
       grade: Number(data.grade) || 0,
@@ -181,6 +255,10 @@ export async function loadAllClassGrids(domain: string, termId: string): Promise
       cells: Array.isArray(data.cells) ? data.cells : [],
     };
   });
+  // 동시수업(분반) 라벨 스탬프 — 저장 데이터는 무표기, 읽기 시점에 등록부 대조 (§A 판정 단일 통로).
+  // 이후의 합성·엔진·커밋 재검증·view 응답이 전부 이 마크를 본다.
+  applySimulMarks(grids, simulGroups);
+  return grids;
 }
 
 export async function loadClassGrid(
@@ -190,14 +268,19 @@ export async function loadClassGrid(
   classNum: number
 ): Promise<ClassGrid | null> {
   const docId = `${grade}-${classNum}`;
-  const snap = await classGridsColRef(domain, termId).doc(docId).get();
+  const [snap, simulGroups] = await Promise.all([
+    classGridsColRef(domain, termId).doc(docId).get(),
+    loadSimulGroups(domain, termId),
+  ]);
   if (!snap.exists) return null;
   const data = snap.data() || {};
-  return {
+  const grid = {
     grade: Number(data.grade) || grade,
     classNum: Number(data.classNum) || classNum,
     cells: Array.isArray(data.cells) ? data.cells : [],
   };
+  applySimulMarks([grid], simulGroups);
+  return grid;
 }
 
 export async function saveAllClassGrids(
@@ -698,6 +781,7 @@ export function synthesizeTeacherTimetable(
             room: lesson.room,
             // 주간 합성본이 입력이면 변경 마킹을 그대로 전달 (phase9b_spec §3)
             ...((lesson as any).changed ? { changed: (lesson as any).changed } : {}),
+            ...(lesson.simul ? { simul: lesson.simul } : {}),
           });
         }
       }
@@ -2378,6 +2462,8 @@ export function resolveDirectSource(
   if (cell.lessons.length > 1)
     return { ok: false, error: "동시수업(분반) 교시는 직권 배정 대상이 아닙니다." };
   const lesson = cell.lessons[0];
+  if (lesson.simul)
+    return { ok: false, error: `여러 반이 함께 듣는 이동수업(${lesson.simul})이라 직권 배정 대상이 아닙니다.` };
   if ((lesson.teachers || []).length > 1)
     return { ok: false, error: "복수교사 수업은 직권 배정 대상이 아닙니다." };
   const t = lesson.teachers[0];

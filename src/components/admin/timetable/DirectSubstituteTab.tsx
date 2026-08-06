@@ -18,7 +18,6 @@ import {
   OffscreenConsolidatedCard as OffscreenConsolidatedShareCard,
   copyShareImageElement,
 } from "./OffscreenShareCard";
-import { SimulGroup, isSimulCell, fetchSimulGroups } from "@/lib/timetable/simul";
 
 interface DirectSubstituteTabProps {
   activeTermId: string | null;
@@ -54,7 +53,6 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const [recentTeachers, setRecentTeachers] = useState<Array<{ email: string; name: string }>>([]);
 
   const [teacherWeekCellsMap, setTeacherWeekCellsMap] = useState<Record<string, TeacherTimetableCell[]>>({});
-  const [simulGroups, setSimulGroups] = useState<SimulGroup[]>([]);
   const [loadingTimetable, setLoadingTimetable] = useState(false);
   const [timetableError, setTimetableError] = useState<string | null>(null);
 
@@ -130,7 +128,6 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       if (res.ok) {
         const data = await res.json();
         setWeeks(data.weeks || []);
-        fetchSimulGroups(activeTermId || undefined).then((grps) => setSimulGroups(grps));
         if (Array.isArray(data.data)) setTeacherList(data.data);
       }
     } catch {} finally {
@@ -266,9 +263,9 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
   const handleSlotClick = (weekId: string, cell: TeacherTimetableCell) => {
     const subj = cell.subjectShort || cell.subjectName || "수업";
-    const simulCheck = isSimulCell(cell.grade, cell.classNum, cell.day, cell.period, subj, simulGroups);
-    if (simulCheck.hit) {
-      alert(`이동수업(분반) 수업은 교체할 수 없습니다. 일과계에 문의해 주세요.\n그룹: ${simulCheck.groupLabel || "이동수업 그룹"}`);
+    // 판정 단일 통로: 서버가 교사 그리드 응답에 실어 보낸 동시수업 라벨 (서버 커밋 검증이 최종 방어)
+    if (cell.simul) {
+      alert(`여러 반이 함께 듣는 이동수업이라 교체할 수 없습니다.\n묶음: ${cell.simul}`);
       return;
     }
 
@@ -541,7 +538,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                           }
                                           const isSelected = selectedSlot?.weekId === w.id && selectedSlot?.grade === cell.grade && selectedSlot?.classNum === cell.classNum && selectedSlot?.day === cell.day && selectedSlot?.period === cell.period;
                                           const subjName = cell.subjectShort || cell.subjectName || "";
-                                          const simulCheck = isSimulCell(cell.grade, cell.classNum, cell.day, cell.period, subjName, simulGroups);
+                                          // 판정 단일 통로: 서버가 교사 그리드 응답에 실어 보낸 동시수업 라벨 (cell.simul)
+                                          const simulCheck = { hit: !!cell.simul, groupLabel: cell.simul };
 
                                           return (
                                             <button key={cIdx} type="button" onClick={() => handleSlotClick(w.id, cell)} className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${isSelected ? "bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-300 scale-[1.02]" : simulCheck.hit ? "bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-950 shadow-2xs" : "bg-white hover:bg-indigo-100/60 border-indigo-200 hover:border-indigo-400 text-gray-900 shadow-2xs"}`}>

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { ClassGrid, TimetableCell } from "@/lib/timetable/types";
-import { SimulGroup, isSimulCell, fetchSimulGroups } from "@/lib/timetable/simul";
 
 interface ClassTimetableTabProps {
   periodsPerDay?: number;
@@ -11,7 +10,6 @@ interface ClassTimetableTabProps {
 export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableTabProps) {
   const [selectedGrade, setSelectedGrade] = useState<number>(1);
   const [selectedClassNum, setSelectedClassNum] = useState<number>(1);
-  const [simulGroups, setSimulGroups] = useState<SimulGroup[]>([]);
   const [classGrid, setClassGrid] = useState<ClassGrid | null>(null);
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,10 +56,6 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchSimulGroups().then((grps) => setSimulGroups(grps));
-  }, []);
 
   useEffect(() => {
     fetchClassTimetable(selectedGrade, selectedClassNum);
@@ -188,7 +182,8 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
                             <div className="space-y-1.5">
                               {cell.lessons.map((lesson, lIdx) => {
                                 const subjName = lesson.subjectShort || lesson.subjectName || "";
-                                const simulCheck = isSimulCell(selectedGrade, selectedClassNum, d.num, period, subjName, simulGroups);
+                                // 판정 단일 통로: 서버가 시간표 응답에 실어 보낸 동시수업 라벨 (lesson.simul)
+                                const simulCheck = { hit: !!lesson.simul, groupLabel: lesson.simul };
                                 return (
                                   <div
                                     key={lIdx}

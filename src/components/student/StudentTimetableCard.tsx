@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { ClassGrid } from "@/lib/timetable/types";
-import { SimulGroup, isSimulCell, fetchSimulGroups } from "@/lib/timetable/simul";
 
 const DAY_LABEL: Record<number, string> = { 1: "월", 2: "화", 3: "수", 4: "목", 5: "금" };
 
@@ -10,7 +9,6 @@ export default function StudentTimetableCard() {
   const [classGrid, setClassGrid] = useState<ClassGrid | null>(null);
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
   const [weekMeta, setWeekMeta] = useState<{ id: string; startDate: string } | null>(null);
-  const [simulGroups, setSimulGroups] = useState<SimulGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +64,6 @@ export default function StudentTimetableCard() {
 
   useEffect(() => {
     fetchStudentTimetable();
-    fetchSimulGroups().then((grps) => setSimulGroups(grps));
   }, []);
 
   const getLessonsForSlot = (day: number, period: number) => {
@@ -163,14 +160,8 @@ export default function StudentTimetableCard() {
                       const changedType = lesson.changed?.type;
                       const origin = lesson.changed?.origin;
 
-                      const simulCheck = isSimulCell(
-                        classGrid.grade,
-                        classGrid.classNum,
-                        activeDay,
-                        period,
-                        lesson.subjectName,
-                        simulGroups
-                      );
+                      // 판정 단일 통로: 서버가 시간표 응답에 실어 보낸 동시수업 라벨 (lesson.simul)
+                      const simulCheck = { hit: !!lesson.simul, groupLabel: lesson.simul };
 
                       return (
                         <div key={idx} className="flex flex-wrap items-center justify-between gap-2">
