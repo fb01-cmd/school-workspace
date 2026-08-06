@@ -44,7 +44,7 @@ import { TimetableSettings } from "@/lib/timetable/types";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "bulk" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable" | "my_timetable" | "policy_ack" | "pwa_guide";
+type MenuType = "home" | "users" | "groups" | "settings" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable" | "my_timetable" | "policy_ack" | "pwa_guide";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
@@ -143,14 +143,6 @@ export default function AdminPage() {
         return <OUConfiguration />;
       case "ou_manage":
         return <OUManager />;
-      case "bulk":
-        return (
-          <div className="bg-white rounded-lg border border-gray-200 p-8 text-center shadow-sm">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">📥 학생 명단 벌크 업로드</h3>
-            <p className="text-gray-600 mb-4">엑셀(Excel) 또는 CSV 파일을 올려 학생 계정을 일괄 생성하거나 전입/전출 처리를 진행합니다.</p>
-            <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">개발 예정</span>
-          </div>
-        );
       case "forms":
       case "discipline":
         return <DisciplineSection />;
@@ -324,31 +316,6 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div>
-
-              {/* Bulk Upload Widget - Super Admin Only */}
-              {isSuperAdmin && (
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow opacity-75">
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-gray-900">벌크 업로드</h3>
-                    <span className="p-2 rounded-lg bg-yellow-50 text-yellow-600">
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                    </span>
-                  </div>
-                  <p className="text-gray-500 text-sm mb-6">엑셀 및 CSV 대량 계정 추가와 학기/학년말 대량 전출 관리를 일괄 처리합니다.</p>
-                </div>
-                <div>
-                  <button
-                    onClick={() => setActiveMenu("bulk")}
-                    className="w-full text-left text-sm text-yellow-700 hover:text-yellow-950 font-semibold py-1.5"
-                  >
-                    일괄 업로드 페이지로 이동 →
-                  </button>
-                </div>
-              </div>
-              )}
 
               {/* Student Discipline Widget */}
               <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -629,6 +596,19 @@ export default function AdminPage() {
                       <span>🔒</span>
                       <span>개인정보 고지 현황</span>
                     </button>
+
+                    {/* 작업 감사 로그 — 벌크 업로드(미구현 자리) 제거로 추가 도구 섹션을 없애며 이곳으로 이동 (2026-08-06) */}
+                    <button
+                      onClick={() => setActiveMenu("logs")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "logs"
+                          ? "bg-indigo-800 text-white"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>🛡️</span>
+                      <span>작업 감사 로그</span>
+                    </button>
                   </div>
 
                   {/* 사용자 및 조직 관리 */}
@@ -707,37 +687,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* 추가 도구 */}
-                  <div>
-                    <div className="border-t border-indigo-900/50 my-2 pt-2 px-4 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
-                      🛠️ 추가 도구
-                    </div>
-                    <div className="space-y-1">
-                      <button
-                        onClick={() => setActiveMenu("bulk")}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          activeMenu === "bulk"
-                            ? "bg-indigo-800 text-white"
-                            : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        <span>📥</span>
-                        <span>벌크 업로드</span>
-                      </button>
-
-                      <button
-                        onClick={() => setActiveMenu("logs")}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          activeMenu === "logs"
-                            ? "bg-indigo-800 text-white"
-                            : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        <span>🛡️</span>
-                        <span>작업 감사 로그</span>
-                      </button>
-                    </div>
-                  </div>
                 </div>
               )}
             </nav>
@@ -786,7 +735,6 @@ export default function AdminPage() {
                 {activeMenu === "users" && "사용자 전체관리"}
                 {activeMenu === "settings" && "Workspace 환경 설정"}
                 {activeMenu === "ou_manage" && "GWS 조직단위 관리"}
-                {activeMenu === "bulk" && "명단 벌크 업로드"}
                 {activeMenu === "forms" && "생활지도 기록 작성"}
                 {activeMenu === "logs" && "작업 감사 로그"}
                 {activeMenu === "policy_ack" && "개인정보 처리 안내 고지 현황"}
