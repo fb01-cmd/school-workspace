@@ -1669,3 +1669,15 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - 검증 상태: tsc ✅ / build ✅
 - 다음 할 일: 개학 전 기능 3건 통합 스펙 설계(Claude) 및 동시수업 원본 확보/지정
 - 주의: 학생 포털에는 컴포넌트 내장 게이트를 그대로 신뢰하여 추가 권한 분기 없이 마운트됨
+
+## [2026-08-06] Claude → 개학 전 3건 통합 스펙 확정 (docs/pre_opening_3features_spec.md)
+
+- **스펙 작성 완료**: A 동시수업 교체 불가(등록부 모델 timetable_simul_groups + isSimulCell 단일 판정 + 엔진 하드 제외·커밋 검증 이중 방어 + 그리드 표시 + 등록부 UI), B 학사일정 주차 파생(timetable_calendar 이벤트 + 공휴일 내장 표 + 조회 시 지연 생성·수동 우선), C 목표 지향 체인(chain_search 액션, maxDepth 2, 담기 호환 출력 — 기존 cart·일괄 반영 흐름 재사용).
+- **핵심 발견 명시**: 기존 엔진의 동시수업 하드 제외(셀 내 lessons 2개↑)는 변환 데이터에서 분반을 못 잡음(반마다 단일 lesson으로 보임) — 등록부가 유일 해법임을 스펙에 근거로 기록.
+- **우선순위**: A = 개학 전 필수(서버부는 목록 없이도 구현 가능 — 8/7 Claude 직접), B = best-effort(첫 주는 수동 등록), C = 개학 후. D-일정표 스펙 §D.
+- **분업**: A 서버·엔진·등재 스크립트 = Claude 직접(위험 지점), 등록부 UI·그리드 표시 = Antigravity, B·C도 서버 = Claude / 화면 = Antigravity.
+
+### 재개 문구 (다음 대화)
+- Claude 구현 착수: *"project_notes.md 마지막 체크포인트를 읽어줘. 스펙 A(동시수업) 서버부 구현 시작해줘."* (목록 수령 전이라도 가능)
+- 목록 받은 뒤: *"project_notes.md 마지막 체크포인트를 읽어줘. 동시수업 목록 받아왔어: (붙여넣기). 등재하고 검증 결과 보여줘."*
+- Antigravity(화면): *"docs/pre_opening_3features_spec.md의 A-3(3)·A-4를 읽고, 이동수업 등록부 탭과 그리드 구분 표시를 구현해줘. 서버 액션(simul_list/save/delete)은 Claude가 만들 예정이니 먼저 착수돼 있으면 계약(A-2 모델)대로 맞춰. tsc·build 검증 후 ④ 양식으로 project_notes에 보고까지 남겨."*
