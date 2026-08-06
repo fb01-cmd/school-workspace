@@ -27,6 +27,10 @@ export interface ShareCardData {
 
 export interface ConsolidatedShareData {
   requesterName: string;
+  /** §14-4: 발신자 표기 재정의 (예: "일과계 ○○○") — 없으면 "{requesterName} 교사". 직권 카드는 조작자 명의로 양해를 구한다 */
+  senderLabel?: string;
+  /** §14-4: 교환 목록에서 수업 소유자 표기 — 없으면 "제"(교사 본인 발신). 직권 카드는 "○○○ 선생님의" */
+  ownerLabel?: string;
   counterpartName: string;
   items: SwapDraft[] | Array<{
     id?: string;
@@ -270,7 +274,7 @@ export function OffscreenConsolidatedCard({
             안녕하세요, {data.counterpartName} 선생님! 👋
           </div>
           <div className="text-gray-700 leading-relaxed text-xs">
-            <span className="font-bold text-indigo-900">{data.requesterName} 교사</span>입니다.<br />
+            <span className="font-bold text-indigo-900">{data.senderLabel || `${data.requesterName} 교사`}</span>입니다.<br />
             {n > 1
               ? `아래 ${n}건의 수업 교체가 가능할지 여쭙습니다. 😊`
               : "아래 일정으로 수업 교체가 가능할까요? 😊"}
@@ -295,7 +299,7 @@ export function OffscreenConsolidatedCard({
                     선생님의 {d.source.grade}-{d.source.classNum}반 {d.candidate.counterpartSubjectName || "수업"} : {tgtSlot} → {srcSlot}
                   </div>
                   <div className="font-bold text-emerald-900">
-                    제 {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} : {srcSlot} → {tgtSlot}
+                    {data.ownerLabel || "제"} {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} : {srcSlot} → {tgtSlot}
                   </div>
                 </div>
               </div>

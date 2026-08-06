@@ -40,7 +40,7 @@ export interface CartItem extends DirectPendingOverlayItem {
 }
 
 export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTabProps) {
-  const { userData } = useAuth();
+  const { user, teacherProfile } = useAuth();
 
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [selectedWeekId, setSelectedWeekId] = useState<string>("");
@@ -330,7 +330,18 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         });
         return { weekId: wId, startDate: wObj?.startDate || wId, cells, markers };
       }));
-      const shareData: ConsolidatedShareData = { requesterName: selectedTeacherName || "일과계", counterpartName, items: counterpartItems.map((ci) => ({ id: ci.id, sourceWeekId: ci.weekId, targetWeekId: ci.targetWeekId, source: ci.source, candidate: ci.candidate })), weekBlocks, periodsPerDay: 7 };
+      // 양해를 구하는 주체는 화면을 조작 중인 일과계/어드민 본인 — 수업 당사자(선택 교사) 명의가 아니다 (2026-08-06 사용자 확정).
+      // 교환 목록의 수업 소유자 표기는 선택 교사 이름으로 명시해 "제 수업"으로 오독되지 않게 한다.
+      const operatorName = teacherProfile?.name || user?.displayName || "일과 담당자";
+      const shareData: ConsolidatedShareData = {
+        requesterName: operatorName,
+        senderLabel: `일과계 ${operatorName}`,
+        ownerLabel: selectedTeacherName ? `${selectedTeacherName} 선생님의` : "해당",
+        counterpartName,
+        items: counterpartItems.map((ci) => ({ id: ci.id, sourceWeekId: ci.weekId, targetWeekId: ci.targetWeekId, source: ci.source, candidate: ci.candidate })),
+        weekBlocks,
+        periodsPerDay: 7,
+      };
       setConsolidatedShareData(shareData);
       setTimeout(() => { copyShareImageElement(consolidatedCardRef.current).finally(() => setGeneratingShareFor(null)); }, 100);
     } catch (err: any) { alert(`양해 요청 카드 생성 실패: ${err.message}`); setGeneratingShareFor(null); }
