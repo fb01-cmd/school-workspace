@@ -1729,3 +1729,9 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - 검증 상태: tsc ✅ / build ✅
 - 다음 할 일: 실기기/실데이터 점검 및 개학 전 3건 연동 확인
 - 주의: 개정 탭에 임시저장 검증 경고 표시(warnings) 및 적용 확정 모달(적용 시작주 effectiveFrom 기본값: 차주 월요일 명시)이 정상 연동됨
+
+## [2026-08-07] Claude → 화면 2종(a5fc29e) 표적 리뷰 승인 + 보강 1건 — 개학 전 3건 실기기 통합 검증 준비 완료
+
+- **리뷰 (수정 0건·보강 1건)**: 계약 사용 전부 정합(calendar_save calendarEvent/calendarEventId·revision_save_draft revisionOps/revisionId/revisionNote·revision_apply effectiveFrom), 임시저장 경고 표시·적용 확정 모달(차주 월요일 기본, KST 계산 검증) 정상, periodsByGrade 문자열 키 정확, 탭 게이트 기존 일과계 섹션 패턴. ④ 양식 보고 준수(2회 연속).
+- **보강 (Claude, 서버)**: 개정 탭 셀 편집이 교사 이름만 보내면 이메일 공란 → 엔진이 가상 교사로 취급해 그 수업이 교체 불가가 되는 함정. saveRevisionDraft에서 기초 그리드 유일 동명 매칭으로 이메일 자동 보충, 실패·동명 다수는 사람 눈높이 경고 반환("이 수업은 교체 대상에서 빠집니다"). tsc 0·build ✅ 재실측.
+- **경미 후속 (비차단 메모)**: 개정 탭의 편집 기준 그리드가 view class(오늘 주 판) — 개정을 겹쳐 만들 때만 기준판 어긋남 가능(전환 주 한정). 필요 시 "최신 적용판 기준" 조회 파라미터 추가.

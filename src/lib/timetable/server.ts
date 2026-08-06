@@ -1412,6 +1412,39 @@ export async function saveRevisionDraft(
       createdAt = existing.createdAt || createdAt;
     }
   }
+  // 편집 기준판 = 최신 적용 기초 (모든 applied 개정 반영)
+  const latestBase = await loadBaseGridsForWeek(domain, termId, "9999-12-31");
+
+  // edit_cell 교사 이메일 자동 해석 — 화면에서 이름만 입력한 경우 기초 그리드의 유일
+  // 동명 교사 이메일을 보충한다. 이메일 없는 교사는 엔진이 가상 교사로 취급해 그 수업이
+  // 교체 불가가 되므로(§4-3), 해석 실패는 경고로 알린다.
+  const nameToEmails = new Map<string, Set<string>>();
+  for (const g of latestBase)
+    for (const c of g.cells || [])
+      for (const l of c.lessons || [])
+        for (const t of l.teachers || []) {
+          if (!t.name || !t.email) continue;
+          if (!nameToEmails.has(t.name)) nameToEmails.set(t.name, new Set());
+          nameToEmails.get(t.name)!.add(t.email.trim().toLowerCase());
+        }
+  const resolveWarnings: string[] = [];
+  for (const op of ops) {
+    if (op.type !== "edit_cell") continue;
+    for (const t of op.lessons.flatMap((l) => l.teachers || [])) {
+      if (t.email || !t.name) continue;
+      const found = nameToEmails.get(t.name);
+      if (found && found.size === 1) {
+        t.email = [...found][0];
+      } else {
+        resolveWarnings.push(
+          found && found.size > 1
+            ? `"${t.name}" 선생님이 여러 명이라 계정을 자동으로 찾지 못했습니다 — 이 수업은 교체 대상에서 빠집니다.`
+            : `"${t.name}" 선생님의 계정을 찾지 못했습니다 — 이 수업은 교체 대상에서 빠집니다.`
+        );
+      }
+    }
+  }
+
   const revision: TimetableBaseRevision = {
     id: ref.id,
     termId,
@@ -1422,9 +1455,8 @@ export async function saveRevisionDraft(
     createdAt,
   };
   await ref.set({ ...revision, updatedBy: userEmail.toLowerCase(), updatedAt: Date.now() });
-  // 미리보기 검증: 최신 적용 기초(모든 applied 반영) 위에 가상 적용
-  const latestBase = await loadBaseGridsForWeek(domain, termId, "9999-12-31");
-  const warnings = applyRevisionOps(cloneClassGrids(latestBase), ops);
+  // 미리보기 검증: 최신 적용 기초 위에 가상 적용
+  const warnings = [...resolveWarnings, ...applyRevisionOps(cloneClassGrids(latestBase), ops)];
   return { revision, warnings };
 }
 
