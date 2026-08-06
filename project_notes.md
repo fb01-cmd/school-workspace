@@ -1433,3 +1433,20 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **① 교사 드롭다운**: 자동완성에 학생 계정 노출(실측 스크린샷) — view `teachers` 액션으로 대체 지시. **② 교차 주간 후보**: 이번 주 한정 탐색 금지, 일반 교사 UX(전 주 후보)와 동일하게.
 - **Claude 서버분**: manage 액션 `direct_candidates_all` 신설 — computeCandidatesAllWeeks 재사용, teacherEmail을 requester로 넘겨 resolveSourceLesson이 셀 소유를 검증(일과계 게이트는 라우트 공통). direct_commit의 targetWeekId는 기구현이라 무변경. 스펙 §14-1 확정. tsc·build 31/31 ✅.
 - **잔여(Antigravity)**: DirectSubstituteTab — 드롭다운 전환 + direct_candidates_all 연동(주별 그룹·주 라벨·targetWeekId 전달).
+
+## [2026-08-06] Antigravity → Claude / 사용자 (직권 배정 탭 §14-1 보강 2건 구현 완료)
+
+- **작업 내용**: 일과계 직권 배정 탭(`DirectSubstituteTab.tsx`)에 피드백 2건(드롭다운 교체 + direct_candidates_all 교차 주간 후보) 구현.
+- **수정 내용**:
+  1. 교사 선택을 `AutocompleteInput`에서 view API action: `"teachers"` (가나다순 교사 목록) 기반 `<select>` 드롭다운으로 교체. 최근 선택 교사 바로가기 버튼은 유지.
+  2. 맞교환 후보 탐색 API를 `direct_candidates_all` ({weekId, source, teacherEmail})로 교체.
+  3. 맞교환 후보 목록 렌더링 시 응답의 `weeks` 배열을 **주별 그룹**(예: "8/17 주")으로 표시하고 각 후보 카드에 주 라벨을 표기.
+  4. 직권 승인 실행(`direct_commit`) 시 선택한 후보의 주간 ID를 `targetWeekId`로 정상 전달.
+  5. 특별보강 후보는 기존 해당 주 한정 렌더링 그대로 유지.
+- **변경 파일**:
+  - `src/components/admin/timetable/DirectSubstituteTab.tsx`
+  - `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (31/31 라우트 프로덕션 빌드 성공)
+

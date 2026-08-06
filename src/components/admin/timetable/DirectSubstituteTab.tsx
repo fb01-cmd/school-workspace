@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import {
   SubstituteCandidate,
   SwapCandidate,
@@ -16,6 +15,13 @@ interface DirectSubstituteTabProps {
   activeTermId: string | null;
 }
 
+interface WeekCandidateGroup {
+  weekId: string;
+  startDate: string;
+  note?: string;
+  swapCandidates: SwapCandidate[];
+}
+
 export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTabProps) {
   const { userData } = useAuth();
   const domain = userData?.domain || userData?.email?.split("@")[1] || "hmh.or.kr";
@@ -23,8 +29,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [selectedWeekId, setSelectedWeekId] = useState<string>("");
 
+  // 교사 목록 (action: "teachers" — 가나다순 교사 목록)
+  const [teacherList, setTeacherList] = useState<Array<{ email: string; name: string }>>([]);
+  const [teacherListLoading, setTeacherListLoading] = useState(false);
+
   // Step 1: 교사 선택 상태
-  const [teacherInput, setTeacherInput] = useState("");
   const [selectedTeacherEmail, setSelectedTeacherEmail] = useState("");
   const [selectedTeacherName, setSelectedTeacherName] = useState("");
   const [recentTeachers, setRecentTeachers] = useState<Array<{ email: string; name: string }>>([]);
@@ -50,7 +59,9 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     teacherName?: string;
   } | null>(null);
 
-  const [swapCandidates, setSwapCandidates] = useState<SwapCandidate[]>([]);
+  // direct_candidates_all 응답의 주별 맞교환 후보 그룹
+  const [swapCandidateWeeks, setSwapCandidateWeeks] = useState<WeekCandidateGroup[]>([]);
+  // 특별보강 후보 (해당 주 한정)
   const [substituteCandidates, setSubstituteCandidates] = useState<SubstituteCandidate[]>([]);
   const [activeCandidateType, setActiveCandidateType] = useState<"swap" | "substitute">("swap");
 
@@ -61,6 +72,28 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // 교사 목록 로딩 (action: "teachers")
+  const fetchTeachers = async () => {
+    setTeacherListLoading(true);
+    try {
+      const res = await fetch("/api/timetable/view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "teachers" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.data)) {
+          setTeacherList(data.data);
+        }
+      }
+    } catch {
+      // 무시
+    } finally {
+      setTeacherListLoading(false);
+    }
+  };
 
   // 주 목록 조회
   const fetchWeeks = async () => {
@@ -84,12 +117,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   };
 
   useEffect(() => {
+    fetchTeachers();
     fetchWeeks();
   }, [activeTermId]);
 
-  // 교사 주간 시간표 조회 — 대상 주간(weekId)을 반드시 함께 보낸다.
-  // 미지정 시 서버가 "현재 주"로 폴백하므로, 일과계가 고른 주간과 그리드 내용이
-  // 어긋난다 (이미 교체가 반영된 주간일수록 오배정 위험).
+  // 교사 주간 시간표 조회 — 대상 주간(weekId) 전달
   const fetchTeacherTimetable = async (email: string, weekId?: string) => {
     if (!email) return;
     setLoadingTimetable(true);
@@ -129,10 +161,20 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
   // 교사 선택 처리
   const handleSelectTeacher = (email: string, name?: string) => {
-    const finalName = name || email.split("@")[0];
+    if (!email) {
+      setSelectedTeacherEmail("");
+      setSelectedTeacherName("");
+      setTeacherCells([]);
+      setSelectedSlot(null);
+      setSwapCandidateWeeks([]);
+      setSubstituteCandidates([]);
+      setSelectedCandidate(null);
+      return;
+    }
+
+    const finalName = name || teacherList.find((t) => t.email.toLowerCase() === email.toLowerCase())?.name || email.split("@")[0];
     setSelectedTeacherEmail(email);
     setSelectedTeacherName(finalName);
-    setTeacherInput(finalName);
 
     // 최근 선택한 교사 목록 업데이트 (최대 5명 중복제거)
     setRecentTeachers((prev) => {
@@ -143,7 +185,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     // 슬롯 및 후보 목록 초기화
     setSelectedSlot(null);
     setSourceLessonInfo(null);
-    setSwapCandidates([]);
+    setSwapCandidateWeeks([]);
     setSubstituteCandidates([]);
     setSelectedCandidate(null);
     setCandidateError(null);
@@ -159,7 +201,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setSelectedWeekId(weekId);
     setSelectedSlot(null);
     setSourceLessonInfo(null);
-    setSwapCandidates([]);
+    setSwapCandidateWeeks([]);
     setSubstituteCandidates([]);
     setSelectedCandidate(null);
     setSuccessMsg(null);
@@ -169,7 +211,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     }
   };
 
-  // 후보 탐색 API 호출 (셀 클릭 시 실행)
+  // 후보 탐색 API 호출 (direct_candidates_all 사용)
   const fetchCandidates = async (
     weekId: string,
     grade: number,
@@ -185,7 +227,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
     setLoadingCandidates(true);
     setCandidateError(null);
-    setSwapCandidates([]);
+    setSwapCandidateWeeks([]);
     setSubstituteCandidates([]);
     setSelectedCandidate(null);
     setSuccessMsg(null);
@@ -196,9 +238,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "direct_candidates",
+          action: "direct_candidates_all",
           weekId,
           source: { grade, classNum, day, period },
+          teacherEmail: selectedTeacherEmail,
         }),
       });
 
@@ -208,7 +251,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           subjectName: data.sourceSubjectName || data.sourceTeacher?.subjectName || subjectName,
           teacherName: data.sourceTeacher?.teacherName || selectedTeacherName,
         });
-        setSwapCandidates(data.swapCandidates || []);
+        setSwapCandidateWeeks(data.weeks || []);
         setSubstituteCandidates(data.substituteCandidates || []);
       } else {
         setCandidateError(data.error || "후보를 탐색할 수 없습니다.");
@@ -256,8 +299,9 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     try {
       let candidateSnapshot: any;
       if (activeCandidateType === "swap") {
-        const sc = selectedCandidate as SwapCandidate;
+        const sc = selectedCandidate as any;
         candidateSnapshot = {
+          targetWeekId: sc.targetWeekId || selectedWeekId, // 선택된 교차 주의 weekId 전달
           targetDay: sc.targetDay,
           targetPeriod: sc.targetPeriod,
           counterpartEmail: sc.counterpartEmail,
@@ -335,6 +379,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     return teacherCells.filter((c) => c.day === d && c.period === p);
   };
 
+  const totalSwapCount = swapCandidateWeeks.reduce(
+    (acc, w) => acc + (w.swapCandidates?.length || 0),
+    0
+  );
+
   const DAYS = [
     { num: 1, label: "월요일" },
     { num: 2, label: "화요일" },
@@ -352,7 +401,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           <span>일과계 직권 배정 (교사 기점 흐름)</span>
         </h2>
         <p className="text-xs text-gray-500 mt-1">
-          교사를 먼저 선택한 후 주간 시간표에서 변경할 수업 셀을 직접 클릭하여 직권으로 맞교환 또는 특별보강 교사를 선택하고 반영합니다.
+          교사를 선택한 후 주간 시간표에서 변경할 수업 셀을 직접 클릭하여 직권으로 맞교환(전체 주간 검색) 또는 특별보강 교사를 선택하고 즉시 반영합니다.
         </p>
       </div>
 
@@ -389,18 +438,28 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             </select>
           </div>
 
-          {/* 교사 자동완성 선택 */}
+          {/* 교사 드롭다운 선택 (view "teachers" 액션 기반 가나다순) */}
           <div className="md:col-span-2">
-            <label className="block text-xs font-bold text-gray-700 mb-1">2️⃣ 대상 교사 검색 및 선택</label>
-            <AutocompleteInput
-              type="user"
-              domain={domain}
-              value={teacherInput}
-              onChange={(val) => setTeacherInput(val)}
-              placeholder="교사 이름 또는 이메일 검색 (예: 홍길동)"
-              onSelect={(email, name) => handleSelectTeacher(email, name)}
-              className="text-xs"
-            />
+            <label className="block text-xs font-bold text-gray-700 mb-1">2️⃣ 대상 교사 선택 (가나다순)</label>
+            <select
+              value={selectedTeacherEmail}
+              onChange={(e) => {
+                const email = e.target.value;
+                const found = teacherList.find((t) => t.email.toLowerCase() === email.toLowerCase());
+                handleSelectTeacher(email, found?.name);
+              }}
+              disabled={teacherListLoading}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg font-semibold bg-white text-xs disabled:opacity-60"
+            >
+              <option value="">-- 교사를 선택해 주세요 --</option>
+              {teacherListLoading && <option value="">교사 목록 불러오는 중...</option>}
+              {!teacherListLoading &&
+                teacherList.map((t) => (
+                  <option key={t.email} value={t.email}>
+                    {t.name} ({t.email})
+                  </option>
+                ))}
+            </select>
           </div>
         </div>
 
@@ -438,7 +497,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                 <span>{selectedTeacherName} 교사의 주간 시간표</span>
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                직권 배정할 원 수업 셀을 클릭하면 하단에 맞교환 및 특별보강 가능 후보가 즉시 탐색됩니다.
+                직권 배정할 원 수업 셀을 클릭하면 하단에 주별 맞교환 및 특별보강 가능 후보가 즉시 탐색됩니다.
               </p>
             </div>
             {loadingTimetable && (
@@ -550,7 +609,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500 space-y-2">
           <span className="text-3xl">👈</span>
-          <p className="font-bold text-gray-800 text-sm">위 2단계 검색창에서 직권 배정할 대상 교사를 선택해 주세요.</p>
+          <p className="font-bold text-gray-800 text-sm">위 2단계 드롭다운에서 직권 배정할 대상 교사를 선택해 주세요.</p>
           <p className="text-xs text-gray-400">교사를 선택하면 해당 교사의 주간 시간표가 표시되고, 셀을 클릭해 직권 배정을 진행합니다.</p>
         </div>
       )}
@@ -587,7 +646,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                     : "text-gray-600 hover:text-gray-900"
                 }`}
               >
-                ↔️ 맞교환 후보 ({swapCandidates.length})
+                ↔️ 맞교환 후보 ({totalSwapCount})
               </button>
               <button
                 type="button"
@@ -608,67 +667,98 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
           {loadingCandidates && (
             <div className="p-8 text-center text-xs text-indigo-600 font-semibold animate-pulse">
-              🔍 선택한 슬롯의 최적 맞교환 및 특별보강 후보를 탐색 중입니다...
+              🔍 선택한 슬롯의 전체 주간 맞교환 및 특별보강 후보를 탐색 중입니다...
             </div>
           )}
 
           {!loadingCandidates && activeCandidateType === "swap" && (
-            <div className="space-y-3">
-              {swapCandidates.length === 0 ? (
+            <div className="space-y-6">
+              {totalSwapCount === 0 ? (
                 <div className="p-8 text-center text-xs text-gray-500 bg-gray-50 rounded-xl">
-                  선택한 슬롯에 적용 가능한 맞교환 후보가 없습니다. (동시수업/특별실 충돌 등 하드 차단 사유 확인)
+                  선택한 슬롯에 적용 가능한 맞교환 후보가 전 주간에 걸쳐 없습니다. (동시수업/특별실 충돌 등 하드 차단 사유 확인)
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                  {swapCandidates.map((cand, idx) => {
-                    const isSelected =
-                      selectedCandidate?.targetDay === cand.targetDay &&
-                      selectedCandidate?.targetPeriod === cand.targetPeriod &&
-                      selectedCandidate?.counterpartEmail === cand.counterpartEmail;
+                swapCandidateWeeks.map((weekGroup) => {
+                  const candidates = weekGroup.swapCandidates || [];
+                  if (candidates.length === 0) return null;
 
-                    return (
-                      <div
-                        key={idx}
-                        onClick={() => setSelectedCandidate(cand)}
-                        className={`p-4 rounded-xl border cursor-pointer transition-all space-y-2 ${
-                          isSelected
-                            ? "bg-indigo-50 border-indigo-500 ring-2 ring-indigo-200"
-                            : "bg-white border-gray-200 hover:border-indigo-300"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-gray-900">
-                            {formatSlotWithDate(selectedWeekId, cand.targetDay, cand.targetPeriod)}
-                          </span>
-                          <span className="font-bold text-indigo-700">
-                            상대: {cand.counterpartName} ({cand.counterpartSubjectName})
-                          </span>
-                        </div>
-
-                        <div className="text-gray-500 text-[11px]">
-                          상대 이메일: {cand.counterpartEmail}
-                        </div>
-
-                        {cand.penalties && cand.penalties.length > 0 ? (
-                          <div className="flex flex-wrap items-center gap-1 text-[10px]">
-                            <span className="font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                              감점 {cand.score}점:
-                            </span>
-                            {cand.penalties.map((p, pIdx) => (
-                              <span key={pIdx} className="bg-red-100 text-red-800 px-1.5 py-0.5 rounded">
-                                {p}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded w-max">
-                            ✨ 감점 0점 (최적 교환)
-                          </div>
-                        )}
+                  return (
+                    <div key={weekGroup.weekId} className="space-y-3">
+                      {/* 주간 구분 헤더 */}
+                      <div className="flex items-center space-x-2 pt-2 border-t border-gray-100">
+                        <span className="text-xs font-bold text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100">
+                          📅 {weekGroup.startDate} 주간 {weekGroup.note ? `(${weekGroup.note})` : ""}
+                        </span>
+                        <span className="text-[11px] text-gray-500 font-medium">
+                          (후보 {candidates.length}건)
+                        </span>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        {candidates.map((cand, idx) => {
+                          const isSelected =
+                            selectedCandidate?.targetWeekId === weekGroup.weekId &&
+                            selectedCandidate?.targetDay === cand.targetDay &&
+                            selectedCandidate?.targetPeriod === cand.targetPeriod &&
+                            selectedCandidate?.counterpartEmail === cand.counterpartEmail;
+
+                          return (
+                            <div
+                              key={idx}
+                              onClick={() =>
+                                setSelectedCandidate({
+                                  ...cand,
+                                  targetWeekId: weekGroup.weekId,
+                                  targetWeekStartDate: weekGroup.startDate,
+                                })
+                              }
+                              className={`p-4 rounded-xl border cursor-pointer transition-all space-y-2 ${
+                                isSelected
+                                  ? "bg-indigo-50 border-indigo-500 ring-2 ring-indigo-200"
+                                  : "bg-white border-gray-200 hover:border-indigo-300"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-1.5 font-bold text-gray-900">
+                                  <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-1.5 py-0.5 rounded">
+                                    {weekGroup.startDate.slice(5)} 주
+                                  </span>
+                                  <span>
+                                    {formatSlotWithDate(weekGroup.weekId, cand.targetDay, cand.targetPeriod)}
+                                  </span>
+                                </div>
+                                <span className="font-bold text-indigo-700">
+                                  상대: {cand.counterpartName} ({cand.counterpartSubjectName})
+                                </span>
+                              </div>
+
+                              <div className="text-gray-500 text-[11px]">
+                                상대 이메일: {cand.counterpartEmail}
+                              </div>
+
+                              {cand.penalties && cand.penalties.length > 0 ? (
+                                <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                                  <span className="font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                                    감점 {cand.score}점:
+                                  </span>
+                                  {cand.penalties.map((p, pIdx) => (
+                                    <span key={pIdx} className="bg-red-100 text-red-800 px-1.5 py-0.5 rounded">
+                                      {p}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded w-max">
+                                  ✨ 감점 0점 (최적 교환)
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
           )}
