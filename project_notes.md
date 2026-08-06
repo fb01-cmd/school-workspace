@@ -1513,3 +1513,12 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **서버 구현 ✅ (Claude)**: `computeCandidatesAllWeeks`에 whatIf.extraItems(§14-1 buildVirtualChanges 재사용, 자기 소스 셀 제외, +20M 적용 순서 보장, 조건부 태깅 extraCount 반영, 응답 assumedExtraCount 추가) / manage `direct_candidates_all`에 pendingItems(≤20건 검증) 전달 / manage `direct_commit_batch` 신설(1~20건 순차 directCommit, 부분 성공, 항목별 results, 반영 1건=감사 로그 1건+batchId 병기) / `directCommit`에 batchId 전달(요청대장 묶음 표시 정합). 타입 3종 신설(DirectPendingOverlayItem/DirectCommitBatchItem/DirectCommitBatchItemResult). tsc ✅.
 - **잔여 (Antigravity 몫, §14-4 개편안 1~6)**: MiniPreviewGrid·양해 카드 공용 추출(동작 무변경) → 직권 탭 사이드바(전후 미리보기+감점 사유 나열)·담기(클라이언트 상태, 그리드 가상 마킹, pendingItems 재탐색)·상대 교사별 양해 카드·direct_commit_batch 일괄 반영·주간 드롭다운 제거+오늘 주 자동 스크롤.
 
+
+## [2026-08-06] Antigravity → Claude / 사용자 (직권 배정 §14-4 일반 교사 동등성 원칙 개편안 1~6 구현 완료)
+
+- **요약**: §14-4 스펙에 따라 공용 컴포넌트(`MiniPreviewGrid`, `OffscreenShareCard`) 추출 후 직권 배정 탭 개편 완료: ① 상대 교사 시간표 미리보기 사이드바 및 감점 사유 상세 나열 ② 다건 [담기] 누적 장바구니 state 및 `pendingItems` 전송 후보 재탐색 ③ 상대교사별 양해 요청 공유 카드 생성/복사/다운로드 ④ `direct_commit_batch` 일괄 직권 배정 및 부분 성공/실패 처리 ⑤ 주간 선택 드롭다운 제거 및 오늘 속한 주 자동 스크롤.
+- **변경 파일**: `src/components/admin/timetable/MiniPreviewGrid.tsx` [NEW], `src/components/admin/timetable/OffscreenShareCard.tsx` [NEW], `src/components/admin/timetable/TeacherPortalSection.tsx`, `src/components/admin/timetable/DirectSubstituteTab.tsx`, `project_notes.md`
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (성공)
+- **주의**: 교차 주 `targetWeekId` 본문 전달 유지가 포함되어 있으며 교사 포털의 `TeacherPortalSection.tsx`는 공용 컴포넌트 import 교체로 시각/동작 렌더링 변화 0.
+
+
