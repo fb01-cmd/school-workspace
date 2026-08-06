@@ -1705,3 +1705,16 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ## [2026-08-06] 사용자 → 기초시간표 개정 요구 (개학 첫 주 수정 → 다음 주 적용) — 로드맵 등재
 
 - 실무: 개학 첫 주에 학기 시간표 자체를 바꾸는 교사들이 있음 → 일과계가 기초시간표를 주간 변경처럼 수정하되, **반영은 다음 주부터**(그 주의 출장 교체와 꼬임 방지 — 실무 관행 그대로). 로드맵 §2 등재, 설계 방향(개정판+effectiveFrom, integrityWarnings 안전망) 포함. 스펙·구현은 개학 첫 주 내(§B와 같은 사이클).
+
+## [2026-08-06] Claude → §B(학사일정)·§E(기초시간표 개정) 통합 스펙 확정 + 서버부 구현 완료
+
+- **스펙**: docs/pre_opening_3features_spec.md에 §B-보강(공휴일 표·파생 규칙·지연 생성 지점·calendar 액션)과 §E(개정판 모델·ops 2종·주차별 기초 선택·manage 액션·화면 §E-4) 추가.
+- **§B 구현**: `holidays.ts` 2026-2 공휴일 정적 표(광복절 대체 8/17·개천절 대체 10/5·추석 9/24~25·설 연휴 2/5·2/8 등 — 무료 원칙, 외부 API 없음), `timetable_calendar` 이벤트 모델+검증, `deriveWeekInput`(공휴일∪이벤트, 휴업 우선), `ensureDerivedWeeks`(week_list 시 오늘 주~publishWeeksAhead(설정, 기본 2)주 지연 생성 — **수동 등록 주 절대 불변**), manage 액션 calendar_list/save/delete(감사 로그, 소급 미변경 명시).
+- **§E 구현**: `timetable_base_revisions` 모델(draft 학기당 1개·applied 불변), ops 검증(swap/edit_cell, 최대 200건), `saveRevisionDraft`(저장+최신 기초 가상 적용 경고 반환), `applyRevisionDraft`(기본 다음 주 월요일, 월요일 강제, **이번 주 이하 소급 금지**), `loadBaseGridsByWeek` — 주차별 기초 해석(적용 개정판 순서 적용+동시수업 라벨 재스탬프, 동일 상태 주는 참조 공유). **전 경로 재배선**: synthesizeWeek·computeDirectProjectedWeeks·computeMyProjectedWeeks·computeCandidatesAllWeeks(조건부 base 포함)·validatePendingSwapRequests·approveSwapRequest(교차 주는 양주 기초 각각)·view 기초/학급 열람(주 미지정 시 오늘 주 판).
+- **실측**: tsc 0 에러 · build 성공(1회 OOM → `NODE_OPTIONS=--max-old-space-size=4096` 재시도로 통과 — 운영 노트) · 스모크: 8/17 주 파생이 대체공휴일(광복절) 휴업 정상 반영, ensureDerivedWeeks 실행으로 2026-08-03 주 자동 생성(방학 주라 무해), 개정 swap 인메모리 정상(철학↔수학), 개정 0건 시 주간 기초 참조 공유 확인.
+- **운영 발견·정정 ✅**: 수동 등록된 8/10~8/31 주 4개 중 **8/17 주가 월요일 대체공휴일(광복절) 누락** — 공휴일에 교체 배정이 허용되는 함정. updateWeek로 휴업 반영 정정+감사 로그. (개학 첫 주 8/10은 admin@가 이미 등록해둔 상태였음 — 개학 전 필수 "첫 주 등록"은 해소돼 있었음을 실측.)
+- **잔여 (Antigravity 화면 2종)**: ① 학사일정 관리 탭(이벤트 목록+추가/수정/삭제 — calendar_* 액션) ② 기초시간표 개정 탭(spec §E-4 — 그리드 셀 편집·변경 목록·[다음 주부터 적용]·개정 이력). 실기기 확인은 화면 후.
+
+### 재개 문구 (다음 대화)
+- 동시수업 목록 오면: *"project_notes.md 마지막 체크포인트를 읽어줘. 동시수업 목록 받아왔어: (붙여넣기). 등재하고 검증 결과 보여줘."*
+- Antigravity(화면 2종): *"docs/pre_opening_3features_spec.md §B-보강·§E를 읽고, 시간표 관리에 ① 학사일정 관리 탭(calendar_list/save/delete) ② 기초시간표 개정 탭(§E-4 — revision_save_draft 경고 표시·revision_apply 확인창에 적용 시작일 명시)을 구현해줘. 서버 액션·계약은 전부 구현돼 있음. tsc·build 검증 후 ④ 양식으로 project_notes에 보고까지 남겨."*

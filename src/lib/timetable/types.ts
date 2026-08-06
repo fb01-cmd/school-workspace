@@ -15,6 +15,55 @@ export interface TimetableSettings {
   observerEmails: string[]; // 열람 전용 참관자(교무부장 등) — 요청대장 읽기만 (phase9b_spec §5)
   teacherOpen?: boolean; // 오픈 게이트: true면 전 교사에게 '내 시간표' 노출 (기본 false)
   teacherPilotEmails?: string[]; // 오픈 게이트 전 파일럿 허용 명단 — 테스트·실무사 계정만 교사 화면 접근 (2026-08-04)
+  publishWeeksAhead?: number; // 학사일정 주차 자동 파생 범위 — 오늘 주부터 몇 주 앞까지 (기본 2, pre_opening_3features_spec §B)
+}
+
+// ── 학사일정 (pre_opening_3features_spec §B) ────────────────────
+
+export type CalendarEventType = "휴업일" | "재량휴업" | "단축수업" | "고사";
+
+export interface TimetableCalendarEvent {
+  id?: string;
+  termId: string;
+  type: CalendarEventType;
+  startDate: string; // "YYYY-MM-DD" (단일일은 start=end)
+  endDate: string;
+  periodsByGrade?: Record<string, number>; // 단축수업·고사 — 요일별 시수
+  note?: string;
+  createdBy?: string;
+  createdAt?: number;
+}
+
+// ── 기초시간표 개정 (pre_opening_3features_spec §E) ─────────────
+
+export type BaseRevisionOp =
+  | {
+      type: "swap"; // 같은 학급 두 슬롯 맞바꿈 (빈 슬롯 허용 = 이동)
+      grade: number;
+      classNum: number;
+      a: { day: number; period: number };
+      b: { day: number; period: number };
+    }
+  | {
+      type: "edit_cell"; // 셀 통째 교체 (교사·과목 변경 등 만능 탈출구)
+      grade: number;
+      classNum: number;
+      day: number;
+      period: number;
+      lessons: TimetableLesson[];
+    };
+
+export interface TimetableBaseRevision {
+  id?: string;
+  termId: string;
+  status: "draft" | "applied";
+  effectiveFrom?: string; // 적용 시작 주 월요일 (applied일 때 필수)
+  ops: BaseRevisionOp[];
+  note?: string;
+  createdBy?: string;
+  createdAt?: number;
+  appliedBy?: string;
+  appliedAt?: number;
 }
 
 export type TermStatus = "draft" | "active" | "archived";
@@ -250,7 +299,16 @@ export type ManageAction =
   // ── 동시수업(분반) 그룹 등록부 (pre_opening_3features_spec §A-4) ──
   | "simul_list"
   | "simul_save"
-  | "simul_delete";
+  | "simul_delete"
+  // ── 학사일정 (pre_opening_3features_spec §B) ──
+  | "calendar_list"
+  | "calendar_save"
+  | "calendar_delete"
+  // ── 기초시간표 개정 (pre_opening_3features_spec §E) ──
+  | "revision_list"
+  | "revision_save_draft"
+  | "revision_apply"
+  | "revision_delete";
 
 export interface ManageTimetableRequest {
   action: ManageAction;
@@ -281,6 +339,14 @@ export interface ManageTimetableRequest {
   // 동시수업(분반) 그룹 등록부 (pre_opening_3features_spec §A-4)
   simulGroup?: Partial<SimulGroup>; // simul_save 본문 / simul_list 미리보기(previewCells) 요청
   simulGroupId?: string; // simul_save(수정)·simul_delete 대상
+  // 학사일정 (pre_opening_3features_spec §B)
+  calendarEvent?: Partial<TimetableCalendarEvent>; // calendar_save 본문
+  calendarEventId?: string; // calendar_save(수정)·calendar_delete 대상
+  // 기초시간표 개정 (pre_opening_3features_spec §E)
+  revisionId?: string; // revision_save_draft(기존 draft)·revision_apply·revision_delete 대상
+  revisionOps?: BaseRevisionOp[]; // revision_save_draft 본문 (전체 교체)
+  revisionNote?: string; // revision_save_draft 메모
+  effectiveFrom?: string; // revision_apply — 적용 시작 주 월요일 (기본: 다음 주 월요일)
 }
 
 export interface ManageTimetableResponse {

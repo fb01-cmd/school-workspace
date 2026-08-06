@@ -4,8 +4,17 @@ import { canManageTimetable } from "@/lib/timetable/authz";
 import { listSimulCells } from "@/lib/timetable/simul";
 import {
   activateTerm,
+  applyRevisionDraft,
   approveSwapRequest,
   commitTimetableImport,
+  deleteRevisionDraft,
+  ensureDerivedWeeks,
+  loadBaseRevisions,
+  loadCalendarEvents,
+  saveRevisionDraft,
+  timetableCalendarColRef,
+  validateCalendarEventPayload,
+  validateRevisionOps,
   computeCandidatesAllWeeks,
   computeDirectCandidates,
   computeDirectProjectedWeeks,
@@ -284,6 +293,11 @@ export async function POST(req: NextRequest) {
       }
 
       case "week_list": {
+        // 학사일정 지연 파생 (spec §B) — 오늘 주부터 publishWeeksAhead주 앞까지 없는 주 자동 생성.
+        // 수동 등록 주는 덮지 않는다. 실패는 목록 반환을 막지 않는다.
+        await ensureDerivedWeeks(domain).catch((e) =>
+          console.error("[week_list] 주차 자동 파생 실패:", e?.message)
+        );
         const weeks = await listWeeks(domain, body.termId);
         return NextResponse.json({ success: true, action, weeks });
       }
@@ -628,6 +642,109 @@ export async function POST(req: NextRequest) {
           targetEmail: domain,
           action: "simul_group_delete",
           details: `동시수업 그룹 삭제: ${label}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action });
+      }
+
+      // ── 학사일정 (pre_opening_3features_spec §B) ──
+
+      case "calendar_list": {
+        const termId = body.termId || settings.activeTermId;
+        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        const events = await loadCalendarEvents(domain, termId);
+        return NextResponse.json({ success: true, action, events });
+      }
+
+      case "calendar_save": {
+        const termId = body.calendarEvent?.termId || body.termId || settings.activeTermId;
+        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        const v = validateCalendarEventPayload({ ...body.calendarEvent, termId });
+        if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+        const isUpdate = !!body.calendarEventId;
+        const ref = isUpdate
+          ? timetableCalendarColRef(domain).doc(body.calendarEventId!)
+          : timetableCalendarColRef(domain).doc();
+        if (isUpdate) {
+          const existing = await ref.get();
+          if (!existing.exists)
+            return NextResponse.json({ error: "수정할 일정을 찾을 수 없습니다." }, { status: 404 });
+          await ref.set({ ...v.event, updatedBy: auth.email.toLowerCase(), updatedAt: Date.now() }, { merge: true });
+        } else {
+          await ref.set({ ...v.event, createdBy: auth.email.toLowerCase(), createdAt: Date.now() });
+        }
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: isUpdate ? "timetable_calendar_update" : "timetable_calendar_create",
+          details: `학사일정 ${isUpdate ? "수정" : "등록"}: ${v.event.type} ${v.event.startDate}${v.event.endDate !== v.event.startDate ? `~${v.event.endDate}` : ""}${v.event.note ? ` (${v.event.note})` : ""} — 이미 생성된 주는 소급 변경되지 않음`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, eventId: ref.id });
+      }
+
+      case "calendar_delete": {
+        if (!body.calendarEventId)
+          return NextResponse.json({ error: "calendarEventId가 필요합니다." }, { status: 400 });
+        const ref = timetableCalendarColRef(domain).doc(body.calendarEventId);
+        const snap = await ref.get();
+        if (!snap.exists)
+          return NextResponse.json({ error: "삭제할 일정을 찾을 수 없습니다." }, { status: 404 });
+        const d = snap.data() as any;
+        await ref.delete();
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "timetable_calendar_delete",
+          details: `학사일정 삭제: ${d?.type} ${d?.startDate}${d?.endDate && d.endDate !== d.startDate ? `~${d.endDate}` : ""} — 이미 생성된 주는 소급 변경되지 않음`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action });
+      }
+
+      // ── 기초시간표 개정 (pre_opening_3features_spec §E) ──
+
+      case "revision_list": {
+        const termId = body.termId || settings.activeTermId;
+        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        const revisions = await loadBaseRevisions(domain, termId);
+        return NextResponse.json({ success: true, action, revisions });
+      }
+
+      case "revision_save_draft": {
+        const termId = body.termId || settings.activeTermId;
+        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        const v = validateRevisionOps(body.revisionOps);
+        if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+        const { revision, warnings } = await saveRevisionDraft(
+          domain, termId, auth.email, v.ops, body.revisionNote, body.revisionId
+        );
+        return NextResponse.json({ success: true, action, revision, warnings });
+      }
+
+      case "revision_apply": {
+        if (!body.revisionId)
+          return NextResponse.json({ error: "revisionId가 필요합니다." }, { status: 400 });
+        const applied = await applyRevisionDraft(domain, auth.email, body.revisionId, body.effectiveFrom);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "timetable_base_revision_apply",
+          details: `기초시간표 개정 적용: ${applied.effectiveFrom} 주부터 (편집 ${applied.ops.length}건${applied.note ? `, ${applied.note}` : ""})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, revision: applied });
+      }
+
+      case "revision_delete": {
+        if (!body.revisionId)
+          return NextResponse.json({ error: "revisionId가 필요합니다." }, { status: 400 });
+        await deleteRevisionDraft(domain, body.revisionId);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "timetable_base_revision_delete",
+          details: `기초시간표 개정 임시안 삭제: ${body.revisionId}`,
           status: "success",
         });
         return NextResponse.json({ success: true, action });

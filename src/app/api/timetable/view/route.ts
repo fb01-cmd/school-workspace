@@ -2,10 +2,11 @@ import { verifyAuthAccess } from "@/lib/firebase/admin";
 import { canViewTimetable } from "@/lib/timetable/authz";
 import { buildSlotIndex, isBlockTeacher } from "@/lib/timetable/swap";
 import {
+  currentMondayISO,
   findCurrentWeek,
   loadActiveTerm,
   loadAllClassGrids,
-  loadClassGrid,
+  loadBaseGridsForWeek,
   loadTimetableSettings,
   loadTimetableTerm,
   loadWeek,
@@ -130,9 +131,12 @@ export async function POST(req: NextRequest) {
       auth.role === "super_admin" ||
       settings.managerEmails.some((m) => m.toLowerCase() === auth.email.toLowerCase());
 
-    /** 기초 그리드를 로드하고, 주가 정해져 있으면 합성본으로 치환 */
+    /** 기초 그리드를 로드하고, 주가 정해져 있으면 합성본으로 치환.
+     *  기초는 개정판 주차별 해석 (spec §E) — 주 미지정 시 오늘 주 기준 판. */
     const loadGrids = async () => {
-      const baseGrids = await loadAllClassGrids(domain, term!.id);
+      const baseGrids = await loadBaseGridsForWeek(
+        domain, term!.id, week ? week.startDate : currentMondayISO()
+      );
       if (!week) return { grids: baseGrids, warnings: [] as string[] };
       const changes = await loadWeekChanges(domain, week.id);
       const { grids, integrityWarnings } = synthesizeWeeklyGrids(baseGrids, week, changes, settings);
@@ -200,11 +204,10 @@ export async function POST(req: NextRequest) {
           };
           return NextResponse.json(withWeek(res, warnings));
         }
-        const classGrid = await loadClassGrid(
-          domain,
-          term.id,
-          requestedGrade,
-          requestedClassNum
+        // 주 미지정 기초 열람도 개정판 인지 경로로 (spec §E — 오늘 주 기준 판)
+        const { grids: baseGrids } = await loadGrids();
+        const classGrid = baseGrids.find(
+          (g) => g.grade === requestedGrade && g.classNum === requestedClassNum
         );
         const res: ViewTimetableResponse = {
           term: termMeta,

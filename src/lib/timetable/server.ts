@@ -76,6 +76,7 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
       observerEmails: [],
       teacherOpen: false,
       teacherPilotEmails: [],
+      publishWeeksAhead: 2,
     };
   }
   const data = snap.data() || {};
@@ -94,6 +95,9 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
     teacherPilotEmails: Array.isArray(data.teacherPilotEmails)
       ? data.teacherPilotEmails.map((e) => String(e).trim().toLowerCase())
       : [],
+    publishWeeksAhead: Number.isFinite(Number(data.publishWeeksAhead))
+      ? Math.max(0, Math.min(8, Number(data.publishWeeksAhead)))
+      : 2,
   };
 }
 
@@ -889,7 +893,10 @@ import {
   findSwapCandidates,
   resolveSourceLesson,
 } from "./swap";
+import { holidayNameOf } from "./holidays";
 import {
+  BaseRevisionOp,
+  CalendarEventType,
   CrossSwapLessonRef,
   DirectPendingOverlayItem,
   HourTotalsResult,
@@ -903,6 +910,8 @@ import {
   SwapRequestType,
   SwapSourceSlot,
   SWAP_REASON_TYPES,
+  TimetableBaseRevision,
+  TimetableCalendarEvent,
   TimetableChange,
   TimetableWeek,
   WeekRegisterInput,
@@ -918,6 +927,12 @@ export const timetableChangesColRef = (domain: string) =>
 
 export const swapRequestsColRef = (domain: string) =>
   adminDb.collection("swap_requests").doc(domain).collection("requests");
+
+export const timetableCalendarColRef = (domain: string) =>
+  adminDb.collection("timetable_calendar").doc(domain).collection("events");
+
+export const baseRevisionsColRef = (domain: string) =>
+  adminDb.collection("timetable_base_revisions").doc(domain).collection("revisions");
 
 // ── 주 등록 (weeks CRUD) ──────────────────────────────────────
 
@@ -1031,6 +1046,428 @@ export async function findCurrentWeek(domain: string, termId: string): Promise<T
   );
 }
 
+// ── 학사일정 → 주차 자동 파생 (pre_opening_3features_spec §B) ──
+
+export async function loadCalendarEvents(
+  domain: string,
+  termId: string
+): Promise<TimetableCalendarEvent[]> {
+  const snap = await timetableCalendarColRef(domain).where("termId", "==", termId).get();
+  return snap.docs
+    .map((d) => {
+      const data = d.data() || {};
+      return {
+        id: d.id,
+        termId: data.termId || termId,
+        type: data.type as CalendarEventType,
+        startDate: data.startDate || "",
+        endDate: data.endDate || data.startDate || "",
+        ...(data.periodsByGrade ? { periodsByGrade: data.periodsByGrade } : {}),
+        ...(data.note ? { note: data.note } : {}),
+        createdBy: data.createdBy || "",
+        createdAt: toMillis(data.createdAt) || 0,
+      };
+    })
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+
+const CALENDAR_TYPES: CalendarEventType[] = ["휴업일", "재량휴업", "단축수업", "고사"];
+
+export function validateCalendarEventPayload(
+  raw: any
+): { ok: true; event: Omit<TimetableCalendarEvent, "id" | "createdBy" | "createdAt"> } | { ok: false; error: string } {
+  const termId = typeof raw?.termId === "string" ? raw.termId.trim() : "";
+  if (!termId) return { ok: false, error: "학기가 지정되지 않았습니다." };
+  const type = raw?.type as CalendarEventType;
+  if (!CALENDAR_TYPES.includes(type))
+    return { ok: false, error: "일정 종류는 휴업일·재량휴업·단축수업·고사 중 하나여야 합니다." };
+  const startDate = typeof raw?.startDate === "string" ? raw.startDate.trim() : "";
+  const endDate = typeof raw?.endDate === "string" && raw.endDate.trim() ? raw.endDate.trim() : startDate;
+  if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate))
+    return { ok: false, error: "날짜는 YYYY-MM-DD 형식이어야 합니다." };
+  if (endDate < startDate) return { ok: false, error: "종료일이 시작일보다 빠릅니다." };
+  let periodsByGrade: Record<string, number> | undefined;
+  if (type === "단축수업" || type === "고사") {
+    const pbg = raw?.periodsByGrade;
+    if (!pbg || typeof pbg !== "object" || Object.keys(pbg).length === 0)
+      return { ok: false, error: `${type}에는 학년별 수업 교시 수(periodsByGrade)가 필요합니다.` };
+    periodsByGrade = {};
+    for (const [g, n] of Object.entries(pbg)) {
+      const num = Number(n);
+      if (!["1", "2", "3"].includes(g) || !Number.isInteger(num) || num < 0 || num > 8)
+        return { ok: false, error: "학년별 교시 수 값이 올바르지 않습니다 (학년 1~3, 교시 0~8)." };
+      periodsByGrade[g] = num;
+    }
+  }
+  const note = typeof raw?.note === "string" ? raw.note.trim().slice(0, 200) : "";
+  return {
+    ok: true,
+    event: {
+      termId,
+      type,
+      startDate,
+      endDate,
+      ...(periodsByGrade ? { periodsByGrade } : {}),
+      ...(note ? { note } : {}),
+    },
+  };
+}
+
+/** 특정 월요일 주의 파생 입력 생성 — 공휴일 표 ∪ 학사일정 이벤트 (휴업일 우선) */
+export function deriveWeekInput(
+  termId: string,
+  monday: string,
+  events: TimetableCalendarEvent[]
+): WeekRegisterInput {
+  const days: WeekRegisterInput["days"] = [];
+  const noteParts: string[] = [];
+  for (let day = 1; day <= 5; day++) {
+    const date = addDaysISO(monday, day - 1);
+    const holidayName = holidayNameOf(date);
+    const hits = events.filter((e) => e.startDate <= date && date <= e.endDate);
+    const closed = !!holidayName || hits.some((e) => e.type === "휴업일" || e.type === "재량휴업");
+    const short = hits.find((e) => e.type === "단축수업" || e.type === "고사");
+    if (closed) {
+      const label = holidayName || hits.find((e) => e.type === "휴업일" || e.type === "재량휴업")?.note
+        || hits.find((e) => e.type === "휴업일" || e.type === "재량휴업")?.type;
+      noteParts.push(`${date.slice(5)} ${label}`);
+      days.push({ day, holiday: true });
+    } else if (short?.periodsByGrade) {
+      noteParts.push(`${date.slice(5)} ${short.note || short.type}`);
+      days.push({ day, periodsByGrade: short.periodsByGrade });
+    } else {
+      days.push({ day });
+    }
+  }
+  return {
+    termId,
+    startDate: monday,
+    days,
+    ...(noteParts.length ? { note: `학사일정 자동: ${noteParts.join(", ")}` } : {}),
+  };
+}
+
+/** 오늘 주의 월요일 (ISO) */
+export function currentMondayISO(): string {
+  const today = new Date().toISOString().slice(0, 10);
+  const dow = new Date(`${today}T00:00:00Z`).getUTCDay(); // 0=일..6=토
+  const delta = dow === 0 ? -6 : 1 - dow;
+  return addDaysISO(today, delta);
+}
+
+/**
+ * 지연 생성: 오늘 주부터 publishWeeksAhead주 앞까지 없는 주를 학사일정으로 자동 생성.
+ * 수동 등록 주는 절대 덮지 않는다 (registerWeek가 기존 주면 건너뜀). week_list 처리 시 호출.
+ */
+export async function ensureDerivedWeeks(domain: string): Promise<TimetableWeek[]> {
+  const settings = await loadTimetableSettings(domain);
+  const termId = settings.activeTermId;
+  if (!termId) return [];
+  const ahead = settings.publishWeeksAhead ?? 2;
+  const [existing, events] = await Promise.all([
+    listWeeks(domain, termId),
+    loadCalendarEvents(domain, termId),
+  ]);
+  const existingIds = new Set(existing.map((w) => w.id));
+  const created: TimetableWeek[] = [];
+  let monday = currentMondayISO();
+  for (let i = 0; i <= ahead; i++, monday = addDaysISO(monday, 7)) {
+    if (existingIds.has(monday)) continue;
+    try {
+      created.push(await registerWeek(domain, deriveWeekInput(termId, monday, events), "학사일정 자동"));
+    } catch (e: any) {
+      // 경쟁 생성("이미 등록된 주")·보관 학기 등은 파생을 멈출 사유가 아니다
+      console.error(`[ensureDerivedWeeks] ${monday} 생성 건너뜀:`, e.message);
+    }
+  }
+  return created;
+}
+
+// ── 기초시간표 개정 (pre_opening_3features_spec §E) ────────────
+
+export async function loadBaseRevisions(
+  domain: string,
+  termId: string
+): Promise<TimetableBaseRevision[]> {
+  const snap = await baseRevisionsColRef(domain).where("termId", "==", termId).get();
+  return snap.docs
+    .map((d) => {
+      const data = d.data() || {};
+      return {
+        id: d.id,
+        termId: data.termId || termId,
+        status: data.status === "applied" ? ("applied" as const) : ("draft" as const),
+        ...(data.effectiveFrom ? { effectiveFrom: data.effectiveFrom } : {}),
+        ops: Array.isArray(data.ops) ? (data.ops as BaseRevisionOp[]) : [],
+        ...(data.note ? { note: data.note } : {}),
+        createdBy: data.createdBy || "",
+        createdAt: toMillis(data.createdAt) || 0,
+        ...(data.appliedBy ? { appliedBy: data.appliedBy } : {}),
+        ...(toMillis(data.appliedAt) ? { appliedAt: toMillis(data.appliedAt)! } : {}),
+      };
+    })
+    .sort((a, b) => (a.appliedAt || a.createdAt || 0) - (b.appliedAt || b.createdAt || 0));
+}
+
+const MAX_REVISION_OPS = 200;
+
+export function validateRevisionOps(
+  raw: any
+): { ok: true; ops: BaseRevisionOp[] } | { ok: false; error: string } {
+  if (!Array.isArray(raw)) return { ok: false, error: "ops는 배열이어야 합니다." };
+  if (raw.length > MAX_REVISION_OPS)
+    return { ok: false, error: `편집 항목이 너무 많습니다 (최대 ${MAX_REVISION_OPS}건).` };
+  const ops: BaseRevisionOp[] = [];
+  const slotOk = (d: any, p: any) =>
+    Number.isInteger(Number(d)) && Number(d) >= 1 && Number(d) <= 5 &&
+    Number.isInteger(Number(p)) && Number(p) >= 1 && Number(p) <= 8;
+  for (const [i, op] of raw.entries()) {
+    const grade = Number(op?.grade);
+    const classNum = Number(op?.classNum);
+    if (![1, 2, 3].includes(grade) || !Number.isInteger(classNum) || classNum < 1 || classNum > 15)
+      return { ok: false, error: `${i + 1}번째 편집: 학년·반이 올바르지 않습니다.` };
+    if (op?.type === "swap") {
+      if (!slotOk(op?.a?.day, op?.a?.period) || !slotOk(op?.b?.day, op?.b?.period))
+        return { ok: false, error: `${i + 1}번째 편집: 교시 정보가 올바르지 않습니다.` };
+      const a = { day: Number(op.a.day), period: Number(op.a.period) };
+      const b = { day: Number(op.b.day), period: Number(op.b.period) };
+      if (a.day === b.day && a.period === b.period)
+        return { ok: false, error: `${i + 1}번째 편집: 같은 교시끼리는 맞바꿀 수 없습니다.` };
+      ops.push({ type: "swap", grade, classNum, a, b });
+    } else if (op?.type === "edit_cell") {
+      if (!slotOk(op?.day, op?.period))
+        return { ok: false, error: `${i + 1}번째 편집: 교시 정보가 올바르지 않습니다.` };
+      if (!Array.isArray(op?.lessons))
+        return { ok: false, error: `${i + 1}번째 편집: 수업 목록이 올바르지 않습니다.` };
+      const lessons: TimetableLesson[] = [];
+      for (const l of op.lessons) {
+        const subjectName = typeof l?.subjectName === "string" ? l.subjectName.trim() : "";
+        if (!subjectName)
+          return { ok: false, error: `${i + 1}번째 편집: 과목명이 비어 있습니다.` };
+        lessons.push({
+          subjectName,
+          subjectShort: typeof l?.subjectShort === "string" && l.subjectShort.trim()
+            ? l.subjectShort.trim() : subjectName.slice(0, 2),
+          teachers: Array.isArray(l?.teachers)
+            ? l.teachers
+                .map((t: any) => ({
+                  email: typeof t?.email === "string" ? t.email.trim().toLowerCase() : "",
+                  name: typeof t?.name === "string" ? t.name.trim() : "",
+                }))
+                .filter((t: any) => t.email || t.name)
+            : [],
+          ...(typeof l?.room === "string" && l.room.trim() ? { room: l.room.trim() } : {}),
+        });
+      }
+      ops.push({ type: "edit_cell", grade, classNum, day: Number(op.day), period: Number(op.period), lessons });
+    } else {
+      return { ok: false, error: `${i + 1}번째 편집: 지원하지 않는 편집 종류입니다.` };
+    }
+  }
+  return { ok: true, ops };
+}
+
+function cloneClassGrids(grids: ClassGrid[]): ClassGrid[] {
+  return grids.map((g) => ({
+    grade: g.grade,
+    classNum: g.classNum,
+    cells: (g.cells || []).map((c) => ({
+      day: c.day,
+      period: c.period,
+      lessons: (c.lessons || []).map((l) => ({
+        ...l,
+        teachers: (l.teachers || []).map((t) => ({ ...t })),
+      })),
+    })),
+  }));
+}
+
+const DAY_KO = ["", "월", "화", "수", "목", "금"];
+
+/**
+ * 개정 연산을 기초 그리드에 순서대로 적용 (제자리 수정). 적용 불능 op는 건너뛰고
+ * 경고로 수집한다 — 주간 합성 integrityWarnings와 같은 원칙 (spec §E-2).
+ */
+export function applyRevisionOps(grids: ClassGrid[], ops: BaseRevisionOp[]): string[] {
+  const warnings: string[] = [];
+  const findGrid = (grade: number, classNum: number) =>
+    grids.find((g) => g.grade === grade && g.classNum === classNum);
+  const getOrCreateCell = (grid: ClassGrid, day: number, period: number) => {
+    let cell = grid.cells.find((c) => c.day === day && c.period === period);
+    if (!cell) {
+      cell = { day, period, lessons: [] };
+      grid.cells.push(cell);
+    }
+    return cell;
+  };
+  for (const op of ops) {
+    const grid = findGrid(op.grade, op.classNum);
+    if (!grid) {
+      warnings.push(`${op.grade}-${op.classNum}반 시간표가 없어 편집 1건을 건너뜀`);
+      continue;
+    }
+    if (op.type === "swap") {
+      const cellA = getOrCreateCell(grid, op.a.day, op.a.period);
+      const cellB = getOrCreateCell(grid, op.b.day, op.b.period);
+      if (cellA.lessons.length === 0 && cellB.lessons.length === 0) {
+        warnings.push(
+          `${op.grade}-${op.classNum}반 ${DAY_KO[op.a.day]}${op.a.period}·${DAY_KO[op.b.day]}${op.b.period}교시 모두 빈 교시라 맞바꿈을 건너뜀`
+        );
+        continue;
+      }
+      const tmp = cellA.lessons;
+      cellA.lessons = cellB.lessons;
+      cellB.lessons = tmp;
+    } else {
+      const cell = getOrCreateCell(grid, op.day, op.period);
+      cell.lessons = op.lessons.map((l) => ({
+        ...l,
+        teachers: (l.teachers || []).map((t) => ({ ...t })),
+      }));
+    }
+  }
+  return warnings;
+}
+
+/**
+ * 주차별 기초 그리드 — 기초 + (effectiveFrom ≤ 주 시작일)인 적용 개정판들을 순서 적용.
+ * 적용 후 동시수업 라벨 재스탬프 (이동 후 위치 기준 재판정). 여러 주를 한 번에 해석하며
+ * 같은 개정 상태를 공유하는 주들은 같은 그리드 참조를 재사용한다 (합성기가 깊은 복사).
+ */
+export async function loadBaseGridsByWeek(
+  domain: string,
+  termId: string,
+  weekStartDates: string[]
+): Promise<Map<string, ClassGrid[]>> {
+  const grids = await loadAllClassGrids(domain, termId);
+  const out = new Map<string, ClassGrid[]>();
+  const dates = [...new Set(weekStartDates)].sort();
+  const applied = (await loadBaseRevisions(domain, termId))
+    .filter((r) => r.status === "applied" && r.effectiveFrom)
+    .sort((a, b) =>
+      a.effectiveFrom!.localeCompare(b.effectiveFrom!) || (a.appliedAt || 0) - (b.appliedAt || 0)
+    );
+  if (applied.length === 0) {
+    for (const d of dates) out.set(d, grids);
+    return out;
+  }
+  const simulGroups = await loadSimulGroups(domain, termId);
+  let cur = grids;
+  let idx = 0;
+  for (const date of dates) {
+    let advanced = false;
+    while (idx < applied.length && applied[idx].effectiveFrom! <= date) {
+      if (!advanced) {
+        cur = cloneClassGrids(cur);
+        advanced = true;
+      }
+      const warns = applyRevisionOps(cur, applied[idx].ops);
+      for (const w of warns)
+        console.error(`[baseRevision ${applied[idx].id}] ${w}`);
+      idx++;
+    }
+    if (advanced) applySimulMarks(cur, simulGroups);
+    out.set(date, cur);
+  }
+  return out;
+}
+
+export async function loadBaseGridsForWeek(
+  domain: string,
+  termId: string,
+  weekStartDate: string
+): Promise<ClassGrid[]> {
+  return (await loadBaseGridsByWeek(domain, termId, [weekStartDate])).get(weekStartDate)!;
+}
+
+/**
+ * draft 저장 (생성 또는 전체 교체) — 저장은 항상 하고, 최신 적용 기초에 가상 적용한
+ * 경고 목록을 함께 반환한다 (편집 중 임시 상태 허용, spec §E-3).
+ */
+export async function saveRevisionDraft(
+  domain: string,
+  termId: string,
+  userEmail: string,
+  ops: BaseRevisionOp[],
+  note?: string,
+  revisionId?: string
+): Promise<{ revision: TimetableBaseRevision; warnings: string[] }> {
+  let ref: FirebaseFirestore.DocumentReference;
+  let createdBy = userEmail.toLowerCase();
+  let createdAt = Date.now();
+  if (revisionId) {
+    ref = baseRevisionsColRef(domain).doc(revisionId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new Error("수정할 개정판을 찾을 수 없습니다.");
+    const data = snap.data() as any;
+    if (data.status !== "draft") throw new Error("이미 적용된 개정판은 수정할 수 없습니다.");
+    createdBy = data.createdBy || createdBy;
+    createdAt = toMillis(data.createdAt) || createdAt;
+  } else {
+    // 학기당 draft 1개 (단순화) — 기존 draft가 있으면 그것을 교체한다
+    const existing = (await loadBaseRevisions(domain, termId)).find((r) => r.status === "draft");
+    ref = existing?.id ? baseRevisionsColRef(domain).doc(existing.id) : baseRevisionsColRef(domain).doc();
+    if (existing) {
+      createdBy = existing.createdBy || createdBy;
+      createdAt = existing.createdAt || createdAt;
+    }
+  }
+  const revision: TimetableBaseRevision = {
+    id: ref.id,
+    termId,
+    status: "draft",
+    ops,
+    ...(note ? { note: note.trim().slice(0, 200) } : {}),
+    createdBy,
+    createdAt,
+  };
+  await ref.set({ ...revision, updatedBy: userEmail.toLowerCase(), updatedAt: Date.now() });
+  // 미리보기 검증: 최신 적용 기초(모든 applied 반영) 위에 가상 적용
+  const latestBase = await loadBaseGridsForWeek(domain, termId, "9999-12-31");
+  const warnings = applyRevisionOps(cloneClassGrids(latestBase), ops);
+  return { revision, warnings };
+}
+
+/** draft → applied. effectiveFrom 기본 = 다음 주 월요일. 이번 주 이하 소급 적용 금지 (spec §E-3). */
+export async function applyRevisionDraft(
+  domain: string,
+  userEmail: string,
+  revisionId: string,
+  effectiveFrom?: string
+): Promise<TimetableBaseRevision> {
+  const ref = baseRevisionsColRef(domain).doc(revisionId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("적용할 개정판을 찾을 수 없습니다.");
+  const data = snap.data() as any;
+  if (data.status !== "draft") throw new Error("이미 적용된 개정판입니다.");
+  if (!Array.isArray(data.ops) || data.ops.length === 0)
+    throw new Error("편집 내용이 비어 있어 적용할 수 없습니다.");
+  const nextMonday = addDaysISO(currentMondayISO(), 7);
+  const from = (effectiveFrom || nextMonday).trim();
+  if (!DATE_RE.test(from)) throw new Error("적용 시작일은 YYYY-MM-DD 형식이어야 합니다.");
+  if (new Date(`${from}T00:00:00Z`).getUTCDay() !== 1)
+    throw new Error("적용 시작일은 월요일이어야 합니다.");
+  if (from <= currentMondayISO())
+    throw new Error("이미 운영 중인 주에는 소급 적용할 수 없습니다. 다음 주 이후 월요일을 지정하세요.");
+  const patch = {
+    status: "applied" as const,
+    effectiveFrom: from,
+    appliedBy: userEmail.toLowerCase(),
+    appliedAt: Date.now(),
+  };
+  await ref.set(patch, { merge: true });
+  return { ...(data as TimetableBaseRevision), id: revisionId, ...patch };
+}
+
+export async function deleteRevisionDraft(domain: string, revisionId: string): Promise<void> {
+  const ref = baseRevisionsColRef(domain).doc(revisionId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("삭제할 개정판을 찾을 수 없습니다.");
+  if ((snap.data() as any).status !== "draft")
+    throw new Error("적용된 개정판은 삭제할 수 없습니다. 되돌리려면 새 개정으로 원복하세요.");
+  await ref.delete();
+}
+
 // ── 변경 로그 로드 & 주간 합성 ────────────────────────────────
 
 export async function loadWeekChanges(domain: string, weekId: string): Promise<TimetableChange[]> {
@@ -1053,7 +1490,7 @@ export async function synthesizeWeek(
   extraChanges?: TimetableChange[]
 ): Promise<WeeklySynthesisResult> {
   const [baseGrids, changes, settings] = await Promise.all([
-    loadAllClassGrids(domain, week.termId),
+    loadBaseGridsForWeek(domain, week.termId, week.startDate), // 개정판 반영 (spec §E)
     loadWeekChanges(domain, week.id),
     loadTimetableSettings(domain),
   ]);
@@ -1349,8 +1786,8 @@ export async function computeDirectProjectedWeeks(
   weeks.sort((a, b) => a.startDate.localeCompare(b.startDate));
   const extra = buildDirectExtraOverlay(extraItems, term.id, teacherEmail, weeks.map((w) => w.id), null);
 
-  const [baseGrids, settings] = await Promise.all([
-    loadAllClassGrids(domain, term.id),
+  const [baseByWeek, settings] = await Promise.all([
+    loadBaseGridsByWeek(domain, term.id, weeks.map((w) => w.startDate)), // 개정판 주차별 반영 (spec §E)
     loadTimetableSettings(domain),
   ]);
   const changesByWeek = new Map(
@@ -1363,7 +1800,7 @@ export async function computeDirectProjectedWeeks(
   for (const week of weeks) {
     const changes = changesByWeek.get(week.id) || [];
     const virtual = extra.byWeek.get(week.id) || [];
-    const { grids } = synthesizeWeeklyGrids(baseGrids, week, [...changes, ...virtual], settings);
+    const { grids } = synthesizeWeeklyGrids(baseByWeek.get(week.startDate)!, week, [...changes, ...virtual], settings);
     out.push({ weekId: week.id, startDate: week.startDate, cells: synthesizeTeacherTimetable(grids, teacherEmail) });
   }
   return { termId: term.id, weeks: out, appliedCount: extra.count };
@@ -1408,9 +1845,9 @@ export async function computeMyProjectedWeeks(
     domain, userEmail, weeks.map((w) => w.id), opts, null
   );
 
-  // 기초 그리드·설정은 주마다 같으므로 1회만 로드 (주당 changes만 개별 조회)
-  const [baseGrids, settings] = await Promise.all([
-    loadAllClassGrids(domain, term.id),
+  // 설정은 주마다 같으므로 1회만, 기초는 개정판 주차별 해석 (spec §E)
+  const [baseByWeek, settings] = await Promise.all([
+    loadBaseGridsByWeek(domain, term.id, weeks.map((w) => w.startDate)),
     loadTimetableSettings(domain),
   ]);
 
@@ -1428,7 +1865,7 @@ export async function computeMyProjectedWeeks(
   for (const week of weeks) {
     const changes = changesByWeek.get(week.id) || [];
     const virtual = overlay.byWeek.get(week.id) || [];
-    const { grids } = synthesizeWeeklyGrids(baseGrids, week, [...changes, ...virtual], settings);
+    const { grids } = synthesizeWeeklyGrids(baseByWeek.get(week.startDate)!, week, [...changes, ...virtual], settings);
     out.push({
       weekId: week.id,
       startDate: week.startDate,
@@ -1495,9 +1932,9 @@ export async function computeCandidatesAllWeeks(
     ...(extraByWeek.get(weekId) || []),
   ];
 
-  // 기초 그리드·설정 1회 로드, 주별 합성 (computeMyProjectedWeeks와 동일 패턴)
-  const [baseGrids, settings] = await Promise.all([
-    loadAllClassGrids(domain, term.id),
+  // 설정 1회, 기초는 개정판 주차별 해석 (spec §E), 주별 합성 (computeMyProjectedWeeks와 동일 패턴)
+  const [baseByWeek, settings] = await Promise.all([
+    loadBaseGridsByWeek(domain, term.id, allWeeks.map((w) => w.startDate)),
     loadTimetableSettings(domain),
   ]);
   // 주별 changes 병렬 조회 (computeMyProjectedWeeks와 동일 이유)
@@ -1510,7 +1947,7 @@ export async function computeCandidatesAllWeeks(
   for (const week of allWeeks) {
     const changes = changesByWeek.get(week.id) || [];
     const virtual = virtualOf(week.id);
-    const { grids } = synthesizeWeeklyGrids(baseGrids, week, [...changes, ...virtual], settings);
+    const { grids } = synthesizeWeeklyGrids(baseByWeek.get(week.startDate)!, week, [...changes, ...virtual], settings);
     synthByWeek.set(week.id, grids);
   }
 
@@ -1526,7 +1963,7 @@ export async function computeCandidatesAllWeeks(
         week.id,
         virtual.length === 0
           ? synthByWeek.get(week.id)!
-          : synthesizeWeeklyGrids(baseGrids, week, changesByWeek.get(week.id) || [], settings).grids
+          : synthesizeWeeklyGrids(baseByWeek.get(week.startDate)!, week, changesByWeek.get(week.id) || [], settings).grids
       );
     }
   }
@@ -1962,20 +2399,20 @@ export async function validatePendingSwapRequests(
   if (pendings.length === 0) return out;
 
   const settings = await loadTimetableSettings(domain);
-  const baseGridsByTerm = new Map<string, ClassGrid[]>();
-  for (const termId of new Set(pendings.map((r) => r.termId))) {
-    baseGridsByTerm.set(termId, await loadAllClassGrids(domain, termId));
-  }
-
-  // 관련 주 합성본은 주당 1회만 (병렬 로드)
+  // 관련 주 합성본은 주당 1회만 (병렬 로드). 기초는 개정판 주차별 해석 (spec §E) —
+  // weekId = 주 시작일이므로 학기별로 loadBaseGridsByWeek 1회면 충분하다.
   const weekIds = Array.from(new Set(pendings.flatMap((r) => [r.weekId, r.targetWeekId || r.weekId])));
+  const baseByTermWeek = new Map<string, Map<string, ClassGrid[]>>();
+  for (const termId of new Set(pendings.map((r) => r.termId))) {
+    baseByTermWeek.set(termId, await loadBaseGridsByWeek(domain, termId, weekIds));
+  }
   const weekObjs = new Map<string, TimetableWeek | null>();
   const gridsByWeek = new Map<string, WeeklyClassGrid[]>();
   await Promise.all(
     weekIds.map(async (wid) => {
       const [w, changes] = await Promise.all([loadWeek(domain, wid), loadWeekChanges(domain, wid)]);
       weekObjs.set(wid, w);
-      const base = w ? baseGridsByTerm.get(w.termId) : null;
+      const base = w ? baseByTermWeek.get(w.termId)?.get(w.startDate) : null;
       if (w && base) gridsByWeek.set(wid, synthesizeWeeklyGrids(base, w, changes, settings).grids);
     })
   );
@@ -2070,9 +2507,8 @@ export async function approveSwapRequest(
   const reqSnapPre = await swapRequestsColRef(domain).doc(requestId).get();
   if (!reqSnapPre.exists) throw new Error("신청을 찾을 수 없습니다.");
   const reqPre = reqSnapPre.data() as SwapRequest;
-  const [week, baseGrids, settings] = await Promise.all([
+  const [week, settings] = await Promise.all([
     loadWeek(domain, reqPre.weekId),
-    loadAllClassGrids(domain, reqPre.termId),
     loadTimetableSettings(domain),
   ]);
   if (!week) throw new Error(`등록되지 않은 주(${reqPre.weekId})입니다.`);
@@ -2082,6 +2518,12 @@ export async function approveSwapRequest(
   const targetWeek = isCross ? await loadWeek(domain, reqPre.targetWeekId!) : null;
   if (isCross && !targetWeek)
     throw new Error(`등록되지 않은 주(${reqPre.targetWeekId})입니다. 대상 주 등록이 삭제되어 승인할 수 없습니다.`);
+
+  // 기초는 개정판 주차별 해석 (spec §E) — 교차 주는 두 주의 기초판이 다를 수 있다
+  const baseDates = [week.startDate, ...(targetWeek ? [targetWeek.startDate] : [])];
+  const baseByWeekMap = await loadBaseGridsByWeek(domain, reqPre.termId, baseDates);
+  const baseGrids = baseByWeekMap.get(week.startDate)!;
+  const targetBaseGrids = targetWeek ? baseByWeekMap.get(targetWeek.startDate)! : null;
 
   const result = await adminDb.runTransaction(async (tx) => {
     const reqRef = swapRequestsColRef(domain).doc(requestId);
@@ -2116,7 +2558,7 @@ export async function approveSwapRequest(
     // ── 교차 주 맞교환 승인: 양방향 재검증 → 문서쌍(exchangeId) 원자 커밋 (§4-3b) ──
     if (isCross) {
       const cand = request.candidate;
-      const { grids: targetGrids } = synthesizeWeeklyGrids(baseGrids, targetWeek!, targetChanges, settings);
+      const { grids: targetGrids } = synthesizeWeeklyGrids(targetBaseGrids || baseGrids, targetWeek!, targetChanges, settings);
       const crossRes = findCrossSwapCandidates(
         grids, week, targetGrids, targetWeek!, settings, request.requesterEmail, request.source
       );

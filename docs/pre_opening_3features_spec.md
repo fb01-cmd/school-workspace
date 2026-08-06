@@ -127,7 +127,53 @@ timetable_settings/{domain}
 
 ---
 
-## D. 개학 전 일정 요약 (D-4 = 8/6 밤 기준)
+## B-보강. 학사일정 구현 확정 세부 (2026-08-06 밤 — 서버부 선구현)
+
+- **공휴일 정적 표** `src/lib/timetable/holidays.ts` — 2026-2 범위(2026-08~2027-02): 광복절 8/15(토)+**대체공휴일 8/17(월) — 개학 2주차 월요일**, 추석 연휴 9/24(목)~9/26(토, 대체 없음 — 설·추석은 일요일 겹침만 대체), 개천절 10/3(토)+대체 10/5(월), 한글날 10/9(금), 성탄절 12/25(금), 신정 1/1(금), 설 연휴 2027-02-05(금)~02-07(일)+대체 02-08(월). 학기 갱신 시 이 파일만 교체.
+- **모델**: `timetable_calendar/{domain}/events/{eventId}` — termId, type(휴업일|재량휴업|단축수업|고사), startDate~endDate, periodsByGrade?(단축·고사), note, createdBy/At. 검증: 날짜 형식·역전 금지·단축은 periodsByGrade 필수.
+- **파생 규칙**: 주(월요일 시작) 생성 시 각 평일에 대해 — 공휴일 표 ∪ (휴업일·재량휴업 이벤트) → holiday:true / (단축·고사) → periodsByGrade. 겹치면 휴업일 우선.
+- **지연 생성 지점**: manage `week_list` 처리 시 `ensureDerivedWeeks` — 오늘이 속한 주부터 `publishWeeksAhead`(설정, 기본 2)주 앞까지 없는 주를 자동 생성(createdBy "학사일정 자동", 감사 로그 생략 — 파생은 결정론적). **수동 등록 주가 있으면 절대 덮지 않음**(수동 우선). 일과계 화면·교사 신청 화면 모두 week_list를 지나므로 단일 지점으로 충분.
+- **manage 액션**: `calendar_list` / `calendar_save`(생성·수정, 감사 로그) / `calendar_delete`(감사 로그). 일과계 게이트(기존 규칙 4). 이벤트 수정·삭제는 **이미 생성된 주 문서를 소급 변경하지 않음** — 미래 주 재생성은 해당 주 문서를 일과계가 수동 수정(week_update)하거나 삭제 후 재파생(후속 여지).
+
+## E. 기초시간표 개정 — 개학 첫 주 수정분을 다음 주부터 적용 (2026-08-06 사용자 요구)
+
+### E-1. 원리
+
+개학 첫 주에 학기 시간표 자체를 바꾸는 실무를 지원한다. 일과계가 기초시간표에 **개정판(revision)**을 편집(주간 교체와 같은 셀 이동 조작)하고, 적용 확정 시 **다음 주 월요일부터** 효력. 이번 주는 옛 기초 그대로 → 그 주의 출장 교체와 꼬이지 않음(실무 관행 그대로). 어긋나는 예약 변경은 기존 integrityWarnings가 안전망.
+
+### E-2. 모델
+
+```
+timetable_base_revisions/{domain}/revisions/{revId}
+  ├ termId
+  ├ status: "draft" | "applied"
+  ├ effectiveFrom?: "YYYY-MM-DD"   ← 적용 시작 주 월요일 (applied일 때 필수)
+  ├ ops: [                          ← 순서 있는 편집 연산 목록
+  │    { type: "swap", grade, classNum,
+  │      a: {day, period}, b: {day, period} }            ← 같은 학급 두 슬롯 맞바꿈 (빈 슬롯 허용 = 이동)
+  │  | { type: "edit_cell", grade, classNum, day, period,
+  │      lessons: TimetableLesson[] } ]                  ← 셀 통째 교체 (교사·과목 변경 등 만능 탈출구)
+  ├ note?: string
+  └ createdBy, createdAt, appliedBy?, appliedAt?
+```
+
+- draft는 **학기당 동시 1개**(단순화 — 새 draft 생성 시 기존 draft 있으면 그것을 반환). applied 개정판은 불변 — 잘못 적용했으면 새 개정으로 되돌린다.
+- **주차별 기초 선택**: `loadBaseGridsForWeek(domain, termId, weekStartDate)` = 기초 classGrids + `effectiveFrom ≤ weekStartDate`인 applied 개정판들을 appliedAt 순서로 적용 → **동시수업 라벨 재스탬프**(이동 후 위치 기준 재판정). 주간 합성·후보 엔진·승인 재검증·직권 전 경로가 이 로더를 쓴다.
+- swap 연산 적용 검증: 적용 시점 셀 상태가 기대와 다르면(선행 개정과 충돌) 해당 op는 건너뛰고 경고 수집 — 주간 integrityWarnings와 같은 원칙.
+
+### E-3. manage 액션 (일과계 게이트)
+
+- `revision_list`: 학기의 개정판 목록(+draft 유무).
+- `revision_save_draft` {revisionId?, ops, note?}: draft 생성/전체 교체. 서버는 ops를 기초에 가상 적용해 **오류 op 목록과 적용 결과 미리보기 요약**을 반환(저장은 항상 — 편집 중 임시 상태 허용).
+- `revision_apply` {revisionId, effectiveFrom?}: draft → applied. effectiveFrom 기본값 = **다음 주 월요일**(오늘이 속한 주의 차주). 과거·이번 주 월요일은 거부(이미 운영 중인 주 소급 변경 금지). 감사 로그.
+- `revision_delete` {revisionId}: draft만 삭제 가능. 감사 로그.
+
+### E-4. 화면 (Antigravity — 개학 첫 주 내)
+
+- 시간표 관리에 "기초시간표 개정" 탭: 학급 선택 → 기초 그리드 표시 → 셀 두 번 클릭으로 맞바꿈(주간 교체와 같은 조작감) 또는 셀 편집(교사·과목) → 변경 목록 패널(제거 가능) → [다음 주부터 적용] 확인창(적용 시작일 명시) → 적용 후 개정 이력 목록.
+- 적용 전 미리보기 = revision_save_draft 응답의 요약 + 그리드에 변경 셀 하이라이트.
+
+
 
 | 날짜 | 작업 |
 |---|---|
