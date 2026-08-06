@@ -294,6 +294,15 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
                 placeholder="단계 이름 (예: 담임 지도)"
                 className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
+              <label className="flex items-center space-x-1.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={st.homeroomResolvable === true}
+                  onChange={(e) => updateStage(st.id, "homeroomResolvable", e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500"
+                />
+                <span>담임 처리 단계</span>
+              </label>
             </div>
           ))}
         </div>

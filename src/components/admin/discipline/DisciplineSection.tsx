@@ -35,11 +35,14 @@ export default function DisciplineSection() {
     "record" | "status" | "voided" | "stage_events" | "config" | "permissions" | "homeroom"
   >("record");
 
-  const setInitialTabIfNeeded = (permData: UserPermissions) => {
+  const canSeeResolveTab = (perm: UserPermissions, cfg?: DisciplineConfig | null) =>
+    perm.canResolve || (perm.isHomeroom && Boolean((cfg?.stages || []).some((s) => s.homeroomResolvable === true)));
+
+  const setInitialTabIfNeeded = (permData: UserPermissions, cfg?: DisciplineConfig | null) => {
     if (tabInitialized) return;
     if (permData.canRecord) setActiveTab("record");
     else if (permData.canView) setActiveTab("status");
-    else if (permData.canResolve) setActiveTab("stage_events");
+    else if (canSeeResolveTab(permData, cfg)) setActiveTab("stage_events");
     else if (permData.canManageRules) setActiveTab("config");
     else if (permData.canManagePermissions) setActiveTab("permissions");
     setTabInitialized(true);
@@ -57,7 +60,7 @@ export default function DisciplineSection() {
         if (cached.config) {
           setConfig(cached.config);
         }
-        setInitialTabIfNeeded(cached);
+        setInitialTabIfNeeded(cached, cached.config);
         setLoading(false);
         return;
       }
@@ -84,7 +87,7 @@ export default function DisciplineSection() {
         setConfig(permData.config);
       }
 
-      setInitialTabIfNeeded(permData);
+      setInitialTabIfNeeded(permData, permData.config);
     } catch (err: any) {
       setError(err.message || "데이터 로딩 중 오류가 발생했습니다.");
     } finally {
@@ -116,10 +119,12 @@ export default function DisciplineSection() {
     );
   }
 
+  const showResolveTab = canSeeResolveTab(permissions, config);
+
   const hasAnyAccess =
     permissions.canView ||
     permissions.canRecord ||
-    permissions.canResolve ||
+    showResolveTab ||
     permissions.canManageRules ||
     permissions.canManagePermissions;
 
@@ -178,7 +183,7 @@ export default function DisciplineSection() {
           </>
         )}
 
-        {permissions.canResolve && (
+        {showResolveTab && (
           <button
             onClick={() => setActiveTab("stage_events")}
             className={`pb-3 px-5 font-bold text-sm border-b-2 whitespace-nowrap transition-all flex items-center space-x-1.5 ${
@@ -253,8 +258,8 @@ export default function DisciplineSection() {
           <DisciplineVoidedTab config={config} />
         )}
 
-        {activeTab === "stage_events" && permissions.canResolve && config && (
-          <DisciplineStageEventsTab domain={domain} config={config} />
+        {activeTab === "stage_events" && showResolveTab && config && (
+          <DisciplineStageEventsTab domain={domain} config={config} canResolve={permissions.canResolve} />
         )}
 
         {activeTab === "config" && permissions.canManageRules && config && (

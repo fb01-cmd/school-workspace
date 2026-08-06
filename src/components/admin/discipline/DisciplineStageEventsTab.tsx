@@ -6,9 +6,10 @@ import { getClientCache } from "@/lib/cache/clientCache";
 interface DisciplineStageEventsTabProps {
   domain: string;
   config: DisciplineConfig;
+  canResolve?: boolean;
 }
 
-export default function DisciplineStageEventsTab({ domain, config }: DisciplineStageEventsTabProps) {
+export default function DisciplineStageEventsTab({ domain, config, canResolve }: DisciplineStageEventsTabProps) {
   const [filterTab, setFilterTab] = useState<"unresolved" | "resolved">("unresolved");
   const [events, setEvents] = useState<DisciplineStageEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,12 +154,14 @@ export default function DisciplineStageEventsTab({ domain, config }: DisciplineS
         </div>
 
         <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setShowManualModal(true)}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-sm transition-all flex items-center space-x-1.5"
-          >
-            <span>➕ 수동 단계 지정</span>
-          </button>
+          {canResolve && (
+            <button
+              onClick={() => setShowManualModal(true)}
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-sm transition-all flex items-center space-x-1.5"
+            >
+              <span>➕ 수동 단계 지정</span>
+            </button>
+          )}
 
           <button
             onClick={fetchEvents}

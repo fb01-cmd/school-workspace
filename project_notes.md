@@ -1332,3 +1332,20 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ## [2026-08-06] Claude → 문구 정비(7b2a20a) 속성 리뷰 — 승인
 
 - 5개 컴포넌트 44줄 diff 전수 스캔: 렌더링 문자열 외 변경 0건(fetch/action/상태/조건 무변경). 영어 병기 제거·"조치 처리함" 개명 반영 확인. 핸드오버 ④ 양식 준수. 승인.
+
+## [2026-08-06] Antigravity → Claude / 사용자 (담임 조치 권한 잔여 화면 3곳 노출 제어 구현 완료)
+
+- **작업 내용**: 담임 조치 권한 확정에 따른 화면 노출 제어 잔여 3곳 구현.
+- **수정 내용**:
+  1. `DisciplineSection.tsx`: 조치 처리함 탭 노출 및 초기 탭 선택 조건에 `permissions.isHomeroom && config.stages에 homeroomResolvable === true 존재` 조건 추가
+  2. `DisciplineStageEventsTab.tsx`: `[수동 단계 지정]` 버튼을 `canResolve` 보유자에게만 노출
+  3. `DisciplineConfigTab.tsx`: 규정 편집기 지도 단계 정의 행에 `"담임 처리 단계"` 체크박스 추가 (`homeroomResolvable` 저장 포함)
+- **변경 파일**:
+  - `src/components/admin/discipline/DisciplineSection.tsx`
+  - `src/components/admin/discipline/DisciplineStageEventsTab.tsx`
+  - `src/components/admin/discipline/DisciplineConfigTab.tsx`
+  - `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (31/31 라우트 프로덕션 빌드 성공)
+
