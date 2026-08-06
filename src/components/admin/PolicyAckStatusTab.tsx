@@ -25,6 +25,24 @@ interface PolicyAckHistoryItem {
   ackedAt: string;
 }
 
+/**
+ * ackedAt은 경로에 따라 세 형태로 도착한다 — ① 클라이언트 SDK Timestamp(.toDate 보유)
+ * ② 서버(admin SDK) JSON 직렬화 {_seconds,_nanoseconds}(또는 {seconds,nanoseconds})
+ * ③ ISO 문자열/숫자. ②를 그대로 렌더하면 React가 객체 자식으로 앱 전체를 죽인다(#31 — 2026-08-06 실서비스 장애).
+ * 어떤 형태든 문자열로만 반환하는 단일 통로.
+ */
+const formatAckTime = (v: any): string => {
+  if (!v) return "-";
+  if (typeof v.toDate === "function") return v.toDate().toLocaleString("ko-KR");
+  const secs = v?._seconds ?? v?.seconds;
+  if (typeof secs === "number") return new Date(secs * 1000).toLocaleString("ko-KR");
+  if (typeof v === "string" || typeof v === "number") {
+    const d = new Date(v);
+    if (!isNaN(d.getTime())) return d.toLocaleString("ko-KR");
+  }
+  return "-";
+};
+
 export default function PolicyAckStatusTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -315,9 +333,7 @@ export default function PolicyAckStatusTab() {
                         <td className="p-3 font-mono text-slate-600">{u.email}</td>
                         <td className="p-3 font-mono font-bold text-emerald-600">v{u.policyAck?.version}</td>
                         <td className="p-3 text-slate-500">
-                          {u.policyAck?.ackedAt?.toDate
-                            ? u.policyAck.ackedAt.toDate().toLocaleString("ko-KR")
-                            : u.policyAck?.ackedAt || "-"}
+                          {formatAckTime(u.policyAck?.ackedAt)}
                         </td>
                       </tr>
                     ))}
@@ -359,7 +375,7 @@ export default function PolicyAckStatusTab() {
                         <td className="p-3 text-slate-600">{h.role}</td>
                         <td className="p-3 font-bold text-indigo-600">v{h.version}</td>
                         <td className="p-3 text-slate-500">
-                          {h.ackedAt ? new Date(h.ackedAt).toLocaleString("ko-KR") : "-"}
+                          {formatAckTime(h.ackedAt)}
                         </td>
                       </tr>
                     ))}
