@@ -130,11 +130,11 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
   };
 
   const rightLabels: Record<DisciplineRight, string> = {
-    view: "열람(view)",
-    record: "기록(record)",
-    resolve: "단계처리(resolve)",
-    manage_rules: "규정관리(manage_rules)",
-    manage_permissions: "권한관리(manage_permissions)",
+    view: "열람",
+    record: "기록",
+    resolve: "조치 처리",
+    manage_rules: "규정 관리",
+    manage_permissions: "권한 관리",
   };
 
   return (
@@ -188,15 +188,15 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
             <thead className="bg-gray-50 dark:bg-gray-900/50 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
               <tr>
                 <th className="p-4">교사 이메일</th>
-                <th className="p-4">적용 범위 (Scope)</th>
-                <th className="p-4">부여 권한 (Rights)</th>
+                <th className="p-4">적용 범위</th>
+                <th className="p-4">부여 권한</th>
                 <th className="p-4">부여자 / 일시</th>
                 <th className="p-4 text-right">관리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {grants.map((g) => {
-                let scopeStr = "전체 (All)";
+                let scopeStr = "전체";
                 if (g.scope.type === "grade") scopeStr = `${g.scope.grade}학년 전체`;
                 if (g.scope.type === "class") scopeStr = `${g.scope.grade}학년 ${g.scope.classNum}반`;
 
@@ -284,7 +284,7 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
               {/* 범위 (Scope) */}
               <div>
                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  권한 범위 (Scope) <span className="text-red-500">*</span>
+                  권한 범위 <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   <button
@@ -296,7 +296,7 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
                         : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600"
                     }`}
                   >
-                    학교 전체 (All)
+                    학교 전체
                   </button>
                   <button
                     type="button"

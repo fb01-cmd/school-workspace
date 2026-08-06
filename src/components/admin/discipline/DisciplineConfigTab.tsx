@@ -214,7 +214,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">1. 지도 항목 목록 (Discipline Items)</h3>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">1. 지도 항목 목록</h3>
             <p className="text-xs text-gray-500">기록 시 선택할 생활지도 항목입니다.</p>
           </div>
           <button
@@ -263,8 +263,8 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">2. 지도 단계 정의 (Stages)</h3>
-            <p className="text-xs text-gray-500">조치 단계를 순서대로 등록합니다. order가 클수록 상위 단계입니다.</p>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">2. 지도 단계 정의</h3>
+            <p className="text-xs text-gray-500">조치 단계를 순서대로 등록합니다. 단계 순서가 클수록 상위 단계입니다.</p>
           </div>
           <button
             onClick={addStage}
@@ -303,7 +303,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">3. 자동 단계 도달 규칙 (Rules)</h3>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">3. 자동 단계 도달 규칙</h3>
             <p className="text-xs text-gray-500">특정 항목 또는 카테고리 누적 n회 도달 시 지정된 단계로 자동 진입합니다.</p>
           </div>
           <button
@@ -417,7 +417,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
       <div className="bg-amber-50/50 dark:bg-amber-900/10 p-6 rounded-xl border border-amber-200 dark:border-amber-800 space-y-4">
         <div>
           <h3 className="text-base font-bold text-amber-900 dark:text-amber-300 flex items-center space-x-2">
-            <span>🔄 학년별 회차 리셋 (Reset Markers)</span>
+            <span>🔄 학년별 회차 리셋</span>
           </h3>
           <p className="text-xs text-amber-800 dark:text-amber-400 mt-1">
             새 학기 또는 학학년 초기화 시 해당 학년의 회차 누적을 0부터 다시 시작합니다. (과거 지도 기록 데이터 자체는 삭제되지 않습니다)

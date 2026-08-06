@@ -42,7 +42,7 @@ export default function DisciplineStageEventsTab({ domain, config }: DisciplineS
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "단계 처리함 데이터를 불러오지 못했습니다.");
+        throw new Error(data.error || "조치 처리함 데이터를 불러오지 못했습니다.");
       }
 
       setEvents(data.events || []);
@@ -146,9 +146,9 @@ export default function DisciplineStageEventsTab({ domain, config }: DisciplineS
       {/* 헤더 & 액션 */}
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">📥 단계 처리함 (Stage Events)</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">📥 조치 처리함</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            자동 매칭 또는 수동으로 도달한 지도 단계 사안을 조치 처리하거나 수동으로 단계를 부여합니다.
+            지도 단계에 도달한 학생의 조치를 입력하거나 수동으로 단계를 지정합니다.
           </p>
         </div>
 
@@ -202,7 +202,7 @@ export default function DisciplineStageEventsTab({ domain, config }: DisciplineS
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          단계 이벤트 데이터를 가져오는 중...
+          조치 처리함 데이터를 가져오는 중...
         </div>
       ) : error ? (
         <div className="p-6 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-xl border border-red-200 dark:border-red-800 text-center">

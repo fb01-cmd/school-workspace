@@ -1300,3 +1300,23 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **테스트 부산물 삭제 ✅**: 무효화 검증 테스트 기록이 발동시킨 미처리 단계 사안 1건(evt_1785927728313_31c7daac, 10101) admin SDK로 삭제, 감사 로그 기록. 원인 기록은 무효화 상태였음.
 - **수동 단계 지정 치명 2건 (사용자 화면 검수 중 파생 발견)**: ① 클라이언트가 학번을 이메일 앞자리에서 추출(`^(\d{5})@`) — 실이메일(26027@)이면 잘못된 학번 전송 + "학번@도메인 형식만 선택 가능" 안내로 실학생 선택 자체가 차단되던 결함. 명단 familyName 해석으로 교체(bbbb1be 동일 해법). ② 서버 create_manual의 studentEmail 합성 — records와 동일한 Directory 대조 검증으로 교체(산출물 D 보완). tsc·build 31/31 ✅.
 - **백로그 추가**: 기록 무효화 시 그 기록이 발동시킨 **미처리** 단계 사안 자동 정리(현재는 잔존 — 오늘 테스트에서 실증). 스펙: void 액션에서 causeRecordIds에 해당 기록이 포함된 resolved=false 이벤트를 함께 삭제(또는 무효 표시), 감사 로그 부기.
+
+## [2026-08-06] Antigravity → Claude / 사용자 (생활지도 종합 관리 화면 UI 문구 교사 눈높이 전면 정비)
+
+- **작업 내용**: 생활지도 종합 관리 셸(DisciplineSection) 및 탭 컴포넌트 전체 노출 문구를 교사 언어로 정비.
+- **수정 내용**:
+  1. "(Grant)", "(Stage Events)", "(Discipline Items)", "(Stages)", "(Rules)", "(Reset Markers)", "열람(view)" 등 영어 병기 전면 삭제
+  2. "단계 처리함" 메뉴·헤더를 "조치 처리함"으로 변경 및 부제를 "지도 단계에 도달한 학생의 조치를 입력하거나 수동으로 단계를 지정합니다."로 수정
+  3. "단계 이벤트 데이터를 가져오는 중..." 등의 개발 용어를 "조치 처리함 데이터를 가져오는 중..."으로 교체
+  4. 기능·로직·API 일절 수정 없음 (오직 렌더링 노출 문자열만 변경)
+- **변경 파일**:
+  - `src/components/admin/discipline/DisciplineSection.tsx`
+  - `src/components/admin/discipline/DisciplineRecordTab.tsx`
+  - `src/components/admin/discipline/DisciplineStageEventsTab.tsx`
+  - `src/components/admin/discipline/DisciplineConfigTab.tsx`
+  - `src/components/admin/discipline/DisciplinePermissionsTab.tsx`
+  - `project_notes.md`
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (31/31 라우트 프로덕션 빌드 성공)
+

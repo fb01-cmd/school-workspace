@@ -259,7 +259,7 @@ export default function DisciplineRecordTab({
       setMessage({
         type: "success",
         text: `[${selectedStudentName || selectedStudentEmail}] 지도 기록이 성공적으로 등록되었습니다.${
-          data.stageEventCreated ? " (단계 도달 — 처리함에 사안이 생성되었습니다)" : ""
+          data.stageEventCreated ? " (단계 도달 — 조치 처리함에 사안이 생성되었습니다)" : ""
         }`,
       });
 

@@ -129,7 +129,7 @@ export default function DisciplineSection() {
         <div className="text-4xl">🔒</div>
         <h3 className="text-lg font-bold text-gray-900 dark:text-white">생활지도 메뉴 접근 권한이 없습니다</h3>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          담임 교사이시거나 관리자로부터 생활지도 권한(Grant)을 부여받아야 접근할 수 있습니다.
+          담임 교사이시거나 관리자로부터 생활지도 권한을 부여받아야 접근할 수 있습니다.
         </p>
       </div>
     );
@@ -187,7 +187,7 @@ export default function DisciplineSection() {
                 : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
             }`}
           >
-            <span>📥 단계 처리함</span>
+            <span>📥 조치 처리함</span>
           </button>
         )}
 
