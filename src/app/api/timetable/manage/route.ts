@@ -23,8 +23,13 @@ import {
   updateWeek,
   validateTimetableImport,
 } from "@/lib/timetable/server";
-import { ManageAction, ManageTimetableRequest } from "@/lib/timetable/types";
+import {
+  DirectCommitBatchItemResult,
+  ManageAction,
+  ManageTimetableRequest,
+} from "@/lib/timetable/types";
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 
 export async function POST(req: NextRequest) {
   try {
@@ -341,7 +346,8 @@ export async function POST(req: NextRequest) {
 
       // §14 교사 기점 직권 배정 — 소스 셀 1개로 등록된 전 주의 맞교환 후보 일괄 계산.
       // teacherEmail을 requester로 넘겨 resolveSourceLesson이 "그 셀이 그 교사의 수업"임을 검증한다.
-      // 오버레이(whatIf)는 미사용 — 직권은 확정 상태 기준으로만 탐색.
+      // 확정 상태 기준 탐색은 유지하되(교사 PENDING·초안 오버레이 미사용), §14-4 담기 누적분은
+      // pendingItems로 명시 전달받아 가상 적용한다 — 담긴 항목과 충돌하는 후보를 미리 거르기 위함.
       case "direct_candidates_all": {
         if (!body.weekId || !body.source || !body.teacherEmail) {
           return NextResponse.json(
@@ -353,11 +359,30 @@ export async function POST(req: NextRequest) {
         if (![grade, classNum, day, period].every((n) => Number.isInteger(n) && n > 0)) {
           return NextResponse.json({ error: "source 슬롯 값이 유효하지 않습니다." }, { status: 400 });
         }
+        const pendingItems = body.pendingItems;
+        if (pendingItems !== undefined) {
+          const shapeOk =
+            Array.isArray(pendingItems) && pendingItems.length <= 20 &&
+            pendingItems.every(
+              (p) =>
+                p?.weekId && p.source && p.candidate &&
+                [p.source.grade, p.source.classNum, p.source.day, p.source.period].every(
+                  (n) => Number.isInteger(n) && n > 0
+                )
+            );
+          if (!shapeOk) {
+            return NextResponse.json(
+              { error: "pendingItems 형식이 유효하지 않습니다 (최대 20건)." },
+              { status: 400 }
+            );
+          }
+        }
         const result = await computeCandidatesAllWeeks(
           domain,
           String(body.teacherEmail).trim().toLowerCase(),
           body.weekId,
-          { grade, classNum, day, period, subjectName: "" }
+          { grade, classNum, day, period, subjectName: "" },
+          pendingItems?.length ? { extraItems: pendingItems } : undefined
         );
         if (result.error) {
           return NextResponse.json({ error: result.error }, { status: 400 });
@@ -392,6 +417,55 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
         return NextResponse.json({ success: true, action, request, change });
+      }
+
+      // §14-4 직권 담기 일괄 반영 — 항목별로 directCommit(생성+즉시 승인)을 순차 실행.
+      // 부분 성공 허용(전체 롤백 없음): 앞 항목이 실제 반영된 상태에서 뒤 항목이 재검증되므로,
+      // 담기 시점에 유효했던 조합이 그대로 유효하면 전건 성공, 중간 실패는 항목별 사유로 반환.
+      // 감사 로그는 단건 direct_commit과 동일 불변식(반영 1건 = 로그 1건)을 유지하고 batchId를 병기.
+      case "direct_commit_batch": {
+        const items = body.items;
+        if (!Array.isArray(items) || items.length < 1 || items.length > 20) {
+          return NextResponse.json({ error: "items 배열(1~20건)이 필요합니다." }, { status: 400 });
+        }
+        const batchId = randomUUID();
+        const results: DirectCommitBatchItemResult[] = [];
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          try {
+            if (!item?.weekId || !item.source || !item.type || !item.candidate) {
+              throw new Error("weekId, source, type, candidate가 모두 필요합니다.");
+            }
+            if (item.type !== "swap" && item.type !== "substitute") {
+              throw new Error("type은 swap 또는 substitute여야 합니다.");
+            }
+            const { grade, classNum, day, period } = item.source;
+            if (![grade, classNum, day, period].every((n) => Number.isInteger(n) && n > 0)) {
+              throw new Error("source 슬롯 값이 유효하지 않습니다.");
+            }
+            const { request, change } = await directCommit(domain, auth.email, {
+              weekId: item.weekId,
+              type: item.type,
+              source: { grade, classNum, day, period, subjectName: item.source.subjectName || "" },
+              candidate: item.candidate,
+              reason: item.reason || body.reason,
+              targetWeekId: item.targetWeekId,
+              batchId,
+            });
+            await writeAuditLog({
+              operatorEmail: auth.email,
+              targetEmail: request.requesterEmail,
+              action: "direct_swap_commit",
+              details: `일과계 직권 배정: ${request.source.grade}-${request.source.classNum} ${request.source.day}요일 ${request.source.period}교시 (${request.type}${request.targetWeekId ? `, 교차 주 → ${request.targetWeekId}` : ""}) → change ${change.id} (일괄 ${i + 1}/${items.length}, batchId ${batchId})`,
+              status: "success",
+            });
+            results.push({ index: i, ok: true, requestId: request.id, changeId: change.id });
+          } catch (e: any) {
+            results.push({ index: i, ok: false, error: e.message || "반영 실패" });
+          }
+        }
+        const committedCount = results.filter((r) => r.ok).length;
+        return NextResponse.json({ success: true, action, batchId, committedCount, results });
       }
 
       case "revert_change": {

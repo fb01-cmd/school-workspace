@@ -215,6 +215,7 @@ export type ManageAction =
   | "direct_candidates"
   | "direct_candidates_all" // §14 직권 배정 교사 기점 — 소스 셀 1개 → 등록 전 주 맞교환 후보 일괄
   | "direct_commit"
+  | "direct_commit_batch" // §14-4 직권 담기 일괄 반영 — direct_commit을 항목별 순차 실행 (부분 성공 허용)
   // ── Phase 9b 순서 5 운영 도구 (phase9b_spec §8) ──
   | "neis_list"
   | "hour_totals";
@@ -239,6 +240,9 @@ export interface ManageTimetableRequest {
   type?: SwapRequestType; // direct_* 및 neis_list 유형 필터 겸용
   candidate?: SwapCandidateSnapshot;
   reason?: SwapRequestReason;
+  // §14-4 직권 담기 — 후보 재탐색 가상 적용(direct_candidates_all) / 일괄 반영(direct_commit_batch)
+  pendingItems?: DirectPendingOverlayItem[];
+  items?: DirectCommitBatchItem[];
   // 운영 도구 (neis_list / hour_totals) — phase9b_spec §8
   startDate?: string; // "YYYY-MM-DD"
   endDate?: string;
@@ -578,6 +582,33 @@ export interface SwapBatchItemResult {
   requestId?: string;
   error?: string; // 재검증 탈락 사유 — 초안 카드에 표기 (부분 성공 허용, §14-2)
   draftId?: string;
+}
+
+/**
+ * §14-4 직권 담기 누적분 — direct_candidates_all 후보 재탐색에 가상 적용할 항목.
+ * 교사 초안(swap_drafts)과 달리 서버에 저장하지 않는다 — 담기는 일과계 화면 세션 상태이며,
+ * 재탐색 때마다 클라이언트가 전량 명시 전달한다.
+ */
+export interface DirectPendingOverlayItem {
+  weekId: string;
+  targetWeekId?: string; // 교차 주 맞교환 — 없거나 weekId와 같으면 같은-주
+  type: SwapRequestType;
+  source: SwapSourceSlot;
+  candidate: SwapCandidateSnapshot;
+}
+
+/** §14-4 직권 일괄 반영 항목 — direct_commit 단건과 동일 규약 + 항목별 사유 */
+export interface DirectCommitBatchItem extends DirectPendingOverlayItem {
+  reason?: SwapRequestReason; // 없으면 일괄 반영의 공통 reason 적용
+}
+
+/** §14-4 직권 일괄 반영 항목별 결과 (부분 성공 허용 — create_batch와 동일 방침) */
+export interface DirectCommitBatchItemResult {
+  index: number;
+  ok: boolean;
+  requestId?: string;
+  changeId?: string;
+  error?: string; // 승인 재검증 탈락 사유 — 담기 카드에 표기
 }
 
 /** 요일별 예상 시수 (phase9b_spec §14-1) — 가상 합성 반영 후, 현재 검토 중 후보는 미포함(±1은 UI가 계산) */

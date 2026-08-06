@@ -1506,3 +1506,10 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **변경 파일**: `src/components/admin/discipline/DisciplineSection.tsx`, `src/components/admin/discipline/DisciplineStageEventsTab.tsx`, `src/components/admin/discipline/DisciplineConfigTab.tsx`, `project_notes.md`
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (31/31 라우트 프로덕션 빌드 성공)
 
+## [2026-08-06] Claude → 담임 조치 화면 3곳(ebfffc5) 검증 통과 + §14-4 직권 배정 동등성 원칙 확정·서버 구현
+
+- **담임 조치 화면 검증 ✅**: ebfffc5 diff 전수 대조 — 탭 노출 3곳(초기 진입·전체 접근·렌더 게이트) 일관, [수동 단계 지정] canResolve 게이트, 규정 편집기 체크박스+stages 전체 저장으로 homeroomResolvable 서버 전달 확인. tsc 0 에러·build exit 0 **실측 재확인**. 명시적 add 준수. 실기기 확인 시: 조치 권한 없는 담임 계정으로 조치 처리함 진입 → 자기 반 사안만 목록에 떠야 정상.
+- **§14-4 확정 (사용자)**: *"일반 교사가 수업교체 때 할 수 있는 것·볼 수 있는 것은 일과계도 똑같이 다 할 수 있어야 한다"*를 직권 배정의 상위 원칙으로 확정. 격차 5건 실사 — ① 상대 교사 미리보기(MiniPreviewGrid) 부재(감점 숫자만 → "AI 점수를 믿어라" 구조) ② 감점 사유 상세 미표시 ③ 양해 공유 카드 부재 ④ 다건 담기·일괄 반영 부재 ⑤ 담기 반영 재탐색 부재. + "주간 선택(초기 강조)" 드롭다운은 §14 초판 잔재로 제거 확정(사용자 지적). 상세 스펙: phase9b_spec.md **§14-4**.
+- **서버 구현 ✅ (Claude)**: `computeCandidatesAllWeeks`에 whatIf.extraItems(§14-1 buildVirtualChanges 재사용, 자기 소스 셀 제외, +20M 적용 순서 보장, 조건부 태깅 extraCount 반영, 응답 assumedExtraCount 추가) / manage `direct_candidates_all`에 pendingItems(≤20건 검증) 전달 / manage `direct_commit_batch` 신설(1~20건 순차 directCommit, 부분 성공, 항목별 results, 반영 1건=감사 로그 1건+batchId 병기) / `directCommit`에 batchId 전달(요청대장 묶음 표시 정합). 타입 3종 신설(DirectPendingOverlayItem/DirectCommitBatchItem/DirectCommitBatchItemResult). tsc ✅.
+- **잔여 (Antigravity 몫, §14-4 개편안 1~6)**: MiniPreviewGrid·양해 카드 공용 추출(동작 무변경) → 직권 탭 사이드바(전후 미리보기+감점 사유 나열)·담기(클라이언트 상태, 그리드 가상 마킹, pendingItems 재탐색)·상대 교사별 양해 카드·direct_commit_batch 일괄 반영·주간 드롭다운 제거+오늘 주 자동 스크롤.
+

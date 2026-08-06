@@ -807,6 +807,7 @@ import {
 } from "./swap";
 import {
   CrossSwapLessonRef,
+  DirectPendingOverlayItem,
   HourTotalsResult,
   NeisRow,
   ProjectedDayLoad,
@@ -1278,12 +1279,18 @@ export async function computeCandidatesAllWeeks(
   requesterEmail: string,
   sourceWeekId: string,
   source: SwapSourceSlot,
-  whatIf?: { includeMyPending?: boolean; includeDrafts?: boolean }
+  whatIf?: {
+    includeMyPending?: boolean;
+    includeDrafts?: boolean;
+    // §14-4 직권 담기 누적분 — DB에 없는 화면 세션 상태라 호출부가 전량 명시 전달
+    extraItems?: DirectPendingOverlayItem[];
+  }
 ): Promise<{
   sourceSubjectName: string;
   weeks: Array<{ weekId: string; startDate: string; swapCandidates: SwapCandidate[] }>;
   assumedPendingCount: number;
   assumedDraftCount: number;
+  assumedExtraCount: number;
   error?: string;
 }> {
   const sourceWeek = await loadWeek(domain, sourceWeekId);
@@ -1302,6 +1309,49 @@ export async function computeCandidatesAllWeeks(
       )
     : null;
 
+  // §14-4: 직권 담기 누적분 가상 적용 — loadMyVirtualOverlay와 같은 규약으로 변환하되,
+  // 현재 탐색 중인 소스 셀과 같은 항목은 제외(자기 충돌 방지). appliedAt은 오버레이(+10M)보다
+  // 뒤(+20M)로 두어 담기 순서가 실 변경·대기분 뒤에 적용됨을 보장한다.
+  const extraByWeek = new Map<string, TimetableChange[]>();
+  let extraCount = 0;
+  if (whatIf?.extraItems?.length) {
+    const weekIds = allWeeks.map((w) => w.id);
+    const futureBase = Date.now() + 20_000_000;
+    let seq = 0;
+    whatIf.extraItems.forEach((e, i) => {
+      const isSelf =
+        e.weekId === sourceWeekId &&
+        e.source.grade === source.grade && e.source.classNum === source.classNum &&
+        e.source.day === source.day && e.source.period === source.period;
+      if (isSelf) return;
+      const it: VirtualSwapItem = {
+        key: `direct-${i}`,
+        termId: term.id,
+        weekId: e.weekId,
+        targetWeekId: e.targetWeekId,
+        type: e.type,
+        requesterEmail,
+        requesterName: requesterEmail.split("@")[0],
+        source: e.source,
+        candidate: e.candidate,
+      };
+      let touched = false;
+      for (const wid of weekIds) {
+        const chs = buildVirtualChanges(it, wid, futureBase + seq);
+        if (chs.length) {
+          extraByWeek.set(wid, [...(extraByWeek.get(wid) || []), ...chs]);
+          seq += chs.length;
+          touched = true;
+        }
+      }
+      if (touched) extraCount++;
+    });
+  }
+  const virtualOf = (weekId: string): TimetableChange[] => [
+    ...(overlay?.byWeek.get(weekId) || []),
+    ...(extraByWeek.get(weekId) || []),
+  ];
+
   // 기초 그리드·설정 1회 로드, 주별 합성 (computeMyProjectedWeeks와 동일 패턴)
   const [baseGrids, settings] = await Promise.all([
     loadAllClassGrids(domain, term.id),
@@ -1316,19 +1366,19 @@ export async function computeCandidatesAllWeeks(
   const synthByWeek = new Map<string, WeeklyClassGrid[]>();
   for (const week of allWeeks) {
     const changes = changesByWeek.get(week.id) || [];
-    const virtual = overlay?.byWeek.get(week.id) || [];
+    const virtual = virtualOf(week.id);
     const { grids } = synthesizeWeeklyGrids(baseGrids, week, [...changes, ...virtual], settings);
     synthByWeek.set(week.id, grids);
   }
 
   // 조건부 태깅용 base(가상 합성 없는 확정 시간표) 합성 — 가상 변경이 없는 주는 동일 참조를 재사용해
   // 아래 후보 루프에서 참조 비교로 base 재계산 자체를 건너뛴다 (추가 DB 조회 없음, CPU만)
-  const overlayCount = overlay ? overlay.pendingCount + overlay.draftCount : 0;
+  const overlayCount = (overlay ? overlay.pendingCount + overlay.draftCount : 0) + extraCount;
   let baseSynthByWeek: Map<string, WeeklyClassGrid[]> | null = null;
   if (overlayCount > 0) {
     baseSynthByWeek = new Map();
     for (const week of allWeeks) {
-      const virtual = overlay!.byWeek.get(week.id) || [];
+      const virtual = virtualOf(week.id);
       baseSynthByWeek.set(
         week.id,
         virtual.length === 0
@@ -1344,6 +1394,7 @@ export async function computeCandidatesAllWeeks(
     return {
       sourceSubjectName: "", weeks: [], error: src.error,
       assumedPendingCount: overlay?.pendingCount || 0, assumedDraftCount: overlay?.draftCount || 0,
+      assumedExtraCount: extraCount,
     };
   }
   const sourceSubjectName = src.lesson!.subjectName;
@@ -1391,6 +1442,7 @@ export async function computeCandidatesAllWeeks(
     weeks,
     assumedPendingCount: overlay?.pendingCount || 0,
     assumedDraftCount: overlay?.draftCount || 0,
+    assumedExtraCount: extraCount,
   };
 }
 
@@ -2314,6 +2366,7 @@ export async function directCommit(
     candidate: SwapCandidateSnapshot;
     reason?: SwapRequestReason;
     targetWeekId?: string; // 교차 주 맞교환 (§4-3b)
+    batchId?: string; // §14-4 직권 담기 일괄 반영 묶음 — 요청대장 묶음 표시와 감사 추적용
   }
 ): Promise<{ request: SwapRequest; change: TimetableChange }> {
   const week = await loadWeek(domain, params.weekId);
@@ -2333,7 +2386,7 @@ export async function directCommit(
       reason: params.reason,
       targetWeekId: params.targetWeekId,
     },
-    { skipManagerNotify: true, direct: true }
+    { skipManagerNotify: true, direct: true, batchId: params.batchId }
   );
 
   try {
