@@ -87,8 +87,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     fetchWeeks();
   }, [activeTermId]);
 
-  // 교사 주간 시간표 조회
-  const fetchTeacherTimetable = async (email: string) => {
+  // 교사 주간 시간표 조회 — 대상 주간(weekId)을 반드시 함께 보낸다.
+  // 미지정 시 서버가 "현재 주"로 폴백하므로, 일과계가 고른 주간과 그리드 내용이
+  // 어긋난다 (이미 교체가 반영된 주간일수록 오배정 위험).
+  const fetchTeacherTimetable = async (email: string, weekId?: string) => {
     if (!email) return;
     setLoadingTimetable(true);
     setTimetableError(null);
@@ -100,6 +102,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         body: JSON.stringify({
           action: "teacher",
           teacherEmail: email,
+          ...(weekId ? { weekId } : {}),
         }),
       });
 
@@ -147,8 +150,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setSuccessMsg(null);
     setSubmitError(null);
 
-    // 교사 시간표 조회
-    fetchTeacherTimetable(email);
+    // 교사 시간표 조회 (선택된 대상 주간 기준)
+    fetchTeacherTimetable(email, selectedWeekId);
   };
 
   // 주간 변경 시 선택 교사의 시간표 및 후보 초기화
@@ -162,7 +165,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setSuccessMsg(null);
     setSubmitError(null);
     if (selectedTeacherEmail) {
-      fetchTeacherTimetable(selectedTeacherEmail);
+      fetchTeacherTimetable(selectedTeacherEmail, weekId);
     }
   };
 
@@ -319,7 +322,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         sourceLessonInfo?.subjectName || ""
       );
       if (selectedTeacherEmail) {
-        fetchTeacherTimetable(selectedTeacherEmail);
+        fetchTeacherTimetable(selectedTeacherEmail, selectedWeekId);
       }
     } catch (err: any) {
       setSubmitError(err.message || "직권 배정 실패");
