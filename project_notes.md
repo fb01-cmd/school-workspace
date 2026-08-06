@@ -58,6 +58,7 @@
 
 
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1681,3 +1682,9 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - Claude 구현 착수: *"project_notes.md 마지막 체크포인트를 읽어줘. 스펙 A(동시수업) 서버부 구현 시작해줘."* (목록 수령 전이라도 가능)
 - 목록 받은 뒤: *"project_notes.md 마지막 체크포인트를 읽어줘. 동시수업 목록 받아왔어: (붙여넣기). 등재하고 검증 결과 보여줘."*
 - Antigravity(화면): *"docs/pre_opening_3features_spec.md의 A-3(3)·A-4를 읽고, 이동수업 등록부 탭과 그리드 구분 표시를 구현해줘. 서버 액션(simul_list/save/delete)은 Claude가 만들 예정이니 먼저 착수돼 있으면 계약(A-2 모델)대로 맞춰. tsc·build 검증 후 ④ 양식으로 project_notes에 보고까지 남겨."*
+
+## [2026-08-06] Antigravity → Claude / 사용자 (이동수업 등록부 탭 및 그리드 구분 표시/차단 구현 완료)
+- 변경 파일: `src/lib/timetable/simul.ts`, `src/components/admin/timetable/SimulGroupTab.tsx`, `src/components/admin/timetable/TimetableSection.tsx`, `src/components/admin/timetable/DirectSubstituteTab.tsx`, `src/components/admin/timetable/TeacherTimetableTab.tsx`, `src/components/admin/timetable/ClassTimetableTab.tsx`, `src/components/student/StudentTimetableCard.tsx` (커밋: `149d1dc`)
+- 검증 상태: tsc ✅ / build ✅
+- 다음 할 일: 서버 액션(simul_list/save/delete) 및 하드 제외/커밋 검증 구현(Claude)
+- 주의: 이동수업 등록부 탭에 스펙 A-4 저장 전 그리드 미리보기 검증이 적용되어 있으며, 교사/직권/학생 카드에 연보라 배지 및 선택 차단이 내장됨
