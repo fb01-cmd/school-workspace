@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc } from "firebase/firestore";
 import MyProfileCard from "@/components/admin/MyProfileCard";
+import StudentTimetableCard from "@/components/student/StudentTimetableCard";
 
 export default function StudentPortal() {
   const { userData } = useAuth();
@@ -303,6 +304,7 @@ export default function StudentPortal() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <MyProfileCard />
+            <StudentTimetableCard />
             {gradTask && (
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
                   <div>
