@@ -14,6 +14,8 @@ import DirectSubstituteTab from "./DirectSubstituteTab";
 import NeisExportTab from "./NeisExportTab";
 import HourTotalsTab from "./HourTotalsTab";
 import SimulGroupTab from "./SimulGroupTab";
+import CalendarManageTab from "./CalendarManageTab";
+import BaseRevisionTab from "./BaseRevisionTab";
 
 export default function TimetableSection() {
   const { userData } = useAuth();
@@ -26,7 +28,7 @@ export default function TimetableSection() {
   const [error, setError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
-    "weeks" | "ledger" | "direct" | "simul" | "neis" | "hours" | "view" | "class" | "free" | "import"
+    "weeks" | "ledger" | "direct" | "simul" | "calendar" | "revision" | "neis" | "hours" | "view" | "class" | "free" | "import"
   >("weeks");
 
   const fetchSettingsAndTerms = async (forceRefresh = false) => {
@@ -176,6 +178,28 @@ export default function TimetableSection() {
         </button>
 
         <button
+          onClick={() => setActiveTab("calendar")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "calendar"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>📅 학사일정</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("revision")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "revision"
+              ? "bg-amber-600 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>🛠️ 기초시간표 개정</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab("neis")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
             activeTab === "neis"
@@ -254,6 +278,10 @@ export default function TimetableSection() {
       {activeTab === "direct" && <DirectSubstituteTab activeTermId={activeTermId} />}
 
       {activeTab === "simul" && <SimulGroupTab activeTermId={activeTermId} />}
+
+      {activeTab === "calendar" && <CalendarManageTab activeTermId={activeTermId} />}
+
+      {activeTab === "revision" && <BaseRevisionTab activeTermId={activeTermId} />}
 
       {activeTab === "neis" && <NeisExportTab activeTermId={activeTermId} />}
 
