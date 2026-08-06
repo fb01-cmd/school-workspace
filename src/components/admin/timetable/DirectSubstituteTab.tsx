@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import {
   SubstituteCandidate,
   SwapCandidate,
   SwapReasonType,
+  TeacherTimetableCell,
   TimetableWeek,
 } from "@/lib/timetable/types";
 import { DAY_LABEL, formatSlotWithDate } from "@/lib/timetable/utils";
@@ -14,32 +17,47 @@ interface DirectSubstituteTabProps {
 }
 
 export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTabProps) {
+  const { userData } = useAuth();
+  const domain = userData?.domain || userData?.email?.split("@")[1] || "hmh.or.kr";
+
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [selectedWeekId, setSelectedWeekId] = useState<string>("");
 
-  // 1단계: 원 슬롯 선택 입력
-  const [grade, setGrade] = useState<number>(1);
-  const [classNum, setClassNum] = useState<number>(1);
-  const [day, setDay] = useState<number>(1);
-  const [period, setPeriod] = useState<number>(1);
+  // Step 1: 교사 선택 상태
+  const [teacherInput, setTeacherInput] = useState("");
+  const [selectedTeacherEmail, setSelectedTeacherEmail] = useState("");
+  const [selectedTeacherName, setSelectedTeacherName] = useState("");
+  const [recentTeachers, setRecentTeachers] = useState<Array<{ email: string; name: string }>>([]);
 
-  // 2단계: 후보 탐색 결과
+  // Step 2: 교사 시간표 상태
+  const [teacherCells, setTeacherCells] = useState<TeacherTimetableCell[]>([]);
+  const [loadingTimetable, setLoadingTimetable] = useState(false);
+  const [timetableError, setTimetableError] = useState<string | null>(null);
+
+  // 선택된 원 수업 슬롯
+  const [selectedSlot, setSelectedSlot] = useState<{
+    grade: number;
+    classNum: number;
+    day: number;
+    period: number;
+  } | null>(null);
+
+  // Step 3: 후보 탐색 결과 및 승인 상태
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [candidateError, setCandidateError] = useState<string | null>(null);
   const [sourceLessonInfo, setSourceLessonInfo] = useState<{
     subjectName: string;
     teacherName?: string;
   } | null>(null);
+
   const [swapCandidates, setSwapCandidates] = useState<SwapCandidate[]>([]);
   const [substituteCandidates, setSubstituteCandidates] = useState<SubstituteCandidate[]>([]);
   const [activeCandidateType, setActiveCandidateType] = useState<"swap" | "substitute">("swap");
 
-  // 3단계: 선택된 후보 및 사유
   const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null);
   const [reasonType, setReasonType] = useState<SwapReasonType>("기타");
   const [reasonNote, setReasonNote] = useState("일과계 직권 배정");
 
-  // 직권 승인 실행 상태
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -69,17 +87,101 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     fetchWeeks();
   }, [activeTermId]);
 
-  // 후보 탐색 API 호출
-  const handleSearchCandidates = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!selectedWeekId) {
+  // 교사 주간 시간표 조회
+  const fetchTeacherTimetable = async (email: string) => {
+    if (!email) return;
+    setLoadingTimetable(true);
+    setTimetableError(null);
+
+    try {
+      const res = await fetch("/api/timetable/view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "teacher",
+          teacherEmail: email,
+        }),
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        if (result.data && Array.isArray(result.data.cells)) {
+          setTeacherCells(result.data.cells);
+          if (result.data.teacherName) {
+            setSelectedTeacherName(result.data.teacherName);
+          }
+        } else {
+          setTeacherCells([]);
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setTimetableError(errData.error || "교사 시간표를 불러올 수 없습니다.");
+      }
+    } catch (err: any) {
+      setTimetableError(`네트워크 오류: ${err.message}`);
+    } finally {
+      setLoadingTimetable(false);
+    }
+  };
+
+  // 교사 선택 처리
+  const handleSelectTeacher = (email: string, name?: string) => {
+    const finalName = name || email.split("@")[0];
+    setSelectedTeacherEmail(email);
+    setSelectedTeacherName(finalName);
+    setTeacherInput(finalName);
+
+    // 최근 선택한 교사 목록 업데이트 (최대 5명 중복제거)
+    setRecentTeachers((prev) => {
+      const filtered = prev.filter((t) => t.email.toLowerCase() !== email.toLowerCase());
+      return [{ email, name: finalName }, ...filtered].slice(0, 5);
+    });
+
+    // 슬롯 및 후보 목록 초기화
+    setSelectedSlot(null);
+    setSourceLessonInfo(null);
+    setSwapCandidates([]);
+    setSubstituteCandidates([]);
+    setSelectedCandidate(null);
+    setCandidateError(null);
+    setSuccessMsg(null);
+    setSubmitError(null);
+
+    // 교사 시간표 조회
+    fetchTeacherTimetable(email);
+  };
+
+  // 주간 변경 시 선택 교사의 시간표 및 후보 초기화
+  const handleWeekChange = (weekId: string) => {
+    setSelectedWeekId(weekId);
+    setSelectedSlot(null);
+    setSourceLessonInfo(null);
+    setSwapCandidates([]);
+    setSubstituteCandidates([]);
+    setSelectedCandidate(null);
+    setSuccessMsg(null);
+    setSubmitError(null);
+    if (selectedTeacherEmail) {
+      fetchTeacherTimetable(selectedTeacherEmail);
+    }
+  };
+
+  // 후보 탐색 API 호출 (셀 클릭 시 실행)
+  const fetchCandidates = async (
+    weekId: string,
+    grade: number,
+    classNum: number,
+    day: number,
+    period: number,
+    subjectName: string
+  ) => {
+    if (!weekId) {
       setCandidateError("주간(Week)을 선택해 주세요.");
       return;
     }
 
     setLoadingCandidates(true);
     setCandidateError(null);
-    setSourceLessonInfo(null);
     setSwapCandidates([]);
     setSubstituteCandidates([]);
     setSelectedCandidate(null);
@@ -87,13 +189,12 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setSubmitError(null);
 
     try {
-      // 직권 배정은 관리자 전용 action 사용 — 교사용 requests 라우트는 "본인 수업만" 검증이라 사용 불가
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "direct_candidates",
-          weekId: selectedWeekId,
+          weekId,
           source: { grade, classNum, day, period },
         }),
       });
@@ -101,8 +202,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       const data = await res.json();
       if (res.ok && data.success) {
         setSourceLessonInfo({
-          subjectName: data.sourceSubjectName || data.sourceTeacher?.subjectName || "수업",
-          teacherName: data.sourceTeacher?.teacherName,
+          subjectName: data.sourceSubjectName || data.sourceTeacher?.subjectName || subjectName,
+          teacherName: data.sourceTeacher?.teacherName || selectedTeacherName,
         });
         setSwapCandidates(data.swapCandidates || []);
         setSubstituteCandidates(data.substituteCandidates || []);
@@ -116,9 +217,24 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     }
   };
 
-  // 직권 배정 등록 및 연쇄 승인
+  // 시간표 그리드 셀 클릭 핸들러
+  const handleSlotClick = (cell: TeacherTimetableCell) => {
+    const slot = {
+      grade: cell.grade,
+      classNum: cell.classNum,
+      day: cell.day,
+      period: cell.period,
+    };
+    setSelectedSlot(slot);
+    const subj = cell.subjectShort || cell.subjectName || "수업";
+    setSourceLessonInfo({ subjectName: subj, teacherName: selectedTeacherName });
+
+    fetchCandidates(selectedWeekId, cell.grade, cell.classNum, cell.day, cell.period, subj);
+  };
+
+  // 직권 배정 등록 및 즉시 승인 실행
   const handleDirectCommit = async () => {
-    if (!selectedCandidate) {
+    if (!selectedCandidate || !selectedSlot) {
       setSubmitError("배정할 후보(맞교환 또는 특별보강)를 선택해 주세요.");
       return;
     }
@@ -135,7 +251,6 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setSubmitError(null);
 
     try {
-      // 1) /api/timetable/requests action: "create"
       let candidateSnapshot: any;
       if (activeCandidateType === "swap") {
         const sc = selectedCandidate as SwapCandidate;
@@ -158,7 +273,6 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         };
       }
 
-      // 직권 배정은 서버가 신청 생성→승인을 한 번에 처리 (실패 시 유령 PENDING 자동 취소)
       const commitRes = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -166,7 +280,13 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           action: "direct_commit",
           weekId: selectedWeekId,
           type: activeCandidateType,
-          source: { grade, classNum, day, period, subjectName: sourceLessonInfo?.subjectName || "" },
+          source: {
+            grade: selectedSlot.grade,
+            classNum: selectedSlot.classNum,
+            day: selectedSlot.day,
+            period: selectedSlot.period,
+            subjectName: sourceLessonInfo?.subjectName || "",
+          },
           candidate: candidateSnapshot,
           reason: {
             type: reasonType,
@@ -181,11 +301,26 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       }
 
       setSuccessMsg(
-        `⚡ 직권 배정 완료! ${grade}학년 ${classNum}반 ${formatSlotWithDate(selectedWeekId, day, period)} 수업이 성공적으로 처리 및 반영되었습니다.`
+        `⚡ 직권 배정 완료! ${selectedSlot.grade}학년 ${selectedSlot.classNum}반 ${formatSlotWithDate(
+          selectedWeekId,
+          selectedSlot.day,
+          selectedSlot.period
+        )} 수업이 성공적으로 처리 및 반영되었습니다.`
       );
+
+      // 리프레시: 후보 및 시간표 재조회
       setSelectedCandidate(null);
-      // 리프레시
-      handleSearchCandidates();
+      fetchCandidates(
+        selectedWeekId,
+        selectedSlot.grade,
+        selectedSlot.classNum,
+        selectedSlot.day,
+        selectedSlot.period,
+        sourceLessonInfo?.subjectName || ""
+      );
+      if (selectedTeacherEmail) {
+        fetchTeacherTimetable(selectedTeacherEmail);
+      }
     } catch (err: any) {
       setSubmitError(err.message || "직권 배정 실패");
     } finally {
@@ -193,16 +328,28 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     }
   };
 
+  const getCellForSlot = (d: number, p: number) => {
+    return teacherCells.filter((c) => c.day === d && c.period === p);
+  };
+
+  const DAYS = [
+    { num: 1, label: "월요일" },
+    { num: 2, label: "화요일" },
+    { num: 3, label: "수요일" },
+    { num: 4, label: "목요일" },
+    { num: 5, label: "금요일" },
+  ];
+
   return (
     <div className="space-y-6">
       {/* 헤더 안내 */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
           <span>⚡</span>
-          <span>일과계 직권 배정 (수업교환 & 특별보강)</span>
+          <span>일과계 직권 배정 (교사 기점 흐름)</span>
         </h2>
         <p className="text-xs text-gray-500 mt-1">
-          교사의 사전 신청 없이 일과계 관리자가 수업 슬롯을 직접 지정하여 맞교환 또는 특별보강 교사를 선택하고 즉시 승인·반영합니다.
+          교사를 먼저 선택한 후 주간 시간표에서 변경할 수업 셀을 직접 클릭하여 직권으로 맞교환 또는 특별보강 교사를 선택하고 반영합니다.
         </p>
       </div>
 
@@ -218,21 +365,17 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         </div>
       )}
 
-      {/* 1단계: 원 슬롯 선택 폼 */}
+      {/* Step 1: 주간 및 교사 선택 */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-        <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
-          <span>1️⃣</span>
-          <span>변경할 원래 수업 슬롯 선택</span>
-        </h3>
-
-        <form onSubmit={handleSearchCandidates} className="grid grid-cols-2 md:grid-cols-6 gap-3 text-xs">
-          <div className="col-span-2 md:col-span-2">
-            <label className="block font-bold text-gray-700 mb-1">대상 주간 (Week)</label>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+          {/* 주간 선택 */}
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">1️⃣ 대상 주간 (Week)</label>
             <select
               value={selectedWeekId}
-              onChange={(e) => setSelectedWeekId(e.target.value)}
+              onChange={(e) => handleWeekChange(e.target.value)}
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg font-semibold bg-white"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg font-semibold bg-white text-xs"
             >
               {weeks.length === 0 && <option value="">등록된 주가 없습니다</option>}
               {weeks.map((w) => (
@@ -243,97 +386,192 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             </select>
           </div>
 
-          <div>
-            <label className="block font-bold text-gray-700 mb-1">학년</label>
-            <select
-              value={grade}
-              onChange={(e) => setGrade(parseInt(e.target.value, 10))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white font-bold"
-            >
-              <option value={1}>1학년</option>
-              <option value={2}>2학년</option>
-              <option value={3}>3학년</option>
-            </select>
+          {/* 교사 자동완성 선택 */}
+          <div className="md:col-span-2">
+            <label className="block text-xs font-bold text-gray-700 mb-1">2️⃣ 대상 교사 검색 및 선택</label>
+            <AutocompleteInput
+              type="user"
+              domain={domain}
+              value={teacherInput}
+              onChange={(val) => setTeacherInput(val)}
+              placeholder="교사 이름 또는 이메일 검색 (예: 홍길동)"
+              onSelect={(email, name) => handleSelectTeacher(email, name)}
+              className="text-xs"
+            />
           </div>
+        </div>
 
-          <div>
-            <label className="block font-bold text-gray-700 mb-1">반</label>
-            <select
-              value={classNum}
-              onChange={(e) => setClassNum(parseInt(e.target.value, 10))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white font-bold"
-            >
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((c) => (
-                <option key={c} value={c}>
-                  {c}반
-                </option>
+        {/* 최근 선택 교사 바로가기 버튼 */}
+        {recentTeachers.length > 0 && (
+          <div className="flex items-center gap-2 pt-2 border-t border-gray-100 text-xs">
+            <span className="text-gray-500 font-bold shrink-0">최근 선택:</span>
+            <div className="flex flex-wrap gap-1.5">
+              {recentTeachers.map((t) => (
+                <button
+                  key={t.email}
+                  type="button"
+                  onClick={() => handleSelectTeacher(t.email, t.name)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                    selectedTeacherEmail.toLowerCase() === t.email.toLowerCase()
+                      ? "bg-indigo-600 text-white font-bold shadow-xs"
+                      : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                  }`}
+                >
+                  👤 {t.name}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
-
-          <div>
-            <label className="block font-bold text-gray-700 mb-1">요일</label>
-            <select
-              value={day}
-              onChange={(e) => setDay(parseInt(e.target.value, 10))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white font-bold"
-            >
-              <option value={1}>월요일</option>
-              <option value={2}>화요일</option>
-              <option value={3}>수요일</option>
-              <option value={4}>목요일</option>
-              <option value={5}>금요일</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block font-bold text-gray-700 mb-1">교시</label>
-            <select
-              value={period}
-              onChange={(e) => setPeriod(parseInt(e.target.value, 10))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white font-bold"
-            >
-              {Array.from({ length: 7 }, (_, i) => i + 1).map((p) => (
-                <option key={p} value={p}>
-                  {p}교시
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="col-span-2 md:col-span-6 flex justify-end pt-2">
-            <button
-              type="submit"
-              disabled={loadingCandidates || !selectedWeekId}
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <span>🔍</span>
-              <span>{loadingCandidates ? "후보 탐색 중..." : "가능한 후보 탐색"}</span>
-            </button>
-          </div>
-        </form>
+        )}
       </div>
 
-      {/* 2단계: 후보 선택 및 탐색 결과 */}
+      {/* Step 2: 교사의 주간 시간표 그리드 */}
+      {selectedTeacherEmail ? (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-indigo-950 flex items-center gap-2">
+                <span>🗓️</span>
+                <span>{selectedTeacherName} 교사의 주간 시간표</span>
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                직권 배정할 원 수업 셀을 클릭하면 하단에 맞교환 및 특별보강 가능 후보가 즉시 탐색됩니다.
+              </p>
+            </div>
+            {loadingTimetable && (
+              <span className="text-xs text-indigo-600 font-semibold animate-pulse">시간표 로딩 중...</span>
+            )}
+          </div>
+
+          {timetableError ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-xs text-red-800 text-center">
+              {timetableError}
+            </div>
+          ) : (
+            <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr className="bg-indigo-950 text-white font-bold">
+                    <th className="py-3 px-2 border-b border-r border-indigo-800 w-16 text-center">교시</th>
+                    {DAYS.map((d) => (
+                      <th key={d.num} className="py-3 px-2 border-b border-indigo-800 text-center">
+                        {d.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {Array.from({ length: 7 }).map((_, pIdx) => {
+                    const period = pIdx + 1;
+                    return (
+                      <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
+                        <td className="py-3.5 px-2 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50">
+                          {period}교시
+                        </td>
+                        {DAYS.map((d) => {
+                          const matched = getCellForSlot(d.num, period);
+                          const hasLesson = matched.length > 0;
+
+                          return (
+                            <td
+                              key={d.num}
+                              className={`p-2 border-r border-gray-100 text-center align-top transition-all ${
+                                hasLesson ? "bg-indigo-50/30" : ""
+                              }`}
+                            >
+                              {hasLesson ? (
+                                <div className="space-y-1.5">
+                                  {matched.map((cell, cIdx) => {
+                                    const isSelected =
+                                      selectedSlot?.grade === cell.grade &&
+                                      selectedSlot?.classNum === cell.classNum &&
+                                      selectedSlot?.day === cell.day &&
+                                      selectedSlot?.period === cell.period;
+
+                                    return (
+                                      <button
+                                        key={cIdx}
+                                        type="button"
+                                        onClick={() => handleSlotClick(cell)}
+                                        className={`w-full p-2 rounded-lg text-left transition-all cursor-pointer border ${
+                                          isSelected
+                                            ? "bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-300 scale-[1.02]"
+                                            : "bg-white hover:bg-indigo-100/60 border-indigo-200 hover:border-indigo-400 text-gray-900 shadow-2xs"
+                                        }`}
+                                      >
+                                        <div
+                                          className={`font-black text-xs ${
+                                            isSelected ? "text-white" : "text-indigo-950"
+                                          }`}
+                                        >
+                                          {cell.subjectShort || cell.subjectName}
+                                        </div>
+                                        <div
+                                          className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold mt-1 ${
+                                            isSelected
+                                              ? "bg-indigo-800 text-indigo-100"
+                                              : "bg-indigo-100 text-indigo-800"
+                                          }`}
+                                        >
+                                          {cell.grade}-{cell.classNum}반
+                                        </div>
+                                        {cell.room && (
+                                          <div
+                                            className={`text-[10px] mt-0.5 truncate ${
+                                              isSelected ? "text-indigo-200" : "text-gray-500"
+                                            }`}
+                                          >
+                                            📍 {cell.room}
+                                          </div>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <span className="text-[11px] text-gray-300 font-light block py-3">
+                                  -
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500 space-y-2">
+          <span className="text-3xl">👈</span>
+          <p className="font-bold text-gray-800 text-sm">위 2단계 검색창에서 직권 배정할 대상 교사를 선택해 주세요.</p>
+          <p className="text-xs text-gray-400">교사를 선택하면 해당 교사의 주간 시간표가 표시되고, 셀을 클릭해 직권 배정을 진행합니다.</p>
+        </div>
+      )}
+
+      {/* Step 3: 후보 탐색 결과 및 직권 반영 패널 */}
       {candidateError && (
         <div className="bg-red-50 border border-red-200 text-red-900 p-4 rounded-xl text-xs font-bold">
           ⚠️ {candidateError}
         </div>
       )}
 
-      {sourceLessonInfo && (
+      {selectedSlot && sourceLessonInfo && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-5">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-gray-100 pb-3 gap-3">
             <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
-              <span>2️⃣</span>
+              <span>3️⃣</span>
               <span>
-                후보 선택 — {grade}학년 {classNum}반 {DAY_LABEL[day] || day}요일 {period}교시 ({sourceLessonInfo.subjectName}
+                후보 선택 — {selectedSlot.grade}학년 {selectedSlot.classNum}반 {DAY_LABEL[selectedSlot.day] || selectedSlot.day}요일 {selectedSlot.period}교시 ({sourceLessonInfo.subjectName}
                 {sourceLessonInfo.teacherName ? ` · ${sourceLessonInfo.teacherName} 교사` : ""})
               </span>
             </h3>
 
             {/* 맞교환 / 특별보강 탭 전환 */}
-            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg text-xs font-bold">
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg text-xs font-bold self-start md:self-auto">
               <button
                 type="button"
                 onClick={() => {
@@ -365,8 +603,13 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             </div>
           </div>
 
-          {/* 맞교환 후보 목록 */}
-          {activeCandidateType === "swap" && (
+          {loadingCandidates && (
+            <div className="p-8 text-center text-xs text-indigo-600 font-semibold animate-pulse">
+              🔍 선택한 슬롯의 최적 맞교환 및 특별보강 후보를 탐색 중입니다...
+            </div>
+          )}
+
+          {!loadingCandidates && activeCandidateType === "swap" && (
             <div className="space-y-3">
               {swapCandidates.length === 0 ? (
                 <div className="p-8 text-center text-xs text-gray-500 bg-gray-50 rounded-xl">
@@ -427,8 +670,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             </div>
           )}
 
-          {/* 특별보강 후보 목록 */}
-          {activeCandidateType === "substitute" && (
+          {!loadingCandidates && activeCandidateType === "substitute" && (
             <div className="space-y-3">
               {substituteCandidates.length === 0 ? (
                 <div className="p-8 text-center text-xs text-gray-500 bg-gray-50 rounded-xl">
@@ -471,11 +713,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             </div>
           )}
 
-          {/* 3단계: 사유 선택 및 직권 승인 실행 */}
+          {/* 사유 선택 및 직권 승인 실행 */}
           {selectedCandidate && (
             <div className="pt-4 border-t border-gray-200 space-y-4 animate-in fade-in duration-200">
               <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
-                <span>3️⃣</span>
+                <span>4️⃣</span>
                 <span>사유 입력 및 직권 승인 실행</span>
               </h3>
 
