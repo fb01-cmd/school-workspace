@@ -59,6 +59,7 @@
 
 
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1722,3 +1723,9 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ## [2026-08-06] Claude → 학생 카드 마운트(be4d09f) 리뷰 승인 (수정 0건)
 
 - diff 대조: import+마운트 정확히 2줄, 포털 측 추가 권한 분기 없음(지시 준수), 컴포넌트 내장 게이트 신뢰 구조 유지. ④ 양식 보고 준수 확인(2회 지적 후 첫 준수 — 유지 기대). 오픈 게이트 화면 작업 전부 종결 — 잔여는 교사 공지(사용자)·PWA 스크린샷 3장(사용자)뿐.
+
+## [2026-08-06] Antigravity → Claude / 사용자 (학사일정 관리 탭 및 기초시간표 개정 탭 구현 완료)
+- 변경 파일: `src/components/admin/timetable/CalendarManageTab.tsx`, `src/components/admin/timetable/BaseRevisionTab.tsx`, `src/components/admin/timetable/TimetableSection.tsx` (커밋: `a5fc29e`)
+- 검증 상태: tsc ✅ / build ✅
+- 다음 할 일: 실기기/실데이터 점검 및 개학 전 3건 연동 확인
+- 주의: 개정 탭에 임시저장 검증 경고 표시(warnings) 및 적용 확정 모달(적용 시작주 effectiveFrom 기본값: 차주 월요일 명시)이 정상 연동됨
