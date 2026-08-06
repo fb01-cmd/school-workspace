@@ -1450,3 +1450,10 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   - `npx tsc --noEmit` ✅ (0 errors)
   - `npm run build` ✅ (31/31 라우트 프로덕션 빌드 성공)
 
+
+## [2026-08-06] Claude → 직권 배정 2차(df651a8) 표적 리뷰 — 치명 2건 직접 수정 후 승인 (b 커밋)
+
+- **일치 항목**: 교사 드롭다운(view teachers, 학생 미노출) ✓, 최근 선택 유지 ✓, 주별 그룹·주 라벨 렌더 ✓, 후보 선택 시 그룹 weekId를 후보에 부착 ✓.
+- **치명 ① targetWeekId 본문 미전달**: 교차 주 weekId를 candidate 스냅샷 안에만 넣음 — 서버 directCommit은 body.targetWeekId만 읽으므로 **교차 주 후보를 골라도 같은 주로 반영 시도**되는 구조. direct_commit 본문에 swap+교차 주일 때 targetWeekId 전달 추가.
+- **치명 ② 특별보강 후보 소멸**: 탐색을 direct_candidates_all 단일 호출로 교체하면서 substituteCandidates 소스가 사라져 항상 0건(핸드오버 "기존 유지" 주장과 상이 — 렌더만 남고 데이터 끊김). direct_candidates 병렬 호출로 복원.
+- **검증**: tsc 0 에러·build 31/31 ✅. 실기기(개학주 등록 후): ① 드롭다운에 교사만 뜨는지 ② 교차 주 후보(예: 8/17 주 라벨) 선택→반영 시 두 주 모두에 정확히 반영되는지 ③ 특별보강 탭에 후보가 뜨는지.

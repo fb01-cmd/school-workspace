@@ -234,25 +234,41 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setSubmitError(null);
 
     try {
-      const res = await fetch("/api/timetable/manage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "direct_candidates_all",
-          weekId,
-          source: { grade, classNum, day, period },
-          teacherEmail: selectedTeacherEmail,
+      // 맞교환은 전 주 일괄(direct_candidates_all), 특별보강은 해당 주 한정(direct_candidates) — 병렬 호출.
+      // direct_candidates_all 응답에는 substituteCandidates가 없으므로 두 번째 호출이 필수다.
+      const [res, subRes] = await Promise.all([
+        fetch("/api/timetable/manage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "direct_candidates_all",
+            weekId,
+            source: { grade, classNum, day, period },
+            teacherEmail: selectedTeacherEmail,
+          }),
         }),
-      });
+        fetch("/api/timetable/manage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "direct_candidates",
+            weekId,
+            source: { grade, classNum, day, period },
+          }),
+        }),
+      ]);
 
       const data = await res.json();
+      const subData = await subRes.json().catch(() => ({} as any));
       if (res.ok && data.success) {
         setSourceLessonInfo({
           subjectName: data.sourceSubjectName || data.sourceTeacher?.subjectName || subjectName,
           teacherName: data.sourceTeacher?.teacherName || selectedTeacherName,
         });
         setSwapCandidateWeeks(data.weeks || []);
-        setSubstituteCandidates(data.substituteCandidates || []);
+        setSubstituteCandidates(
+          subRes.ok && subData.success ? subData.substituteCandidates || [] : []
+        );
       } else {
         setCandidateError(data.error || "후보를 탐색할 수 없습니다.");
       }
@@ -326,6 +342,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         body: JSON.stringify({
           action: "direct_commit",
           weekId: selectedWeekId,
+          // 교차 주 맞교환 — 서버는 body.targetWeekId만 읽는다 (candidate 스냅샷 안의 값은 기록용일 뿐)
+          ...(activeCandidateType === "swap" && (selectedCandidate as any)?.targetWeekId
+            ? { targetWeekId: (selectedCandidate as any).targetWeekId }
+            : {}),
           type: activeCandidateType,
           source: {
             grade: selectedSlot.grade,
