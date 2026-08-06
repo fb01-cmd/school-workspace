@@ -5,6 +5,7 @@ import {
   activateTerm,
   approveSwapRequest,
   commitTimetableImport,
+  computeCandidatesAllWeeks,
   computeDirectCandidates,
   computeHourTotals,
   deleteTerm,
@@ -331,6 +332,32 @@ export async function POST(req: NextRequest) {
           domain, body.weekId,
           { grade, classNum, day, period, subjectName: "" },
           body.targetWeekId // 교차 주 맞교환 (§4-3b)
+        );
+        if (result.error) {
+          return NextResponse.json({ error: result.error }, { status: 400 });
+        }
+        return NextResponse.json({ success: true, action, ...result });
+      }
+
+      // §14 교사 기점 직권 배정 — 소스 셀 1개로 등록된 전 주의 맞교환 후보 일괄 계산.
+      // teacherEmail을 requester로 넘겨 resolveSourceLesson이 "그 셀이 그 교사의 수업"임을 검증한다.
+      // 오버레이(whatIf)는 미사용 — 직권은 확정 상태 기준으로만 탐색.
+      case "direct_candidates_all": {
+        if (!body.weekId || !body.source || !body.teacherEmail) {
+          return NextResponse.json(
+            { error: "weekId, source, teacherEmail이 모두 필요합니다." },
+            { status: 400 }
+          );
+        }
+        const { grade, classNum, day, period } = body.source;
+        if (![grade, classNum, day, period].every((n) => Number.isInteger(n) && n > 0)) {
+          return NextResponse.json({ error: "source 슬롯 값이 유효하지 않습니다." }, { status: 400 });
+        }
+        const result = await computeCandidatesAllWeeks(
+          domain,
+          String(body.teacherEmail).trim().toLowerCase(),
+          body.weekId,
+          { grade, classNum, day, period, subjectName: "" }
         );
         if (result.error) {
           return NextResponse.json({ error: result.error }, { status: 400 });

@@ -1427,3 +1427,9 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **스펙 대조 (§14 전 항목 일치)**: 교사 자동완성+최근 5명 바로가기 ✓, 교사 주간 그리드 클릭 ✓, 셀 클릭이 direct_candidates 입력 공급 ✓, 기존 후보 패널·direct_commit 재사용 ✓, 슬롯 드롭다운 4종 제거(주간·사유 선택만 유지) ✓, 서버 무변경 ✓(diff가 해당 컴포넌트+notes뿐).
 - **중대 ① 그리드 조회에 weekId 누락**: view "teacher"를 weekId 없이 호출 — 서버는 현재 주 폴백이라 **일과계가 고른 대상 주간과 그리드 내용이 어긋남**(교체 반영된 주간일수록 오배정 위험. 후보·반영 API는 weekId를 정확히 보내서 서버 정합은 유지 — 화면만 다른 주를 보여주는 구조). 조회 3개 호출처(교사 선택·주간 변경·반영 후 갱신)에 weekId 전달로 수정 — 덤으로 반영 직후 그리드에 교체 결과가 보이게 됨.
 - **검증**: tsc 0 에러·build 31/31 ✅. 실기기: 일과계로 ① 교사 선택→그리드 클릭→후보→직권 반영 1건 ② 반영 후 같은 주간 그리드에 변경이 보이는지 (주 등록이 아직 0건이라 개학주 등록 후 확인).
+
+## [2026-08-06] 사용자 → 직권 배정 2차 피드백 2건 / Claude 서버분 구현, 화면 Antigravity 대기
+
+- **① 교사 드롭다운**: 자동완성에 학생 계정 노출(실측 스크린샷) — view `teachers` 액션으로 대체 지시. **② 교차 주간 후보**: 이번 주 한정 탐색 금지, 일반 교사 UX(전 주 후보)와 동일하게.
+- **Claude 서버분**: manage 액션 `direct_candidates_all` 신설 — computeCandidatesAllWeeks 재사용, teacherEmail을 requester로 넘겨 resolveSourceLesson이 셀 소유를 검증(일과계 게이트는 라우트 공통). direct_commit의 targetWeekId는 기구현이라 무변경. 스펙 §14-1 확정. tsc·build 31/31 ✅.
+- **잔여(Antigravity)**: DirectSubstituteTab — 드롭다운 전환 + direct_candidates_all 연동(주별 그룹·주 라벨·targetWeekId 전달).

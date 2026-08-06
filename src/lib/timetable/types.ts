@@ -213,6 +213,7 @@ export type ManageAction =
   | "reject"
   | "revert_change"
   | "direct_candidates"
+  | "direct_candidates_all" // §14 직권 배정 교사 기점 — 소스 셀 1개 → 등록 전 주 맞교환 후보 일괄
   | "direct_commit"
   // ── Phase 9b 순서 5 운영 도구 (phase9b_spec §8) ──
   | "neis_list"
@@ -234,6 +235,7 @@ export interface ManageTimetableRequest {
   status?: SwapRequestStatus;
   // 직권 배정 (direct_candidates / direct_commit)
   source?: SwapSourceSlot;
+  teacherEmail?: string; // direct_candidates_all 전용 — 대상 교사 (소스 셀 소유 검증에 사용)
   type?: SwapRequestType; // direct_* 및 neis_list 유형 필터 겸용
   candidate?: SwapCandidateSnapshot;
   reason?: SwapRequestReason;
