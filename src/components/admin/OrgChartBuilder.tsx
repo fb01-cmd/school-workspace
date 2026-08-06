@@ -911,7 +911,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                 {selectedDept ? (
                   <>클릭 시 <strong className="text-amber-600">[{selectedDept}]</strong>에 추가 (스테이징●)</>
                 ) : (
-                  <>클릭 시 <strong className="text-indigo-600">세부 편집 모달</strong> 열기 (직책·해당없음)</>
+                  <>클릭 시 <strong className="text-indigo-600">세부 편집 창</strong> 열기 (직책·해당없음)</>
                 )}
               </p>
             </div>
@@ -1022,7 +1022,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                           openDetailEditor(email);
                         }}
                         className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded text-xs transition-colors"
-                        title="세부 편집 모달 열기"
+                        title="세부 편집 창 열기"
                       >
                         ✏️
                       </button>
