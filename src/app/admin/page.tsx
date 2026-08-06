@@ -54,6 +54,41 @@ export default function AdminPage() {
   const [pendingProfileCount, setPendingProfileCount] = useState(0);
   const [timetableSettings, setTimetableSettings] = useState<TimetableSettings | null>(null);
 
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
+    common: false,
+    timetable: false,
+    discipline: false,
+    admin: false,
+  });
+
+  // Restore collapsed sections state from localStorage or calculate defaults
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("admin_sidebar_collapsed");
+      if (saved) {
+        setCollapsedSections(JSON.parse(saved));
+      } else {
+        const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+        setCollapsedSections({
+          common: false,
+          timetable: false,
+          discipline: false,
+          admin: isMobile,
+        });
+      }
+    } catch (e) {}
+  }, []);
+
+  const toggleSection = (sectionKey: string) => {
+    setCollapsedSections((prev) => {
+      const next = { ...prev, [sectionKey]: !prev[sectionKey] };
+      try {
+        localStorage.setItem("admin_sidebar_collapsed", JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
   // Load timetable settings to check managerEmails for sidebar menu access
   useEffect(() => {
     if (!userData) return;
@@ -268,32 +303,6 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* Domain Widget */}
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-gray-900">도메인 정보</h3>
-                    <span className="p-2 rounded-lg bg-purple-50 text-purple-600">
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                      </svg>
-                    </span>
-                  </div>
-                  <div className="space-y-2 mb-6">
-                    <p className="text-sm font-semibold text-gray-800">
-                      연동 도메인: <span className="font-mono text-indigo-600">{userData?.domain}</span>
-                    </p>
-                    <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2 py-1 rounded">
-                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                      구글 API 서버 통신 상태 정상 (구글 서비스 연동 완료)
-                    </div>
-                  </div>
-                </div>
-                <div className="text-xs text-gray-400">
-                  관리자 계정: {userData?.email}
-                </div>
-              </div>
-
               {/* Classroom Widget - All Teachers */}
               <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
                 <div>
@@ -367,206 +376,112 @@ export default function AdminPage() {
             <nav className="p-4 space-y-4">
               {/* 일반 교직원 공통 메뉴 */}
               <div>
-                <div className="px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
-                  교직원 공통 도구
-                </div>
-                <div className="space-y-1">
-                  <button
-                    onClick={() => setActiveMenu("home")}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeMenu === "home"
-                        ? "bg-indigo-800 text-white"
-                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                <button
+                  type="button"
+                  onClick={() => toggleSection("common")}
+                  className="w-full flex items-center justify-between px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider hover:text-indigo-200 transition-colors"
+                >
+                  <span>교직원 공통 도구</span>
+                  <svg
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                      collapsedSections.common ? "-rotate-90" : "rotate-0"
                     }`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
                   >
-                    <span>🏠</span>
-                    <span>홈 (대시보드)</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveMenu("roster")}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeMenu === "roster"
-                        ? "bg-indigo-800 text-white"
-                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    <span>📋</span>
-                    <span>학생 명렬표 인쇄</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveMenu("classroom")}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeMenu === "classroom"
-                        ? "bg-indigo-800 text-white"
-                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    <span>🏫</span>
-                    <span>클래스룸 학생 강제 배정</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveMenu("classroom_cleanup")}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeMenu === "classroom_cleanup"
-                        ? "bg-indigo-800 text-white"
-                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    <span>📦</span>
-                    <span>학기말 클래스룸 정리</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveMenu("chrome_bookmarks")}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeMenu === "chrome_bookmarks"
-                        ? "bg-indigo-800 text-white"
-                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    <span>🔖</span>
-                    <span>크롬 북마크 배정</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveMenu("password_reset")}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeMenu === "password_reset"
-                        ? "bg-indigo-800 text-white"
-                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    <span>🔑</span>
-                    <span>학생 비밀번호 초기화</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveMenu("profile_approvals")}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeMenu === "profile_approvals"
-                        ? "bg-indigo-800 text-white"
-                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    <span>🌳</span>
-                    <span>교직원 조직도</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveMenu("pwa_guide")}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeMenu === "pwa_guide"
-                        ? "bg-indigo-800 text-white"
-                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    <span>📱</span>
-                    <span>앱으로 설치하기</span>
-                  </button>
-
-                  {/* 조직 정보 신청 (교사 본인) */}
-                  {!isSuperAdmin && (
-                    <button
-                      onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors hover:bg-indigo-900/50 text-gray-400 hover:text-white`}
-                    >
-                      <span>🏷️</span>
-                      <span>내 조직 정보 신청</span>
-                      {hasNoProfile && (
-                        <span className="ml-auto text-[10px] bg-amber-400 text-amber-900 font-bold px-1.5 py-0.5 rounded-full">미등록</span>
-                      )}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* 시간표 독립 섹션 (super_admin + managerEmails + 열람 전용 참관자) */}
-              {canSeeTimetableMenu && (
-                <div>
-                  <div className="px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
-                    시간표 관리
-                  </div>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {!collapsedSections.common && (
                   <div className="space-y-1">
                     <button
-                      onClick={() => setActiveMenu("timetable")}
+                      onClick={() => setActiveMenu("home")}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        activeMenu === "timetable"
-                          ? "bg-indigo-800 text-white font-bold shadow-sm"
-                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      <span>📦</span>
-                      <span>시간표 관리 (일과계)</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* 내 시간표 (교사 신청 화면) — phase9b_spec §7 순서 4.
-                  게이트: 학생 미노출, 관리자/teacherOpen 플래그 시 교사 노출.
-                  현재는 managerEmails·super_admin + teacherOpen 플래그 — 컴포넌트 내부에서 재검증. */}
-              {!isStudent && (
-                <div>
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => setActiveMenu("my_timetable")}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        activeMenu === "my_timetable"
-                          ? "bg-indigo-800 text-white font-bold shadow-sm"
-                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      <span>📅</span>
-                      <span>내 시간표</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* 학생 생활지도 독립 섹션 */}
-              <div>
-                <div className="px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
-                  학생 생활지도
-                </div>
-                <div className="space-y-1">
-                  <button
-                    onClick={() => setActiveMenu("discipline")}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeMenu === "discipline"
-                        ? "bg-indigo-800 text-white font-bold shadow-sm"
-                        : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    <span>⚖️</span>
-                    <span>생활지도 종합 관리</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* GWS 관리자 전용 메뉴 */}
-              {isSuperAdmin && (
-                <div className="space-y-4">
-                  {/* 시스템 환경설정 */}
-                  <div>
-                    <div className="border-t border-indigo-900/50 my-2 pt-2 px-4 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
-                      ⚙️ 시스템 설정
-                    </div>
-                    <button
-                      onClick={() => setActiveMenu("settings")}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        activeMenu === "settings"
+                        activeMenu === "home"
                           ? "bg-indigo-800 text-white"
                           : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
                       }`}
                     >
-                      <span>🛠️</span>
-                      <span>Workspace 환경 설정</span>
+                      <span>🏠</span>
+                      <span>홈 (대시보드)</span>
                     </button>
 
-                    {/* 프로필 승인 대기 (어드민) */}
+                    {/* 내 시간표 (교사 최다 사용 메뉴 — 홈 바로 아래 이동) */}
+                    {!isStudent && (
+                      <button
+                        onClick={() => setActiveMenu("my_timetable")}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                          activeMenu === "my_timetable"
+                            ? "bg-indigo-800 text-white font-bold shadow-sm"
+                            : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        <span>📅</span>
+                        <span>내 시간표</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setActiveMenu("roster")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "roster"
+                          ? "bg-indigo-800 text-white"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>📋</span>
+                      <span>학생 명렬표 인쇄</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveMenu("classroom")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "classroom"
+                          ? "bg-indigo-800 text-white"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>🏫</span>
+                      <span>클래스룸 학생 강제 배정</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveMenu("classroom_cleanup")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "classroom_cleanup"
+                          ? "bg-indigo-800 text-white"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>📦</span>
+                      <span>학기말 클래스룸 정리</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveMenu("chrome_bookmarks")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "chrome_bookmarks"
+                          ? "bg-indigo-800 text-white"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>🔖</span>
+                      <span>크롬 북마크 배정</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveMenu("password_reset")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "password_reset"
+                          ? "bg-indigo-800 text-white"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>🔑</span>
+                      <span>학생 비밀번호 초기화</span>
+                    </button>
+
                     <button
                       onClick={() => setActiveMenu("profile_approvals")}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -575,118 +490,262 @@ export default function AdminPage() {
                           : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
                       }`}
                     >
-                      <span>📥</span>
-                      <span>프로필 승인 대기</span>
-                      {pendingProfileCount > 0 && (
-                        <span className="ml-auto bg-amber-400 text-amber-900 text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                          {pendingProfileCount}
-                        </span>
-                      )}
+                      <span>🌳</span>
+                      <span>교직원 조직도</span>
                     </button>
 
-                    {/* 개인정보 고지 현황 (수퍼어드민) */}
+                    {/* 조직 정보 신청 (교사 본인) */}
+                    {!isSuperAdmin && (
+                      <button
+                        onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      >
+                        <span>🏷️</span>
+                        <span>내 조직 정보 신청</span>
+                        {hasNoProfile && (
+                          <span className="ml-auto text-[10px] bg-amber-400 text-amber-900 font-bold px-1.5 py-0.5 rounded-full">미등록</span>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 시간표 독립 섹션 (super_admin + managerEmails + 열람 전용 참관자) */}
+              {canSeeTimetableMenu && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => toggleSection("timetable")}
+                    className="w-full flex items-center justify-between px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider hover:text-indigo-200 transition-colors"
+                  >
+                    <span>시간표 관리</span>
+                    <svg
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                        collapsedSections.timetable ? "-rotate-90" : "rotate-0"
+                      }`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {!collapsedSections.timetable && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setActiveMenu("timetable")}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                          activeMenu === "timetable"
+                            ? "bg-indigo-800 text-white font-bold shadow-sm"
+                            : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        <span>📦</span>
+                        <span>시간표 관리 (일과계)</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 학생 생활지도 독립 섹션 */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => toggleSection("discipline")}
+                  className="w-full flex items-center justify-between px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider hover:text-indigo-200 transition-colors"
+                >
+                  <span>학생 생활지도</span>
+                  <svg
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                      collapsedSections.discipline ? "-rotate-90" : "rotate-0"
+                    }`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {!collapsedSections.discipline && (
+                  <div className="space-y-1">
                     <button
-                      onClick={() => setActiveMenu("policy_ack")}
+                      onClick={() => setActiveMenu("discipline")}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        activeMenu === "policy_ack"
-                          ? "bg-indigo-800 text-white"
+                        activeMenu === "discipline"
+                          ? "bg-indigo-800 text-white font-bold shadow-sm"
                           : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
                       }`}
                     >
-                      <span>🔒</span>
-                      <span>개인정보 고지 현황</span>
+                      <span>⚖️</span>
+                      <span>생활지도 종합 관리</span>
                     </button>
+                  </div>
+                )}
+              </div>
 
-                    {/* 작업 감사 로그 — 벌크 업로드(미구현 자리) 제거로 추가 도구 섹션을 없애며 이곳으로 이동 (2026-08-06) */}
-                    <button
-                      onClick={() => setActiveMenu("logs")}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        activeMenu === "logs"
-                          ? "bg-indigo-800 text-white"
-                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+              {/* 🔐 관리자 전용 대섹션 (super_admin 전용) */}
+              {isSuperAdmin && (
+                <div className="pt-2 border-t border-indigo-900/60">
+                  <button
+                    type="button"
+                    onClick={() => toggleSection("admin")}
+                    className="w-full flex items-center justify-between px-4 pb-2 text-[10px] font-bold text-red-300 uppercase tracking-wider hover:text-red-100 transition-colors"
+                  >
+                    <span>🔐 관리자 전용</span>
+                    <svg
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                        collapsedSections.admin ? "-rotate-90" : "rotate-0"
                       }`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
                     >
-                      <span>🛡️</span>
-                      <span>작업 감사 로그</span>
-                    </button>
-                  </div>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
 
-                  {/* 사용자 및 조직 관리 */}
-                  <div>
-                    <div className="border-t border-indigo-900/50 my-2 pt-2 px-4 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
-                      👥 사용자 및 조직 관리
+                  {!collapsedSections.admin && (
+                    <div className="space-y-4 pt-1">
+                      {/* 시스템 설정 */}
+                      <div>
+                        <div className="px-4 pb-1 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                          ⚙️ 시스템 설정
+                        </div>
+                        <div className="space-y-1">
+                          <button
+                            onClick={() => setActiveMenu("settings")}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              activeMenu === "settings"
+                                ? "bg-indigo-800 text-white"
+                                : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            <span>🛠️</span>
+                            <span>Workspace 환경 설정</span>
+                          </button>
+
+                          <button
+                            onClick={() => setActiveMenu("policy_ack")}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              activeMenu === "policy_ack"
+                                ? "bg-indigo-800 text-white"
+                                : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            <span>🔒</span>
+                            <span>개인정보 고지 현황</span>
+                          </button>
+
+                          <button
+                            onClick={() => setActiveMenu("logs")}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              activeMenu === "logs"
+                                ? "bg-indigo-800 text-white"
+                                : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            <span>🛡️</span>
+                            <span>작업 감사 로그</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 사용자 및 조직 관리 */}
+                      <div>
+                        <div className="px-4 pb-1 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                          👥 사용자 및 조직 관리
+                        </div>
+                        <div className="space-y-1">
+                          <button
+                            onClick={() => setActiveMenu("users")}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              activeMenu === "users"
+                                ? "bg-indigo-800 text-white"
+                                : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            <span>👤</span>
+                            <span>사용자 전체관리</span>
+                          </button>
+
+                          <button
+                            onClick={() => setActiveMenu("groups")}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              activeMenu === "groups"
+                                ? "bg-indigo-800 text-white"
+                                : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            <span>💬</span>
+                            <span>그룹스 전체관리</span>
+                          </button>
+
+                          <button
+                            onClick={() => setActiveMenu("ou_manage")}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              activeMenu === "ou_manage"
+                                ? "bg-indigo-800 text-white"
+                                : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            <span>🏢</span>
+                            <span>조직단위 관리</span>
+                          </button>
+
+                          <button
+                            onClick={() => setActiveMenu("profile_approvals")}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              activeMenu === "profile_approvals"
+                                ? "bg-indigo-800 text-white"
+                                : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            <span>📥</span>
+                            <span>프로필 승인 대기</span>
+                            {pendingProfileCount > 0 && (
+                              <span className="ml-auto bg-amber-400 text-amber-900 text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                                {pendingProfileCount}
+                              </span>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 계정 생애주기 관리 */}
+                      <div>
+                        <div className="px-4 pb-1 text-[10px] font-bold text-red-300 uppercase tracking-wider">
+                          🔄 계정 생애주기 관리
+                        </div>
+                        <div className="space-y-1">
+                          <button
+                            onClick={() => setActiveMenu("lifecycle")}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              activeMenu === "lifecycle"
+                                ? "bg-indigo-800 text-white"
+                                : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            <span>🎓</span>
+                            <span>학생 계정 생애주기</span>
+                          </button>
+
+                          <button
+                            onClick={() => setActiveMenu("teachers")}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              activeMenu === "teachers"
+                                ? "bg-indigo-800 text-white"
+                                : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            <span>👩‍🏫</span>
+                            <span>교직원 계정 생애주기</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <button
-                        onClick={() => setActiveMenu("users")}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          activeMenu === "users"
-                            ? "bg-indigo-800 text-white"
-                            : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        <span>👤</span>
-                        <span>사용자 전체관리</span>
-                      </button>
-
-                      <button
-                        onClick={() => setActiveMenu("groups")}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          activeMenu === "groups"
-                            ? "bg-indigo-800 text-white"
-                            : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        <span>💬</span>
-                        <span>그룹스 전체관리</span>
-                      </button>
-
-                      <button
-                        onClick={() => setActiveMenu("ou_manage")}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          activeMenu === "ou_manage"
-                            ? "bg-indigo-800 text-white"
-                            : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        <span>🏢</span>
-                        <span>조직단위 관리</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* 계정 생애주기 관리 */}
-                  <div>
-                    <div className="border-t border-indigo-900/50 my-2 pt-2 px-4 text-[10px] font-bold text-red-400 uppercase tracking-wider">
-                      🔄 계정 생애주기 관리
-                    </div>
-                    <div className="space-y-1">
-                      <button
-                        onClick={() => setActiveMenu("lifecycle")}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          activeMenu === "lifecycle"
-                            ? "bg-indigo-800 text-white"
-                            : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        <span>🎓</span>
-                        <span>학생 계정 생애주기</span>
-                      </button>
-
-                      <button
-                        onClick={() => setActiveMenu("teachers")}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          activeMenu === "teachers"
-                            ? "bg-indigo-800 text-white"
-                            : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        <span>👩‍🏫</span>
-                        <span>교직원 계정 생애주기</span>
-                      </button>
-                    </div>
-                  </div>
-
+                  )}
                 </div>
               )}
             </nav>
@@ -743,10 +802,11 @@ export default function AdminPage() {
                 {activeMenu === "classroom" && "구글 클래스룸 학생 즉시 배정"}
                 {activeMenu === "teachers" && "교직원 계정 및 생애주기 관리"}
                 {activeMenu === "lifecycle" && "학생 계정 생애주기 관리"}
+                {activeMenu === "my_timetable" && "내 시간표"}
               </h1>
             </div>
             <div className="flex items-center gap-3">
-              <PWAInstallPrompt />
+              <PWAInstallPrompt onOpenGuide={() => setActiveMenu("pwa_guide")} />
               <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
                 isSuperAdmin ? "bg-indigo-100 text-indigo-800" : "bg-gray-100 text-gray-800"
               }`}>

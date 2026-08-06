@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-export function PWAInstallPrompt() {
+interface PWAInstallPromptProps {
+  onOpenGuide?: () => void;
+}
+
+export function PWAInstallPrompt({ onOpenGuide }: PWAInstallPromptProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState<boolean>(false);
-  const [isDismissed, setIsDismissed] = useState<boolean>(false);
 
   useEffect(() => {
     // Check if running in standalone window mode
@@ -37,11 +40,16 @@ export function PWAInstallPrompt() {
   }, []);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`[PWA] User choice outcome: ${outcome}`);
-    setDeferredPrompt(null);
+    if (onOpenGuide) {
+      onOpenGuide();
+      return;
+    }
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`[PWA] User choice outcome: ${outcome}`);
+      setDeferredPrompt(null);
+    }
   };
 
   if (isStandalone) {
@@ -55,31 +63,14 @@ export function PWAInstallPrompt() {
     );
   }
 
-  if (!deferredPrompt || isDismissed) {
-    return null;
-  }
-
   return (
-    <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-medium transition-colors shadow-xs">
-      <span className="flex items-center gap-1">
-        <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-        </svg>
-        <strong>앱으로 설치</strong>
-      </span>
-      <button
-        onClick={handleInstallClick}
-        className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-semibold transition-colors text-xs"
-      >
-        설치하기
-      </button>
-      <button
-        onClick={() => setIsDismissed(true)}
-        className="text-indigo-400 hover:text-indigo-600 p-0.5"
-        title="닫기"
-      >
-        ✕
-      </button>
-    </div>
+    <button
+      onClick={handleInstallClick}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+      title="앱으로 설치하기 안내 열기"
+    >
+      <span>📱</span>
+      <span>앱으로 설치하기</span>
+    </button>
   );
 }
