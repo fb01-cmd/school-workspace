@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 
+// 사용자 제작 iorad 튜토리얼 — 설치~자동 실행~알림까지 화면 따라하기 (2026-08-07)
+const IORAD_TUTORIAL_URL = "https://www.iorad.com/player/2754580/----------------";
+
 export default function PWAInstallGuideTab() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -56,7 +59,7 @@ export default function PWAInstallGuideTab() {
               )}
             </div>
             <p className="text-sm text-blue-100/80 max-w-2xl leading-relaxed">
-              매번 인터넷 브라우저를 열고 주소를 찾아 접속할 필요 없이, 컴퓨터를 켜자마자 바탕화면 앱 형태로 바로 편리하게 사용하실 수 있습니다. 아래 3단계를 따라 간단하게 설치해 보세요.
+              매번 인터넷 브라우저를 열고 주소를 찾아 접속할 필요 없이, 컴퓨터를 켜자마자 바탕화면 앱 형태로 바로 편리하게 사용하실 수 있습니다. 아래 따라하기 화면에서 [다음]을 눌러 가며 그대로 하시면 됩니다.
             </p>
           </div>
 
@@ -71,110 +74,34 @@ export default function PWAInstallGuideTab() {
         </div>
       </div>
 
-      {/* 2. 3단계 가이드 카드 */}
-      <div className="space-y-6">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center space-x-2">
-          <span>⚙️ 앱 설치 및 부팅 시 자동 실행 3단계 가이드</span>
-        </h3>
-
-        {/* 1단계 카드 */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
-          <div className="flex items-center space-x-3">
-            <span className="w-8 h-8 rounded-full bg-blue-600 text-white font-black flex items-center justify-center text-sm shadow-xs">
-              1
-            </span>
-            <h4 className="text-base font-bold text-gray-900 dark:text-white">
-              1단계: 웹사이트에서 [앱으로 설치] 클릭하기
-            </h4>
-          </div>
-
-          <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300 leading-relaxed pl-11">
-            <p>1. 크롬(Chrome) 브라우저로 <strong>효명고 관리 시스템</strong>에 접속합니다.</p>
-            <p>
-              2. 화면 상단 우측에 있는 <strong>[앱으로 설치]</strong> 버튼을 클릭합니다.
-              <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                (또는 브라우저 맨 위 주소창 오른쪽에 보이는 모니터/화살표 모양의 설치 아이콘을 클릭하셔도 됩니다.)
-              </span>
-            </p>
-            <p>3. 확인 팝업 창이 뜨면 <strong>[설치]</strong> 버튼을 선택합니다.</p>
-          </div>
-
-          {/* 스크린샷 자리 표시자 Box */}
-          <div className="ml-11 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center text-center space-y-2">
-            <div className="text-2xl text-gray-400">🖼️</div>
-            <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-              [스크린샷 예시: 화면 상단 &apos;앱으로 설치&apos; 버튼 및 주소창 오른쪽 설치 아이콘]
-            </p>
-            <p className="text-[11px] text-gray-400">
-              (사용자 실기기 캡처 이미지 제공 시 업데이트 예정)
-            </p>
-          </div>
+      {/* 2. 따라하기 튜토리얼 (iorad 임베드) — 기존 3단계 텍스트 카드+스크린샷 자리 표시를
+          사용자 제작 인터랙티브 튜토리얼로 통째 대체 (2026-08-07, project_notes 참조) */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center space-x-2">
+            <span>⚙️ 화면 따라하기: 설치부터 자동 실행 설정까지</span>
+          </h3>
+          <a
+            href={IORAD_TUTORIAL_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline shrink-0"
+          >
+            새 창에서 크게 보기 ↗
+          </a>
         </div>
-
-        {/* 2단계 카드 */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
-          <div className="flex items-center space-x-3">
-            <span className="w-8 h-8 rounded-full bg-indigo-600 text-white font-black flex items-center justify-center text-sm shadow-xs">
-              2
-            </span>
-            <h4 className="text-base font-bold text-gray-900 dark:text-white">
-              2단계: 컴퓨터 켤 때 자동으로 앱 켜기 (자동 시작 설정)
-            </h4>
-          </div>
-
-          <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300 leading-relaxed pl-11">
-            <p>1. 설치가 완료되면 인터넷 브라우저 창과 분리된 <strong>독립된 전용 앱 창</strong>으로 시스템이 열립니다.</p>
-            <p>2. 앱 창 오른쪽 상단의 <strong>점 3개(⋮) 메뉴</strong>를 누르고 <strong>[앱 정보]</strong>를 클릭합니다.</p>
-            <p>3. 펼쳐진 메뉴에서 <strong>[앱 설정]</strong>을 클릭합니다.</p>
-            <p>4. 설정 화면에서 <strong>[로그인 시 앱 실행]</strong> 스위치를 <strong>켭니다</strong>.</p>
-          </div>
-
-          <div className="ml-11 p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl text-xs text-amber-900 dark:text-amber-200 flex items-start space-x-2">
-            <span className="text-base mt-0.5">💡</span>
-            <p className="leading-relaxed">
-              <strong>참고:</strong> 이 설정을 켜두시면 교무실 컴퓨터를 켤 때 효명고 관리 플랫폼이 자동으로 열려 바로 업무를 시작하실 수 있습니다.
-            </p>
-          </div>
-
-          {/* 스크린샷 자리 표시자 Box */}
-          <div className="ml-11 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center text-center space-y-2">
-            <div className="text-2xl text-gray-400">🖼️</div>
-            <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-              [스크린샷 예시: 점 3개 메뉴 &rarr; 앱 정보 &rarr; 앱 설정 &rarr; &apos;로그인 시 앱 실행&apos; 스위치 켜기]
-            </p>
-            <p className="text-[11px] text-gray-400">
-              (사용자 실기기 캡처 이미지 제공 시 업데이트 예정)
-            </p>
-          </div>
-        </div>
-
-        {/* 3단계 카드 */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
-          <div className="flex items-center space-x-3">
-            <span className="w-8 h-8 rounded-full bg-teal-600 text-white font-black flex items-center justify-center text-sm shadow-xs">
-              3
-            </span>
-            <h4 className="text-base font-bold text-gray-900 dark:text-white">
-              3단계: 작업 표시줄에 고정하기 (선택 사항)
-            </h4>
-          </div>
-
-          <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300 leading-relaxed pl-11">
-            <p>1. 컴퓨터 화면 아래쪽 <strong>작업 표시줄</strong>에 생성된 <strong>효명고 관리 시스템 아이콘</strong>을 찾습니다.</p>
-            <p>2. 아이콘 위에서 <strong>마우스 오른쪽 버튼</strong>을 클릭합니다.</p>
-            <p>3. 메뉴에서 <strong>[작업 표시줄에 고정]</strong>을 선택하면 브라우저가 닫혀 있어도 언제든 클릭 한 번으로 바로 실행할 수 있습니다.</p>
-          </div>
-
-          {/* 스크린샷 자리 표시자 Box */}
-          <div className="ml-11 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center text-center space-y-2">
-            <div className="text-2xl text-gray-400">🖼️</div>
-            <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-              [스크린샷 예시: 작업 표시줄 아이콘 마우스 우클릭 후 &apos;작업 표시줄에 고정&apos; 선택]
-            </p>
-            <p className="text-[11px] text-gray-400">
-              (사용자 실기기 캡처 이미지 제공 시 업데이트 예정)
-            </p>
-          </div>
+        <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+          아래 화면에서 <strong>[다음]</strong>을 누르며 실제 화면 그대로 따라 하시면 됩니다. 설치 → 작업표시줄 고정 → 컴퓨터 켤 때 자동 실행 → 알림 켜기까지 한 번에 끝납니다.
+        </p>
+        <div className="rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm bg-white dark:bg-gray-800">
+          <iframe
+            src={`${IORAD_TUTORIAL_URL}?src=iframe#trysteps-1`}
+            title="효명고 관리시스템 앱 설치하기 따라하기 튜토리얼"
+            className="w-full block"
+            style={{ height: "640px" }}
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
         </div>
       </div>
 
@@ -188,7 +115,7 @@ export default function PWAInstallGuideTab() {
           <div className="p-3.5 bg-gray-50 dark:bg-gray-900/40 rounded-xl space-y-1">
             <p className="font-bold text-gray-900 dark:text-white">Q. 크롬북에서도 컴퓨터 부팅 시 자동 실행이 되나요?</p>
             <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
-              크롬북이나 태블릿 환경에서는 해당 자동 시작 옵션 대신 바탕화면 및 앱 목록에 전용 아이콘으로 추가됩니다. 교무실 윈도우/맥 컴퓨터에서 위 2단계 설정을 활용하시면 편리합니다.
+              크롬북이나 태블릿 환경에서는 해당 자동 시작 옵션이 없어(설정 메뉴에 항목이 보이지 않음) 그 단계는 건너뛰시면 되고, 대신 바탕화면 및 앱 목록에 전용 아이콘으로 추가됩니다. 자동 실행은 교무실 윈도우/맥 컴퓨터에서 활용하시면 편리합니다.
             </p>
           </div>
 
