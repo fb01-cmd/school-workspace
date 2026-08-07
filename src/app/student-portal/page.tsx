@@ -10,6 +10,7 @@ import { doc, getDoc } from "firebase/firestore";
 import MyProfileCard from "@/components/admin/MyProfileCard";
 import StudentTimetableCard from "@/components/student/StudentTimetableCard";
 import MealCard from "@/components/common/MealCard";
+import PushNotificationManager from "@/components/common/PushNotificationManager";
 
 export default function StudentPortal() {
   const { userData } = useAuth();
@@ -302,6 +303,9 @@ export default function StudentPortal() {
               로그아웃
             </button>
           </div>
+
+          {/* 🔔 알림 설정 관리자 */}
+          <PushNotificationManager />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <MyProfileCard />

@@ -43,6 +43,7 @@ import {
 import PaginationControls from "./PaginationControls";
 import MiniPreviewGrid from "./MiniPreviewGrid";
 import MealCard from "@/components/common/MealCard";
+import PushNotificationManager from "@/components/common/PushNotificationManager";
 import {
   ShareCardData,
   ConsolidatedShareData,
@@ -784,10 +785,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       )}
 
       {/* 🍱 내 주간시간표 + 오늘 급식 대시보드 그리드 */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-12">
-          <MealCard />
-        </div>
+      <div className="space-y-4 mb-6">
+        <PushNotificationManager />
+        <MealCard />
       </div>
 
       <div className="flex gap-4 items-start">

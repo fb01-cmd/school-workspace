@@ -354,9 +354,20 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
   };
 
-  const handleSlotClick = (weekId: string, cell: TeacherTimetableCell) => {
-    const hasLesson = cell && (cell.subjectName || cell.subjectShort);
-    if (hasLesson) {
+  const handleSlotClick = (
+    weekId: string,
+    cell?: TeacherTimetableCell | null,
+    fallbackDay?: number,
+    fallbackPeriod?: number
+  ) => {
+    const day = cell?.day ?? fallbackDay;
+    const period = cell?.period ?? fallbackPeriod;
+    if (!day || !period) return;
+
+    // cell.subjectName 또는 cell.subjectShort 존재 여부 판단 (수업 있는 셀)
+    const hasLesson = !!(cell && (cell.subjectName || cell.subjectShort));
+    
+    if (hasLesson && cell) {
       // 판정 단일 통로: 서버가 교사 그리드 응답에 실어 보낸 동시수업 라벨
       if (cell.simul) {
         alert(`여러 반이 함께 듣는 이동수업이라 교체할 수 없습니다.\n묶음: ${cell.simul}`);
@@ -364,7 +375,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       }
 
       const subj = cell.subjectShort || cell.subjectName || "수업";
-      const slot = { weekId, grade: cell.grade, classNum: cell.classNum, day: cell.day, period: cell.period };
+      const grade = cell.grade || 1;
+      const classNum = cell.classNum || 1;
+      const slot = { weekId, grade, classNum, day, period };
+
       setSelectedSlot(slot);
       setSelectedWeekId(weekId);
       setSourceLessonInfo({ subjectName: subj, teacherName: selectedTeacherName });
@@ -372,19 +386,19 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       // 체인 원본 수업으로 자동 지정
       setChainSourceSlot({
         weekId,
-        grade: cell.grade,
-        classNum: cell.classNum,
-        day: cell.day,
-        period: cell.period,
+        grade,
+        classNum,
+        day,
+        period,
         subjectName: subj,
         teacherEmail: selectedTeacherEmail,
         teacherName: selectedTeacherName,
       });
 
-      fetchCandidates(weekId, cell.grade, cell.classNum, cell.day, cell.period, subj);
+      fetchCandidates(weekId, grade, classNum, day, period, subj);
     } else {
-      // 공강 셀 클릭 ➔ "이 자리에 수업 가져오기 (체인 탐색 🔗)"
-      setChainTargetSlot({ weekId, day: cell.day, period: cell.period });
+      // 순수 공강 셀 클릭 ➔ "이 자리에 수업 가져오기 (연쇄 이동 탐색 🔗)"
+      setChainTargetSlot({ weekId, day, period });
       setChainModalOpen(true);
       setChainSearchError(null);
       setChainResults([]);
@@ -679,12 +693,23 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                         <div className="text-[10px] mt-0.5 font-bold truncate text-emerald-800">{inlineCand.counterpartSubjectName}</div>
                                       </button>
                                     ) : cartMatch ? (
-                                      /* 담긴 수업이 빠져나간 원래 자리 — 이동 사실만 흐리게 남긴다 */
                                       <div className="w-full p-1.5 rounded-lg border border-dashed border-amber-400 bg-amber-50/60 text-center">
                                         <div className="text-[9px] font-extrabold text-amber-800">🛒 담김 (이동됨)</div>
                                         <div className="text-[10px] font-bold text-amber-900 truncate">{cartMatch.source.subjectName || "수업"}</div>
                                       </div>
-                                    ) : (<span className="text-[11px] text-gray-300 font-light block py-2">-</span>)}
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSlotClick(w.id, null, d.num, period)}
+                                        className="w-full h-full min-h-[3rem] p-1 rounded-lg border border-transparent hover:border-indigo-300 hover:bg-indigo-50/80 transition-all text-[11px] text-gray-400 hover:text-indigo-700 font-bold flex flex-col items-center justify-center gap-0.5 group cursor-pointer"
+                                        title="이 빈 자리로 다른 수업 가져오기 (연쇄 이동 탐색)"
+                                      >
+                                        <span>-</span>
+                                        <span className="hidden group-hover:inline text-[9px] bg-indigo-100 text-indigo-800 px-1 py-0.2 rounded font-extrabold">
+                                          🔗 가져오기
+                                        </span>
+                                      </button>
+                                    )}
                                   </td>
                                 );
                               })}
@@ -793,16 +818,16 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         </div>
       )}
 
-      {/* 🔗 징검다리 체인 탐색 모달 (spec §C-3) */}
+      {/* 🔗 징검다리 체인 탐색 모달 */}
       {chainModalOpen && chainTargetSlot && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
           <div className="bg-white rounded-2xl shadow-xl border border-indigo-200 max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-5 animate-scale-up">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div>
                 <h3 className="text-base font-extrabold text-indigo-950 flex items-center gap-2">
-                  <span>🔗 징검다리(목표 지향 체인) 교체 탐색</span>
+                  <span>🔗 징검다리 연쇄 이동 경로 탐색</span>
                   <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-800">
-                    스펙 §C-3
+                    연쇄 이동 탐색
                   </span>
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
@@ -839,7 +864,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                 </div>
               ) : (
                 <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
-                  시간표 그리드에서 원본 수업 셀을 클릭해 주시거나, 아래 버튼을 통해 지정해 주세요.
+                  시간표 그리드에서 옮기고 싶은 원본 수업 셀을 클릭해 지정해 주세요.
                 </div>
               )}
 
@@ -850,7 +875,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                   disabled={!chainSourceSlot || chainSearchLoading}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors"
                 >
-                  {chainSearchLoading ? "경로 탐색 중..." : "🔍 2단계 체인 탐색"}
+                  {chainSearchLoading ? "경로 탐색 중..." : "🔍 연쇄 이동 탐색 (2단계)"}
                 </button>
               </div>
             </div>
