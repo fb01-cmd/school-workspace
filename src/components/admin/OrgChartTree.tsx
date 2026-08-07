@@ -5,7 +5,7 @@ import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
 import { collection, onSnapshot, query } from "firebase/firestore";
 
-import { getClientCache } from "@/lib/cache/clientCache";
+import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 
 const DEFAULT_DEPARTMENTS = [
   "교장", "교감", "교목", "교무기획부", "교육연구부", "학생생활자치부",
@@ -29,10 +29,34 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
   const isSuperAdmin = userData?.role === "super_admin";
   const departmentOrder = schoolSettings?.departments || DEFAULT_DEPARTMENTS;
 
-  // GWS real name resolution map from client cache (users:all)
+  // GWS 유저 목록 — 캐시 우선, 없으면 직접 로드 (2026-08-07: 트리 뷰를 바로 열면 캐시가
+  // 비어 재직자 필터·실명 표시가 통째로 생략되던 구멍 보강. 권한 없으면 조용히 폴백)
+  const [gwsUsers, setGwsUsers] = useState<any[]>([]);
+  useEffect(() => {
+    const cached = getClientCache("users:all");
+    if (Array.isArray(cached) && cached.length > 0) {
+      setGwsUsers(cached);
+      return;
+    }
+    fetch("/api/workspace/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "list", orgUnitPaths: ["all"] }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.users)) {
+          setClientCache("users:all", data.users);
+          setGwsUsers(data.users);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // GWS real name resolution map
   const gwsNameMap = useMemo(() => {
     const map = new Map<string, string>();
-    const cachedUsers = getClientCache("users:all");
+    const cachedUsers = gwsUsers;
     if (Array.isArray(cachedUsers)) {
       cachedUsers.forEach((u: any) => {
         const email = (u.primaryEmail || u.email || "").toLowerCase();
@@ -46,7 +70,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
       });
     }
     return map;
-  }, [profiles]);
+  }, [gwsUsers]);
 
   const getDisplayName = (t: TeacherProfile) => {
     const email = (t.email || "").toLowerCase();
@@ -58,7 +82,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
   // 재직자 이메일 집합 (2026-08-07 조직도 잔존 결함 수정) — OrgChartBuilder.teacherUserList와
   // 같은 기준으로 전출·명퇴 계정의 잔존 프로필을 트리에서 숨긴다. 캐시가 없으면 null(필터 생략).
   const activeEmails = useMemo(() => {
-    const cachedUsers = getClientCache("users:all");
+    const cachedUsers = gwsUsers;
     if (!Array.isArray(cachedUsers) || cachedUsers.length === 0) return null;
     const teacherOU = ((schoolSettings as any)?.ouMapping?.teachers || "").toLowerCase();
     const set = new Set<string>();
@@ -74,7 +98,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
       set.add(email);
     });
     return set;
-  }, [profiles, schoolSettings]);
+  }, [gwsUsers, schoolSettings]);
 
   // Real-time subscription to teacher_profiles collection
   useEffect(() => {
@@ -387,62 +411,8 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
           );
         })}
 
-        {/* No Department ("소속 없음") Section */}
-        {structuredTree.noDeptMembers.length > 0 && (
-          <div className="border border-slate-200 rounded-lg overflow-hidden mt-4">
-            <div
-              onClick={() => toggleExpand("__NO_DEPT__")}
-              className="bg-slate-100 hover:bg-slate-200 px-4 py-2.5 flex items-center justify-between cursor-pointer select-none transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 w-4 text-center">
-                  {expandedDepts["__NO_DEPT__"] !== false ? "▼" : "▶"}
-                </span>
-                <span className="text-base">🚫</span>
-                <span className="text-sm font-bold text-slate-700">소속 없음</span>
-                <span className="text-xs font-semibold text-slate-500 bg-slate-300 px-2 py-0.5 rounded-full ml-1">
-                  {structuredTree.noDeptMembers.length}명
-                </span>
-              </div>
-            </div>
-
-            {expandedDepts["__NO_DEPT__"] !== false && (
-              <div className="divide-y divide-slate-50 bg-white">
-                {structuredTree.noDeptMembers.map((teacher) => (
-                  <div
-                    key={`nodept-${teacher.email}`}
-                    className="px-10 py-2.5 flex items-center justify-between hover:bg-slate-50 transition-colors group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-slate-400 text-xs">👤</span>
-                      <span className="text-sm font-bold text-slate-900">
-                        {getDisplayName(teacher)}
-                      </span>
-                      <span className="text-xs text-slate-400 font-mono">
-                        {teacher.email}
-                      </span>
-                      <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[11px] font-semibold rounded border border-slate-200">
-                        소속 없음
-                      </span>
-                    </div>
-
-                    {isSuperAdmin && onEditTeacher && (
-                      <button
-                        type="button"
-                        onClick={() => onEditTeacher(teacher.email)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 text-xs font-semibold flex items-center gap-1"
-                        title="수동 배치 편집"
-                      >
-                        <span>✏️</span>
-                        <span className="hidden sm:inline">수정</span>
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {/* "소속 없음" 섹션은 트리 뷰에 표시하지 않는다 (2026-08-07 사용자 지시) —
+            미배치 인원 관리는 어드민의 조직도 편집(수동 배치) 화면 미배치 목록에서만. */}
       </div>
     </div>
   );
