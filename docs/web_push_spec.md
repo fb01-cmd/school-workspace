@@ -102,7 +102,7 @@
 
 ## §9 알림 설정 UI (Antigravity 인계 스펙)
 
-- **공용 컴포넌트 1개** `PushNotificationManager`(가칭, `src/components/common/`)를 만들고 **두 곳에 마운트**: ① 교사 포털 대시보드(TeacherPortalSection) 상단 카드 영역 ② 학생 포털(`student-portal/page.tsx`) 상단. 다른 화면에는 넣지 않는다(IA 명시 — 임의 배치 금지).
+- **공용 컴포넌트 1개** `PushNotificationManager`(가칭, `src/components/common/`)를 만들고 **두 곳에 마운트**: ① 교사 홈 대시보드(`src/app/admin/page.tsx`) 상단 카드 영역 ② 학생 포털(`student-portal/page.tsx`) 상단. 다른 화면에는 넣지 않는다(IA 명시 — 임의 배치 금지).
 - 동작:
   1. 마운트 시 `POST /api/push {action:"config"}` — `enabled:false`거나 브라우저가 푸시 미지원(`'PushManager' in window` 등)이면 **아무것도 렌더하지 않는다**.
   2. `Notification.permission === "granted"`이고 기존 구독이 있으면 **조용히 재구독**(`pushManager.subscribe` 기존 객체 → `subscribe` 액션 재전송 — 학년·반 스냅샷 갱신). UI는 "알림 받는 중" 소형 표시 + 끄기.

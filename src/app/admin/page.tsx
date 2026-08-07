@@ -37,6 +37,9 @@ const TeacherPortalSection = dynamic(() => import("@/components/admin/timetable/
 const PolicyAckStatusTab = dynamic(() => import("@/components/admin/PolicyAckStatusTab"), { loading: TabLoading });
 const PWAInstallGuideTab = dynamic(() => import("@/components/admin/PWAInstallGuideTab"), { loading: TabLoading });
 import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt";
+import MealCard from "@/components/common/MealCard";
+import PushNotificationManager from "@/components/common/PushNotificationManager";
+import MyTimetableCard from "@/components/admin/MyTimetableCard";
 
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { TimetableSettings } from "@/lib/timetable/types";
@@ -202,7 +205,7 @@ export default function AdminPage() {
       case "home":
       default:
         return (
-          <div className="space-y-8">
+          <div className="space-y-6">
             {/* 조직 정보 미등록 안내 배너 */}
             {hasNoProfile && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 flex items-start gap-4">
@@ -227,60 +230,60 @@ export default function AdminPage() {
               </p>
             </div>
 
-            {/* Widget Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* Users Widget - Super Admin Only */}
-              {isSuperAdmin && (
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-gray-900">사용자</h3>
-                    <span className="p-2 rounded-lg bg-blue-50 text-blue-600">
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
-                    </span>
-                  </div>
-                  <p className="text-gray-500 text-sm mb-6">사용자를 조회하거나 추가하고, 비밀번호 및 계정을 직접 제어합니다.</p>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => setActiveMenu("users")}
-                    className="w-full text-left text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1.5"
-                  >
-                    사용자 전체보기 →
-                  </button>
-                </div>
-              </div>
-              )}
+            {/* ② PushNotificationManager & ③ MealCard (super_admin + teacher 공통 상단 마운트) */}
+            <PushNotificationManager />
+            <MealCard />
 
-              {/* Groups Widget - Super Admin Only */}
-              {isSuperAdmin && (
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-gray-900">그룹</h3>
-                    <span className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                    </span>
+            {/* super_admin 홈: 기존 관리 카드 그리드 유지 */}
+            {isSuperAdmin ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* Users Widget */}
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold text-gray-900">사용자</h3>
+                      <span className="p-2 rounded-lg bg-blue-50 text-blue-600">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                      </span>
+                    </div>
+                    <p className="text-gray-500 text-sm mb-6">사용자를 조회하거나 추가하고, 비밀번호 및 계정을 직접 제어합니다.</p>
                   </div>
-                  <p className="text-gray-500 text-sm mb-6">반별 구글 메일링 그룹 및 학년별 교직원 그룹을 조회하고 가입/게시판 권한을 조정합니다.</p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => setActiveMenu("users")}
+                      className="w-full text-left text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1.5"
+                    >
+                      사용자 전체보기 →
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <button
-                    onClick={() => setActiveMenu("groups")}
-                    className="w-full text-left text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1.5"
-                  >
-                    그룹 전체보기 →
-                  </button>
-                </div>
-              </div>
-              )}
 
-              {/* OU Mapping Widget (Super Admin Only) */}
-              {isSuperAdmin && (
+                {/* Groups Widget */}
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold text-gray-900">그룹</h3>
+                      <span className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                      </span>
+                    </div>
+                    <p className="text-gray-500 text-sm mb-6">반별 구글 메일링 그룹 및 학년별 교직원 그룹을 조회하고 가입/게시판 권한을 조정합니다.</p>
+                  </div>
+                  <div>
+                    <button
+                      onClick={() => setActiveMenu("groups")}
+                      className="w-full text-left text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1.5"
+                    >
+                      그룹 전체보기 →
+                    </button>
+                  </div>
+                </div>
+
+                {/* OU Mapping Widget */}
                 <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
                   <div>
                     <div className="flex items-center justify-between mb-4">
@@ -302,54 +305,57 @@ export default function AdminPage() {
                     </button>
                   </div>
                 </div>
-              )}
 
-              {/* Classroom Widget - All Teachers */}
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-gray-900">클래스룸 배정</h3>
-                    <span className="p-2 rounded-lg bg-pink-50 text-pink-600">
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                      </svg>
-                    </span>
+                {/* Classroom Widget */}
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold text-gray-900">클래스룸 배정</h3>
+                      <span className="p-2 rounded-lg bg-pink-50 text-pink-600">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                      </span>
+                    </div>
+                    <p className="text-gray-500 text-sm mb-6">새로운 클래스룸 수업을 개설하거나 기존 수업에 학생들을 즉시 강제 배정합니다.</p>
                   </div>
-                  <p className="text-gray-500 text-sm mb-6">새로운 클래스룸 수업을 개설하거나 기존 수업에 학생들을 즉시 강제 배정합니다.</p>
+                  <div>
+                    <button
+                      onClick={() => setActiveMenu("classroom")}
+                      className="w-full text-left text-sm text-pink-600 hover:text-pink-800 font-semibold py-1.5"
+                    >
+                      수업 생성 및 학생 배정 →
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <button
-                    onClick={() => setActiveMenu("classroom")}
-                    className="w-full text-left text-sm text-pink-600 hover:text-pink-800 font-semibold py-1.5"
-                  >
-                    수업 생성 및 학생 배정 →
-                  </button>
+
+                {/* Student Discipline Widget */}
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold text-gray-900">학생 생활지도</h3>
+                      <span className="p-2 rounded-lg bg-blue-50 text-blue-600">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                        </svg>
+                      </span>
+                    </div>
+                    <p className="text-gray-500 text-sm mb-6">학생 생활지도 기록 입력, 단계 자동 계산 현황, 단계 처리함 및 학급 담임 배정을 종합 관리합니다.</p>
+                  </div>
+                  <div>
+                    <button
+                      onClick={() => setActiveMenu("discipline")}
+                      className="w-full text-left text-sm text-blue-600 hover:text-blue-800 font-semibold py-1.5"
+                    >
+                      생활지도 종합 관리 바로가기 →
+                    </button>
+                  </div>
                 </div>
               </div>
-
-              {/* Student Discipline Widget */}
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-gray-900">학생 생활지도</h3>
-                    <span className="p-2 rounded-lg bg-blue-50 text-blue-600">
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-                      </svg>
-                    </span>
-                  </div>
-                  <p className="text-gray-500 text-sm mb-6">학생 생활지도 기록 입력, 단계 자동 계산 현황, 단계 처리함 및 학급 담임 배정을 종합 관리합니다.</p>
-                </div>
-                <div>
-                  <button
-                    onClick={() => setActiveMenu("discipline")}
-                    className="w-full text-left text-sm text-blue-600 hover:text-blue-800 font-semibold py-1.5"
-                  >
-                    생활지도 종합 관리 바로가기 →
-                  </button>
-                </div>
-              </div>
-            </div>
+            ) : (
+              /* 일반 교사(role teacher) 홈: 위젯 카드 그리드 제거 → ④ 이번 주 내 시간표 읽기 전용 카드 배치 */
+              <MyTimetableCard onNavigateToMyTimetable={() => setActiveMenu("my_timetable")} />
+            )}
           </div>
         );
     }
