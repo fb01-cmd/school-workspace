@@ -1774,6 +1774,15 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **증상 ② 수동 배치와 부서 불일치 — 원인 확정**: 수동 배치(OrgChartBuilder 일괄 반영)는 merge 저장 + 당시 PENDING 자기신청 무효화(supersededByManual)까지 방어함. 그러나 **프로필 승인(ProfileApprovals.handleApprove)이 merge 없는 전체 setDoc** — 수동 배치 이후 교사가 새로 제출한 자기신청을 관리자가 승인하는 순간 부서·부장·직책이 교사 신고값으로 통째 교체. **isHomeroom·homeroom도 함께 덮임**(담임 단일 원본 훼손 가능).
 - **수정 방향 (사용자 확인 대기)**: ① 생애주기 전출·명퇴 완료 시 teacher_profiles 정리(삭제 or 마킹) + 조직도 트리 재직자 필터 + 잔존 문서 일회성 정리 스크립트(실측→삭제). ② 승인 저장 merge화 + 기존 승인 문서와 다른 필드를 승인 화면에 diff로 표시(관리자가 알고 승인) — 또는 조직 배치 필드는 수동 배치 우선 정책. **미결 질문: 신학기에 교사 자기신청(부서 변경 신고)과 관리자 수동 배치 중 어느 쪽이 우선이어야 하는지 실무 확인.**
 
+## [2026-08-07] Claude → 특별실 점유 제약(§F) 당일 구현·등재 완료 ✅ (사용자 지시 — "개학 후" 앞당김)
+
+- **사용자 결정**: 개학 직후는 시스템을 보여주는 단계라 전 교사 실사용 전 — 지금 고쳐도 됨. 기능 개선은 지속 진행.
+- **핵심 발견**: 엔진(swap.ts)에 특별실 충돌 하드 제외가 **이미 구현돼 있었음**(buildSlotIndex.roomUse + isRoomFree — 맞교환·교차 주). 변환 그리드에 room 값이 없어 발화 안 했을 뿐 → 등록부 스탬프만으로 기존 검사 부활. 스펙 §F로 문서화.
+- **구현**: ① `venue.ts`(buildVenueMatcher/applyVenueMarks/listVenueCells/findVenueBaseConflicts — simul 미러, 단 미일치 room은 보존) ② VenueGroup 모델·loadVenueGroups·validateVenueGroupPayload(반 1개 허용) ③ 로더 3곳 스탬프(loadAllClassGrids/loadClassGrid/개정 재스탬프) ④ manage 액션 venue_list(+baseConflicts·previewCells)/venue_save/venue_delete(권한 규칙 4 자동) ⑤ `scripts/register_venue_groups.ts`(드라이런=판정 셀·실별 시수 대조·기초 충돌·엔진 전후 스모크). 소스 차단 없음 — 충돌 후보만 제외(사용자 확정 방향).
+- **등재 18건**: 다윗관=체ⅠA+체Ⅱ / 탁구장=체ⅠB+체Ⅲ / 정보실=인공Ⅱ(2-6·8·9)+인공Ⅲ(3-6~10) / 생명과학실=1학년 과탐 실험(반별 slots 10건)+2-9 지구+3-6 지Ⅱ.
+- **실측**: 실별 시수 30/30/27/16 = 컴시간 표기 정확 일치 · 기초 이중 점유 0건 · 엔진 스모크 — 2-1 체Ⅱ 맞교환 후보 4건(마크 전) → 0건(마크 후, 전부 다윗관 점유 교시) · tsc 0 · build ✅. GROUPS 도로 비움(중복 등재 방지).
+- **잔여**: 등록부 화면 + 그리드 특별실 뱃지(lesson.room) = Antigravity(§F-5). 기초 개정으로 과탐 실험 교시가 바뀌면 slots 갱신(감지망: venue_list baseConflicts·0셀 경고).
+
 ### 재개 문구 (다음 대화)
 - 조직도 수정: *"project_notes.md 마지막 체크포인트를 읽어줘. 조직도 2건 수정 진행해줘. 우선순위는 (자기신청 우선/수동 배치 우선)."*
 - 통합 검증 결과: *"project_notes.md 마지막 체크포인트를 읽어줘. 개학 전 3건 실기기 확인 결과 — (통과/증상)."*

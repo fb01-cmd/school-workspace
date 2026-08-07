@@ -112,6 +112,27 @@ export interface SimulGroup {
   updatedAt?: number;
 }
 
+/** 특별실 배정 등록부 — timetable_venue_groups/{domain}/groups (pre_opening_3features_spec §F).
+ *  일치 lesson에 로드 시 room(특별실명)을 스탬프하며, 엔진의 기존 특별실 충돌 하드 제외
+ *  (buildSlotIndex.roomUse + isRoomFree)가 그 값을 소비한다. 수용력은 전 실 공통 1반. */
+export interface VenueGroup {
+  id?: string;
+  termId: string;
+  /** 특별실명 (다윗관·탁구장·정보실·생명과학실 …) — lesson.room 스탬프 값이자 충돌 판정 키 */
+  roomName: string;
+  label: string;
+  grade: number;
+  classNums: number[];
+  subjectNames: string[];
+  /** 지정 시 이 교시들만 대상 (과탐 실험처럼 일부 시수만 특별실인 경우). 미지정이면 과목명 일치 셀 전부 */
+  slots?: SimulSlot[];
+  active: boolean;
+  createdBy?: string;
+  createdAt?: number;
+  updatedBy?: string;
+  updatedAt?: number;
+}
+
 export interface TimetableCell {
   day: number; // 1~5 (월~금)
   period: number; // 1~8
@@ -300,6 +321,10 @@ export type ManageAction =
   | "simul_list"
   | "simul_save"
   | "simul_delete"
+  // ── 특별실 배정 등록부 (pre_opening_3features_spec §F) ──
+  | "venue_list"
+  | "venue_save"
+  | "venue_delete"
   // ── 학사일정 (pre_opening_3features_spec §B) ──
   | "calendar_list"
   | "calendar_save"
@@ -339,6 +364,8 @@ export interface ManageTimetableRequest {
   // 동시수업(분반) 그룹 등록부 (pre_opening_3features_spec §A-4)
   simulGroup?: Partial<SimulGroup>; // simul_save 본문 / simul_list 미리보기(previewCells) 요청
   simulGroupId?: string; // simul_save(수정)·simul_delete 대상
+  venueGroup?: Partial<VenueGroup>; // venue_save 본문 / venue_list 미리보기(previewCells) 요청 (§F)
+  venueGroupId?: string; // venue_save(수정)·venue_delete 대상
   // 학사일정 (pre_opening_3features_spec §B)
   calendarEvent?: Partial<TimetableCalendarEvent>; // calendar_save 본문
   calendarEventId?: string; // calendar_save(수정)·calendar_delete 대상

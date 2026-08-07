@@ -2,6 +2,7 @@ import { verifyAuthAccess } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { canManageTimetable } from "@/lib/timetable/authz";
 import { listSimulCells } from "@/lib/timetable/simul";
+import { findVenueBaseConflicts, listVenueCells } from "@/lib/timetable/venue";
 import {
   activateTerm,
   applyRevisionDraft,
@@ -29,8 +30,11 @@ import {
   loadAllTerms,
   loadSimulGroups,
   loadTimetableSettings,
+  loadVenueGroups,
   simulGroupsColRef,
   validateSimulGroupPayload,
+  validateVenueGroupPayload,
+  venueGroupsColRef,
   registerWeek,
   rejectSwapRequest,
   revertTimetableChange,
@@ -642,6 +646,95 @@ export async function POST(req: NextRequest) {
           targetEmail: domain,
           action: "simul_group_delete",
           details: `동시수업 그룹 삭제: ${label}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action });
+      }
+
+      // ── 특별실 배정 등록부 (pre_opening_3features_spec §F) ──
+
+      case "venue_list": {
+        const termId = body.termId || settings.activeTermId;
+        if (!termId) {
+          return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        }
+        const [groups, grids] = await Promise.all([
+          loadVenueGroups(domain, termId),
+          loadAllClassGrids(domain, termId),
+        ]);
+        // 미리보기: 저장 전 배정 후보(venueGroup)가 오면 그 판정 셀만 별도 반환
+        let previewCells;
+        if (body.venueGroup) {
+          const v = validateVenueGroupPayload({ ...body.venueGroup, termId });
+          if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+          previewCells = listVenueCells(grids, [
+            { ...v.group, id: "preview", createdBy: "", createdAt: 0 },
+          ]);
+        }
+        return NextResponse.json({
+          success: true,
+          action,
+          groups,
+          cells: listVenueCells(grids, groups),
+          // 기초 이중 점유(같은 교시 같은 특별실 2수업↑) — 등록 실수 감지용, 정상 0건
+          baseConflicts: findVenueBaseConflicts(grids, groups),
+          ...(previewCells ? { previewCells } : {}),
+        });
+      }
+
+      case "venue_save": {
+        const termId = body.venueGroup?.termId || body.termId || settings.activeTermId;
+        if (!termId) {
+          return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        }
+        const v = validateVenueGroupPayload({ ...body.venueGroup, termId });
+        if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+        const isUpdate = !!body.venueGroupId;
+        const ref = isUpdate
+          ? venueGroupsColRef(domain).doc(body.venueGroupId!)
+          : venueGroupsColRef(domain).doc();
+        if (isUpdate) {
+          const existing = await ref.get();
+          if (!existing.exists) {
+            return NextResponse.json({ error: "수정할 배정을 찾을 수 없습니다." }, { status: 404 });
+          }
+          await ref.set(
+            { ...v.group, updatedBy: auth.email.toLowerCase(), updatedAt: Date.now() },
+            { merge: true }
+          );
+        } else {
+          await ref.set({
+            ...v.group,
+            createdBy: auth.email.toLowerCase(),
+            createdAt: Date.now(),
+          });
+        }
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: isUpdate ? "venue_group_update" : "venue_group_create",
+          details: `특별실 배정 ${isUpdate ? "수정" : "등록"}: ${v.group.roomName} — ${v.group.label} (${v.group.grade}학년 ${v.group.classNums.join(",")}반 / ${v.group.subjectNames.join(", ")}${v.group.slots ? ` / 교시 제한 ${v.group.slots.length}건` : ""}${v.group.active ? "" : " (비활성)"})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, groupId: ref.id });
+      }
+
+      case "venue_delete": {
+        if (!body.venueGroupId) {
+          return NextResponse.json({ error: "venueGroupId가 필요합니다." }, { status: 400 });
+        }
+        const ref = venueGroupsColRef(domain).doc(body.venueGroupId);
+        const snap = await ref.get();
+        if (!snap.exists) {
+          return NextResponse.json({ error: "삭제할 배정을 찾을 수 없습니다." }, { status: 404 });
+        }
+        const d = snap.data() as any;
+        await ref.delete();
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "venue_group_delete",
+          details: `특별실 배정 삭제: ${d?.roomName || ""} — ${d?.label || body.venueGroupId}`,
           status: "success",
         });
         return NextResponse.json({ success: true, action });

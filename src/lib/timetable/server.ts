@@ -7,6 +7,7 @@
 import { adminDb, DecodedAuthAccess } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
 import { applySimulMarks } from "./simul";
+import { applyVenueMarks } from "./venue";
 import {
   ClassCellIssue,
   ClassGrid,
@@ -14,6 +15,7 @@ import {
   IntermediateClassGrid,
   IntermediateImportPayload,
   SimulGroup,
+  VenueGroup,
   SwapDraft,
   SuspiciousMappingIssue,
   TeacherOverlapIssue,
@@ -51,6 +53,9 @@ export const classGridsColRef = (domain: string, termId: string) =>
 
 export const simulGroupsColRef = (domain: string) =>
   adminDb.collection("timetable_simul_groups").doc(domain).collection("groups");
+
+export const venueGroupsColRef = (domain: string) =>
+  adminDb.collection("timetable_venue_groups").doc(domain).collection("groups");
 
 // ── 직렬화 헬퍼 ────────────────────────────────────────────────
 
@@ -244,12 +249,83 @@ export function validateSimulGroupPayload(raw: any): { ok: true; group: Omit<Sim
   };
 }
 
+// ── 특별실 배정 등록부 (pre_opening_3features_spec §F) ─────────
+
+export async function loadVenueGroups(domain: string, termId: string): Promise<VenueGroup[]> {
+  const snap = await venueGroupsColRef(domain).where("termId", "==", termId).get();
+  return snap.docs.map((doc) => {
+    const data = doc.data() || {};
+    return {
+      id: doc.id,
+      termId: data.termId || termId,
+      roomName: data.roomName || "",
+      label: data.label || "",
+      grade: Number(data.grade) || 0,
+      classNums: Array.isArray(data.classNums) ? data.classNums.map(Number).filter(Boolean) : [],
+      subjectNames: Array.isArray(data.subjectNames) ? data.subjectNames.map(String) : [],
+      ...(Array.isArray(data.slots) && data.slots.length
+        ? { slots: data.slots.map((s: any) => ({ day: Number(s.day), period: Number(s.period) })) }
+        : {}),
+      active: data.active !== false,
+      createdBy: data.createdBy || "",
+      createdAt: toMillis(data.createdAt) || 0,
+      ...(data.updatedBy ? { updatedBy: data.updatedBy } : {}),
+      ...(toMillis(data.updatedAt) ? { updatedAt: toMillis(data.updatedAt)! } : {}),
+    };
+  });
+}
+
+export function validateVenueGroupPayload(raw: any): { ok: true; group: Omit<VenueGroup, "id" | "createdBy" | "createdAt"> } | { ok: false; error: string } {
+  const roomName = typeof raw?.roomName === "string" ? raw.roomName.trim().slice(0, 30) : "";
+  if (!roomName) return { ok: false, error: "특별실 이름을 입력해 주세요." };
+  const label = typeof raw?.label === "string" ? raw.label.trim().slice(0, 60) : "";
+  if (!label) return { ok: false, error: "배정 이름을 입력해 주세요." };
+  const termId = typeof raw?.termId === "string" ? raw.termId.trim() : "";
+  if (!termId) return { ok: false, error: "학기가 지정되지 않았습니다." };
+  const grade = Number(raw?.grade);
+  if (![1, 2, 3].includes(grade)) return { ok: false, error: "학년은 1~3 중에서 지정해야 합니다." };
+  const classNums: number[] = Array.isArray(raw?.classNums)
+    ? [...new Set<number>(raw.classNums.map(Number))].filter((n) => Number.isInteger(n) && n >= 1 && n <= 15)
+    : [];
+  // 동시수업과 달리 반 1개 허용 — 한 반 수업도 특별실을 점유한다 (예: 2-9 지구, 3-6 지Ⅱ).
+  if (classNums.length < 1) return { ok: false, error: "대상 반을 1개 이상 지정해야 합니다." };
+  const subjectNames = Array.isArray(raw?.subjectNames)
+    ? [...new Set(raw.subjectNames.map((s: any) => String(s).trim()).filter(Boolean))]
+    : [];
+  if (subjectNames.length === 0) return { ok: false, error: "대상 과목을 1개 이상 지정해야 합니다." };
+  let slots: { day: number; period: number }[] | undefined;
+  if (Array.isArray(raw?.slots) && raw.slots.length) {
+    slots = [];
+    for (const s of raw.slots) {
+      const day = Number(s?.day);
+      const period = Number(s?.period);
+      if (!Number.isInteger(day) || day < 1 || day > 5 || !Number.isInteger(period) || period < 1 || period > 8)
+        return { ok: false, error: "교시 제한 값이 올바르지 않습니다." };
+      slots.push({ day, period });
+    }
+  }
+  return {
+    ok: true,
+    group: {
+      termId,
+      roomName,
+      label,
+      grade,
+      classNums: (classNums as number[]).sort((a, b) => a - b),
+      subjectNames: subjectNames as string[],
+      ...(slots ? { slots } : {}),
+      active: raw?.active !== false,
+    },
+  };
+}
+
 // ── 학급 시간표 그리드 (ClassGrid) Operations ─────────────────
 
 export async function loadAllClassGrids(domain: string, termId: string): Promise<ClassGrid[]> {
-  const [snap, simulGroups] = await Promise.all([
+  const [snap, simulGroups, venueGroups] = await Promise.all([
     classGridsColRef(domain, termId).get(),
     loadSimulGroups(domain, termId),
+    loadVenueGroups(domain, termId),
   ]);
   const grids = snap.docs.map((doc) => {
     const data = doc.data() || {};
@@ -259,9 +335,10 @@ export async function loadAllClassGrids(domain: string, termId: string): Promise
       cells: Array.isArray(data.cells) ? data.cells : [],
     };
   });
-  // 동시수업(분반) 라벨 스탬프 — 저장 데이터는 무표기, 읽기 시점에 등록부 대조 (§A 판정 단일 통로).
-  // 이후의 합성·엔진·커밋 재검증·view 응답이 전부 이 마크를 본다.
+  // 동시수업(분반) 라벨 + 특별실명 스탬프 — 저장 데이터는 무표기, 읽기 시점에 등록부 대조
+  // (§A·§F 판정 단일 통로). 이후의 합성·엔진·커밋 재검증·view 응답이 전부 이 마크를 본다.
   applySimulMarks(grids, simulGroups);
+  applyVenueMarks(grids, venueGroups);
   return grids;
 }
 
@@ -272,9 +349,10 @@ export async function loadClassGrid(
   classNum: number
 ): Promise<ClassGrid | null> {
   const docId = `${grade}-${classNum}`;
-  const [snap, simulGroups] = await Promise.all([
+  const [snap, simulGroups, venueGroups] = await Promise.all([
     classGridsColRef(domain, termId).doc(docId).get(),
     loadSimulGroups(domain, termId),
+    loadVenueGroups(domain, termId),
   ]);
   if (!snap.exists) return null;
   const data = snap.data() || {};
@@ -284,6 +362,7 @@ export async function loadClassGrid(
     cells: Array.isArray(data.cells) ? data.cells : [],
   };
   applySimulMarks([grid], simulGroups);
+  applyVenueMarks([grid], venueGroups);
   return grid;
 }
 
@@ -1351,7 +1430,10 @@ export async function loadBaseGridsByWeek(
     for (const d of dates) out.set(d, grids);
     return out;
   }
-  const simulGroups = await loadSimulGroups(domain, termId);
+  const [simulGroups, venueGroups] = await Promise.all([
+    loadSimulGroups(domain, termId),
+    loadVenueGroups(domain, termId),
+  ]);
   let cur = grids;
   let idx = 0;
   for (const date of dates) {
@@ -1366,7 +1448,10 @@ export async function loadBaseGridsByWeek(
         console.error(`[baseRevision ${applied[idx].id}] ${w}`);
       idx++;
     }
-    if (advanced) applySimulMarks(cur, simulGroups);
+    if (advanced) {
+      applySimulMarks(cur, simulGroups);
+      applyVenueMarks(cur, venueGroups);
+    }
     out.set(date, cur);
   }
   return out;

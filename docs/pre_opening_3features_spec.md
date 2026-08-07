@@ -180,3 +180,36 @@ timetable_base_revisions/{domain}/revisions/{revId}
 | 8/7 (D-3) | Claude: A 서버부(판정+제외+검증+액션+스크립트) 구현·실측. 목록 수령 → 등재·전수 검증. Antigravity: 등록부 UI·그리드 표시 착수 (병행: 학생 카드 마운트 잔여 시) |
 | 8/8~9 (D-2~1) | A 실기기 확인(배지·후보 소멸·직권 차단), 개학 첫 주(8/10) 수동 등록, 사용자 1-1 임시 담임 원복, 교사 공지 |
 | 8/10 (개학) | 실운영 개시. B 착수(첫 주 내), C는 그 다음 |
+
+---
+
+## §F. 특별실(장소) 점유 제약 — 교체 후보 하드 제외 (2026-08-07 추가·同日 구현)
+
+### F-1. 배경·원칙
+
+- 특별실(다윗관·탁구장·정보실·생명과학실)은 **한 교시에 한 수업만** 쓸 수 있는 공유 자원. 기초시간표는 충돌 없이 짜여 있으나, 교체로 수업이 다른 교시로 이동하면 교사·학급이 비어 있어도 장소가 겹칠 수 있다.
+- 실무(일과계)는 특별실 수업 교체를 통째로 배제해 왔음 → 플랫폼은 **충돌하는 후보만 제외하고 안 겹치는 후보는 정상 추천** (2026-08-07 사용자 확정). 동시수업(§A)과 달리 **소스 차단 없음**.
+- 데이터 원본: 컴시간 "특별실 시간표" (2026-08-07 일과계 제공 스크린샷, 4실·시수 30/30/27/16).
+
+### F-2. 모델·판정
+
+- `timetable_venue_groups/{domain}/groups`: VenueGroup { termId, roomName(특별실명=판정 키), label, grade, classNums(1개 허용 — 단일 반도 점유), subjectNames, slots?(과탐 실험처럼 일부 시수만 특별실일 때), active }.
+- **판정 단일 통로**: 그리드 로더(loadAllClassGrids/loadClassGrid/loadBaseGridsByWeek 개정 재스탬프)가 등록부 대조 후 일치 lesson에 `lesson.room = roomName` 스탬프. 저장 데이터 무표기, 읽기 시점 계산. 미일치 lesson의 기존 room(가져오기 원본 값)은 지우지 않는다.
+- **엔진은 기구현 재사용**: swap.ts의 `buildSlotIndex.roomUse` + `isRoomFree`가 room 값을 소비 — 맞교환·교차 주 target 검사 기존 코드가 그대로 발화(자기 학급 제외 = 상대 수업이 비우는 슬롯 허용). 특별보강은 수업이 제자리라 검사 불요. 커밋 검증은 스탬프된 그리드 위 엔진 재계산이라 자동 이중 방어.
+- 합성(synthesizeWeeklyGrids)은 room을 lesson과 함께 운반 → 교체로 이동한 실험 수업도 특별실 요구가 따라간다.
+
+### F-3. manage 액션 (일과계 게이트 — 기존 규칙 4)
+
+- `venue_list` {termId?, venueGroup?}: 등록 목록 + 판정 셀 전수 + **기초 이중 점유 검사(baseConflicts, 정상 0건)** + 저장 전 미리보기(previewCells).
+- `venue_save` {venueGroup, venueGroupId?} / `venue_delete` {venueGroupId}: §A-4 simul_save/delete와 동일 패턴, 감사 로그.
+
+### F-4. 1차 등재 (2026-08-07 완료 ✅)
+
+- scripts/register_venue_groups.ts — 드라이런(판정 셀·실별 시수 대조·기초 충돌·엔진 전후 스모크) → APPLY. 18건 등재:
+  다윗관 = 체ⅠA(1학년 전 반)+체Ⅱ(2학년 전 반) / 탁구장 = 체ⅠB+체Ⅲ / 정보실 = 인공Ⅱ(2-6·8·9)+인공Ⅲ(3-6~10) / 생명과학실 = 1학년 과탐 실험(반별 지정 교시 slots)+2-9 지구+3-6 지Ⅱ.
+- 실측: 실별 시수 30/30/27/16 = 컴시간 표기와 정확 일치, 기초 이중 점유 0건, 엔진 스모크 — 체육 교체 후보가 마크 적용 후 다윗관 점유 교시에서 전부 소멸.
+
+### F-5. 잔여 (비차단)
+
+- 등록부 화면(§A-4 SimulGroupTab 상당) = Antigravity — venue_list/save/delete 계약 완비. 그리드에 특별실명 뱃지 표시(lesson.room 노출)도 화면 몫.
+- 기초 개정(§E)으로 slots 지정 수업(과탐 실험)의 기초 위치가 바뀌면 등록부 slots 갱신 필요 — venue_list의 baseConflicts·판정 0셀 경고가 감지망.
