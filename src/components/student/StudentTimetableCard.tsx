@@ -179,18 +179,18 @@ export default function StudentTimetableCard() {
                                           : changedType === "substitute" ? "보강" : "수업 교체"
                                         : undefined
                                     }
-                                    className={`py-1.5 px-0.5 rounded-lg border leading-tight ${
+                                    className={`py-3 px-1 rounded-lg border leading-snug ${
                                       isChanged
                                         ? "bg-amber-50 border-amber-300"
                                         : "bg-white border-slate-200"
                                     }`}
                                   >
-                                    <div className="font-extrabold text-[13px] text-slate-900 truncate">{subj}</div>
+                                    <div className="font-black text-[15px] text-slate-900 truncate">{subj}</div>
                                     {validTeachers.length > 0 && (
-                                      <div className="text-[10px] text-slate-400 font-normal truncate">{teacherNames}</div>
+                                      <div className="text-[11px] text-slate-500 font-normal truncate mt-1">{teacherNames}</div>
                                     )}
                                     {isChanged && (
-                                      <div className="text-[9px] font-extrabold text-amber-800 mt-0.5">
+                                      <div className="text-[10px] font-extrabold text-amber-800 mt-1">
                                         {changedType === "substitute" ? "보강" : "교체"}
                                         {origin && ` · ${DAY_LABEL[origin.day]}${origin.period}`}
                                       </div>
@@ -200,7 +200,7 @@ export default function StudentTimetableCard() {
                               })}
                             </div>
                           ) : (
-                            <div className="h-6"></div>
+                            <div className="h-12"></div>
                           )}
                         </td>
                       );
