@@ -922,35 +922,63 @@ export async function resolveStudentClass(
   auth: DecodedAuthAccess
 ): Promise<{ grade: number; classNum: number } | null> {
   const email = auth.email.trim().toLowerCase();
+  const parseId = (s: unknown): { grade: number; classNum: number } | null => {
+    const m = typeof s === "string" ? s.trim().match(/^(\d)(\d{2})(\d{2})$/) : null;
+    if (!m) return null;
+    const grade = parseInt(m[1], 10);
+    const classNum = parseInt(m[2], 10);
+    return grade >= 1 && grade <= 3 && classNum >= 1 ? { grade, classNum } : null;
+  };
 
-  // 1. Firestore users/{uid} 문서 조회
-  if (auth.uid) {
-    const userSnap = await adminDb.collection("users").doc(auth.uid).get();
-    if (userSnap.exists) {
-      const data = userSnap.data() || {};
+  // 1. users/{uid} 캐시 — 아래 GWS 조회 결과가 적재되는 곳 (24시간 신선도, 진급 반영용)
+  const userRef = auth.uid ? adminDb.collection("users").doc(auth.uid) : null;
+  let staleCache: { grade: number; classNum: number } | null = null;
+  if (userRef) {
+    const snap = await userRef.get();
+    if (snap.exists) {
+      const data = snap.data() || {};
       const grade = Number(data.grade);
       const classNum = Number(data.classNum);
       if (Number.isInteger(grade) && grade >= 1 && grade <= 3 && Number.isInteger(classNum) && classNum >= 1) {
-        return { grade, classNum };
-      }
-      // studentId (e.g. "10101") regex check
-      if (typeof data.studentId === "string") {
-        const m = data.studentId.trim().match(/^(\d)(\d{2})(\d{2})$/);
-        if (m) {
-          return { grade: parseInt(m[1], 10), classNum: parseInt(m[2], 10) };
+        if (Date.now() - (Number(data.studentClassCachedAt) || 0) < 24 * 3600 * 1000) {
+          return { grade, classNum };
         }
+        staleCache = { grade, classNum };
       }
+      if (!staleCache) staleCache = parseId(data.studentId);
     }
   }
 
-  // 2. 이메일 아이디 패턴 (e.g. 10101@hmh.or.kr)
-  const localPart = email.split("@")[0];
-  const m = localPart.match(/^(\d)(\d{2})(\d{2})$/);
-  if (m) {
-    return { grade: parseInt(m[1], 10), classNum: parseInt(m[2], 10) };
+  // 2. 학번의 단일 원본 = GWS 계정 성(familyName) 필드, 5자리 학년(1)+반(2)+번호(2)
+  //    — 명렬표(Phase 6a, roster.ts parseStudentUser)와 동일 규약.
+  //    이메일 아이디는 입학연도+일련번호(예: 24343 = 3학년 일련 343)라 학급 정보가 없다.
+  //    (과거 이메일 파싱 폴백이 24343을 "2학년 43반"으로 오독한 결함의 재발 방지 — 파싱 금지)
+  try {
+    const gu = await getUser(email);
+    const parsed = parseId(gu?.name?.familyName);
+    if (parsed) {
+      if (userRef) {
+        // 다음 요청부터 GWS 왕복 없이 캐시로 — 실패해도 열람 흐름은 계속
+        userRef
+          .set(
+            {
+              grade: parsed.grade,
+              classNum: parsed.classNum,
+              studentId: String(gu.name.familyName).trim(),
+              studentClassCachedAt: Date.now(),
+            },
+            { merge: true }
+          )
+          .catch(() => {});
+      }
+      return parsed;
+    }
+  } catch (e: any) {
+    console.warn(`[resolveStudentClass] GWS 학번 조회 실패 (${email}):`, e?.message || e);
   }
 
-  return null;
+  // 3. GWS를 못 읽으면 오래된 캐시라도 사용 (학급 정보 오차보다 열람 불가가 더 큰 피해)
+  return staleCache;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -958,7 +986,7 @@ export async function resolveStudentClass(
 // 상위 스펙: phase9b_spec.md §2, §5, §6
 // ═════════════════════════════════════════════════════════════
 
-import { sendGoogleChat } from "@/lib/google/workspace";
+import { getUser, sendGoogleChat } from "@/lib/google/workspace";
 import {
   accumulateWeeklyHours,
   countSubstituteTotals,
