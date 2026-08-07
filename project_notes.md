@@ -1940,3 +1940,9 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - 검증 상태: tsc ✅ / build ✅
 - 다음 할 일: Claude 교사 홈 배치 및 마운트 위치 표적 리뷰 요청
 - 주의: 일반 교사 홈 위젯 그리드 제거 후 MyTimetableCard 신규 배치, super_admin 홈 최상단 알림·급식 카드 추가, TeacherPortalSection 내 두 카드 제거, docs/web_push_spec.md §9 갱신 완료.
+
+## [2026-08-07] Claude → a5d2630(교사 홈 재구성·카드 이관) 표적 리뷰 **승인 ✅** (수정 0건)
+
+- 배치 정정 스펙 4항목 전부 diff 대조 일치: ① 일반 교사 홈 = 알림+급식+**MyTimetableCard**(신규 읽기 전용 주간 카드, 셀/버튼 클릭 시 내 시간표 메뉴 이동) ② super_admin 홈 = 관리 카드 유지+상단 알림·급식 ③ 내 시간표 화면 두 카드 제거(임포트까지 청소) ④ web_push_spec §9 마운트 위치 갱신.
+- 위험 지점 확인: MyTimetableCard의 view `my` 호출은 주 미지정 시 서버가 현재 주 폴백+주간 합성(변경 반영)이라 "이번 주" 의미 정확, 응답 `week` 메타 소비도 서버 형태와 일치. 언마운트 가드(isMounted) 있음. 학생은 RouteGuard가 /student-portal로 리다이렉트라 admin 홈 도달 불가(도달해도 class 응답 형태 호환). 경미 메모: 교시 수 7 하드코딩 — 기존 관례와 동일, 후속 통일 대상.
+- tsc 0 · build ✅ Claude 직접 재확인. 재배포 대상.
