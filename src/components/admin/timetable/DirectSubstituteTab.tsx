@@ -175,8 +175,19 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     fetchWeeks();
   }, [activeTermId]);
 
+  // sourceTeacherEmail/Name 필수 동봉 — §C 체인 단계는 선택 교사가 아닌 제3 교사의 수업일 수 있고,
+  // 빠뜨리면 서버 오버레이가 선택 교사 소유로 간주해 합성기 무결성 검사에서 전 단계가 건너뛰어진다
+  // (2026-08-08 실증: 담긴 체인이 예상 시간표에 반영되지 않고 원 수업이 그대로 남음)
   const toPendingPayload = (cart: CartItem[]) =>
-    cart.map((item) => ({ weekId: item.weekId, ...(item.targetWeekId ? { targetWeekId: item.targetWeekId } : {}), type: item.type, source: item.source, candidate: item.candidate }));
+    cart.map((item) => ({
+      weekId: item.weekId,
+      ...(item.targetWeekId ? { targetWeekId: item.targetWeekId } : {}),
+      type: item.type,
+      source: item.source,
+      candidate: item.candidate,
+      ...(item.sourceTeacherEmail ? { sourceTeacherEmail: item.sourceTeacherEmail } : {}),
+      ...(item.sourceTeacherName ? { sourceTeacherName: item.sourceTeacherName } : {}),
+    }));
 
   // §14-4: 그리드는 "담긴 상태의 예상 시간표" — 담기 누적분을 가상 적용한 direct_projected로 로드한다.
   // cart 인자를 명시하는 이유: setCartItems 직후에는 cartItems 바인딩이 구값이라 갱신분을 못 싣는다.
@@ -442,9 +453,13 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const handleClearCart = () => {
     setCartItems([]);
     setSuccessMsg(null); setSubmitError(null); // 담기 완료 등 이전 메시지도 함께 정리
+    // 전체 비우기 = 작업 처음부터 — 선택 셀·후보·미리보기·체인 상태까지 전부 초기화.
+    // 선택을 유지한 채 후보만 재조회하면 비워진 뒤에도 선택 하이라이트·후보 배지가 잔존한다 (2026-08-08 실증)
+    setSelectedSlot(null); setSourceLessonInfo(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]);
+    setSelectedCandidate(null); setCandidateError(null); setPreviewCells(null); setCounterpartSourceCells(null); setCounterpartTargetCells(null);
+    setChainSourceSlot(null); setChainTargetSlot(null); setChainModalOpen(false); setChainResults([]); setChainSearchError(null);
     // 가상 반영 그리드를 빈 cart 기준으로 되돌린다 — 상태만 비우면 "담김 이동" 셀이 화면에 잔존
     fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, []);
-    if (selectedSlot) fetchCandidates(selectedSlot.weekId, selectedSlot.grade, selectedSlot.classNum, selectedSlot.day, selectedSlot.period, sourceLessonInfo?.subjectName || "", []);
   };
 
   const handleRemoveFromCart = (id: string) => {
@@ -455,77 +470,120 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     if (selectedSlot) fetchCandidates(selectedSlot.weekId, selectedSlot.grade, selectedSlot.classNum, selectedSlot.day, selectedSlot.period, sourceLessonInfo?.subjectName || "", updatedCart);
   };
 
-  const handleGenerateConsolidatedCard = async (counterpartEmail: string) => {
-    const counterpartItems = cartItems.filter((ci) => ci.counterpartEmail?.toLowerCase() === counterpartEmail.toLowerCase());
-    if (counterpartItems.length === 0) return;
-    setGeneratingShareFor(counterpartEmail);
+  // ── 담기 순 효과 접기 (net-fold) ──
+  // 체인(§C)은 같은 수업이 여러 다리를 경유하므로, 다리별 나열은 경유 슬롯을 들어옴·빠짐으로
+  // 이중 계상하고 제3 교사 수업을 선택 교사 명의로 오표기한다 (2026-08-08 실증: 최명수 카드).
+  // 담기 순서(=반영 순서)대로 "전 항목"을 가상 적용해 수업별 (시작 → 최종) 위치만 남긴다 —
+  // 부분 집합만 접으면 체인의 앞 단계가 빠져 상대 수업의 실제 위치가 어긋난다.
+  type CartNetMove = {
+    ownerName: string; ownerEmail?: string; grade: number; classNum: number; subjectName: string;
+    from: { weekId: string; day: number; period: number };
+    to: { weekId: string; day: number; period: number };
+  };
+  const foldCartNetMoves = (cart: CartItem[]): CartNetMove[] => {
+    const swapItems = cart.filter((ci) => ci.type !== "substitute");
+    const slotKey = (w: string, d: number, p: number) => `${w}|${d}|${p}`;
+    type FoldLesson = CartNetMove & {
+      initial: { weekId: string; day: number; period: number };
+      current: { weekId: string; day: number; period: number };
+    };
+    const foldLessons: Array<Omit<FoldLesson, "from" | "to">> = [];
+    const occupant = new Map<string, number>(); // slotKey → foldLessons index
+    const ensureLesson = (
+      w: string, d: number, p: number,
+      seed: { ownerName: string; ownerEmail?: string; grade: number; classNum: number; subjectName: string }
+    ): number => {
+      const k = slotKey(w, d, p);
+      const found = occupant.get(k);
+      if (found !== undefined) return found;
+      foldLessons.push({ ...seed, initial: { weekId: w, day: d, period: p }, current: { weekId: w, day: d, period: p } });
+      occupant.set(k, foldLessons.length - 1);
+      return foldLessons.length - 1;
+    };
+    for (const item of swapItems) {
+      if (!item.candidate.targetDay || !item.candidate.targetPeriod) continue;
+      const sW = item.weekId, tW = item.targetWeekId || item.weekId;
+      // 맞교환은 같은 반 안에서 성립 — source의 반이 곧 상대 수업의 반
+      const a = ensureLesson(sW, item.source.day, item.source.period, {
+        ownerName: item.sourceTeacherName || selectedTeacherName || "담당 교사",
+        ownerEmail: (item.sourceTeacherEmail || selectedTeacherEmail || "").toLowerCase() || undefined,
+        grade: item.source.grade, classNum: item.source.classNum, subjectName: item.source.subjectName,
+      });
+      const b = ensureLesson(tW, item.candidate.targetDay, item.candidate.targetPeriod, {
+        ownerName: item.counterpartName || "상대 교사",
+        ownerEmail: item.counterpartEmail?.toLowerCase(),
+        grade: item.source.grade, classNum: item.source.classNum, subjectName: item.counterpartSubjectName || "수업",
+      });
+      const slotA = { ...foldLessons[a].current };
+      const slotB = { ...foldLessons[b].current };
+      foldLessons[a].current = slotB;
+      foldLessons[b].current = slotA;
+      occupant.set(slotKey(slotA.weekId, slotA.day, slotA.period), b);
+      occupant.set(slotKey(slotB.weekId, slotB.day, slotB.period), a);
+    }
+    return foldLessons
+      .filter((l) => slotKey(l.initial.weekId, l.initial.day, l.initial.period) !== slotKey(l.current.weekId, l.current.day, l.current.period))
+      .map((l) => ({
+        ownerName: l.ownerName, ownerEmail: l.ownerEmail,
+        grade: l.grade, classNum: l.classNum, subjectName: l.subjectName,
+        from: l.initial, to: l.current,
+      }));
+  };
+
+  // 양해 대상 = 담기로 시간표가 실제 바뀌는 모든 교사 (선택 교사 제외) — 맞교환 상대뿐 아니라
+  // 체인이 움직인 제3 교사(수업 소유자)도 양해가 필요하다 (2026-08-08 사용자 지적: 김지현 국어 사례)
+  const affectedTeachers: Array<{ email: string; name: string; count: number }> = (() => {
+    const map = new Map<string, { name: string; count: number }>();
+    const sel = selectedTeacherEmail.toLowerCase();
+    for (const m of foldCartNetMoves(cartItems)) {
+      if (!m.ownerEmail || m.ownerEmail === sel) continue;
+      const cur = map.get(m.ownerEmail) || { name: m.ownerName, count: 0 };
+      cur.count += 1;
+      map.set(m.ownerEmail, cur);
+    }
+    for (const ci of cartItems) {
+      if (ci.type !== "substitute" || !ci.counterpartEmail) continue;
+      const email = ci.counterpartEmail.toLowerCase();
+      if (email === sel) continue;
+      const cur = map.get(email) || { name: ci.counterpartName || email.split("@")[0], count: 0 };
+      cur.count += 1;
+      map.set(email, cur);
+    }
+    return Array.from(map, ([email, v]) => ({ email, ...v }));
+  })();
+
+  const handleGenerateConsolidatedCard = async (teacherEmail: string) => {
+    const email = teacherEmail.toLowerCase();
+    // 보강은 수신자가 상대(받는 사람)인 항목만, 교환은 전 담기를 접은 뒤 소유 기준으로 본인/맥락 분리
+    const subItems = cartItems.filter((ci) => ci.type === "substitute" && ci.counterpartEmail?.toLowerCase() === email);
+    const swapItemCount = cartItems.filter((ci) => ci.type !== "substitute").length;
+    const netMoves: NonNullable<ConsolidatedShareData["netMoves"]> = foldCartNetMoves(cartItems)
+      .map((m) => ({
+        ownerName: m.ownerName, isRecipient: m.ownerEmail === email,
+        grade: m.grade, classNum: m.classNum, subjectName: m.subjectName, from: m.from, to: m.to,
+      }))
+      .sort((x, y) => (y.isRecipient ? 1 : 0) - (x.isRecipient ? 1 : 0));
+    const recipientMoves = netMoves.filter((m) => m.isRecipient);
+    if (recipientMoves.length === 0 && subItems.length === 0) return;
+    setGeneratingShareFor(teacherEmail);
     try {
-      const counterpartName = counterpartItems[0].counterpartName || "선생님";
+      const counterpartName =
+        affectedTeachers.find((t) => t.email === email)?.name ||
+        cartItems.find((ci) => ci.counterpartEmail?.toLowerCase() === email)?.counterpartName ||
+        "선생님";
 
-      // ── 교환 항목 순 효과 접기 (net-fold) ──
-      // 체인(§C)은 같은 수업이 여러 다리를 경유하므로, 다리별 나열은 경유 슬롯을 들어옴·빠짐으로
-      // 이중 계상하고 제3 교사 수업을 선택 교사 명의로 오표기한다 (2026-08-08 실증: 최명수 카드).
-      // 담기 순서(=반영 순서)대로 가상 적용해 수업별 (시작 → 최종) 위치만 남긴다.
-      const subItems = counterpartItems.filter((ci) => ci.type === "substitute");
-      const swapItems = counterpartItems.filter((ci) => ci.type !== "substitute");
-      const slotKey = (w: string, d: number, p: number) => `${w}|${d}|${p}`;
-      type FoldLesson = {
-        ownerName: string; ownerEmail?: string; grade: number; classNum: number; subjectName: string;
-        initial: { weekId: string; day: number; period: number };
-        current: { weekId: string; day: number; period: number };
-      };
-      const foldLessons: FoldLesson[] = [];
-      const occupant = new Map<string, number>(); // slotKey → foldLessons index
-      const ensureLesson = (
-        w: string, d: number, p: number,
-        seed: { ownerName: string; ownerEmail?: string; grade: number; classNum: number; subjectName: string }
-      ): number => {
-        const k = slotKey(w, d, p);
-        const found = occupant.get(k);
-        if (found !== undefined) return found;
-        foldLessons.push({ ...seed, initial: { weekId: w, day: d, period: p }, current: { weekId: w, day: d, period: p } });
-        occupant.set(k, foldLessons.length - 1);
-        return foldLessons.length - 1;
-      };
-      for (const item of swapItems) {
-        if (!item.candidate.targetDay || !item.candidate.targetPeriod) continue;
-        const sW = item.weekId, tW = item.targetWeekId || item.weekId;
-        // 맞교환은 같은 반 안에서 성립 — source의 반이 곧 상대 수업의 반
-        const a = ensureLesson(sW, item.source.day, item.source.period, {
-          ownerName: item.sourceTeacherName || selectedTeacherName || "담당 교사",
-          ownerEmail: (item.sourceTeacherEmail || selectedTeacherEmail || "").toLowerCase() || undefined,
-          grade: item.source.grade, classNum: item.source.classNum, subjectName: item.source.subjectName,
-        });
-        const b = ensureLesson(tW, item.candidate.targetDay, item.candidate.targetPeriod, {
-          ownerName: item.counterpartName || "상대 교사",
-          ownerEmail: item.counterpartEmail?.toLowerCase(),
-          grade: item.source.grade, classNum: item.source.classNum, subjectName: item.counterpartSubjectName || "수업",
-        });
-        const slotA = { ...foldLessons[a].current };
-        const slotB = { ...foldLessons[b].current };
-        foldLessons[a].current = slotB;
-        foldLessons[b].current = slotA;
-        occupant.set(slotKey(slotA.weekId, slotA.day, slotA.period), b);
-        occupant.set(slotKey(slotB.weekId, slotB.day, slotB.period), a);
-      }
-      const netMoves: ConsolidatedShareData["netMoves"] = foldLessons
-        .filter((l) => slotKey(l.initial.weekId, l.initial.day, l.initial.period) !== slotKey(l.current.weekId, l.current.day, l.current.period))
-        .map((l) => ({
-          ownerName: l.ownerName,
-          isRecipient: !!l.ownerEmail && l.ownerEmail === counterpartEmail.toLowerCase(),
-          grade: l.grade, classNum: l.classNum, subjectName: l.subjectName,
-          from: l.initial, to: l.current,
-        }))
-        .sort((x, y) => (y.isRecipient ? 1 : 0) - (x.isRecipient ? 1 : 0));
-
-      const weekIds = Array.from(new Set(counterpartItems.flatMap((item) => [item.weekId, item.targetWeekId].filter(Boolean) as string[])));
+      // 그리드 주간: 수신자 본인 시간표가 바뀌는 주만
+      const weekIds = Array.from(new Set([
+        ...recipientMoves.flatMap((m) => [m.from.weekId, m.to.weekId]),
+        ...subItems.flatMap((item) => [item.weekId, item.targetWeekId].filter(Boolean) as string[]),
+      ]));
       const weekBlocks = await Promise.all(weekIds.map(async (wId) => {
         const wObj = weeks.find((w) => w.id === wId);
-        const cacheKey = `${counterpartEmail}_${wId}`;
+        const cacheKey = `${email}_${wId}`;
         let cells: TeacherTimetableCell[] = [];
         if (previewCacheRef.current.has(cacheKey)) cells = previewCacheRef.current.get(cacheKey)!;
         else {
-          const res = await fetch("/api/timetable/view", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "teacher", teacherEmail: counterpartEmail, weekId: wId }) });
+          const res = await fetch("/api/timetable/view", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "teacher", teacherEmail: email, weekId: wId }) });
           if (res.ok) { const data = await res.json(); cells = data.data?.cells || []; previewCacheRef.current.set(cacheKey, cells); }
         }
         const markers: ConsolidatedShareData["weekBlocks"][number]["markers"] = [];
@@ -552,7 +610,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         // netMoves 경로: items는 보강만 전달 — 교환은 netMoves가 렌더를 대체한다
         items: subItems.map((ci) => ({ id: ci.id, type: ci.type, sourceWeekId: ci.weekId, targetWeekId: ci.targetWeekId, source: ci.source, candidate: ci.candidate })),
         netMoves,
-        swapStepCount: swapItems.length,
+        swapStepCount: swapItemCount,
         weekBlocks,
         periodsPerDay: 7,
       };
@@ -620,7 +678,6 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const totalSwapCount = swapCandidateWeeks.reduce((acc, w) => acc + (w.swapCandidates?.length || 0), 0);
   const DAYS = [{ num: 1, label: "월요일" }, { num: 2, label: "화요일" }, { num: 3, label: "수요일" }, { num: 4, label: "목요일" }, { num: 5, label: "금요일" }];
 
-  const groupedCartByCounterpart = cartItems.reduce((acc, item) => { const email = item.counterpartEmail || "unknown"; if (!acc[email]) acc[email] = []; acc[email].push(item); return acc; }, {} as Record<string, CartItem[]>);
   const sourceWeekObj = weeks.find((w) => w.id === selectedSlot?.weekId);
   const targetWeekId = selectedCandidate?.targetWeekId || selectedSlot?.weekId || "";
   const targetWeekObj = weeks.find((w) => w.id === targetWeekId);
@@ -920,6 +977,9 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                           <span className="text-indigo-900">#{idx + 1} {item.source.grade}-{item.source.classNum}반 {DAY_LABEL[item.source.day]}요일 {item.source.period}교시</span>
                           <button type="button" onClick={() => handleRemoveFromCart(item.id)} className="text-gray-400 hover:text-red-600 text-xs">✕</button>
                         </div>
+                        {item.sourceTeacherEmail && item.sourceTeacherEmail.toLowerCase() !== selectedTeacherEmail.toLowerCase() && (
+                          <div className="text-[10px] text-purple-800 font-bold">🔗 체인 단계 — {item.sourceTeacherName || item.sourceTeacherEmail} 선생님의 {item.source.subjectName} 이동</div>
+                        )}
                         <div className="text-[11px] text-gray-700">➔ 상대: <strong className="text-gray-900">{item.counterpartName}</strong> ({item.counterpartSubjectName})</div>
                         {item.lastError && <div className="text-[10px] text-red-700 font-bold bg-red-50 border border-red-200 rounded px-1.5 py-1">⚠️ 반영 실패: {item.lastError}</div>}
                         <label className="flex items-center gap-1.5 text-[10px] text-gray-600 cursor-pointer pt-1 border-t border-gray-100">
@@ -930,11 +990,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                     ))}
                   </div>
                   <div className="pt-2 border-t border-gray-100 space-y-2">
-                    <div className="text-[11px] font-bold text-gray-700">📨 양해 구하기 (상대별 이미지 복사):</div>
+                    <div className="text-[11px] font-bold text-gray-700">📨 양해 구하기 (시간표가 바뀌는 선생님별 이미지 복사):</div>
                     <div className="flex flex-wrap gap-1.5">
-                      {Object.keys(groupedCartByCounterpart).map((cpEmail) => (
-                        <button key={cpEmail} type="button" onClick={() => handleGenerateConsolidatedCard(cpEmail)} disabled={generatingShareFor === cpEmail} className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-[11px] rounded-lg disabled:opacity-60">
-                          {generatingShareFor === cpEmail ? "이미지 생성 중…" : `📸 ${groupedCartByCounterpart[cpEmail][0]?.counterpartName} 선생님 (${groupedCartByCounterpart[cpEmail].length}건)`}
+                      {affectedTeachers.map((t) => (
+                        <button key={t.email} type="button" onClick={() => handleGenerateConsolidatedCard(t.email)} disabled={generatingShareFor === t.email} className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-[11px] rounded-lg disabled:opacity-60">
+                          {generatingShareFor === t.email ? "이미지 생성 중…" : `📸 ${t.name} 선생님 (${t.count}건)`}
                         </button>
                       ))}
                     </div>
