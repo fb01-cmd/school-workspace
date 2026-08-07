@@ -191,6 +191,27 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
+        // 학생 응답에선 가상(블록) 교사 표기를 제거한다 — SLAT·창체 가상 계정은
+        // 이메일이 없고 이름=과목명(실측: 동시 최대 30반)이라 "SLAT (SLAT)"처럼 보임.
+        // 실교사는 반드시 이메일이 있으므로 이메일 유무가 안전한 판별 기준.
+        const sanitizeForStudent = <G extends { cells: any[] }>(grid: G): G =>
+          auth.role !== "student"
+            ? grid
+            : {
+                ...grid,
+                cells: grid.cells.map((c: any) => ({
+                  ...c,
+                  lessons: (c.lessons || []).map((l: any) => ({
+                    ...l,
+                    teachers: (l.teachers || []).filter(
+                      (t: any) =>
+                        !!t?.email?.trim() &&
+                        t.name !== l.subjectName &&
+                        t.name !== l.subjectShort
+                    ),
+                  })),
+                })),
+              };
         // 주간 합성이 필요하면 전 학급 로드 후 대상 학급만 추출 (합성은 학급 단위로 쪼갤 수 없음)
         if (week) {
           const { grids, warnings } = await loadGrids();
@@ -200,7 +221,9 @@ export async function POST(req: NextRequest) {
           const res: ViewTimetableResponse = {
             term: termMeta,
             action,
-            data: classGrid || { grade: requestedGrade, classNum: requestedClassNum, cells: [] },
+            data: sanitizeForStudent(
+              classGrid || { grade: requestedGrade, classNum: requestedClassNum, cells: [] }
+            ),
           };
           return NextResponse.json(withWeek(res, warnings));
         }
@@ -212,7 +235,9 @@ export async function POST(req: NextRequest) {
         const res: ViewTimetableResponse = {
           term: termMeta,
           action,
-          data: classGrid || { grade: requestedGrade, classNum: requestedClassNum, cells: [] },
+          data: sanitizeForStudent(
+            classGrid || { grade: requestedGrade, classNum: requestedClassNum, cells: [] }
+          ),
         };
         return NextResponse.json(res);
       }

@@ -7,7 +7,6 @@ import { logOut } from "@/lib/firebase/auth";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc } from "firebase/firestore";
-import MyProfileCard from "@/components/admin/MyProfileCard";
 import StudentTimetableCard from "@/components/student/StudentTimetableCard";
 import MealCard from "@/components/common/MealCard";
 import PushNotificationManager from "@/components/common/PushNotificationManager";
@@ -308,7 +307,7 @@ export default function StudentPortal() {
           <PushNotificationManager />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <MyProfileCard />
+            {/* 소속 정보 카드는 제거 — 이메일만 크게 보여줘 급식을 밀어내던 자리 (2026-08-07 사용자 지시) */}
             <StudentTimetableCard />
             <MealCard />
             {gradTask && (

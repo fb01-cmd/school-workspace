@@ -170,7 +170,7 @@ export default function StudentTimetableCard() {
                               {lesson.subjectName}
                             </span>
                             <span className="text-xs text-slate-500">
-                              ({lesson.teachers?.map((t: any) => t.name).join(", ")})
+                              {(lesson.teachers?.length ?? 0) > 0 && `(${lesson.teachers.map((t: any) => t.name).join(", ")})`}
                             </span>
                             {lesson.room && (
                               <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-200 px-1.5 py-0.5 rounded font-extrabold flex items-center gap-1" title={`특별실: ${lesson.room}`}>
