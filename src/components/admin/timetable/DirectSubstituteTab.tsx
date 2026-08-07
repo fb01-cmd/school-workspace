@@ -649,7 +649,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                 const matchedCells = getCellForSlotInWeek(w.id, d.num, period);
                                 const hasLesson = matchedCells.length > 0;
                                 const cartMatch = cartItems.find((ci) => ci.weekId === w.id && ci.source.day === d.num && ci.source.period === period);
-                                const inlineCand = !hasLesson && selectedSlot ? candidateListInWeek.find((cand) => cand.targetDay === d.num && cand.targetPeriod === period) : null;
+                                // 맞교환 모드에서만 후보 하이라이트 — 보강 탭 전환 시 맞교환 제안이 그리드에 잔존하던 혼선 방지 (2026-08-07)
+                                const inlineCand = activeCandidateType === "swap" && !hasLesson && selectedSlot ? candidateListInWeek.find((cand) => cand.targetDay === d.num && cand.targetPeriod === period) : null;
                                 return (
                                   <td key={d.num} className={`p-1 border-r border-gray-100 text-center align-top transition-all ${hasLesson ? "bg-indigo-50/30" : inlineCand ? "bg-emerald-50/50" : ""}`}>
                                     {hasLesson ? (
