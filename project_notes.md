@@ -61,6 +61,7 @@
 
 
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1880,6 +1881,21 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **코드 원인**: `bulk_delete`는 동시성 8로 던지지만(`mapConcurrentSettled`) **429 재시도(백오프)가 없어** 제한 창에 걸린 항목이 즉시 실패 확정. 부수 결함: 감사 로그가 실패 목록이 아니라 **선택 전체 316명 목록**을 기록(무엇이 실패했는지 로그로 알 수 없음, details 5.4KB 비대).
 - **수정 방향(제안, 미구현)**: ① 429/rateLimitExceeded 지수 백오프 재시도(예: 최대 5회) 래퍼를 bulk 계열 공통 적용 ② 동시성 8→3~4 하향+간격 ③ 감사 로그에 실패 이메일+사유만 기록. 수정 후 잔존 126명 재삭제(멱등).
 
-### 재개 문구 (다음 대화)
-- 삭제 결함 수정: *"project_notes.md 마지막 체크포인트를 읽어줘. 일괄 삭제 429 재시도 수정 구현하고, 잔존 126명 삭제 재실행 준비해줘."*
-- Antigravity(체인 UI 반려 수정 + 알림 설정 UI): 아래 지시 가이드 참조.
+## 🔒 현재 작업 중 파일
+
+*(현재 비어 있음)*
+
+## [2026-08-07] Antigravity → Claude / 사용자 (리뷰 반려 2건 조치 + 푸시 알림 설정 UI §9 구현 완료)
+- 변경 파일: `src/components/admin/timetable/DirectSubstituteTab.tsx`, `src/components/common/PushNotificationManager.tsx`, `src/components/admin/timetable/TeacherPortalSection.tsx`, `src/app/student-portal/page.tsx` (커밋: `fbc5138`)
+- 검증 상태: tsc ✅ / build ✅
+- 다음 할 일: 알리미 웹 푸시 실기기 수신 테스트 및 징검다리 연쇄 이동 기능 사용자 파일럿
+- 조치 및 구현 내역:
+  - **① 직권 탭 공강 셀 클릭 진입점 연결 완료**: 그리드 순수 공강 셀(`!hasLesson && !inlineCand && !cartMatch`)에 클릭 가능한 `🔗 가져오기` 버튼 렌더링. `handleSlotClick` 인자 및 `cell` 가드 처리(`cell?.day`, `cell?.period`) 추가. 후보 표시 점유 셀은 기존 후보 선택 동작 유지.
+  - **② 체인 모달 개발 용어 전면 순화**: `"스펙 §C-3"` 배지 ➔ `"연쇄 이동 탐색"` 배지, `"maxDepth=3"` ➔ `"더 깊게 탐색 (3단계)"`, `"역방향 탐색"` ➔ `"연쇄 이동 경로 탐색"`, `"체인"` ➔ `"연쇄 이동 경로"` 등 개발 용어를 순화/제거.
+  - **③ 알림 설정 공용 컴포넌트 (`PushNotificationManager.tsx`) 구현 및 마운트 (docs/web_push_spec.md §9)**:
+    - `/api/push` (`config`, `subscribe`, `unsubscribe`, `test_send`) 액션 및 VAPID 키(`urlBase64ToUint8Array`) 연동.
+    - `enabled: false` 또는 푸시 미지원 브라우저 시 완전 숨김(`null`).
+    - `permission === "granted"` 시 조용히 재구독(스냅샷 갱신) 및 `"알림 켜짐"` / `[알림 끄기]` 표출 (시간표 관리자는 `[🧪 시험 알림]` 버튼 제공).
+    - `permission === "default"` 시 `"🔔 알림 받기"` 버튼 ➔ 클릭 시 권한 요청 및 서버 등록.
+    - `permission === "denied"` 시 안내 문구 처리. 개발 용어("푸시", "PWA", "구독") 전면 금지.
+    - **마운트 위치**: 교사 포털 대시보드 상단(`TeacherPortalSection`) & 학생 포털 메인 대시보드 상단(`student-portal/page.tsx`).
