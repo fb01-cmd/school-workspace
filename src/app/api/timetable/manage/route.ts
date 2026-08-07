@@ -48,8 +48,10 @@ import {
   ManageAction,
   ManageTimetableRequest,
 } from "@/lib/timetable/types";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
+import { notifyTimetableChanges } from "@/lib/push/webpush";
+import type { TimetableChange } from "@/lib/timetable/types";
 
 export async function POST(req: NextRequest) {
   try {
@@ -329,6 +331,8 @@ export async function POST(req: NextRequest) {
           details: `수업교환 승인: ${request.source.grade}-${request.source.classNum} ${request.source.day}요일 ${request.source.period}교시 (${request.type}) → change ${change.id}`,
           status: "success",
         });
+        // 웹 푸시: 당사자 교사 + 해당 반 학생 (응답 후 발송, docs/web_push_spec.md §5)
+        after(() => notifyTimetableChanges(domain, [change]));
         return NextResponse.json({ success: true, action, request, change });
       }
 
@@ -441,6 +445,8 @@ export async function POST(req: NextRequest) {
           details: `일과계 직권 배정: ${request.source.grade}-${request.source.classNum} ${request.source.day}요일 ${request.source.period}교시 (${request.type}${request.targetWeekId ? `, 교차 주 → ${request.targetWeekId}` : ""}) → change ${change.id}`,
           status: "success",
         });
+        // 웹 푸시: 당사자 교사 + 해당 반 학생 (응답 후 발송)
+        after(() => notifyTimetableChanges(domain, [change]));
         return NextResponse.json({ success: true, action, request, change });
       }
 
@@ -504,6 +510,7 @@ export async function POST(req: NextRequest) {
         }
         const batchId = randomUUID();
         const results: DirectCommitBatchItemResult[] = [];
+        const committedChanges: TimetableChange[] = [];
         for (let i = 0; i < items.length; i++) {
           const item = items[i];
           try {
@@ -534,11 +541,16 @@ export async function POST(req: NextRequest) {
               status: "success",
             });
             results.push({ index: i, ok: true, requestId: request.id, changeId: change.id });
+            committedChanges.push(change);
           } catch (e: any) {
             results.push({ index: i, ok: false, error: e.message || "반영 실패" });
           }
         }
         const committedCount = results.filter((r) => r.ok).length;
+        // 웹 푸시: 배치 전체를 한 번에 넘겨 수신자별 1건으로 집계 (스팸 방지)
+        if (committedChanges.length > 0) {
+          after(() => notifyTimetableChanges(domain, committedChanges));
+        }
         return NextResponse.json({ success: true, action, batchId, committedCount, results });
       }
 
@@ -554,6 +566,8 @@ export async function POST(req: NextRequest) {
           details: `수업교환 승인 취소(revert): ${body.changeId} → ${revert.id}`,
           status: "success",
         });
+        // 웹 푸시: 취소도 같은 수신자에게 "변경 취소" 문구로 발송
+        after(() => notifyTimetableChanges(domain, [revert]));
         return NextResponse.json({ success: true, action, change: revert });
       }
 

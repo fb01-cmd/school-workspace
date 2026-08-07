@@ -1,0 +1,304 @@
+// 알리미 웹 푸시 1단계 — 시간표 변경 알림 (docs/web_push_spec.md)
+// 구독 저장·발송·수신자 도출 전부 서버 전용(admin SDK). 클라이언트는 /api/push 경유만.
+import { createHash } from "crypto";
+import webpush from "web-push";
+import { adminDb } from "@/lib/firebase/admin";
+import { timetableChangesColRef } from "@/lib/timetable/server";
+import { TimetableChange } from "@/lib/timetable/types";
+
+// ── 구독 문서 ─────────────────────────────────────────────────
+
+export interface PushSubscriptionDoc {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  email: string;
+  uid: string;
+  role: "student" | "teacher" | "super_admin";
+  grade?: number; // 학생만 — 구독 시점 서버 도출 스냅샷 (재구독 upsert로 갱신)
+  classNum?: number;
+  userAgent?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export const pushSubsColRef = (domain: string) =>
+  adminDb.collection("push_subscriptions").doc(domain).collection("subs");
+
+/** subId = sha256(endpoint) — 같은 브라우저 재구독은 자연 upsert(멱등) */
+export const subIdOfEndpoint = (endpoint: string) =>
+  createHash("sha256").update(endpoint).digest("hex");
+
+// ── VAPID 설정 ────────────────────────────────────────────────
+
+export function getVapidPublicKey(): string {
+  return (process.env.WEB_PUSH_VAPID_PUBLIC_KEY || "").trim();
+}
+
+export function isWebPushConfigured(): boolean {
+  return !!getVapidPublicKey() && !!(process.env.WEB_PUSH_VAPID_PRIVATE_KEY || "").trim();
+}
+
+let vapidReady = false;
+function ensureVapid(): boolean {
+  if (!isWebPushConfigured()) return false;
+  if (!vapidReady) {
+    const sender =
+      process.env.GOOGLE_WORKSPACE_SENDER_EMAIL ||
+      process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL ||
+      "hmnotice@hmh.or.kr";
+    webpush.setVapidDetails(
+      `mailto:${sender}`,
+      getVapidPublicKey(),
+      (process.env.WEB_PUSH_VAPID_PRIVATE_KEY || "").trim()
+    );
+    vapidReady = true;
+  }
+  return true;
+}
+
+// ── 발송 ──────────────────────────────────────────────────────
+
+export interface PushPayload {
+  title: string;
+  body: string;
+  url?: string; // 없으면 발송 시 구독 역할로 결정 (학생 → /student-portal)
+  tag?: string;
+}
+
+export interface PushSendResult {
+  sent: number;
+  removed: number; // 만료(404/410)로 삭제된 구독 수
+  failed: number;
+}
+
+type SubWithId = { id: string; data: PushSubscriptionDoc };
+
+/**
+ * 구독 목록에 페이로드 발송. 404/410 구독은 즉시 삭제.
+ * 어떤 실패도 throw하지 않는다 — 알림 실패가 시간표 커밋을 깨면 안 된다.
+ */
+async function sendToSubs(
+  domain: string,
+  subs: SubWithId[],
+  payload: PushPayload
+): Promise<PushSendResult> {
+  const result: PushSendResult = { sent: 0, removed: 0, failed: 0 };
+  if (!ensureVapid() || subs.length === 0) return result;
+
+  await Promise.allSettled(
+    subs.map(async (sub) => {
+      const url =
+        payload.url || (sub.data.role === "student" ? "/student-portal" : "/");
+      const body = JSON.stringify({
+        title: payload.title,
+        body: payload.body,
+        url,
+        tag: payload.tag || "timetable",
+      });
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.data.endpoint, keys: sub.data.keys },
+          body,
+          { TTL: 24 * 3600 }
+        );
+        result.sent++;
+      } catch (e: any) {
+        const code = e?.statusCode;
+        if (code === 404 || code === 410) {
+          // 만료된 구독 — 정리
+          try {
+            await pushSubsColRef(domain).doc(sub.id).delete();
+            result.removed++;
+          } catch {
+            result.failed++;
+          }
+        } else {
+          console.error(`[web_push] 발송 실패 (${sub.data.email}, ${code || "?"}):`, e?.message);
+          result.failed++;
+        }
+      }
+    })
+  );
+  return result;
+}
+
+async function listSubsByEmails(domain: string, emails: string[]): Promise<SubWithId[]> {
+  const uniq = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  const out: SubWithId[] = [];
+  // Firestore 'in' 쿼리 상한(30) 단위 청크
+  for (let i = 0; i < uniq.length; i += 30) {
+    const chunk = uniq.slice(i, i + 30);
+    const snap = await pushSubsColRef(domain).where("email", "in", chunk).get();
+    snap.forEach((d) => out.push({ id: d.id, data: d.data() as PushSubscriptionDoc }));
+  }
+  return out;
+}
+
+async function listSubsByClass(
+  domain: string,
+  grade: number,
+  classNum: number
+): Promise<SubWithId[]> {
+  const snap = await pushSubsColRef(domain)
+    .where("grade", "==", grade)
+    .where("classNum", "==", classNum)
+    .get();
+  const out: SubWithId[] = [];
+  snap.forEach((d) => out.push({ id: d.id, data: d.data() as PushSubscriptionDoc }));
+  return out;
+}
+
+/** 본인 이메일의 전 기기 구독으로 발송 (test_send용) */
+export async function sendPushToEmail(
+  domain: string,
+  email: string,
+  payload: PushPayload
+): Promise<PushSendResult & { subscriptions: number }> {
+  const subs = await listSubsByEmails(domain, [email]);
+  const r = await sendToSubs(domain, subs, payload);
+  return { ...r, subscriptions: subs.length };
+}
+
+// ── 시간표 변경 → 수신자 도출·문구 (스펙 §4) ──────────────────
+
+const DAY_NAMES = ["", "월", "화", "수", "목", "금"];
+
+/** weekId(월요일 "2026-09-07") + 요일(1~5) → "9/8(화)" */
+function dateLabel(weekId: string, day: number): string {
+  const base = new Date(`${weekId}T00:00:00Z`);
+  if (isNaN(base.getTime()) || !(day >= 1 && day <= 5)) return DAY_NAMES[day] || "";
+  const d = new Date(base.getTime() + (day - 1) * 86400000);
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${DAY_NAMES[day]})`;
+}
+
+interface ChangeAudience {
+  line: string;
+  teacherEmails: string[];
+  classKey?: { grade: number; classNum: number };
+}
+
+function describeChange(change: TimetableChange): ChangeAudience | null {
+  const revert = change.revertOf ? "변경 취소: " : "";
+  if (change.swap) {
+    const { grade, classNum, a, b } = change.swap;
+    return {
+      line:
+        `${revert}${dateLabel(change.weekId, a.day)} ${a.period}교시 ${a.subjectName}` +
+        ` ↔ ${dateLabel(change.weekId, b.day)} ${b.period}교시 ${b.subjectName} (${grade}-${classNum}반)`,
+      teacherEmails: [a.teacherEmail, b.teacherEmail],
+      classKey: { grade, classNum },
+    };
+  }
+  if (change.substitute) {
+    const s = change.substitute;
+    return {
+      line:
+        `${revert}${dateLabel(change.weekId, s.day)} ${s.period}교시 ${s.subjectName} 보강` +
+        ` — ${s.subTeacherName} 선생님 (${s.grade}-${s.classNum}반)`,
+      teacherEmails: [s.absentTeacherEmail, s.subTeacherEmail],
+      classKey: { grade: s.grade, classNum: s.classNum },
+    };
+  }
+  if (change.crossSwap) {
+    const c = change.crossSwap;
+    return {
+      line:
+        `${revert}${dateLabel(change.weekId, c.day)} ${c.period}교시` +
+        ` ${c.out.subjectName} → ${c.in.subjectName} (${c.grade}-${c.classNum}반)`,
+      teacherEmails: [c.out.teacherEmail, c.in.teacherEmail],
+      classKey: { grade: c.grade, classNum: c.classNum },
+    };
+  }
+  return null;
+}
+
+function buildPayload(lines: string[]): PushPayload {
+  const MAX_LINES = 4;
+  const shown = lines.slice(0, MAX_LINES);
+  if (lines.length > MAX_LINES) shown.push(`외 ${lines.length - MAX_LINES}건`);
+  return {
+    title: lines.length > 1 ? `시간표 변경 ${lines.length}건` : "시간표 변경 안내",
+    body: shown.join("\n"),
+    tag: "timetable",
+  };
+}
+
+/**
+ * 시간표 변경 발송 훅 (스펙 §5) — 당사자 교사 + 해당 반 학생 구독으로 푸시.
+ * 여러 건(직권 일괄 반영)은 수신자별로 1건으로 집계. 절대 throw하지 않는다.
+ */
+export async function notifyTimetableChanges(
+  domain: string,
+  changes: TimetableChange[]
+): Promise<void> {
+  try {
+    if (!isWebPushConfigured() || changes.length === 0) return;
+
+    // revert 문서는 수신자 정보(swap/substitute/crossSwap)를 담지 않으므로
+    // 원본 change를 로드해 "변경 취소" 문구로 합성한다 (server.ts revert 트랜잭션 구조 참조)
+    const resolved: TimetableChange[] = [];
+    for (const change of changes) {
+      if (change.revertOf && !change.swap && !change.substitute && !change.crossSwap) {
+        const snap = await timetableChangesColRef(domain).doc(change.revertOf).get();
+        if (snap.exists) {
+          resolved.push({ ...(snap.data() as TimetableChange), id: change.id, revertOf: change.revertOf });
+        }
+      } else {
+        resolved.push(change);
+      }
+    }
+
+    const emailLines = new Map<string, string[]>();
+    const classLines = new Map<string, { grade: number; classNum: number; lines: string[] }>();
+    for (const change of resolved) {
+      const a = describeChange(change);
+      if (!a) continue;
+      for (const email of a.teacherEmails) {
+        const key = email.trim().toLowerCase();
+        if (!key) continue;
+        if (!emailLines.has(key)) emailLines.set(key, []);
+        emailLines.get(key)!.push(a.line);
+      }
+      if (a.classKey) {
+        const key = `${a.classKey.grade}-${a.classKey.classNum}`;
+        if (!classLines.has(key)) classLines.set(key, { ...a.classKey, lines: [] });
+        classLines.get(key)!.lines.push(a.line);
+      }
+    }
+
+    // 교사: 이메일 묶음 1회 조회 후 수신자별 페이로드
+    const teacherSubs = await listSubsByEmails(domain, [...emailLines.keys()]);
+    const sends: Promise<PushSendResult>[] = [];
+    const byEmail = new Map<string, SubWithId[]>();
+    for (const sub of teacherSubs) {
+      const key = sub.data.email;
+      if (!byEmail.has(key)) byEmail.set(key, []);
+      byEmail.get(key)!.push(sub);
+    }
+    for (const [email, subs] of byEmail) {
+      const lines = emailLines.get(email);
+      if (lines?.length) sends.push(sendToSubs(domain, subs, buildPayload(lines)));
+    }
+
+    // 학생: 반 단위 조회 (구독 문서의 학년·반 스냅샷 기반)
+    for (const { grade, classNum, lines } of classLines.values()) {
+      const subs = await listSubsByClass(domain, grade, classNum);
+      // 학생 구독만 — 교사 구독에 학년·반이 들어갈 일은 없지만 이중 방어
+      const studentSubs = subs.filter((s) => s.data.role === "student");
+      if (studentSubs.length) sends.push(sendToSubs(domain, studentSubs, buildPayload(lines)));
+    }
+
+    const results = await Promise.all(sends);
+    const total = results.reduce(
+      (acc, r) => ({ sent: acc.sent + r.sent, removed: acc.removed + r.removed, failed: acc.failed + r.failed }),
+      { sent: 0, removed: 0, failed: 0 }
+    );
+    if (total.sent + total.removed + total.failed > 0) {
+      console.log(
+        `[web_push] 시간표 변경 ${changes.length}건 알림 — 발송 ${total.sent}, 만료 정리 ${total.removed}, 실패 ${total.failed}`
+      );
+    }
+  } catch (e: any) {
+    console.error("[web_push] 변경 알림 처리 실패:", e?.message || e);
+  }
+}
