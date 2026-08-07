@@ -731,41 +731,108 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                   <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5"><span>3️⃣ 후보 상세 및 미리보기</span></h3>
                   <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg text-[11px] font-bold">
                     <button type="button" onClick={() => { setActiveCandidateType("swap"); setSelectedCandidate(null); setPreviewCells(null); }} className={`px-2 py-1 rounded transition-all ${activeCandidateType === "swap" ? "bg-white text-indigo-700 shadow-2xs" : "text-gray-600 hover:text-gray-900"}`}>↔️ 맞교환</button>
-                    <button type="button" onClick={() => { setActiveCandidateType("substitute"); setSelectedCandidate(null); setPreviewCells(null); }} className={`px-2 py-1 rounded transition-all ${activeCandidateType === "substitute" ? "bg-white text-indigo-700 shadow-2xs" : "text-gray-600 hover:text-gray-900"}`}>👤 보강</button>
+                    <button type="button" onClick={() => { setActiveCandidateType("substitute"); setSelectedCandidate(null); setPreviewCells(null); }} className={`px-2 py-1 rounded transition-all ${activeCandidateType === "substitute" ? "bg-white text-indigo-700 shadow-2xs" : "text-gray-600 hover:text-gray-900"}`}>👤 보강 ({substituteCandidates.length})</button>
                   </div>
                 </div>
                 {loadingCandidates && <div className="p-4 text-center text-xs text-indigo-600 font-semibold animate-pulse">🔍 맞교환/보강 후보 탐색 중...</div>}
-                {selectedCandidate && (
-                  <div className="space-y-4 pt-1 animate-in fade-in duration-200">
-                    <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-extrabold text-xs text-indigo-950">{activeCandidateType === "swap" ? `🔄 ${selectedCandidate.counterpartName} 교사 (${selectedCandidate.counterpartSubjectName})` : `👤 ${selectedCandidate.teacherName} 선생님`}</span>
-                      </div>
-                      {activeCandidateType === "swap" && (
-                        (selectedCandidate.penalties?.length ?? 0) > 0 || selectedCandidate.score > 0 ? (
-                          <div className="text-[11px] space-y-0.5 pt-1 border-t border-indigo-100">
-                            <div className="font-extrabold text-amber-900">⚠️ 감점 {selectedCandidate.score}점 — 사유</div>
-                            <ul className="list-disc list-inside text-amber-800 space-y-0.5">
-                              {(selectedCandidate.penalties || []).map((p: string, i: number) => (<li key={i}>{p}</li>))}
-                              {(selectedCandidate.penalties?.length ?? 0) === 0 && <li>사유 정보 없음</li>}
-                            </ul>
+
+                {/* 👤 보강 모드일 때 보강 후보 목록 / 선택된 보강 후보 상세 */}
+                {activeCandidateType === "substitute" && !loadingCandidates && (
+                  <div className="space-y-3">
+                    {selectedCandidate ? (
+                      <div className="space-y-3 pt-1 animate-in fade-in duration-200">
+                        <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-xs text-indigo-950">👤 {selectedCandidate.teacherName} 선생님</span>
+                            <button type="button" onClick={() => setSelectedCandidate(null)} className="text-[10px] text-indigo-600 hover:underline font-bold">변경</button>
                           </div>
-                        ) : (
-                          <div className="text-[11px] font-bold text-emerald-700 pt-1 border-t border-indigo-100">✨ 감점 없음 (0점) — 상대 교사 부담 없는 교환입니다.</div>
-                        )
-                      )}
-                    </div>
-                    {activeCandidateType === "swap" && (
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">보강 누계: {selectedCandidate.substituteCount ?? 0}회</span>
+                            {selectedCandidate.sameSubject && (
+                              <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">동일 과목</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <button type="button" onClick={handleAddToCart} className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1"><span>🛒</span><span>담기</span></button>
+                          <button type="button" onClick={handleDirectCommitSingle} disabled={submitting} className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50"><span>⚡</span><span>즉시 1건 반영</span></button>
+                        </div>
+                      </div>
+                    ) : substituteCandidates.length === 0 ? (
+                      <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-center text-xs text-gray-500">
+                        해당 시간에 공강인 보강 가능 교사가 없습니다.
+                      </div>
+                    ) : (
                       <div className="space-y-2">
-                        <div className="text-xs font-bold text-gray-700 flex items-center justify-between"><span>🗓️ 상대 교사 시간표 미리보기</span>{previewLoading && <span className="text-[10px] text-indigo-600 animate-pulse">로딩 중...</span>}</div>
-                        <MiniPreviewGrid isCrossWeek={isCrossWeek} sourceWeekId={selectedSlot.weekId} targetWeekId={targetWeekId} sourceWeekObj={sourceWeekObj} targetWeekObj={targetWeekObj} selectedCell={{ grade: selectedSlot.grade, classNum: selectedSlot.classNum, day: selectedSlot.day, period: selectedSlot.period, subjectName: sourceLessonInfo.subjectName }} applyingCandidate={{ targetDay: selectedCandidate.targetDay, targetPeriod: selectedCandidate.targetPeriod, counterpartName: selectedCandidate.counterpartName, counterpartSubjectName: selectedCandidate.counterpartSubjectName }} periodsPerDay={7} previewCells={previewCells} counterpartSourceCells={counterpartSourceCells} counterpartTargetCells={counterpartTargetCells} counterpartTitle={selectedCandidate.counterpartName} />
+                        <div className="text-[11px] font-bold text-gray-700 flex items-center justify-between">
+                          <span>보강 가능 교사 목록 ({substituteCandidates.length}명)</span>
+                          <span className="text-[10px] text-gray-400 font-normal">누계 적은 순</span>
+                        </div>
+                        <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                          {substituteCandidates.map((cand) => (
+                            <button
+                              key={cand.teacherEmail}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCandidate(cand);
+                                setActiveCandidateType("substitute");
+                                setSubmitError(null);
+                              }}
+                              className="w-full p-2.5 bg-gray-50 hover:bg-indigo-50/80 border border-gray-200 hover:border-indigo-300 rounded-xl text-left transition-all flex items-center justify-between text-xs group cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900 group-hover:text-indigo-900">👤 {cand.teacherName}</span>
+                                {cand.sameSubject && (
+                                  <span className="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded font-extrabold">동일 과목</span>
+                                )}
+                              </div>
+                              <span className="text-[10px] bg-gray-200 group-hover:bg-indigo-100 text-gray-700 group-hover:text-indigo-800 font-bold px-2 py-0.5 rounded">
+                                누계 {cand.substituteCount}회
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
-                    <div className="grid grid-cols-2 gap-2 pt-2">
-                      <button type="button" onClick={handleAddToCart} className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1"><span>🛒</span><span>담기</span></button>
-                      <button type="button" onClick={handleDirectCommitSingle} disabled={submitting} className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50"><span>⚡</span><span>즉시 1건 반영</span></button>
-                    </div>
                   </div>
+                )}
+
+                {/* ↔️ 맞교환 모드일 때 */}
+                {activeCandidateType === "swap" && !loadingCandidates && (
+                  <>
+                    {selectedCandidate ? (
+                      <div className="space-y-4 pt-1 animate-in fade-in duration-200">
+                        <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-xs text-indigo-950">🔄 {selectedCandidate.counterpartName} 교사 ({selectedCandidate.counterpartSubjectName})</span>
+                          </div>
+                          {(selectedCandidate.penalties?.length ?? 0) > 0 || selectedCandidate.score > 0 ? (
+                            <div className="text-[11px] space-y-0.5 pt-1 border-t border-indigo-100">
+                              <div className="font-extrabold text-amber-900">⚠️ 감점 {selectedCandidate.score}점 — 사유</div>
+                              <ul className="list-disc list-inside text-amber-800 space-y-0.5">
+                                {(selectedCandidate.penalties || []).map((p: string, i: number) => (<li key={i}>{p}</li>))}
+                                {(selectedCandidate.penalties?.length ?? 0) === 0 && <li>사유 정보 없음</li>}
+                              </ul>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] font-bold text-emerald-700 pt-1 border-t border-indigo-100">✨ 감점 없음 (0점) — 상대 교사 부담 없는 교환입니다.</div>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <div className="text-xs font-bold text-gray-700 flex items-center justify-between"><span>🗓️ 상대 교사 시간표 미리보기</span>{previewLoading && <span className="text-[10px] text-indigo-600 animate-pulse">로딩 중...</span>}</div>
+                          <MiniPreviewGrid isCrossWeek={isCrossWeek} sourceWeekId={selectedSlot.weekId} targetWeekId={targetWeekId} sourceWeekObj={sourceWeekObj} targetWeekObj={targetWeekObj} selectedCell={{ grade: selectedSlot.grade, classNum: selectedSlot.classNum, day: selectedSlot.day, period: selectedSlot.period, subjectName: sourceLessonInfo.subjectName }} applyingCandidate={{ targetDay: selectedCandidate.targetDay, targetPeriod: selectedCandidate.targetPeriod, counterpartName: selectedCandidate.counterpartName, counterpartSubjectName: selectedCandidate.counterpartSubjectName }} periodsPerDay={7} previewCells={previewCells} counterpartSourceCells={counterpartSourceCells} counterpartTargetCells={counterpartTargetCells} counterpartTitle={selectedCandidate.counterpartName} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-2">
+                          <button type="button" onClick={handleAddToCart} className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1"><span>🛒</span><span>담기</span></button>
+                          <button type="button" onClick={handleDirectCommitSingle} disabled={submitting} className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50"><span>⚡</span><span>즉시 1건 반영</span></button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl text-center text-xs text-indigo-900">
+                        시간표 그리드에서 맞교환할 상대 셀(초록색 배지)을 클릭해 주세요.
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
