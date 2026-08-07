@@ -127,7 +127,6 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       });
       if (res.ok) {
         const data = await res.json();
-        setWeeks(data.weeks || []);
         if (Array.isArray(data.data)) setTeacherList(data.data);
       }
     } catch {} finally {
