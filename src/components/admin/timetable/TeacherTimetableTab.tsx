@@ -228,8 +228,9 @@ export default function TeacherTimetableTab({ periodsPerDay = 7 }: TeacherTimeta
                                       {cell.grade}-{cell.classNum}반
                                     </div>
                                     {cell.room && (
-                                      <div className="text-[10px] text-gray-500 truncate">
-                                        📍 {cell.room}
+                                      <div className="text-[10px] font-extrabold text-emerald-900 bg-emerald-100/90 border border-emerald-300 rounded px-1.5 py-0.5 mt-0.5 truncate flex items-center gap-1" title={`특별실: ${cell.room}`}>
+                                        <span>🏛️</span>
+                                        <span className="truncate">{cell.room}</span>
                                       </div>
                                     )}
                                   </div>

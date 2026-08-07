@@ -173,8 +173,9 @@ export default function StudentTimetableCard() {
                               ({lesson.teachers?.map((t: any) => t.name).join(", ")})
                             </span>
                             {lesson.room && (
-                              <span className="text-[10px] bg-slate-200/60 text-slate-600 px-1.5 py-0.5 rounded font-medium">
-                                📍 {lesson.room}
+                              <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-200 px-1.5 py-0.5 rounded font-extrabold flex items-center gap-1" title={`특별실: ${lesson.room}`}>
+                                <span>🏛️</span>
+                                <span>{lesson.room}</span>
                               </span>
                             )}
                           </div>

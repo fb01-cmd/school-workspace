@@ -206,11 +206,12 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
                                     <div className="text-[10px] text-indigo-800 font-semibold truncate">
                                       👤 {lesson.teachers.map((t) => t.name).join(", ")}
                                     </div>
-                                    {lesson.room && (
-                                      <div className="text-[10px] text-gray-500 truncate">
-                                        📍 {lesson.room}
-                                      </div>
-                                    )}
+                                     {lesson.room && (
+                                       <div className="text-[10px] font-extrabold text-emerald-900 bg-emerald-100/90 border border-emerald-300 rounded px-1.5 py-0.5 mt-0.5 truncate flex items-center gap-1" title={`특별실: ${lesson.room}`}>
+                                         <span>🏛️</span>
+                                         <span className="truncate">{lesson.room}</span>
+                                       </div>
+                                     )}
                                   </div>
                                 );
                               })}

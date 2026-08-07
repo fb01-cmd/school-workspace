@@ -14,6 +14,7 @@ import DirectSubstituteTab from "./DirectSubstituteTab";
 import NeisExportTab from "./NeisExportTab";
 import HourTotalsTab from "./HourTotalsTab";
 import SimulGroupTab from "./SimulGroupTab";
+import VenueGroupTab from "./VenueGroupTab";
 import CalendarManageTab from "./CalendarManageTab";
 import BaseRevisionTab from "./BaseRevisionTab";
 
@@ -28,7 +29,7 @@ export default function TimetableSection() {
   const [error, setError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
-    "weeks" | "ledger" | "direct" | "simul" | "calendar" | "revision" | "neis" | "hours" | "view" | "class" | "free" | "import"
+    "weeks" | "ledger" | "direct" | "simul" | "venue" | "calendar" | "revision" | "neis" | "hours" | "view" | "class" | "free" | "import"
   >("weeks");
 
   const fetchSettingsAndTerms = async (forceRefresh = false) => {
@@ -178,6 +179,17 @@ export default function TimetableSection() {
         </button>
 
         <button
+          onClick={() => setActiveTab("venue")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "venue"
+              ? "bg-emerald-700 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>🏛️ 특별실 관리</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab("calendar")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
             activeTab === "calendar"
@@ -278,6 +290,8 @@ export default function TimetableSection() {
       {activeTab === "direct" && <DirectSubstituteTab activeTermId={activeTermId} />}
 
       {activeTab === "simul" && <SimulGroupTab activeTermId={activeTermId} />}
+
+      {activeTab === "venue" && <VenueGroupTab activeTermId={activeTermId} />}
 
       {activeTab === "calendar" && <CalendarManageTab activeTermId={activeTermId} />}
 
