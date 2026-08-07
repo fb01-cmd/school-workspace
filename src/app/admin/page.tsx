@@ -230,9 +230,9 @@ export default function AdminPage() {
               </p>
             </div>
 
-            {/* ② PushNotificationManager & ③ MealCard (super_admin + teacher 공통 상단 마운트) */}
+            {/* 알림 카드는 공통 최상단. 급식은 교사 홈에선 시간표 아래로 (2026-08-07 사용자 지시) */}
             <PushNotificationManager />
-            <MealCard />
+            {isSuperAdmin && <MealCard />}
 
             {/* super_admin 홈: 기존 관리 카드 그리드 유지 */}
             {isSuperAdmin ? (
@@ -353,8 +353,11 @@ export default function AdminPage() {
                 </div>
               </div>
             ) : (
-              /* 일반 교사(role teacher) 홈: 위젯 카드 그리드 제거 → ④ 이번 주 내 시간표 읽기 전용 카드 배치 */
-              <MyTimetableCard onNavigateToMyTimetable={() => setActiveMenu("my_timetable")} />
+              /* 일반 교사(role teacher) 홈: 시간표가 위, 급식이 아래 (2026-08-07 사용자 지시) */
+              <>
+                <MyTimetableCard onNavigateToMyTimetable={() => setActiveMenu("my_timetable")} />
+                <MealCard />
+              </>
             )}
           </div>
         );
