@@ -110,28 +110,6 @@ export default function PWAInstallGuideTab() {
         </div>
       </div>
 
-      {/* 3. 자주 묻는 질문 FAQ */}
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
-        <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center space-x-2">
-          <span>📌 자주 묻는 질문 (FAQ)</span>
-        </h3>
-
-        <div className="space-y-3 text-xs text-gray-700 dark:text-gray-300">
-          <div className="p-3.5 bg-gray-50 dark:bg-gray-900/40 rounded-xl space-y-1">
-            <p className="font-bold text-gray-900 dark:text-white">Q. 크롬북에서도 컴퓨터 부팅 시 자동 실행이 되나요?</p>
-            <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
-              크롬북이나 태블릿 환경에서는 해당 자동 시작 옵션이 없어(설정 메뉴에 항목이 보이지 않음) 그 단계는 건너뛰시면 되고, 대신 바탕화면 및 앱 목록에 전용 아이콘으로 추가됩니다. 자동 실행은 교무실 윈도우/맥 컴퓨터에서 활용하시면 편리합니다.
-            </p>
-          </div>
-
-          <div className="p-3.5 bg-gray-50 dark:bg-gray-900/40 rounded-xl space-y-1">
-            <p className="font-bold text-gray-900 dark:text-white">Q. 다시 일반 인터넷 웹사이트 형식으로 접속하고 싶어요.</p>
-            <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
-              기존 웹주소 그대로 접속하셔도 앱과 동일하게 시스템을 이용하실 수 있습니다.
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

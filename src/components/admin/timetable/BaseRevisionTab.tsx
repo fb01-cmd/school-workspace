@@ -321,13 +321,10 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
           <div>
             <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
               <span>🛠️ 기초시간표 개정 (학기 중 원본 수정)</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-amber-100 text-amber-900 border border-amber-200">
-                pre_opening_3features_spec §E
-              </span>
             </h3>
             <p className="text-xs text-gray-600 mt-1 leading-relaxed">
               개학 첫 주 학기 시간표 수정분을 편집하고 <strong>지정된 다음 주 월요일부터 효력이 발생</strong>하도록 적용합니다.<br />
-              현재 진행 중인 이번 주 시간표 교체와 꼬이지 않도록 독립 개정판(Revision)으로 운영됩니다.
+              현재 진행 중인 이번 주 시간표 교체와 꼬이지 않도록 독립 개정판으로 운영됩니다.
             </p>
           </div>
         </div>
@@ -739,7 +736,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
             <div className="bg-amber-500 text-white p-4 rounded-xl -mx-6 -mt-6 mb-2 flex items-center gap-2">
               <span className="text-2xl">✨</span>
               <div>
-                <h4 className="font-extrabold text-base">기초시간표 개정 적용 확정 (스펙 §E-4)</h4>
+                <h4 className="font-extrabold text-base">기초시간표 개정 적용 확정</h4>
                 <p className="text-xs text-amber-100">적용 시작 주 월요일을 확인해 주세요</p>
               </div>
             </div>

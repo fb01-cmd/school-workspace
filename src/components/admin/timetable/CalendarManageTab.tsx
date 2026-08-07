@@ -168,9 +168,6 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
           <div>
             <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
               <span>📅 학사일정 등록 및 주차 자동 파생 관리</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
-                pre_opening_3features_spec §B
-              </span>
             </h3>
             <p className="text-xs text-gray-600 mt-1 leading-relaxed">
               학사일정을 미리 등록하면 매주 주(Week) 문서를 일일이 수동 등록할 필요 없이 <strong>자동으로 휴업일·단축수업 주차가 파생</strong>됩니다.<br />
