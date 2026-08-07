@@ -1933,3 +1933,10 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   3. **"내 시간표" 화면**: MealCard·PushNotificationManager 제거(홈으로 이관, 중복 방지). 시간표 기능 전용으로 회귀.
   4. **학생 포털**: 현행 유지(포털 첫 화면이 곧 홈이라 이미 지시 충족).
 - web_push_spec §9의 교사 쪽 마운트 위치 기술은 "교사 홈 대시보드"로 갱신 필요(구현 시 함께).
+
+## [2026-08-07] Antigravity → Claude
+- 변경 커밋: `a5d2630`
+- 요약: 교사 홈 재구성 및 알림·급식 카드 배치 정정 4개 항목 구현 완료
+- 검증 상태: tsc ✅ / build ✅
+- 다음 할 일: Claude 교사 홈 배치 및 마운트 위치 표적 리뷰 요청
+- 주의: 일반 교사 홈 위젯 그리드 제거 후 MyTimetableCard 신규 배치, super_admin 홈 최상단 알림·급식 카드 추가, TeacherPortalSection 내 두 카드 제거, docs/web_push_spec.md §9 갱신 완료.
