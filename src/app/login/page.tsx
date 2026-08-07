@@ -19,7 +19,12 @@ export default function LoginPage() {
       if (userData.role === "student") {
         router.push("/student-portal");
       } else {
-        router.push("/admin");
+        const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+        if (isMobile) {
+          router.push("/m");
+        } else {
+          router.push("/admin");
+        }
       }
     }
   }, [user, userData, loading, router]);

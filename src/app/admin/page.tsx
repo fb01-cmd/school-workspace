@@ -66,6 +66,9 @@ export default function AdminPage() {
 
   // Restore collapsed sections state from localStorage or calculate defaults
   useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+      setIsSidebarOpen(false);
+    }
     try {
       const saved = localStorage.getItem("admin_sidebar_collapsed");
       if (saved) {
