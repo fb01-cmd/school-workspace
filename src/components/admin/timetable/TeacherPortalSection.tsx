@@ -42,6 +42,7 @@ import {
 } from "@/lib/timetable/utils";
 import PaginationControls from "./PaginationControls";
 import MiniPreviewGrid from "./MiniPreviewGrid";
+import MealCard from "@/components/common/MealCard";
 import {
   ShareCardData,
   ConsolidatedShareData,
@@ -781,6 +782,13 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
           {flash}
         </div>
       )}
+
+      {/* 🍱 내 주간시간표 + 오늘 급식 대시보드 그리드 */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-12">
+          <MealCard />
+        </div>
+      </div>
 
       <div className="flex gap-4 items-start">
         {/* 주간 시간표 그리드 (등록된 주간 전체 세로 일렬 나열 — §14-2 v2.1 인라인 하이라이트) */}

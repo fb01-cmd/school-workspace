@@ -95,6 +95,24 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const [reasonType, setReasonType] = useState<SwapReasonType>("기타");
   const [reasonNote, setReasonNote] = useState("일과계 직권 배정");
 
+  // 징검다리 체인 탐색 (pre_opening_3features_spec §C-3)
+  const [chainModalOpen, setChainModalOpen] = useState(false);
+  const [chainTargetSlot, setChainTargetSlot] = useState<{ weekId: string; day: number; period: number } | null>(null);
+  const [chainSourceSlot, setChainSourceSlot] = useState<{
+    weekId: string;
+    grade: number;
+    classNum: number;
+    day: number;
+    period: number;
+    subjectName: string;
+    teacherEmail: string;
+    teacherName: string;
+  } | null>(null);
+  const [chainSearchLoading, setChainSearchLoading] = useState(false);
+  const [chainSearchError, setChainSearchError] = useState<string | null>(null);
+  const [chainResults, setChainResults] = useState<any[]>([]);
+  const [chainMaxDepth, setChainMaxDepth] = useState<number>(2);
+
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -260,18 +278,117 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     if (selectedSlot) fetchPreviewForCandidate(candidateObj, selectedSlot);
   };
 
-  const handleSlotClick = (weekId: string, cell: TeacherTimetableCell) => {
-    const subj = cell.subjectShort || cell.subjectName || "수업";
-    // 판정 단일 통로: 서버가 교사 그리드 응답에 실어 보낸 동시수업 라벨 (서버 커밋 검증이 최종 방어)
-    if (cell.simul) {
-      alert(`여러 반이 함께 듣는 이동수업이라 교체할 수 없습니다.\n묶음: ${cell.simul}`);
-      return;
-    }
+  // §C-3: 징검다리 체인 탐색 실행
+  const handleRunChainSearch = async (overrideDepth?: number) => {
+    if (!chainSourceSlot || !chainTargetSlot) return;
+    const depth = overrideDepth || chainMaxDepth || 2;
+    setChainMaxDepth(depth);
+    setChainSearchLoading(true);
+    setChainSearchError(null);
+    setChainResults([]);
 
-    const slot = { weekId, grade: cell.grade, classNum: cell.classNum, day: cell.day, period: cell.period };
-    setSelectedSlot(slot); setSelectedWeekId(weekId);
-    setSourceLessonInfo({ subjectName: subj, teacherName: selectedTeacherName });
-    fetchCandidates(weekId, cell.grade, cell.classNum, cell.day, cell.period, subj);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "chain_search",
+          weekId: chainSourceSlot.weekId,
+          source: {
+            grade: chainSourceSlot.grade,
+            classNum: chainSourceSlot.classNum,
+            day: chainSourceSlot.day,
+            period: chainSourceSlot.period,
+          },
+          chainTarget: {
+            weekId: chainTargetSlot.weekId || chainSourceSlot.weekId,
+            day: chainTargetSlot.day,
+            period: chainTargetSlot.period,
+          },
+          chainMaxDepth: depth,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const chains = data.chains || [];
+        setChainResults(chains);
+        if (chains.length === 0) {
+          setChainSearchError(`${depth}단계 안에서는 경로(체인)가 없습니다.`);
+        }
+      } else {
+        setChainSearchError(data.error || "체인 탐색 실패");
+      }
+    } catch (e: any) {
+      setChainSearchError(`네트워크 오류: ${e.message}`);
+    } finally {
+      setChainSearchLoading(false);
+    }
+  };
+
+  // §C-3: 선택한 체인 전체를 직권 담기 목록에 적재 (sourceTeacherEmail/Name 보존 필수)
+  const handleAddChainToCart = (chain: any) => {
+    if (!chain || !chain.steps || chain.steps.length === 0) return;
+
+    const newItems: CartItem[] = chain.steps.map((step: any, idx: number) => ({
+      id: `chain_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${idx}`,
+      weekId: step.weekId,
+      ...(step.targetWeekId ? { targetWeekId: step.targetWeekId } : {}),
+      type: step.type || "swap",
+      source: step.source,
+      candidate: step.candidate,
+      // ★ sourceTeacherEmail/Name 보존 ★
+      sourceTeacherEmail: step.sourceTeacherEmail || selectedTeacherEmail,
+      sourceTeacherName: step.sourceTeacherName || selectedTeacherName,
+      counterpartEmail: step.candidate?.counterpartEmail,
+      counterpartName: step.candidate?.counterpartName,
+      counterpartSubjectName: step.candidate?.counterpartSubjectName,
+      consentChecked: false,
+    }));
+
+    const updatedCart = [...cartItems, ...newItems];
+    setCartItems(updatedCart);
+    setSuccessMsg(`🔗 징검다리 체인 (${chain.steps.length}단계)이 담기 목록에 순서대로 추가되었습니다.`);
+    setChainModalOpen(false);
+
+    // 예상 시간표 갱신
+    fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
+  };
+
+  const handleSlotClick = (weekId: string, cell: TeacherTimetableCell) => {
+    const hasLesson = cell && (cell.subjectName || cell.subjectShort);
+    if (hasLesson) {
+      // 판정 단일 통로: 서버가 교사 그리드 응답에 실어 보낸 동시수업 라벨
+      if (cell.simul) {
+        alert(`여러 반이 함께 듣는 이동수업이라 교체할 수 없습니다.\n묶음: ${cell.simul}`);
+        return;
+      }
+
+      const subj = cell.subjectShort || cell.subjectName || "수업";
+      const slot = { weekId, grade: cell.grade, classNum: cell.classNum, day: cell.day, period: cell.period };
+      setSelectedSlot(slot);
+      setSelectedWeekId(weekId);
+      setSourceLessonInfo({ subjectName: subj, teacherName: selectedTeacherName });
+
+      // 체인 원본 수업으로 자동 지정
+      setChainSourceSlot({
+        weekId,
+        grade: cell.grade,
+        classNum: cell.classNum,
+        day: cell.day,
+        period: cell.period,
+        subjectName: subj,
+        teacherEmail: selectedTeacherEmail,
+        teacherName: selectedTeacherName,
+      });
+
+      fetchCandidates(weekId, cell.grade, cell.classNum, cell.day, cell.period, subj);
+    } else {
+      // 공강 셀 클릭 ➔ "이 자리에 수업 가져오기 (체인 탐색 🔗)"
+      setChainTargetSlot({ weekId, day: cell.day, period: cell.period });
+      setChainModalOpen(true);
+      setChainSearchError(null);
+      setChainResults([]);
+    }
   };
 
   const handleAddToCart = () => {
@@ -673,6 +790,137 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           <span className="text-3xl">👈</span>
           <p className="font-bold text-gray-800 text-sm">위 드롭다운에서 직권 배정할 대상 교사를 선택해 주세요.</p>
           <p className="text-xs text-gray-400">교사를 선택하면 그 교사의 모든 주 시간표가 표시됩니다.</p>
+        </div>
+      )}
+
+      {/* 🔗 징검다리 체인 탐색 모달 (spec §C-3) */}
+      {chainModalOpen && chainTargetSlot && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-indigo-200 max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-5 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-indigo-950 flex items-center gap-2">
+                  <span>🔗 징검다리(목표 지향 체인) 교체 탐색</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-800">
+                    스펙 §C-3
+                  </span>
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  목적지 공강 위치: <strong>{DAY_LABEL[chainTargetSlot.day]}요일 {chainTargetSlot.period}교시</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setChainModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-lg font-black"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 원본 수업 선택 영역 */}
+            <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-4 space-y-3">
+              <label className="block text-xs font-extrabold text-indigo-950">
+                📍 목적지로 가져올 원본 수업 선택:
+              </label>
+              {chainSourceSlot ? (
+                <div className="flex items-center justify-between bg-white border border-indigo-200 p-3 rounded-lg text-xs">
+                  <div>
+                    <span className="font-bold text-indigo-900">
+                      {chainSourceSlot.grade}-{chainSourceSlot.classNum}반 {chainSourceSlot.subjectName}
+                    </span>{" "}
+                    <span className="text-gray-500">
+                      ({DAY_LABEL[chainSourceSlot.day]}요일 {chainSourceSlot.period}교시)
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                    선택됨
+                  </span>
+                </div>
+              ) : (
+                <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                  시간표 그리드에서 원본 수업 셀을 클릭해 주시거나, 아래 버튼을 통해 지정해 주세요.
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleRunChainSearch(2)}
+                  disabled={!chainSourceSlot || chainSearchLoading}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors"
+                >
+                  {chainSearchLoading ? "경로 탐색 중..." : "🔍 2단계 체인 탐색"}
+                </button>
+              </div>
+            </div>
+
+            {/* 탐색 결과 리스트 */}
+            {chainSearchLoading ? (
+              <div className="py-12 text-center text-xs text-indigo-600 font-bold space-y-2">
+                <div className="inline-block animate-spin rounded-full h-6 w-6 border-3 border-indigo-600 border-t-transparent" />
+                <p>목적지 도달 가능한 중간 교환 체인을 역방향 탐색 중입니다...</p>
+              </div>
+            ) : chainSearchError ? (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-3">
+                <p className="font-bold">{chainSearchError}</p>
+                {chainMaxDepth < 3 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRunChainSearch(3)}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shadow-xs"
+                  >
+                    🔄 3단계 깊이 탐색 재시도 (maxDepth=3)
+                  </button>
+                )}
+              </div>
+            ) : chainResults.length > 0 ? (
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-gray-700">
+                  도달 가능한 교환 체인 경로 ({chainResults.length}건 발견):
+                </h4>
+                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                  {chainResults.map((chain, idx) => (
+                    <div
+                      key={idx}
+                      className="p-4 bg-white border border-indigo-100 hover:border-indigo-300 rounded-xl shadow-xs space-y-3 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black px-2 py-0.5 rounded bg-indigo-950 text-white">
+                            체인 {idx + 1}
+                          </span>
+                          <span className="text-xs font-bold text-gray-600">
+                            총 {chain.steps.length}단계 교환
+                          </span>
+                        </div>
+                        <span className={`text-xs font-extrabold px-2 py-0.5 rounded ${
+                          chain.totalScore === 0 ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"
+                        }`}>
+                          {chain.totalScore === 0 ? "✨ 감점 0점 (최적)" : `⚠️ 감점 ${chain.totalScore}점`}
+                        </span>
+                      </div>
+
+                      <div className="text-xs text-gray-800 bg-slate-50 p-3 rounded-lg border border-slate-200/80 leading-relaxed font-medium">
+                        {chain.summary || chain.steps.map((s: any) => s.stepSummary).join(" ➔ ")}
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handleAddChainToCart(chain)}
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center gap-1"
+                        >
+                          <span>🛒</span>
+                          <span>이 체인 순서대로 담기 ({chain.steps.length}건)</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       )}
     </div>
