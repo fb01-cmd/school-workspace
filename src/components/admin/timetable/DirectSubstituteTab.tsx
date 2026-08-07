@@ -211,7 +211,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       effectiveCart = [];
     }
     if (!email) {
-      setSelectedTeacherEmail(""); setSelectedTeacherName(""); setTeacherWeekCellsMap({}); setSelectedSlot(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setSelectedCandidate(null); return;
+      setSelectedTeacherEmail(""); setSelectedTeacherName(""); setTeacherWeekCellsMap({}); setSelectedSlot(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setSelectedCandidate(null); setChainSourceSlot(null); setChainTargetSlot(null); setChainModalOpen(false); return;
     }
     const finalName = name || teacherList.find((t) => t.email.toLowerCase() === email.toLowerCase())?.name || email.split("@")[0];
     setSelectedTeacherEmail(email); setSelectedTeacherName(finalName);
@@ -351,6 +351,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setCartItems(updatedCart);
     setSuccessMsg(`🔗 징검다리 체인 (${chain.steps.length}단계)이 담기 목록에 순서대로 추가되었습니다.`);
     setChainModalOpen(false);
+    setChainSourceSlot(null); // 원본은 소진 — 다음 공강 클릭 시 깨끗한 선택 목록부터
+    setChainTargetSlot(null);
 
     // 예상 시간표 갱신
     fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
@@ -432,7 +434,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     const updatedCart = [...cartItems, newItem]; setCartItems(updatedCart); setSelectedCandidate(null); setPreviewCells(null); setCounterpartSourceCells(null); setCounterpartTargetCells(null); setSuccessMsg(`🛒 담기 완료! 목록에 추가되었습니다. (총 ${updatedCart.length}건)`);
     // 담기 후에는 아이들 상태로 — 같은 슬롯 재탐색은 서버가 그 항목을 자기 충돌 방지로 제외해
     // 담기 전과 동일한 결과(선택·후보 하이라이트 잔존)만 재현한다. 재탐색은 다음 셀 클릭 때 cart 반영으로 수행.
-    setSelectedSlot(null); setSourceLessonInfo(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setCandidateError(null);
+    setSelectedSlot(null); setSourceLessonInfo(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setCandidateError(null); setChainSourceSlot(null);
     // 그리드를 "담긴 상태의 예상 시간표"로 갱신 — 담긴 수업이 옮겨간 자리에 가상 마킹으로 나타난다
     fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
   };
@@ -549,7 +551,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       setSuccessMsg(`⚡ 직권 배정 완료! ${selectedSlot.grade}학년 ${selectedSlot.classNum}반 ${formatSlotWithDate(sourceWeekId, selectedSlot.day, selectedSlot.period)} 수업이 성공적으로 처리 및 반영되었습니다.`);
       const updatedWeeks = [sourceWeekId, targetWeekId].filter((wId): wId is string => Boolean(wId));
       setRecentlyUpdatedWeeks(updatedWeeks);
-      setSelectedCandidate(null); setPreviewCells(null); setCounterpartSourceCells(null); setCounterpartTargetCells(null);
+      setSelectedCandidate(null); setPreviewCells(null); setCounterpartSourceCells(null); setCounterpartTargetCells(null); setChainSourceSlot(null);
       if (selectedTeacherEmail) await fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks);
     } catch (err: any) { setSubmitError(err.message || "직권 배정 실패"); } finally { setSubmitting(false); }
   };
