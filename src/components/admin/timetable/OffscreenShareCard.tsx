@@ -34,6 +34,8 @@ export interface ConsolidatedShareData {
   counterpartName: string;
   items: SwapDraft[] | Array<{
     id?: string;
+    /** "substitute"면 보강 요청 서식 — 상대는 수업을 받기만 하므로 교환 문구를 쓰지 않는다 (2026-08-07) */
+    type?: string;
     sourceWeekId: string;
     targetWeekId?: string;
     source: { grade: number; classNum: number; day: number; period: number; subjectName: string };
@@ -257,6 +259,18 @@ export function OffscreenConsolidatedCard({
   }
 
   const n = data.items.length;
+  // 보강 항목은 상대가 수업을 "받기만" 하므로 교환 서식을 쓰면 안 된다 (2026-08-07 실증: 보강 담기가 교환 양해로 출력)
+  const kinds = new Set(data.items.map((d: any) => d.type === "substitute" ? "substitute" : "swap"));
+  const allSub = kinds.size === 1 && kinds.has("substitute");
+  const allSwap = kinds.size === 1 && kinds.has("swap");
+  const cardTitle = allSub ? "수업 보강 요청" : allSwap ? "수업교환 양해 요청" : "수업 교체·보강 요청";
+  const greeting = allSub
+    ? n > 1 ? `아래 ${n}건의 보강이 가능하실지 여쭙습니다. 😊` : "아래 일정으로 보강이 가능하실까요? 😊"
+    : allSwap
+    ? n > 1 ? `아래 ${n}건의 수업 교체가 가능할지 여쭙습니다. 😊` : "아래 일정으로 수업 교체가 가능할까요? 😊"
+    : `아래 ${n}건의 수업 협조가 가능하실지 여쭙습니다. 😊`;
+  const listHeader = allSub ? "🙏 보강 요청 목록 (선생님 기준)" : allSwap ? "🔄 교환 목록 (선생님 기준)" : "🔄 요청 목록 (선생님 기준)";
+  const hasOutMarker = data.weekBlocks.some((b) => b.markers.some((m) => m.kind === "out"));
 
   return (
     <div style={{ position: "absolute", left: "-9999px", top: "-9999px", pointerEvents: "none" }}>
@@ -266,7 +280,7 @@ export function OffscreenConsolidatedCard({
       >
         <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
           <div className="text-[10px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
-          <div className="text-lg font-black mt-0.5 tracking-tight">수업교환 양해 요청{n > 1 ? ` (${n}건)` : ""}</div>
+          <div className="text-lg font-black mt-0.5 tracking-tight">{cardTitle}{n > 1 ? ` (${n}건)` : ""}</div>
         </div>
 
         <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3.5 space-y-1 text-xs">
@@ -275,33 +289,43 @@ export function OffscreenConsolidatedCard({
           </div>
           <div className="text-gray-700 leading-relaxed text-xs">
             <span className="font-bold text-indigo-900">{data.senderLabel || `${data.requesterName} 교사`}</span>입니다.<br />
-            {n > 1
-              ? `아래 ${n}건의 수업 교체가 가능할지 여쭙습니다. 😊`
-              : "아래 일정으로 수업 교체가 가능할까요? 😊"}
+            {greeting}
           </div>
         </div>
 
         <div className="border border-gray-200 rounded-xl p-3.5 space-y-2 text-xs bg-gray-50/40">
           <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5">
-            🔄 교환 목록 (선생님 기준)
+            {listHeader}
           </div>
-          {data.items.map((d, i) => {
+          {data.items.map((d: any, i) => {
             const tgtWeek = d.targetWeekId || d.sourceWeekId;
             const srcSlot = formatSlotWithDate(d.sourceWeekId, d.source.day, d.source.period);
             const tgtSlot = formatSlotWithDate(tgtWeek, d.candidate.targetDay, d.candidate.targetPeriod);
+            const isSub = d.type === "substitute";
             return (
               <div key={d.id || i} className="flex items-start gap-2 bg-white border border-gray-200 rounded-lg p-2.5">
                 <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center mt-0.5">
                   {i + 1}
                 </span>
-                <div className="space-y-0.5">
-                  <div className="font-bold text-amber-900">
-                    선생님의 {d.source.grade}-{d.source.classNum}반 {d.candidate.counterpartSubjectName || "수업"} : {tgtSlot} → {srcSlot}
+                {isSub ? (
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-emerald-900">
+                      {srcSlot} {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} — 보강을 부탁드립니다
+                    </div>
+                    <div className="text-[10px] text-gray-500">
+                      {data.ownerLabel || "해당"} 수업을 대신 맡아주시는 일정입니다
+                    </div>
                   </div>
-                  <div className="font-bold text-emerald-900">
-                    {data.ownerLabel || "제"} {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} : {srcSlot} → {tgtSlot}
+                ) : (
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-amber-900">
+                      선생님의 {d.source.grade}-{d.source.classNum}반 {d.candidate.counterpartSubjectName || "수업"} : {tgtSlot} → {srcSlot}
+                    </div>
+                    <div className="font-bold text-emerald-900">
+                      {data.ownerLabel || "제"} {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} : {srcSlot} → {tgtSlot}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             );
           })}
@@ -309,10 +333,12 @@ export function OffscreenConsolidatedCard({
 
         <div className="space-y-2">
           <div className="text-[10px] text-gray-500 flex flex-wrap gap-2.5">
-            <span className="inline-flex items-center gap-1 font-bold text-amber-900">
-              <span className="w-2.5 h-2.5 rounded bg-amber-200 border border-amber-400 inline-block" />
-              ➖ 빠짐 (선생님 시간표에서 빠질 수업)
-            </span>
+            {hasOutMarker && (
+              <span className="inline-flex items-center gap-1 font-bold text-amber-900">
+                <span className="w-2.5 h-2.5 rounded bg-amber-200 border border-amber-400 inline-block" />
+                ➖ 빠짐 (선생님 시간표에서 빠질 수업)
+              </span>
+            )}
             <span className="inline-flex items-center gap-1 font-bold text-emerald-900">
               <span className="w-2.5 h-2.5 rounded bg-emerald-200 border border-emerald-400 inline-block" />
               ➕ 들어옴 (선생님 시간표에 들어올 수업)

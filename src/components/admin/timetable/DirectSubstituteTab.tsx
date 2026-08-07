@@ -217,6 +217,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setSelectedTeacherEmail(email); setSelectedTeacherName(finalName);
     setRecentTeachers((prev) => { const filtered = prev.filter((t) => t.email.toLowerCase() !== email.toLowerCase()); return [{ email, name: finalName }, ...filtered].slice(0, 5); });
     setSelectedSlot(null); setSourceLessonInfo(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setSelectedCandidate(null); setCandidateError(null); setSuccessMsg(null); setSubmitError(null);
+    // 체인 상태도 초기화 — 이전 교사의 수업이 원본으로 잔존해 "누르지 않은 수업"으로 탐색되는 사고 방지 (2026-08-07)
+    setChainSourceSlot(null); setChainTargetSlot(null); setChainModalOpen(false); setChainResults([]); setChainSearchError(null);
     fetchTeacherTimetablesForAllWeeks(email, weeks, effectiveCart);
     // ref 존재 검사는 timeout 안에서 — 첫 선택 시점엔 그리드가 아직 렌더 전이라 밖에서 검사하면 스크롤이 무산된다
     const initWeekId = getInitialWeekId(weeks);
@@ -398,6 +400,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       fetchCandidates(weekId, grade, classNum, day, period, subj);
     } else {
       // 순수 공강 셀 클릭 ➔ "이 자리에 수업 가져오기 (연쇄 이동 탐색 🔗)"
+      // 이중 방어: 원본이 현재 선택 교사의 수업이 아니면 무효화 (묵은 원본으로 탐색 방지)
+      if (chainSourceSlot && chainSourceSlot.teacherEmail.toLowerCase() !== selectedTeacherEmail.toLowerCase()) {
+        setChainSourceSlot(null);
+      }
       setChainTargetSlot({ weekId, day, period });
       setChainModalOpen(true);
       setChainSearchError(null);
@@ -484,7 +490,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         senderLabel: operatorName, // 직책 없이 이름만 — "○○○입니다" (2026-08-06 사용자 확정: "일과계" 표기도 제외)
         ownerLabel: selectedTeacherName ? `${selectedTeacherName} 선생님의` : "해당",
         counterpartName,
-        items: counterpartItems.map((ci) => ({ id: ci.id, sourceWeekId: ci.weekId, targetWeekId: ci.targetWeekId, source: ci.source, candidate: ci.candidate })),
+        items: counterpartItems.map((ci) => ({ id: ci.id, type: ci.type, sourceWeekId: ci.weekId, targetWeekId: ci.targetWeekId, source: ci.source, candidate: ci.candidate })),
         weekBlocks,
         periodsPerDay: 7,
       };
@@ -931,8 +937,43 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                   </span>
                 </div>
               ) : (
-                <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
-                  시간표 그리드에서 옮기고 싶은 원본 수업 셀을 클릭해 지정해 주세요.
+                /* 원본 미지정 — 모달이 그리드를 가리므로 여기서 직접 고른다 (묵은 원본 자동 사용 금지, 2026-08-07) */
+                <div className="space-y-1.5">
+                  <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                    이 자리로 옮겨올 수업을 아래에서 골라 주세요. (여러 반이 함께 듣는 이동수업은 제외)
+                  </div>
+                  <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                    {(teacherWeekCellsMap[chainTargetSlot.weekId] || [])
+                      .filter((c) => !c.simul && !c.changed?.changeId?.startsWith("virtual-direct"))
+                      .sort((a, b) => a.day - b.day || a.period - b.period)
+                      .map((c, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() =>
+                            setChainSourceSlot({
+                              weekId: chainTargetSlot.weekId,
+                              grade: c.grade,
+                              classNum: c.classNum,
+                              day: c.day,
+                              period: c.period,
+                              subjectName: c.subjectShort || c.subjectName || "수업",
+                              teacherEmail: selectedTeacherEmail,
+                              teacherName: selectedTeacherName,
+                            })
+                          }
+                          className="w-full flex items-center justify-between bg-white hover:bg-indigo-50 border border-indigo-100 hover:border-indigo-300 rounded-lg px-2.5 py-1.5 text-xs transition-colors"
+                        >
+                          <span className="font-bold text-indigo-950">
+                            {DAY_LABEL[c.day]}요일 {c.period}교시 · {c.grade}-{c.classNum}반 {c.subjectShort || c.subjectName}
+                          </span>
+                          <span className="text-[10px] text-indigo-500 font-bold">선택</span>
+                        </button>
+                      ))}
+                    {(teacherWeekCellsMap[chainTargetSlot.weekId] || []).filter((c) => !c.simul).length === 0 && (
+                      <div className="text-[11px] text-gray-500 text-center py-2">이 주에 옮길 수 있는 수업이 없습니다.</div>
+                    )}
+                  </div>
                 </div>
               )}
 
