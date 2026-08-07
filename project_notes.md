@@ -2046,3 +2046,10 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - 튜토리얼 재진입: *"project_notes.md 마지막 체크포인트를 읽어줘. 대기열 1번 튜토리얼 재진입 배치 스펙 잡고 Antigravity 인계까지."*
 - 특별실 엔진: *"project_notes.md 마지막 체크포인트와 로드맵 §2 특별실 항목을 읽어줘. 특별실 점유 제약 스펙 설계하고 서버부 구현 시작하자."*
 - 모바일 /m: *"project_notes.md 마지막 체크포인트를 읽어줘. 모바일 /m 스펙 잡자."*
+
+## [2026-08-08] Claude → Antigravity — 대기열 1번 튜토리얼 재진입 배치 스펙 확정, 구현 인계
+
+- **스펙**: [`docs/tutorial_reentry_spec.md`](./docs/tutorial_reentry_spec.md) — 앱(standalone) 실행 중 교사가 사용 설정 튜토리얼(iorad 2754580)로 재진입할 경로가 없는 구멍(로드맵 §2 PWA (4)) 해소.
+- **핵심 결정**: 헤더 "✓ 앱으로 실행 중" 배지를 클릭 가능한 진입 버튼으로 승격 + 가이드 화면 배너 문구를 isInstalled 분기. **사이드바 메뉴·홈 카드 추가는 금지**(스펙 §2-③ 명시).
+- **범위**: `PWAInstallPrompt.tsx`·`PWAInstallGuideTab.tsx` 2개 파일뿐. DoD·standalone 검증 방법은 스펙 §3.
+- 다음 할 일: Antigravity 구현 → Claude 표적 리뷰 불요(위험도 낮음, 문구·UI뿐) — DoD 자가 통과 후 바로 커밋.
