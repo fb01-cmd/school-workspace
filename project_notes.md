@@ -1879,11 +1879,7 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **실측** (`scripts/inspect_bulk_delete_failures.ts`, 읽기 전용): GWS 잔존 23* 계정 = 정확히 126명, 전원 `/학생/졸업생` OU·정지 상태(보관 아님) — 실패분이 그대로 남음. 계정 상태는 성공분과 동일해 계정 문제 아님.
 - **결정적 패턴**: 잔존 학번이 **약 50번호 주기로 7개 띠**(23031–48, 23079–98, 23128–47, 23172–92, 23221–44, 23271–95, 23318–37) — "약 28건 성공 → 약 20건 실패" 반복. **Google Directory API 사용자 삭제 속도 제한(쿼터 창)** 소진→회복 주기와 일치.
 - **코드 원인**: `bulk_delete`는 동시성 8로 던지지만(`mapConcurrentSettled`) **429 재시도(백오프)가 없어** 제한 창에 걸린 항목이 즉시 실패 확정. 부수 결함: 감사 로그가 실패 목록이 아니라 **선택 전체 316명 목록**을 기록(무엇이 실패했는지 로그로 알 수 없음, details 5.4KB 비대).
-- **수정 방향(제안, 미구현)**: ① 429/rateLimitExceeded 지수 백오프 재시도(예: 최대 5회) 래퍼를 bulk 계열 공통 적용 ② 동시성 8→3~4 하향+간격 ③ 감사 로그에 실패 이메일+사유만 기록. 수정 후 잔존 126명 재삭제(멱등).
-
-## 🔒 현재 작업 중 파일
-
-*(현재 비어 있음)*
+- **수정 방향(제안, 미구현)**: ① 429/rateLimitExceeded 지수 백오프 재시도(예: 최대 5회) 래퍼를 bulk 계열 공통 적용 ② 동시성 8→3~4 하향+간격 ③ 감사 로그에 실패 이메일+사유만 기록. 수정 후 잔존 126명 재삭제(멱등). → **아래 [2026-08-07] 삭제 흐름 정비 체크포인트로 구현 완료 ✅**
 
 ## [2026-08-07] Antigravity → Claude / 사용자 (리뷰 반려 2건 조치 + 푸시 알림 설정 UI §9 구현 완료)
 - 변경 파일: `src/components/admin/timetable/DirectSubstituteTab.tsx`, `src/components/common/PushNotificationManager.tsx`, `src/components/admin/timetable/TeacherPortalSection.tsx`, `src/app/student-portal/page.tsx` (커밋: `fbc5138`)
@@ -1899,3 +1895,15 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
     - `permission === "default"` 시 `"🔔 알림 받기"` 버튼 ➔ 클릭 시 권한 요청 및 서버 등록.
     - `permission === "denied"` 시 안내 문구 처리. 개발 용어("푸시", "PWA", "구독") 전면 금지.
     - **마운트 위치**: 교사 포털 대시보드 상단(`TeacherPortalSection`) & 학생 포털 메인 대시보드 상단(`student-portal/page.tsx`).
+
+## [2026-08-07] Claude → 삭제 흐름 정비 묶음 완료 ✅ + 졸업생 316명 삭제 완결 (커밋 23516e0)
+
+- **① 429 재시도**: `retryOnRateLimit`/`isRateLimitError`(concurrency.ts) — 429·403(rate/quota) 지수 백오프. bulk_delete 적용(동시성 8→3). 감사 로그는 **실패 계정+사유만** 기록(선택 전체 재나열 폐지). 수백 명 단위는 Vercel 60초 한도 내 완주가 어려울 수 있음 — 연 1회 대량 정리는 `scripts/delete_remaining_graduates.ts` 경로 권장(로컬, 시간 무제한).
+- **② users 문서 생애주기**: `deleteFirestoreUserDocsByEmail` 신설 후 **`deleteAuthUserByEmail`에 내장** — 개별·일괄·크론·전출·생성 전 정리 등 9개 호출처가 이 단일 관문을 지나므로 전 흐름 일괄 커버. + sync-user가 로그인 시 같은 이메일의 구 uid 문서 자가 정리(재생성 중복 자연 소멸). policy_acks 이력은 증빙용 보존.
+- **③ 유령 정리 실행**: `scripts/cleanup_stale_user_docs.ts`(드라이런 기본/--apply) — 실측과 일치한 7건(24343×5·gradtest·ctest) 삭제 완료, 감사 로그 기록. 고지 현황 화면의 유령·중복 행 소멸.
+- **④ 잔존 졸업생 126명 삭제 재실행 완료**: `scripts/delete_remaining_graduates.ts` — 이메일 `23\d{3}` + OU `/학생/졸업생` **이중 게이트**, 동시성 2+백오프 최대 6회, GWS 삭제 전 `deleteAuthUserByEmail`(AGENTS UID 규칙). **성공 126/실패 0** — 백오프가 쿼터 창을 넘겨 완주. 직후 재검증의 잔존 16명은 목록 색인 전파 지연이었고 수 분 뒤 **잔존 0명 확정**. 감사 로그 기록. 작년 졸업생 316명 삭제 종결.
+- **검증**: tsc 0 · build ✅. **주의**: 대량 삭제 직후 수 분간 목록·현황 화면에 잔존처럼 보일 수 있음(색인 전파 지연 — 앱 recentActionsCache와 같은 원인).
+
+### 재개 문구 (다음 대화)
+- Claude 표적 리뷰: *"project_notes.md 마지막 체크포인트를 읽어줘. fbc5138(체인 진입점 수정·문구 순화·알림 설정 UI)을 표적 리뷰해줘."*
+- 실기기(리뷰 통과 후): 교사 기기에서 알림 켜기 → 시험 알림 수신 → 직권 배정 1건 반영 → 당사자·해당 반 수신 확인 (web_push_spec §10).
