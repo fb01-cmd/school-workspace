@@ -2080,3 +2080,11 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   - 부수 보정 1건: `/admin` 사이드바 모바일 기본 닫힘(useState(true) 문제 최소 보정). 드로어화·관리 화면 최적화는 범위 밖("관리 업무는 PC").
 - **범위**: 신규 2(`src/app/m/page.tsx`·`src/components/mobile/TodayTimetableCard.tsx`) + 수정 2(login·admin 각 1곳). sw.js·push·student-portal·RouteGuard 수정 금지. DoD·검증 절차는 스펙 §7.
 - 다음 할 일: Antigravity 구현 → Claude 표적 리뷰(로그인 분기가 진입 동선 전체에 걸리는 지점이라 리뷰 필요) → 폰 실기기 확인.
+
+## [2026-08-08] Claude — b10219f(모바일 /m) 표적 리뷰 **승인, 수정 0건** ✅ + 배포
+
+- **스펙 준수**: 범위 §1 정확 일치(신규 2·수정 2, sw.js·push·student-portal·RouteGuard 무접촉 — git stat 대조). §2 분기(login 한 곳·767px·/admin 무리다이렉트), §3 구성·순서, §4 렌더 우선순위(주 밖→휴업일→빈날→목록)·보강/교체 라벨(substitute만 보강 — 타입 값 대조), §5 마운트 1회 effect, §6 문구 전부 준수.
+- **위험 지점 검증**: ① KST 날짜 산식(getKSTDate 시프트 → 로컬 자정 비교) — KST 기기 정확, 타 TZ 기기도 Math.round로 안전함을 산술 확인 ② 일요일: findCurrentWeek가 어느 주를 주든 두 섹션 모두 우아하게 분기 ③ 재사용 카드 2종 375px 폭 안전(min-w 없음) ④ dark: 클래스 다수는 전역 비활성(globals.css @custom-variant, 2026-07-25)이라 무해한 죽은 코드 — 수정 불요.
+- **DoD 재실측(Claude)**: tsc 0 · next build ✅(/m 라우트 생성 확인).
+- **참고(수정 아님)**: 주차 미등록으로 week=null이면 기초 시간표가 있어도 "수업 정보를 확인할 수 없습니다" 폴백 — 날짜 매핑 불가라 타당, 주차 자동 파생으로 실운영에선 드묾.
+- 배포 완료. 남은 확인: 폰 실기기 — 로그인 → /m 랜딩, 카드 3종, PC 링크 → /admin(사이드바 닫힘). 변경 셀 강조는 체크리스트 C-13에서 실전 검증.
