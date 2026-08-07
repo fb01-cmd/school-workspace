@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAlias, invalidateUserCache, isMock, listDeletedUsers, restoreDeletedUser, resetStudentPassword, mockUsers, getUser } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { deleteAuthUserByEmail, verifyAuthAccess, adminDb } from "@/lib/firebase/admin";
-import { mapConcurrentSettled } from "@/lib/concurrency";
+import { mapConcurrentSettled, retryOnRateLimit } from "@/lib/concurrency";
 
 // Vercel 함수 실행 시간 한도 명시 — 일괄 삭제/정지/저장이 수백 명 단위일 때 대비
 export const maxDuration = 60;
@@ -420,8 +420,14 @@ export async function POST(req: NextRequest) {
         // (동시성 제한 — 무제한 동시 발사는 API 429로 부분 실패 발생)
         await mapConcurrentSettled(emails, 10, (email: string) => deleteAuthUserByEmail(email));
 
-        const results = await mapConcurrentSettled(emails, 8, (email: string) => deleteUser(email));
-        
+        // Directory API 삭제는 분당 쿼터 창이 좁다 — 2026-08-07 316명 삭제에서 동시성 8·
+        // 재시도 없음 조합이 쿼터 창 소진 구간의 126건을 즉시 실패 확정시킨 실사고.
+        // 동시성을 낮추고 429는 지수 백오프로 재시도한다. (수백 명 단위 연 1회 대량
+        // 정리는 함수 시간 한도 내 완주가 어려울 수 있음 — 남은 건 재선택·재실행이 복구 경로)
+        const results = await mapConcurrentSettled(emails, 3, (email: string) =>
+          retryOnRateLimit(() => deleteUser(email))
+        );
+
         const failures = results
           .map((res, idx) => (res.status === "rejected" ? { email: emails[idx], reason: res.reason?.message } : null))
           .filter(Boolean);
@@ -441,9 +447,16 @@ export async function POST(req: NextRequest) {
           operatorName: adminName,
           action: "일괄 삭제",
           targetEmail: "복수 계정",
-          details: failures.length > 0 
-            ? `선택한 ${emails.length}개 중 일부 삭제 실패 (실패: ${failures.length}건). 목록: ${emails.join(", ")}` 
-            : `계정 ${emails.length}개 일괄 삭제 완료. 대상: ${emails.join(", ")}`,
+          // 실패 시엔 "실패한 계정 + 사유"를 기록한다 — 전체 선택 목록을 재나열하면
+          // 무엇이 실패했는지 알 수 없고 로그만 비대해진다 (2026-08-07 원인 추적 불가 사례)
+          details: failures.length > 0
+            ? `선택한 ${emails.length}개 중 ${failures.length}건 삭제 실패 — ${failures
+                .map((f) => `${f!.email}(${f!.reason || "사유 미상"})`)
+                .join(", ")
+                .slice(0, 3000)}`
+            : `계정 ${emails.length}개 일괄 삭제 완료. 대상: ${
+                emails.length > 30 ? `${emails.slice(0, 30).join(", ")} 외 ${emails.length - 30}건` : emails.join(", ")
+              }`,
           status: failures.length > 0 ? "failure" : "success",
           error: failures.length > 0 ? `${failures.length}건 실패` : undefined,
         });

@@ -17,11 +17,42 @@ if (!getApps().length) {
 export const adminDb = getFirestore();
 
 /**
+ * 이메일에 매칭되는 Firestore users/{uid} 문서를 전부 삭제합니다 (중복 uid 포함).
+ * users 문서는 로그인 시(sync-user) 생성만 되고 삭제 경로가 없어, 계정 삭제·재생성이
+ * 반복되면 유령·중복 문서가 쌓이는 결함(2026-08-07 실측: 유령 7건, 동일 이메일 5중복)의
+ * 재발 방지 장치. 실패해도 호출 흐름을 깨지 않는다 (베스트 에포트).
+ */
+export const deleteFirestoreUserDocsByEmail = async (email: string): Promise<number> => {
+  try {
+    const target = email.trim();
+    const variants = [...new Set([target, target.toLowerCase()])];
+    let deleted = 0;
+    for (const v of variants) {
+      const snap = await adminDb.collection("users").where("email", "==", v).get();
+      if (snap.empty) continue;
+      const batch = adminDb.batch();
+      snap.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      deleted += snap.size;
+    }
+    return deleted;
+  } catch (err: any) {
+    console.warn(`[Firebase Admin] users 문서 정리 실패 (${email}): ${err.message}`);
+    return 0;
+  }
+};
+
+/**
  * 이메일을 기준으로 Firebase Authentication 내 사용자 계정을 조회하여 삭제합니다.
  * 백엔드 동기화(전출, 삭제, 새학기 입학 전 stale 계정 정리) 시 호출되어
  * GWS UID 변경에 의한 auth/provider-already-linked 에러를 근본적으로 차단합니다.
+ *
+ * 함께: Firestore users/{uid} 문서도 이메일 기준으로 동반 정리합니다 — 이 함수는
+ * 모든 삭제·생성 전 정리 흐름이 지나는 단일 관문이므로, 여기 한 곳에 두면
+ * 개별/일괄/크론/전출 전 경로에서 유령 문서가 남지 않는다.
  */
 export const deleteAuthUserByEmail = async (email: string): Promise<boolean> => {
+  await deleteFirestoreUserDocsByEmail(email);
   try {
     const authAdmin = getAuth();
     const userRecord = await authAdmin.getUserByEmail(email);

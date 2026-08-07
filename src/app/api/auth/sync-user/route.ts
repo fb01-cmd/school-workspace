@@ -69,6 +69,22 @@ export async function POST(req: NextRequest) {
   const userRef = adminDb.collection("users").doc(uid);
   const snap = await userRef.get();
 
+  // 자가 치유: 같은 이메일로 남은 다른 uid 문서(계정 삭제·재생성 잔재)를 정리한다.
+  // 로그인마다 최신 uid 문서 하나만 남아, 고지 현황 등 users 전수 화면의 중복이 자연 소멸.
+  // 실패해도 로그인 흐름은 계속 (베스트 에포트).
+  try {
+    const dupSnap = await adminDb.collection("users").where("email", "==", email).get();
+    const stale = dupSnap.docs.filter((d) => d.id !== uid);
+    if (stale.length > 0) {
+      const batch = adminDb.batch();
+      stale.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      console.log(`[sync-user] ${email}의 구 uid 문서 ${stale.length}건 자가 정리`);
+    }
+  } catch (e: any) {
+    console.warn(`[sync-user] 구문서 자가 정리 실패 (${email}): ${e.message}`);
+  }
+
   try {
     if (STUDENT_EMAIL_REGEX.test(email)) {
       await userRef.set({
