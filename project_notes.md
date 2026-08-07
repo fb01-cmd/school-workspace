@@ -1918,3 +1918,8 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - 변경 파일: `src/components/admin/timetable/DirectSubstituteTab.tsx` (커밋: `53cb2c8`)
 - 검증 상태: tsc ✅ / build ✅
 - 조치 내용: 직권 배정 탭 3단계 후보 패널의 '👤 보강' 모드에 보강 후보 교사 목록 UI(부담 누계 `substituteCount`회 표시, `sameSubject` 동일 과목 배지, 카드 클릭 선택)를 완벽히 이식. 선택 시 `selectedCandidate`로 넘어가 담기(`cartItems`) 및 즉시 1건 반영(`direct_commit`) 경로와 상호 작동함.
+
+## [2026-08-07] Claude → 53cb2c8(직권 보강 후보 목록 UI) 표적 리뷰 **승인 ✅** (수정 0건)
+
+- 목록 UI(부담 누계 오름차순·동일 과목 배지·카드 선택→상세→담기/즉시 반영) 지시대로 이식. 위험 지점 정밀 확인: ① 담기·즉시 반영 핸들러 모두 보강 분기에서 `teacherEmail→counterpartEmail` 변환과 `type:"substitute"` 전송이 정확(서버 directCommit 재검증 경로와 합치) ② 맞교환↔보강 모드 전환 시 selectedCandidate 초기화로 객체 형태 혼선 차단 ③ 빈 목록·미선택 안내 문구 눈높이 준수. 탭에 후보 수 배지·맞교환 미선택 안내 추가는 개선. tsc 0·build ✅ Claude 직접 재확인.
+- **이로써 직권 배정 탭 3종(맞교환·보강·연쇄 이동) 완비 + 알림 설정 UI까지 배포 대기 상태.** 배포 차단 요소 없음 — 선행은 Vercel VAPID 키 2종뿐(앞 체크포인트 ⓐ).
