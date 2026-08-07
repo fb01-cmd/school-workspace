@@ -635,7 +635,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                       {isSourceWeek && <span className="text-[11px] font-bold bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded-full border border-indigo-200">📌 원 수업 소스 주간</span>}
                       {isRecentlyUpdated && <span className="text-[11px] font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-300">✨ 배정 결과 반영됨</span>}
                     </div>
-                    {selectedSlot && <span className="text-[11px] text-gray-500 font-semibold">맞교환 후보 {candidateListInWeek.length}건</span>}
+                    {/* 맞교환 모드에서만 — 보강 모드에 교환 배지가 남는 혼선 방지 (2026-08-08) */}
+                    {selectedSlot && activeCandidateType === "swap" && <span className="text-[11px] text-gray-500 font-semibold">맞교환 후보 {candidateListInWeek.length}건</span>}
                   </div>
                   <div className="border border-gray-200 rounded-xl overflow-hidden shadow-2xs">
                     <table className="w-full border-collapse text-xs">
