@@ -314,6 +314,7 @@ export type ManageAction =
   | "direct_commit"
   | "direct_commit_batch" // §14-4 직권 담기 일괄 반영 — direct_commit을 항목별 순차 실행 (부분 성공 허용)
   | "direct_projected" // §14-4 담기 가상 반영 그리드 — 대상 교사 전 주 시간표에 pendingItems 가상 적용 (my_projected의 직권 대응)
+  | "chain_search" // §C 징검다리 체인 — 소스 수업이 목적지 슬롯에 도달하는 교환 수열 역방향 탐색 (pre_opening_3features_spec §C-2)
   // ── Phase 9b 순서 5 운영 도구 (phase9b_spec §8) ──
   | "neis_list"
   | "hour_totals"
@@ -366,6 +367,8 @@ export interface ManageTimetableRequest {
   simulGroupId?: string; // simul_save(수정)·simul_delete 대상
   venueGroup?: Partial<VenueGroup>; // venue_save 본문 / venue_list 미리보기(previewCells) 요청 (§F)
   venueGroupId?: string; // venue_save(수정)·venue_delete 대상
+  chainTarget?: { weekId?: string; day: number; period: number }; // chain_search 목적지 (weekId 없으면 소스 주)
+  chainMaxDepth?: number; // chain_search 최대 교환 수 (기본 2, 상한 3 — §C-2)
   // 학사일정 (pre_opening_3features_spec §B)
   calendarEvent?: Partial<TimetableCalendarEvent>; // calendar_save 본문
   calendarEventId?: string; // calendar_save(수정)·calendar_delete 대상
@@ -723,6 +726,26 @@ export interface DirectPendingOverlayItem {
   type: SwapRequestType;
   source: SwapSourceSlot;
   candidate: SwapCandidateSnapshot;
+  /** §C 체인 단계처럼 담기 항목이 선택 교사가 아닌 다른 교사의 수업일 때의 소스 담당자.
+   *  없으면 오버레이는 선택 교사를 담당자로 간주한다(기존 담기 동작 그대로). 커밋은 어차피
+   *  서버가 소스 슬롯에서 교사를 재해석하므로(resolveDirectSource) 이 필드는 가상 반영·표시용. */
+  sourceTeacherEmail?: string;
+  sourceTeacherName?: string;
+}
+
+/** §C 징검다리 체인 한 단계 — 담기(pendingItems) 호환 + 사람용 요약 (pre_opening_3features_spec §C-2) */
+export interface ChainStepItem extends DirectPendingOverlayItem {
+  sourceTeacherEmail: string;
+  sourceTeacherName: string;
+  stepSummary: string; // "① 김OO 수3 → 금2 (이OO와 맞교환)"
+  score: number;
+  penalties: string[];
+}
+
+export interface ChainSearchChain {
+  steps: ChainStepItem[];
+  totalScore: number;
+  summary: string; // 단계 요약 연결
 }
 
 /** §14-4 직권 일괄 반영 항목 — direct_commit 단건과 동일 규약 + 항목별 사유 */

@@ -1839,3 +1839,15 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   2. **대시보드 최소화**: 교사·학생 홈 = 본인 주간시간표 + 급식 메뉴(로드맵 §2 2026-08-07 항목). 급식 서버 라우트(나이스 급식식단정보 API, Claude — 학교 코드 API 확인 포함) → 홈 화면 재구성(Antigravity). **사용자 액션: 나이스 교육정보 개방 포털(open.neis.go.kr) 인증키 발급(무료) — 키 없이도 소량 조회는 되므로 개발은 선행.**
   3. **웹 푸시(알리미 1단계)**: 시간표 변경 알림 — VAPID·구독 저장·발송 훅 설계·서버(Claude) → 알림 설정 UI(Antigravity). iorad 튜토리얼의 "알림 켜기" 단계로 권한은 선확보 흐름.
 - 이 체크포인트가 앞당김 작업의 앵커 — 진행 상황은 아래에 이어서 기록.
+
+## [2026-08-07] Claude → 앞당김 1·2차분 서버 완료 — §C 체인 엔진 + 급식 API ✅
+
+- **§C chain_search 구현** (spec §C-2 그대로): `computeChainSearch` — 두 갈래 DFS(ⓐ s 자체 이동 수열 ⓑ 목적지 점유 수업 선치우기), 각 수의 유효성·감점은 findSwap/CrossSwapCandidates를 가상 적용 상태 위에서 그대로 호출(엔진 판정 동일성 보장). maxDepth 기본 2·상한 3, 분기 상한 8/수, 시간 예산 3초(truncated 반환), 결과 최대 5체인 총감점 오름차순. 교차 주 목적지 지원. manage 액션 `chain_search` {weekId, source, chainTarget{weekId?,day,period}, chainMaxDepth} — 일과계 게이트 자동.
+- **담기 호환**: 단계 출력 = ChainStepItem(DirectPendingOverlayItem + sourceTeacherEmail/Name·stepSummary·score·penalties). **오버레이 보강**: buildDirectExtraOverlay가 항목별 sourceTeacherEmail 우선 사용 — 체인 단계(타 교사 수업)가 담기로 들어가도 direct_projected/재탐색 가상 반영이 올바른 교사 명의로 적용됨(커밋은 원래 resolveDirectSource라 무영향).
+- **실데이터 검증** (scripts/verify_chain_search.ts, 읽기 전용): 2-1 월2 사탐(서해인) 기준 공강 20곳 전수 — 깊이1 체인 = 기존 맞교환 후보와 8/8 정확 일치·불일치 0, **직접 불가 자리 4곳이 2수 체인으로 도달**(예: 월2→월7→월3, 감점 1), 전 단계 담기 형식 검사 통과.
+- **급식 API** (`/api/meal`, 대시보드 최소화용): 나이스 급식식단정보 프록시 — 학교 코드 실측(경기도교육청 J10/7530601, schoolInfo API), 키 없이 소량 조회 가동 확인(개학 첫 주 중식 실데이터 수신), NEIS_API_KEY 환경변수 지원(발급 시 주입만 하면 됨), 서버 캐시 1시간, 로그인 게이트(학생·교사 공용), 반찬 파싱(알레르기 코드 분리·장식문자 제거) 실샘플 검산. 
+- **검증**: tsc 0 · build ✅. **잔여(웹 푸시)**: 다음 세션 — VAPID·구독 모델·발송 훅 스펙부터.
+
+### 재개 문구 (다음 대화)
+- 웹 푸시: *"project_notes.md 마지막 체크포인트를 읽어줘. 알리미 웹 푸시(시간표 변경 알림) 스펙 잡고 서버부 구현하자."*
+- Antigravity(화면 3종): *"project_notes.md 마지막 체크포인트와 docs/pre_opening_3features_spec.md §C-3을 읽고 구현해줘: ① 직권 탭 체인 진입(대상 교사 그리드 공강 셀 클릭→'이 자리로 옮겨오기'→원본 수업 선택→chain_search 호출→체인 목록(단계 요약·감점) 표시→선택 시 steps를 담기 목록에 순서대로 적재 — 기존 cart 흐름 재사용, 담기 항목에 sourceTeacherEmail/Name 보존 필수) ② 교사 대시보드를 '내 주간시간표+오늘 급식' 중심으로 재구성 ③ 학생 포털에 급식 카드(/api/meal POST, 오늘·내일 중식) 추가. tsc·build 검증 후 ④ 양식으로 project_notes에 보고까지 남겨."*

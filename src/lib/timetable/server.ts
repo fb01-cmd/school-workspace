@@ -976,6 +976,8 @@ import { holidayNameOf } from "./holidays";
 import {
   BaseRevisionOp,
   CalendarEventType,
+  ChainSearchChain,
+  ChainStepItem,
   CrossSwapLessonRef,
   DirectPendingOverlayItem,
   HourTotalsResult,
@@ -1856,14 +1858,16 @@ function buildDirectExtraOverlay(
       e.source.grade === excludeSource.source.grade && e.source.classNum === excludeSource.source.classNum &&
       e.source.day === excludeSource.source.day && e.source.period === excludeSource.source.period;
     if (isExcluded) return;
+    // §C 체인 단계는 선택 교사가 아닌 다른 교사의 수업일 수 있다 — 항목에 실린 소스 담당자 우선
+    const stepEmail = (e.sourceTeacherEmail || requesterEmail).toLowerCase();
     const it: VirtualSwapItem = {
       key: `direct-${i}`,
       termId,
       weekId: e.weekId,
       targetWeekId: e.targetWeekId,
       type: e.type,
-      requesterEmail,
-      requesterName: requesterEmail.split("@")[0],
+      requesterEmail: stepEmail,
+      requesterName: e.sourceTeacherName || stepEmail.split("@")[0],
       source: e.source,
       candidate: e.candidate,
     };
@@ -3054,6 +3058,269 @@ export async function computeDirectCandidates(
     domain, resolved.info.teacherEmail, weekId, source, targetWeekId
   );
   return { ...computed, sourceTeacher: resolved.info };
+}
+
+// ── §C 징검다리(목표 지향 체인) 탐색 (pre_opening_3features_spec §C-2) ──
+
+const CHAIN_MAX_RESULTS = 5;
+const CHAIN_BRANCH_CAP = 8; // 단계당 확장 후보 상한 (분기 폭발 가드)
+const CHAIN_TIME_BUDGET_MS = 3000;
+
+/**
+ * 소스 수업 s가 목적지 슬롯 t에 도달하는 맞교환 수열을 탐색한다.
+ * 1수 = 기존 엔진의 유효 맞교환(하드 제외 전부: 동시수업·특별실·가상·복수교사) — 각 단계의
+ * 유효성·감점은 findSwap/CrossSwapCandidates를 가상 적용 상태 위에서 그대로 호출해 얻으므로
+ * 엔진과 판정이 어긋날 수 없다. 수열 형태는 두 갈래를 조합한다:
+ *   (i) s 자체를 옮기는 수: s→v→…→t (마지막 수가 t 도달)
+ *   (ii) t를 점유한 수업을 먼저 치우는 수: t의 수업을 다른 교시로 보낸 뒤 s→t
+ * 출력 단계는 담기(pendingItems) 호환 — 기존 direct_projected·direct_commit_batch 흐름을
+ * 그대로 재사용한다("먼저 비운 자리를 뒤 항목이 쓰는" 순차 승인 성질이 체인의 실행 기반).
+ */
+export async function computeChainSearch(
+  domain: string,
+  params: {
+    weekId: string;
+    source: { grade: number; classNum: number; day: number; period: number };
+    target: { weekId?: string; day: number; period: number };
+    maxDepth?: number;
+  }
+): Promise<{
+  chains: ChainSearchChain[];
+  sourceTeacher?: DirectSourceInfo;
+  truncated?: boolean;
+  error?: string;
+}> {
+  const maxDepth = Math.min(Math.max(Math.floor(params.maxDepth ?? 2), 1), 3);
+  const srcWeek = await loadWeek(domain, params.weekId);
+  if (!srcWeek) throw new Error(`등록되지 않은 주(${params.weekId})입니다.`);
+  const targetWeekId = params.target.weekId || params.weekId;
+  const tgtWeek =
+    targetWeekId === params.weekId ? srcWeek : await loadWeek(domain, targetWeekId);
+  if (!tgtWeek) throw new Error(`등록되지 않은 주(${targetWeekId})입니다.`);
+  if (tgtWeek.termId !== srcWeek.termId) throw new Error("다른 학기의 주로는 옮길 수 없습니다.");
+  if (
+    targetWeekId === params.weekId &&
+    params.target.day === params.source.day &&
+    params.target.period === params.source.period
+  ) {
+    return { chains: [], error: "이미 그 자리에 있는 수업입니다." };
+  }
+
+  const termId = srcWeek.termId;
+  const involved = targetWeekId === params.weekId ? [srcWeek] : [srcWeek, tgtWeek];
+  const [baseByWeek, settings] = await Promise.all([
+    loadBaseGridsByWeek(domain, termId, involved.map((w) => w.startDate)),
+    loadTimetableSettings(domain),
+  ]);
+  const changesByWeek = new Map(
+    await Promise.all(involved.map(async (w) => [w.id, await loadWeekChanges(domain, w.id)] as const))
+  );
+  const weekOf = new Map(involved.map((w) => [w.id, w]));
+
+  // 체인 접두(prefix)를 가상 change로 변환해 관련 주를 합성 — 단계마다 실제 담당 교사 명의
+  const synthWith = (steps: ChainStepItem[]): Map<string, WeeklyClassGrid[]> => {
+    const futureBase = Date.now() + 30_000_000; // 실 변경·담기 오버레이(+20M)보다 뒤
+    const virtualByWeek = new Map<string, TimetableChange[]>();
+    steps.forEach((s, i) => {
+      const it: VirtualSwapItem = {
+        key: `chain-${i}`,
+        termId,
+        weekId: s.weekId,
+        targetWeekId: s.targetWeekId,
+        type: s.type,
+        requesterEmail: s.sourceTeacherEmail,
+        requesterName: s.sourceTeacherName,
+        source: s.source,
+        candidate: s.candidate,
+      };
+      for (const w of involved) {
+        const chs = buildVirtualChanges(it, w.id, futureBase + i);
+        if (chs.length) virtualByWeek.set(w.id, [...(virtualByWeek.get(w.id) || []), ...chs]);
+      }
+    });
+    const out = new Map<string, WeeklyClassGrid[]>();
+    for (const w of involved) {
+      const { grids } = synthesizeWeeklyGrids(
+        baseByWeek.get(w.startDate)!,
+        w,
+        [...(changesByWeek.get(w.id) || []), ...(virtualByWeek.get(w.id) || [])],
+        settings
+      );
+      out.set(w.id, grids);
+    }
+    return out;
+  };
+
+  // 이동 대상 수업(s)·담당 교사 확정
+  const grids0 = synthWith([]).get(params.weekId)!;
+  const resolved = resolveDirectSource(grids0, params.source);
+  if (!resolved.ok) return { chains: [], error: resolved.error };
+  const mover = resolved.info;
+
+  const DAYS_KO = ["", "월", "화", "수", "목", "금"];
+  const slotLabel = (weekId: string, day: number, period: number) => {
+    const w = weekOf.get(weekId)!;
+    const [, m, d] = w.startDate.split("-");
+    const prefix = involved.length > 1 ? `${Number(m)}/${Number(d)}주 ` : "";
+    return `${prefix}${DAYS_KO[day]}${period}`;
+  };
+
+  const makeStep = (
+    idx: number,
+    who: { email: string; name: string },
+    fromWeekId: string,
+    fromSlot: { day: number; period: number },
+    subjectName: string,
+    cand: SwapCandidate,
+    cross: boolean
+  ): ChainStepItem => ({
+    weekId: fromWeekId,
+    ...(cross ? { targetWeekId } : {}),
+    type: cross ? "cross_swap" : "swap",
+    source: {
+      grade: params.source.grade,
+      classNum: params.source.classNum,
+      day: fromSlot.day,
+      period: fromSlot.period,
+      subjectName,
+    },
+    candidate: {
+      targetDay: cand.targetDay,
+      targetPeriod: cand.targetPeriod,
+      ...(cross ? { targetWeekId } : {}),
+      counterpartEmail: cand.counterpartEmail,
+      counterpartName: cand.counterpartName,
+      counterpartSubjectName: cand.counterpartSubjectName,
+      score: cand.score,
+      penalties: cand.penalties,
+    },
+    sourceTeacherEmail: who.email,
+    sourceTeacherName: who.name,
+    stepSummary: `${who.name} ${slotLabel(fromWeekId, fromSlot.day, fromSlot.period)} → ${slotLabel(cross ? targetWeekId : fromWeekId, cand.targetDay, cand.targetPeriod)} (맞교환 상대: ${cand.counterpartName})`,
+    score: cand.score,
+    penalties: cand.penalties,
+  });
+
+  const chains: ChainSearchChain[] = [];
+  let truncated = false;
+  const deadline = Date.now() + CHAIN_TIME_BUDGET_MS;
+  const seenChains = new Set<string>();
+
+  const pushChain = (steps: ChainStepItem[]) => {
+    const key = steps
+      .map((s) => `${s.weekId}:${s.source.day}-${s.source.period}>${s.candidate.targetDay}-${s.candidate.targetPeriod}:${s.candidate.counterpartEmail}`)
+      .join("|");
+    if (seenChains.has(key)) return;
+    seenChains.add(key);
+    chains.push({
+      steps: steps.map((s, i) => ({ ...s, stepSummary: `${"①②③"[i] || `${i + 1}.`} ${s.stepSummary}` })),
+      totalScore: steps.reduce((sum, s) => sum + s.score, 0),
+      summary: steps.map((s, i) => `${"①②③"[i] || `${i + 1}.`} ${s.stepSummary}`).join("  "),
+    });
+  };
+
+  // 깊이 우선 탐색. sPos = s의 현재 위치(가상 적용 후), depth = 사용한 교환 수
+  const dfs = (
+    steps: ChainStepItem[],
+    sPos: { weekId: string; day: number; period: number },
+    visitedSlots: Set<string>
+  ) => {
+    if (chains.length >= CHAIN_MAX_RESULTS * 3) return; // 정렬 전 여유 수집 상한
+    if (Date.now() > deadline) {
+      truncated = true;
+      return;
+    }
+    const depth = steps.length;
+    if (depth >= maxDepth) return;
+    const gridsMap = synthWith(steps);
+    const sGrids = gridsMap.get(sPos.weekId)!;
+    const sWeek = weekOf.get(sPos.weekId)!;
+    const sSource: SwapSourceSlot = {
+      grade: params.source.grade,
+      classNum: params.source.classNum,
+      day: sPos.day,
+      period: sPos.period,
+      subjectName: mover.subjectName,
+    };
+
+    // ── (i) s 자체의 이동 후보 ──
+    const collect: Array<{ cand: SwapCandidate; cross: boolean }> = [];
+    const same = findSwapCandidates(sGrids, sWeek, settings, mover.teacherEmail, sSource);
+    (same.candidates || []).forEach((cand) => collect.push({ cand, cross: false }));
+    if (sPos.weekId !== targetWeekId) {
+      const cross = findCrossSwapCandidates(
+        sGrids, sWeek, gridsMap.get(targetWeekId)!, tgtWeek, settings, mover.teacherEmail, sSource
+      );
+      (cross.candidates || []).forEach((cand) => collect.push({ cand, cross: true }));
+    }
+    let branched = 0;
+    for (const { cand, cross } of collect) {
+      const landsWeek = cross ? targetWeekId : sPos.weekId;
+      const isGoal =
+        landsWeek === targetWeekId &&
+        cand.targetDay === params.target.day &&
+        cand.targetPeriod === params.target.period;
+      if (isGoal) {
+        pushChain([...steps, makeStep(depth, { email: mover.teacherEmail, name: mover.teacherName }, sPos.weekId, sPos, mover.subjectName, cand, cross)]);
+        continue;
+      }
+      if (depth + 1 >= maxDepth) continue; // 남은 수가 없으면 중간 이동 무의미
+      const slotKey = `${landsWeek}:${cand.targetDay}-${cand.targetPeriod}`;
+      if (visitedSlots.has(slotKey) || branched >= CHAIN_BRANCH_CAP) continue;
+      branched++;
+      dfs(
+        [...steps, makeStep(depth, { email: mover.teacherEmail, name: mover.teacherName }, sPos.weekId, sPos, mover.subjectName, cand, cross)],
+        { weekId: landsWeek, day: cand.targetDay, period: cand.targetPeriod },
+        new Set([...visitedSlots, slotKey])
+      );
+      if (Date.now() > deadline) { truncated = true; return; }
+    }
+
+    // ── (ii) 목적지 점유 수업 치우기 (남은 수 2 이상일 때만 의미) ──
+    if (depth + 2 > maxDepth) return;
+    const tGrids = gridsMap.get(targetWeekId)!;
+    const occ = resolveDirectSource(tGrids, {
+      grade: params.source.grade,
+      classNum: params.source.classNum,
+      day: params.target.day,
+      period: params.target.period,
+    });
+    if (!occ.ok) return; // 점유 수업이 없거나(빈 셀) 하드 제외 대상이면 이 갈래 없음
+    if (occ.info.teacherEmail === mover.teacherEmail) return;
+    const occSource: SwapSourceSlot = {
+      grade: params.source.grade,
+      classNum: params.source.classNum,
+      day: params.target.day,
+      period: params.target.period,
+      subjectName: occ.info.subjectName,
+    };
+    const occRes = findSwapCandidates(tGrids, tgtWeek, settings, occ.info.teacherEmail, occSource);
+    let occBranched = 0;
+    for (const cand of occRes.candidates || []) {
+      // s의 현재 자리로 옮기는 수는 곧 s↔점유 수업 직접 교환 — (i)의 goal 후보와 중복이라 제외
+      if (
+        targetWeekId === sPos.weekId &&
+        cand.targetDay === sPos.day && cand.targetPeriod === sPos.period
+      ) continue;
+      if (occBranched >= CHAIN_BRANCH_CAP) break;
+      occBranched++;
+      dfs(
+        [...steps, makeStep(depth, { email: occ.info.teacherEmail, name: occ.info.teacherName }, targetWeekId, { day: params.target.day, period: params.target.period }, occ.info.subjectName, cand, false)],
+        sPos,
+        visitedSlots
+      );
+      if (Date.now() > deadline) { truncated = true; return; }
+    }
+  };
+
+  dfs([], { weekId: params.weekId, day: params.source.day, period: params.source.period }, new Set());
+
+  chains.sort((a, b) => a.totalScore - b.totalScore || a.steps.length - b.steps.length);
+  return {
+    chains: chains.slice(0, CHAIN_MAX_RESULTS),
+    sourceTeacher: mover,
+    ...(truncated ? { truncated: true } : {}),
+  };
 }
 
 /**

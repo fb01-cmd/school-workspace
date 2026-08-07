@@ -17,6 +17,7 @@ import {
   validateCalendarEventPayload,
   validateRevisionOps,
   computeCandidatesAllWeeks,
+  computeChainSearch,
   computeDirectCandidates,
   computeDirectProjectedWeeks,
   computeHourTotals,
@@ -468,6 +469,27 @@ export async function POST(req: NextRequest) {
         const result = await computeDirectProjectedWeeks(
           domain, String(body.teacherEmail).trim().toLowerCase(), pendingItems
         );
+        return NextResponse.json({ success: true, action, ...result });
+      }
+
+      // §C 징검다리 체인 — 소스 수업이 목적지 슬롯에 도달하는 교환 수열 탐색 (pre_opening_3features_spec §C-2)
+      case "chain_search": {
+        const src = body.source as any;
+        const tgt = body.chainTarget as any;
+        const okSlot = (o: any, keys: string[]) =>
+          o && keys.every((k) => Number.isInteger(o[k]) && o[k] > 0);
+        if (!body.weekId || !okSlot(src, ["grade", "classNum", "day", "period"])) {
+          return NextResponse.json({ error: "weekId와 source(grade·classNum·day·period)가 필요합니다." }, { status: 400 });
+        }
+        if (!okSlot(tgt, ["day", "period"])) {
+          return NextResponse.json({ error: "chainTarget(day·period)가 필요합니다." }, { status: 400 });
+        }
+        const result = await computeChainSearch(domain, {
+          weekId: body.weekId,
+          source: { grade: src.grade, classNum: src.classNum, day: src.day, period: src.period },
+          target: { weekId: tgt.weekId || undefined, day: tgt.day, period: tgt.period },
+          maxDepth: body.chainMaxDepth,
+        });
         return NextResponse.json({ success: true, action, ...result });
       }
 
