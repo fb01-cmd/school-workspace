@@ -461,6 +461,63 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setGeneratingShareFor(counterpartEmail);
     try {
       const counterpartName = counterpartItems[0].counterpartName || "선생님";
+
+      // ── 교환 항목 순 효과 접기 (net-fold) ──
+      // 체인(§C)은 같은 수업이 여러 다리를 경유하므로, 다리별 나열은 경유 슬롯을 들어옴·빠짐으로
+      // 이중 계상하고 제3 교사 수업을 선택 교사 명의로 오표기한다 (2026-08-08 실증: 최명수 카드).
+      // 담기 순서(=반영 순서)대로 가상 적용해 수업별 (시작 → 최종) 위치만 남긴다.
+      const subItems = counterpartItems.filter((ci) => ci.type === "substitute");
+      const swapItems = counterpartItems.filter((ci) => ci.type !== "substitute");
+      const slotKey = (w: string, d: number, p: number) => `${w}|${d}|${p}`;
+      type FoldLesson = {
+        ownerName: string; ownerEmail?: string; grade: number; classNum: number; subjectName: string;
+        initial: { weekId: string; day: number; period: number };
+        current: { weekId: string; day: number; period: number };
+      };
+      const foldLessons: FoldLesson[] = [];
+      const occupant = new Map<string, number>(); // slotKey → foldLessons index
+      const ensureLesson = (
+        w: string, d: number, p: number,
+        seed: { ownerName: string; ownerEmail?: string; grade: number; classNum: number; subjectName: string }
+      ): number => {
+        const k = slotKey(w, d, p);
+        const found = occupant.get(k);
+        if (found !== undefined) return found;
+        foldLessons.push({ ...seed, initial: { weekId: w, day: d, period: p }, current: { weekId: w, day: d, period: p } });
+        occupant.set(k, foldLessons.length - 1);
+        return foldLessons.length - 1;
+      };
+      for (const item of swapItems) {
+        if (!item.candidate.targetDay || !item.candidate.targetPeriod) continue;
+        const sW = item.weekId, tW = item.targetWeekId || item.weekId;
+        // 맞교환은 같은 반 안에서 성립 — source의 반이 곧 상대 수업의 반
+        const a = ensureLesson(sW, item.source.day, item.source.period, {
+          ownerName: item.sourceTeacherName || selectedTeacherName || "담당 교사",
+          ownerEmail: (item.sourceTeacherEmail || selectedTeacherEmail || "").toLowerCase() || undefined,
+          grade: item.source.grade, classNum: item.source.classNum, subjectName: item.source.subjectName,
+        });
+        const b = ensureLesson(tW, item.candidate.targetDay, item.candidate.targetPeriod, {
+          ownerName: item.counterpartName || "상대 교사",
+          ownerEmail: item.counterpartEmail?.toLowerCase(),
+          grade: item.source.grade, classNum: item.source.classNum, subjectName: item.counterpartSubjectName || "수업",
+        });
+        const slotA = { ...foldLessons[a].current };
+        const slotB = { ...foldLessons[b].current };
+        foldLessons[a].current = slotB;
+        foldLessons[b].current = slotA;
+        occupant.set(slotKey(slotA.weekId, slotA.day, slotA.period), b);
+        occupant.set(slotKey(slotB.weekId, slotB.day, slotB.period), a);
+      }
+      const netMoves: ConsolidatedShareData["netMoves"] = foldLessons
+        .filter((l) => slotKey(l.initial.weekId, l.initial.day, l.initial.period) !== slotKey(l.current.weekId, l.current.day, l.current.period))
+        .map((l) => ({
+          ownerName: l.ownerName,
+          isRecipient: !!l.ownerEmail && l.ownerEmail === counterpartEmail.toLowerCase(),
+          grade: l.grade, classNum: l.classNum, subjectName: l.subjectName,
+          from: l.initial, to: l.current,
+        }))
+        .sort((x, y) => (y.isRecipient ? 1 : 0) - (x.isRecipient ? 1 : 0));
+
       const weekIds = Array.from(new Set(counterpartItems.flatMap((item) => [item.weekId, item.targetWeekId].filter(Boolean) as string[])));
       const weekBlocks = await Promise.all(weekIds.map(async (wId) => {
         const wObj = weeks.find((w) => w.id === wId);
@@ -472,15 +529,15 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           if (res.ok) { const data = await res.json(); cells = data.data?.cells || []; previewCacheRef.current.set(cacheKey, cells); }
         }
         const markers: ConsolidatedShareData["weekBlocks"][number]["markers"] = [];
-        counterpartItems.forEach((item) => {
-          // out(빠짐) 라벨도 반 코드로 — 맞교환은 같은 반 안에서 일어나므로 source의 반이 곧 상대 수업의 반
-          const outLabel = `${item.source.grade}-${item.source.classNum}`;
-          if (item.targetWeekId && item.targetWeekId !== item.weekId) {
-            if (wId === item.weekId) markers.push({ day: item.source.day, period: item.source.period, kind: "in", label: `${item.source.grade}-${item.source.classNum}반 ${item.source.subjectName}` });
-            if (wId === item.targetWeekId && item.candidate.targetDay && item.candidate.targetPeriod) markers.push({ day: item.candidate.targetDay, period: item.candidate.targetPeriod, kind: "out", label: outLabel });
-          } else {
-            if (wId === item.weekId) { markers.push({ day: item.source.day, period: item.source.period, kind: "in", label: `${item.source.grade}-${item.source.classNum}반 ${item.source.subjectName}` }); if (item.candidate.targetDay && item.candidate.targetPeriod) markers.push({ day: item.candidate.targetDay, period: item.candidate.targetPeriod, kind: "out", label: outLabel }); }
-          }
+        // 보강: 요청측 수업이 상대 시간표로 들어옴 (넘겨받는 수업이므로 요청측 과목 라벨이 맞다)
+        subItems.forEach((item) => {
+          if (wId === item.weekId) markers.push({ day: item.source.day, period: item.source.period, kind: "in", label: `${item.source.grade}-${item.source.classNum}반 ${item.source.subjectName}` });
+        });
+        // 교환: 수신자 본인 수업의 순 이동만 마킹 — 경유 슬롯은 접혀서 마커 없음.
+        // 들어옴 라벨은 본인 수업 과목(체인 이전엔 요청측 과목으로 오표기되던 결함 함께 교정)
+        (netMoves || []).filter((m) => m.isRecipient).forEach((m) => {
+          if (m.from.weekId === wId) markers.push({ day: m.from.day, period: m.from.period, kind: "out", label: `${m.grade}-${m.classNum}` });
+          if (m.to.weekId === wId) markers.push({ day: m.to.day, period: m.to.period, kind: "in", label: `${m.grade}-${m.classNum}반 ${m.subjectName}` });
         });
         return { weekId: wId, startDate: wObj?.startDate || wId, cells, markers };
       }));
@@ -492,7 +549,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         senderLabel: operatorName, // 직책 없이 이름만 — "○○○입니다" (2026-08-06 사용자 확정: "일과계" 표기도 제외)
         ownerLabel: selectedTeacherName ? `${selectedTeacherName} 선생님의` : "해당",
         counterpartName,
-        items: counterpartItems.map((ci) => ({ id: ci.id, type: ci.type, sourceWeekId: ci.weekId, targetWeekId: ci.targetWeekId, source: ci.source, candidate: ci.candidate })),
+        // netMoves 경로: items는 보강만 전달 — 교환은 netMoves가 렌더를 대체한다
+        items: subItems.map((ci) => ({ id: ci.id, type: ci.type, sourceWeekId: ci.weekId, targetWeekId: ci.targetWeekId, source: ci.source, candidate: ci.candidate })),
+        netMoves,
+        swapStepCount: swapItems.length,
         weekBlocks,
         periodsPerDay: 7,
       };

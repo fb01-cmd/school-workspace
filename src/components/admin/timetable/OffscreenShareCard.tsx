@@ -25,6 +25,18 @@ export interface ShareCardData {
   periodsPerDay?: number;
 }
 
+/** 체인 접기 결과: 한 수업의 (시작 → 최종) 순 이동. 경유 슬롯은 접혀서 나타나지 않는다 */
+export interface ConsolidatedNetMove {
+  ownerName: string;
+  /** 이 수업의 소유자가 카드 수신자(상대 교사) 본인인지 — 본인 이동은 앰버 강조·마커 대상 */
+  isRecipient: boolean;
+  grade: number;
+  classNum: number;
+  subjectName: string;
+  from: { weekId: string; day: number; period: number };
+  to: { weekId: string; day: number; period: number };
+}
+
 export interface ConsolidatedShareData {
   requesterName: string;
   /** §14-4: 발신자 표기 재정의 (예: "일과계 ○○○") — 없으면 "{requesterName} 교사". 직권 카드는 조작자 명의로 양해를 구한다 */
@@ -32,6 +44,13 @@ export interface ConsolidatedShareData {
   /** §14-4: 교환 목록에서 수업 소유자 표기 — 없으면 "제"(교사 본인 발신). 직권 카드는 "○○○ 선생님의" */
   ownerLabel?: string;
   counterpartName: string;
+  /** 교환(swap·cross_swap) 항목의 순 효과 접기 결과. 있으면 교환 목록을 이걸로 그린다 —
+   *  체인은 다리(leg)별 나열 시 경유 슬롯이 들어옴·빠짐으로 이중 계상되고 제3 교사 수업의
+   *  소유자가 ownerLabel로 오표기되므로, 최종 결과 기준으로만 보여준다 (2026-08-08 실증).
+   *  이 필드가 없으면 기존 항목별 렌더(교사 신청 화면 등 비체인 경로) 유지 */
+  netMoves?: ConsolidatedNetMove[];
+  /** netMoves 경로에서 원 교환 항목 수 — 2건 이상이면 "단계적 반영·최종 결과 기준" 참고 문구 표시 */
+  swapStepCount?: number;
   items: SwapDraft[] | Array<{
     id?: string;
     /** "substitute"면 보강 요청 서식 — 상대는 수업을 받기만 하므로 교환 문구를 쓰지 않는다 (2026-08-07) */
@@ -258,9 +277,18 @@ export function OffscreenConsolidatedCard({
     return <div ref={cardRef} style={{ position: "absolute", left: "-9999px", top: "-9999px", pointerEvents: "none" }} />;
   }
 
-  const n = data.items.length;
+  // netMoves 경로: 교환은 순 효과(수신자 본인 이동 건수)로, 보강은 items로 계수한다
+  const netMode = Array.isArray(data.netMoves);
+  const recipientMoves = netMode ? data.netMoves!.filter((m) => m.isRecipient) : [];
+  const contextMoves = netMode ? data.netMoves!.filter((m) => !m.isRecipient) : [];
+  const subItems = data.items.filter((d: any) => d.type === "substitute");
+  const n = netMode ? recipientMoves.length + subItems.length : data.items.length;
   // 보강 항목은 상대가 수업을 "받기만" 하므로 교환 서식을 쓰면 안 된다 (2026-08-07 실증: 보강 담기가 교환 양해로 출력)
-  const kinds = new Set(data.items.map((d: any) => d.type === "substitute" ? "substitute" : "swap"));
+  const kinds = new Set(
+    netMode
+      ? [...(recipientMoves.length || contextMoves.length ? ["swap"] : []), ...(subItems.length ? ["substitute"] : [])]
+      : data.items.map((d: any) => (d.type === "substitute" ? "substitute" : "swap"))
+  );
   const allSub = kinds.size === 1 && kinds.has("substitute");
   const allSwap = kinds.size === 1 && kinds.has("swap");
   const cardTitle = allSub ? "수업 보강 요청" : allSwap ? "수업교환 양해 요청" : "수업 교체·보강 요청";
@@ -297,7 +325,41 @@ export function OffscreenConsolidatedCard({
           <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5">
             {listHeader}
           </div>
-          {data.items.map((d: any, i) => {
+          {netMode && (
+            <>
+              {recipientMoves.map((m, i) => (
+                <div key={`rm${i}`} className="flex items-start gap-2 bg-amber-50/90 border border-amber-200 rounded-lg p-2.5">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-amber-600 text-white text-[10px] font-black flex items-center justify-center mt-0.5">
+                    {i + 1}
+                  </span>
+                  <div className="font-bold text-amber-900">
+                    선생님의 {m.grade}-{m.classNum}반 {m.subjectName} : {formatSlotWithDate(m.from.weekId, m.from.day, m.from.period)} → {formatSlotWithDate(m.to.weekId, m.to.day, m.to.period)}
+                  </div>
+                </div>
+              ))}
+              {recipientMoves.length === 0 && subItems.length === 0 && (
+                <div className="bg-white border border-gray-200 rounded-lg p-2.5 text-gray-600 font-medium">
+                  선생님 시간표의 최종 변동은 없습니다. 아래 수업 재배치에 대한 확인 요청입니다.
+                </div>
+              )}
+              {contextMoves.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-lg p-2.5 space-y-1">
+                  <div className="text-[10px] font-extrabold text-gray-500">함께 바뀌는 수업</div>
+                  {contextMoves.map((m, i) => (
+                    <div key={`cm${i}`} className="font-semibold text-emerald-900">
+                      {m.ownerName} 선생님의 {m.grade}-{m.classNum}반 {m.subjectName} : {formatSlotWithDate(m.from.weekId, m.from.day, m.from.period)} → {formatSlotWithDate(m.to.weekId, m.to.day, m.to.period)}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(data.swapStepCount || 0) >= 2 && (
+                <div className="text-[10px] text-gray-400 font-medium pt-0.5">
+                  ※ 여러 단계로 나뉘어 처리되는 교환이지만, 위 내용과 아래 시간표는 최종 결과 기준입니다.
+                </div>
+              )}
+            </>
+          )}
+          {(netMode ? subItems : data.items).map((d: any, i) => {
             const tgtWeek = d.targetWeekId || d.sourceWeekId;
             const srcSlot = formatSlotWithDate(d.sourceWeekId, d.source.day, d.source.period);
             const tgtSlot = formatSlotWithDate(tgtWeek, d.candidate.targetDay, d.candidate.targetPeriod);
@@ -305,7 +367,7 @@ export function OffscreenConsolidatedCard({
             return (
               <div key={d.id || i} className="flex items-start gap-2 bg-white border border-gray-200 rounded-lg p-2.5">
                 <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center mt-0.5">
-                  {i + 1}
+                  {(netMode ? recipientMoves.length : 0) + i + 1}
                 </span>
                 {isSub ? (
                   <div className="space-y-0.5">
