@@ -1606,12 +1606,38 @@ export async function POST(req: NextRequest) {
         const defaultDeadline = new Date();
         defaultDeadline.setFullYear(defaultDeadline.getFullYear() + 1);
 
-        // Firestore에 전출 작업 등록 (originalOU 포함)
+        // 3-1. 조직도 프로필 정리 (2026-08-07 조직도 잔존 결함 수정)
+        // teacher_profiles가 남으면 조직도·담임 조회에 유령으로 잡힌다. 원본은 전출 작업
+        // 문서에 보관해 cancel_teacher_transfer가 그대로 복원한다. 재등록 시(이미 삭제됨)
+        // 기존 보관본을 보존한다 (originalOU 가드와 동일 원리).
+        const profileKey = teacherEmail.toLowerCase();
+        let archivedProfile: any = prevTaskSnap.exists ? prevTaskSnap.data()?.archivedProfile || null : null;
+        let archivedPending: any = prevTaskSnap.exists ? prevTaskSnap.data()?.archivedPending || null : null;
+        try {
+          const profRef = adminDb.collection("teacher_profiles").doc(profileKey);
+          const profSnap = await profRef.get();
+          if (profSnap.exists) {
+            archivedProfile = profSnap.data();
+            await profRef.delete();
+          }
+          const pendRef = adminDb.collection("teacher_profiles_pending").doc(profileKey);
+          const pendSnap = await pendRef.get();
+          if (pendSnap.exists) {
+            archivedPending = pendSnap.data();
+            await pendRef.delete();
+          }
+        } catch (profErr: any) {
+          console.warn(`전출 등록: 조직도 프로필 정리 실패(계속 진행) — ${profileKey}:`, profErr?.message);
+        }
+
+        // Firestore에 전출 작업 등록 (originalOU·보관 프로필 포함)
         await taskRef.set({
           email: teacherEmail,
           name: teacherName || teacherEmail,
           status: "PENDING_DEADLINE",
           originalOU,
+          ...(archivedProfile ? { archivedProfile } : {}),
+          ...(archivedPending ? { archivedPending } : {}),
           registeredAt: new Date(),
           deadlineDate: defaultDeadline,
           deadlineSetAt: null,
@@ -1745,6 +1771,19 @@ export async function POST(req: NextRequest) {
               groupResults.push({ group: groupEmail, success: false, error: gErr.message });
             }
           }
+        }
+
+        // 1-1. 조직도 프로필 복원 — 전출 등록 시 보관해 둔 원본 그대로 (2026-08-07)
+        try {
+          const restoreKey = teacherEmail.toLowerCase();
+          if (taskData?.archivedProfile) {
+            await adminDb.collection("teacher_profiles").doc(restoreKey).set(taskData.archivedProfile);
+          }
+          if (taskData?.archivedPending) {
+            await adminDb.collection("teacher_profiles_pending").doc(restoreKey).set(taskData.archivedPending);
+          }
+        } catch (profErr: any) {
+          console.warn(`전출 취소: 조직도 프로필 복원 실패(계속 진행):`, profErr?.message);
         }
 
         // 2. Firestore 전출 큐 삭제
@@ -2010,6 +2049,29 @@ export async function POST(req: NextRequest) {
 
         // OB 보존실 OU로 이동 (계정 active 유지)
         await updateUser(teacherEmail, { orgUnitPath: teachersOBPath });
+
+        // 조직도 프로필 정리 — 명퇴는 취소 액션이 없으므로 보관소 컬렉션으로 이동 (2026-08-07)
+        try {
+          const profileKey = teacherEmail.toLowerCase();
+          const archiveRef = adminDb
+            .collection("teacher_profiles_archive").doc(domain || teacherEmail.split("@")[1] || "unknown")
+            .collection("profiles").doc(profileKey);
+          const profRef = adminDb.collection("teacher_profiles").doc(profileKey);
+          const profSnap = await profRef.get();
+          if (profSnap.exists) {
+            await archiveRef.set({
+              ...profSnap.data(),
+              archivedAt: Date.now(),
+              archivedBy: adminEmail,
+              archiveReason: "honorary_retirement",
+            });
+            await profRef.delete();
+          }
+          const pendRef = adminDb.collection("teacher_profiles_pending").doc(profileKey);
+          if ((await pendRef.get()).exists) await pendRef.delete();
+        } catch (profErr: any) {
+          console.warn(`명예퇴임: 조직도 프로필 정리 실패(계속 진행):`, profErr?.message);
+        }
 
         await writeAuditLog({
           operatorEmail: adminEmail,

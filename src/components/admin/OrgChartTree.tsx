@@ -55,6 +55,27 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
     return t.name || email.split("@")[0];
   };
 
+  // 재직자 이메일 집합 (2026-08-07 조직도 잔존 결함 수정) — OrgChartBuilder.teacherUserList와
+  // 같은 기준으로 전출·명퇴 계정의 잔존 프로필을 트리에서 숨긴다. 캐시가 없으면 null(필터 생략).
+  const activeEmails = useMemo(() => {
+    const cachedUsers = getClientCache("users:all");
+    if (!Array.isArray(cachedUsers) || cachedUsers.length === 0) return null;
+    const teacherOU = ((schoolSettings as any)?.ouMapping?.teachers || "").toLowerCase();
+    const set = new Set<string>();
+    cachedUsers.forEach((u: any) => {
+      const email = (u.primaryEmail || u.email || "").toLowerCase();
+      if (!email || /^\d{5}@/.test(email)) return;
+      const orgPath = (u.orgUnitPath || "").toLowerCase();
+      if (teacherOU) {
+        if (orgPath !== teacherOU && !orgPath.startsWith(teacherOU + "/")) return;
+      } else if (orgPath.includes("student") || orgPath.includes("학생")) {
+        return;
+      }
+      set.add(email);
+    });
+    return set;
+  }, [profiles, schoolSettings]);
+
   // Real-time subscription to teacher_profiles collection
   useEffect(() => {
     const q = query(collection(db, "teacher_profiles"));
@@ -169,6 +190,8 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
 
     // Filter profiles by search query if present
     const filteredProfiles = profiles.filter((p) => {
+      // 재직자 필터 — 전출·명퇴 잔존 프로필 숨김 (2026-08-07)
+      if (activeEmails && !activeEmails.has(p.email.toLowerCase())) return false;
       if (!q) return true;
       const name = getDisplayName(p).toLowerCase();
       const email = p.email.toLowerCase();
@@ -215,7 +238,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
       noDeptMembers: sortedNoDept,
       totalCount: profiles.length,
     };
-  }, [profiles, departmentOrder, searchQuery]);
+  }, [profiles, departmentOrder, searchQuery, activeEmails]);
 
   if (loading) {
     return (

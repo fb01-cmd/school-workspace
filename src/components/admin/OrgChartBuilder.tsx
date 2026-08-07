@@ -275,6 +275,18 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
     profiles.forEach((p) => p.email && allEmails.add(p.email.toLowerCase()));
     Object.keys(stagedProfiles).forEach((e) => allEmails.add(e.toLowerCase()));
 
+    // 재직자 필터 (2026-08-07 조직도 잔존 결함 수정) — 전출·명퇴로 교직원 OU를 떠난 계정의
+    // 잔존 프로필을 트리에서 제외한다. 명단(teacherUserList)과 같은 기준. GWS 목록이 아직
+    // 안 왔으면 필터를 걸지 않고(빈 화면 방지), 스테이징 중인 이메일은 항상 표시한다.
+    const activeEmails = new Set(
+      teacherUserList.map((u: any) => (u.primaryEmail || u.email || "").toLowerCase()).filter(Boolean)
+    );
+    if (gwsTeachers.length > 0) {
+      [...allEmails].forEach((email) => {
+        if (!activeEmails.has(email) && !stagedProfiles[email]) allEmails.delete(email);
+      });
+    }
+
     allEmails.forEach((email) => {
       const p = getEffectiveProfile(email);
       const depts = p.departments || [];
@@ -296,7 +308,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
     });
 
     return { sortedMap, noDeptList };
-  }, [profiles, stagedProfiles, departmentOrder, gwsTeachers]);
+  }, [profiles, stagedProfiles, departmentOrder, gwsTeachers, teacherUserList]);
 
   // ─── §7-1 로컬 스테이징 액션 (즉시 저장 폐지 → 로컬 갱신) ─────────────
 

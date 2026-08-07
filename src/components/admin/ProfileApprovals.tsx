@@ -68,17 +68,19 @@ export default function ProfileApprovals() {
     return () => unsub();
   }, [userData?.domain, userData?.role]);
 
-  // 2. 이미 승인된 담임 프로필 실시간 구독 (공동담임 겹침 경고 검출용 — 승인 탭 전용)
+  // 승인 완료 프로필 전체 (email -> 현재 반영값) — 승인 diff 표시용 (2026-08-07)
+  const [approvedProfiles, setApprovedProfiles] = useState<Map<string, TeacherProfile>>(new Map());
+
+  // 2. 승인 프로필 실시간 구독 (공동담임 겹침 경고 + 승인 시 변경 diff — 승인 탭 전용)
   useEffect(() => {
     if (!userData?.domain || userData.role !== "super_admin") return;
-    const qApproved = query(
-      collection(db, "teacher_profiles"),
-      where("isHomeroom", "==", true)
-    );
+    const qApproved = query(collection(db, "teacher_profiles"));
     const unsubApproved = onSnapshot(qApproved, (snap) => {
       const map = new Map<string, ApprovedTeacherInfo[]>();
+      const profMap = new Map<string, TeacherProfile>();
       snap.docs.forEach((docSnap) => {
         const data = docSnap.data();
+        profMap.set((data.email || docSnap.id).toLowerCase(), data as TeacherProfile);
         if (data.isHomeroom && data.homeroom) {
           const g = Number(data.homeroom.grade);
           const c = Number(data.homeroom.class ?? data.homeroom.classNum);
@@ -94,9 +96,26 @@ export default function ProfileApprovals() {
         }
       });
       setApprovedHomerooms(map);
+      setApprovedProfiles(profMap);
     });
     return () => unsubApproved();
   }, [userData?.domain, userData?.role]);
+
+  /** 승인 시 현재 반영값에서 바뀌는 항목 요약 — "나중에 한 행동이 이긴다" 규칙(2026-08-07 사용자 확정)
+   *  아래에서 승인은 항상 신청값을 전체 반영하되, 무엇이 덮이는지 관리자에게 보여준다. */
+  const diffAgainstApproved = (profile: PendingProfile): string[] => {
+    const cur = approvedProfiles.get((profile.email || "").toLowerCase());
+    if (!cur) return [];
+    const fmtDepts = (p: any) =>
+      p.noDept ? "소속 없음" : (p.departments || []).map((d: string) => `${d}${p.deptHeadMap?.[d] ? "(부장)" : ""}`).join("·") || "—";
+    const fmtHomeroom = (p: any) =>
+      p.isHomeroom && p.homeroom ? `${p.homeroom.grade}학년 ${p.homeroom.class ?? p.homeroom.classNum}반 담임` : "담임 아님";
+    const diffs: string[] = [];
+    if (fmtDepts(cur) !== fmtDepts(profile)) diffs.push(`부서 ${fmtDepts(cur)} → ${fmtDepts(profile)}`);
+    if ((cur.position || "—") !== (profile.position || "—")) diffs.push(`직책 ${cur.position || "—"} → ${profile.position || "—"}`);
+    if (fmtHomeroom(cur) !== fmtHomeroom(profile)) diffs.push(`${fmtHomeroom(cur)} → ${fmtHomeroom(profile)}`);
+    return diffs;
+  };
 
   const handleApprove = async (profile: PendingProfile) => {
     if (!profile.email) return;
@@ -115,6 +134,7 @@ export default function ProfileApprovals() {
         isHomeroom: profile.isHomeroom,
         homeroom: profile.homeroom || null,
         updatedAt: serverTimestamp(),
+        updatedBy: userData?.email || "profile_approval",
       });
       // 2. Update pending status
       const pendingRef = doc(db, "teacher_profiles_pending", profile.email);
@@ -238,6 +258,7 @@ export default function ProfileApprovals() {
                   : [];
 
                 const isCoHomeroomWarning = approvedTeachersForClass.length > 0;
+                const approveDiffs = diffAgainstApproved(profile);
 
                 return (
                   <div key={profile.email} className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
@@ -324,6 +345,19 @@ export default function ProfileApprovals() {
                         </div>
                       </div>
                     </div>
+
+                    {/* 승인 시 변경 diff — 현재 반영값(수동 배치 포함)이 신청값으로 덮이는 항목 안내 (2026-08-07) */}
+                    {approveDiffs.length > 0 && (
+                      <div className="mx-6 mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900 space-y-1">
+                        <div className="font-bold flex items-center space-x-1">
+                          <span>ℹ️</span>
+                          <span>승인하면 현재 반영값이 이렇게 바뀝니다</span>
+                        </div>
+                        {approveDiffs.map((d, i) => (
+                          <p key={i} className="text-[11px] leading-tight">• {d}</p>
+                        ))}
+                      </div>
+                    )}
 
                     {/* 반려 사유 입력 (반려 모드) */}
                     {rejectTarget === profile.email && (

@@ -1784,8 +1784,16 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **실측**: 실별 시수 30/30/27/16 = 컴시간 표기 정확 일치 · 기초 이중 점유 0건 · 엔진 스모크 — 2-1 체Ⅱ 맞교환 후보 4건(마크 전) → 0건(마크 후, 전부 다윗관 점유 교시) · tsc 0 · build ✅. GROUPS 도로 비움(중복 등재 방지).
 - **잔여**: 등록부 화면 + 그리드 특별실 뱃지(lesson.room) = Antigravity(§F-5). 기초 개정으로 과탐 실험 교시가 바뀌면 slots 갱신(감지망: venue_list baseConflicts·0셀 경고).
 
+## [2026-08-07] Claude → 조직도 2건 수정 완료 ✅ — "나중에 한 행동이 이긴다" 규칙 확정(사용자)
+
+- **정책 확정 (사용자)**: 자기신청 승인과 관리자 수동 배치가 충돌하면 **나중에 실행된 행동이 이긴다**(last-write-wins). 승인의 전체 덮어쓰기·수동 배치의 재덮어쓰기 모두 의도된 동작으로 존치 — 대신 모르고 덮는 사고를 막는 안내를 붙임.
+- **① 전출·명퇴 프로필 정리 (lifecycle route)**: ⓐ register_teacher_transfer — teacher_profiles·pending을 **전출 작업 문서에 보관(archivedProfile/archivedPending) 후 삭제**, 재등록 시 기존 보관본 보존(originalOU 가드와 동일 원리) ⓑ cancel_teacher_transfer — 보관본 그대로 복원 ⓒ execute_teacher_ob(명퇴, 취소 없음) — `teacher_profiles_archive/{domain}/profiles`로 이동 후 삭제. 전부 실패 시 경고만(본 처리 비차단).
+- **② 조직도 재직자 필터**: OrgChartBuilder deptMembersMap·OrgChartTree 모두 GWS 교직원 OU 기준(명단과 동일 규칙)으로 잔존 프로필 숨김 — GWS 목록 미로딩 시 필터 생략(빈 화면 방지), 스테이징 이메일은 항상 표시.
+- **③ 승인 diff 안내 (ProfileApprovals)**: 승인 카드에 "승인하면 현재 반영값이 이렇게 바뀝니다" 박스 — 부서(부장)·직책·담임의 현재값→신청값 변경만 나열. 승인 저장에 updatedBy 추가. 덮어쓰기 자체는 규칙대로 유지.
+- **④ 잔존 문서 일회성 정리 (scripts/cleanup_departed_teacher_profiles.ts)**: 92건 전수 대조 실측 — 자동 정리 3건(donghwan1008·gah0723·hyabiturmail, 전부 OB 보존실 소속·담임 표시 없음) → 보관소 이동 후 삭제·감사 로그. mt02@(행사시연용, /학생 OU)는 확인-필요로만 보고, 미조치. 기준: 계정 삭제/OB 보존실/전출및자퇴 OU만 자동, 그 외 교직원 OU 밖은 보고만(행정·특수 계정 오삭 방지).
+- **검증**: tsc 0 에러 · build 성공. 실기기 확인 항목: 조직도(빌더·트리)에서 3인 소멸, 전출 등록→취소 왕복 시 프로필 복원, 승인 카드 diff 박스 표시.
+
 ### 재개 문구 (다음 대화)
-- 조직도 수정: *"project_notes.md 마지막 체크포인트를 읽어줘. 조직도 2건 수정 진행해줘. 우선순위는 (자기신청 우선/수동 배치 우선)."*
 - 통합 검증 결과: *"project_notes.md 마지막 체크포인트를 읽어줘. 개학 전 3건 실기기 확인 결과 — (통과/증상)."*
 
 ## [2026-08-07] Antigravity → Claude / 사용자 (특별실 등록부 탭 및 그리드 셀 특별실 배지 구현 완료)
