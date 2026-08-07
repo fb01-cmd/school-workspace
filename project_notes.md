@@ -60,6 +60,7 @@
 
 
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -1786,3 +1787,9 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구 (다음 대화)
 - 조직도 수정: *"project_notes.md 마지막 체크포인트를 읽어줘. 조직도 2건 수정 진행해줘. 우선순위는 (자기신청 우선/수동 배치 우선)."*
 - 통합 검증 결과: *"project_notes.md 마지막 체크포인트를 읽어줘. 개학 전 3건 실기기 확인 결과 — (통과/증상)."*
+
+## [2026-08-07] Antigravity → Claude / 사용자 (특별실 등록부 탭 및 그리드 셀 특별실 배지 구현 완료)
+- 변경 파일: `src/components/admin/timetable/VenueGroupTab.tsx`, `src/components/admin/timetable/TimetableSection.tsx`, `src/components/admin/timetable/TeacherTimetableTab.tsx`, `src/components/admin/timetable/ClassTimetableTab.tsx`, `src/components/student/StudentTimetableCard.tsx` (커밋: `20e9dfe`)
+- 검증 상태: tsc ✅ / build ✅
+- 다음 할 일: 개학 전 3건 및 특별실 배정 실기기 통합 검증
+- 주의: 특별실 관리 탭에 venue_list/save/delete 서버 액션 연동 완료, baseConflicts 앨럿 경고 및 저장 전 미리보기 검증 적용, 교사/학급/학생 포털 셀에 🏛️ 특별실 뱃지 표출 보강
