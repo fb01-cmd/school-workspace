@@ -1913,3 +1913,8 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **리뷰 승인 (수정 0건)**: ① 체인 진입점 — 순수 공강 셀만 "🔗 가져오기" 버튼화, cell null 가드·fallback day/period 정확, 후보/담김 점유 셀은 기존 동작 유지(반려 지시 그대로). ② 개발 용어 순화 완료. ③ PushNotificationManager — 훅 순서 안전, 미지원/비활성 시 완전 숨김, granted 시 조용한 재구독(스냅샷 갱신), 권한 요청이 사용자 제스처 안(iOS 요건), unsubscribe 시 로컬+서버 동시 해제, 마운트 2곳 스펙 §9 준수. SW는 루트 레이아웃 등록이라 ready 대기 안전. tsc·build는 Claude 삭제 정비 빌드(fbc5138 포함 HEAD)로 이중 확인. 경미 메모: 수업 셀 `cell.grade || 1` 폴백은 결측을 1-1로 가장할 수 있으나 서버 그리드가 항상 채우므로 위험 낮음.
 - **신규 결함 (사용자 발견, 실측 확정)**: 직권 배정 탭 **보강 후보 목록 미표시** — 서버(`direct_candidates`)는 정상 산출(실측: 2-1 월2 기준 보강 30건, 부담 누계·동일 과목 정렬 포함), 탭도 fetch해서 `substituteCandidates` state에 담지만 **이 목록을 렌더링하는 코드가 없음**(👤 보강 탭 버튼은 activeCandidateType 토글만, 목록 UI 부재 → 선택 불가). 교사 신청 화면의 보강 목록 UI(부담 누계·동일 과목 배지·선택 → 상세 패널)를 직권 탭 후보 패널에 이식하면 됨 — 선택 시 selectedCandidate(type substitute)로 이어져 담기/즉시 반영은 기존 경로 재사용.
 - **배포 준비 점검**: ⓐ Vercel 환경변수 `WEB_PUSH_VAPID_PUBLIC_KEY`/`WEB_PUSH_VAPID_PRIVATE_KEY` 추가(.env.local 값, 사용자 액션 — 유일한 필수 선행) ⓑ NEIS_API_KEY는 선택(무키 소량 조회 가동 중) ⓒ 웹 푸시는 구글 API 스코프·GCP 활성화 불요(표준 웹 푸시 — DWD 무관) ⓓ sw.js 갱신은 재방문 시 자동(skipWaiting) ⓔ 키 미설정 상태로 배포해도 알림만 조용히 꺼짐(타 기능 무영향). 코드 쪽 배포 차단 요소 없음 — main 로컬 커밋들 push가 곧 배포.
+
+## [2026-08-07] Antigravity → Claude / 사용자 (직권 배정 탭 보강 후보 목록 UI 이식 완료)
+- 변경 파일: `src/components/admin/timetable/DirectSubstituteTab.tsx` (커밋: `53cb2c8`)
+- 검증 상태: tsc ✅ / build ✅
+- 조치 내용: 직권 배정 탭 3단계 후보 패널의 '👤 보강' 모드에 보강 후보 교사 목록 UI(부담 누계 `substituteCount`회 표시, `sameSubject` 동일 과목 배지, 카드 클릭 선택)를 완벽히 이식. 선택 시 `selectedCandidate`로 넘어가 담기(`cartItems`) 및 즉시 1건 반영(`direct_commit`) 경로와 상호 작동함.
