@@ -208,10 +208,10 @@ export default function StudentTimetableCard() {
                                         }
                                       >
                                         <span>▲</span>
-                                        <span>{changedType === "swap" ? "맞교환" : "보강"}</span>
+                                        <span>{changedType === "substitute" ? "보강" : "수업 교체"}</span>
                                         {origin && (
                                           <span className="text-[8.5px] font-normal">
-                                            ({DAY_LABEL[origin.day]}${origin.period})
+                                            ({DAY_LABEL[origin.day]}{origin.period}에서 이동)
                                           </span>
                                         )}
                                       </div>
