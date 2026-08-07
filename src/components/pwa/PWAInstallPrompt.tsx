@@ -54,12 +54,16 @@ export function PWAInstallPrompt({ onOpenGuide }: PWAInstallPromptProps) {
 
   if (isStandalone) {
     return (
-      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+      <button
+        onClick={handleInstallClick}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+        title="작업표시줄 고정 · 컴퓨터 켤 때 자동 실행 · 알림 켜기 따라하기"
+      >
         <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
         </svg>
-        <span>앱으로 실행 중</span>
-      </div>
+        <span>앱으로 실행 중 · 사용 설정 안내</span>
+      </button>
     );
   }
 
