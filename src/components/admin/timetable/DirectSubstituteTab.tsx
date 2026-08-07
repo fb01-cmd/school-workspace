@@ -1127,7 +1127,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                     onClick={() => handleRunChainSearch(3)}
                     className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shadow-xs"
                   >
-                    🔄 3단계 깊이 탐색 재시도 (maxDepth=3)
+                    🔄 3단계까지 넓혀 다시 탐색
                   </button>
                 )}
               </div>
