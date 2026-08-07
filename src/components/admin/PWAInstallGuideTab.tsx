@@ -86,7 +86,7 @@ export default function PWAInstallGuideTab() {
             <span>⚙️ 화면 따라하기: 설치부터 자동 실행 설정까지</span>
           </h3>
           <a
-            href={IORAD_TUTORIAL_URL}
+            href={`${IORAD_TUTORIAL_URL}#trysteps-${isInstalled ? 6 : 1}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline shrink-0"
@@ -99,7 +99,8 @@ export default function PWAInstallGuideTab() {
         </p>
         <div className="rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm bg-white dark:bg-gray-800">
           <iframe
-            src={`${IORAD_TUTORIAL_URL}?src=iframe#trysteps-1`}
+            // 앱으로 실행 중이면 설치 단계(1~5)를 건너뛰고 사용 설정 단계부터 시작 (스텝 번호는 사용자 확정 2026-08-08)
+            src={`${IORAD_TUTORIAL_URL}?src=iframe#trysteps-${isInstalled ? 6 : 1}`}
             title="효명고 관리시스템 앱 설치하기 따라하기 튜토리얼"
             className="w-full block"
             style={{ height: "640px" }}
