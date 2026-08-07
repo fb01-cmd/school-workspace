@@ -45,10 +45,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "인증이 필요합니다." }, { status: 401 });
     }
     const body = await req.json().catch(() => ({}));
-    // 기본: 오늘부터 7일 (이번 주 급식) — KST 기준 날짜
+    // 기본: 오늘부터 10일 — KST 기준. 7일 창은 금요일에 조회하면 다음 금요일이 빠지는
+    // 구멍이 있었음(2026-08-07 실증). 10일이면 어느 요일에 봐도 다음 금요일까지 포함.
     const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const from = typeof body.from === "string" && DATE_RE.test(body.from) ? body.from : ymd(now);
-    const toDefault = new Date(now.getTime() + 6 * 24 * 60 * 60 * 1000);
+    const toDefault = new Date(now.getTime() + 9 * 24 * 60 * 60 * 1000);
     const to = typeof body.to === "string" && DATE_RE.test(body.to) ? body.to : ymd(toDefault);
     if (from > to) return NextResponse.json({ error: "조회 구간이 올바르지 않습니다." }, { status: 400 });
 

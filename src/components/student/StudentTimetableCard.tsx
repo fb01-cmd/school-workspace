@@ -16,7 +16,11 @@ const DAYS = [
 export default function StudentTimetableCard() {
   const [classGrid, setClassGrid] = useState<ClassGrid | null>(null);
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
-  const [weekMeta, setWeekMeta] = useState<{ id: string; startDate: string } | null>(null);
+  const [weekMeta, setWeekMeta] = useState<{
+    id: string;
+    startDate: string;
+    days?: { day: number; date: string; holiday?: boolean }[];
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,18 +113,24 @@ export default function StudentTimetableCard() {
         </div>
       </div>
 
-      {/* 월~금 주간 그리드 표 */}
+      {/* 월~금 주간 그리드 표 — min-width 없이 카드 폭에 맞춤 (금요일 잘림 방지, 2026-08-07 사용자 지시) */}
       <div className="p-4">
-        <div className="border border-slate-200 rounded-xl overflow-x-auto text-xs">
-          <table className="w-full border-collapse min-w-[480px] text-center">
+        <div className="border border-slate-200 rounded-xl text-xs">
+          <table className="w-full table-fixed border-collapse text-center">
             <thead>
               <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                <th className="py-2.5 px-1 w-12 border-r border-slate-200 bg-slate-200/60 text-[11px]">교시</th>
-                {DAYS.map((d) => (
-                  <th key={d.num} className="py-2.5 px-1 text-[11px]">
-                    {d.label}
-                  </th>
-                ))}
+                <th className="py-2 px-1 w-9 border-r border-slate-200 bg-slate-200/60 text-[11px]">교시</th>
+                {DAYS.map((d) => {
+                  // 요일 아래 실제 날짜 병기 — 학생이 주 시작일에서 역산하지 않도록
+                  const dateStr = weekMeta?.days?.find((x) => x.day === d.num)?.date;
+                  const md = dateStr ? `${Number(dateStr.slice(5, 7))}/${Number(dateStr.slice(8, 10))}` : null;
+                  return (
+                    <th key={d.num} className="py-1.5 px-1 text-[11px]">
+                      <div>{d.label}</div>
+                      {md && <div className="text-[10px] font-normal text-slate-500">{md}</div>}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -148,7 +158,6 @@ export default function StudentTimetableCard() {
                                 const isChanged = !!lesson.changed;
                                 const changedType = lesson.changed?.type;
                                 const origin = lesson.changed?.origin;
-                                const simulCheck = { hit: !!lesson.simul, groupLabel: lesson.simul };
 
                                 // 가상교사 등 이메일 없는 교사는 서버에서 필터링됨
                                 // validTeachers가 있을 때만 이름 표기 (빈 괄호 () 렌더 금지!)
@@ -157,63 +166,33 @@ export default function StudentTimetableCard() {
                                 );
                                 const teacherNames = validTeachers.map((t: any) => t.name).join(", ");
 
+                                // 미니멀 셀 (2026-08-07 사용자 지시): 과목명 크게 + 교사명 작게만.
+                                // 특별실·이동수업 배지는 학생이 이미 아는 정보라 제거.
+                                // 변경(교체·보강)만 새 정보라 색+한 줄 라벨로 유지, 출처는 툴팁.
                                 return (
                                   <div
                                     key={idx}
-                                    className={`p-1.5 rounded-lg border text-[11px] leading-tight space-y-1 transition-transform hover:scale-[1.01] ${
+                                    title={
                                       isChanged
-                                        ? "bg-red-50 border-red-300 text-red-950 font-bold shadow-2xs"
-                                        : simulCheck.hit
-                                        ? "bg-purple-50 border-purple-200 text-purple-950 font-bold shadow-2xs"
-                                        : "bg-white border-slate-200 text-slate-900 font-bold shadow-2xs"
+                                        ? origin
+                                          ? `${changedType === "substitute" ? "보강" : "수업 교체"} — ${DAY_LABEL[origin.day]}요일 ${origin.period}교시에서 이동`
+                                          : changedType === "substitute" ? "보강" : "수업 교체"
+                                        : undefined
+                                    }
+                                    className={`py-1.5 px-0.5 rounded-lg border leading-tight ${
+                                      isChanged
+                                        ? "bg-amber-50 border-amber-300"
+                                        : "bg-white border-slate-200"
                                     }`}
                                   >
-                                    {/* 과목명 & 교사명 */}
-                                    <div className="font-extrabold flex flex-wrap items-center justify-center gap-1">
-                                      <span>{subj}</span>
-                                      {validTeachers.length > 0 && (
-                                        <span className="text-[10px] text-slate-500 font-normal">
-                                          ({teacherNames})
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    {/* 특별실 배지 */}
-                                    {lesson.room && (
-                                      <div className="text-[9.5px] bg-emerald-100/90 text-emerald-950 border border-emerald-300/80 px-1 py-0.5 rounded font-extrabold flex items-center justify-center gap-0.5" title={`특별실: ${lesson.room}`}>
-                                        <span>🏛️</span>
-                                        <span className="truncate">{lesson.room}</span>
-                                      </div>
+                                    <div className="font-extrabold text-[13px] text-slate-900 truncate">{subj}</div>
+                                    {validTeachers.length > 0 && (
+                                      <div className="text-[10px] text-slate-400 font-normal truncate">{teacherNames}</div>
                                     )}
-
-                                    {/* 이동수업(분반) 배지 */}
-                                    {simulCheck.hit && (
-                                      <div
-                                        className="text-[9.5px] bg-purple-100/90 text-purple-900 border border-purple-300/80 px-1 py-0.5 rounded font-extrabold flex items-center justify-center gap-0.5"
-                                        title={simulCheck.groupLabel || "이동수업(분반) 지정 교시"}
-                                      >
-                                        <span>🔀</span>
-                                        <span className="truncate">이동수업</span>
-                                      </div>
-                                    )}
-
-                                    {/* 변경(맞교환/보강) 배지 */}
                                     {isChanged && (
-                                      <div
-                                        className="text-[9.5px] bg-red-100 text-red-800 border border-red-300 px-1 py-0.5 rounded font-extrabold flex items-center justify-center gap-0.5"
-                                        title={
-                                          origin
-                                            ? `${DAY_LABEL[origin.day]}요일 ${origin.period}교시에서 이동`
-                                            : "수업 변경"
-                                        }
-                                      >
-                                        <span>▲</span>
-                                        <span>{changedType === "substitute" ? "보강" : "수업 교체"}</span>
-                                        {origin && (
-                                          <span className="text-[8.5px] font-normal">
-                                            ({DAY_LABEL[origin.day]}{origin.period}에서 이동)
-                                          </span>
-                                        )}
+                                      <div className="text-[9px] font-extrabold text-amber-800 mt-0.5">
+                                        {changedType === "substitute" ? "보강" : "교체"}
+                                        {origin && ` · ${DAY_LABEL[origin.day]}${origin.period}`}
                                       </div>
                                     )}
                                   </div>
