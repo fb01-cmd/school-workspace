@@ -162,21 +162,11 @@ export default function DisciplineSummarySection({
   // C. 단계별 인원 현황 (단계는 기간 필터 무관 — 서버 판정 현 판정 표시)
   const stageBreakdown = useMemo(() => {
     const stageCounts: Record<string, number> = {};
-    let normalCount = 0;
-
     for (const s of students) {
-      // 전건 무효화 학생은 하단 카드 목록에서도 제외되므로 '정상' 인원에 넣지 않는다
-      // (단계가 남아 있으면 — manual 지정 등 — 단계 집계에는 포함)
-      const hasValidRecord = (s.records || []).some((r) => !r.voided);
       const stageId = s.status.currentStageId;
-      if (stageId) {
-        stageCounts[stageId] = (stageCounts[stageId] || 0) + 1;
-      } else if (hasValidRecord) {
-        normalCount++;
-      }
+      if (stageId) stageCounts[stageId] = (stageCounts[stageId] || 0) + 1;
     }
-
-    return { stageCounts, normalCount };
+    return { stageCounts };
   }, [students]);
 
   // D. 상위 학생 목록 (1. 현재 단계 order 내림차순 -> 2. 기간 내 유효 기록 수 내림차순)
@@ -243,7 +233,7 @@ export default function DisciplineSummarySection({
 
     // Student data rows
     for (const st of pivotData) {
-      const stageLabel = st.currentStage ? st.currentStage.label : "정상 (1단계 미만)";
+      const stageLabel = st.currentStage ? st.currentStage.label : "정상 (조치 단계 없음)";
       const itemCountsRow = activeItems.map((it) => st.itemCountMap[it.id] || 0);
       const latestDateStr = st.latestOccurredAt
         ? new Date(st.latestOccurredAt).toLocaleDateString("ko-KR")
@@ -479,20 +469,10 @@ export default function DisciplineSummarySection({
                 <span className="text-xs text-gray-400">현재 자동 계산 단계</span>
               </div>
 
+              {/* "정상 N명" 줄은 두지 않는다 — 응답에는 기록 보유 학생만 오므로 여기서의
+                  '정상'은 전교 정상 인원이 아니며(첫 기록부터 단계가 매겨져 사실상 상시 0명),
+                  0명 표기는 "정상 학생이 없다"는 오독만 유발한다 (2026-08-08 사용자 지적). */}
               <div className="space-y-2.5 pt-1">
-                {/* 정상 단계 */}
-                <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
-                      정상 (1단계 미만)
-                    </span>
-                  </div>
-                  <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
-                    {stageBreakdown.normalCount}명
-                  </span>
-                </div>
-
                 {/* 설정된 단계들 */}
                 {stages.map((st, idx) => {
                   const cnt = stageBreakdown.stageCounts[st.id] || 0;
@@ -515,8 +495,10 @@ export default function DisciplineSummarySection({
                             isHighStage ? "bg-red-500" : "bg-amber-500"
                           }`}
                         ></span>
+                        {/* 라벨은 학교 설정 자유 문자열("1단계" 같은 이름 실존) — 순번을 덧붙이면
+                            "1단계 (3단계)"류 모순 표기가 되므로 라벨만 쓴다. 위계는 정렬 순서로 전달. */}
                         <span className="text-xs font-bold text-gray-900 dark:text-white">
-                          {st.label} ({st.order}단계)
+                          {st.label}
                         </span>
                       </div>
                       <span
@@ -715,7 +697,7 @@ export default function DisciplineSummarySection({
                   pivotData.map((st) => {
                     const stageLabel = st.currentStage
                       ? st.currentStage.label
-                      : "정상 (1단계 미만)";
+                      : "정상 (조치 단계 없음)";
 
                     const dateStr = st.latestOccurredAt
                       ? new Date(st.latestOccurredAt).toLocaleDateString("ko-KR")
