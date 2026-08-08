@@ -2252,3 +2252,9 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **커버 범위 (Claude 스크립트 대조 결과)**: ① 직권 담기(directCommit → bump·합성 즉시 반영) PASS ② 승인 취소(revert → 원상 복귀) PASS ④ 주 등록/수정(registerWeek·updateWeek → 주 목록·note 반영) PASS ③ 분반 마크 반영 PASS — 단 **③은 manage 라우트를 우회**(스크립트가 Firestore 직접 쓰기 + 수동 bump)했으므로, 라우트 4곳(simul/venue save·delete)의 bump 결선 자체는 코드 대조로 확인(d6e4822에서 Claude 직접 배치·리뷰). 특별실(venue)은 미실행이나 분반과 동일 계열(loadAllClassGrids가 두 마크를 같은 경로로 적용).
 - **유물 정리 실측 (Claude, ~7읽기)**: 테스트 주 2026-12-28·smoke_test_simul·테스트 changes/requests 전부 삭제 확인 ✓. 스크립트 말미 정리 삭제가 bump 없이 수행된 틈(배포 캐시에 테스트 주 최대 10분 잔상 가능)은 Claude가 bump 1회로 확정 마감(현재 버전 v=12).
 - **종결 판정**: 개학 전 용량 대비(주간 합성 캐시) 항목 **종결**. 잔여는 시점 도래 시 — 개학 첫 주 Firebase 콘솔 읽기량 실측(스펙 §7-3, 목표: 일 수천 이하) + 첫 결보강 실전에서 다중 인스턴스 자연 확인. 이상 시 킬스위치 `TIMETABLE_VIEW_CACHE=off`.
+
+## [2026-08-08] 남은 로드맵 전체 Firestore 용량 사전 리뷰 ✅ (Claude — 사용자 요청: "기능 더 얹으면 터지는가")
+
+- 배경: 개학 시점 채택 ~0(학생 미인지·교사는 컴시간 계속) → 읽기량 실측 당분간 불가, 대신 미구현 항목 전수의 **구현 전 용량 판정** 수행. 산출물: [`docs/firestore_capacity_review_remaining_roadmap.md`](./docs/firestore_capacity_review_remaining_roadmap.md).
+- **결론: 전부 구현해도 무료 한도 안** (최악 겹침 시나리오 ~1.5-2만/일 = 한도 30-40%). "터질" 경로는 기능이 아니라 셋 — ① 스크립트 전수조사(기존 규율) ② 계수 없는 신기능(신규 규칙: **새 API/화면 스펙에 요청당 읽기 계수 1줄 의무**, 두 자릿수면 버전 키 캐시 검토) ③ 타 학교 동일 프로젝트 수용(위자드 착수 시 **학교당 Firebase 프로젝트 분리** 원칙).
+- 개별 유의 3건: Phase 7 학부모 모듈은 발송일 스파이크·서명 이미지 Firestore 금지(Drive로)·열람 write 등 설계 전제 하 안전 / 건수 카드는 반드시 aggregate count() / 크론 모니터링 로그는 보존 기한 선정의.
