@@ -159,7 +159,14 @@ export default function PushNotificationManager() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setMessage("🧪 시험 알림을 성공적으로 발송했습니다. 기기를 확인해 주세요.");
+        // 발송 범위는 "지금 로그인한 계정"의 기기뿐 — 다른 계정으로 로그인한 기기(예: 폰)는
+        // 대상이 아님을 문구로 명시 (2026-08-08 혼동 실증: 크롬북 admin 발송 후 폰 미수신 문의)
+        const n = data.subscriptions ?? 0;
+        setMessage(
+          n > 0
+            ? `🧪 지금 로그인한 계정으로 알림을 켠 기기 ${n}대에 시험 알림을 보냈습니다. 다른 계정으로 로그인한 기기에는 가지 않습니다.`
+            : "🧪 이 계정으로 알림을 켠 기기가 없어 발송할 곳이 없습니다. 받으려는 기기에서 이 계정으로 로그인해 알림을 켜 주세요."
+        );
       } else {
         setMessage(`시험 발송 실패: ${data.error || "구독 정보가 없거나 실패했습니다."}`);
       }
