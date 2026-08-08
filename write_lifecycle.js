@@ -1,1 +1,0 @@
-const fs=require(String.fromCharCode(39)+" fs+String.fromCharCode(39));

@@ -2225,3 +2225,11 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 ### 재개 문구
 - *"project_notes.md 마지막 체크포인트 읽어줘. 주간 합성 캐시 스펙 잡고 구현하자."* (16시 할당량 복구 후 담김 마커 실기기 확인도 함께)
+
+## [2026-08-08] 저장소·로컬 대청소 ✅ (Claude — 사용자 지시, 이동 중심·복구 가능 방식)
+
+- **로컬 데이터 12개 삭제** (사용자 승인 "쓸 게 아니면 지워도 돼" — 전부 DB 등록 완료된 소스·진단 캡처): 임시시간표 xlsx 2, 이동수업 현황 xlsx 2, 특별실 png 2, 스크린샷 png 6. 애초에 gitignore로 저장소 미포함이라 디스크에서만 제거 — PII 위생 개선 (personal_data_inventory 취지). git 이력 blob 건은 별개 잔존(원하면 filter-repo).
+- **완료 스펙·참고자료 10건 → archive/** (git mv, 이력 보존): phase6·9·9a, org_chart, orphan_folder, transfer_classroom, workspace_sync_hub(최초 명세), comcigan_analysis, 컴시간 설명서 PDF 2종.
+- **유물 스크립트 4건 git rm**: gen_a/gen_part1/gen_lifecycle.cjs·write_lifecycle.js — 옛 윈도우 경로(d:/Desktop) 박힌 일회성 생성기, 완전 사장 (이력에서 복구 가능).
+- **README 교체**: create-next-app 보일러플레이트 → 프로젝트 소개·문서 읽는 순서·개발 명령.
+- **루트 잔류 = 살아있는 문서만**: AGENTS·CLAUDE·README·roadmap·notes·운영 매뉴얼 5종·product_overview·phase9b_spec(활성 스펙)·설정 파일. scripts/는 verify·rehearse 재사용 가치로 유지(마이그레이션 일회성들도 이력 참고용 잔류).
