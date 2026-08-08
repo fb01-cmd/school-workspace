@@ -24,7 +24,6 @@ interface DisciplineSummarySectionProps {
   config: DisciplineConfig;
   onSelectClassFilter: (grade: number | "all", classNum: number | "all") => void;
   onSelectStudent: (student: StudentItem) => void;
-  onSelectItemFilter?: (itemLabel: string) => void;
 }
 
 type PeriodFilter = "all" | "30" | "90";
@@ -35,7 +34,6 @@ export default function DisciplineSummarySection({
   config,
   onSelectClassFilter,
   onSelectStudent,
-  onSelectItemFilter,
 }: DisciplineSummarySectionProps) {
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
@@ -167,10 +165,13 @@ export default function DisciplineSummarySection({
     let normalCount = 0;
 
     for (const s of students) {
+      // 전건 무효화 학생은 하단 카드 목록에서도 제외되므로 '정상' 인원에 넣지 않는다
+      // (단계가 남아 있으면 — manual 지정 등 — 단계 집계에는 포함)
+      const hasValidRecord = (s.records || []).some((r) => !r.voided);
       const stageId = s.status.currentStageId;
       if (stageId) {
         stageCounts[stageId] = (stageCounts[stageId] || 0) + 1;
-      } else {
+      } else if (hasValidRecord) {
         normalCount++;
       }
     }
@@ -561,15 +562,14 @@ export default function DisciplineSummarySection({
                     return (
                       <div
                         key={it.id}
-                        onClick={() => onSelectItemFilter && onSelectItemFilter(it.label)}
-                        className="group p-2.5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all cursor-pointer space-y-1.5"
+                        className="p-2.5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 space-y-1.5"
                       >
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center space-x-2">
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
                               {it.category || "기타"}
                             </span>
-                            <span className="font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                            <span className="font-bold text-gray-900 dark:text-white">
                               {it.label}
                             </span>
                           </div>

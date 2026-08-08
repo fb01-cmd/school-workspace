@@ -53,9 +53,11 @@ export default function DisciplineStatusTab({
     setLoading(true);
     setError(null);
     try {
+      // 항상 권한 범위 전체를 1회 조회하고 학년·반 필터는 클라이언트에서 건다 —
+      // 종합 현황 섹션이 같은 students를 쓰므로, 범위를 서버에서 좁히면
+      // 히트맵 셀 클릭이 종합 자체를 한 반으로 축소시키고 필터마다 재조회가 발생한다
+      // (discipline_analytics_spec §0-2 추가 읽기 0 원칙, 2026-08-08 표적 리뷰 수정).
       const payload: any = { action: "list" };
-      if (gradeFilter !== "all") payload.grade = gradeFilter;
-      if (classFilter !== "all") payload.classNum = classFilter;
 
       const res = await fetch("/api/discipline/records", {
         method: "POST",
@@ -78,7 +80,8 @@ export default function DisciplineStatusTab({
 
   useEffect(() => {
     fetchRecords();
-  }, [gradeFilter, classFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleVoidRecord = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,6 +136,8 @@ export default function DisciplineStatusTab({
   // 검색어 필터링 — 유효 기록이 하나도 없는 학생(전건 무효화)은 현황에서 제외 (무효화 보관함 전용)
   const filteredStudents = students.filter((s) => {
     if (!(s.records || []).some((r) => !r.voided)) return false;
+    if (gradeFilter !== "all" && s.grade !== gradeFilter) return false;
+    if (classFilter !== "all" && s.classNum !== classFilter) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -154,7 +159,6 @@ export default function DisciplineStatusTab({
             setClassFilter(c);
           }}
           onSelectStudent={(st) => setSelectedStudent(st)}
-          onSelectItemFilter={(itemLabel) => setSearchQuery(itemLabel)}
         />
       )}
 
