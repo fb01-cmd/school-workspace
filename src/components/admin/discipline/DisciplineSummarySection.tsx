@@ -99,7 +99,7 @@ export default function DisciplineSummarySection({
   }, [students, periodCutoff, stageMap]);
 
   // A. 학년 × 반 매트릭스 계산
-  const { maxClassNum, matrixMap, gradeTotals, classTotals, totalRecordCount } = useMemo(() => {
+  const { maxClassNum, matrixMap, gradeTotals, totalRecordCount } = useMemo(() => {
     let maxC = 10;
     for (const s of students) {
       if (s.classNum > maxC) maxC = s.classNum;
@@ -107,12 +107,7 @@ export default function DisciplineSummarySection({
 
     const matrix: Record<string, number> = {}; // `${grade}-${classNum}` -> count
     const gTotals: Record<number, number> = { 1: 0, 2: 0, 3: 0 };
-    const cTotals: Record<number, number> = {};
     let total = 0;
-
-    for (let c = 1; c <= maxC; c++) {
-      cTotals[c] = 0;
-    }
 
     for (const st of studentStats) {
       const g = st.student.grade;
@@ -122,7 +117,6 @@ export default function DisciplineSummarySection({
         const key = `${g}-${c}`;
         matrix[key] = (matrix[key] || 0) + count;
         gTotals[g] = (gTotals[g] || 0) + count;
-        cTotals[c] = (cTotals[c] || 0) + count;
         total += count;
       }
     }
@@ -131,7 +125,6 @@ export default function DisciplineSummarySection({
       maxClassNum: maxC,
       matrixMap: matrix,
       gradeTotals: gTotals,
-      classTotals: cTotals,
       totalRecordCount: total,
     };
   }, [students, studentStats]);
@@ -387,6 +380,9 @@ export default function DisciplineSummarySection({
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center space-x-2">
                   <span>🏫 학년 × 반 지도 건수 (히트맵)</span>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                    합계 {totalRecordCount}건
+                  </span>
                 </h3>
                 <span className="text-xs text-gray-400">셀 클릭 시 해당 반 필터 적용</span>
               </div>
@@ -443,19 +439,9 @@ export default function DisciplineSummarySection({
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot>
-                    <tr className="font-bold text-gray-700 dark:text-gray-300 pt-1">
-                      <td className="py-2 px-1.5 text-left">전체</td>
-                      {Array.from({ length: maxClassNum }, (_, i) => i + 1).map((c) => (
-                        <td key={c} className="py-2 px-1 text-center text-xs text-gray-500">
-                          {classTotals[c] || 0}
-                        </td>
-                      ))}
-                      <td className="py-2 px-1.5 text-right text-indigo-600 dark:text-indigo-400 font-extrabold text-sm">
-                        {totalRecordCount}
-                      </td>
-                    </tr>
-                  </tfoot>
+                  {/* 반 번호별 세로 합계 행은 두지 않는다 — 학년이 다른 같은 반 번호끼리의
+                      합(1-1+2-1+3-1)은 무의미한 숫자다 (2026-08-08 사용자 지적).
+                      전체 합계는 제목 옆 배지로 표시. */}
                 </table>
               </div>
             </div>
