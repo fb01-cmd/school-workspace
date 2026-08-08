@@ -365,9 +365,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
     // 예상 시간표 갱신
     fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
-    // 이전 선택의 맞교환 후보도 담긴 상태 기준으로 재조회 — 일반 담기·담기 삭제와 동일 규칙.
-    // 빠뜨리면 체인 반영 전 기준의 낡은 후보 배지가 그리드에 활성 상태로 잔존한다 (2026-08-08 실증)
-    if (selectedSlot) fetchCandidates(selectedSlot.weekId, selectedSlot.grade, selectedSlot.classNum, selectedSlot.day, selectedSlot.period, sourceLessonInfo?.subjectName || "", updatedCart);
+    // 체인 담기는 하나의 작업 완료 — 이전 선택·후보판은 끝난 맥락이므로 재조회가 아니라 초기화한다.
+    // (재조회로는 체인과 안 겹치는 후보가 유효하게 남아 배지가 잔존 — 2026-08-08 사용자 2회 지적)
+    setSelectedSlot(null); setSourceLessonInfo(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]);
+    setSelectedCandidate(null); setCandidateError(null); setPreviewCells(null); setCounterpartSourceCells(null); setCounterpartTargetCells(null);
   };
 
   const handleSlotClick = (
