@@ -531,6 +531,12 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       }));
   };
 
+  // 선택 교사 본인 수업의 순 이동 — 그리드 "담김(이동됨)" 마커용. 다리별 source 슬롯 기준으로
+  // 마킹하면 체인 경유지(본인 수업이 스쳐간 자리)에도 마커가 붙는다 (2026-08-08 사용자 실증: 월7)
+  const myCartNetMoves = foldCartNetMoves(cartItems).filter(
+    (m) => !!m.ownerEmail && m.ownerEmail === selectedTeacherEmail.toLowerCase()
+  );
+
   // 양해 대상 = 담기로 시간표가 실제 바뀌는 모든 교사 (선택 교사 제외) — 맞교환 상대뿐 아니라
   // 체인이 움직인 제3 교사(수업 소유자)도 양해가 필요하다 (2026-08-08 사용자 지적: 김지현 국어 사례)
   const affectedTeachers: Array<{ email: string; name: string; count: number }> = (() => {
@@ -775,7 +781,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                               {DAYS.map((d) => {
                                 const matchedCells = getCellForSlotInWeek(w.id, d.num, period);
                                 const hasLesson = matchedCells.length > 0;
-                                const cartMatch = cartItems.find((ci) => ci.weekId === w.id && ci.source.day === d.num && ci.source.period === period);
+                                // 담김(이동됨) 마커는 본인 수업의 순 이동 출발지에만 — 경유지·제3 교사 수업 슬롯 제외
+                                const cartMatch = myCartNetMoves.find((m) => m.from.weekId === w.id && m.from.day === d.num && m.from.period === period);
                                 // 맞교환 모드에서만 후보 하이라이트 — 보강 탭 전환 시 맞교환 제안이 그리드에 잔존하던 혼선 방지 (2026-08-07)
                                 const inlineCand = activeCandidateType === "swap" && !hasLesson && selectedSlot ? candidateListInWeek.find((cand) => cand.targetDay === d.num && cand.targetPeriod === period) : null;
                                 return (
@@ -823,7 +830,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                     ) : cartMatch ? (
                                       <div className="w-full p-1.5 rounded-lg border border-dashed border-amber-400 bg-amber-50/60 text-center">
                                         <div className="text-[9px] font-extrabold text-amber-800">🛒 담김 (이동됨)</div>
-                                        <div className="text-[10px] font-bold text-amber-900 truncate">{cartMatch.source.subjectName || "수업"}</div>
+                                        <div className="text-[10px] font-bold text-amber-900 truncate">{cartMatch.subjectName || "수업"}</div>
                                       </div>
                                     ) : (
                                       <button
