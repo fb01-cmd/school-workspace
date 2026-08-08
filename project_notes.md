@@ -2264,3 +2264,18 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - 사용자 요구: 지도 현황이 학생 카드 나열뿐이라 부장 실무(반별 건수→내용→문제 학생, 구 시트의 강점) 불가. 스펙: [`docs/discipline_analytics_spec.md`](./docs/discipline_analytics_spec.md), 로드맵 §2 등재.
 - 핵심 결정: ① 새 탭 아님 — 지도 현황 탭 상단 종합 섹션(학년×반 히트맵·항목 분포·단계 인원·상위 10명) + 시트뷰·xlsx 내보내기(기설치 xlsx 재사용) ② **서버 변경·추가 읽기 0** — 기존 records list 응답 클라이언트 집계(계수 규칙 준수) ③ **신규 권한 없음** — list 스코프 자동 축소로 담임=자기 반, 부장(all)=전교 자연 분화.
 - 주의(리뷰 예정 지점): voided 혼입 금지 / 단계=현재 기준·건수=기간 기준 캡션 / 내보내기 PII 문구 / 신규 fetch 추가 금지.
+
+## [2026-08-08] 생활지도 종합 현황(부장 분석 뷰) 구현 완료 ✅ (Antigravity — tsc 0 · build ✅)
+
+- **변경 파일**: `src/components/admin/discipline/DisciplineSummarySection.tsx` (신규), `src/components/admin/discipline/DisciplineStatusTab.tsx` (수정)
+- **구현 내용**:
+  - 기존 지도 현황 탭 상단에 "종합 현황" 섹션 2단 배치 완료 (`docs/discipline_analytics_spec.md` §1)
+  - A. 학년 × 반 지도 건수 히트맵 매트릭스 (셀 클릭 시 하단 학생 목록 해당 학년·반 필터 적용 및 스크롤 이동)
+  - B. 지도 항목별 발생 분포 (건수 내림차순, 항목 클릭 시 검색 필터 적용)
+  - C. 조치 단계별 인원 현황 (단계 오름차순, 현재 판정 기준)
+  - D. 주요 지도 대상 학생 상위 10명 (단계 order 내림차순 → 기간 건수 내림차순, 행 클릭 시 기존 상세 이력 모달 연동)
+  - E. 기간 필터 (전체 / 최근 30일 / 최근 90일, A·B·D 연동, C단계 무관 캡션 명시)
+  - F. 표로 보기 (피벗 테이블) & xlsx 내보내기 (기설치 xlsx 활용, 파일명 `생활지도_현황_YYYY-MM-DD.xlsx`, 캡션 및 PII 보호 경고 문구 적용)
+- **검증**: `npx tsc --noEmit` ✅, `npm run build` ✅, 추가 Firestore 읽기 0 (서버 API 변경 없음)
+- **다음 할 일**: Claude에게 표적 리뷰 요청 (voided 제외, 캡션, PII 문구, 신규 fetch 0 준수 여부)
+

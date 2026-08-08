@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { DisciplineConfig, DisciplineRecord, DisciplineStageEvent, StudentDisciplineStatus } from "@/lib/discipline/types";
+import DisciplineSummarySection from "./DisciplineSummarySection";
 
 interface StudentItem {
   studentId: string;
@@ -143,10 +144,24 @@ export default function DisciplineStatusTab({
 
   return (
     <div className="space-y-6 pb-10">
-      {/* 헤더 및 필터 */}
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* 1. 상단 종합 현황 섹션 (스펙 docs/discipline_analytics_spec.md §1) */}
+      {!loading && !error && (
+        <DisciplineSummarySection
+          students={students}
+          config={config}
+          onSelectClassFilter={(g, c) => {
+            setGradeFilter(g);
+            setClassFilter(c);
+          }}
+          onSelectStudent={(st) => setSelectedStudent(st)}
+          onSelectItemFilter={(itemLabel) => setSearchQuery(itemLabel)}
+        />
+      )}
+
+      {/* 2. 하단 학생별 카드 목록 및 필터 헤더 */}
+      <div id="discipline-student-cards" className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">📊 생활지도 현황</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">👤 학생별 지도 카드 목록</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             학생별 생활지도 기록 횟수 및 실시간으로 계산된 조치 단계를 확인합니다.
           </p>
