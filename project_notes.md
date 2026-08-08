@@ -2245,3 +2245,10 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **구조**: view 요청 = 인증 1 + `timetable_cache_meta/{domain}` 버전 1읽기 → 버전 포함 키로 인메모리 적중 시 재료 읽기 0 (**~85 → ~2-4/요청**). 캐시 3종(ctx·주간 합성 그리드·teachers 기초), TTL 10분 안전망, 킬스위치 `TIMETABLE_VIEW_CACHE=off`. **view 라우트 전용** — manage·엔진·승인 검증은 fresh 유지.
 - **무효화**: 쓰기 함수 말미 bump 전수 배치(스펙 §4 표 — server.ts 8곳 + manage 분반·특별실 4곳). 제외 목록·사유도 §4에 명시. **새 쓰기 경로 추가 시 §4 표 갱신 필수.**
 - 검증: tsc 0 · build ✅ (로컬 build는 힙 부족 시 `NODE_OPTIONS=--max-old-space-size=4096` 필요했음 — 코드 문제 아님). 남은 것: 실기기 정합 스모크(스펙 §7-2 — 담기 커밋·revert·분반 등록 직후 화면 즉시 반영) + 개학 첫 주 읽기량 실측(§7-3).
+
+## [2026-08-08] 주간 합성 캐시 정합 스모크 4건 검증 완료 ✅ — 개학 전 용량 대비 항목 종결 (Antigravity 검증 + Claude 대조·마감)
+
+- **검증 방식 정정 기록**: "배포 화면 스모크"가 아니라 **admin SDK 재현 스크립트**(`scripts/verify_weekly_synthesis_cache_smoke.ts`, Antigravity 작성·실행, `_force_notify_mock` 가드로 실교사 DM 0건). 이 프로젝트의 공인 실측 방식이고, 버전 키 설계는 로컬/배포 동작 원리가 동일(요청마다 버전 문서를 fresh로 읽음)하므로 유효한 검증.
+- **커버 범위 (Claude 스크립트 대조 결과)**: ① 직권 담기(directCommit → bump·합성 즉시 반영) PASS ② 승인 취소(revert → 원상 복귀) PASS ④ 주 등록/수정(registerWeek·updateWeek → 주 목록·note 반영) PASS ③ 분반 마크 반영 PASS — 단 **③은 manage 라우트를 우회**(스크립트가 Firestore 직접 쓰기 + 수동 bump)했으므로, 라우트 4곳(simul/venue save·delete)의 bump 결선 자체는 코드 대조로 확인(d6e4822에서 Claude 직접 배치·리뷰). 특별실(venue)은 미실행이나 분반과 동일 계열(loadAllClassGrids가 두 마크를 같은 경로로 적용).
+- **유물 정리 실측 (Claude, ~7읽기)**: 테스트 주 2026-12-28·smoke_test_simul·테스트 changes/requests 전부 삭제 확인 ✓. 스크립트 말미 정리 삭제가 bump 없이 수행된 틈(배포 캐시에 테스트 주 최대 10분 잔상 가능)은 Claude가 bump 1회로 확정 마감(현재 버전 v=12).
+- **종결 판정**: 개학 전 용량 대비(주간 합성 캐시) 항목 **종결**. 잔여는 시점 도래 시 — 개학 첫 주 Firebase 콘솔 읽기량 실측(스펙 §7-3, 목표: 일 수천 이하) + 첫 결보강 실전에서 다중 인스턴스 자연 확인. 이상 시 킬스위치 `TIMETABLE_VIEW_CACHE=off`.
