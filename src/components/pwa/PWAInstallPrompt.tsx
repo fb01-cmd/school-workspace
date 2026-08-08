@@ -49,7 +49,16 @@ export function PWAInstallPrompt({ onOpenGuide }: PWAInstallPromptProps) {
       const { outcome } = await deferredPrompt.userChoice;
       console.log(`[PWA] User choice outcome: ${outcome}`);
       setDeferredPrompt(null);
+      return;
     }
+    // 브라우저가 자동 설치 신호를 주지 않은 상태(이미 설치됨·삭제 직후·미지원 브라우저 등) —
+    // 무반응으로 두면 고장으로 오인하므로 수동 경로를 안내한다 (2026-08-08 실기기 실증)
+    alert(
+      "자동 설치 창을 열 수 없는 상태입니다.\n\n" +
+        "• 이미 앱이 설치되어 있다면: 홈 화면의 앱 아이콘으로 실행해 주세요.\n" +
+        "• 방금 앱을 삭제했다면: 브라우저를 완전히 닫았다가 잠시 후 다시 시도해 주세요.\n" +
+        "• 계속 안 되면: 브라우저 메뉴에서 \"앱 설치\" 또는 \"홈 화면에 추가\"를 눌러 주세요."
+    );
   };
 
   if (isStandalone) {
