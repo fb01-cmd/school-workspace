@@ -6,6 +6,7 @@
 
 import { adminDb, DecodedAuthAccess } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
+import { bumpTimetableCacheVersion } from "./cacheVersion";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
 import {
@@ -119,6 +120,7 @@ export async function saveTimetableSettings(
       : current.managerEmails,
   };
   await timetableSettingsDocRef(domain).set(updated, { merge: true });
+  await bumpTimetableCacheVersion(domain);
   return updated;
 }
 
@@ -381,6 +383,7 @@ export async function saveAllClassGrids(
     }
     await batch.commit();
   }
+  await bumpTimetableCacheVersion(domain);
 }
 
 // ── 가져오기 중간 형식 -> ClassGrid & TimetableSubject 변환 ────
@@ -781,7 +784,7 @@ export async function commitTimetableImport(
   // 2. ClassGrid 문서들 저장
   await saveAllClassGrids(domain, termId, classGrids);
 
-  // 3. 학교 설정 내 periodsPerDay 갱신
+  // 3. 학교 설정 내 periodsPerDay 갱신 (saveTimetableSettings가 캐시 버전도 bump)
   await saveTimetableSettings(domain, { periodsPerDay: maxPeriodsPerDay });
 
   return termDoc;
@@ -809,7 +812,7 @@ export async function activateTerm(domain: string, termId: string): Promise<Time
   });
   await batch.commit();
 
-  // 설정 문서 activeTermId 갱신
+  // 설정 문서 activeTermId 갱신 (saveTimetableSettings가 캐시 버전도 bump)
   await saveTimetableSettings(domain, { activeTermId: termId });
 
   term.status = "active";
@@ -836,6 +839,7 @@ export async function deleteTerm(domain: string, termId: string): Promise<void> 
 
   // 2. Term 문서 삭제
   await timetableTermsColRef(domain).doc(termId).delete();
+  await bumpTimetableCacheVersion(domain);
 }
 
 // ── View 데이터 합성 유틸리티 ──────────────────────────────────
@@ -1101,6 +1105,7 @@ export async function registerWeek(
     createdAt: Date.now(),
   };
   await timetableWeeksColRef(domain).doc(weekId).set(week);
+  await bumpTimetableCacheVersion(domain);
   return week;
 }
 
@@ -1125,6 +1130,7 @@ export async function updateWeek(
   // note가 빈 문자열이면 필드 제거 (Firestore undefined 금지 원칙과 동일 계열)
   if (!updated.note) delete (updated as any).note;
   await ref.set({ ...updated, updatedBy: userEmail.toLowerCase(), updatedAt: Date.now() });
+  await bumpTimetableCacheVersion(domain);
   return updated;
 }
 
@@ -1144,15 +1150,22 @@ export async function listWeeks(domain: string, termId?: string): Promise<Timeta
 }
 
 /**
+ * 주 목록에서 오늘이 속한 주 판별 (순수 함수) — 캐시된 주 목록에도 쓰이므로
+ * "현재"의 기준(오늘 날짜)은 호출 시점에 계산한다 (weekly_synthesis_cache_spec §3-2).
+ */
+export function pickCurrentWeek(weeks: TimetableWeek[]): TimetableWeek | null {
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    weeks.find((w) => w.startDate <= today && addDaysISO(w.startDate, 6) >= today) || null
+  );
+}
+
+/**
  * 오늘이 속한 등록된 주 (view 라우트의 현재 주 폴백용).
  * 복합 인덱스를 피하려고 termId 등호 조회 후 메모리에서 판별한다 (학기당 주 ~25개).
  */
 export async function findCurrentWeek(domain: string, termId: string): Promise<TimetableWeek | null> {
-  const today = new Date().toISOString().slice(0, 10);
-  const weeks = await listWeeks(domain, termId);
-  return (
-    weeks.find((w) => w.startDate <= today && addDaysISO(w.startDate, 6) >= today) || null
-  );
+  return pickCurrentWeek(await listWeeks(domain, termId));
 }
 
 // ── 학사일정 → 주차 자동 파생 (pre_opening_3features_spec §B) ──
@@ -1603,6 +1616,7 @@ export async function applyRevisionDraft(
     appliedAt: Date.now(),
   };
   await ref.set(patch, { merge: true });
+  await bumpTimetableCacheVersion(domain);
   return { ...(data as TimetableBaseRevision), id: revisionId, ...patch };
 }
 
@@ -2891,6 +2905,9 @@ export async function approveSwapRequest(
     return { request: { ...request, status: "APPROVED" as const, appliedChangeIds: [changeRef.id] }, change };
   });
 
+  // changes 커밋 완료 → view 캐시 무효화 (알림 실패와 무관하게 먼저)
+  await bumpTimetableCacheVersion(domain);
+
   // 알림: 신청자 + 상대 교사 (§5 — 교무부장은 열람 전용, DM 없음)
   const dayNames = ["", "월", "화", "수", "목", "금"];
   const r = result.request;
@@ -3007,6 +3024,9 @@ export async function revertTimetableChange(
     }
     return { revert: reverts.find((r) => r.revertOf === changeId) || reverts[0], target };
   });
+
+  // revert change 커밋 완료 → view 캐시 무효화 (알림 실패와 무관하게 먼저)
+  await bumpTimetableCacheVersion(domain);
 
   // 알림: 원 승인 알림 수신자 전원 (§5)
   const recipients = new Set<string>();

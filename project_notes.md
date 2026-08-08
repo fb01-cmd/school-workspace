@@ -2238,3 +2238,10 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 - 담김 마커 순 효과(0f3396c): 월2 담김(이동됨)·수4 앰버·경유지 월7 빈 칸 ✓. 체인 담기 시 후보판 초기화(ccafae2): 초록 배지 전무 ✓. 양해 버튼 교사별 분리 ✓. 화면 정상 로드 = 16시 할당량 리셋 복구 ✓. 체인 표시 계열 이슈 전체 종결.
 - 다음: 주간 합성 캐시 스펙·구현 (개학 전 권장 — 읽기량 추산 엔트리 참조).
+
+## [2026-08-08] 주간 합성 캐시 스펙·구현 ✅ (Claude — 설계·구현, 개학 전 권장 항목)
+
+- **스펙**: [`docs/weekly_synthesis_cache_spec.md`](./docs/weekly_synthesis_cache_spec.md). 원 권고(unstable_cache+revalidateTag)에서 **버전 문서 + 인메모리 캐시로 설계 변경** — ① Next 16에서 unstable_cache deprecated, 후계 use cache는 cacheComponents 전역 옵션 전제(개학 직전 위험) ② revalidateTag엔 "쓰기 직전 시작된 채움이 낡은 값을 저장하는" 경합 창 존재 ③ Vercel Data Cache 무료 한도 의존 배제. 버전 키는 경합에도 정확(스펙 §2).
+- **구조**: view 요청 = 인증 1 + `timetable_cache_meta/{domain}` 버전 1읽기 → 버전 포함 키로 인메모리 적중 시 재료 읽기 0 (**~85 → ~2-4/요청**). 캐시 3종(ctx·주간 합성 그리드·teachers 기초), TTL 10분 안전망, 킬스위치 `TIMETABLE_VIEW_CACHE=off`. **view 라우트 전용** — manage·엔진·승인 검증은 fresh 유지.
+- **무효화**: 쓰기 함수 말미 bump 전수 배치(스펙 §4 표 — server.ts 8곳 + manage 분반·특별실 4곳). 제외 목록·사유도 §4에 명시. **새 쓰기 경로 추가 시 §4 표 갱신 필수.**
+- 검증: tsc 0 · build ✅ (로컬 build는 힙 부족 시 `NODE_OPTIONS=--max-old-space-size=4096` 필요했음 — 코드 문제 아님). 남은 것: 실기기 정합 스모크(스펙 §7-2 — 담기 커밋·revert·분반 등록 직후 화면 즉시 반영) + 개학 첫 주 읽기량 실측(§7-3).

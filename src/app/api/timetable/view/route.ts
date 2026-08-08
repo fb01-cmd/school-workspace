@@ -1,21 +1,19 @@
 import { verifyAuthAccess } from "@/lib/firebase/admin";
 import { canViewTimetable } from "@/lib/timetable/authz";
-import { buildSlotIndex, isBlockTeacher } from "@/lib/timetable/swap";
+import { getTimetableCacheVersion } from "@/lib/timetable/cacheVersion";
 import {
   currentMondayISO,
-  findCurrentWeek,
-  loadActiveTerm,
-  loadAllClassGrids,
-  loadBaseGridsForWeek,
-  loadTimetableSettings,
-  loadTimetableTerm,
-  loadWeek,
-  loadWeekChanges,
+  pickCurrentWeek,
   resolveStudentClass,
   synthesizeFreeTeachers,
   synthesizeTeacherTimetable,
 } from "@/lib/timetable/server";
-import { synthesizeWeeklyGrids } from "@/lib/timetable/weekly";
+import { buildSlotIndex, isBlockTeacher } from "@/lib/timetable/swap";
+import {
+  getBaseGridsCached,
+  getViewContextCached,
+  getWeekGridsCached,
+} from "@/lib/timetable/viewCache";
 import {
   ClassGrid,
   TimetableTeacher,
@@ -52,7 +50,11 @@ export async function POST(req: NextRequest) {
     let requestedGrade = Number(body.grade) || 0;
     let requestedClassNum = Number(body.classNum) || 0;
 
-    const settings = await loadTimetableSettings(domain);
+    // 캐시 버전 1읽기 — 이후 재료(설정·학기·주·그리드)는 버전 키 인메모리 캐시 사용
+    // (weekly_synthesis_cache_spec). 쓰기마다 버전이 올라 낡은 항목은 자연 격리된다.
+    const cacheVersion = await getTimetableCacheVersion(domain);
+    const ctx = await getViewContextCached(domain, cacheVersion, body.termId);
+    const settings = ctx.settings;
 
     // 1. 학생 권한 강제 보정 (스펙 0번/1번/3번 대전제: 학생은 무조건 본인 반 시간표로 강제)
     let studentClass: { grade: number; classNum: number } | undefined = undefined;
@@ -92,10 +94,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. 학기(Term) 결정: body.termId가 제공되면 해당 학기, 없으면 active 학기
-    let term = body.termId ? await loadTimetableTerm(domain, body.termId) : null;
-    if (!term) {
-      term = await loadActiveTerm(domain);
-    }
+    //    (ctx가 동일 규칙으로 이미 결정 — termId 미존재 시 active 폴백 포함)
+    const term = ctx.term;
 
     if (!term) {
       const emptyRes: ViewTimetableResponse = {
@@ -114,17 +114,18 @@ export async function POST(req: NextRequest) {
 
     // 3-b. 주간 합성 결정 (phase9b_spec §3-6):
     //      weekId 지정 시 그 주, 미지정 시 현재 주 폴백. 둘 다 없으면 기초시간표 그대로.
+    //      ctx.weeks는 이 학기의 주 전체이므로 목록 미포함 = 미등록 또는 타 학기.
     let week = null;
     if (body.weekId) {
-      week = await loadWeek(domain, body.weekId);
-      if (!week || week.termId !== term.id) {
+      week = ctx.weeks.find((w) => w.id === body.weekId) || null;
+      if (!week) {
         return NextResponse.json(
           { error: `해당 학기에 등록되지 않은 주(${body.weekId})입니다.` },
           { status: 400 }
         );
       }
     } else {
-      week = await findCurrentWeek(domain, term.id);
+      week = pickCurrentWeek(ctx.weeks);
     }
 
     const isManagerish =
@@ -132,16 +133,11 @@ export async function POST(req: NextRequest) {
       settings.managerEmails.some((m) => m.toLowerCase() === auth.email.toLowerCase());
 
     /** 기초 그리드를 로드하고, 주가 정해져 있으면 합성본으로 치환.
-     *  기초는 개정판 주차별 해석 (spec §E) — 주 미지정 시 오늘 주 기준 판. */
-    const loadGrids = async () => {
-      const baseGrids = await loadBaseGridsForWeek(
-        domain, term!.id, week ? week.startDate : currentMondayISO()
-      );
-      if (!week) return { grids: baseGrids, warnings: [] as string[] };
-      const changes = await loadWeekChanges(domain, week.id);
-      const { grids, integrityWarnings } = synthesizeWeeklyGrids(baseGrids, week, changes, settings);
-      return { grids, warnings: integrityWarnings };
-    };
+     *  기초는 개정판 주차별 해석 (spec §E) — 주 미지정 시 오늘 주 기준 판.
+     *  버전 키 캐시 적중 시 Firestore 읽기 0. 반환 그리드는 요청 간 공유되므로
+     *  변형 금지 — 역할별 가공은 반드시 새 객체로 (cache spec §3-3). */
+    const loadGrids = () =>
+      getWeekGridsCached(domain, cacheVersion, term!.id, week, currentMondayISO(), settings);
 
     const weekMeta = week ? { id: week.id, startDate: week.startDate, days: week.days } : null;
     /** 응답에 주 메타 + (일과계·super_admin에게만) 무결성 경고 동봉 */
@@ -299,7 +295,7 @@ export async function POST(req: NextRequest) {
       case "teachers": {
         // 전체 교사 목록 (가나다순) — 교사 선택 드롭다운용 (2026-08-04, 검색 입력 대체)
         // 기초 그리드만 필요하므로 주간 합성 생략 (이름·이메일만 수집)
-        const baseGrids = await loadAllClassGrids(domain, term.id);
+        const baseGrids = await getBaseGridsCached(domain, cacheVersion, term.id);
         const teacherMap = new Map<string, TimetableTeacher>();
         for (const subj of term.subjects || []) {
           for (const email of subj.teacherEmails || []) {

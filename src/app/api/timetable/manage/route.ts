@@ -1,6 +1,7 @@
 import { verifyAuthAccess } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { canManageTimetable } from "@/lib/timetable/authz";
+import { bumpTimetableCacheVersion } from "@/lib/timetable/cacheVersion";
 import { listSimulCells } from "@/lib/timetable/simul";
 import { findVenueBaseConflicts, listVenueCells } from "@/lib/timetable/venue";
 import {
@@ -656,6 +657,7 @@ export async function POST(req: NextRequest) {
             createdAt: Date.now(),
           });
         }
+        await bumpTimetableCacheVersion(domain); // 분반 마크는 view 그리드에 반영됨 (cache spec §4)
         await writeAuditLog({
           operatorEmail: auth.email,
           targetEmail: domain,
@@ -677,6 +679,7 @@ export async function POST(req: NextRequest) {
         }
         const label = (snap.data() as any)?.label || body.simulGroupId;
         await ref.delete();
+        await bumpTimetableCacheVersion(domain);
         await writeAuditLog({
           operatorEmail: auth.email,
           targetEmail: domain,
@@ -745,6 +748,7 @@ export async function POST(req: NextRequest) {
             createdAt: Date.now(),
           });
         }
+        await bumpTimetableCacheVersion(domain); // 특별실 마크는 view 그리드에 반영됨 (cache spec §4)
         await writeAuditLog({
           operatorEmail: auth.email,
           targetEmail: domain,
@@ -766,6 +770,7 @@ export async function POST(req: NextRequest) {
         }
         const d = snap.data() as any;
         await ref.delete();
+        await bumpTimetableCacheVersion(domain);
         await writeAuditLog({
           operatorEmail: auth.email,
           targetEmail: domain,
