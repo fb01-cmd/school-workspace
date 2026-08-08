@@ -35,7 +35,6 @@ export interface CartItem extends DirectPendingOverlayItem {
   counterpartEmail?: string;
   counterpartName?: string;
   counterpartSubjectName?: string;
-  consentChecked?: boolean;
   lastError?: string;
 }
 
@@ -355,7 +354,6 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       counterpartEmail: step.candidate?.counterpartEmail,
       counterpartName: step.candidate?.counterpartName,
       counterpartSubjectName: step.candidate?.counterpartSubjectName,
-      consentChecked: false,
     }));
 
     const updatedCart = [...cartItems, ...newItems];
@@ -443,7 +441,6 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       counterpartName: activeCandidateType === "swap" ? (selectedCandidate as any).counterpartName : (selectedCandidate as SubstituteCandidate).teacherName,
       counterpartSubjectName: activeCandidateType === "swap" ? (selectedCandidate as any).counterpartSubjectName : "보강",
       counterpartEmail: activeCandidateType === "swap" ? (selectedCandidate as any).counterpartEmail : (selectedCandidate as SubstituteCandidate).teacherEmail,
-      consentChecked: false,
     };
     const updatedCart = [...cartItems, newItem]; setCartItems(updatedCart); setSelectedCandidate(null); setPreviewCells(null); setCounterpartSourceCells(null); setCounterpartTargetCells(null); setSuccessMsg(`🛒 담기 완료! 목록에 추가되었습니다. (총 ${updatedCart.length}건)`);
     // 담기 후에는 아이들 상태로 — 같은 슬롯 재탐색은 서버가 그 항목을 자기 충돌 방지로 제외해
@@ -985,10 +982,6 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                         )}
                         <div className="text-[11px] text-gray-700">➔ 상대: <strong className="text-gray-900">{item.counterpartName}</strong> ({item.counterpartSubjectName})</div>
                         {item.lastError && <div className="text-[10px] text-red-700 font-bold bg-red-50 border border-red-200 rounded px-1.5 py-1">⚠️ 반영 실패: {item.lastError}</div>}
-                        <label className="flex items-center gap-1.5 text-[10px] text-gray-600 cursor-pointer pt-1 border-t border-gray-100">
-                          <input type="checkbox" checked={item.consentChecked === true} onChange={(e) => { const checked = e.target.checked; setCartItems((prev) => prev.map((ci) => (ci.id === item.id ? { ...ci, consentChecked: checked } : ci))); }} />
-                          <span>사전 양해 확인</span>
-                        </label>
                       </div>
                     ))}
                   </div>
