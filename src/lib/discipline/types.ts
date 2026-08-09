@@ -47,6 +47,8 @@ export interface DisciplineConfig {
   /** 학년별 수동 리셋 마커 (epoch millis). 회차 집계는 마커 이후 기록만. 기록 자체는 삭제하지 않는다. */
   resetMarkers: Record<string, number>;
   visibility: DisciplineVisibility;
+  /** 시트 단방향 브리지 킬 스위치 (기본값 꺼짐 — false 또는 undefined 시 no-op) */
+  sheetBridgeEnabled?: boolean;
 }
 
 // ── 권한 (discipline_permissions/{domain}/grants/{grantId}) ───

@@ -11,6 +11,7 @@ import {
   recordsColRef,
   stageEventFromDoc,
   stageEventsColRef,
+  triggerAutoStageEventIfNeeded,
 } from "@/lib/discipline/server";
 import {
   computeAccessTargets,
@@ -186,52 +187,16 @@ export async function POST(req: NextRequest) {
       });
 
       // ── 단계 자동 판정: 이 기록으로 새 단계에 도달했으면 auto 이벤트 생성 (처리함 큐 공급) ──
-      const { records, events } = await loadStudentHistory(domain, studentId);
-      const gradeRecords = records.filter((r) => r.grade === grade);
-      const status = computeStudentStatus(config, studentId, grade, gradeRecords, events);
-
-      let createdEventId: string | null = null;
-      if (status.computedStageId) {
-        const markerMs = getResetMarkerMs(config, grade);
-        const alreadyEvented = events.some(
-          (e) => e.stageId === status.computedStageId && e.enteredAt > markerMs
-        );
-        if (!alreadyEvented) {
-          // 해당 단계를 트리거한 규칙의 대상 기록 id들 (item 또는 category 기준)
-          const triggers = status.triggered.filter(
-            (t) => t.targetStageId === status.computedStageId
-          );
-          const triggerRules = config.rules.filter((r) =>
-            triggers.some((t) => t.ruleId === r.id)
-          );
-          const itemById = new Map(config.items.map((it) => [it.id, it]));
-          const causeRecordIds = gradeRecords
-            .filter((r) => !r.voided && r.occurredAt > markerMs)
-            .filter((r) =>
-              triggerRules.some((rule) =>
-                rule.trigger.itemId
-                  ? rule.trigger.itemId === r.itemId
-                  : rule.trigger.category === itemById.get(r.itemId)?.category
-              )
-            )
-            .map((r) => r.id);
-
-          createdEventId = "evt_" + Date.now() + "_" + crypto.randomBytes(4).toString("hex");
-          await stageEventsColRef(domain).doc(createdEventId).set({
-            studentId,
-            studentEmail,
-            studentName,
-            grade,
-            classNum,
-            stageId: status.computedStageId,
-            enteredAt: Timestamp.now(),
-            cause: "auto",
-            causeRecordIds,
-            createdBy: auth.email,
-            resolved: false,
-          });
-        }
-      }
+      const { createdEventId, status } = await triggerAutoStageEventIfNeeded({
+        domain,
+        config,
+        studentId,
+        studentEmail,
+        studentName,
+        grade,
+        classNum,
+        operatorEmail: auth.email,
+      });
 
       await writeAuditLog({
         operatorEmail: auth.email,

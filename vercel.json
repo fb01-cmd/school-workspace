@@ -4,6 +4,10 @@
     {
       "path": "/api/workspace/lifecycle/cron",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/discipline/cron/bridge",
+      "schedule": "0 16 * * *"
     }
   ]
 }

@@ -8,6 +8,7 @@
  *   정렬은 서버 메모리에서 수행 — 단일 학교 규모(수천 건/년)에서 충분.
  */
 
+import crypto from "crypto";
 import { adminDb, DecodedAuthAccess } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
 import {
@@ -19,6 +20,7 @@ import {
   HomeroomClass,
 } from "./types";
 import { DisciplineAuthzContext } from "./authz";
+import { computeStudentStatus, getResetMarkerMs } from "./engine";
 
 // ── 경로 헬퍼 ──────────────────────────────────────────────────
 
@@ -116,6 +118,7 @@ export async function loadDisciplineConfig(
       ...DEFAULT_VISIBILITY,
       ...(typeof data.visibility === "object" && data.visibility ? data.visibility : {}),
     },
+    sheetBridgeEnabled: Boolean(data.sheetBridgeEnabled),
   };
   return { config, seeded: false };
 }
@@ -306,3 +309,85 @@ export function parseStudentIdStrict(
   if (grade < 1 || grade > 3 || classNum < 1 || number < 1) return null;
   return { grade, classNum, number };
 }
+
+/**
+ * 학생의 전체 기록/이벤트를 로드하여 현재 단계를 계산하고,
+ * 리셋 마커 이후 새 단계 도달 시 auto stage_event 문서를 생성한다.
+ * (records/route.ts create 경로 및 시트 브리지 크론 공용 헬퍼)
+ */
+export async function triggerAutoStageEventIfNeeded(params: {
+  domain: string;
+  config: DisciplineConfig;
+  studentId: string;
+  studentEmail: string;
+  studentName: string;
+  grade: number;
+  classNum: number;
+  operatorEmail: string;
+}): Promise<{ createdEventId: string | null; status: ReturnType<typeof computeStudentStatus> }> {
+  const {
+    domain,
+    config,
+    studentId,
+    studentEmail,
+    studentName,
+    grade,
+    classNum,
+    operatorEmail,
+  } = params;
+
+  const [recSnap, evtSnap] = await Promise.all([
+    recordsColRef(domain).where("studentId", "==", studentId).get(),
+    stageEventsColRef(domain).where("studentId", "==", studentId).get(),
+  ]);
+  const records = recSnap.docs.map((d) => recordFromDoc(d.id, d.data()));
+  const events = evtSnap.docs.map((d) => stageEventFromDoc(d.id, d.data()));
+
+  const gradeRecords = records.filter((r) => r.grade === grade);
+  const status = computeStudentStatus(config, studentId, grade, gradeRecords, events);
+
+  let createdEventId: string | null = null;
+  if (status.computedStageId) {
+    const markerMs = getResetMarkerMs(config, grade);
+    const alreadyEvented = events.some(
+      (e) => e.stageId === status.computedStageId && e.enteredAt > markerMs
+    );
+    if (!alreadyEvented) {
+      const triggers = status.triggered.filter(
+        (t) => t.targetStageId === status.computedStageId
+      );
+      const triggerRules = config.rules.filter((r) =>
+        triggers.some((t) => t.ruleId === r.id)
+      );
+      const itemById = new Map(config.items.map((it) => [it.id, it]));
+      const causeRecordIds = gradeRecords
+        .filter((r) => !r.voided && r.occurredAt > markerMs)
+        .filter((r) =>
+          triggerRules.some((rule) =>
+            rule.trigger.itemId
+              ? rule.trigger.itemId === r.itemId
+              : rule.trigger.category === itemById.get(r.itemId)?.category
+          )
+        )
+        .map((r) => r.id);
+
+      createdEventId = "evt_" + Date.now() + "_" + crypto.randomBytes(4).toString("hex");
+      await stageEventsColRef(domain).doc(createdEventId).set({
+        studentId,
+        studentEmail,
+        studentName,
+        grade,
+        classNum,
+        stageId: status.computedStageId,
+        enteredAt: Timestamp.now(),
+        cause: "auto",
+        causeRecordIds,
+        createdBy: operatorEmail,
+        resolved: false,
+      });
+    }
+  }
+
+  return { createdEventId, status };
+}
+
