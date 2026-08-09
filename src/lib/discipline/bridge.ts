@@ -197,8 +197,20 @@ export async function runDisciplineSheetBridge(
           spreadsheetId: id,
           range: `'${tab}'!A1:J3`,
         });
-      } catch {
-        // 탭이 존재하지 않을 수 있음 (예: 10반이 없는 학년)
+      } catch (err: any) {
+        const errMsg = String(err?.message || err || "");
+        const isNotFound =
+          err?.code === 400 ||
+          err?.status === 400 ||
+          errMsg.includes("Unable to parse range") ||
+          errMsg.includes("not found");
+        if (isNotFound) {
+          // 탭이 존재하지 않음 (예: 10반이 없는 학년)
+          continue;
+        }
+        const warnMsg = `[Sheet Read Error] 탭 '${tab}' 읽기 오류: ${errMsg}`;
+        console.warn(warnMsg);
+        warnings.push(warnMsg);
         continue;
       }
 
@@ -322,7 +334,6 @@ export async function runDisciplineSheetBridge(
     target: StudentTarget;
     itemId: string;
     occurredAt: number;
-    dateSource: "note" | "fallback";
     noteText: string;
   }
 
@@ -340,13 +351,11 @@ export async function runDisciplineSheetBridge(
       const platformCount = gradeRecs.filter((r) => r.itemId === itemId).length;
       if (sheetCount > platformCount) {
         const diff = sheetCount - platformCount;
-        const parsedMs = parseNoteDate(target.note);
-        const occurredAt = parsedMs !== null ? parsedMs : Date.now();
-        const dateSource = parsedMs !== null ? "note" : "fallback";
+        const occurredAt = Date.now();
 
         const noteParts = [target.note].filter(Boolean);
         noteParts.push("[시트 자동 가져옴]");
-        if (dateSource === "fallback") noteParts.push("[날짜 근사]");
+        noteParts.push("[날짜 근사]");
         const noteText = noteParts.join(" ");
 
         for (let i = 0; i < diff; i++) {
@@ -354,7 +363,6 @@ export async function runDisciplineSheetBridge(
             target,
             itemId,
             occurredAt,
-            dateSource,
             noteText,
           });
         }

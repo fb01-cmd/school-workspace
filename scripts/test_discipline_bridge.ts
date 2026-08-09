@@ -14,7 +14,7 @@ import { runDisciplineSheetBridge } from "../src/lib/discipline/bridge";
 async function main() {
   const isExecute = process.argv.includes("--execute");
   const dryRun = process.argv.includes("--dry-run") || !isExecute;
-  const bypassKillSwitch = true; // CLI 스크립트에서는 대조/실측을 위해 킬 스위치 우회 기본 설정
+  const bypassKillSwitch = dryRun; // dry-run일 때만 킬 스위치 우회, --execute 시 킬 스위치 존중
 
   console.log(`========== 생활지도 시트 브리지 CLI 테스트 (${dryRun ? "DRY-RUN (미리보기)" : "EXECUTE (실제 쓰기)"}) ==========`);
 
