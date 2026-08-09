@@ -1154,7 +1154,7 @@ export async function listWeeks(domain: string, termId?: string): Promise<Timeta
  * "현재"의 기준(오늘 날짜)은 호출 시점에 계산한다 (weekly_synthesis_cache_spec §3-2).
  */
 export function pickCurrentWeek(weeks: TimetableWeek[]): TimetableWeek | null {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayKSTISO();
   return (
     weeks.find((w) => w.startDate <= today && addDaysISO(w.startDate, 6) >= today) || null
   );
@@ -1269,9 +1269,14 @@ export function deriveWeekInput(
   };
 }
 
+/** KST 기준 오늘 (ISO) — 서버는 UTC라 toISOString 단독 사용 시 KST 00:00~08:59에 어제로 계산된다 */
+export function todayKSTISO(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 /** 오늘 주의 월요일 (ISO) */
 export function currentMondayISO(): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayKSTISO();
   const dow = new Date(`${today}T00:00:00Z`).getUTCDay(); // 0=일..6=토
   const delta = dow === 0 ? -6 : 1 - dow;
   return addDaysISO(today, delta);

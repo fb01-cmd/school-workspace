@@ -118,7 +118,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
   const getInitialWeekId = (weeksList: TimetableWeek[]): string => {
     if (!weeksList || weeksList.length === 0) return "";
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // KST 기준 오늘 — toISOString 단독은 UTC라 KST 00:00~08:59에 어제로 계산됨
+    const todayStr = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const active = weeksList.find((w) => {
       const start = w.startDate;
       const endDateObj = new Date(start);
