@@ -2363,3 +2363,11 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - push 승인 시: *"브리지 push 승인. push하고 Vercel 배포·크론 등록 확인해줘."*
 - 학생부장 공지일에: *"project_notes.md 마지막 체크포인트 읽어줘. 오늘 생활지도 플랫폼 전환 공지 나감 — 브리지 킬 스위치 켜줘."*
+
+## [2026-08-10] 세션 체크포인트 (브리지 배포 완료 — 가동 대기)
+
+- **push·배포 완료 (사용자 승인)**: 16커밋(문서 13 + 브리지 코드 3) push → Vercel 자동 배포. **프로덕션 실증**: `/api/discipline/cron/bridge` 무인증 401(fail-closed) ✅ / CRON_SECRET 인증 호출 → `{"skipped":true, "reason":"kill-switch"}` no-op ✅. 프로덕션 CRON_SECRET = .env.local과 동일 확인됨. 크론 2개(lifecycle KST 00:00·브리지 KST 01:00) — 브리지는 킬 스위치 켤 때까지 매일 no-op.
+- **남은 것**: ① 학생부장 공지일 → `discipline_config/hmh.or.kr`의 `sheetBridgeEnabled: true` (Claude 스크립트 1줄) ② 가동 +1개월경 일몰 — vercel.json 크론 제거 + 시트 3부 안내 배너·읽기 전용 전환.
+
+### 재개 문구
+- 공지일: *"project_notes.md 마지막 체크포인트 읽어줘. 오늘 생활지도 플랫폼 전환 공지 나감 — 브리지 킬 스위치 켜줘."*
