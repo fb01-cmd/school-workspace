@@ -135,8 +135,11 @@ async function loadRosterFromDirectory() {
 /** 탭 머리글 라벨 검증 (폭주 가드 1) */
 function validateTabHeader(values: any[][]): boolean {
   if (!values || values.length === 0) return false;
-  // A1:J3 영역 내에 "번호"/"학번", "성명"/"이름", "비고" 등이 포함되어 있는지 확인
-  const text = values.flatMap((r) => r.map((cell) => String(cell ?? ""))).join(" ");
+  // A1:J3 영역 내에 "번호"/"학번", "성명"/"이름", "비고" 등이 포함되어 있는지 확인 (공백 제거 후 대조)
+  const text = values
+    .flatMap((r) => r.map((cell) => String(cell ?? "")))
+    .join("")
+    .replace(/\s+/g, "");
   const hasNum = text.includes("번호") || text.includes("학번");
   const hasName = text.includes("성명") || text.includes("이름");
   const hasNote = text.includes("비고");
