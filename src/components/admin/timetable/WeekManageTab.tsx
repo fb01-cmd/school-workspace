@@ -57,13 +57,6 @@ export default function WeekManageTab({
     }
   };
 
-  // 등록 모달 상태
-  const [isRegisterOpen, setIsRegisterOpen] = useState(false);
-  const [regStartDate, setRegStartDate] = useState("");
-  const [regNote, setRegNote] = useState("");
-  const [regSubmitting, setRegSubmitting] = useState(false);
-  const [regError, setRegError] = useState<string | null>(null);
-
   // 수정 모달 상태
   const [editingWeek, setEditingWeek] = useState<TimetableWeek | null>(null);
   const [editDays, setEditDays] = useState<TimetableWeekDay[]>([]);
@@ -97,71 +90,6 @@ export default function WeekManageTab({
   useEffect(() => {
     fetchWeeks();
   }, [activeTermId]);
-
-  // 주 등록 처리
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeTermId) {
-      setRegError("활성 학기가 설정되어 있지 않습니다.");
-      return;
-    }
-    if (!regStartDate) {
-      setRegError("시작 월요일 날짜를 선택해주세요.");
-      return;
-    }
-
-    const d = new Date(regStartDate);
-    if (isNaN(d.getTime())) {
-      setRegError("유효한 날짜가 아닙니다.");
-      return;
-    }
-
-    // 월요일 검증 (d.getDay() === 1)
-    // local date format comparison
-    const dayOfWeek = d.getUTCDay();
-    // UTC 또는 Local 날짜 처리
-    const localDay = new Date(regStartDate + "T00:00:00").getDay();
-    if (localDay !== 1) {
-      setRegError("선택한 날짜가 월요일이 아닙니다. 주의 시작일은 월요일이어야 합니다.");
-      return;
-    }
-
-    setRegSubmitting(true);
-    setRegError(null);
-
-    try {
-      const res = await fetch("/api/timetable/manage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "week_register",
-          week: {
-            termId: activeTermId,
-            startDate: regStartDate,
-            note: regNote.trim(),
-          },
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSuccessMsg(`주(${data.week.id})가 성공적으로 등록되었습니다.`);
-        setIsRegisterOpen(false);
-        setRegStartDate("");
-        setRegNote("");
-        fetchWeeks();
-        setTimeout(() => setSuccessMsg(null), 4000);
-      } else {
-        setRegError(data.error || "주 등록 실패");
-      }
-    } catch (err: any) {
-      setRegError(`네트워크 오류: ${err.message}`);
-    } finally {
-      setRegSubmitting(false);
-    }
-  };
-
-  // 주 수정 모달 열기
   const openEditModal = (week: TimetableWeek) => {
     setEditingWeek(week);
     setEditDays(JSON.parse(JSON.stringify(week.days || [])));
@@ -226,7 +154,7 @@ export default function WeekManageTab({
 
   return (
     <div className="space-y-6">
-      {/* 헤더 & 주 등록 버튼 */}
+      {/* 헤더 */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
@@ -234,16 +162,9 @@ export default function WeekManageTab({
             <span>주 운영 관리 (휴업일 & 요일별 시수)</span>
           </h2>
           <p className="text-xs text-gray-500 mt-1">
-            활성 학기({activeTermId})의 주 단위 운영 일정, 공휴일/재량휴업일 및 단축 수업 시수를 관리합니다.
+            주 운영은 학사일정(공휴일·단축수업 등)에서 자동으로 파생되어 동기화됩니다. 학사일정에 없는 특이 조정만 아래 [휴업·시수 수정]으로 설정합니다.
           </p>
         </div>
-        <button
-          onClick={() => setIsRegisterOpen(true)}
-          className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 self-start md:self-auto"
-        >
-          <span>➕</span>
-          <span>새 주 등록</span>
-        </button>
       </div>
 
       {/* 시간표 공개 범위 설정 카드 */}
@@ -311,7 +232,7 @@ export default function WeekManageTab({
         ) : weeks.length === 0 ? (
           <div className="p-12 text-center text-xs text-gray-500">
             <p className="font-semibold mb-1">등록된 주가 없습니다.</p>
-            <p className="text-gray-400">상단의 &apos;새 주 등록&apos; 버튼을 눌러 수업 주간을 등록해 주세요.</p>
+            <p className="text-gray-400">학사일정을 등록하거나 교사 포털에 접속하면 주가 자동으로 파생됩니다.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -328,6 +249,7 @@ export default function WeekManageTab({
               <tbody className="divide-y divide-gray-100 text-gray-700">
                 {weeks.map((w) => {
                   const holidayCount = (w.days || []).filter((d) => d.holiday).length;
+                  const overrideCount = Array.isArray(w.dayOverrides) ? w.dayOverrides.length : 0;
                   return (
                     <tr key={w.id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="py-3.5 px-4 font-bold text-indigo-900">
@@ -339,6 +261,7 @@ export default function WeekManageTab({
                             const reduced =
                               d.periodsByGrade &&
                               Object.values(d.periodsByGrade).some((p) => p < periodsPerDay);
+                            const isOverridden = Array.isArray(w.dayOverrides) && w.dayOverrides.includes(d.day);
                             return (
                               <span
                                 key={d.day}
@@ -347,18 +270,26 @@ export default function WeekManageTab({
                                     ? "bg-red-50 text-red-700 border-red-200"
                                     : reduced
                                     ? "bg-amber-50 text-amber-800 border-amber-200"
+                                    : isOverridden
+                                    ? "bg-purple-50 text-purple-800 border-purple-200"
                                     : "bg-gray-100 text-gray-700 border-gray-200"
                                 }`}
                               >
                                 {DAY_NAMES[d.day]} ({d.date.slice(5)})
                                 {d.holiday ? " [휴업]" : ""}
                                 {reduced ? ` [단축]` : ""}
+                                {isOverridden ? ` [직접 조정]` : ""}
                               </span>
                             );
                           })}
                           {holidayCount > 0 && (
                             <span className="ml-1 text-[10px] bg-red-100 text-red-800 px-1.5 py-0.5 rounded font-bold">
                               휴업 {holidayCount}일
+                            </span>
+                          )}
+                          {overrideCount > 0 && (
+                            <span className="ml-1 text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded font-bold">
+                              직접 조정 {overrideCount}일
                             </span>
                           )}
                         </div>
@@ -386,77 +317,7 @@ export default function WeekManageTab({
         )}
       </div>
 
-      {/* 새 주 등록 모달 */}
-      {isRegisterOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-md p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                <span>🗓️</span>
-                <span>새 주 등록</span>
-              </h3>
-              <button
-                onClick={() => setIsRegisterOpen(false)}
-                className="text-gray-400 hover:text-gray-600 p-1 text-lg font-bold"
-              >
-                ✕
-              </button>
-            </div>
 
-            {regError && (
-              <div className="bg-red-50 border border-red-200 text-red-900 p-3 rounded-lg text-xs font-bold">
-                ⚠️ {regError}
-              </div>
-            )}
-
-            <form onSubmit={handleRegister} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  시작 월요일 날짜 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={regStartDate}
-                  onChange={(e) => setRegStartDate(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
-                <p className="text-[11px] text-gray-500 mt-1">
-                  주의 시작일은 반드시 <strong>월요일</strong>이어야 합니다. 선택된 월요일 날짜가 주 ID(예: 2026-09-07)가 됩니다.
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">메모 (선택사항)</label>
-                <input
-                  type="text"
-                  value={regNote}
-                  onChange={(e) => setRegNote(e.target.value)}
-                  placeholder="예: 2학기 1주차 / 개학주"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsRegisterOpen(false)}
-                  className="px-4 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold rounded-lg"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  disabled={regSubmitting}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-sm disabled:opacity-50"
-                >
-                  {regSubmitting ? "등록 중..." : "주 등록 완료"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* 주 수정 모달 (휴업일 & 단축 시수 설정) */}
       {editingWeek && (

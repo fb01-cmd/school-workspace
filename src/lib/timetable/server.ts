@@ -5,7 +5,8 @@
  */
 
 import { adminDb, DecodedAuthAccess } from "@/lib/firebase/admin";
-import { Timestamp } from "firebase-admin/firestore";
+import { writeAuditLog } from "@/lib/firebase/audit-server";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { bumpTimetableCacheVersion } from "./cacheVersion";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
@@ -30,6 +31,7 @@ import {
   TimetableTeacher,
   TimetableTerm,
   TimetableValidationReport,
+  TimetableWeekDay,
   UnmatchedTeacherIssue,
 } from "./types";
 
@@ -1100,6 +1102,7 @@ export async function registerWeek(
     termId: input.termId,
     startDate,
     days: normalizeWeekDays(input),
+    dayOverrides: input.dayOverrides || [],
     ...(input.note ? { note: input.note } : {}),
     createdBy: userEmail.toLowerCase(),
     createdAt: Date.now(),
@@ -1120,11 +1123,33 @@ export async function updateWeek(
   if (!snap.exists) throw new Error(`등록되지 않은 주(${weekId})입니다.`);
   const current = snap.data() as TimetableWeek;
 
+  let newDays = current.days;
+  let dayOverrides = current.dayOverrides;
+
+  if (input.days) {
+    newDays = normalizeWeekDays({ termId: current.termId, startDate: current.startDate, days: input.days });
+    const events = await loadCalendarEvents(domain, current.termId);
+    const derivedInput = deriveWeekInput(current.termId, current.startDate, events);
+    const derivedDays = normalizeWeekDays(derivedInput);
+
+    dayOverrides = [];
+    for (let day = 1; day <= 5; day++) {
+      const curDay = newDays.find((d) => d.day === day);
+      const derDay = derivedDays.find((d) => d.day === day);
+      const isDiff =
+        !curDay ||
+        !derDay ||
+        curDay.holiday !== derDay.holiday ||
+        JSON.stringify(curDay.periodsByGrade || {}) !== JSON.stringify(derDay.periodsByGrade || {});
+      if (isDiff) {
+        dayOverrides.push(day);
+      }
+    }
+  }
+
   const updated: TimetableWeek = {
     ...current,
-    ...(input.days
-      ? { days: normalizeWeekDays({ termId: current.termId, startDate: current.startDate, days: input.days }) }
-      : {}),
+    ...(input.days ? { days: newDays, dayOverrides } : {}),
     ...(input.note !== undefined ? { note: input.note } : {}),
   };
   // note가 빈 문자열이면 필드 제거 (Firestore undefined 금지 원칙과 동일 계열)
@@ -1308,6 +1333,108 @@ export async function ensureDerivedWeeks(domain: string): Promise<TimetableWeek[
     }
   }
   return created;
+}
+
+/**
+ * 학사일정 변경 시 (calendar_save / calendar_delete) 기존 주들과 마스터 동기화 (spec §3-2).
+ * 비과거 주(종료일 >= todayKSTISO())에 대해 dayOverrides에 없는 요일을 파생값으로 업데이트한다.
+ * dayOverrides가 없는 레거시 주(undefined)는 첫 동기화 시 기존 days와 파생 days를 비교하여
+ * 다른 요일은 오버라이드로 편입, 같은 요일은 추종으로 이행한다 (spec §4).
+ */
+export async function syncDerivedWeeksWithCalendar(
+  domain: string,
+  termId: string
+): Promise<{ updatedCount: number; updatedWeekIds: string[] }> {
+  const [allWeeks, events] = await Promise.all([
+    listWeeks(domain, termId),
+    loadCalendarEvents(domain, termId),
+  ]);
+
+  const today = todayKSTISO();
+  const activeWeeks = allWeeks.filter((w) => addDaysISO(w.startDate, 6) >= today);
+  const updatedWeekIds: string[] = [];
+
+  for (const week of activeWeeks) {
+    const derivedInput = deriveWeekInput(termId, week.startDate, events);
+    const derivedDays = normalizeWeekDays(derivedInput);
+
+    // §4: 레거시 주 (dayOverrides가 undefined) 자가 이행
+    let overrides: number[];
+    if (!Array.isArray(week.dayOverrides)) {
+      overrides = [];
+      for (let day = 1; day <= 5; day++) {
+        const curDay = week.days.find((d) => d.day === day);
+        const derDay = derivedDays.find((d) => d.day === day);
+        const isDiff =
+          !curDay ||
+          !derDay ||
+          curDay.holiday !== derDay.holiday ||
+          JSON.stringify(curDay.periodsByGrade || {}) !== JSON.stringify(derDay.periodsByGrade || {});
+        if (isDiff) {
+          overrides.push(day);
+        }
+      }
+    } else {
+      overrides = [...week.dayOverrides];
+    }
+
+    const overrideSet = new Set(overrides);
+
+    // 요일별 파생 추종 값 병합 (overrideSet에 없는 요일만 파생값 적용)
+    const newDays: TimetableWeekDay[] = [];
+    for (let day = 1; day <= 5; day++) {
+      const curDay = week.days.find((d) => d.day === day);
+      const derDay = derivedDays.find((d) => d.day === day)!;
+      if (overrideSet.has(day) && curDay) {
+        newDays.push(curDay);
+      } else {
+        newDays.push(derDay);
+      }
+    }
+
+    // note 처리: 주 note가 없거나 "학사일정 자동:"으로 시작하면 파생 note로 재생성, 그 외 보존
+    let newNote = week.note;
+    if (!week.note || week.note.startsWith("학사일정 자동:")) {
+      newNote = derivedInput.note;
+    }
+
+    // 변경 여부 대조
+    const daysChanged = JSON.stringify(newDays) !== JSON.stringify(week.days);
+    const overridesChanged = JSON.stringify(overrides) !== JSON.stringify(week.dayOverrides);
+    const noteChanged = newNote !== week.note;
+
+    if (daysChanged || overridesChanged || noteChanged) {
+      const ref = timetableWeeksColRef(domain).doc(week.id);
+      if (!newNote && week.note) {
+        await ref.update({
+          days: newDays,
+          dayOverrides: overrides,
+          note: FieldValue.delete(),
+        });
+      } else {
+        const payload: Partial<TimetableWeek> = {
+          days: newDays,
+          dayOverrides: overrides,
+          ...(newNote ? { note: newNote } : {}),
+        };
+        await ref.set(payload, { merge: true });
+      }
+      updatedWeekIds.push(week.id);
+    }
+  }
+
+  if (updatedWeekIds.length > 0) {
+    await bumpTimetableCacheVersion(domain);
+    await writeAuditLog({
+      operatorEmail: "system",
+      targetEmail: domain,
+      action: "sync_calendar_weeks",
+      details: `학사일정 마스터 동기화 (${updatedWeekIds.length}개 주 반영): ${updatedWeekIds.join(", ")}`,
+      status: "success",
+    });
+  }
+
+  return { updatedCount: updatedWeekIds.length, updatedWeekIds };
 }
 
 // ── 기초시간표 개정 (pre_opening_3features_spec §E) ────────────

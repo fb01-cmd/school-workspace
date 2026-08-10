@@ -410,6 +410,7 @@ export interface TimetableWeek {
   termId: string;
   startDate: string;
   days: TimetableWeekDay[];
+  dayOverrides?: number[]; // 수동 오버라이드된 요일(1~5). 없으면 레거시 주(§4 자가 이행 대상), 빈 배열이면 전 요일 파생 추종.
   note?: string;
   createdBy: string;
   createdAt: number;
@@ -419,6 +420,7 @@ export interface WeekRegisterInput {
   termId: string;
   startDate: string; // 월요일
   days?: Array<{ day: number; holiday?: boolean; periodsByGrade?: Record<string, number> }>;
+  dayOverrides?: number[];
   note?: string;
 }
 

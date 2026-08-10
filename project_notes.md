@@ -2429,3 +2429,28 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### push·배포 (2026-08-10 사용자 승인)
 - origin 동기화 확인(ce834a1, ahead 1뿐) 후 push → eaa0b56 반영, **Vercel 배포 success 확인**(GitHub commit status API — gh CLI·Vercel CLI 없는 환경에서 이 경로가 유효).
 - 배포 직후 상태: 교사·직권 화면 노출 = 8/10·8/17·8/24 총 3주(설정 2=총 3주), 8/31은 캡으로 숨김(삭제 아님). 4주 노출 원하면 일과계 탭 "공개 범위 설정"에서 총 4주로 상향.
+
+## [2026-08-10] Antigravity → Claude (학사일정 마스터 동기화 calendar_master_sync 구현 완료)
+
+- **변경 내용 요약**:
+  - `types.ts`: `TimetableWeek` 및 `WeekRegisterInput`에 `dayOverrides?: number[]` 추가.
+  - `server.ts`:
+    - `registerWeek`: 신규 자동 파생 주 `dayOverrides: []` 생성.
+    - `updateWeek`: 마스터 파생 days와 제출 days 비교 후 다른 요일만 `dayOverrides`에 기록(자가 치유).
+    - `syncDerivedWeeksWithCalendar`: `calendar_save` / `calendar_delete` 성공 직후 비과거 주 재파생 및 오버라이드 아닌 요일만 치환 (레거시 주 §4 자가 이행 포함, 무변경 주 쓰기 생략, 캐시 bump 1회, 감사로그 `sync_calendar_weeks`).
+  - `manage/route.ts`: `calendar_save` 및 `calendar_delete` 성공 직후 `syncDerivedWeeksWithCalendar` 연동.
+  - `WeekManageTab.tsx`: "새 주 등록" 버튼 및 모달 제거, 헤더 안내문구 자동 생성 방식으로 교체, 주 목록에 `[직접 조정]` 요일 배지 표시.
+- **실제 실행한 검증 명령 및 결과**:
+  - `npx tsc --noEmit`: Exit Code 0 (오류 0건)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build`: Exit Code 0 (`✓ Compiled successfully in 16.6s`, `✓ Finished TypeScript in 23.3s`, `✓ Generating static pages (35/35)`)
+- **다음 할 일**: Claude 표적 검수 및 사용자 push 승인 대기.
+
+### [2026-08-10] Claude 검수 — 통과 ✅, 커밋 완료 (push는 사용자 승인 대기)
+
+- **diff 대조**: 핸드오버 기재와 diff 일치 — 스펙 §2~§5 전 항목 반영(요일 비교의 자가 치유, 레거시 자가 이행, note 보존/삭제 처리(FieldValue.delete), 무변경 쓰기 생략, 캐시 bump·감사 로그 1회, 감사 문구의 낡은 "소급 변경되지 않음" 제거, UI 배지·문구·모달 제거).
+- **Claude 직접 재검증**: tsc·build(힙 4GB) 통과.
+- **실데이터 실측** (`scripts/verify_calendar_sync.ts`, §6 전 시나리오 — 임시 이벤트는 검증 후 삭제·원상 복구 완료): ① 레거시 4주 자가 이행 = 요일 값·note 불변, dayOverrides 재료화(8/17 광복절 휴업은 공휴일표 파생과 일치해 오버라이드 아님) ② 재동기화 멱등 updated=0 ③ 단축수업 이벤트 추가 → 해당 주 수요일 4교시 반영 ④ 수동 조정 목 5교시 → overrides=[4] ⑤ 이벤트 삭제 → 수 원복·목 오버라이드 보존 ⑥ 파생값 복귀 → 오버라이드 자가 해제.
+- **소소한 유의점(결함 아님)**: `week_register` API로 스크립트 수동 등록 시 dayOverrides 기본값이 `[]`(전 요일 마스터 추종) — 파생과 다른 커스텀 요일을 넣으려면 dayOverrides를 명시해 넘길 것(안 하면 다음 동기화 때 파생값으로 돌아감).
+
+### 재개 문구
+- push 승인 시: *"project_notes.md 마지막 체크포인트 읽어줘. 학사일정 마스터 동기화 push 진행해."*

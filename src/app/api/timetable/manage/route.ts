@@ -42,6 +42,7 @@ import {
   revertTimetableChange,
   saveTimetableSettings,
   updateWeek,
+  syncDerivedWeeksWithCalendar,
   validateTimetableImport,
 } from "@/lib/timetable/server";
 import {
@@ -838,9 +839,12 @@ export async function POST(req: NextRequest) {
           operatorEmail: auth.email,
           targetEmail: domain,
           action: isUpdate ? "timetable_calendar_update" : "timetable_calendar_create",
-          details: `학사일정 ${isUpdate ? "수정" : "등록"}: ${v.event.type} ${v.event.startDate}${v.event.endDate !== v.event.startDate ? `~${v.event.endDate}` : ""}${v.event.note ? ` (${v.event.note})` : ""} — 이미 생성된 주는 소급 변경되지 않음`,
+          details: `학사일정 ${isUpdate ? "수정" : "등록"}: ${v.event.type} ${v.event.startDate}${v.event.endDate !== v.event.startDate ? `~${v.event.endDate}` : ""}${v.event.note ? ` (${v.event.note})` : ""}`,
           status: "success",
         });
+        await syncDerivedWeeksWithCalendar(domain, termId).catch((e) =>
+          console.error("[calendar_save] 주 동기화 실패:", e?.message)
+        );
         return NextResponse.json({ success: true, action, eventId: ref.id });
       }
 
@@ -852,14 +856,20 @@ export async function POST(req: NextRequest) {
         if (!snap.exists)
           return NextResponse.json({ error: "삭제할 일정을 찾을 수 없습니다." }, { status: 404 });
         const d = snap.data() as any;
+        const termId = d?.termId || settings.activeTermId;
         await ref.delete();
         await writeAuditLog({
           operatorEmail: auth.email,
           targetEmail: domain,
           action: "timetable_calendar_delete",
-          details: `학사일정 삭제: ${d?.type} ${d?.startDate}${d?.endDate && d.endDate !== d.startDate ? `~${d.endDate}` : ""} — 이미 생성된 주는 소급 변경되지 않음`,
+          details: `학사일정 삭제: ${d?.type} ${d?.startDate}${d?.endDate && d.endDate !== d.startDate ? `~${d.endDate}` : ""}`,
           status: "success",
         });
+        if (termId) {
+          await syncDerivedWeeksWithCalendar(domain, termId).catch((e) =>
+            console.error("[calendar_delete] 주 동기화 실패:", e?.message)
+          );
+        }
         return NextResponse.json({ success: true, action });
       }
 
