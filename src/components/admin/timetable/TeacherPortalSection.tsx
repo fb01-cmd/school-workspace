@@ -169,6 +169,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [batchConsentConfirmed, setBatchConsentConfirmed] = useState(false);
   const [batchConsentNote, setBatchConsentNote] = useState("");
 
+  // §3-2b v1.1: 조율 필요 후보 인라인 클릭 시 2단 경고 다이얼로그 상태
+  const [pendingCoordinationSave, setPendingCoordinationSave] = useState<{ candidate: SwapCandidate; weekId: string } | null>(null);
+
   useEffect(() => {
     setConsentConfirmed(false);
     setConsentNote("");
@@ -963,7 +966,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                     const cpScore = candidate.counterpartScore ?? 0;
                                     const counterpartPenalties = (candidate.penaltyDetails || []).filter((p) => p.scope === "counterpart");
                                     const tooltipText = isCoordination
-                                      ? `🤝 [양해 필요 후보] ${coordText}`
+                                      ? `⚠️ [양해 필요 후보] ${coordText}`
                                       : `[${candidate.counterpartSubjectName}] ${candidate.counterpartName} 교사 · 상대 감점 ${cpScore}점${
                                           counterpartPenalties.length > 0 ? ` (${counterpartPenalties.map((p) => p.text).join(", ")})` : ""
                                         }${candidate.conditional ? " · ⏳ 조건부 — 내 대기 신청 승인 전제" : ""}`;
@@ -971,8 +974,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                     let badgeStyle = "bg-emerald-100 border-emerald-300 text-emerald-950";
                                     if (cpScore >= 3) badgeStyle = "bg-rose-100 border-rose-300 text-rose-950";
                                     else if (cpScore >= 1) badgeStyle = "bg-amber-100 border-amber-300 text-amber-950";
-                                    // 조율 필요 후보는 감점 색과 별개의 구분(점선 테두리) — 클릭 전 인지가 목적 (spec §3-2 ①)
-                                    if (isCoordination) badgeStyle = "bg-amber-50 border-amber-400 border-dashed text-amber-950";
+                                    // §3-2b ①: 조율 필요 후보는 감점 색보다 명확히 강한 경고 스타일(빨간 계열·굵은 테두리, "⚠️ 양해 필수")
+                                    if (isCoordination) badgeStyle = "bg-red-50 border-2 border-red-500 text-red-950 font-bold shadow-xs";
 
                                     const isSavingThis = savingDraft && applyingCandidate === candidate;
 
@@ -984,7 +987,13 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                           setApplyingCandidate(candidate);
                                           setTargetWeekId(week.weekId);
                                         }}
-                                        onClick={() => handleSelectCandidateAndSave(candidate, week.weekId)}
+                                        onClick={() => {
+                                          if (isCoordination) {
+                                            setPendingCoordinationSave({ candidate, weekId: week.weekId });
+                                          } else {
+                                            handleSelectCandidateAndSave(candidate, week.weekId);
+                                          }
+                                        }}
                                         className={`p-1.5 rounded-lg border text-center transition-all shadow-2xs ${badgeStyle} ${
                                           isSavingThis
                                             ? "animate-pulse ring-2 ring-indigo-500"
@@ -998,10 +1007,16 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                         ) : (
                                           <>
                                             <div className="font-extrabold text-xs truncate">
-                                              {isCoordination ? "🤝 " : ""}{candidate.conditional ? "⏳ " : ""}{candidate.counterpartName}
+                                              {isCoordination ? "⚠️ " : ""}{candidate.conditional ? "⏳ " : ""}{candidate.counterpartName}
                                             </div>
-                                            <div className="text-[10px] font-black underline mt-0.5">
-                                              {isCoordination ? "양해 필요" : cpScore === 0 ? "✓ 0점" : `⚠ ${cpScore}점`}
+                                            <div className="text-[10px] font-black mt-0.5">
+                                              {isCoordination ? (
+                                                <span className="bg-red-200 text-red-950 px-1 py-0.2 rounded border border-red-400 font-black">⚠️ 양해 필수</span>
+                                              ) : cpScore === 0 ? (
+                                                <span className="underline">✓ 0점</span>
+                                              ) : (
+                                                <span className="underline">{`⚠ ${cpScore}점`}</span>
+                                              )}
                                             </div>
                                           </>
                                         )}
@@ -1057,34 +1072,34 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               {applyingCandidate && (
                 <div className="space-y-3">
                   {applyingCandidate.coordination && (
-                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-2 text-xs">
-                      <div className="font-extrabold text-amber-950 flex items-center justify-between">
+                    <div className="bg-red-50 border-2 border-red-500 rounded-xl p-3.5 space-y-2 text-xs">
+                      <div className="font-extrabold text-red-950 flex items-center justify-between">
                         <span className="flex items-center gap-1">
-                          <span>🤝</span>
-                          <span>양해가 필요한 후보</span>
+                          <span>⚠️</span>
+                          <span>양해 필요 후보 (장소 충돌)</span>
                         </span>
-                        <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-black">
-                          장소 조율 필요
+                        <span className="text-[10px] bg-red-200 text-red-950 border border-red-400 px-2 py-0.5 rounded font-black">
+                          ⚠️ 양해 필수
                         </span>
                       </div>
-                      <div className="text-amber-900 text-xs leading-relaxed font-semibold">
+                      <div className="text-red-900 text-xs leading-relaxed font-semibold">
                         {formatCoordinationText(applyingCandidate.coordination)}
                       </div>
-                      <div className="pt-2 border-t border-amber-200 space-y-2">
+                      <div className="pt-2 border-t border-red-200 space-y-2">
                         <div className="font-bold text-gray-800 text-[11px]">
                           👥 양해 필요 당사자:{" "}
-                          <span className="text-indigo-900 font-extrabold">
+                          <span className="text-red-900 font-extrabold">
                             {getCoordinationOccupants(applyingCandidate.coordination)
                               .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
                               .join(", ")}
                           </span>
                         </div>
-                        <label className="flex items-start gap-2 cursor-pointer bg-white p-2 rounded-lg border border-amber-300 shadow-2xs">
+                        <label className="flex items-start gap-2 cursor-pointer bg-white p-2 rounded-lg border border-red-300 shadow-2xs">
                           <input
                             type="checkbox"
                             checked={consentConfirmed}
                             onChange={(e) => setConsentConfirmed(e.target.checked)}
-                            className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                            className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
                           />
                           <span className="text-xs font-bold text-gray-900">
                             위 선생님들께 사전 양해를 받았습니다 (필수)
@@ -1297,6 +1312,54 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
               >
                 {submittingBatch ? "일괄 제출 중..." : `양해 확인 및 ${batchConfirmingDrafts.length}건 일괄 신청`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* §3-2b ②: 조율 필요 후보 인라인 클릭 시 2단 경고 다이얼로그 */}
+      {pendingCoordinationSave && pendingCoordinationSave.candidate.coordination && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-md w-full p-6 space-y-4 animate-scale-up">
+            <div className="flex items-center gap-2 text-red-600 font-extrabold text-base border-b border-red-100 pb-3">
+              <span className="text-xl">⚠️</span>
+              <span>당사자 양해 필요 (장소 조율)</span>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs text-red-950">
+              <div className="font-bold leading-relaxed">
+                {formatCoordinationText(pendingCoordinationSave.candidate.coordination)}
+              </div>
+              <div className="pt-2 border-t border-red-200 text-gray-800">
+                <span className="font-bold">👥 양해 필요 당사자: </span>
+                <span className="font-extrabold text-red-900">
+                  {getCoordinationOccupants(pendingCoordinationSave.candidate.coordination)
+                    .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum}반 ${o.subjectName})`)
+                    .join(", ")}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs font-bold text-gray-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              💡 이 교환은 당사자 양해 없이는 반영할 수 없습니다. 그래도 검토하시겠습니까?
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPendingCoordinationSave(null)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const { candidate, weekId } = pendingCoordinationSave;
+                  setPendingCoordinationSave(null);
+                  handleSelectCandidateAndSave(candidate, weekId);
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl shadow-sm cursor-pointer"
+              >
+                양해 전제로 검토
               </button>
             </div>
           </div>

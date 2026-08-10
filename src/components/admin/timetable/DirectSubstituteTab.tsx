@@ -687,25 +687,19 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     executeBatchCommit();
   };
 
-  const [consentConfirmed, setConsentConfirmed] = useState(false);
-  const [consentNote, setConsentNote] = useState("");
+  // §3-2b v1.1: 조율 필요 후보 관련 상태
+  const [pendingCoordinationSelect, setPendingCoordinationSelect] = useState<{ candidate: any; weekId: string; startDate?: string } | null>(null);
+  const [singleCommitConsentModalOpen, setSingleCommitConsentModalOpen] = useState(false);
+  const [singleCommitConsentConfirmed, setSingleCommitConsentConfirmed] = useState(false);
+  const [singleCommitConsentNote, setSingleCommitConsentNote] = useState("");
 
-  useEffect(() => {
-    setConsentConfirmed(false);
-    setConsentNote("");
-  }, [selectedCandidate]);
-
-  const handleDirectCommitSingle = async () => {
-    if (!selectedCandidate || !selectedSlot) { setSubmitError("배정할 후보(맞교환 또는 특별보강)를 선택해 주세요."); return; }
-    if (reasonType === "기타" && !reasonNote.trim()) { setSubmitError("사유가 '기타'인 경우 상세 메모를 입력해 주세요."); return; }
-    const isCoordination = activeCandidateType === "swap" && !!(selectedCandidate as any)?.coordination;
-    if (isCoordination && !consentConfirmed) { setSubmitError("조율 필요 후보의 당사자 양해 확인란을 체크해 주세요."); return; }
-
-    if (!confirm("선택한 후보로 직권 수업교환/특별보강을 즉시 승인 및 적용하시겠습니까?")) return;
+  const executeDirectCommitSingle = async (consentNoteInput?: string) => {
+    if (!selectedCandidate || !selectedSlot) return;
     setSubmitting(true); setSubmitError(null);
     try {
       const sourceWeekId = selectedSlot.weekId;
       const targetWeekId = activeCandidateType === "swap" ? (selectedCandidate as any)?.targetWeekId : undefined;
+      const isCoordination = activeCandidateType === "swap" && !!(selectedCandidate as any)?.coordination;
       let candidateSnapshot: any;
       if (activeCandidateType === "swap") {
         const sc = selectedCandidate as any;
@@ -725,7 +719,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           source: { grade: selectedSlot.grade, classNum: selectedSlot.classNum, day: selectedSlot.day, period: selectedSlot.period, subjectName: sourceLessonInfo?.subjectName || "" },
           candidate: candidateSnapshot,
           reason: { type: reasonType, note: reasonNote.trim() || undefined },
-          consent: isCoordination ? { confirmed: true, note: consentNote.trim() || undefined } : undefined,
+          consent: isCoordination ? { confirmed: true, note: consentNoteInput || undefined } : undefined,
         }),
       });
       const commitData = await commitRes.json();
@@ -734,8 +728,26 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       const updatedWeeks = [sourceWeekId, targetWeekId].filter((wId): wId is string => Boolean(wId));
       setRecentlyUpdatedWeeks(updatedWeeks);
       setSelectedCandidate(null); setPreviewCells(null); setCounterpartSourceCells(null); setCounterpartTargetCells(null); setChainSourceSlot(null);
+      setSingleCommitConsentModalOpen(false);
       if (selectedTeacherEmail) await fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks);
     } catch (err: any) { setSubmitError(err.message || "직권 배정 실패"); } finally { setSubmitting(false); }
+  };
+
+  const handleDirectCommitSingle = async () => {
+    if (!selectedCandidate || !selectedSlot) { setSubmitError("배정할 후보(맞교환 또는 특별보강)를 선택해 주세요."); return; }
+    if (reasonType === "기타" && !reasonNote.trim()) { setSubmitError("사유가 '기타'인 경우 상세 메모를 입력해 주세요."); return; }
+    const isCoordination = activeCandidateType === "swap" && !!(selectedCandidate as any)?.coordination;
+    
+    // §3-2b ③: 조율 필요 후보 직권 단건 즉시 반영 시 양해 확인 다이얼로그로 이동
+    if (isCoordination) {
+      setSingleCommitConsentConfirmed(false);
+      setSingleCommitConsentNote("");
+      setSingleCommitConsentModalOpen(true);
+      return;
+    }
+
+    if (!confirm("선택한 후보로 직권 수업교환/특별보강을 즉시 승인 및 적용하시겠습니까?")) return;
+    executeDirectCommitSingle();
   };
 
 
@@ -844,7 +856,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                 // 맞교환 모드에서만 후보 하이라이트 — 보강 탭 전환 시 맞교환 제안이 그리드에 잔존하던 혼선 방지 (2026-08-07)
                                 const inlineCand = activeCandidateType === "swap" && !hasLesson && selectedSlot ? candidateListInWeek.find((cand) => cand.targetDay === d.num && cand.targetPeriod === period) : null;
                                 return (
-                                  <td key={d.num} className={`p-1 border-r border-gray-100 text-center align-top transition-all ${hasLesson ? "bg-indigo-50/30" : inlineCand ? "bg-emerald-50/50" : ""}`}>
+                                  <td key={d.num} className={`p-1 border-r border-gray-100 text-center align-top transition-all ${hasLesson ? "bg-indigo-50/30" : inlineCand ? (inlineCand.coordination ? "bg-red-50/70" : "bg-emerald-50/50") : ""}`}>
                                     {hasLesson ? (
                                       <div className="space-y-1">
                                         {matchedCells.map((cell, cIdx) => {
@@ -878,12 +890,45 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                         })}
                                       </div>
                                     ) : inlineCand ? (
-                                      <button type="button" onClick={() => handleSelectCandidate(inlineCand, w.id, w.startDate)} className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${activeCandidateType === "swap" && selectedCandidate?.targetWeekId === w.id && selectedCandidate?.targetDay === inlineCand.targetDay && selectedCandidate?.targetPeriod === inlineCand.targetPeriod && selectedCandidate?.counterpartEmail === inlineCand.counterpartEmail ? "bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-300 scale-[1.02]" : "bg-emerald-50 hover:bg-emerald-100/90 border-emerald-300 hover:border-emerald-500 text-emerald-950 shadow-2xs"}`}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (inlineCand.coordination) {
+                                            setPendingCoordinationSelect({ candidate: inlineCand, weekId: w.id, startDate: w.startDate });
+                                          } else {
+                                            handleSelectCandidate(inlineCand, w.id, w.startDate);
+                                          }
+                                        }}
+                                        className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${
+                                          activeCandidateType === "swap" && selectedCandidate?.targetWeekId === w.id && selectedCandidate?.targetDay === inlineCand.targetDay && selectedCandidate?.targetPeriod === inlineCand.targetPeriod && selectedCandidate?.counterpartEmail === inlineCand.counterpartEmail
+                                            ? "bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-300 scale-[1.02]"
+                                            : inlineCand.coordination
+                                              ? "bg-red-50 hover:bg-red-100/90 border-2 border-red-500 text-red-950 shadow-xs"
+                                              : "bg-emerald-50 hover:bg-emerald-100/90 border-emerald-300 hover:border-emerald-500 text-emerald-950 shadow-2xs"
+                                        }`}
+                                      >
                                         <div className="flex items-center justify-between gap-1">
-                                          <span className="font-black text-[11px] truncate flex items-center gap-0.5">{inlineCand.coordination && <span>🤝</span>}<span>{inlineCand.counterpartName}</span></span>
-                                          <span className={`px-1 py-0.5 rounded text-[9px] font-extrabold shrink-0 ${inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0) ? "bg-amber-100 text-amber-900 border border-amber-300" : "bg-emerald-200 text-emerald-900"}`}>{inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0) ? `감점 ${inlineCand.score}` : "0점"}</span>
+                                          <span className="font-black text-[11px] truncate flex items-center gap-0.5">
+                                            {inlineCand.coordination && <span>⚠️</span>}
+                                            <span>{inlineCand.counterpartName}</span>
+                                          </span>
+                                          <span className={`px-1 py-0.5 rounded text-[9px] font-extrabold shrink-0 ${
+                                            inlineCand.coordination
+                                              ? "bg-red-200 text-red-950 border border-red-400 font-black"
+                                              : inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0)
+                                                ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                                : "bg-emerald-200 text-emerald-900"
+                                          }`}>
+                                            {inlineCand.coordination
+                                              ? "⚠️ 양해 필수"
+                                              : inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0)
+                                                ? `감점 ${inlineCand.score}`
+                                                : "0점"}
+                                          </span>
                                         </div>
-                                        <div className="text-[10px] mt-0.5 font-bold truncate text-emerald-800">{inlineCand.counterpartSubjectName}</div>
+                                        <div className={`text-[10px] mt-0.5 font-bold truncate ${inlineCand.coordination ? "text-red-900" : "text-emerald-800"}`}>
+                                          {inlineCand.counterpartSubjectName}
+                                        </div>
                                       </button>
                                     ) : cartMatch ? (
                                       <div className="w-full p-1.5 rounded-lg border border-dashed border-amber-400 bg-amber-50/60 text-center">
@@ -996,47 +1041,28 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                     {selectedCandidate ? (
                       <div className="space-y-4 pt-1 animate-in fade-in duration-200">
                         {selectedCandidate.coordination && (
-                          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 space-y-2 text-xs">
-                            <div className="font-extrabold text-amber-950 flex items-center justify-between">
+                          <div className="bg-red-50 border-2 border-red-500 rounded-xl p-3.5 space-y-2 text-xs">
+                            <div className="font-extrabold text-red-950 flex items-center justify-between">
                               <span className="flex items-center gap-1">
-                                <span>🤝</span>
-                                <span>양해가 필요한 후보</span>
+                                <span>⚠️</span>
+                                <span>양해 필요 후보 (장소 충돌)</span>
                               </span>
-                              <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-black">
-                                장소 조율 필요
+                              <span className="text-[10px] bg-red-200 text-red-950 border border-red-400 px-2 py-0.5 rounded font-black">
+                                ⚠️ 양해 필수
                               </span>
                             </div>
-                            <div className="text-amber-900 text-xs leading-relaxed font-semibold">
+                            <div className="text-red-900 text-xs leading-relaxed font-semibold">
                               {formatCoordinationText(selectedCandidate.coordination)}
                             </div>
-                            <div className="pt-2 border-t border-amber-200 space-y-2">
+                            <div className="pt-2 border-t border-red-200">
                               <div className="font-bold text-gray-800 text-[11px]">
                                 👥 양해 필요 당사자:{" "}
-                                <span className="text-indigo-900 font-extrabold">
+                                <span className="text-red-900 font-extrabold">
                                   {getCoordinationOccupants(selectedCandidate.coordination)
                                     .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
                                     .join(", ")}
                                 </span>
                               </div>
-                              <label className="flex items-start gap-2 cursor-pointer bg-white p-2 rounded-lg border border-amber-300 shadow-2xs">
-                                <input
-                                  type="checkbox"
-                                  checked={consentConfirmed}
-                                  onChange={(e) => setConsentConfirmed(e.target.checked)}
-                                  className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                                />
-                                <span className="text-xs font-bold text-gray-900">
-                                  위 선생님들께 사전 양해를 받았습니다 (필수)
-                                </span>
-                              </label>
-                              <input
-                                type="text"
-                                maxLength={200}
-                                value={consentNote}
-                                onChange={(e) => setConsentNote(e.target.value)}
-                                placeholder="양해 메모 (선택, 예: 체육관 합반으로 양해)"
-                                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
-                              />
                             </div>
                           </div>
                         )}
@@ -1063,7 +1089,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                         </div>
                         <div className="grid grid-cols-2 gap-2 pt-2">
                           <button type="button" onClick={handleAddToCart} className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"><span>🛒</span><span>담기</span></button>
-                          <button type="button" onClick={handleDirectCommitSingle} disabled={submitting || (!!selectedCandidate.coordination && !consentConfirmed)} className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"><span>⚡</span><span>즉시 1건 반영</span></button>
+                          <button type="button" onClick={handleDirectCommitSingle} disabled={submitting} className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"><span>⚡</span><span>즉시 1건 반영</span></button>
                         </div>
                       </div>
                     ) : (
@@ -1372,6 +1398,117 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
               >
                 {submitting ? "일괄 반영 중..." : `양해 확인 및 ${cartItems.length}건 직권 반영`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* §3-2b ②: 조율 필요 후보 클릭 시 2단 경고 다이얼로그 */}
+      {pendingCoordinationSelect && pendingCoordinationSelect.candidate.coordination && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-md w-full p-6 space-y-4 animate-scale-up">
+            <div className="flex items-center gap-2 text-red-600 font-extrabold text-base border-b border-red-100 pb-3">
+              <span className="text-xl">⚠️</span>
+              <span>당사자 양해 필요 (장소 조율)</span>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs text-red-950">
+              <div className="font-bold leading-relaxed">
+                {formatCoordinationText(pendingCoordinationSelect.candidate.coordination)}
+              </div>
+              <div className="pt-2 border-t border-red-200 text-gray-800">
+                <span className="font-bold">👥 양해 필요 당사자: </span>
+                <span className="font-extrabold text-red-900">
+                  {getCoordinationOccupants(pendingCoordinationSelect.candidate.coordination)
+                    .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum}반 ${o.subjectName})`)
+                    .join(", ")}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs font-bold text-gray-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              💡 이 교환은 당사자 양해 없이는 반영할 수 없습니다. 그래도 검토하시겠습니까?
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPendingCoordinationSelect(null)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const { candidate, weekId, startDate } = pendingCoordinationSelect;
+                  setPendingCoordinationSelect(null);
+                  handleSelectCandidate(candidate, weekId, startDate);
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl shadow-sm cursor-pointer"
+              >
+                양해 전제로 검토
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* §3-2b ③: 조율 필요 후보 단건 즉시 반영 시 양해 확인 다이얼로그 */}
+      {singleCommitConsentModalOpen && selectedCandidate?.coordination && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-md w-full p-6 space-y-4 animate-scale-up">
+            <div className="flex items-center gap-2 text-red-600 font-extrabold text-base border-b border-red-100 pb-3">
+              <span className="text-xl">⚡</span>
+              <span>직권 즉시 반영 전 양해 확인</span>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs text-red-950">
+              <div className="font-bold leading-relaxed">
+                {formatCoordinationText(selectedCandidate.coordination)}
+              </div>
+              <div className="pt-2 border-t border-red-200 text-gray-800">
+                <span className="font-bold">👥 양해 필요 당사자: </span>
+                <span className="font-extrabold text-red-900">
+                  {getCoordinationOccupants(selectedCandidate.coordination)
+                    .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum}반 ${o.subjectName})`)
+                    .join(", ")}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-2 pt-1 border-t border-gray-100">
+              <label className="flex items-start gap-2 cursor-pointer bg-red-50/60 p-2.5 rounded-lg border border-red-200">
+                <input
+                  type="checkbox"
+                  checked={singleCommitConsentConfirmed}
+                  onChange={(e) => setSingleCommitConsentConfirmed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
+                />
+                <span className="text-xs font-bold text-red-950">
+                  위 선생님들께 사전 양해를 받았습니다 (필수)
+                </span>
+              </label>
+              <input
+                type="text"
+                maxLength={200}
+                value={singleCommitConsentNote}
+                onChange={(e) => setSingleCommitConsentNote(e.target.value)}
+                placeholder="양해 메모 (선택, 예: 체육관 합반으로 양해)"
+                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setSingleCommitConsentModalOpen(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => executeDirectCommitSingle(singleCommitConsentNote.trim())}
+                disabled={submitting || !singleCommitConsentConfirmed}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-sm cursor-pointer"
+              >
+                {submitting ? "반영 중..." : "양해 확인 및 즉시 반영"}
               </button>
             </div>
           </div>
