@@ -2940,3 +2940,23 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   - 융합 netMoves 카드 조율 겹침 요약 동봉: `OffscreenShareCard.tsx`의 `OffscreenConsolidatedCard`에서 `netMoves` 렌더 경로 시 `data.items`에 특별실 겹침(`coordination.conflicts`)이 존재할 때 `⚠️ 특별실 겹침 조율 경고` 요약 블록을 융합 카드 내에 동봉 표출.
 - 다음 할 일: 후속 배치 3건 표적 검수 요청.
 
+
+## [2026-08-11] 후속 배치 3건 표적 검수 — 1·2 통과, 3은 죽은 코드 재발 → Claude 직접 재작업 (`c2cf85c`)
+
+**1. U8 학생·모바일 sky 통일 — 통과**: `StudentTimetableCard`·`TodayTimetableCard` 변경 셀 sky-100/300+▲ 마커, 모바일은 다크모드 변형(sky-950/40 등)까지 동반 ✓. 이로써 U8 스펙 범위("교사 포털·학생 카드·직권 탭 전부") 완결 — amber는 담김 전용으로 정리.
+
+**2. 죽은 초안 코드 제거 — 통과**: MyRequestsTab에서 초안 state·핸들러 클러스터 294줄 제거, 잔존 참조 grep 0 · tsc ✅. 살아있는 코드(duplicateMinutesMap·isConditionalError 등) 오삭제 없음.
+
+**3. 융합 netMoves 겹침 요약 — 치명(죽은 코드 재발) → Claude 재작업**:
+- Antigravity 구현이 요약 블록을 `netMode` 분기 안에서 `data.items` 기준으로 판정했으나, netMoves 경로의 `items`엔 **보강만** 전달되고(교환은 netMoves가 렌더 대체) coordination은 교환 담기에만 실림 — **블록 도달 불가, U2 1차와 동일 패턴**. 핸드오버의 "동봉 표출" 주장은 실렌더 기준 허위(의도는 아니고 결선 오인).
+- 교정(`c2cf85c`): `ConsolidatedShareData.coordinationConflicts` 필드 신설 → 직권 `handleGenerateConsolidatedCard`가 cartItems의 교환 담기(coordination.conflicts)를 flatMap으로 동봉 → 카드 블록은 이 필드만 판정(전 conflicts 나열, [0] 한정 제거).
+- **렌더 실증 통과**: `renderToStaticMarkup` — ① netMoves+겹침 동봉(items 빈 배열): "특별실 겹침 조율 경고" 블록+특별실·점유 교사 실내용 렌더 ② 무겹침: 블록 없음. 비-netMoves 경로(교사 융합 카드)의 항목별 경고는 기존 유지.
+
+**검증**: `npx tsc --noEmit` ✅ / `NODE_OPTIONS=--max-old-space-size=6144 npm run build` ✅ (Claude 재실행).
+**§3-2d 배치 이로써 구현 완결** — 서버부 S1~S3·S5 + U1~U9 + 후속 3건 전부 검수 통과. 잔여: S4(체인 조율 허용)는 Phase 3 뒤 보류(사용자 승인), chain_search 응답 역전 레이스 관찰 지속.
+미push 5커밋: `2ec656f`·`56cf795`·`12f8d13`·`6b816e0`·`c2cf85c` + 이 문서 커밋 — push는 사용자 승인 후.
+
+### 재개 문구
+- push 승인 시: *"§3-2d 배치 전부 검수 끝났어. push해줘."*
+- 재테스트 후 원복: *"재테스트 끝났어. 박윤흡 치환 원복해줘."*
+- Phase 3 착수: *"project_notes.md 마지막 체크포인트 읽어줘. Phase 3(동시수업 통 이동) 서버부 구현하자."*
