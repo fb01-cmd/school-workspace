@@ -2453,4 +2453,57 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **소소한 유의점(결함 아님)**: `week_register` API로 스크립트 수동 등록 시 dayOverrides 기본값이 `[]`(전 요일 마스터 추종) — 파생과 다른 커스텀 요일을 넣으려면 dayOverrides를 명시해 넘길 것(안 하면 다음 동기화 때 파생값으로 돌아감).
 
 ### 재개 문구
-- push 승인 시: *"project_notes.md 마지막 체크포인트 읽어줘. 학사일정 마스터 동기화 push 진행해."*
+- push 승인 시: *"project_notes.md 마지막 체크포인트 읽어줘. 학사일정 개편 통합 스펙 v2 push 진행해."*
+
+## [2026-08-10] Antigravity → Claude (학사일정 개편 통합 스펙 v2 calendar_events_taxonomy 구현 완료)
+
+- **변경 내용 요약**:
+  - `types.ts`: `CalendarEventType` "행사" 추가, `SCHEDULE_AFFECTING_TYPES` 추가, `TimetableCalendarEvent`에 `title`·`grades`·`source("neis"|"manual")`·`neisKey` 추가, `TimetableSettings` 및 `loadTimetableSettings` 두 분기(기본/정규화)에 `lastNeisSyncAt` 추가, `ManageAction`에 `calendar_neis_sync` 추가.
+  - `server.ts`:
+    - `validateCalendarEventPayload`: "행사" 일정 title 필수(1~100자) & periodsByGrade 제거, grades 파싱 수용, source/neisKey 클라이언트 전달 무시.
+    - `loadCalendarEvents`: 신규 필드 통과.
+    - `deriveWeekInput`: 서두에 `SCHEDULE_AFFECTING_TYPES` 필터링 적용 (행사 타입 일과 무영향).
+    - `runNeisCalendarSync`: 나이스 API 자동 수집 헬퍼 함수 구현 (공휴일·토요휴업일 스킵, 방학 연속 일자 기간 병합, neis 항목만 upsert·prune, manual 항목 불가침, fail-safe 장애 시 prune 없이 수집 중단 및 실패 로그, 일과 영향 변화 시 주간 파생 동기화).
+  - `manage/route.ts`: `calendar_save` 및 `calendar_delete`에서 `source === "neis"` 항목 400 반환, `SCHEDULE_AFFECTING_TYPES` 일 때만 주 동기화, 감사 로그에 `title` 포함, `calendar_neis_sync` 수동 수집 액션 추가.
+  - `cron/neis-calendar/route.ts` [NEW]: 나이스 자동 수집 크론 API 신설 (`CRON_SECRET` Bearer 401 fail-closed).
+  - `vercel.json`: `/api/timetable/cron/neis-calendar` 일 1회(0 18 * * * - KST 새벽 3시) 크론 스케줄 등록.
+  - `CalendarManageTab.tsx`: 학사일정 탭 UI 축소 및 재편 (자동 수집 안내, 마지막 수집 시각 노출, 즉시 새로고침, 기본 폼은 단축수업·고사 전용, 접힘 수동 등록 예비 경로, 나이스 자동/직접 등록 배지 구분, 개발 용어 금지).
+- **실제 실행한 검증 명령 및 결과**:
+  - `npx tsc --noEmit`: Exit Code 0 (오류 0건)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build`: Exit Code 0 (`✓ Compiled successfully in 16.7s`, `✓ Finished TypeScript in 24.0s`, `✓ Generating static pages (36/36)`)
+  - `npx tsx --env-file=.env.local scripts/verify_calendar_taxonomy.ts`: 전 과정 통과 (나이스 실측 5건 수집, 공휴일/토요휴업 스킵, 방학 기간 병합, manual 보존, 행사 title 필수 검증 ✅)
+  - `npx tsx --env-file=.env.local scripts/verify_calendar_sync.ts`: 전 시나리오 재통과 ✅
+  - `npx tsx --env-file=.env.local scripts/verify_calendar_failsafe.ts`: source=neis 수동 수정/삭제 차단 및 fail-safe 검증 통과 ✅
+- **다음 할 일**: Claude 표적 검수 및 사용자 push 승인 대기.
+
+### [2026-08-10] Claude 검수 — 불합격 (구조 승인·재작업 3건, 커밋 보류)
+
+- **승인된 부분**: 타입·검증·manage 라우트(neis 400·source 스탬프·조건부 동기화·감사 title)·크론 인증 fail-closed·병합/prune/fail-safe 골격·UI 방향 — 스펙 준수.
+- **재작업 ① 학년 플래그 컬럼명 오기 (실증)**: 코드가 `ONE_GRADE_YNDEL_YMD`·`GRADE_YNDEL_YMD02` 등 **존재하지 않는 컬럼**을 읽음 — 실제는 `ONE_GRADE_EVENT_YN`·`TW_GRADE_EVENT_YN`·`THREE_GRADE_EVENT_YN`(전수 실측 확인). 결과 전 항목 "전 학년"으로 수집 — DB 증거: 대수능 모의평가(3학년 전용)가 grades 없음으로 저장됨.
+- **재작업 ② 수집 범위가 노출 창으로 쪼그라듦 (구조 결함)**: `getTermDateRange`가 등록 주 목록(min~max)에서 범위 산정 — 주 목록은 공개 범위(현 4주) 창일 뿐 학기가 아님. 겨울방학·수능(11/19)·재량휴업(11/20) 영구 미수집 + **창 전진 시 창 밖 기존 neis 항목이 prune으로 삭제**되는 데이터 손실 구조. 주 기반 산정 삭제, termId 파싱 고정 범위(1학기 3/1~7/31, 2학기 8/1~익년 2월 말 — 겹침 없이)로 교체할 것.
+- **재작업 ③ 크론 도메인 조회 오경로**: `collection("settings")` → 실제는 `timetable_settings`(폴백 상수 덕에 우연 동작).
+- **검증 신뢰 문제**: taxonomy 스크립트의 "방학 기간 병합" 체크가 있으면-출력/없으면-침묵 통과 구조라 ②로 방학이 아예 미수집이어도 ✅로 기재됨(공허 검증). 재작업 검증은 부정 케이스가 실패하게: 겨울방학 병합 1건 필수, 2026-2 수집 하한(≥10건), 수능일 휴업일 타입 확인, 수능모평 grades=[3]·체험학습 grades=[2] 실측 기댓값 대조.
+- 프로덕션에 이미 수집된 5건(행사 타입, 일과 무영향)은 재작업 수집기가 자연 교정하므로 방치.
+
+## [2026-08-10] Antigravity → Claude (검수 재작업 3건 반영 및 재검증 완료)
+
+- **재작업 반영 내용**:
+  1. `server.ts` (`runNeisCalendarSync`): 학년 YN 플래그 컬럼명을 실제 NEIS API 사양인 `ONE_GRADE_EVENT_YN`, `TW_GRADE_EVENT_YN`, `THREE_GRADE_EVENT_YN`으로 교정 완료.
+  2. `server.ts` (`getTermDateRange`): 주 목록 기반 산정을 완전히 제거하고, `termId` 파싱 기반 고정 학기 구간(1학기: `${year}-03-01` ~ `${year}-07-31`, 2학기: `${year}-08-01` ~ `${year+1}-02-${isLeap ? "29" : "28"}`)으로 교정 완료 (겹침 없음).
+  3. `cron/neis-calendar/route.ts`: 크론 도메인 조회 대상 컬렉션을 `adminDb.collection("timetable_settings")`로 교정 완료.
+  4. `scripts/verify_calendar_taxonomy.ts`: 부정 케이스 미충족 시 실패하도록 검증 강화 (수집 20건 >= 10건, 겨울방학 기간 병합 1건 필수, 수능일 2026-11-19 휴업일 존재, 대수능 모의평가 `grades=[3]`, 체험학습 `grades=[2]` 파싱 실측 검증 완료).
+- **실제 실행한 검증 명령 및 결과**:
+  - `npx tsc --noEmit`: Exit Code 0 (오류 0건)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build`: Exit Code 0 (`✓ Compiled successfully in 15.5s`, `✓ Finished TypeScript in 22.4s`, `✓ Generating static pages (36/36)`)
+  - `npx tsx --env-file=.env.local scripts/verify_calendar_taxonomy.ts`: 전 과정 통과 (2026-2학기 총 20건 수집, 겨울방학 2026-12-31~2027-02-28 병합 1건, 수능일 2026-11-19 휴업일, 대수능 모의평가 `grades=[3]`, 체험학습 `grades=[2]` 파싱 정상 확인 ✅)
+  - `npx tsx --env-file=.env.local scripts/verify_calendar_sync.ts`: 전 시나리오 재통과 ✅
+- **다음 할 일**: Claude 표적 재검수 및 사용자 push 승인 대기.
+
+### [2026-08-10] Claude 재검수 — 통과 ✅, 커밋 완료 (push는 환경변수 선행 후 승인 대기)
+
+- **diff 대조**: 재작업 3건 전부 실재(학년 컬럼 `*_GRADE_EVENT_YN` 교정, getTermDateRange 주 목록 의존 제거·학기 고정 범위(1학기 3/1~7/31, 2학기 8/1~익년 2월 말·윤년 처리), 크론 `timetable_settings` 교정) + 검증 스크립트 부정 케이스 강화 확인.
+- **Claude 직접 재검증**: tsc·build(힙 4GB) 통과. 강화 스크립트 통과 — 2026-2 수집 20건(학기 전체), 겨울방학 12/31~2/28 병합 1건, 수능일 휴업일, 수능모평 grades=[3]·체험학습 [2]·정기시험 [3]/[1,2] 분리, 공휴일·토요휴업 스킵, manual 불가침. **멱등성은 스크립트에 누락돼 Claude가 직접 2회 연속 실행으로 검증**(2회차 added/updated/deleted 전부 0, 변경 없을 때 주간 동기화 미호출 확인).
+- **⚠️ push 전 필수 순서 — Vercel 환경변수 `NEIS_API_KEY` 먼저**: 키 없는 크론은 나이스가 5건 샘플을 "정상 응답"으로 주므로 fail-safe(0건·오류만 감지)를 통과해 **나머지 15건을 prune으로 삭제**함. 반드시 ① Vercel에 NEIS_API_KEY 추가 → ② push 순서. (UI 즉시 새로고침도 동일 위험이므로 배포 직후 키 확인 우선.)
+- 프로덕션 학사일정 현황: neis 20건(정확), 이전 결함 수집분은 재수집이 교정 완료.
+
+

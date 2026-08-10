@@ -12,11 +12,17 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [syncingNeis, setSyncingNeis] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [lastNeisSyncAt, setLastNeisSyncAt] = useState<number | undefined>(undefined);
+
+  // Manual accordion state
+  const [showManualForm, setShowManualForm] = useState(false);
 
   // Form states
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [type, setType] = useState<CalendarEventType>("휴업일");
+  const [type, setType] = useState<CalendarEventType>("단축수업");
+  const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState<string>(
     new Date().toISOString().split("T")[0]
   );
@@ -24,6 +30,11 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
     new Date().toISOString().split("T")[0]
   );
   const [note, setNote] = useState("");
+
+  // Target grades (1, 2, 3)
+  const [grade1, setGrade1] = useState(true);
+  const [grade2, setGrade2] = useState(true);
+  const [grade3, setGrade3] = useState(true);
 
   // Shortened periods for shortcut/exam type
   const [pGrade1, setPGrade1] = useState<number>(4);
@@ -34,18 +45,30 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/timetable/manage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "calendar_list", termId: activeTermId }),
-      });
+      const [resList, resSettings] = await Promise.all([
+        fetch("/api/timetable/manage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "calendar_list", termId: activeTermId }),
+        }),
+        fetch("/api/timetable/manage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "get_settings" }),
+        }),
+      ]);
 
-      if (res.ok) {
-        const data = await res.json();
+      if (resList.ok) {
+        const data = await resList.json();
         setEvents(data.events || []);
       } else {
-        const errData = await res.json().catch(() => ({}));
+        const errData = await resList.json().catch(() => ({}));
         setError(errData.error || "학사일정을 불러올 수 없습니다.");
+      }
+
+      if (resSettings.ok) {
+        const sData = await resSettings.json();
+        setLastNeisSyncAt(sData.settings?.lastNeisSyncAt);
       }
     } catch (err: any) {
       setError(`네트워크 오류: ${err.message}`);
@@ -58,33 +81,85 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
     fetchEvents();
   }, [activeTermId]);
 
+  const handleNeisSync = async () => {
+    setSyncingNeis(true);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "calendar_neis_sync", termId: activeTermId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "나이스 학사일정 동기화에 실패했습니다.");
+      }
+      alert(data.message || "나이스 학사일정을 최신으로 가져왔습니다.");
+      if (data.settings?.lastNeisSyncAt) {
+        setLastNeisSyncAt(data.settings.lastNeisSyncAt);
+      }
+      fetchEvents();
+    } catch (err: any) {
+      alert(`오류: ${err.message}`);
+    } finally {
+      setSyncingNeis(false);
+    }
+  };
+
   const resetForm = () => {
     setEditingId(null);
-    setType("휴업일");
+    setType("단축수업");
+    setTitle("");
     const todayStr = new Date().toISOString().split("T")[0];
     setStartDate(todayStr);
     setEndDate(todayStr);
     setNote("");
+    setGrade1(true);
+    setGrade2(true);
+    setGrade3(true);
     setPGrade1(4);
     setPGrade2(4);
     setPGrade3(4);
   };
 
   const handleEditClick = (event: TimetableCalendarEvent) => {
+    if (event.source === "neis") {
+      alert("나이스에서 자동 수집된 일정은 수정할 수 없습니다.");
+      return;
+    }
     setEditingId(event.id || null);
     setType(event.type);
+    setTitle(event.title || "");
     setStartDate(event.startDate);
     setEndDate(event.endDate || event.startDate);
     setNote(event.note || "");
+
+    if (event.grades) {
+      setGrade1(event.grades.includes(1));
+      setGrade2(event.grades.includes(2));
+      setGrade3(event.grades.includes(3));
+    } else {
+      setGrade1(true);
+      setGrade2(true);
+      setGrade3(true);
+    }
+
     if (event.periodsByGrade) {
       setPGrade1(event.periodsByGrade["1"] ?? 4);
       setPGrade2(event.periodsByGrade["2"] ?? 4);
       setPGrade3(event.periodsByGrade["3"] ?? 4);
     }
+
+    if (event.type === "행사" || event.type === "휴업일" || event.type === "재량휴업") {
+      setShowManualForm(true);
+    }
   };
 
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (type === "행사" && !title.trim()) {
+      alert("행사 일정에는 일정 이름을 입력해 주세요.");
+      return;
+    }
     if (!startDate) {
       alert("시작일을 선택해 주세요.");
       return;
@@ -102,11 +177,19 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
           ? { "1": pGrade1, "2": pGrade2, "3": pGrade3 }
           : undefined;
 
+      const selectedGrades: number[] = [];
+      if (grade1) selectedGrades.push(1);
+      if (grade2) selectedGrades.push(2);
+      if (grade3) selectedGrades.push(3);
+      const grades = selectedGrades.length > 0 && selectedGrades.length < 3 ? selectedGrades : undefined;
+
       const payload: Partial<TimetableCalendarEvent> = {
         termId: activeTermId || "2026-2",
         type,
+        title: title.trim() || undefined,
         startDate,
         endDate: finalEndDate,
+        grades,
         periodsByGrade,
         note: note.trim() || undefined,
       };
@@ -136,8 +219,8 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
     }
   };
 
-  const handleDeleteEvent = async (eventId: string, eventNote?: string) => {
-    if (!confirm(`'${eventNote || "해당 일정"}' 학사일정을 삭제하시겠습니까?`))
+  const handleDeleteEvent = async (eventId: string, eventTitle?: string) => {
+    if (!confirm(`'${eventTitle || "해당 일정"}' 학사일정을 삭제하시겠습니까?`))
       return;
     setDeletingId(eventId);
     try {
@@ -160,49 +243,68 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
     }
   };
 
+  const formatSyncTime = (ms?: number) => {
+    if (!ms) return "수집 기록 없음";
+    const d = new Date(ms);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   return (
     <div className="space-y-6">
-      {/* 1. 상단 안내 카드 및 내장 공휴일 표 */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-3">
-        <div className="flex justify-between items-start">
+      {/* 1. 상단 안내 카드 & 자동 수집 헤더 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-4">
           <div>
             <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-              <span>📅 학사일정 등록 및 주차 자동 파생 관리</span>
+              <span>📅 학사일정 수집 및 시수 조정 관리</span>
             </h3>
             <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-              학사일정을 미리 등록하면 매주 주(Week) 문서를 일일이 수동 등록할 필요 없이 <strong>자동으로 휴업일·단축수업 주차가 파생</strong>됩니다.<br />
-              법정 공휴일(광복절 대체공휴일 8/17, 추석, 개천절, 한글날 등)은 <strong>시스템 정적 표로 자동 반영</strong>되므로 별도 입력이 필요 없습니다.
+              학사일정은 <strong>나이스(NEIS)에서 매일 자동으로 가져옵니다.</strong> 수동 입력은 시수 조정(단축수업·고사)에만 필요합니다.
             </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="text-right">
+              <span className="block text-[11px] text-gray-500">마지막 가져옴 시각</span>
+              <span className="text-xs font-bold text-gray-800">{formatSyncTime(lastNeisSyncAt)}</span>
+            </div>
+            <button
+              onClick={handleNeisSync}
+              disabled={syncingNeis}
+              className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition-colors border border-indigo-200 flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <span>{syncingNeis ? "🔄 나이스 가져오는 중..." : "🔄 즉시 새로고침"}</span>
+            </button>
           </div>
         </div>
 
         {/* 내장 법정 공휴일 안내 바 */}
-        <div className="p-3.5 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs text-indigo-950 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+        <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs text-indigo-950 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <div className="flex items-center gap-2">
             <span className="text-base">🇰🇷</span>
             <div>
-              <span className="font-bold">2026-2학기 내장 공휴일:</span>{" "}
+              <span className="font-bold">내장 공휴일 표:</span>{" "}
               <span className="text-indigo-800 font-medium">
-                광복절 대체공휴일(8/17 월), 추석 연휴(9/24~9/26), 개천절 대체(10/5 월), 한글날(10/9 금), 성탄절(12/25 금), 신정(1/1 금), 설날 대체(2/8 월)
+                광복절 대체(8/17), 추석 연휴(9/24~9/26), 개천절 대체(10/5), 한글날(10/9), 성탄절(12/25), 신정(1/1), 설날 대체(2/8)
               </span>
             </div>
           </div>
           <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded shrink-0">
-            자동 적용됨
+            자동 파생 적용
           </span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* 좌측: 학사일정 등록/수정 폼 (lg:col-span-5) */}
-        <div className="lg:col-span-5 space-y-6">
+        {/* 좌측: 직접 등록 폼 축소 (lg:col-span-5) */}
+        <div className="lg:col-span-5 space-y-4">
           <form
             onSubmit={handleSaveEvent}
             className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-5"
           >
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                <span>{editingId ? "✏️ 학사일정 수정" : "➕ 학사일정 추가"}</span>
+                <span>{editingId ? "✏️ 학사일정 수정" : "➕ 시수 조정 일정 등록"}</span>
               </h4>
               {editingId && (
                 <button
@@ -215,29 +317,91 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
               )}
             </div>
 
-            {/* 구 분 (Type) */}
+            {/* 시수 조정 2종 기본 노출 안내 */}
+            <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-lg text-xs text-amber-900 leading-relaxed space-y-1">
+              <p className="font-bold flex items-center gap-1">
+                <span>💡 등록 안내</span>
+              </p>
+              <p>
+                모의고사처럼 정상 시수로 진행되는 시험은 등록 불필요합니다 (나이스 행사로 자동 수집됨).
+                <br />
+                <strong>교시 수가 변경되는 지필평가 및 단축수업만 이곳에 등록</strong>하세요.
+              </p>
+            </div>
+
+            {/* 구 분 (Type) 선택 */}
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1">
-                일정 구분 <span className="text-red-500">*</span>
+                일정 종류 <span className="text-red-500">*</span>
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                {(["휴업일", "재량휴업", "단축수업", "고사"] as CalendarEventType[]).map(
-                  (t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setType(t)}
-                      className={`py-2 rounded-lg text-xs font-bold transition-all border ${
-                        type === t
-                          ? "bg-indigo-600 text-white border-indigo-700 shadow-xs"
-                          : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  )
-                )}
+              <div className="grid grid-cols-2 gap-1.5">
+                {(["단축수업", "고사"] as CalendarEventType[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => { setType(t); }}
+                    className={`py-2 rounded-lg text-xs font-bold transition-all border ${
+                      type === t
+                        ? "bg-indigo-600 text-white border-indigo-700 shadow-xs"
+                        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
               </div>
+            </div>
+
+            {/* 접힘 예비 경로: 나이스에 없는 일정 수동 등록 */}
+            <div className="border-t border-b border-gray-100 py-2">
+              <button
+                type="button"
+                onClick={() => setShowManualForm(!showManualForm)}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1"
+              >
+                <span>{showManualForm ? "▼ 나이스에 없는 수동 일정 등록 접기" : "▶ 나이스에 없는 수동 일정 직접 추가 (예비 경로)"}</span>
+              </button>
+
+              {showManualForm && (
+                <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                      기타 수동 일정 종류
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(["행사", "휴업일", "재량휴업"] as CalendarEventType[]).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setType(t)}
+                          className={`py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                            type === t
+                              ? "bg-gray-800 text-white border-gray-900"
+                              : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 일정 이름 (행사는 필수, 기타는 선택) */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                일정 이름 {type === "행사" ? <span className="text-red-500">* (필수)</span> : <span className="text-gray-400 font-normal">(선택)</span>}
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={type === "행사" ? "예: 광암제, 체육대회" : `예: 2학기 1차 지필평가 (${type})`}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                required={type === "행사"}
+              />
             </div>
 
             {/* 날짜 범위 */}
@@ -267,6 +431,43 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
               </div>
             </div>
 
+            {/* 학년 선택 */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                대상 학년
+              </label>
+              <div className="flex items-center gap-4 text-xs font-semibold text-gray-700 pt-0.5">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={grade1}
+                    onChange={(e) => setGrade1(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>1학년</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={grade2}
+                    onChange={(e) => setGrade2(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>2학년</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={grade3}
+                    onChange={(e) => setGrade3(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>3학년</span>
+                </label>
+              </div>
+              <span className="text-[11px] text-gray-500 mt-1 block">모두 선택 시 전 학년 대상이 됩니다.</span>
+            </div>
+
             {/* 단축수업/고사 시 학년별 시수 지정 */}
             {(type === "단축수업" || type === "고사") && (
               <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2.5">
@@ -280,10 +481,10 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
                     </span>
                     <input
                       type="number"
-                      min={1}
-                      max={7}
+                      min={0}
+                      max={8}
                       value={pGrade1}
-                      onChange={(e) => setPGrade1(parseInt(e.target.value) || 4)}
+                      onChange={(e) => setPGrade1(parseInt(e.target.value) || 0)}
                       className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-amber-950 bg-white"
                     />
                   </div>
@@ -293,10 +494,10 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
                     </span>
                     <input
                       type="number"
-                      min={1}
-                      max={7}
+                      min={0}
+                      max={8}
                       value={pGrade2}
-                      onChange={(e) => setPGrade2(parseInt(e.target.value) || 4)}
+                      onChange={(e) => setPGrade2(parseInt(e.target.value) || 0)}
                       className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-amber-950 bg-white"
                     />
                   </div>
@@ -306,10 +507,10 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
                     </span>
                     <input
                       type="number"
-                      min={1}
-                      max={7}
+                      min={0}
+                      max={8}
                       value={pGrade3}
-                      onChange={(e) => setPGrade3(parseInt(e.target.value) || 4)}
+                      onChange={(e) => setPGrade3(parseInt(e.target.value) || 0)}
                       className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-amber-950 bg-white"
                     />
                   </div>
@@ -326,7 +527,7 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="예: 개학식 및 청소 / 중간고사 1일차"
+                placeholder="예: 4교시 후 하교 / 지필평가 1일차"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               />
             </div>
@@ -358,7 +559,7 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                <span>📋 등록된 학사일정 ({events.length}건)</span>
+                <span>📋 전체 학사일정 ({events.length}건)</span>
               </h4>
               <button
                 onClick={fetchEvents}
@@ -380,13 +581,19 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
             ) : events.length === 0 ? (
               <div className="py-12 text-center text-xs text-gray-400 space-y-1">
                 <p className="font-semibold">등록된 학사일정이 없습니다.</p>
-                <p className="text-[11px]">좌측 폼에서 일정(재량휴업, 단축수업, 고사 등)을 추가해 주세요.</p>
+                <p className="text-[11px]">상단 [즉시 새로고침] 버튼을 눌러 나이스에서 학사일정을 가져와 주세요.</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {events.map((evt) => {
                   const isEditing = editingId === evt.id;
                   const isMultiDay = evt.endDate && evt.endDate !== evt.startDate;
+                  const isNeis = evt.source === "neis";
+                  const gradesText =
+                    evt.grades && evt.grades.length > 0 && evt.grades.length < 3
+                      ? `${evt.grades.join(", ")}학년`
+                      : "전 학년";
+
                   return (
                     <div
                       key={evt.id || evt.startDate}
@@ -399,9 +606,23 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
                       <div className="flex items-start justify-between gap-2">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
+                            {/* 나이스 자동 vs 직접 등록 배지 */}
+                            {isNeis ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                나이스 자동
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                직접 등록
+                              </span>
+                            )}
+
+                            {/* 일정 타입 배지 */}
                             <span
                               className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                                evt.type === "휴업일" || evt.type === "재량휴업"
+                                evt.type === "행사"
+                                  ? "bg-gray-100 text-gray-700 border-gray-300"
+                                  : evt.type === "휴업일" || evt.type === "재량휴업"
                                   ? "bg-red-50 text-red-700 border-red-200"
                                   : evt.type === "단축수업"
                                   ? "bg-amber-50 text-amber-800 border-amber-200"
@@ -410,34 +631,57 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
                             >
                               {evt.type}
                             </span>
+
+                            {/* 날짜 */}
                             <span className="font-bold text-xs text-gray-900">
                               🗓️ {evt.startDate}
                               {isMultiDay ? ` ~ ${evt.endDate}` : ""}
                             </span>
+
+                            {/* 대상 학년 */}
+                            <span className="text-[11px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                              {gradesText}
+                            </span>
+                          </div>
+
+                          {/* 일정 이름 */}
+                          <div className="pt-0.5">
+                            <span className="font-bold text-sm text-gray-900">
+                              {evt.title || evt.type}
+                            </span>
                           </div>
 
                           {evt.note && (
-                            <p className="text-xs text-gray-700 font-semibold mt-0.5">
+                            <p className="text-xs text-gray-600 mt-0.5">
                               {evt.note}
                             </p>
                           )}
                         </div>
 
+                        {/* 작업 버튼 / 나이스 자동 표시 */}
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            onClick={() => handleEditClick(evt)}
-                            className="px-2.5 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition-colors"
-                          >
-                            수정
-                          </button>
-                          {evt.id && (
-                            <button
-                              onClick={() => handleDeleteEvent(evt.id!, evt.note)}
-                              disabled={deletingId === evt.id}
-                              className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold transition-colors"
-                            >
-                              {deletingId === evt.id ? "삭제중" : "삭제"}
-                            </button>
+                          {isNeis ? (
+                            <span className="text-[11px] font-semibold text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-200">
+                              나이스 자동 관리
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleEditClick(evt)}
+                                className="px-2.5 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition-colors"
+                              >
+                                수정
+                              </button>
+                              {evt.id && (
+                                <button
+                                  onClick={() => handleDeleteEvent(evt.id!, evt.title || evt.note)}
+                                  disabled={deletingId === evt.id}
+                                  className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold transition-colors"
+                                >
+                                  {deletingId === evt.id ? "삭제중" : "삭제"}
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>

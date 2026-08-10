@@ -33,6 +33,7 @@ import {
   TimetableValidationReport,
   TimetableWeekDay,
   UnmatchedTeacherIssue,
+  SCHEDULE_AFFECTING_TYPES,
 } from "./types";
 
 // ── Firestore 경로 헬퍼 ────────────────────────────────────────
@@ -85,6 +86,7 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
       teacherOpen: false,
       teacherPilotEmails: [],
       publishWeeksAhead: 2,
+      lastNeisSyncAt: undefined,
     };
   }
   const data = snap.data() || {};
@@ -106,6 +108,7 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
     publishWeeksAhead: Number.isFinite(Number(data.publishWeeksAhead))
       ? Math.max(0, Math.min(8, Number(data.publishWeeksAhead)))
       : 2,
+    lastNeisSyncAt: typeof data.lastNeisSyncAt === "number" ? data.lastNeisSyncAt : undefined,
   };
 }
 
@@ -1209,8 +1212,12 @@ export async function loadCalendarEvents(
         type: data.type as CalendarEventType,
         startDate: data.startDate || "",
         endDate: data.endDate || data.startDate || "",
+        ...(data.title ? { title: data.title } : {}),
+        ...(Array.isArray(data.grades) ? { grades: data.grades } : {}),
         ...(data.periodsByGrade ? { periodsByGrade: data.periodsByGrade } : {}),
         ...(data.note ? { note: data.note } : {}),
+        source: (data.source as "neis" | "manual") || "manual",
+        ...(data.neisKey ? { neisKey: data.neisKey } : {}),
         createdBy: data.createdBy || "",
         createdAt: toMillis(data.createdAt) || 0,
       };
@@ -1218,7 +1225,7 @@ export async function loadCalendarEvents(
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
 }
 
-const CALENDAR_TYPES: CalendarEventType[] = ["휴업일", "재량휴업", "단축수업", "고사"];
+const CALENDAR_TYPES: CalendarEventType[] = ["행사", "휴업일", "재량휴업", "단축수업", "고사"];
 
 export function validateCalendarEventPayload(
   raw: any
@@ -1227,12 +1234,19 @@ export function validateCalendarEventPayload(
   if (!termId) return { ok: false, error: "학기가 지정되지 않았습니다." };
   const type = raw?.type as CalendarEventType;
   if (!CALENDAR_TYPES.includes(type))
-    return { ok: false, error: "일정 종류는 휴업일·재량휴업·단축수업·고사 중 하나여야 합니다." };
+    return { ok: false, error: "일정 종류는 행사·휴업일·재량휴업·단축수업·고사 중 하나여야 합니다." };
+
+  const title = typeof raw?.title === "string" ? raw.title.trim().slice(0, 100) : undefined;
+  if (type === "행사" && !title) {
+    return { ok: false, error: "행사 일정에는 일정 이름(title)이 필수입니다." };
+  }
+
   const startDate = typeof raw?.startDate === "string" ? raw.startDate.trim() : "";
   const endDate = typeof raw?.endDate === "string" && raw.endDate.trim() ? raw.endDate.trim() : startDate;
   if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate))
     return { ok: false, error: "날짜는 YYYY-MM-DD 형식이어야 합니다." };
   if (endDate < startDate) return { ok: false, error: "종료일이 시작일보다 빠릅니다." };
+
   let periodsByGrade: Record<string, number> | undefined;
   if (type === "단축수업" || type === "고사") {
     const pbg = raw?.periodsByGrade;
@@ -1246,6 +1260,18 @@ export function validateCalendarEventPayload(
       periodsByGrade[g] = num;
     }
   }
+
+  let grades: number[] | undefined;
+  if (Array.isArray(raw?.grades)) {
+    const parsed = raw.grades
+      .map((g: any) => Number(g))
+      .filter((num: number) => Number.isInteger(num) && num >= 1 && num <= 3);
+    const unique = Array.from(new Set<number>(parsed)).sort((a, b) => a - b);
+    if (unique.length > 0 && unique.length < 3) {
+      grades = unique;
+    }
+  }
+
   const note = typeof raw?.note === "string" ? raw.note.trim().slice(0, 200) : "";
   return {
     ok: true,
@@ -1254,13 +1280,15 @@ export function validateCalendarEventPayload(
       type,
       startDate,
       endDate,
+      ...(title ? { title } : {}),
+      ...(grades ? { grades } : {}),
       ...(periodsByGrade ? { periodsByGrade } : {}),
       ...(note ? { note } : {}),
     },
   };
 }
 
-/** 특정 월요일 주의 파생 입력 생성 — 공휴일 표 ∪ 학사일정 이벤트 (휴업일 우선) */
+/** 특정 월요일 주의 파생 입력 생성 — 공휴일 표 ∪ 학사일정 이벤트 (휴업일 우선, 행사는 일과 무영향) */
 export function deriveWeekInput(
   termId: string,
   monday: string,
@@ -1268,19 +1296,28 @@ export function deriveWeekInput(
 ): WeekRegisterInput {
   const days: WeekRegisterInput["days"] = [];
   const noteParts: string[] = [];
+
+  // SCHEDULE_AFFECTING_TYPES 필터 한 줄 (행사 타입은 주간 파생 시수 무영향)
+  const affectingEvents = events.filter((e) =>
+    (SCHEDULE_AFFECTING_TYPES as readonly string[]).includes(e.type)
+  );
+
   for (let day = 1; day <= 5; day++) {
     const date = addDaysISO(monday, day - 1);
     const holidayName = holidayNameOf(date);
-    const hits = events.filter((e) => e.startDate <= date && date <= e.endDate);
+    const hits = affectingEvents.filter((e) => e.startDate <= date && date <= e.endDate);
     const closed = !!holidayName || hits.some((e) => e.type === "휴업일" || e.type === "재량휴업");
     const short = hits.find((e) => e.type === "단축수업" || e.type === "고사");
     if (closed) {
-      const label = holidayName || hits.find((e) => e.type === "휴업일" || e.type === "재량휴업")?.note
-        || hits.find((e) => e.type === "휴업일" || e.type === "재량휴업")?.type;
+      const label =
+        holidayName ||
+        hits.find((e) => e.type === "휴업일" || e.type === "재량휴업")?.title ||
+        hits.find((e) => e.type === "휴업일" || e.type === "재량휴업")?.note ||
+        hits.find((e) => e.type === "휴업일" || e.type === "재량휴업")?.type;
       noteParts.push(`${date.slice(5)} ${label}`);
       days.push({ day, holiday: true });
     } else if (short?.periodsByGrade) {
-      noteParts.push(`${date.slice(5)} ${short.note || short.type}`);
+      noteParts.push(`${date.slice(5)} ${short.title || short.note || short.type}`);
       days.push({ day, periodsByGrade: short.periodsByGrade });
     } else {
       days.push({ day });
@@ -1291,6 +1328,329 @@ export function deriveWeekInput(
     startDate: monday,
     days,
     ...(noteParts.length ? { note: `학사일정 자동: ${noteParts.join(", ")}` } : {}),
+  };
+}
+
+/** 학기의 시작일과 종료일 (ISO YYYY-MM-DD) 고정 구간을 구한다 */
+export function getTermDateRange(termId: string): { startDate: string; endDate: string } {
+  const match = termId.match(/^(\d{4})-(1|2)$/);
+  if (match) {
+    const year = Number(match[1]);
+    const sem = match[2];
+    if (sem === "1") {
+      return { startDate: `${year}-03-01`, endDate: `${year}-07-31` };
+    } else {
+      const nextYear = year + 1;
+      const isLeap = (nextYear % 4 === 0 && nextYear % 100 !== 0) || nextYear % 400 === 0;
+      const lastDay = isLeap ? "29" : "28";
+      return { startDate: `${year}-08-01`, endDate: `${nextYear}-02-${lastDay}` };
+    }
+  }
+  const currentYear = new Date().getFullYear();
+  return { startDate: `${currentYear}-03-01`, endDate: `${currentYear}-07-31` };
+}
+
+/**
+ * 나이스(NEIS) SchoolSchedule API를 호출하여 학사일정을 자동 수집 및 동기화한다 (spec §3).
+ * fail-safe: API 오류, 파싱 실패, 수신 0건, INFO-200(데이터 없음) 시 prune 없이 즉시 중단하고 실패 감사 로그만 기록.
+ */
+export async function runNeisCalendarSync(
+  domain: string,
+  targetTermId?: string
+): Promise<{
+  success: boolean;
+  message: string;
+  stats?: { added: number; updated: number; deleted: number; totalNeisEvents: number; weekSyncCalled: boolean };
+}> {
+  const terms = await loadAllTerms(domain);
+  const activeTerms = terms.filter((t) => t.status !== "archived");
+  const targetTerms = targetTermId ? activeTerms.filter((t) => t.id === targetTermId) : activeTerms;
+
+  if (targetTerms.length === 0) {
+    return { success: false, message: "동기화 대상 학기를 찾을 수 없습니다." };
+  }
+
+  const atptCode = process.env.NEIS_ATPT_CODE || "J10";
+  const schulCode = process.env.NEIS_SCHUL_CODE || "7530601";
+  const apiKey = process.env.NEIS_API_KEY;
+
+  let totalAdded = 0;
+  let totalUpdated = 0;
+  let totalDeleted = 0;
+  let totalNeisEventsCount = 0;
+  let weekSyncCalledAny = false;
+
+  for (const term of targetTerms) {
+    const termRange = getTermDateRange(term.id);
+    const fromYmd = termRange.startDate.replace(/-/g, "");
+    const toYmd = termRange.endDate.replace(/-/g, "");
+    const url = new URL("https://open.neis.go.kr/hub/SchoolSchedule");
+    url.searchParams.set("Type", "json");
+    url.searchParams.set("pIndex", "1");
+    url.searchParams.set("pSize", "500");
+    url.searchParams.set("ATPT_OFCDC_SC_CODE", atptCode);
+    url.searchParams.set("SD_SCHUL_CODE", schulCode);
+    url.searchParams.set("AA_FROM_YMD", fromYmd);
+    url.searchParams.set("AA_TO_YMD", toYmd);
+    if (apiKey) url.searchParams.set("KEY", apiKey);
+
+    let rawData: any;
+    try {
+      const res = await fetch(url.toString(), { cache: "no-store" });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      }
+      rawData = await res.json();
+    } catch (err: any) {
+      console.error(`[runNeisCalendarSync] NEIS API 호출 실패 (${term.id}):`, err.message);
+      await writeAuditLog({
+        operatorEmail: "system@cron",
+        targetEmail: domain,
+        action: "neis_calendar_sync_fail",
+        details: `나이스 학사일정 수집 실패 (${term.id}): ${err.message}. 안전을 위해 기존 데이터 삭제(prune)를 건너뜁니다.`,
+        status: "failure",
+      });
+      return { success: false, message: `나이스 API 호출 실패: ${err.message}` };
+    }
+
+    // Fail-Safe: INFO-200, RESULT 오류, 파싱 실패 등 체크
+    if (rawData?.RESULT || !Array.isArray(rawData?.SchoolSchedule) || !rawData.SchoolSchedule[1]?.row) {
+      const resultCode = rawData?.RESULT?.CODE || rawData?.SchoolSchedule?.[0]?.head?.[1]?.RESULT?.CODE || "UNKNOWN";
+      const resultMsg = rawData?.RESULT?.MESSAGE || rawData?.SchoolSchedule?.[0]?.head?.[1]?.RESULT?.MESSAGE || "데이터 없음 / 구조 상이";
+      console.warn(`[runNeisCalendarSync] NEIS 수신 실패/0건 (${term.id}): [${resultCode}] ${resultMsg}`);
+      await writeAuditLog({
+        operatorEmail: "system@cron",
+        targetEmail: domain,
+        action: "neis_calendar_sync_fail",
+        details: `나이스 학사일정 수신 0건 또는 오류 [${resultCode}]: ${resultMsg}. 안전을 위해 기존 데이터 삭제(prune)를 건너뜁니다.`,
+        status: "failure",
+      });
+      return { success: false, message: `나이스 수신 실패/0건 [${resultCode}]: ${resultMsg}` };
+    }
+
+    const rows: any[] = rawData.SchoolSchedule[1].row;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      console.warn(`[runNeisCalendarSync] NEIS row 배열이 비어있음 (${term.id})`);
+      await writeAuditLog({
+        operatorEmail: "system@cron",
+        targetEmail: domain,
+        action: "neis_calendar_sync_fail",
+        details: `나이스 학사일정 응답 0건 (${term.id}). 안전을 위해 기존 데이터 삭제(prune)를 건너뜁니다.`,
+        status: "failure",
+      });
+      return { success: false, message: `나이스 학사일정 응답 0건 (${term.id})` };
+    }
+
+    // 1일 단위 수집 및 스킵 필터링 (§3 매핑표)
+    interface RawNeisItem {
+      date: string; // YYYY-MM-DD
+      eventNm: string;
+      sbtrNm: string;
+      note?: string;
+      grades?: number[];
+      type: CalendarEventType;
+    }
+
+    const parsedItems: RawNeisItem[] = [];
+
+    for (const row of rows) {
+      const ymdStr = String(row.AA_YMD || "");
+      if (!/^\d{8}$/.test(ymdStr)) continue;
+      const date = `${ymdStr.slice(0, 4)}-${ymdStr.slice(4, 6)}-${ymdStr.slice(6, 8)}`;
+      const sbtrNm = String(row.SBTR_DD_SC_NM || "").trim(); // 공제구분명
+      const eventNm = String(row.EVENT_NM || "").trim(); // 행사명
+      const note = typeof row.EVENT_CNTNT === "string" && row.EVENT_CNTNT.trim() ? row.EVENT_CNTNT.trim() : undefined;
+
+      // 공제 "공휴일" 스킵, EVENT_NM "토요휴업일" 스킵
+      if (sbtrNm === "공휴일" || eventNm === "토요휴업일") continue;
+
+      let type: CalendarEventType = "행사";
+      if (sbtrNm === "휴업일") {
+        type = "휴업일";
+      } else if (sbtrNm === "해당없음") {
+        type = "행사";
+      }
+
+      // 학년 YN
+      const g1 = row.ONE_GRADE_EVENT_YN === "Y";
+      const g2 = row.TW_GRADE_EVENT_YN === "Y";
+      const g3 = row.THREE_GRADE_EVENT_YN === "Y";
+      let grades: number[] | undefined;
+      if (g1 && g2 && g3) {
+        grades = undefined; // 전 학년
+      } else if (!g1 && !g2 && !g3) {
+        grades = undefined; // 전 학년
+      } else {
+        const temp: number[] = [];
+        if (g1) temp.push(1);
+        if (g2) temp.push(2);
+        if (g3) temp.push(3);
+        grades = temp.length > 0 ? temp : undefined;
+      }
+
+      parsedItems.push({ date, eventNm, sbtrNm, note, grades, type });
+    }
+
+    // 날짜순 정렬
+    parsedItems.sort((a, b) => a.date.localeCompare(b.date));
+
+    // 연속 일자 & 동일 EVENT_NM 기간(Period) 병합
+    interface MergedNeisEvent {
+      startDate: string;
+      endDate: string;
+      title: string;
+      type: CalendarEventType;
+      note?: string;
+      grades?: number[];
+      neisKey: string;
+    }
+
+    const mergedEvents: MergedNeisEvent[] = [];
+    for (const item of parsedItems) {
+      const last = mergedEvents[mergedEvents.length - 1];
+      const isContinuous = last && addDaysISO(last.endDate, 1) === item.date;
+      const isSameAttr =
+        last &&
+        last.title === item.eventNm &&
+        last.type === item.type &&
+        JSON.stringify(last.grades || []) === JSON.stringify(item.grades || []) &&
+        last.note === item.note;
+
+      if (isContinuous && isSameAttr) {
+        last.endDate = item.date;
+      } else {
+        mergedEvents.push({
+          startDate: item.date,
+          endDate: item.date,
+          title: item.eventNm,
+          type: item.type,
+          ...(item.note ? { note: item.note } : {}),
+          ...(item.grades ? { grades: item.grades } : {}),
+          neisKey: `${item.date.replace(/-/g, "")}|${item.eventNm}`,
+        });
+      }
+    }
+
+    totalNeisEventsCount += mergedEvents.length;
+
+    // Firestore 동기화 (upsert & prune) — [term.startDate, term.endDate] 구간 내 neis 항목 한정
+    const snap = await timetableCalendarColRef(domain).where("termId", "==", term.id).get();
+    const existingNeisDocsMap = new Map<string, { id: string; data: any }>();
+
+    snap.docs.forEach((doc) => {
+      const data = doc.data();
+      // source === "neis" 항목만 prune/upsert 대상 (manual은 불가침!)
+      if (data.source === "neis") {
+        const key = data.neisKey || `${data.startDate?.replace(/-/g, "")}|${data.title}`;
+        existingNeisDocsMap.set(key, { id: doc.id, data });
+      }
+    });
+
+    let added = 0;
+    let updated = 0;
+    let deleted = 0;
+    let affectingChanged = false;
+
+    const matchedKeys = new Set<string>();
+
+    for (const event of mergedEvents) {
+      matchedKeys.add(event.neisKey);
+      const existing = existingNeisDocsMap.get(event.neisKey);
+
+      if (!existing) {
+        // 신규 추가
+        await timetableCalendarColRef(domain).add({
+          termId: term.id,
+          type: event.type,
+          startDate: event.startDate,
+          endDate: event.endDate,
+          title: event.title,
+          ...(event.note ? { note: event.note } : {}),
+          ...(event.grades ? { grades: event.grades } : {}),
+          source: "neis",
+          neisKey: event.neisKey,
+          createdAt: Date.now(),
+        });
+        added++;
+        if ((SCHEDULE_AFFECTING_TYPES as readonly string[]).includes(event.type)) {
+          affectingChanged = true;
+        }
+      } else {
+        // 기존 문서 비교 후 수정
+        const old = existing.data;
+        const isDiff =
+          old.type !== event.type ||
+          old.startDate !== event.startDate ||
+          old.endDate !== event.endDate ||
+          old.title !== event.title ||
+          old.note !== event.note ||
+          JSON.stringify(old.grades || []) !== JSON.stringify(event.grades || []);
+
+        if (isDiff) {
+          await timetableCalendarColRef(domain).doc(existing.id).update({
+            type: event.type,
+            startDate: event.startDate,
+            endDate: event.endDate,
+            title: event.title,
+            ...(event.note ? { note: event.note } : { note: FieldValue.delete() }),
+            ...(event.grades ? { grades: event.grades } : { grades: FieldValue.delete() }),
+            updatedAt: Date.now(),
+          });
+          updated++;
+          if (
+            (SCHEDULE_AFFECTING_TYPES as readonly string[]).includes(event.type) ||
+            (SCHEDULE_AFFECTING_TYPES as readonly string[]).includes(old.type)
+          ) {
+            affectingChanged = true;
+          }
+        }
+      }
+    }
+
+    // 나이스에서 사라진 항목 prune (구간 내 neis 항목 한정, manual 불가침)
+    for (const [key, existing] of existingNeisDocsMap.entries()) {
+      if (!matchedKeys.has(key)) {
+        await timetableCalendarColRef(domain).doc(existing.id).delete();
+        deleted++;
+        if ((SCHEDULE_AFFECTING_TYPES as readonly string[]).includes(existing.data.type)) {
+          affectingChanged = true;
+        }
+      }
+    }
+
+    totalAdded += added;
+    totalUpdated += updated;
+    totalDeleted += deleted;
+
+    // 일과 영향 타입 변화 시에만 주간 파생 동기화 호출
+    if (affectingChanged) {
+      await syncDerivedWeeksWithCalendar(domain, term.id);
+      weekSyncCalledAny = true;
+    }
+  }
+
+  // settings.lastNeisSyncAt 기록
+  const syncTime = Date.now();
+  await saveTimetableSettings(domain, { lastNeisSyncAt: syncTime });
+
+  await writeAuditLog({
+    operatorEmail: "system@cron",
+    targetEmail: domain,
+    action: "neis_calendar_sync",
+    details: `나이스 학사일정 동기화 완료: 추가 ${totalAdded}건, 수정 ${totalUpdated}건, 삭제 ${totalDeleted}건 (총 수집 ${totalNeisEventsCount}건, 주파생재동기화: ${weekSyncCalledAny ? "실행" : "스킵"})`,
+    status: "success",
+  });
+
+  return {
+    success: true,
+    message: `나이스 학사일정 동기화가 완료되었습니다.`,
+    stats: {
+      added: totalAdded,
+      updated: totalUpdated,
+      deleted: totalDeleted,
+      totalNeisEvents: totalNeisEventsCount,
+      weekSyncCalled: weekSyncCalledAny,
+    },
   };
 }
 

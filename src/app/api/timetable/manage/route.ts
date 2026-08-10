@@ -43,12 +43,14 @@ import {
   saveTimetableSettings,
   updateWeek,
   syncDerivedWeeksWithCalendar,
+  runNeisCalendarSync,
   validateTimetableImport,
 } from "@/lib/timetable/server";
 import {
   DirectCommitBatchItemResult,
   ManageAction,
   ManageTimetableRequest,
+  SCHEDULE_AFFECTING_TYPES,
 } from "@/lib/timetable/types";
 import { NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
@@ -831,20 +833,28 @@ export async function POST(req: NextRequest) {
           const existing = await ref.get();
           if (!existing.exists)
             return NextResponse.json({ error: "수정할 일정을 찾을 수 없습니다." }, { status: 404 });
-          await ref.set({ ...v.event, updatedBy: auth.email.toLowerCase(), updatedAt: Date.now() }, { merge: true });
+          if (existing.data()?.source === "neis") {
+            return NextResponse.json(
+              { error: "나이스에서 자동 관리되는 일정입니다. 나이스에서 수정하거나, 시수 조정은 별도로 등록하세요." },
+              { status: 400 }
+            );
+          }
+          await ref.set({ ...v.event, source: "manual", updatedBy: auth.email.toLowerCase(), updatedAt: Date.now() }, { merge: true });
         } else {
-          await ref.set({ ...v.event, createdBy: auth.email.toLowerCase(), createdAt: Date.now() });
+          await ref.set({ ...v.event, source: "manual", createdBy: auth.email.toLowerCase(), createdAt: Date.now() });
         }
         await writeAuditLog({
           operatorEmail: auth.email,
           targetEmail: domain,
           action: isUpdate ? "timetable_calendar_update" : "timetable_calendar_create",
-          details: `학사일정 ${isUpdate ? "수정" : "등록"}: ${v.event.type} ${v.event.startDate}${v.event.endDate !== v.event.startDate ? `~${v.event.endDate}` : ""}${v.event.note ? ` (${v.event.note})` : ""}`,
+          details: `학사일정 ${isUpdate ? "수정" : "등록"}: ${v.event.title ? `[${v.event.title}] ` : ""}${v.event.type} ${v.event.startDate}${v.event.endDate !== v.event.startDate ? `~${v.event.endDate}` : ""}${v.event.note ? ` (${v.event.note})` : ""}`,
           status: "success",
         });
-        await syncDerivedWeeksWithCalendar(domain, termId).catch((e) =>
-          console.error("[calendar_save] 주 동기화 실패:", e?.message)
-        );
+        if ((SCHEDULE_AFFECTING_TYPES as readonly string[]).includes(v.event.type)) {
+          await syncDerivedWeeksWithCalendar(domain, termId).catch((e) =>
+            console.error("[calendar_save] 주 동기화 실패:", e?.message)
+          );
+        }
         return NextResponse.json({ success: true, action, eventId: ref.id });
       }
 
@@ -856,21 +866,43 @@ export async function POST(req: NextRequest) {
         if (!snap.exists)
           return NextResponse.json({ error: "삭제할 일정을 찾을 수 없습니다." }, { status: 404 });
         const d = snap.data() as any;
+        if (d?.source === "neis") {
+          return NextResponse.json(
+            { error: "나이스에서 자동 관리되는 일정입니다. 삭제가 불가능합니다." },
+            { status: 400 }
+          );
+        }
         const termId = d?.termId || settings.activeTermId;
         await ref.delete();
         await writeAuditLog({
           operatorEmail: auth.email,
           targetEmail: domain,
           action: "timetable_calendar_delete",
-          details: `학사일정 삭제: ${d?.type} ${d?.startDate}${d?.endDate && d.endDate !== d.startDate ? `~${d.endDate}` : ""}`,
+          details: `학사일정 삭제: ${d?.title ? `[${d?.title}] ` : ""}${d?.type} ${d?.startDate}${d?.endDate && d.endDate !== d.startDate ? `~${d.endDate}` : ""}`,
           status: "success",
         });
-        if (termId) {
+        if (termId && (SCHEDULE_AFFECTING_TYPES as readonly string[]).includes(d?.type)) {
           await syncDerivedWeeksWithCalendar(domain, termId).catch((e) =>
             console.error("[calendar_delete] 주 동기화 실패:", e?.message)
           );
         }
         return NextResponse.json({ success: true, action });
+      }
+
+      case "calendar_neis_sync": {
+        const termId = body.termId || settings.activeTermId || undefined;
+        const result = await runNeisCalendarSync(domain, termId);
+        if (!result.success) {
+          return NextResponse.json({ error: result.message }, { status: 400 });
+        }
+        const updatedSettings = await loadTimetableSettings(domain);
+        return NextResponse.json({
+          success: true,
+          action,
+          message: result.message,
+          stats: result.stats,
+          settings: updatedSettings,
+        });
       }
 
       // ── 기초시간표 개정 (pre_opening_3features_spec §E) ──

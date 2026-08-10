@@ -8,6 +8,10 @@
     {
       "path": "/api/discipline/cron/bridge",
       "schedule": "0 16 * * *"
+    },
+    {
+      "path": "/api/timetable/cron/neis-calendar",
+      "schedule": "0 18 * * *"
     }
   ]
 }
