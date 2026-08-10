@@ -2862,3 +2862,28 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 15. **웹 푸시 집계 내용 부실**: 교체 3건 승인·취소 시 푸시가 1건 사유만 표기("변경 취소: 8/11(화) 2교시 철학 ↔ …") — 수신자별 1건 집계는 의도(스팸 방지)지만 내용에 "외 N건" 또는 건수 요약이 없어 3건 중 1건만 바뀐 것처럼 보임. notifyTimetableChanges 집계 메시지 구성 점검.
 16. **취소(revert) DM 결함 2가지**: ⓐ 체인 취소 알림 수신자가 클릭한 change 1건의 두 교사로만 도출 — 체인은 신청 단위 전체 취소이므로 신청자+consent.parties 전원이 받아야 함(실측: 3건 취소에 본인 수신 2건 — 체인 취소분 누락) ⓑ 취소 DM 문구가 "승인되었던 수업교환이 취소되었습니다"뿐 — 어떤 교환인지 내용 없음(승인 DM은 상세). 서버 revertTimetableChange 알림부 = Claude 몫(S5로 편입).
+
+## [2026-08-11] §3-2d U 배치 표적 검수(상태 전이 전수 감사) + 서버부 S1~S3·S5 구현 완결
+
+**U1·U2·U5·U6·U7 검수 결과** (조합축: 소스 선택 × 후보 선택 × 체인 모드/목적지 × 모달):
+- **통과**: U1(처방·축하·메타 표현 잔존 grep 0 — TimetableImportTab의 "가상 교사"는 일과계 매핑 도구 용어라 유지) / U5(counterpart 필터·배지 기준 일치, 조율 시 red 배지+결합 문구) / U6ⓑ 후보 클릭→체인 전면 초기화·토글 진입 시 후보 해제·체인 신청 성공 시 전 상태 초기화 / U6ⓒ 목적지 재클릭=재탐색(가드 없음 확인) / 체인 양해 모달 열림·닫힘 상태 정합.
+- **치명 4건 Claude 직접 수정 (`3121684`)**:
+  1. **U6ⓐ 미반영** — 빈 칸 클릭 조건 `(isChainMode || !candidate)`가 그대로 남아 후보 없는 빈 칸 클릭이 여전히 암묵 체인 진입. `isChainMode` 단독으로 교정.
+  2. **후보 카드 클릭 버블링** — 카드 onClick이 셀(td) onClick으로 전파돼, 체인 모드 중 후보 클릭 시 후보 선택과 chain_search가 동시 발화(조율 후보면 양해 다이얼로그+체인 탐색 동시 열림). stopPropagation 추가.
+  3. **소스 재선택 시 체인 결과 잔존** — 이전 소스 기준 chainTarget·결과가 새 소스 옆에 그대로 표시. handleCellClick에서 목적지·결과·오류 초기화(체인 모드 자체는 유지).
+  4. **U7 분기 반전** — 서버 사유 방향이 "조건부 후보입니다"=전제 **대기 중(초안 생존)**, 일반 "유효하지 않습니다"=전제 소멸인데 UI가 정반대로 연결. 살아있는 조건부 초안에 "성립 불가—전제 취소됨"+빨간 배너+삭제 유도 펄스 버튼이 뜨는 구조로, 11번 피드백이 막으려던 오독을 UI가 직접 유발. 분기·상단 배너 억제·삭제 버튼 강조 조건 전부 교정.
+- **U2 결함 → Antigravity 재작업 필요**: OffscreenShareCard에 추가된 겹침 명시 블록이 `!isCoordinationVariant` 분기 안에 있는데 블록 조건이 `coordination && conflicts.length>0`으로 상호 배타 — **절대 렌더되지 않는 죽은 코드**. 구조 원인: coordination이 있으면 카드 전체가 조율 당사자 변형으로 전환되므로 "상대 교사용 카드"가 생성될 수 없음. 해결 스펙: ShareCardData에 `variant?: "occupant" | "counterpart"` 추가(미지정 시 기존 동작 유지), counterpart variant는 기존 교환 카드+겹침 경고 블록. 조율 후보 선택 시 사이드바·초안 카드에 카드 복사 버튼 2개(당사자용/상대 교사용) 노출. 융합 netMoves 경로(직권 일괄 카드)도 coordination 항목 경고 미표시 — netMoves 조립 시 conflicts 요약 동반 필요.
+- **관찰(비차단)**: 연속 chain_search 클릭 시 응답 역전 레이스(늦게 도착한 이전 응답이 새 목적지 결과를 덮어씀) 가능 — 요청 시퀀스 가드 여지, 실사용 빈도 낮아 보류.
+
+**서버부 S1·S2·S3·S5 (`8fb8058`)**:
+- **S1**: `computeCommonActivitySlots(grids)` 신설(§4-1b 과반 판정의 주 단위 일반화, view `free`도 동일 헬퍼로 재사용) → my_projected 주별 `commonActivitySlots` + view `my` 응답 동봉. U4는 이 목록으로 체인 목적지(보라 셀) 렌더 제외하면 됨.
+- **S2**: requests `draft_delete_all` — 본인 전량 단일 batch 삭제, `deletedCount` 반환. U3 재료 완비.
+- **S3**: "가상 교사(학교 공통 활동)…" 2곳(swap.ts resolveSourceLesson·server.ts resolveDirectSource) → "학교 공통 활동 시간(동아리·자율활동 등)의 수업이라 …" / 체인 실패 사유의 "직권 배정 제외 대상입니다" 내부 분류어 제거(하위 사유 직결 전달).
+- **S5 (15·16번)**: ⓐ revert 알림 수신자 = 취소된 **전** change 당사자 ∪ 신청자 ∪ consent.parties(체인·교차 주 누락 해소) ⓑ 취소 DM에 상세 동봉(체인은 stepSummary 전 단계, 그 외 change별 요약) ⓒ 반환형 `TimetableChange & { allReverts }` — manage 라우트가 웹 푸시에 revert 전량 전달 ⓓ 15번의 실기전: 웹 푸시 고정 `tag: "timetable"`이 호출 간 알림을 **교체**해 마지막 1건만 남던 것 → 발송 호출별 tag로 교정(한 호출 내 집계 "외 N건"은 유지).
+- **검증**: `npx tsc --noEmit` ✅ / `npm run build` ✅ (이 기기는 메모리 사정상 `NODE_OPTIONS=--max-old-space-size=6144` 필요 — 코드 요인 아님). 화면 검증은 분업 규칙대로 Antigravity E2E 몫.
+- 미push 3커밋: `3121684`(검수 수정)·`8fb8058`(서버부)·(이 문서 커밋). push는 사용자 승인 후.
+
+### 재개 문구
+- Antigravity 인계: *"project_notes.md 마지막 체크포인트 읽어줘. §3-2d U2 재작업(variant prop — 죽은 코드 원인 참조) + U3(초안 전체 비우기, draft_delete_all 사용) + U4(commonActivitySlots로 보라 셀 제외) 구현해줘. U8(확정 변경 sky 계열+색 일람표)·U9(초안함 → 내 시간표 탭)도 이어서."*
+- 완료 후 검수: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 U2 재작업·U3·U4(·U8·U9) 반영했다 함 — U2 카드 variant 렌더 실증 포함 표적 검수해줘."*
+- 원복(재테스트 후): *"재테스트 끝났어. 박윤흡 치환 원복해줘."*
