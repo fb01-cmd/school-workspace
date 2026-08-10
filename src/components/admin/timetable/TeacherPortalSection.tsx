@@ -117,6 +117,7 @@ interface ProjectedWeek {
   days: { num: number; label: string }[];
   cells: TeacherTimetableCell[];
   dayLoads: ProjectedDayLoad[];
+  commonActivitySlots?: Array<{ day: number; period: number }>; // §3-2d S1 — U4 체인 목적지 제외 재료
 }
 
 function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
@@ -1276,8 +1277,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                             const isSelected = selectedCell?.weekId === week.weekId && selectedCell?.day === d.num && selectedCell?.period === period;
 
                             // §3-2d U4: 공통 활동 교시(SLAT·창체 등) 판정 — 체인 목적지 지정 대상에서 제외
-                            const isCommonActivitySlot = (week as any).commonActivitySlots?.some(
-                              (s: any) => s.day === d.num && s.period === period
+                            const isCommonActivitySlot = week.commonActivitySlots?.some(
+                              (s) => s.day === d.num && s.period === period
                             );
 
                             // §14-2 v2.1: 내 공강 칸(!hasLesson)이고 소스 셀이 선택되었을 때 인라인 맞교환 후보 매칭
@@ -2882,9 +2883,8 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
     executeCreateBatchInTab(itemsToSubmit);
   };
 
-  useEffect(() => {
-    fetchDrafts();
-  }, [fetchDrafts]);
+  // §3-2d U9: 임시저장함 UI가 내 시간표 탭으로 이관되어 이 탭은 초안 데이터를 쓰지 않는다 —
+  // 마운트 시 draft_list 자동 호출은 읽기 낭비라 제거 (잔존 초안 핸들러 정리는 후속 배치)
 
   const handleDeleteDraft = async (draftId: string) => {
     if (!confirm("이 임시저장 초안을 삭제하시겠습니까?")) return;
