@@ -119,7 +119,7 @@ export default function TodayTimetableCard() {
               key={`${cell.period}-${idx}`}
               className={`flex items-center justify-between p-3 rounded-xl border text-sm transition-colors ${
                 isChanged
-                  ? "bg-amber-50 border-amber-300 text-amber-950 dark:bg-amber-950/40 dark:border-amber-700 dark:text-amber-100"
+                  ? "bg-sky-100 border-sky-300 text-sky-950 dark:bg-sky-950/40 dark:border-sky-700 dark:text-sky-100"
                   : "bg-white border-slate-200 text-slate-900 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100"
               }`}
             >
@@ -145,8 +145,8 @@ export default function TodayTimetableCard() {
                   <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0" title="동시수업" />
                 )}
                 {isChanged && (
-                  <span className="px-2 py-0.5 text-xs font-bold bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100 rounded-md shrink-0">
-                    {changeLabel}
+                  <span className="px-2 py-0.5 text-xs font-extrabold bg-sky-200 text-sky-900 dark:bg-sky-800 dark:text-sky-100 rounded-md shrink-0">
+                    ▲ {changeLabel}
                   </span>
                 )}
               </div>

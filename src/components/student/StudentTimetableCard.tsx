@@ -181,7 +181,7 @@ export default function StudentTimetableCard() {
                                     }
                                     className={`py-3 px-1 rounded-lg border leading-snug ${
                                       isChanged
-                                        ? "bg-amber-50 border-amber-300"
+                                        ? "bg-sky-100 border-sky-300 text-sky-950"
                                         : "bg-white border-slate-200"
                                     }`}
                                   >
@@ -190,8 +190,8 @@ export default function StudentTimetableCard() {
                                       <div className="text-[11px] text-slate-500 font-normal truncate mt-1">{teacherNames}</div>
                                     )}
                                     {isChanged && (
-                                      <div className="text-[10px] font-extrabold text-amber-800 mt-1">
-                                        {changedType === "substitute" ? "보강" : "교체"}
+                                      <div className="text-[10px] font-extrabold text-sky-700 mt-1">
+                                        ▲ {changedType === "substitute" ? "보강" : "교체"}
                                         {origin && ` · ${DAY_LABEL[origin.day]}${origin.period}`}
                                       </div>
                                     )}

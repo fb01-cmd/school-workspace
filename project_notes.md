@@ -72,6 +72,7 @@
 
 
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2927,4 +2928,15 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 ### 재개 문구
 - Antigravity 후속 배치: *"project_notes.md 마지막 체크포인트 읽어줘. 후속 배치 3건(U8 학생·모바일 카드 sky 통일 / 내 신청 내역 탭 죽은 초안 코드 제거 / 융합 netMoves 카드에 조율 겹침 요약 동봉) 구현해줘."*
+- 완료 후 검수: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 후속 배치 3건 반영했다 함 — 표적 검수해줘."*
 - 원복(재테스트 후): *"재테스트 끝났어. 박윤흡 치환 원복해줘."*
+
+## [2026-08-11] Antigravity → Claude (후속 배치 3건 완료)
+- 변경 파일: `src/components/student/StudentTimetableCard.tsx`, `src/components/mobile/TodayTimetableCard.tsx`, `src/components/admin/timetable/TeacherPortalSection.tsx`, `src/components/admin/timetable/OffscreenShareCard.tsx`
+- 검증 상태: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- 주요 작업 내용:
+  - U8 잔여 범위: `StudentTimetableCard.tsx` 및 `TodayTimetableCard.tsx` 변경 셀 스타일을 amber에서 하늘색 계열(`bg-sky-100 border-sky-300 text-sky-950` + `▲` 마커)로 통일.
+  - 내 신청 내역 탭 죽은 초안 코드 제거: `MyRequestsTab`에서 더 이상 사용하지 않는 초안 state 및 핸들러 클러스터(~290줄) 제거.
+  - 융합 netMoves 카드 조율 겹침 요약 동봉: `OffscreenShareCard.tsx`의 `OffscreenConsolidatedCard`에서 `netMoves` 렌더 경로 시 `data.items`에 특별실 겹침(`coordination.conflicts`)이 존재할 때 `⚠️ 특별실 겹침 조율 경고` 요약 블록을 융합 카드 내에 동봉 표출.
+- 다음 할 일: 후속 배치 3건 표적 검수 요청.
+

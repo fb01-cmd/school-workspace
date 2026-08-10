@@ -423,6 +423,26 @@ export function OffscreenConsolidatedCard({
                   ※ 여러 단계로 나뉘어 처리되는 교환이지만, 위 내용과 아래 시간표는 최종 결과 기준입니다.
                 </div>
               )}
+              {data.items.some((d: any) => d.candidate?.coordination?.conflicts?.length > 0) && (
+                <div className="bg-amber-50 border border-amber-300 rounded-lg p-2.5 space-y-1 text-amber-950 font-bold">
+                  <div className="text-amber-900 font-extrabold text-[11px] flex items-center gap-1">
+                    <span>⚠️</span>
+                    <span>특별실 겹침 조율 경고</span>
+                  </div>
+                  {data.items
+                    .filter((d: any) => d.candidate?.coordination?.conflicts?.length > 0)
+                    .map((d: any, idx: number) => {
+                      const conflict = d.candidate.coordination.conflicts[0];
+                      const slotStr = formatSlotWithDate(conflict.slot.weekId, conflict.slot.day, conflict.slot.period);
+                      const occStr = conflict.occupants.map((o: any) => `${o.teacherName} 선생님`).join(", ");
+                      return (
+                        <div key={idx} className="text-[11px] font-semibold text-amber-900">
+                          • {slotStr} {conflict.roomName} 사용 겹침 (사용 중: {occStr})
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </>
           )}
           {(netMode ? subItems : data.items).map((d: any, i) => {
