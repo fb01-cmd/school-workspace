@@ -303,6 +303,9 @@ export interface ViewTimetableResponse {
   /** free 전용 (consent_swap_opening_spec §4-1b): 해당 교시가 전교 공통 활동(SLAT·창체 등)이라
    *  공강 개념이 적용되지 않음 — 그리드상 비어 보여도 실교사들은 담임·부담임·교과·동아리로 투입됨 */
   commonActivitySlot?: boolean;
+  /** my 전용 (consent_swap_opening_spec §3-2d S1): 이 주의 전교 공통 활동 교시 전체 목록 —
+   *  UI는 체인 목적지 등 "내 공강" 개념 렌더에서 이 교시들을 제외한다 (U4) */
+  commonActivitySlots?: Array<{ day: number; period: number }>;
 }
 
 export type ManageAction =
@@ -762,6 +765,7 @@ export type SwapRequestAction =
   | "draft_save"
   | "draft_list"
   | "draft_delete"
+  | "draft_delete_all" // §3-2d S2: 본인 초안 전량 일괄 삭제 (U3 "초안 전체 비우기")
   | "chain_search" // 교사 체인 탐색 — 소스 본인 소유 검증 후 computeChainSearch (consent_swap_opening_spec §4-2)
   | "chain_create"; // 체인 신청 생성 — 서버 재탐색 대조 + consent 필수 (§4-3)
 

@@ -277,7 +277,7 @@ export function resolveSourceLesson(
     return { ok: false, error: "복수교사 수업은 교환할 수 없습니다. 일과계에 직접 요청하세요." };
   const teacher = lesson.teachers[0];
   if (!teacher || !norm(teacher.email))
-    return { ok: false, error: "가상 교사(학교 공통 활동) 수업은 교환 대상이 아닙니다." };
+    return { ok: false, error: "학교 공통 활동 시간(동아리·자율활동 등)의 수업이라 교환할 수 없습니다." }; // §3-2d S3: 내부 개념(가상 교사) 노출 금지
   if (norm(teacher.email) !== norm(requesterEmail))
     return { ok: false, error: "본인의 수업만 교환 신청할 수 있습니다." };
   return { ok: true, lesson, grid };

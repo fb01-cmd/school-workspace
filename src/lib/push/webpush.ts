@@ -212,14 +212,17 @@ function describeChange(change: TimetableChange): ChangeAudience | null {
   return null;
 }
 
-function buildPayload(lines: string[]): PushPayload {
+function buildPayload(lines: string[], tagSeed: string): PushPayload {
   const MAX_LINES = 4;
   const shown = lines.slice(0, MAX_LINES);
   if (lines.length > MAX_LINES) shown.push(`외 ${lines.length - MAX_LINES}건`);
   return {
     title: lines.length > 1 ? `시간표 변경 ${lines.length}건` : "시간표 변경 안내",
     body: shown.join("\n"),
-    tag: "timetable",
+    // §3-2d S5(15번): 고정 tag는 브라우저가 이전 알림을 통째로 교체해, 승인·취소를 여러 번
+    // 나눠 하면 마지막 1건만 남아 "1건만 바뀐 것"처럼 보였다. 발송 호출 단위로 tag를 달리해
+    // 호출 간 교체를 막는다 — 한 호출 안의 여러 건은 여전히 lines 집계(외 N건)로 1건 발송.
+    tag: `timetable-${tagSeed}`,
   };
 }
 
@@ -275,9 +278,10 @@ export async function notifyTimetableChanges(
       if (!byEmail.has(key)) byEmail.set(key, []);
       byEmail.get(key)!.push(sub);
     }
+    const tagSeed = changes[0]?.id || String(Date.now());
     for (const [email, subs] of byEmail) {
       const lines = emailLines.get(email);
-      if (lines?.length) sends.push(sendToSubs(domain, subs, buildPayload(lines)));
+      if (lines?.length) sends.push(sendToSubs(domain, subs, buildPayload(lines, tagSeed)));
     }
 
     // 학생: 반 단위 조회 (구독 문서의 학년·반 스냅샷 기반)
@@ -285,7 +289,7 @@ export async function notifyTimetableChanges(
       const subs = await listSubsByClass(domain, grade, classNum);
       // 학생 구독만 — 교사 구독에 학년·반이 들어갈 일은 없지만 이중 방어
       const studentSubs = subs.filter((s) => s.data.role === "student");
-      if (studentSubs.length) sends.push(sendToSubs(domain, studentSubs, buildPayload(lines)));
+      if (studentSubs.length) sends.push(sendToSubs(domain, studentSubs, buildPayload(lines, tagSeed)));
     }
 
     const results = await Promise.all(sends);

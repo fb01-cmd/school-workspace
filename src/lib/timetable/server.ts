@@ -1008,9 +1008,11 @@ import {
   synthesizeWeeklyGrids,
 } from "./weekly";
 import {
+  buildSlotIndex,
   findCrossSwapCandidates,
   findSubstituteCandidates,
   findSwapCandidates,
+  isBlockTeacher,
   resolveSourceLesson,
 } from "./swap";
 import { holidayNameOf } from "./holidays";
@@ -2516,6 +2518,44 @@ function countMyDayLoads(grids: WeeklyClassGrid[], email: string): ProjectedDayL
  * PENDING 신청·초안(클릭 누적분)을 가상 적용한 각 주의 본인 셀·요일 시수를 한 번에 반환.
  * 셀 changed.changeId 접두어("virtual-req-"/"virtual-draft-")로 UI가 대기/초안 반영분을 구분한다.
  */
+/**
+ * 전교 공통 활동 교시 판정을 주 단위로 일반화 (consent_swap_opening_spec §3-2d S1 — §4-1b의 확장).
+ * (요일·교시)별로, 수업 있는 학급 중 가상(이메일 없음)·블록 교사 명의 학급이 과반이면 공통 활동 교시.
+ * view `free`의 단일 교시 판정과 동일 기준 — UI(U4)는 이 목록으로 체인 목적지 렌더에서 제외한다.
+ */
+export function computeCommonActivitySlots(
+  grids: WeeklyClassGrid[]
+): Array<{ day: number; period: number }> {
+  const idx = buildSlotIndex(grids);
+  const classesWithLesson = new Map<string, number>();
+  const commonClasses = new Map<string, number>();
+  for (const grid of grids) {
+    const seen = new Set<string>(); // 같은 그리드에 동일 교시 셀이 중복돼도 학급당 1회만 계수 (free 판정의 find와 동일 의미)
+    for (const cell of grid.cells || []) {
+      const lessons = cell.lessons || [];
+      if (!lessons.length) continue;
+      const key = `${cell.day}-${cell.period}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      classesWithLesson.set(key, (classesWithLesson.get(key) || 0) + 1);
+      const isCommon = lessons.some((l) => {
+        const ts = l.teachers || [];
+        if (ts.length === 0 || ts.every((t) => !(t.email || "").trim())) return true; // 가상
+        return ts.some((t) => isBlockTeacher(idx, t.email || "")); // 블록(전교 공통)
+      });
+      if (isCommon) commonClasses.set(key, (commonClasses.get(key) || 0) + 1);
+    }
+  }
+  const out: Array<{ day: number; period: number }> = [];
+  for (const [key, total] of classesWithLesson) {
+    if ((commonClasses.get(key) || 0) * 2 >= total) {
+      const [day, period] = key.split("-").map(Number);
+      out.push({ day, period });
+    }
+  }
+  return out.sort((a, b) => a.day - b.day || a.period - b.period);
+}
+
 export async function computeMyProjectedWeeks(
   domain: string,
   userEmail: string,
@@ -2528,6 +2568,7 @@ export async function computeMyProjectedWeeks(
     days: TimetableWeek["days"];
     cells: TeacherTimetableCell[];
     dayLoads: ProjectedDayLoad[];
+    commonActivitySlots: Array<{ day: number; period: number }>; // §3-2d S1 — U4(체인 목적지 제외) 재료
   }>;
   assumedPendingCount: number;
   assumedDraftCount: number;
@@ -2586,6 +2627,7 @@ export async function computeMyProjectedWeeks(
   const out: Array<{
     weekId: string; startDate: string; days: TimetableWeek["days"];
     cells: TeacherTimetableCell[]; dayLoads: ProjectedDayLoad[];
+    commonActivitySlots: Array<{ day: number; period: number }>;
   }> = [];
   for (const week of weeks) {
     const changes = changesByWeek.get(week.id) || [];
@@ -2597,6 +2639,7 @@ export async function computeMyProjectedWeeks(
       days: week.days,
       cells: synthesizeTeacherTimetable(grids, userEmail),
       dayLoads: countMyDayLoads(grids, userEmail),
+      commonActivitySlots: computeCommonActivitySlots(grids),
     });
   }
   return {
@@ -3991,7 +4034,7 @@ export async function revertTimetableChange(
   managerEmail: string,
   changeId: string,
   options?: { skipNotify?: boolean } // 검증 스크립트 전용 — 라우트는 항상 알림
-): Promise<TimetableChange> {
+): Promise<TimetableChange & { allReverts: TimetableChange[] }> {
   const reverted = await adminDb.runTransaction(async (tx) => {
     const targetRef = timetableChangesColRef(domain).doc(changeId);
     const targetSnap = await tx.get(targetRef);
@@ -4012,16 +4055,21 @@ export async function revertTimetableChange(
     }
     // 체인 승인이 만든 변경은 신청 단위로만 취소 — 부분 취소 금지 (consent_swap_opening_spec §4-3).
     // 체인 안의 교차 주 단계도 이 확장이 문서쌍까지 포괄한다 (전 단계가 같은 requestId를 공유).
+    // §3-2d S5: 원 신청은 알림 수신자(신청자+양해 당사자)·취소 내용 문구의 재료이므로 체인 여부와 무관하게 읽어둔다.
+    let request: SwapRequest | null = null;
     if (target.requestId) {
       const reqSnap = await tx.get(swapRequestsColRef(domain).doc(target.requestId));
-      if (reqSnap.exists && (reqSnap.data() as SwapRequest).type === "chain") {
-        const groupSnap = await tx.get(
-          timetableChangesColRef(domain).where("requestId", "==", target.requestId)
-        );
-        targets = groupSnap.docs
-          .map((d) => ({ ...(d.data() as TimetableChange), id: d.id }))
-          .filter((t) => t.type !== "revert");
-        if (!targets.some((t) => t.id === changeId)) targets.push(target);
+      if (reqSnap.exists) {
+        request = { ...(reqSnap.data() as SwapRequest), id: target.requestId };
+        if (request.type === "chain") {
+          const groupSnap = await tx.get(
+            timetableChangesColRef(domain).where("requestId", "==", target.requestId)
+          );
+          targets = groupSnap.docs
+            .map((d) => ({ ...(d.data() as TimetableChange), id: d.id }))
+            .filter((t) => t.type !== "revert");
+          if (!targets.some((t) => t.id === changeId)) targets.push(target);
+        }
       }
     }
 
@@ -4060,36 +4108,80 @@ export async function revertTimetableChange(
         decisionNote: "일과계 승인 취소 (revert)",
       });
     }
-    return { revert: reverts.find((r) => r.revertOf === changeId) || reverts[0], target };
+    return {
+      revert: reverts.find((r) => r.revertOf === changeId) || reverts[0],
+      reverts,
+      targets,
+      request,
+    };
   });
 
   // revert change 커밋 완료 → view 캐시 무효화 (알림 실패와 무관하게 먼저)
   await bumpTimetableCacheVersion(domain);
 
-  // 알림: 원 승인 알림 수신자 전원 (§5)
-  if (options?.skipNotify) return reverted.revert;
+  const result = Object.assign({ ...reverted.revert }, { allReverts: reverted.reverts });
+  if (options?.skipNotify) return result;
+
+  // 알림 (§5 + §3-2d S5): 수신자 = 취소된 전 change의 당사자 ∪ 신청자 ∪ 양해 당사자.
+  // 클릭한 change 1건의 두 교사만 통지하면 체인·교차 주 취소에서 나머지 단계 당사자가 누락된다 (16ⓐ 실측).
   const recipients = new Set<string>();
-  const t = reverted.target;
-  if (t.swap) {
-    recipients.add(t.swap.a.teacherEmail);
-    recipients.add(t.swap.b.teacherEmail);
+  for (const t of reverted.targets) {
+    if (t.swap) {
+      recipients.add(t.swap.a.teacherEmail);
+      recipients.add(t.swap.b.teacherEmail);
+    }
+    if (t.substitute) {
+      recipients.add(t.substitute.absentTeacherEmail);
+      recipients.add(t.substitute.subTeacherEmail);
+    }
+    if (t.crossSwap) {
+      recipients.add(t.crossSwap.out.teacherEmail);
+      recipients.add(t.crossSwap.in.teacherEmail);
+    }
   }
-  if (t.substitute) {
-    recipients.add(t.substitute.absentTeacherEmail);
-    recipients.add(t.substitute.subTeacherEmail);
+  const req = reverted.request;
+  if (req) {
+    recipients.add(req.requesterEmail);
+    for (const p of req.consent?.parties || []) recipients.add(p.email);
   }
-  if (t.crossSwap) {
-    recipients.add(t.crossSwap.out.teacherEmail);
-    recipients.add(t.crossSwap.in.teacherEmail);
+  recipients.delete("");
+
+  // 취소 DM에도 어떤 교환이 취소됐는지 상세를 담는다 (16ⓑ — 승인 DM은 상세인데 취소는 무내용이던 비대칭 해소)
+  const dayNames = ["", "월", "화", "수", "목", "금"];
+  const detailLines: string[] = [];
+  if (req?.type === "chain" && (req.chainSteps || []).length > 0) {
+    detailLines.push(...(req.chainSteps || []).map((s) => s.stepSummary).filter(Boolean));
+  } else {
+    for (const t of reverted.targets) {
+      if (t.swap) {
+        detailLines.push(
+          `${t.swap.grade}-${t.swap.classNum} ${dayNames[t.swap.a.day]} ${t.swap.a.period}교시 ${t.swap.a.subjectName}(${t.swap.a.teacherName})` +
+          ` ↔ ${dayNames[t.swap.b.day]} ${t.swap.b.period}교시 ${t.swap.b.subjectName}(${t.swap.b.teacherName})`
+        );
+      } else if (t.substitute) {
+        detailLines.push(
+          `${t.substitute.grade}-${t.substitute.classNum} ${dayNames[t.substitute.day]} ${t.substitute.period}교시 ${t.substitute.subjectName} 보강(${t.substitute.subTeacherName} 선생님)`
+        );
+      } else if (t.crossSwap) {
+        detailLines.push(
+          `${t.crossSwap.grade}-${t.crossSwap.classNum} ${t.weekId} 주 ${dayNames[t.crossSwap.day]} ${t.crossSwap.period}교시 ${t.crossSwap.out.subjectName} → ${t.crossSwap.in.subjectName} (교차 주)`
+        );
+      }
+    }
   }
+  const header =
+    req?.type === "chain"
+      ? `↩️ 승인되었던 징검다리 수업교환(${reverted.targets.length}단계)이 전체 취소되었습니다.`
+      : "↩️ 승인되었던 수업교환이 취소되었습니다.";
+  const msg = [header, ...detailLines, `취소: ${managerEmail}`].join("\n");
   for (const to of recipients) {
     try {
-      await sendGoogleChat(to, `↩️ 승인되었던 수업교환이 취소되었습니다.\n취소: ${managerEmail}`);
+      await sendGoogleChat(to, msg);
     } catch (e: any) {
       console.error(`[swap_revert] 알림 실패 (${to}):`, e.message);
     }
   }
-  return reverted.revert;
+  return result;
 }
 
 // ── 일과계 직권 배정 (§6 direct_* — 관리자 전용) ──────────────
@@ -4118,7 +4210,7 @@ export function resolveDirectSource(
     return { ok: false, error: "복수교사 수업은 직권 배정 대상이 아닙니다." };
   const t = lesson.teachers[0];
   if (!t || !t.email?.trim())
-    return { ok: false, error: "가상 교사(학교 공통 활동) 수업은 직권 배정 대상이 아닙니다." };
+    return { ok: false, error: "학교 공통 활동 시간(동아리·자율활동 등)의 수업이라 이동할 수 없습니다." }; // §3-2d S3: 내부 개념(가상 교사) 노출 금지
   return {
     ok: true,
     info: {
@@ -4427,7 +4519,8 @@ export async function computeChainSearch(
       if (occ.error.includes("수업이 없습니다")) {
         reason = `목적지(${slotLabel(targetWeekId, params.target.day, params.target.period)})가 빈 슬롯이나 ${mover.teacherName} 교사의 시간표/특별실 충돌로 직접 이동할 수 없습니다.`;
       } else {
-        reason = `목적지 점유 수업이 직권 배정 제외 대상입니다 (${occ.error}).`;
+        // §3-2d S3: "직권 배정 제외 대상" 같은 내부 분류어 대신 하위 사유를 그대로 전달 (사유 자체가 눈높이 문장)
+        reason = `목적지 교시의 수업을 옮길 수 없어 경로가 성립하지 않습니다 — ${occ.error}`;
       }
     } else {
       const occSource: SwapSourceSlot = {
@@ -4731,6 +4824,17 @@ export async function listSwapDrafts(domain: string, userEmail: string): Promise
     };
   });
   return drafts.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** §3-2d S2: 본인 초안 전량 일괄 삭제 — 삭제 건수 반환 (상한 20건이라 단일 batch로 충분) */
+export async function deleteAllSwapDrafts(domain: string, userEmail: string): Promise<number> {
+  const colRef = swapDraftsColRef(domain);
+  const snap = await colRef.where("requesterEmail", "==", userEmail).get();
+  if (snap.empty) return 0;
+  const batch = colRef.firestore.batch();
+  snap.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
+  return snap.size;
 }
 
 export async function deleteSwapDraft(domain: string, userEmail: string, draftId: string): Promise<void> {

@@ -600,8 +600,9 @@ export async function POST(req: NextRequest) {
           details: `수업교환 승인 취소(revert): ${body.changeId} → ${revert.id}`,
           status: "success",
         });
-        // 웹 푸시: 취소도 같은 수신자에게 "변경 취소" 문구로 발송
-        after(() => notifyTimetableChanges(domain, [revert]));
+        // 웹 푸시: 취소도 같은 수신자에게 "변경 취소" 문구로 발송.
+        // §3-2d S5: 체인·교차 주 취소는 revert가 여러 건 — 전량을 넘겨야 나머지 단계 당사자·학급도 푸시를 받는다.
+        after(() => notifyTimetableChanges(domain, revert.allReverts || [revert]));
         return NextResponse.json({ success: true, action, change: revert });
       }
 

@@ -2,6 +2,7 @@ import { verifyAuthAccess } from "@/lib/firebase/admin";
 import { canViewTimetable } from "@/lib/timetable/authz";
 import { getTimetableCacheVersion } from "@/lib/timetable/cacheVersion";
 import {
+  computeCommonActivitySlots,
   currentMondayISO,
   pickCurrentWeek,
   resolveStudentClass,
@@ -160,6 +161,8 @@ export async function POST(req: NextRequest) {
             teacherName: resolveTeacherName(allGrids, auth.email.trim().toLowerCase()),
             cells,
           },
+          // §3-2d S1: 이 주의 전교 공통 활동 교시 목록 — UI는 "내 공강" 렌더에서 제외 (U4)
+          commonActivitySlots: computeCommonActivitySlots(allGrids),
         };
         return NextResponse.json(withWeek(res, warnings));
       }
@@ -283,20 +286,9 @@ export async function POST(req: NextRequest) {
         // 전교 공통 활동 교시 판정 (consent_swap_opening_spec §4-1b) — SLAT·창체처럼 수업이
         // 가상(이메일 없음)·블록 교사 명의인 학급이 과반이면, 그리드상 비어 보이는 실교사들도
         // 실제로는 담임·부담임·교과·동아리로 투입되므로 공강 개념이 성립하지 않는다.
-        let classesWithLesson = 0;
-        let commonActivityClasses = 0;
-        for (const grid of allGrids) {
-          const cell = (grid.cells || []).find((c) => c.day === day && c.period === period);
-          if (!cell || !(cell.lessons || []).length) continue;
-          classesWithLesson++;
-          const isCommon = cell.lessons.some((l) => {
-            const ts = l.teachers || [];
-            if (ts.length === 0 || ts.every((t) => !(t.email || "").trim())) return true; // 가상
-            return ts.some((t) => isBlockTeacher(blockIdx, t.email)); // 블록(전교 공통)
-          });
-          if (isCommon) commonActivityClasses++;
-        }
-        if (classesWithLesson > 0 && commonActivityClasses * 2 >= classesWithLesson) {
+        // (§3-2d S1에서 주 단위 판정으로 일반화 — 단일 교시 판정도 같은 헬퍼를 쓴다)
+        const commonSlots = computeCommonActivitySlots(allGrids);
+        if (commonSlots.some((s) => s.day === day && s.period === period)) {
           const res: ViewTimetableResponse = {
             term: termMeta,
             action,

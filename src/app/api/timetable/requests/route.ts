@@ -8,6 +8,7 @@ import {
   computeMyProjectedWeeks,
   createChainSwapRequest,
   createSwapRequest,
+  deleteAllSwapDrafts,
   deleteSwapDraft,
   listSwapDrafts,
   listSwapRequests,
@@ -322,6 +323,12 @@ export async function POST(req: NextRequest) {
       case "draft_list": {
         const drafts = await listSwapDrafts(domain, auth.email);
         return NextResponse.json({ success: true, action, drafts });
+      }
+
+      // §3-2d S2: 본인 초안 전량 일괄 삭제 (U3 "초안 전체 비우기" 재료)
+      case "draft_delete_all": {
+        const deletedCount = await deleteAllSwapDrafts(domain, auth.email);
+        return NextResponse.json({ success: true, action, deletedCount });
       }
 
       case "draft_delete": {
