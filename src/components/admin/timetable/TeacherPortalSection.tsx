@@ -462,6 +462,11 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
   const handleCellClick = (cell: TeacherTimetableCell, srcWeekId: string) => {
     if (savingDraft || deletingDraftId) return; // 반영 중 추가 클릭으로 상태가 꼬이는 것 방지
+    // §3-2d U6ⓑ: 소스가 바뀌면 이전 소스 기준의 체인 목적지·결과는 무효 — 잔존 표시 방지 (체인 모드 자체는 유지)
+    setChainTarget(null);
+    setChainSearchResults(null);
+    setChainSearchError(null);
+    setChainSearchReason(null);
     setSelectedCell({ ...cell, weekId: srcWeekId });
     setSelectedWeekId(srcWeekId);
     setTargetWeekId(srcWeekId);
@@ -1035,7 +1040,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                 onClick={() => {
                                   if (hasLesson) {
                                     handleCellClick(matched[0], week.weekId);
-                                  } else if (selectedCell && (isChainMode || !candidate)) {
+                                  } else if (selectedCell && isChainMode) {
+                                    // §3-2d U6ⓐ: 체인 탐색은 토글 명시 진입 시에만 — 후보 없는 빈 칸 클릭의 암묵 진입 금지
                                     handleExecuteChainSearch(week.weekId, d.num, period);
                                   }
                                 }}
@@ -1123,7 +1129,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                     return (
                                       <div
                                         title={tooltipText}
-                                        onClick={() => {
+                                        onClick={(e) => {
+                                          // 셀(td) onClick으로 버블링되면 체인 모드 중 후보 선택과 chain_search가 동시 발화한다 (U6 상호 배타 위반)
+                                          e.stopPropagation();
                                           setIsChainMode(false);
                                           setChainTarget(null);
                                           setChainSearchResults(null);
@@ -2590,8 +2598,8 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                       errorMsg ? "border-red-300 bg-red-50/30" : "border-indigo-150 hover:border-indigo-300"
                     }`}
                   >
-                    {/* 재검증 거부 시 경고 배너 */}
-                    {errorMsg && (
+                    {/* 재검증 거부 시 경고 배너 — 조건부 "전제 승인 대기" 사유(isConditionalError)는 초안이 살아있는 정상 상태이므로 삭제 유도 배너를 띄우지 않는다 (§3-2d U7) */}
+                    {errorMsg && !isConditionalError(errorMsg) && (
                       <div className="bg-red-100/90 border border-red-300 text-red-900 rounded-lg p-2.5 text-xs font-bold space-y-1">
                         <div className="flex items-center gap-1 text-red-700">
                           <span>⚠️ 교환 신청 불가 (시간표 상태 변경 등)</span>
@@ -2641,15 +2649,21 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                             저장 사유: {draft.reason.type}{draft.reason.note ? ` (${draft.reason.note})` : ""}
                           </div>
                         )}
+                        {/* §3-2d U7 — 서버 사유 방향에 주의: "조건부 후보입니다"(isConditionalError)는 전제가 아직 대기 중(초안 생존),
+                            일반 "유효하지 않습니다"는 전제 취소·반려 또는 시간표 변경(성립 불가)이다. 반대로 연결하면
+                            살아있는 초안에 삭제를 유도하게 된다 — 11번 피드백이 막으려던 바로 그 오독. */}
                         {draft.conditional && (
-                          errorMsg && isConditionalError(errorMsg) ? (
+                          errorMsg && !isConditionalError(errorMsg) ? (
                             <div className="text-[11px] font-extrabold text-red-900 bg-red-50 border border-red-300 rounded px-2.5 py-1.5 mt-1 space-y-0.5">
-                              <div>❌ 성립 불가 — 전제 신청이 취소 또는 반려되었습니다.</div>
+                              <div>❌ 성립 불가 — 전제로 삼은 대기 신청이 취소·반려되었거나 시간표가 변경되었습니다.</div>
                               <div className="text-[10px] text-red-700 font-medium">더 이상 신청할 수 없는 안입니다. 이 초안을 삭제해 주세요.</div>
                             </div>
                           ) : (
                             <div className="text-[11px] font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 mt-1 space-y-1">
-                              <div>⏳ 아래 대기 신청이 <span className="underline font-extrabold text-amber-950">승인되어야만</span> 가능한 안입니다. 그 신청을 취소하면 이 안도 함께 사라집니다.</div>
+                              <div>⏳ 내 대기 신청이 <span className="underline font-extrabold text-amber-950">승인되어야만</span> 가능한 안입니다. 그 신청을 취소하면 이 안도 함께 사라집니다.</div>
+                              {errorMsg && (
+                                <div className="text-[10px] text-amber-800 font-medium">아직 전제 신청이 승인되지 않아 지금은 신청할 수 없습니다. 승인된 뒤 다시 신청해 주세요.</div>
+                              )}
                             </div>
                           )
                         )}
@@ -2679,12 +2693,12 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                       <button
                         onClick={() => handleDeleteDraft(draft.id)}
                         className={`py-1.5 px-3 font-bold rounded-lg text-xs transition-colors shrink-0 cursor-pointer ${
-                          errorMsg
+                          errorMsg && !isConditionalError(errorMsg)
                             ? "bg-red-600 hover:bg-red-700 text-white shadow-xs ring-2 ring-red-400 animate-pulse"
                             : "bg-gray-100 hover:bg-gray-200 text-gray-600"
                         }`}
                       >
-                        {errorMsg ? "이 초안 삭제" : "삭제"}
+                        {errorMsg && !isConditionalError(errorMsg) ? "이 초안 삭제" : "삭제"}
                       </button>
                     </div>
                   </div>
