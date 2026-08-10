@@ -6,9 +6,9 @@
  * 신청·승인은 timetable_changes에만 쓰므로 기초 그리드 원복은 언제나 안전.
  *
  * 실행:
- *   npx tsx --env-file=.env.local scripts/temp_teacher_identity_swap.ts          # DRY (선정·검사만)
- *   npx tsx --env-file=.env.local scripts/temp_teacher_identity_swap.ts APPLY    # 치환
- *   npx tsx --env-file=.env.local scripts/temp_teacher_identity_swap.ts RESTORE  # 원복
+ *   npx tsx --env-file=.env.local scripts/temp_teacher_identity_swap.ts                    # DRY (선정·검사만)
+ *   npx tsx --env-file=.env.local scripts/temp_teacher_identity_swap.ts APPLY [교사이메일]  # 치환 (이메일 생략 시 특별실 최다 교사 자동 선정)
+ *   npx tsx --env-file=.env.local scripts/temp_teacher_identity_swap.ts RESTORE            # 원복
  *
  * 안전장치: ① playviolin@이 그리드에 이미 존재하면 중단 ② 적용된 개정판 ops에 대상 교사
  * 이메일이 있으면 중단(치환 표면 불일치 방지) ③ APPLY 전 문서 원본 백업 ④ 치환 전후
@@ -119,9 +119,19 @@ async function main() {
       }
     }
   }
-  const ranked = [...roomCount.entries()].sort((a, b) => b[1].rooms - a[1].rooms);
-  const [teacherEmail, info] = ranked[0];
-  console.log(`대상 교사 선정: ${info.name} (${teacherEmail}) — 특별실 수업 ${info.rooms}건 / 총 ${info.total}시수`);
+  const wanted = (process.argv[3] || "").trim().toLowerCase();
+  let teacherEmail: string, info: { name: string; rooms: number; total: number };
+  if (wanted) {
+    const hit = roomCount.get(wanted);
+    if (!hit) throw new Error(`지정 교사(${wanted})의 단일 담당 수업을 그리드에서 찾을 수 없습니다.`);
+    teacherEmail = wanted;
+    info = hit;
+    console.log(`대상 교사 지정: ${info.name} (${teacherEmail}) — 특별실 수업 ${info.rooms}건 / 총 ${info.total}시수`);
+  } else {
+    const ranked = [...roomCount.entries()].sort((a, b) => b[1].rooms - a[1].rooms);
+    [teacherEmail, info] = ranked[0];
+    console.log(`대상 교사 선정: ${info.name} (${teacherEmail}) — 특별실 수업 ${info.rooms}건 / 총 ${info.total}시수`);
+  }
 
   // 안전장치 ①: 테스트 이메일이 그리드에 이미 존재하면 중단
   const gridsSnap = await classGridsColRef(DOMAIN, termId).get();
