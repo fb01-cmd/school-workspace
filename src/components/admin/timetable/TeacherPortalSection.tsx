@@ -1117,27 +1117,27 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
                                     const isSavingThis = savingDraft && applyingCandidate === candidate;
 
+                                    const isSelectedCandidate = applyingCandidate === candidate || (applyingCandidate?.counterpartEmail === candidate.counterpartEmail && applyingCandidate?.targetDay === candidate.targetDay && applyingCandidate?.targetPeriod === candidate.targetPeriod);
+
                                     return (
                                       <div
                                         title={tooltipText}
-                                        onMouseEnter={() => {
-                                          if (savingDraft) return;
-                                          setApplyingCandidate(candidate);
-                                          setTargetWeekId(week.weekId);
-                                        }}
                                         onClick={() => {
                                           if (isCoordination) {
                                             setPendingCoordinationSave({ candidate, weekId: week.weekId });
                                           } else {
-                                            handleSelectCandidateAndSave(candidate, week.weekId);
+                                            setApplyingCandidate(candidate);
+                                            setTargetWeekId(week.weekId);
                                           }
                                         }}
                                         className={`p-1.5 rounded-lg border text-center transition-all shadow-2xs ${badgeStyle} ${
-                                          isSavingThis
-                                            ? "animate-pulse ring-2 ring-indigo-500"
-                                            : savingDraft
-                                              ? "opacity-40 pointer-events-none"
-                                              : "cursor-pointer hover:scale-102"
+                                          isSelectedCandidate
+                                            ? "ring-2 ring-indigo-600 bg-indigo-100 font-extrabold shadow-md scale-102"
+                                            : isSavingThis
+                                              ? "animate-pulse ring-2 ring-indigo-500"
+                                              : savingDraft
+                                                ? "opacity-40 pointer-events-none"
+                                                : "cursor-pointer hover:scale-102"
                                         }`}
                                       >
                                         {isSavingThis ? (
@@ -1200,8 +1200,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               {!candidatesLoading && !applyingCandidate && (
                 <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-lg text-xs text-indigo-900 space-y-1">
                   <p className="font-bold">💡 후보 선택 안내</p>
-                  <p className="text-[11px] text-indigo-800">
-                    좌측 전 주 시간표 그리드의 <b>공강 칸(초록/주황/빨간 배지)</b>을 직접 클릭하면 해당 교시로 교체안이 자동 저장됩니다.
+                  <p className="text-[11px] text-indigo-800 leading-relaxed">
+                    좌측 시간표 그리드의 <b>공강 칸(초록/주황/빨간 배지)</b>을 클릭하여 교환 후보를 선택하세요. 우측 사이드바에서 상세 사유와 시간표를 확인한 뒤 <b>[🛒 담기]</b> 또는 <b>[⚡ 단건 즉시 신청]</b>을 진행합니다.
                   </p>
                 </div>
               )}
@@ -1332,9 +1332,45 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                 </div>
               )}
 
-              {/* 상대 교사 시간표 미리보기 미니 그리드 */}
+              {/* 상대 교사 시간표 미리보기 미니 그리드 및 후보 상세/사이드바 액션 */}
               {applyingCandidate && (
                 <div className="space-y-3">
+                  {/* §3-2c ①: 선택된 후보 정보 요약 & 감점 사유 전체 목록 (툴팁 의존 제거 — 사이드바 고정 표출) */}
+                  <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 space-y-2 text-xs text-amber-950">
+                    <div className="font-extrabold flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <span>📊</span>
+                        <span>{applyingCandidate.counterpartName} 교사 교환안</span>
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[11px] font-black ${
+                        (applyingCandidate.counterpartScore ?? applyingCandidate.score ?? 0) === 0
+                          ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                          : "bg-amber-100 text-amber-950 border border-amber-300"
+                      }`}>
+                        {(applyingCandidate.counterpartScore ?? applyingCandidate.score ?? 0) === 0
+                          ? "✓ 0점 (깨끗함)"
+                          : `총 감점 ${applyingCandidate.counterpartScore ?? applyingCandidate.score ?? 0}점`}
+                      </span>
+                    </div>
+
+                    {applyingCandidate.penaltyDetails && applyingCandidate.penaltyDetails.length > 0 ? (
+                      <div className="space-y-1 pt-1.5 border-t border-amber-200">
+                        <div className="text-[11px] font-bold text-amber-950">감점 상세 사유 목록:</div>
+                        <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-900 font-medium">
+                          {applyingCandidate.penaltyDetails.map((pd, pIdx) => (
+                            <li key={pIdx}>
+                              {pd.text} <span className="text-[10px] text-amber-700">({pd.scope === "counterpart" ? "상대 교사" : "공통"})</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-emerald-800 font-bold pt-0.5">
+                        ✓ 양측 교사 부담 없는 깨끗한 맞교환 경로입니다.
+                      </div>
+                    )}
+                  </div>
+
                   {applyingCandidate.coordination && (
                     <div className="bg-red-50 border-2 border-red-500 rounded-xl p-3.5 space-y-2 text-xs">
                       <div className="font-extrabold text-red-950 flex items-center justify-between">
@@ -1419,8 +1455,41 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     </select>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  {/* §3-2c ②: 사이드바 액션 버튼 2개 ([🛒 담기] = draft_save 양해체크 불요 / [⚡ 단건 즉시 신청] = create 양해체크 필수) */}
+                  <div className="space-y-2 pt-1">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (applyingCandidate && selectedCell) {
+                            handleSelectCandidateAndSave(applyingCandidate, targetWeekId || selectedCell.weekId);
+                          }
+                        }}
+                        disabled={savingDraft || submitting}
+                        className="py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs transition-colors shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <span>🛒</span>
+                        <span>{savingDraft ? "담는 중..." : "담기 (임시저장)"}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSingleSubmit}
+                        disabled={
+                          submitting ||
+                          savingDraft ||
+                          (reason.type === "기타" && !reason.note?.trim()) ||
+                          (!!applyingCandidate.coordination && !consentConfirmed)
+                        }
+                        className="py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs transition-colors shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <span>⚡</span>
+                        <span>{submitting ? "신청 중..." : "단건 즉시 신청"}</span>
+                      </button>
+                    </div>
+
                     <button
+                      type="button"
                       onClick={() => {
                         if (!selectedCell || !applyingCandidate) return;
                         const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
@@ -1455,33 +1524,21 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                         previewLoading ||
                         (isCrossWeek ? !counterpartSourceCells || !counterpartTargetCells : !previewCells)
                       }
-                      className="py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
+                      className="w-full py-2 bg-sky-50 hover:bg-sky-100 border border-sky-200 disabled:opacity-50 text-sky-800 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
                     >
                       <span>📋</span>
-                      <span>{previewLoading ? "상대 시간표 불러오는 중…" : "양해 이미지 복사"}</span>
-                    </button>
-
-                    <button
-                      onClick={handleSingleSubmit}
-                      disabled={
-                        submitting ||
-                        (reason.type === "기타" && !reason.note?.trim()) ||
-                        (!!applyingCandidate.coordination && !consentConfirmed)
-                      }
-                      className="py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 rounded-lg text-xs transition-colors shadow-2xs disabled:opacity-50 flex items-center justify-center gap-1 cursor-pointer"
-                    >
-                      <span>⚡</span>
-                      <span>{submitting ? "신청 중..." : "단건 즉시 신청"}</span>
+                      <span>{previewLoading ? "시간표 로딩 중…" : "사전 양해 카드 이미지 복사"}</span>
                     </button>
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => {
                       setApplyingCandidate(null);
                       setSelectedCell(null);
                       setPreviewCells(null);
                     }}
-                    className="w-full py-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                    className="w-full py-1 text-xs text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
                   >
                     닫기
                   </button>
@@ -1619,7 +1676,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                 onClick={() => {
                   const { candidate, weekId } = pendingCoordinationSave;
                   setPendingCoordinationSave(null);
-                  handleSelectCandidateAndSave(candidate, weekId);
+                  setApplyingCandidate(candidate);
+                  setTargetWeekId(weekId);
                 }}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl shadow-sm cursor-pointer"
               >
