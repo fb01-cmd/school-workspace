@@ -320,8 +320,18 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [shareCardData, setShareCardData] = useState<ShareCardData | null>(null);
   const shareCardRef = useRef<HTMLDivElement>(null);
 
-  // §13-1b: 상대 교사별 융합 양해 카드
+  // §13-1b: 상대 교사별 융합 양해 카드 & 사전 양해 임시저장함 (MyTimetableTab 소유)
   const [myDrafts, setMyDrafts] = useState<SwapDraft[]>([]);
+  const [draftsOpen, setDraftsOpen] = useState(true);
+  const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
+  const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
+  const [confirmingDraft, setConfirmingDraft] = useState<SwapDraft | null>(null);
+  const [draftReason, setDraftReason] = useState<SwapRequestReason>({ type: "출장" });
+  const [submittingDraftId, setSubmittingDraftId] = useState<string | null>(null);
+  const [deleteAllModalOpen, setDeleteAllModalOpen] = useState(false);
+  const [deletingAllDrafts, setDeletingAllDrafts] = useState(false);
+  const [draftShareData, setDraftShareData] = useState<ShareCardData | null>(null);
+  const draftShareRef = useRef<HTMLDivElement>(null);
   const [consolidatedData, setConsolidatedData] = useState<ConsolidatedShareData | null>(null);
   const consolidatedCardRef = useRef<HTMLDivElement>(null);
   const [generatingShareFor, setGeneratingShareFor] = useState<string | null>(null);
@@ -508,7 +518,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       });
       if (res.ok) {
         const data = await res.json();
-        setMyDrafts(data.drafts || []);
+        const loadedDrafts: SwapDraft[] = data.drafts || [];
+        setMyDrafts(loadedDrafts);
+        setSelectedDraftIds(loadedDrafts.filter((d) => !d.conditional).map((d) => d.id));
       }
     } catch {
       // 융합 카드 버튼이 안 뜰 뿐 — 치명적이지 않으므로 무시
@@ -518,6 +530,235 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   useEffect(() => {
     refreshDrafts();
   }, [refreshDrafts, projectedData?.assumedDraftCount]);
+
+  // §3-2d U3: 초안 전체 비우기 (draft_delete_all)
+  const handleDeleteAllDrafts = async () => {
+    setDeletingAllDrafts(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "draft_delete_all" }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "초안 전체 삭제에 실패했습니다.");
+      }
+      setDeleteAllModalOpen(false);
+      setSubmitResult(`🚀 초안 ${data.deletedCount || myDrafts.length}건을 전량 삭제했습니다.`);
+      await Promise.all([refreshDrafts(), fetchMyProjected()]);
+    } catch (e: any) {
+      setError(e.message || "초안 전체 삭제 중 오류가 발생했습니다.");
+    } finally {
+      setDeletingAllDrafts(false);
+    }
+  };
+
+  const handleDeleteDraft = async (draftId: string) => {
+    if (!confirm("이 임시저장 초안을 삭제하시겠습니까?")) return;
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "draft_delete", draftId }),
+      });
+      if (res.ok) {
+        setDraftErrors((prev) => {
+          const next = { ...prev };
+          delete next[draftId];
+          return next;
+        });
+        await Promise.all([refreshDrafts(), fetchMyProjected()]);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`초안 삭제 실패: ${err.error}`);
+      }
+    } catch (e: any) {
+      alert(`오류: ${e.message}`);
+    }
+  };
+
+  const handleCopyDraftShareImage = async (draft: SwapDraft, variant: "occupant" | "counterpart" = "counterpart") => {
+    try {
+      const isCrossWeek = !!(draft.targetWeekId && draft.targetWeekId !== draft.sourceWeekId);
+      const effTargetWeekId = draft.targetWeekId || draft.sourceWeekId;
+
+      let srcWeekObj: TimetableWeek | null = null;
+      let tgtWeekObj: TimetableWeek | null = null;
+      if (weeks && weeks.length > 0) {
+        srcWeekObj = weeks.find((w) => w.id === draft.sourceWeekId) || null;
+        tgtWeekObj = weeks.find((w) => w.id === effTargetWeekId) || null;
+      }
+
+      let pCells: TeacherTimetableCell[] | null = null;
+      let cpSrcCells: TeacherTimetableCell[] | null = null;
+      let cpTgtCells: TeacherTimetableCell[] | null = null;
+
+      if (draft.candidate.counterpartEmail) {
+        if (!isCrossWeek) {
+          pCells = await fetchTeacherWeekCells(draft.candidate.counterpartEmail, draft.sourceWeekId);
+        } else {
+          cpSrcCells = await fetchTeacherWeekCells(draft.candidate.counterpartEmail, draft.sourceWeekId);
+          cpTgtCells = await fetchTeacherWeekCells(draft.candidate.counterpartEmail, effTargetWeekId);
+        }
+      }
+
+      const currentUserName = user?.displayName || teacherProfile?.name || userEmail.split("@")[0] || "교사";
+      setDraftShareData({
+        variant,
+        requesterName: currentUserName,
+        sourceWeekId: draft.sourceWeekId,
+        targetWeekId: isCrossWeek ? effTargetWeekId : undefined,
+        source: draft.source,
+        candidate: draft.candidate,
+        previewCells: pCells,
+        counterpartSourceCells: cpSrcCells,
+        counterpartTargetCells: cpTgtCells,
+        sourceWeekObj: srcWeekObj,
+        targetWeekObj: tgtWeekObj,
+        periodsPerDay,
+      });
+
+      setTimeout(() => {
+        copyShareImageElement(draftShareRef.current);
+      }, 100);
+    } catch (e: any) {
+      alert(`공유 이미지 생성 실패: ${e.message}`);
+    }
+  };
+
+  const executeCreateBatchInTab = async (itemsToSubmit: SwapDraft[], consentNoteInput?: string) => {
+    setSubmittingBatch(true);
+    setSubmitResult(null);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_batch",
+          items: itemsToSubmit.map((d) => ({
+            draftId: d.id,
+            weekId: d.sourceWeekId,
+            targetWeekId: d.targetWeekId,
+            type: "swap",
+            source: d.source,
+            candidate: d.candidate,
+            consent: d.candidate?.coordination
+              ? { confirmed: true, note: consentNoteInput || undefined }
+              : undefined,
+          })),
+          reason: batchReason,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const results: SwapBatchItemResult[] = data.results || [];
+        const okCount = data.createdCount || 0;
+        const failResults = results.filter((r) => !r.ok);
+
+        if (failResults.length > 0) {
+          const newErrors = { ...draftErrors };
+          failResults.forEach((fr) => {
+            if (fr.draftId) {
+              newErrors[fr.draftId] = fr.error || "신청 거부";
+            }
+          });
+          setDraftErrors(newErrors);
+        }
+
+        if (okCount > 0) {
+          setSubmitResult(`🚀 ${okCount}건의 수업교환 신청이 성공적으로 일괄 접수되었습니다.`);
+        }
+
+        if (failResults.length > 0) {
+          alert(`일괄 신청 처리 완료: ${okCount}건 성공, ${failResults.length}건 거부.\n거부된 항목은 초안 카드에 사유가 표시되니 확인 후 [삭제]해 주세요.`);
+        }
+
+        await Promise.all([refreshDrafts(), fetchMyProjected()]);
+        setBatchConfirmingDrafts(null);
+      } else {
+        setError(data.error || "일괄 신청 처리에 실패했습니다.");
+      }
+    } catch (e: any) {
+      setError(`네트워크 오류: ${e.message}`);
+    } finally {
+      setSubmittingBatch(false);
+    }
+  };
+
+  const handleBatchSubmit = async () => {
+    const itemsToSubmit = myDrafts.filter((d) => selectedDraftIds.includes(d.id));
+    if (itemsToSubmit.length === 0) {
+      alert("일괄 제출할 초안 항목을 선택해 주세요.");
+      return;
+    }
+    if (batchReason.type === "기타" && !batchReason.note?.trim()) {
+      alert("신청 사유(기타) 상세 내용을 입력해 주세요.");
+      return;
+    }
+
+    const hasCoordination = itemsToSubmit.some((d) => !!d.candidate?.coordination);
+    if (hasCoordination) {
+      setBatchConfirmingDrafts(itemsToSubmit);
+      setBatchConsentConfirmed(false);
+      setBatchConsentNote("");
+      return;
+    }
+
+    if (!confirm(`선택한 ${itemsToSubmit.length}건의 수업교환 초안을 한 번에 일괄 신청(일과계 제출)하시겠습니까?`)) {
+      return;
+    }
+
+    executeCreateBatchInTab(itemsToSubmit);
+  };
+
+  const handleSubmitDraftConfirm = async () => {
+    if (!confirmingDraft) return;
+    const draft = confirmingDraft;
+    const isCoordination = !!draft.candidate?.coordination;
+    if (isCoordination && !draftConsentConfirmed) {
+      alert("당사자 사전 양해 확인란을 체크해 주세요.");
+      return;
+    }
+
+    setSubmittingDraftId(draft.id);
+    setSubmitResult(null);
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create",
+          weekId: draft.sourceWeekId,
+          targetWeekId: draft.targetWeekId,
+          type: "swap",
+          source: draft.source,
+          candidate: draft.candidate,
+          reason: draftReason,
+          consent: isCoordination
+            ? { confirmed: true, note: draftConsentNote.trim() || undefined }
+            : undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSubmitResult("🚀 수업교환 신청이 성공적으로 제출되었습니다.");
+        setConfirmingDraft(null);
+        await Promise.all([refreshDrafts(), fetchMyProjected()]);
+      } else {
+        alert(data.error || "신청에 실패했습니다.");
+      }
+    } catch (e: any) {
+      alert(`네트워크 오류: ${e.message}`);
+    } finally {
+      setSubmittingDraftId(null);
+    }
+  };
 
   // 상대 교사별 초안 묶음 (융합 양해 카드 단위)
   const draftGroups = useMemo(() => {
@@ -798,8 +1039,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     }
   };
 
-  const handleCopyShareImage = (data: ShareCardData) => {
-    setShareCardData(data);
+  const handleCopyShareImage = (data: ShareCardData, variant?: "occupant" | "counterpart") => {
+    setShareCardData({ ...data, variant: variant || data.variant });
     setTimeout(() => {
       copyShareImageElement(shareCardRef.current);
     }, 100);
@@ -915,22 +1156,34 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
           />
         )}
 
-        <div className="text-[11px] text-gray-500 flex flex-wrap items-center gap-3 pt-1 border-t border-gray-100">
+        <div className="text-[11px] text-gray-500 flex flex-wrap items-center gap-3 pt-1 border-t border-gray-100 font-medium">
           <span className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-300 inline-block" />
-            <b className="text-emerald-950">초록 배지</b>: 상대 부담 0점 (좋은 교체)
+            <b className="text-emerald-950">초록 배지</b>: 상대 감점 0점
           </span>
           <span className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded bg-amber-100 border border-amber-300 inline-block" />
-            <b className="text-amber-950">주황 배지</b>: 상대 부담 1~2점
+            <b className="text-amber-950">주황 배지</b>: 상대 감점 1~2점
           </span>
           <span className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded bg-rose-100 border border-rose-300 inline-block" />
-            <b className="text-rose-950">빨간 배지</b>: 상대 부담 3+점
+            <b className="text-rose-950">빨간 배지</b>: 상대 감점 3+점
+          </span>
+          <span className="flex items-center gap-1 border-l pl-2 border-gray-200">
+            <span className="w-2.5 h-2.5 rounded bg-red-50 border-2 border-red-500 inline-block" />
+            <b className="text-red-950">빨간 테두리</b>: ⚠️ 양해 필수
+          </span>
+          <span className="flex items-center gap-1 border-l pl-2 border-gray-200">
+            <span className="w-2.5 h-2.5 rounded bg-purple-100 border border-purple-300 inline-block" />
+            <b className="text-purple-950">보라 배경</b>: 🔗 체인 경로
           </span>
           <span className="flex items-center gap-1 border-l pl-2 border-gray-200">
             <span className="w-2.5 h-2.5 rounded bg-indigo-50 border border-dashed border-indigo-400 inline-block" />
             <b className="text-indigo-900">점선 파란 배경</b>: 클릭 반영 초안
+          </span>
+          <span className="flex items-center gap-1 border-l pl-2 border-gray-200">
+            <span className="w-2.5 h-2.5 rounded bg-sky-100 border border-sky-300 inline-block" />
+            <b className="text-sky-950">하늘색 배경 ▲</b>: 확정 변경 교체
           </span>
         </div>
       </div>
@@ -1022,6 +1275,11 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                             const hasLesson = matched.length > 0;
                             const isSelected = selectedCell?.weekId === week.weekId && selectedCell?.day === d.num && selectedCell?.period === period;
 
+                            // §3-2d U4: 공통 활동 교시(SLAT·창체 등) 판정 — 체인 목적지 지정 대상에서 제외
+                            const isCommonActivitySlot = (week as any).commonActivitySlots?.some(
+                              (s: any) => s.day === d.num && s.period === period
+                            );
+
                             // §14-2 v2.1: 내 공강 칸(!hasLesson)이고 소스 셀이 선택되었을 때 인라인 맞교환 후보 매칭
                             const candidate = !hasLesson && selectedCell
                               ? weekCandidates.find((c) => c.targetDay === d.num && c.targetPeriod === period)
@@ -1035,12 +1293,16 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                 className={`p-1 border-r border-gray-100 text-center align-middle h-16 transition-all ${
                                   isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""
                                 } ${hasLesson && !isSelected ? "hover:bg-indigo-50/60 cursor-pointer" : ""} ${
-                                  !hasLesson && selectedCell && isChainMode ? "hover:bg-purple-100/90 cursor-pointer border-2 border-dashed border-purple-400 bg-purple-50/40" : ""
+                                  !hasLesson && selectedCell && isChainMode && !isCommonActivitySlot ? "hover:bg-purple-100/90 cursor-pointer border-2 border-dashed border-purple-400 bg-purple-50/40" : ""
                                 } ${isChainTargetSlot ? "ring-2 ring-purple-600 bg-purple-100" : ""}`}
                                 onClick={() => {
                                   if (hasLesson) {
                                     handleCellClick(matched[0], week.weekId);
                                   } else if (selectedCell && isChainMode) {
+                                    if (isCommonActivitySlot) {
+                                      alert("학교 공통 활동 시간(SLAT·동아리 등)은 체인 목적지로 지정할 수 없습니다.");
+                                      return;
+                                    }
                                     // §3-2d U6ⓐ: 체인 탐색은 토글 명시 진입 시에만 — 후보 없는 빈 칸 클릭의 암묵 진입 금지
                                     handleExecuteChainSearch(week.weekId, d.num, period);
                                   }
@@ -1060,13 +1322,13 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                     let cellStyle = "bg-white border border-indigo-200 shadow-2xs";
                                     if (isVirtualDraft) cellStyle = "bg-indigo-50/90 border-2 border-dashed border-indigo-400 text-indigo-950 shadow-xs";
                                     else if (isVirtualReq) cellStyle = "bg-amber-50/90 border-2 border-amber-300 text-amber-950 shadow-xs";
-                                    else if (isApprovedChange) cellStyle = "bg-red-100 border border-red-300 text-red-950";
+                                    else if (isApprovedChange) cellStyle = "bg-sky-100 border border-sky-300 text-sky-950 shadow-xs";
 
                                     return (
                                       <div key={ci} className={`p-1.5 rounded-lg text-center space-y-0.5 ${cellStyle}`}>
                                         <div className="font-black text-sm flex items-center justify-center gap-1">
                                           <span>{cell.grade}-{cell.classNum}반</span>
-                                          {isApprovedChange && <span className="text-red-600 font-bold text-xs">▲</span>}
+                                          {isApprovedChange && <span className="text-sky-600 font-bold text-xs">▲</span>}
                                         </div>
 
                                         <div className="text-[11px] text-gray-600 font-medium">{cell.subjectName}</div>
@@ -1519,47 +1781,138 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       </button>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!selectedCell || !applyingCandidate) return;
-                        const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
-                        handleCopyShareImage({
-                          requesterName: currentUserName,
-                          sourceWeekId: selectedCell.weekId,
-                          targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
-                          source: {
-                            grade: selectedCell.grade,
-                            classNum: selectedCell.classNum,
-                            day: selectedCell.day,
-                            period: selectedCell.period,
-                            subjectName: selectedCell.subjectName,
-                          },
-                          candidate: {
-                            targetDay: applyingCandidate.targetDay,
-                            targetPeriod: applyingCandidate.targetPeriod,
-                            counterpartEmail: applyingCandidate.counterpartEmail,
-                            counterpartName: applyingCandidate.counterpartName,
-                            counterpartSubjectName: applyingCandidate.counterpartSubjectName,
-                            coordination: applyingCandidate.coordination,
-                          },
-                          previewCells,
-                          counterpartSourceCells,
-                          counterpartTargetCells,
-                          sourceWeekObj,
-                          targetWeekObj,
-                          periodsPerDay,
-                        });
-                      }}
-                      disabled={
-                        previewLoading ||
-                        (isCrossWeek ? !counterpartSourceCells || !counterpartTargetCells : !previewCells)
-                      }
-                      className="w-full py-2 bg-sky-50 hover:bg-sky-100 border border-sky-200 disabled:opacity-50 text-sky-800 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                    >
-                      <span>📋</span>
-                      <span>{previewLoading ? "시간표 로딩 중…" : "사전 양해 카드 이미지 복사"}</span>
-                    </button>
+                    {applyingCandidate.coordination ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!selectedCell || !applyingCandidate) return;
+                            const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
+                            handleCopyShareImage({
+                              variant: "counterpart",
+                              requesterName: currentUserName,
+                              sourceWeekId: selectedCell.weekId,
+                              targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
+                              source: {
+                                grade: selectedCell.grade,
+                                classNum: selectedCell.classNum,
+                                day: selectedCell.day,
+                                period: selectedCell.period,
+                                subjectName: selectedCell.subjectName,
+                              },
+                              candidate: {
+                                targetDay: applyingCandidate.targetDay,
+                                targetPeriod: applyingCandidate.targetPeriod,
+                                counterpartEmail: applyingCandidate.counterpartEmail,
+                                counterpartName: applyingCandidate.counterpartName,
+                                counterpartSubjectName: applyingCandidate.counterpartSubjectName,
+                                coordination: applyingCandidate.coordination,
+                              },
+                              previewCells,
+                              counterpartSourceCells,
+                              counterpartTargetCells,
+                              sourceWeekObj,
+                              targetWeekObj,
+                              periodsPerDay,
+                            }, "counterpart");
+                          }}
+                          disabled={
+                            previewLoading ||
+                            (isCrossWeek ? !counterpartSourceCells || !counterpartTargetCells : !previewCells)
+                          }
+                          className="py-2 bg-sky-50 hover:bg-sky-100 border border-sky-200 disabled:opacity-50 text-sky-900 font-bold rounded-xl text-[11px] transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <span>📋</span>
+                          <span>상대 교사용 카드</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!selectedCell || !applyingCandidate) return;
+                            const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
+                            handleCopyShareImage({
+                              variant: "occupant",
+                              requesterName: currentUserName,
+                              sourceWeekId: selectedCell.weekId,
+                              targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
+                              source: {
+                                grade: selectedCell.grade,
+                                classNum: selectedCell.classNum,
+                                day: selectedCell.day,
+                                period: selectedCell.period,
+                                subjectName: selectedCell.subjectName,
+                              },
+                              candidate: {
+                                targetDay: applyingCandidate.targetDay,
+                                targetPeriod: applyingCandidate.targetPeriod,
+                                counterpartEmail: applyingCandidate.counterpartEmail,
+                                counterpartName: applyingCandidate.counterpartName,
+                                counterpartSubjectName: applyingCandidate.counterpartSubjectName,
+                                coordination: applyingCandidate.coordination,
+                              },
+                              previewCells,
+                              counterpartSourceCells,
+                              counterpartTargetCells,
+                              sourceWeekObj,
+                              targetWeekObj,
+                              periodsPerDay,
+                            }, "occupant");
+                          }}
+                          disabled={
+                            previewLoading ||
+                            (isCrossWeek ? !counterpartSourceCells || !counterpartTargetCells : !previewCells)
+                          }
+                          className="py-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 disabled:opacity-50 text-amber-950 font-bold rounded-xl text-[11px] transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <span>🤝</span>
+                          <span>조율 당사자용 카드</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!selectedCell || !applyingCandidate) return;
+                          const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
+                          handleCopyShareImage({
+                            variant: "counterpart",
+                            requesterName: currentUserName,
+                            sourceWeekId: selectedCell.weekId,
+                            targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
+                            source: {
+                              grade: selectedCell.grade,
+                              classNum: selectedCell.classNum,
+                              day: selectedCell.day,
+                              period: selectedCell.period,
+                              subjectName: selectedCell.subjectName,
+                            },
+                            candidate: {
+                              targetDay: applyingCandidate.targetDay,
+                              targetPeriod: applyingCandidate.targetPeriod,
+                              counterpartEmail: applyingCandidate.counterpartEmail,
+                              counterpartName: applyingCandidate.counterpartName,
+                              counterpartSubjectName: applyingCandidate.counterpartSubjectName,
+                              coordination: applyingCandidate.coordination,
+                            },
+                            previewCells,
+                            counterpartSourceCells,
+                            counterpartTargetCells,
+                            sourceWeekObj,
+                            targetWeekObj,
+                            periodsPerDay,
+                          }, "counterpart");
+                        }}
+                        disabled={
+                          previewLoading ||
+                          (isCrossWeek ? !counterpartSourceCells || !counterpartTargetCells : !previewCells)
+                        }
+                        className="w-full py-2 bg-sky-50 hover:bg-sky-100 border border-sky-200 disabled:opacity-50 text-sky-800 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <span>📋</span>
+                        <span>{previewLoading ? "시간표 로딩 중…" : "사전 양해 카드 이미지 복사"}</span>
+                      </button>
+                    )}
                   </div>
 
                   <button
@@ -1858,6 +2211,452 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
           </div>
         </div>
       )}
+
+      {/* 📁 사전 양해 임시저장함 (phase9b_spec §13-1, §3-2d U9: 내 시간표 탭 배치) */}
+      <div className="border border-indigo-200 bg-indigo-50/40 rounded-xl p-3.5 space-y-3 mt-4">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setDraftsOpen(!draftsOpen)}
+            className="flex items-center gap-2 font-bold text-sm text-indigo-950 hover:text-indigo-700 transition-colors cursor-pointer"
+          >
+            <span>📁 사전 양해 임시저장함</span>
+            <span className="text-xs bg-indigo-200 text-indigo-900 font-extrabold px-2 py-0.5 rounded-full">
+              {myDrafts.length}건
+            </span>
+            <span className="text-xs text-indigo-500 font-medium">{draftsOpen ? "▲ 접기" : "▼ 펼치기"}</span>
+          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={refreshDrafts}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+            >
+              초안 새로고침
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeleteAllModalOpen(true)}
+              disabled={myDrafts.length === 0}
+              className="text-xs text-red-600 hover:text-red-800 font-bold underline disabled:opacity-40 cursor-pointer"
+            >
+              🗑️ 초안 전체 비우기
+            </button>
+          </div>
+        </div>
+
+        {draftsOpen && (
+          <div className="space-y-3 pt-1">
+            {myDrafts.length === 0 && (
+              <div className="text-xs text-gray-500 py-3 text-center bg-white/70 rounded-lg border border-dashed border-indigo-200">
+                임시저장된 교체안 초안이 없습니다. 시간표 셀을 선택 후 [목록에 담기]할 수 있습니다.
+              </div>
+            )}
+            {myDrafts.length > 0 && (
+              <div className="bg-white border border-indigo-200 rounded-xl p-3.5 space-y-3 shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={
+                        myDrafts.filter((d) => !d.conditional).length > 0 &&
+                        myDrafts.filter((d) => !d.conditional).every((d) => selectedDraftIds.includes(d.id))
+                      }
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedDraftIds(myDrafts.filter((d) => !d.conditional).map((d) => d.id));
+                        else setSelectedDraftIds([]);
+                      }}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <span className="text-xs font-bold text-gray-800">
+                      전체 선택 ({selectedDraftIds.length}/{myDrafts.length}건 선택됨)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-gray-600">일괄 신청 사유:</span>
+                    <select
+                      value={batchReason.type}
+                      onChange={(e) => setBatchReason({ type: e.target.value as any, note: batchReason.note })}
+                      className="border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {SWAP_REASON_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {batchReason.type === "기타" && (
+                  <textarea
+                    value={batchReason.note || ""}
+                    onChange={(e) => setBatchReason({ ...batchReason, note: e.target.value })}
+                    placeholder="사유(기타)를 입력해 주세요 (필수)"
+                    rows={2}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 resize-none"
+                  />
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleBatchSubmit}
+                  disabled={submittingBatch || selectedDraftIds.length === 0}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>🚀</span>
+                  <span>{submittingBatch ? "일괄 신청 제출 중..." : `선택 항목 ${selectedDraftIds.length}건 한 번에 일괄 신청하기 (일과계 제출)`}</span>
+                </button>
+              </div>
+            )}
+            {myDrafts.map((draft) => {
+              const errorMsg = draftErrors[draft.id];
+              const sourceSlotStr = formatSlotWithDate(draft.sourceWeekId, draft.source.day, draft.source.period);
+              const targetWeekVal = draft.targetWeekId || draft.sourceWeekId;
+              const targetSlotStr = formatSlotWithDate(
+                targetWeekVal,
+                draft.candidate.targetDay,
+                draft.candidate.targetPeriod
+              );
+              const isCoordination = !!draft.candidate?.coordination;
+
+              return (
+                <div
+                  key={draft.id}
+                  className={`bg-white border rounded-xl p-3.5 space-y-2.5 shadow-xs transition-colors ${
+                    errorMsg ? "border-red-300 bg-red-50/30" : "border-indigo-150 hover:border-indigo-300"
+                  }`}
+                >
+                  {errorMsg && !isConditionalError(errorMsg) && (
+                    <div className="bg-red-100/90 border border-red-300 text-red-900 rounded-lg p-2.5 text-xs font-bold space-y-1">
+                      <div className="flex items-center gap-1 text-red-700">
+                        <span>⚠️ 교환 신청 불가 (시간표 상태 변경 등)</span>
+                      </div>
+                      <div className="text-[11px] font-medium text-red-800">{errorMsg}</div>
+                      <div className="text-[10px] text-red-700 font-normal">
+                        상태가 변경되었으므로 아래 <b>[이 초안 삭제]</b> 버튼을 눌러 초안을 정리해 주세요.
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1 text-xs">
+                      <div className="font-bold text-gray-900 flex items-center gap-2 flex-wrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedDraftIds.includes(draft.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedDraftIds((prev) => [...prev, draft.id]);
+                            else setSelectedDraftIds((prev) => prev.filter((id) => id !== draft.id));
+                          }}
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0 cursor-pointer"
+                        />
+                        <span className="text-indigo-900">{draft.sourceWeekId} 주</span>
+                        {draft.targetWeekId && draft.targetWeekId !== draft.sourceWeekId && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">
+                            ↔ {draft.targetWeekId} 주 교차 주
+                          </span>
+                        )}
+                        {draft.conditional && (
+                          <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-extrabold px-1.5 py-0.5 rounded">
+                            ⏳ 조건부 — 내 대기 신청 승인 전제
+                          </span>
+                        )}
+                        {isCoordination && (
+                          <span className="text-[10px] bg-red-200 text-red-950 border border-red-400 font-black px-1.5 py-0.5 rounded">
+                            ⚠️ 양해 필수
+                          </span>
+                        )}
+                        <span className="text-gray-400 text-[10px]">
+                          · {new Date(draft.updatedAt).toLocaleDateString("ko-KR")} 저장
+                        </span>
+                      </div>
+                      <div className="text-gray-800">
+                        <span className="font-semibold text-gray-500">내 수업:</span> {sourceSlotStr} ({draft.source.grade}-{draft.source.classNum}반 {draft.source.subjectName})
+                      </div>
+                      <div className="text-gray-800">
+                        <span className="font-semibold text-gray-500">교환 희망:</span> {targetSlotStr} ({draft.candidate.counterpartName || "상대 교사"})
+                      </div>
+                      {draft.reason && (
+                        <div className="text-gray-500 text-[11px]">
+                          저장 사유: {draft.reason.type}{draft.reason.note ? ` (${draft.reason.note})` : ""}
+                        </div>
+                      )}
+                      {draft.conditional && (
+                        errorMsg && !isConditionalError(errorMsg) ? (
+                          <div className="text-[11px] font-extrabold text-red-900 bg-red-50 border border-red-300 rounded px-2.5 py-1.5 mt-1 space-y-0.5">
+                            <div>❌ 성립 불가 — 전제로 삼은 대기 신청이 취소·반려되었거나 시간표가 변경되었습니다.</div>
+                            <div className="text-[10px] text-red-700 font-medium">더 이상 신청할 수 없는 안입니다. 이 초안을 삭제해 주세요.</div>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 mt-1 space-y-1">
+                            <div>⏳ 내 대기 신청이 <span className="underline font-extrabold text-amber-950">승인되어야만</span> 가능한 안입니다. 그 신청을 취소하면 이 안도 함께 사라집니다.</div>
+                            {errorMsg && (
+                              <div className="text-[10px] text-amber-800 font-medium">아직 전제 신청이 승인되지 않아 지금은 신청할 수 없습니다. 승인된 뒤 다시 신청해 주세요.</div>
+                            )}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 버튼들 */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmingDraft(draft);
+                        setDraftReason(draft.reason || { type: "출장" });
+                      }}
+                      disabled={submittingDraftId === draft.id}
+                      className="flex-1 min-w-[120px] py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                    >
+                      {submittingDraftId === draft.id ? "신청 중..." : "이 안으로 신청"}
+                    </button>
+
+                    {/* §3-2d U2: 조율 필요 초안은 상대 교사/조율 당사자용 복사 버튼 2개 노출 */}
+                    {isCoordination ? (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleCopyDraftShareImage(draft, "counterpart")}
+                          className="py-1.5 px-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold rounded-lg text-[11px] border border-indigo-200 transition-colors cursor-pointer"
+                        >
+                          📋 상대 교사용
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyDraftShareImage(draft, "occupant")}
+                          className="py-1.5 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold rounded-lg text-[11px] border border-amber-300 transition-colors cursor-pointer"
+                        >
+                          🤝 조율 당사자용
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyDraftShareImage(draft, "counterpart")}
+                        className="py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs border border-indigo-200 transition-colors shrink-0 cursor-pointer"
+                      >
+                        📋 양해 이미지 복사
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteDraft(draft.id)}
+                      className={`py-1.5 px-3 font-bold rounded-lg text-xs transition-colors shrink-0 cursor-pointer ${
+                        errorMsg && !isConditionalError(errorMsg)
+                          ? "bg-red-600 hover:bg-red-700 text-white shadow-xs ring-2 ring-red-400 animate-pulse"
+                          : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                      }`}
+                    >
+                      {errorMsg && !isConditionalError(errorMsg) ? "이 초안 삭제" : "삭제"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 🗑️ U3: 초안 전체 비우기 확인 모달 */}
+      {deleteAllModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-md w-full p-6 space-y-4">
+            <div className="font-extrabold text-base text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+              <span>🗑️</span>
+              <span>초안 전체 비우기</span>
+            </div>
+            <p className="text-xs text-gray-700 leading-relaxed">
+              저장된 초안 <strong className="text-red-700">{myDrafts.length}건</strong>을 전량 삭제하시겠습니까?
+              <br />
+              이 작업은 취소할 수 없으며 시간표 그리드의 점선 초안도 모두 제거됩니다.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteAllModalOpen(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAllDrafts}
+                disabled={deletingAllDrafts}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                {deletingAllDrafts ? "삭제 중..." : "전체 삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 사유 선택 및 제출 확인 모달 */}
+      {confirmingDraft && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-6 space-y-4">
+            <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
+              <h4 className="text-sm font-bold text-indigo-950 flex items-center gap-2">
+                <span>⚡</span>
+                <span>수업교환 신청 제출 확인</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setConfirmingDraft(null)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 text-xs space-y-1">
+              <div>• <b>내 수업:</b> {formatSlotWithDate(confirmingDraft.sourceWeekId, confirmingDraft.source.day, confirmingDraft.source.period)} ({confirmingDraft.source.grade}-{confirmingDraft.source.classNum}반 {confirmingDraft.source.subjectName})</div>
+              <div>• <b>교환 희망:</b> {formatSlotWithDate(confirmingDraft.targetWeekId || confirmingDraft.sourceWeekId, confirmingDraft.candidate.targetDay, confirmingDraft.candidate.targetPeriod)} ({confirmingDraft.candidate.counterpartName || "상대 교사"})</div>
+            </div>
+
+            {confirmingDraft.candidate?.coordination && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 space-y-2 text-xs text-amber-950">
+                <div className="font-bold flex items-center justify-between">
+                  <span>🤝 특별실 양해 필요</span>
+                  <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.5 rounded">양해 필수</span>
+                </div>
+                <label className="flex items-start gap-2 cursor-pointer bg-white/80 p-2.5 rounded-lg border border-amber-200">
+                  <input
+                    type="checkbox"
+                    checked={draftConsentConfirmed}
+                    onChange={(e) => setDraftConsentConfirmed(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <span className="text-xs font-bold text-amber-950">
+                    특별실 실시간 사용 교사와 사전 양해를 완료했음을 확인합니다 (필수)
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={draftConsentNote}
+                  onChange={(e) => setDraftConsentNote(e.target.value)}
+                  placeholder="사전 양해 메모 (선택, 예: 메신저 구두 승인)"
+                  className="w-full border border-amber-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-amber-500 bg-white"
+                />
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-gray-700">신청 사유 (필수 선택)</label>
+              <select
+                value={draftReason.type}
+                onChange={(e) => setDraftReason({ type: e.target.value as any, note: draftReason.note })}
+                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+              >
+                {SWAP_REASON_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+
+            {draftReason.type === "기타" && (
+              <textarea
+                value={draftReason.note || ""}
+                onChange={(e) => setDraftReason({ ...draftReason, note: e.target.value })}
+                placeholder="사유(기타)를 입력해 주세요 (필수)"
+                rows={2}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 resize-none"
+              />
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setConfirmingDraft(null)}
+                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitDraftConfirm}
+                disabled={submittingDraftId === confirmingDraft.id || (draftReason.type === "기타" && !draftReason.note?.trim()) || (!!confirmingDraft.candidate?.coordination && !draftConsentConfirmed)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                {submittingDraftId === confirmingDraft.id ? "제출 중..." : "양해 확인 및 제출"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 장바구니 일괄 제출 양해 확인 모달 */}
+      {batchConfirmingDrafts && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-6 space-y-4">
+            <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
+              <h4 className="text-sm font-bold text-indigo-950 flex items-center gap-2">
+                <span>🚀</span>
+                <span>일괄 교환 신청 제출 사전 양해 확인</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setBatchConfirmingDrafts(null)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 space-y-2 text-xs text-amber-950">
+              <div className="font-bold flex items-center justify-between">
+                <span>🤝 특별실 양해 필요 항목 포함 ({batchConfirmingDrafts.filter((d) => !!d.candidate?.coordination).length}건)</span>
+                <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.5 rounded">양해 필수</span>
+              </div>
+              <p className="text-[11px] text-amber-900 leading-relaxed">
+                일괄 신청 대상 {batchConfirmingDrafts.length}건 중 일부 항목에 특별실 겹침 조율이 필요합니다.
+              </p>
+              <label className="flex items-start gap-2 cursor-pointer bg-white/80 p-2.5 rounded-lg border border-amber-200">
+                <input
+                  type="checkbox"
+                  checked={batchConsentConfirmed}
+                  onChange={(e) => setBatchConsentConfirmed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-amber-950">
+                  특별실 실시간 사용 교사와 사전 양해를 완료했음을 확인합니다 (필수)
+                </span>
+              </label>
+              <input
+                type="text"
+                value={batchConsentNote}
+                onChange={(e) => setBatchConsentNote(e.target.value)}
+                placeholder="사전 양해 메모 (선택, 예: 해당 선생님들과 조율 완료)"
+                className="w-full border border-amber-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-amber-500 bg-white"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setBatchConfirmingDrafts(null)}
+                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => executeCreateBatchInTab(batchConfirmingDrafts, batchConsentNote)}
+                disabled={submittingBatch || !batchConsentConfirmed}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                {submittingBatch ? "제출 중..." : "양해 확인 및 일괄 제출"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 오프스크린 초안 이미지 복사용 DOM */}
+      <OffscreenShareCard cardRef={draftShareRef} data={draftShareData} />
     </div>
   );
 }
@@ -2496,422 +3295,6 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
 
   return (
     <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 space-y-4">
-      {/* 📁 사전 양해 임시저장함 (phase9b_spec §13-1) */}
-      <div className="border border-indigo-200 bg-indigo-50/40 rounded-xl p-3.5 space-y-3">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setDraftsOpen(!draftsOpen)}
-            className="flex items-center gap-2 font-bold text-sm text-indigo-950 hover:text-indigo-700 transition-colors"
-          >
-            <span>📁 사전 양해 임시저장함</span>
-            <span className="text-xs bg-indigo-200 text-indigo-900 font-extrabold px-2 py-0.5 rounded-full">
-              {drafts.length}건
-            </span>
-            <span className="text-xs text-indigo-500 font-medium">{draftsOpen ? "▲ 접기" : "▼ 펼치기"}</span>
-          </button>
-          <button
-            onClick={fetchDrafts}
-            className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline"
-          >
-            초안 새로고침
-          </button>
-        </div>
-
-        {draftsOpen && (
-          <div className="space-y-3 pt-1">
-            {draftsLoading && <div className="text-xs text-indigo-500 animate-pulse">초안 불러오는 중...</div>}
-            {!draftsLoading && drafts.length === 0 && (
-              <div className="text-xs text-gray-500 py-3 text-center bg-white/70 rounded-lg border border-dashed border-indigo-200">
-                임시저장된 교체안 초안이 없습니다. 시간표 셀을 선택 후 [목록에 담기]할 수 있습니다.
-              </div>
-            )}
-            {!draftsLoading && drafts.length > 0 && (
-              <div className="bg-white border border-indigo-200 rounded-xl p-3.5 space-y-3 shadow-xs">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={
-                        drafts.filter((d) => !d.conditional).length > 0 &&
-                        drafts.filter((d) => !d.conditional).every((d) => selectedDraftIds.includes(d.id))
-                      }
-                      onChange={(e) => {
-                        if (e.target.checked) setSelectedDraftIds(drafts.filter((d) => !d.conditional).map((d) => d.id));
-                        else setSelectedDraftIds([]);
-                      }}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                    />
-                    <span className="text-xs font-bold text-gray-800">
-                      전체 선택 ({selectedDraftIds.length}/{drafts.length}건 선택됨)
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-gray-600">일괄 신청 사유:</span>
-                    <select
-                      value={batchReason.type}
-                      onChange={(e) => setBatchReason({ type: e.target.value as any, note: batchReason.note })}
-                      className="border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:ring-2 focus:ring-indigo-500"
-                    >
-                      {SWAP_REASON_TYPES.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {batchReason.type === "기타" && (
-                  <textarea
-                    value={batchReason.note || ""}
-                    onChange={(e) => setBatchReason({ ...batchReason, note: e.target.value })}
-                    placeholder="사유(기타)를 입력해 주세요 (필수)"
-                    rows={2}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 resize-none"
-                  />
-                )}
-
-                <button
-                  onClick={handleBatchSubmit}
-                  disabled={submittingBatch || selectedDraftIds.length === 0}
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5"
-                >
-                  <span>🚀</span>
-                  <span>{submittingBatch ? "일괄 신청 제출 중..." : `선택 항목 ${selectedDraftIds.length}건 한 번에 일괄 신청하기 (일과계 제출)`}</span>
-                </button>
-              </div>
-            )}
-            {!draftsLoading &&
-              drafts.map((draft) => {
-                const errorMsg = draftErrors[draft.id];
-                const sourceSlotStr = formatSlotWithDate(draft.sourceWeekId, draft.source.day, draft.source.period);
-                const targetWeekVal = draft.targetWeekId || draft.sourceWeekId;
-                const targetSlotStr = formatSlotWithDate(
-                  targetWeekVal,
-                  draft.candidate.targetDay,
-                  draft.candidate.targetPeriod
-                );
-
-                return (
-                  <div
-                    key={draft.id}
-                    className={`bg-white border rounded-xl p-3.5 space-y-2.5 shadow-xs transition-colors ${
-                      errorMsg ? "border-red-300 bg-red-50/30" : "border-indigo-150 hover:border-indigo-300"
-                    }`}
-                  >
-                    {/* 재검증 거부 시 경고 배너 — 조건부 "전제 승인 대기" 사유(isConditionalError)는 초안이 살아있는 정상 상태이므로 삭제 유도 배너를 띄우지 않는다 (§3-2d U7) */}
-                    {errorMsg && !isConditionalError(errorMsg) && (
-                      <div className="bg-red-100/90 border border-red-300 text-red-900 rounded-lg p-2.5 text-xs font-bold space-y-1">
-                        <div className="flex items-center gap-1 text-red-700">
-                          <span>⚠️ 교환 신청 불가 (시간표 상태 변경 등)</span>
-                        </div>
-                        <div className="text-[11px] font-medium text-red-800">{errorMsg}</div>
-                        <div className="text-[10px] text-red-700 font-normal">
-                          상태가 변경되었으므로 아래 <b>[이 초안 삭제]</b> 버튼을 눌러 초안을 정리해 주세요.
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-1 text-xs">
-                        <div className="font-bold text-gray-900 flex items-center gap-2 flex-wrap">
-                          <input
-                            type="checkbox"
-                            checked={selectedDraftIds.includes(draft.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) setSelectedDraftIds((prev) => [...prev, draft.id]);
-                              else setSelectedDraftIds((prev) => prev.filter((id) => id !== draft.id));
-                            }}
-                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0 cursor-pointer"
-                          />
-                          <span className="text-indigo-900">{draft.sourceWeekId} 주</span>
-                          {draft.targetWeekId && draft.targetWeekId !== draft.sourceWeekId && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">
-                              ↔ {draft.targetWeekId} 주 교차 주
-                            </span>
-                          )}
-                          {draft.conditional && (
-                            <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-extrabold px-1.5 py-0.5 rounded">
-                              ⏳ 조건부 — 내 대기 신청 승인 전제
-                            </span>
-                          )}
-                          <span className="text-gray-400 text-[10px]">
-                            · {new Date(draft.updatedAt).toLocaleDateString("ko-KR")} 저장
-                          </span>
-                        </div>
-                        <div className="text-gray-800">
-                          <span className="font-semibold text-gray-500">내 수업:</span> {sourceSlotStr} ({draft.source.grade}-{draft.source.classNum}반 {draft.source.subjectName})
-                        </div>
-                        <div className="text-gray-800">
-                          <span className="font-semibold text-gray-500">교환 희망:</span> {targetSlotStr} ({draft.candidate.counterpartName || "상대 교사"})
-                        </div>
-                        {draft.reason && (
-                          <div className="text-gray-500 text-[11px]">
-                            저장 사유: {draft.reason.type}{draft.reason.note ? ` (${draft.reason.note})` : ""}
-                          </div>
-                        )}
-                        {/* §3-2d U7 — 서버 사유 방향에 주의: "조건부 후보입니다"(isConditionalError)는 전제가 아직 대기 중(초안 생존),
-                            일반 "유효하지 않습니다"는 전제 취소·반려 또는 시간표 변경(성립 불가)이다. 반대로 연결하면
-                            살아있는 초안에 삭제를 유도하게 된다 — 11번 피드백이 막으려던 바로 그 오독. */}
-                        {draft.conditional && (
-                          errorMsg && !isConditionalError(errorMsg) ? (
-                            <div className="text-[11px] font-extrabold text-red-900 bg-red-50 border border-red-300 rounded px-2.5 py-1.5 mt-1 space-y-0.5">
-                              <div>❌ 성립 불가 — 전제로 삼은 대기 신청이 취소·반려되었거나 시간표가 변경되었습니다.</div>
-                              <div className="text-[10px] text-red-700 font-medium">더 이상 신청할 수 없는 안입니다. 이 초안을 삭제해 주세요.</div>
-                            </div>
-                          ) : (
-                            <div className="text-[11px] font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 mt-1 space-y-1">
-                              <div>⏳ 내 대기 신청이 <span className="underline font-extrabold text-amber-950">승인되어야만</span> 가능한 안입니다. 그 신청을 취소하면 이 안도 함께 사라집니다.</div>
-                              {errorMsg && (
-                                <div className="text-[10px] text-amber-800 font-medium">아직 전제 신청이 승인되지 않아 지금은 신청할 수 없습니다. 승인된 뒤 다시 신청해 주세요.</div>
-                              )}
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </div>
-
-                    {/* 버튼들 */}
-                    <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
-                      <button
-                        onClick={() => {
-                          setConfirmingDraft(draft);
-                          setDraftReason(draft.reason || { type: "출장" });
-                        }}
-                        disabled={submittingDraftId === draft.id}
-                        className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
-                      >
-                        {submittingDraftId === draft.id ? "신청 중..." : "이 안으로 신청"}
-                      </button>
-
-                      <button
-                        onClick={() => handleCopyDraftShareImage(draft)}
-                        className="py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs border border-indigo-200 transition-colors shrink-0 cursor-pointer"
-                      >
-                        📋 양해 이미지 복사
-                      </button>
-
-                      <button
-                        onClick={() => handleDeleteDraft(draft.id)}
-                        className={`py-1.5 px-3 font-bold rounded-lg text-xs transition-colors shrink-0 cursor-pointer ${
-                          errorMsg && !isConditionalError(errorMsg)
-                            ? "bg-red-600 hover:bg-red-700 text-white shadow-xs ring-2 ring-red-400 animate-pulse"
-                            : "bg-gray-100 hover:bg-gray-200 text-gray-600"
-                        }`}
-                      >
-                        {errorMsg && !isConditionalError(errorMsg) ? "이 초안 삭제" : "삭제"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        )}
-      </div>
-
-      {/* 오프스크린 초안 이미지 복사용 DOM */}
-      <OffscreenShareCard cardRef={draftShareRef} data={draftShareData} />
-
-      {/* 사유 선택 및 제출 확인 모달 (사유 필수 수집 흐름) */}
-      {confirmingDraft && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-6 space-y-4">
-            <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
-              <h4 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
-                <span>📝 수업교환 최종 신청</span>
-              </h4>
-              <button
-                onClick={() => setConfirmingDraft(null)}
-                className="text-gray-400 hover:text-gray-600 font-bold text-sm"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3.5 space-y-1 text-xs">
-              <div className="font-bold text-indigo-950">초안 교환 정보 확인</div>
-              <div className="text-gray-700">
-                • <b>내 수업:</b> {formatSlotWithDate(confirmingDraft.sourceWeekId, confirmingDraft.source.day, confirmingDraft.source.period)} ({confirmingDraft.source.grade}-{confirmingDraft.source.classNum}반 {confirmingDraft.source.subjectName})
-              </div>
-              <div className="text-gray-700">
-                • <b>교환 상대:</b> {formatSlotWithDate(confirmingDraft.targetWeekId || confirmingDraft.sourceWeekId, confirmingDraft.candidate.targetDay, confirmingDraft.candidate.targetPeriod)} ({confirmingDraft.candidate.counterpartName || "상대 교사"})
-              </div>
-            </div>
-
-            {confirmingDraft.candidate?.coordination && (
-              <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 space-y-2 text-xs">
-                <div className="font-extrabold text-amber-950 flex items-center justify-between">
-                  <span className="flex items-center gap-1">
-                    <span>🤝</span>
-                    <span>양해가 필요한 후보</span>
-                  </span>
-                  <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-black">
-                    장소 조율 필요
-                  </span>
-                </div>
-                <div className="text-amber-900 text-xs leading-relaxed font-semibold">
-                  {formatCoordinationText(confirmingDraft.candidate.coordination)}
-                </div>
-                <div className="pt-2 border-t border-amber-200 space-y-2">
-                  <div className="font-bold text-gray-800 text-[11px]">
-                    👥 양해 필요 당사자:{" "}
-                    <span className="text-indigo-900 font-extrabold">
-                      {getCoordinationOccupants(confirmingDraft.candidate.coordination)
-                        .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
-                        .join(", ")}
-                    </span>
-                  </div>
-                  <label className="flex items-start gap-2 cursor-pointer bg-white p-2 rounded-lg border border-amber-300 shadow-2xs">
-                    <input
-                      type="checkbox"
-                      checked={draftConsentConfirmed}
-                      onChange={(e) => setDraftConsentConfirmed(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                    />
-                    <span className="text-xs font-bold text-gray-900">
-                      위 선생님들께 사전 양해를 받았습니다 (필수)
-                    </span>
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={200}
-                    value={draftConsentNote}
-                    onChange={(e) => setDraftConsentNote(e.target.value)}
-                    placeholder="양해 메모 (선택, 예: 체육관 합반으로 양해)"
-                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-800">신청 사유 선택 (필수)</label>
-              <select
-                value={draftReason.type}
-                onChange={(e) => setDraftReason({ type: e.target.value as any, note: draftReason.note })}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500"
-              >
-                {SWAP_REASON_TYPES.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-              {draftReason.type === "기타" && (
-                <textarea
-                  value={draftReason.note || ""}
-                  onChange={(e) => setDraftReason({ ...draftReason, note: e.target.value })}
-                  placeholder="사유를 상세히 입력해 주세요 (필수)"
-                  rows={2}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 resize-none"
-                />
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
-              <button
-                onClick={() => setConfirmingDraft(null)}
-                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleSubmitDraftConfirm}
-                disabled={
-                  submittingDraftId === confirmingDraft.id ||
-                  (draftReason.type === "기타" && !draftReason.note?.trim()) ||
-                  (!!confirmingDraft.candidate?.coordination && !draftConsentConfirmed)
-                }
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
-              >
-                {submittingDraftId === confirmingDraft.id ? "신청 중..." : "확인 및 수업교환 신청"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 🚀 교사 일괄 제출 사전 양해 확인 모달 (반려 4건 반영) */}
-      {batchConfirmingDrafts && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-lg p-6 space-y-4 max-h-[90vh] flex flex-col">
-            <div className="border-b border-gray-100 pb-3 flex items-center justify-between shrink-0">
-              <h4 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
-                <span>🤝 일괄 신청 사전 양해 확인</span>
-              </h4>
-              <button
-                onClick={() => setBatchConfirmingDrafts(null)}
-                className="text-gray-400 hover:text-gray-600 font-bold text-sm"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="overflow-y-auto space-y-3 pr-1 shrink">
-              <div className="text-xs font-semibold text-gray-700">
-                신청 대상 초안 <strong>{batchConfirmingDrafts.length}건</strong> 중 사전 장소 양해가 필요한 교환 건이 포함되어 있습니다.
-              </div>
-
-              {batchConfirmingDrafts
-                .filter((d) => !!d.candidate?.coordination)
-                .map((d, i) => (
-                  <div key={d.id || i} className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-1.5 text-xs">
-                    <div className="font-extrabold text-amber-950 flex items-center justify-between">
-                      <span>🔄 {d.source.subjectName}({d.source.grade}-{d.source.classNum}) ↔ {d.candidate.counterpartName} 선생님</span>
-                      <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-bold">장소 조율</span>
-                    </div>
-                    <div className="text-amber-900 text-xs font-semibold">
-                      {formatCoordinationText(d.candidate.coordination)}
-                    </div>
-                    <div className="text-[11px] text-gray-800 font-bold">
-                      👥 양해 당사자:{" "}
-                      <span className="text-indigo-900">
-                        {getCoordinationOccupants(d.candidate.coordination)
-                          .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
-                          .join(", ")}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-
-              <div className="pt-2 border-t border-gray-100 space-y-2">
-                <label className="flex items-start gap-2 cursor-pointer bg-amber-50 p-2.5 rounded-lg border border-amber-300 shadow-2xs">
-                  <input
-                    type="checkbox"
-                    checked={batchConsentConfirmed}
-                    onChange={(e) => setBatchConsentConfirmed(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                  />
-                  <span className="text-xs font-bold text-gray-900">
-                    위 조율 건에 대해 해당 선생님들께 사전 양해를 완료하였습니다 (필수)
-                  </span>
-                </label>
-                <input
-                  type="text"
-                  maxLength={200}
-                  value={batchConsentNote}
-                  onChange={(e) => setBatchConsentNote(e.target.value)}
-                  placeholder="일괄 양해 메모 (선택, 예: 특별실 사용 양해 완료)"
-                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
-              <button
-                onClick={() => setBatchConfirmingDrafts(null)}
-                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
-              >
-                취소
-              </button>
-              <button
-                onClick={() => executeCreateBatchInTab(batchConfirmingDrafts, batchConsentNote.trim())}
-                disabled={submittingBatch || !batchConsentConfirmed}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
-              >
-                {submittingBatch ? "일괄 제출 중..." : `양해 확인 및 ${batchConfirmingDrafts.length}건 일괄 신청`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 헤더 & 주선택 필터 */}
       <div className="flex flex-wrap items-center gap-3 pb-2 border-b border-gray-100">
@@ -3188,10 +3571,10 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
                               const isChanged = !!(cell as any).changed;
                               const tooltip = `${cell.subjectName} · ${cell.grade}-${cell.classNum}반${cell.room ? ` (${cell.room})` : ""}`;
                               return (
-                                <div key={cIdx} title={tooltip} className={`p-1.5 rounded-lg space-y-0.5 ${isChanged ? "bg-red-50 border border-red-300" : "bg-white border border-indigo-200 shadow-2xs"}`}>
-                                  <div className={`font-black text-sm ${isChanged ? "text-red-800" : "text-indigo-950"}`}>
+                                <div key={cIdx} title={tooltip} className={`p-1.5 rounded-lg space-y-0.5 ${isChanged ? "bg-sky-100 border border-sky-300" : "bg-white border border-indigo-200 shadow-2xs"}`}>
+                                  <div className={`font-black text-sm ${isChanged ? "text-sky-950" : "text-indigo-950"}`}>
                                     {cell.grade}-{cell.classNum}반
-                                    {isChanged && <span className="ml-1 text-red-500 text-xs">▲</span>}
+                                    {isChanged && <span className="ml-1 text-sky-600 text-xs">▲</span>}
                                   </div>
                                   {cell.room && <div className="text-xs text-gray-500 truncate">📍 {cell.room}</div>}
                                 </div>

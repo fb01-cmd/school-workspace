@@ -5,6 +5,7 @@ import { formatSlotWithDate, getDayDateLabel, getWeekRangeLabel } from "@/lib/ti
 import MiniPreviewGrid, { DAYS } from "./MiniPreviewGrid";
 
 export interface ShareCardData {
+  variant?: "occupant" | "counterpart";
   requesterName: string;
   sourceWeekId: string;
   targetWeekId?: string;
@@ -99,10 +100,11 @@ export function OffscreenShareCard({
 
   const isCrossWeek = !!(data.targetWeekId && data.targetWeekId !== data.sourceWeekId);
 
-  // 조율 당사자 변형 (consent_swap_opening_spec §3-2)
+  // 조율 당사자 변형 (consent_swap_opening_spec §3-2d U2: variant prop으로 분기 구분)
   const coordination = data.candidate.coordination;
-  const isCoordinationVariant = !!(coordination && coordination.conflicts && coordination.conflicts.length > 0);
-  const primaryConflict = isCoordinationVariant ? coordination.conflicts[0] : null;
+  const hasConflicts = !!(coordination && coordination.conflicts && coordination.conflicts.length > 0);
+  const isOccupantVariant = data.variant ? data.variant === "occupant" : hasConflicts;
+  const primaryConflict = hasConflicts ? coordination!.conflicts[0] : null;
   const roomName = primaryConflict?.roomName || "특별실";
   const occupants = primaryConflict?.occupants || [];
   const occupantTitle = occupants.length > 0
@@ -121,11 +123,11 @@ export function OffscreenShareCard({
         <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
           <div className="text-[10px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
           <div className="text-lg font-black mt-0.5 tracking-tight">
-            {isCoordinationVariant ? "🤝 장소 양해 요청" : "수업교환 양해 요청"}
+            {isOccupantVariant ? "🤝 장소 양해 요청" : "수업교환 양해 요청"}
           </div>
         </div>
 
-        {isCoordinationVariant ? (
+        {isOccupantVariant ? (
           /* 조율 당사자 변형 카드 (spec §3-2) */
           <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-3.5 space-y-1.5 text-xs">
             <div className="font-extrabold text-amber-950 text-sm">
@@ -149,7 +151,7 @@ export function OffscreenShareCard({
           </div>
         )}
 
-        {isCoordinationVariant ? (
+        {isOccupantVariant ? (
           /* 조율 당사자 상세 내용 */
           <div className="border border-amber-200 rounded-xl p-3.5 space-y-2.5 text-xs bg-amber-50/30">
             <div className="font-bold text-amber-950 border-b border-amber-200 pb-1.5 flex items-center justify-between">
@@ -178,7 +180,7 @@ export function OffscreenShareCard({
             </div>
 
             {/* §3-2d U2: 맞교환 상대 교사 카드에 특별실 겹침 명시 */}
-            {coordination && coordination.conflicts && coordination.conflicts.length > 0 && (
+            {hasConflicts && (
               <div className="bg-amber-50 border border-amber-300 rounded-lg p-2.5 space-y-0.5 text-xs text-amber-950 font-bold">
                 <div className="text-amber-900 font-extrabold text-[11px] flex items-center gap-1">
                   <span>⚠️</span>

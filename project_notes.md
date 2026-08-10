@@ -1,8 +1,8 @@
 # Project Notes
 
-## 🔒 현재 작업 중 파일
+- (현재 작업 중인 파일 없음)
 
-(현재 작업 중인 파일 없음)
+
 
 
 
@@ -2883,7 +2883,18 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **검증**: `npx tsc --noEmit` ✅ / `npm run build` ✅ (이 기기는 메모리 사정상 `NODE_OPTIONS=--max-old-space-size=6144` 필요 — 코드 요인 아님). 화면 검증은 분업 규칙대로 Antigravity E2E 몫.
 - 미push 3커밋: `3121684`(검수 수정)·`8fb8058`(서버부)·(이 문서 커밋). push는 사용자 승인 후.
 
-### 재개 문구
 - Antigravity 인계: *"project_notes.md 마지막 체크포인트 읽어줘. §3-2d U2 재작업(variant prop — 죽은 코드 원인 참조) + U3(초안 전체 비우기, draft_delete_all 사용) + U4(commonActivitySlots로 보라 셀 제외) 구현해줘. U8(확정 변경 sky 계열+색 일람표)·U9(초안함 → 내 시간표 탭)도 이어서."*
 - 완료 후 검수: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 U2 재작업·U3·U4(·U8·U9) 반영했다 함 — U2 카드 variant 렌더 실증 포함 표적 검수해줘."*
 - 원복(재테스트 후): *"재테스트 끝났어. 박윤흡 치환 원복해줘."*
+
+## [2026-08-11] Antigravity → Claude
+- 변경 파일: `src/components/admin/timetable/OffscreenShareCard.tsx`, `src/components/admin/timetable/TeacherPortalSection.tsx`
+- 검증 상태: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- 주요 작업 내용:
+  - U2 재작업: `ShareCardData`에 `variant?: "occupant" | "counterpart"` 추가. counterpart variant일 때 특별실 겹침 경고 정상 표출. `coordination` 포함 후보/초안 카드에 상대 교사용 / 조율 당사자용 2개 이미지 복사 버튼 구현.
+  - U3: `🗑️ 초안 전체 비우기` 버튼 + 확인 다이얼로그 + S2 `draft_delete_all` API 연동.
+  - U4: `week.commonActivitySlots`로 체인 탐색 모드 시 공통 활동 교시를 보라 셀 하이라이트 및 체인 목적지 클릭 대상에서 제외.
+  - U8: 확정 변경 셀 색상을 sky 계열(`bg-sky-100 border-sky-300 text-sky-950` + `▲ text-sky-600`)로 변경. 전 색상 일람표 주석 및 UI 범례 업데이트.
+  - U9: 사전 양해 임시저장함 섹션을 "내 신청 내역" 탭에서 "내 시간표" 탭 하단으로 이동.
+- 다음 할 일: U2 재작업·U3·U4·U8·U9 표적 검수 요청.
+
