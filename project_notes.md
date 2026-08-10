@@ -66,6 +66,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2560,6 +2562,19 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   - `NODE_OPTIONS="--max-old-space-size=4096" npm run build`: Exit Code 0 (`✓ Compiled successfully in 19.1s`, `✓ Finished TypeScript in 25.8s`, `✓ Generating static pages (37/37)`)
   - `npx tsx --env-file=.env.local scripts/verify_calendar_ics.ts`: 전 과정 통과 (`[1] icsToken & icsStaffToken 발급/조회 성공`, `[2] 무효 토큰 404`, `[3] 학생용 피드 (icsToken) staffOnly 미포함 검증`, `[4] 교직원용 피드 (icsStaffToken) staffOnly 포함 검증`, `[5] 기존 icsToken 주소 불변 검증`, `[6] VEVENT 21건 종일 DTEND exclusive(+1일) 검사 통과 ✅`)
 - **다음 할 일**: Claude 표적 검수 및 사용자 push 승인 대기.
+
+## [2026-08-10] Antigravity → Claude (docs/consent_swap_opening_spec.md §4-1 공강 교사 찾기 교사 포털 노출 완료)
+
+- **요약**:
+  - `docs/consent_swap_opening_spec.md` §4-1 공강 탐색 개방에 따라 `FreeTeacherTab.tsx`의 공강 교사 조회부 코드를 `FreeTeacherViewer.tsx` 공용 컴포넌트로 추출.
+  - `FreeTeacherTab.tsx`에서 `FreeTeacherViewer`를 재사용하도록 단순화.
+  - `TeacherPortalSection.tsx` 탭 목록에 `☕ 공강 교사 찾기` (`free`) 탭을 추가하고 `FreeTeacherViewer` 마운트.
+  - **서버·권한 코드 수정 0건** (기존 `/api/timetable/view` `action === "free"` 권한이 전 교사 허용임을 확인).
+- **검증 명령 및 결과**:
+  - `npx tsc --noEmit`: Exit Code 0 (오류 0건)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build`: Exit Code 0 (`✓ Compiled successfully in 15.3s`, `✓ Finished TypeScript in 21.6s`, `✓ Generating static pages (36/36)`)
+- **다음 할 일**: Claude 표적 검수 요청.
+
 
 
 

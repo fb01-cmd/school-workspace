@@ -50,6 +50,7 @@ import {
   copyShareImageElement,
 } from "./OffscreenShareCard";
 import CalendarSubscribeCard from "@/components/calendar/CalendarSubscribeCard";
+import FreeTeacherViewer from "./FreeTeacherViewer";
 
 const DAYS = [
   { num: 1, label: "월" },
@@ -2237,7 +2238,7 @@ export default function TeacherPortalSection() {
 
   const [settings, setSettings] = useState<TimetableSettings | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"my_tt" | "my_requests" | "other">("my_tt");
+  const [activeTab, setActiveTab] = useState<"my_tt" | "my_requests" | "free" | "other">("my_tt");
 
   useEffect(() => {
     const cached = getClientCache("timetable:settings");
@@ -2335,6 +2336,14 @@ export default function TeacherPortalSection() {
           <span>📋 내 신청 내역</span>
         </button>
         <button
+          onClick={() => setActiveTab("free")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "free" ? "bg-indigo-600 text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>☕ 공강 교사 찾기</span>
+        </button>
+        <button
           onClick={() => setActiveTab("other")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
             activeTab === "other" ? "bg-gray-800 text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"
@@ -2346,6 +2355,7 @@ export default function TeacherPortalSection() {
 
       {activeTab === "my_tt" && <MyTimetableTab periodsPerDay={periodsPerDay} settings={settings} />}
       {activeTab === "my_requests" && <MyRequestsTab settings={settings} />}
+      {activeTab === "free" && <FreeTeacherViewer periodsPerDay={periodsPerDay} />}
       {activeTab === "other" && <OtherTimetableTab periodsPerDay={periodsPerDay} settings={settings} />}
     </div>
   );
