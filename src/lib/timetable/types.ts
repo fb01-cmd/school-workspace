@@ -369,6 +369,7 @@ export interface ManageTimetableRequest {
   type?: SwapRequestType; // direct_* 및 neis_list 유형 필터 겸용
   candidate?: SwapCandidateSnapshot;
   reason?: SwapRequestReason;
+  consent?: SwapConsentInput; // direct_commit: 조율 필요 후보의 양해 확인 (consent_swap_opening_spec §3, §14-4 동등성)
   // §14-4 직권 담기 — 후보 재탐색 가상 적용(direct_candidates_all) / 일괄 반영(direct_commit_batch)
   pendingItems?: DirectPendingOverlayItem[];
   items?: DirectCommitBatchItem[];
@@ -534,6 +535,48 @@ export interface SwapCandidateSnapshot {
   counterpartSubjectName?: string;
   score: number;
   penalties: string[];
+  coordination?: CandidateCoordination; // 조율 필요 후보 (consent_swap_opening_spec §2) — 있으면 신청에 consent 필수
+}
+
+// ── 양해 기반 교체 개방 (consent_swap_opening_spec §2·§3) ─────
+
+/** 조율 필요 후보의 충돌 슬롯을 점유 중인 수업 = 양해 필요 당사자 */
+export interface CoordinationOccupant {
+  grade: number;
+  classNum: number;
+  subjectName: string;
+  teacherEmail: string;
+  teacherName: string;
+}
+
+/**
+ * 조율 필요 후보의 충돌 명세 (consent_swap_opening_spec §2-2).
+ * 1차는 특별실(venue)만 — 다른 하드 제외의 조율 후보화는 실수요 신호 후.
+ */
+export interface CandidateCoordination {
+  kind: "venue";
+  conflicts: Array<{
+    roomName: string; // 겹치는 특별실 (예: "탁구장")
+    slot: { weekId: string; day: number; period: number }; // 충돌이 나는 슬롯
+    occupants: CoordinationOccupant[];
+  }>;
+}
+
+/**
+ * 양해 기록 (swap_requests 원장 — 불변, consent_swap_opening_spec §3-1).
+ * parties는 서버가 재계산된 coordination에서 도출 — 클라이언트 값 불신.
+ */
+export interface SwapConsent {
+  confirmed: true;
+  parties: Array<{ email: string; name: string }>;
+  note?: string; // 예: "체육관 합반으로 양해" (선택, 200자)
+  confirmedAt: number; // 서버 시각
+}
+
+/** 신청 body의 양해 입력 — confirmed 체크와 메모만 받는다 (당사자 명단은 서버 도출) */
+export interface SwapConsentInput {
+  confirmed?: boolean;
+  note?: string;
 }
 
 export interface SwapRequest {
@@ -555,6 +598,7 @@ export interface SwapRequest {
   createdAt: number;
   direct?: boolean; // 일과계 직권 배정 경유 (교사 사전 신청 없음)
   batchId?: string; // 장바구니 일괄 제출 묶음 (phase9b_spec §14-2) — 같은 제출의 신청들이 공유
+  consent?: SwapConsent; // 조율 필요 후보의 양해 기록 (consent_swap_opening_spec §3-1) — 승인 판단·책임 보호 근거
 }
 
 // ── 사전 양해 임시저장 (swap_drafts — phase9b_spec §13-1) ─────
@@ -665,6 +709,7 @@ export interface SwapCandidate {
   penaltyDetails: PenaltyDetail[]; // 분류된 감점 (§14-2 v2 — 교사 화면은 scope==="counterpart"만)
   counterpartScore: number; // 상대 교사 관련 감점 합 — 교사 화면 표시·1차 정렬 기준
   conditional?: boolean; // 내 대기 신청 승인 전제 성립 여부 (2026-08-05)
+  coordination?: CandidateCoordination; // 조율 필요 후보 — 정렬은 깨끗한 후보 뒤 (consent_swap_opening_spec §2-2)
 }
 
 export interface SubstituteCandidate {
@@ -720,6 +765,7 @@ export interface SwapBatchCreateItem {
   candidate: SwapCandidateSnapshot;
   reason?: SwapRequestReason; // 없으면 일괄 제출의 공통 reason 적용
   draftId?: string; // 접수 성공 시 정리할 초안 (본인 소유 검증은 서버)
+  consent?: SwapConsentInput; // 조율 필요 후보 항목의 양해 확인 (consent_swap_opening_spec §3)
 }
 
 export interface SwapBatchItemResult {
@@ -766,6 +812,7 @@ export interface ChainSearchChain {
 /** §14-4 직권 일괄 반영 항목 — direct_commit 단건과 동일 규약 + 항목별 사유 */
 export interface DirectCommitBatchItem extends DirectPendingOverlayItem {
   reason?: SwapRequestReason; // 없으면 일괄 반영의 공통 reason 적용
+  consent?: SwapConsentInput; // 조율 필요 후보 항목의 양해 확인 — §14-4 동등성 (직권도 양해는 받아야 함)
 }
 
 /** §14-4 직권 일괄 반영 항목별 결과 (부분 성공 허용 — create_batch와 동일 방침) */
@@ -791,6 +838,7 @@ export interface SwapRequestApiRequest {
   type?: SwapRequestType;
   candidate?: SwapCandidateSnapshot;
   reason?: SwapRequestReason; // create: 신청 사유 / create_batch: 항목별 reason 없을 때의 공통 사유
+  consent?: SwapConsentInput; // create: 조율 필요 후보의 양해 확인 (consent_swap_opening_spec §3) — 명단은 서버 도출
   requestId?: string;
   // 가상 합성 what-if (candidates — §14-1)
   includeMyPending?: boolean;

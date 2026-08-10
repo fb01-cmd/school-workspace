@@ -2654,3 +2654,16 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - Phase 1 서버부 착수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 양해 개방 Phase 1 서버부(엔진 이원화+consent 검증) 구현하자."*
 - Antigravity 병행 가능(서버 무변경분): *"docs/consent_swap_opening_spec.md §4-1 읽고 공강 교사 찾기를 교사 포털에 노출해줘 (FreeTeacherTab 조회부 공용 추출, 서버·권한 변경 0). 완료 후 Claude 표적 리뷰 요청."*
+
+## [2026-08-10] 양해 개방 Phase 1 서버부 구현 완료 ✅ (Claude — 엔진 이원화 + consent 검증)
+
+- **엔진(swap.ts)**: `SwapEngineOptions.includeCoordination`(기본 꺼짐) — isRoomFree 실패 2곳(맞교환·교차 주 각각 내/상대 room)을 continue 대신 `coordination{kind:"venue", conflicts[{roomName, slot, occupants}]}` 수집으로 전환. occupants는 roomUse→합성본 역참조(추가 읽기 0), **가상 교사 점유는 null 반환 → 하드 유지**. 정렬 1키 = 깨끗한 후보 전체 → 조율 후보 전체.
+- **서버(server.ts)**: `COORD_ON` 상수로 결선 — computeCandidates(main+baseKeySet)·computeCandidatesAllWeeks(4곳)·validatePendingSwapRequests(2곳)·approveSwapRequest(2곳). **체인(computeChainSearch) 5곳은 의도적으로 미결선**(§2-3 양해 눈덩이 방지 — 실패 사유 문구도 그대로 정확). createSwapRequest: coordination 매칭 시 consent.confirmed 필수(없으면 문서 생성 전 throw), parties는 재계산 occupants에서 서버 도출(body 명단 안 받음), note 200자, 스냅샷에 coordination 자동 보존(스프레드). approve: still.coordination ∧ consent 부재 → 승인 실패(신청 후 상황 변화로 깨끗→조율 전환된 경우 포함). 승인 알림 수신자에 consent.parties 추가 + 🤝 양해 라인, 신청 접수 일과계 알림에도 양해 라인.
+- **라우트**: requests create/create_batch(item.consent)·manage direct_commit/direct_commit_batch(item.consent) 결선. 초안은 candidate 통째 저장이라 coordination 자동 보존(수정 0).
+- **실측(scripts/verify_consent_swap.ts, 검증 문서 즉시 삭제·알림 스킵)**: ① 엔진 출력 불변 — 특별실 소스 86건 전수에서 옵션 꺼짐 == 켬-조율제거 JSON 일치 ✅ ② 조율 필요 후보 590건 개방(기존 전부 무언 제외 — 체육·과탐 실험) ③ consent 없는 신청 거부 ✅ ④ parties 서버 도출 일치·스냅샷 보존 ✅. tsc·build ✅.
+- **§4-1 공강 포털 노출**(Antigravity 구현, Claude 검수 통과·664477c): FreeTeacherViewer 추출 자구 동일·권한 실측 일치. 경미 관찰: free 조회가 weekId 미지정(현재 주 폴백) — 기존 동작 그대로, 주 선택 추가는 개선 여지.
+- **다음**: Phase 1 UI(조율 필요 후보 섹션·양해 확인 다이얼로그·양해 카드 변형·요청대장 🤝 배지) = Antigravity → Claude 표적 리뷰 → push. Phase 2(체인 교사 개방)는 그 뒤 Claude.
+
+### 재개 문구
+- UI 완료 보고 받으면: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 양해 개방 Phase 1 UI 구현했다 함 — 스펙 §3-2 대비 항목별 diff 검수해줘."*
+- Phase 2 착수: *"project_notes.md 마지막 체크포인트 읽어줘. 양해 개방 Phase 2(교사 체인 chain_search+chain 신청 타입) 서버부 구현하자."*

@@ -14,6 +14,8 @@
 import { SIMUL_BLOCK_MESSAGE } from "./simul";
 import { isSlotWithinWeek, periodsForGradeDay } from "./weekly";
 import {
+  CandidateCoordination,
+  CoordinationOccupant,
   PenaltyDetail,
   SubstituteCandidate,
   SwapCandidate,
@@ -24,6 +26,11 @@ import {
   WeeklyClassGrid,
   WeeklyLesson,
 } from "./types";
+
+/** 후보 탐색 옵션 (consent_swap_opening_spec §2-2) — 기본 꺼짐 = 기존 출력 불변 (체인 탐색 보존) */
+export interface SwapEngineOptions {
+  includeCoordination?: boolean; // 특별실(§F) 충돌 후보를 버리지 않고 조율 필요 표시로 살린다
+}
 
 const norm = (e: string) => (e || "").trim().toLowerCase();
 
@@ -99,6 +106,46 @@ function isRoomFree(
   const users = idx.roomUse.get(`${day}-${period}`)?.get(room);
   if (!users) return true;
   return [...users].every((c) => c === ownClassKey);
+}
+
+/**
+ * 특별실 충돌 슬롯의 점유 수업 역참조 (consent_swap_opening_spec §2-2) — 양해 필요 당사자 도출.
+ * 이미 로드된 합성본만 사용(추가 읽기 0). 점유 수업의 교사가 가상(이메일 없음)이면 null —
+ * 양해 당사자가 없어 조율 불가이므로 그 후보는 하드 제외를 유지한다.
+ */
+function roomOccupants(
+  idx: SlotIndex,
+  grids: WeeklyClassGrid[],
+  room: string,
+  day: number,
+  period: number,
+  ownClassKey: string
+): CoordinationOccupant[] | null {
+  const users = idx.roomUse.get(`${day}-${period}`)?.get(room);
+  const others = [...(users || [])].filter((c) => c !== ownClassKey);
+  if (others.length === 0) return null; // 자기 학급뿐 = 충돌 아님 (isRoomFree와 판정 일치)
+  const occupants: CoordinationOccupant[] = [];
+  for (const key of others) {
+    const [g, cn] = key.split("-").map(Number);
+    const cell = grids
+      .find((x) => x.grade === g && x.classNum === cn)
+      ?.cells.find((c) => c.day === day && c.period === period);
+    for (const lesson of cell?.lessons || []) {
+      if (lesson.room !== room) continue;
+      for (const t of lesson.teachers || []) {
+        if (!norm(t.email)) return null; // 가상 교사 점유 → 조율 불가
+        occupants.push({
+          grade: g,
+          classNum: cn,
+          subjectName: lesson.subjectName,
+          teacherEmail: norm(t.email),
+          teacherName: t.name,
+        });
+      }
+      if ((lesson.teachers || []).length === 0) return null; // 교사 없는 점유 → 조율 불가
+    }
+  }
+  return occupants.length ? occupants : null; // 역참조 실패 시 보수적으로 하드 유지
 }
 
 // ── 감점 계산 (주간시간표설명서 p.27 조건 계승 — 1차 근사 휴리스틱) ──
@@ -243,7 +290,8 @@ export function findSwapCandidates(
   week: TimetableWeek,
   settings: TimetableSettings,
   requesterEmail: string,
-  source: SwapSourceSlot
+  source: SwapSourceSlot,
+  opts?: SwapEngineOptions
 ): { candidates: SwapCandidate[]; error?: string } {
   const src = resolveSourceLesson(grids, requesterEmail, source);
   if (!src.ok) return { candidates: [], error: src.error };
@@ -281,9 +329,29 @@ export function findSwapCandidates(
       // 조건 ③: 상대가 내 원 슬롯에 공강
       if (!isTeacherFree(idx, b.email, source.day, source.period)) continue;
 
-      // 하드: 특별실 충돌 (내 수업 room이 목표 슬롯에서, 상대 room이 내 슬롯에서 사용 가능해야)
-      if (myLesson.room && !isRoomFree(idx, myLesson.room, d2, p2, classKey)) continue;
-      if (l2.room && !isRoomFree(idx, l2.room, source.day, source.period, classKey)) continue;
+      // 특별실 충돌 — 기본은 하드 제외, includeCoordination이면 조율 필요 후보로 살린다 (§2-2).
+      // (내 수업 room은 목표 슬롯에서, 상대 room은 내 슬롯에서 사용 가능해야)
+      const conflicts: CandidateCoordination["conflicts"] = [];
+      if (myLesson.room && !isRoomFree(idx, myLesson.room, d2, p2, classKey)) {
+        if (!opts?.includeCoordination) continue;
+        const occ = roomOccupants(idx, grids, myLesson.room, d2, p2, classKey);
+        if (!occ) continue; // 가상 교사 점유 등 조율 불가 → 하드 유지
+        conflicts.push({
+          roomName: myLesson.room,
+          slot: { weekId: week.id, day: d2, period: p2 },
+          occupants: occ,
+        });
+      }
+      if (l2.room && !isRoomFree(idx, l2.room, source.day, source.period, classKey)) {
+        if (!opts?.includeCoordination) continue;
+        const occ = roomOccupants(idx, grids, l2.room, source.day, source.period, classKey);
+        if (!occ) continue;
+        conflicts.push({
+          roomName: l2.room,
+          slot: { weekId: week.id, day: source.day, period: source.period },
+          occupants: occ,
+        });
+      }
 
       // 감점 계산 — 중복은 횟수 비례 가중, 나머지는 사유 1건당 1점.
       // §14-2 v2: scope 분류 — 교사 화면은 counterpart만 표시, 전체는 일과계 스냅샷용 유지
@@ -312,12 +380,14 @@ export function findSwapCandidates(
         counterpartScore: details
           .filter((p) => p.scope === "counterpart")
           .reduce((sum, p) => sum + p.points, 0),
+        ...(conflicts.length ? { coordination: { kind: "venue" as const, conflicts } } : {}),
       });
     }
   }
 
   candidates.sort(
     (a, b) =>
+      (a.coordination ? 1 : 0) - (b.coordination ? 1 : 0) || // §2-2: 깨끗한 후보 전체 → 조율 필요 후보 전체
       a.counterpartScore - b.counterpartScore || // §14-2 v2: 상대 부담 우선 정렬
       a.score - b.score ||
       a.targetDay - b.targetDay || a.targetPeriod - b.targetPeriod
@@ -345,7 +415,8 @@ export function findCrossSwapCandidates(
   targetWeek: TimetableWeek,
   settings: TimetableSettings,
   requesterEmail: string,
-  source: SwapSourceSlot
+  source: SwapSourceSlot,
+  opts?: SwapEngineOptions
 ): { candidates: SwapCandidate[]; error?: string } {
   if (sourceWeek.id === targetWeek.id) {
     return { candidates: [], error: "교차 주 교환은 서로 다른 주 사이에서만 가능합니다." };
@@ -394,9 +465,29 @@ export function findCrossSwapCandidates(
       // 조건 ①: 상대가 sourceWeek의 내 슬롯 시간에 공강
       if (!isTeacherFree(idxSrc, b.email, source.day, source.period)) continue;
 
-      // 하드: 특별실 충돌 — 내 수업 room은 targetWeek 슬롯에서, 상대 room은 sourceWeek 내 슬롯에서 (각 주 기준)
-      if (myLesson.room && !isRoomFree(idxTgt, myLesson.room, d2, p2, classKey)) continue;
-      if (l2.room && !isRoomFree(idxSrc, l2.room, source.day, source.period, classKey)) continue;
+      // 특별실 충돌 — 내 수업 room은 targetWeek 슬롯에서, 상대 room은 sourceWeek 내 슬롯에서 (각 주 기준).
+      // 기본 하드 제외, includeCoordination이면 조율 필요 후보로 살린다 (§2-2).
+      const conflicts: CandidateCoordination["conflicts"] = [];
+      if (myLesson.room && !isRoomFree(idxTgt, myLesson.room, d2, p2, classKey)) {
+        if (!opts?.includeCoordination) continue;
+        const occ = roomOccupants(idxTgt, targetGrids, myLesson.room, d2, p2, classKey);
+        if (!occ) continue;
+        conflicts.push({
+          roomName: myLesson.room,
+          slot: { weekId: targetWeek.id, day: d2, period: p2 },
+          occupants: occ,
+        });
+      }
+      if (l2.room && !isRoomFree(idxSrc, l2.room, source.day, source.period, classKey)) {
+        if (!opts?.includeCoordination) continue;
+        const occ = roomOccupants(idxSrc, sourceGrids, l2.room, source.day, source.period, classKey);
+        if (!occ) continue;
+        conflicts.push({
+          roomName: l2.room,
+          slot: { weekId: sourceWeek.id, day: source.day, period: source.period },
+          occupants: occ,
+        });
+      }
 
       // 감점 — 두 주 각각 계산해 합산. 교차 주라 같은 주 내 제거 상쇄는 없음(removePeriod=null).
       // 중복은 횟수 비례 가중, 나머지는 사유 1건당 1점. §14-2 v2 scope 분류 동일 적용.
@@ -424,12 +515,14 @@ export function findCrossSwapCandidates(
         counterpartScore: details
           .filter((p) => p.scope === "counterpart")
           .reduce((sum, p) => sum + p.points, 0),
+        ...(conflicts.length ? { coordination: { kind: "venue" as const, conflicts } } : {}),
       });
     }
   }
 
   candidates.sort(
     (a, b) =>
+      (a.coordination ? 1 : 0) - (b.coordination ? 1 : 0) || // §2-2: 깨끗한 후보 전체 → 조율 필요 후보 전체
       a.counterpartScore - b.counterpartScore || // §14-2 v2: 상대 부담 우선 정렬
       a.score - b.score ||
       a.targetDay - b.targetDay || a.targetPeriod - b.targetPeriod

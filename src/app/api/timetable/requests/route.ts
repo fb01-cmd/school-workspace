@@ -110,6 +110,7 @@ export async function POST(req: NextRequest) {
           candidate: body.candidate,
           reason: body.reason,
           targetWeekId: body.targetWeekId,
+          consent: body.consent, // 조율 필요 후보의 양해 확인 (consent_swap_opening_spec §3) — 검증·명단 도출은 서버
         });
         await writeAuditLog({
           operatorEmail: auth.email,
@@ -153,6 +154,7 @@ export async function POST(req: NextRequest) {
                 candidate: item.candidate,
                 reason: item.reason || body.reason,
                 targetWeekId: item.targetWeekId,
+                consent: item.consent, // 항목별 양해 확인 — 조율 필요 후보 항목만 필요 (서버가 판정)
               },
               { batchId, skipManagerNotify: true } // 요약 알림 1건으로 대체 (아래)
             );

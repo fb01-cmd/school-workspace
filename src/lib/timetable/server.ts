@@ -1027,6 +1027,8 @@ import {
   SubstituteCandidate,
   SwapCandidate,
   SwapCandidateSnapshot,
+  SwapConsent,
+  SwapConsentInput,
   SwapRequest,
   SwapRequestReason,
   SwapRequestType,
@@ -2605,6 +2607,13 @@ export async function computeMyProjectedWeeks(
 }
 
 /**
+ * 조율 필요 후보 켬 (consent_swap_opening_spec §2-3) — 후보 조회·신청 재검증·요청대장 사전 검증·
+ * 승인 재검증 전 경로에서 켠다. **체인 탐색(computeChainSearch)만 예외로 끈 채 유지**
+ * (엔진 기본값 꺼짐 — 체인 단계에 조율 후보가 섞이면 양해 당사자가 눈덩이).
+ */
+const COORD_ON = { includeCoordination: true } as const;
+
+/**
  * §14-2 v2.1: 소스 셀 1개에 대해 등록된 **전 주**의 맞교환 후보를 한 번에 계산.
  * 그리드 인라인 하이라이트용 — 같은 주는 same-week 엔진, 나머지 주는 cross 엔진.
  * 오버레이(PENDING·초안)는 전 주에 공통 적용(기본 켜짐 권장 — 클릭 누적 위에서 탐색).
@@ -2712,26 +2721,26 @@ export async function computeCandidatesAllWeeks(
   const weeks: Array<{ weekId: string; startDate: string; swapCandidates: SwapCandidate[] }> = [];
   for (const week of allWeeks) {
     if (week.id === sourceWeekId) {
-      const res = findSwapCandidates(srcGrids, sourceWeek, settings, requesterEmail, fullSource);
+      const res = findSwapCandidates(srcGrids, sourceWeek, settings, requesterEmail, fullSource, COORD_ON);
       // 소스 레벨 오류는 위 resolveSourceLesson에서 이미 걸렀으므로 여기 error는 후보 0건으로 취급
       let cands = res.candidates || [];
       const baseSrc = baseSynthByWeek?.get(sourceWeekId);
       if (baseSrc && baseSrc !== srcGrids) {
-        const baseRes = findSwapCandidates(baseSrc, sourceWeek, settings, requesterEmail, fullSource);
+        const baseRes = findSwapCandidates(baseSrc, sourceWeek, settings, requesterEmail, fullSource, COORD_ON);
         cands = markConditional(cands, baseRes.error ? [] : baseRes.candidates || []);
       }
       weeks.push({ weekId: week.id, startDate: week.startDate, swapCandidates: cands });
     } else {
       const tgtGrids = synthByWeek.get(week.id)!;
       const res = findCrossSwapCandidates(
-        srcGrids, sourceWeek, tgtGrids, week, settings, requesterEmail, fullSource
+        srcGrids, sourceWeek, tgtGrids, week, settings, requesterEmail, fullSource, COORD_ON
       );
       let cands = res.candidates || [];
       const baseSrc = baseSynthByWeek?.get(sourceWeekId);
       const baseTgt = baseSynthByWeek?.get(week.id);
       if (baseSrc && baseTgt && (baseSrc !== srcGrids || baseTgt !== tgtGrids)) {
         const baseRes = findCrossSwapCandidates(
-          baseSrc, sourceWeek, baseTgt, week, settings, requesterEmail, fullSource
+          baseSrc, sourceWeek, baseTgt, week, settings, requesterEmail, fullSource, COORD_ON
         );
         cands = markConditional(cands, baseRes.error ? [] : baseRes.candidates || []);
       }
@@ -2807,7 +2816,7 @@ export async function computeCandidates(
           const { grids: baseGrids } = await synthesizeWeek(domain, week);
           const { grids: baseTargetGrids } = await synthesizeWeek(domain, targetWeekForBase);
           const baseCrossRes = findCrossSwapCandidates(
-            baseGrids, week, baseTargetGrids, targetWeekForBase, settings, requesterEmail, fullSource
+            baseGrids, week, baseTargetGrids, targetWeekForBase, settings, requesterEmail, fullSource, COORD_ON
           );
           if (!baseCrossRes.error) {
             baseKeySet = new Set(
@@ -2819,7 +2828,7 @@ export async function computeCandidates(
         }
       } else {
         const { grids: baseGrids } = await synthesizeWeek(domain, week);
-        const baseSwapRes = findSwapCandidates(baseGrids, week, settings, requesterEmail, fullSource);
+        const baseSwapRes = findSwapCandidates(baseGrids, week, settings, requesterEmail, fullSource, COORD_ON);
         if (!baseSwapRes.error) {
           baseKeySet = new Set(
             baseSwapRes.candidates.map(
@@ -2843,7 +2852,7 @@ export async function computeCandidates(
       domain, targetWeek, overlay?.byWeek.get(targetWeekId)
     );
     const crossRes = findCrossSwapCandidates(
-      grids, week, targetGrids, targetWeek, settings, requesterEmail, fullSource
+      grids, week, targetGrids, targetWeek, settings, requesterEmail, fullSource, COORD_ON
     );
     if (crossRes.error) {
       return {
@@ -2878,7 +2887,7 @@ export async function computeCandidates(
     };
   }
 
-  const swapRes = findSwapCandidates(grids, week, settings, requesterEmail, fullSource);
+  const swapRes = findSwapCandidates(grids, week, settings, requesterEmail, fullSource, COORD_ON);
   // 소스 레벨 오류(블록 교사 등)는 두 후보 목록 모두에 대해 치명적 — 전파한다
   if (swapRes.error) {
     return { swapCandidates: [], substituteCandidates: [], sourceSubjectName, error: swapRes.error };
@@ -2938,6 +2947,7 @@ export async function createSwapRequest(
     candidate: SwapCandidateSnapshot;
     reason?: SwapRequestReason;
     targetWeekId?: string; // 교차 주 맞교환 (§4-3b) — 없거나 weekId와 같으면 같은-주
+    consent?: SwapConsentInput; // 조율 필요 후보의 양해 확인 (consent_swap_opening_spec §3) — 명단은 서버 도출
   },
   options?: { skipManagerNotify?: boolean; direct?: boolean; batchId?: string }
 ): Promise<SwapRequest> {
@@ -3006,6 +3016,30 @@ export async function createSwapRequest(
     };
   }
 
+  // ── 조율 필요 후보 양해 검증 (consent_swap_opening_spec §3-1) ──
+  // parties는 서버 재계산된 coordination에서 도출 — 신청 body의 명단은 받지도 않는다 (AGENTS.md §5).
+  let consentRecord: SwapConsent | undefined;
+  if (candidate.coordination) {
+    if (params.consent?.confirmed !== true) {
+      throw new Error(
+        "이 후보는 당사자 양해가 필요합니다. 해당 선생님께 양해를 받은 뒤 확인란을 체크해 주세요."
+      );
+    }
+    const partyMap = new Map<string, string>();
+    for (const conf of candidate.coordination.conflicts) {
+      for (const o of conf.occupants) {
+        if (!partyMap.has(o.teacherEmail)) partyMap.set(o.teacherEmail, o.teacherName);
+      }
+    }
+    const consentNote = (params.consent.note || "").trim().slice(0, 200);
+    consentRecord = {
+      confirmed: true,
+      parties: [...partyMap.entries()].map(([email, name]) => ({ email, name })),
+      ...(consentNote ? { note: consentNote } : {}),
+      confirmedAt: Date.now(),
+    };
+  }
+
   // 신청자 실명: 합성본의 본인 lesson에서 추출
   const { grids } = await synthesizeWeek(domain, week);
   const src = resolveSourceLesson(grids, requesterEmail, params.source);
@@ -3042,6 +3076,7 @@ export async function createSwapRequest(
     createdAt: Date.now(),
     ...(options?.direct ? { direct: true } : {}),
     ...(options?.batchId ? { batchId: options.batchId } : {}),
+    ...(consentRecord ? { consent: consentRecord } : {}),
   };
   await ref.set(request);
 
@@ -3054,7 +3089,10 @@ export async function createSwapRequest(
     `신청자: ${requesterName} (${requesterEmail})\n` +
     `대상: ${request.source.grade}-${request.source.classNum} ${dayNames[request.source.day]} ${request.source.period}교시 ${request.source.subjectName}\n` +
     `유형: ${params.type === "swap" ? `맞교환 (상대: ${candidate.counterpartName})` : `특별보강 (보강: ${candidate.counterpartName})`}${targetWeekId ? `\n교차 주 교환: ${targetWeekId} 주 ${dayNames[candidate.targetDay || 0]} ${candidate.targetPeriod}교시와 맞교환` : ""}\n` +
-    `사유: ${reason.type}${reason.note ? ` — ${reason.note}` : ""}`;
+    `사유: ${reason.type}${reason.note ? ` — ${reason.note}` : ""}` +
+    (consentRecord
+      ? `\n🤝 양해 확인됨: ${consentRecord.parties.map((p) => p.name).join(", ")}${consentRecord.note ? ` — ${consentRecord.note}` : ""}`
+      : "");
   for (const manager of settings.managerEmails) {
     try {
       await sendGoogleChat(manager, summary);
@@ -3162,7 +3200,7 @@ export async function validatePendingSwapRequests(
       let stillValid = false;
       let engineError: string | undefined;
       if (!isCross) {
-        const res = findSwapCandidates(grids, week, settings, r.requesterEmail, fullSource);
+        const res = findSwapCandidates(grids, week, settings, r.requesterEmail, fullSource, COORD_ON);
         engineError = res.error;
         stillValid = !res.error && (res.candidates || []).some(
           (c) =>
@@ -3177,7 +3215,7 @@ export async function validatePendingSwapRequests(
           out[r.id] = { ok: false, reason: `대상 주(${r.targetWeekId}) 등록이 삭제되어 승인할 수 없습니다.` };
           continue;
         }
-        const res = findCrossSwapCandidates(grids, week, tGrids, tWeek, settings, r.requesterEmail, fullSource);
+        const res = findCrossSwapCandidates(grids, week, tGrids, tWeek, settings, r.requesterEmail, fullSource, COORD_ON);
         engineError = res.error;
         stillValid = !res.error && (res.candidates || []).some(
           (c) =>
@@ -3282,7 +3320,7 @@ export async function approveSwapRequest(
       const cand = request.candidate;
       const { grids: targetGrids } = synthesizeWeeklyGrids(targetBaseGrids || baseGrids, targetWeek!, targetChanges, settings);
       const crossRes = findCrossSwapCandidates(
-        grids, week, targetGrids, targetWeek!, settings, request.requesterEmail, request.source
+        grids, week, targetGrids, targetWeek!, settings, request.requesterEmail, request.source, COORD_ON
       );
       if (crossRes.error) throw new Error(`승인 불가 — ${crossRes.error} 신청자의 재신청이 필요합니다.`);
       const still = crossRes.candidates.find(
@@ -3293,6 +3331,10 @@ export async function approveSwapRequest(
       );
       if (!still)
         throw new Error("승인 불가 — 다른 변경으로 상황이 바뀌어 후보가 더 이상 유효하지 않습니다. 신청자의 재신청이 필요합니다.");
+      // 조율 필요 후보(특별실 충돌)는 양해 기록이 있어야 승인 가능 — 신청 후 상황 변화로
+      // 깨끗했던 후보가 조율 필요로 바뀐 경우도 여기서 걸린다 (consent_swap_opening_spec §2-3)
+      if (still.coordination && !request.consent?.confirmed)
+        throw new Error("승인 불가 — 이 교체안은 당사자 양해가 필요한 상태인데 양해 기록이 없습니다. 신청자의 재신청이 필요합니다.");
 
       // 상대 수업 전체 정보(약칭·특별실)는 재검증된 대상 주 합성본 셀에서 직접 읽는다
       const targetGrid = targetGrids.find(
@@ -3377,7 +3419,7 @@ export async function approveSwapRequest(
 
     if (request.type === "swap") {
       const cand = request.candidate;
-      const swapRes = findSwapCandidates(grids, week, settings, request.requesterEmail, request.source);
+      const swapRes = findSwapCandidates(grids, week, settings, request.requesterEmail, request.source, COORD_ON);
       const still = swapRes.candidates.find(
         (c) =>
           c.targetDay === cand.targetDay &&
@@ -3386,6 +3428,9 @@ export async function approveSwapRequest(
       );
       if (!still)
         throw new Error("승인 불가 — 다른 변경으로 상황이 바뀌어 후보가 더 이상 유효하지 않습니다. 신청자의 재신청이 필요합니다.");
+      // 조율 필요 후보(특별실 충돌)는 양해 기록이 있어야 승인 가능 (consent_swap_opening_spec §2-3)
+      if (still.coordination && !request.consent?.confirmed)
+        throw new Error("승인 불가 — 이 교체안은 당사자 양해가 필요한 상태인데 양해 기록이 없습니다. 신청자의 재신청이 필요합니다.");
 
       change = {
         id: changeRef.id,
@@ -3479,8 +3524,19 @@ export async function approveSwapRequest(
     (r.type === "swap"
       ? ` ↔ ${isCross ? `${dateOfDay(targetWeek, r.candidate.targetDay || 0)}(` : ""}${dayNames[r.candidate.targetDay || 0]} ${r.candidate.targetPeriod}교시${isCross ? ")" : ""} ${r.candidate.counterpartSubjectName} (${r.candidate.counterpartName})`
       : ` → ${r.candidate.counterpartName} 선생님 특별보강`) +
+    (r.consent
+      ? `\n🤝 장소 양해 확인됨: ${r.consent.parties.map((p) => p.name).join(", ")}${r.consent.note ? ` — ${r.consent.note}` : ""}`
+      : "") +
     `\n승인: ${managerEmail}`;
-  for (const to of [r.requesterEmail, r.candidate.counterpartEmail]) {
+  // 양해 당사자도 확정 통지 수신 (consent_swap_opening_spec §3-2) — 기록이 보호 장치로 완성되는 지점
+  const approveRecipients = Array.from(
+    new Set([
+      r.requesterEmail,
+      r.candidate.counterpartEmail,
+      ...(r.consent?.parties || []).map((p) => p.email),
+    ])
+  );
+  for (const to of approveRecipients) {
     try {
       await sendGoogleChat(to, msg);
     } catch (e: any) {
@@ -3994,6 +4050,7 @@ export async function directCommit(
     reason?: SwapRequestReason;
     targetWeekId?: string; // 교차 주 맞교환 (§4-3b)
     batchId?: string; // §14-4 직권 담기 일괄 반영 묶음 — 요청대장 묶음 표시와 감사 추적용
+    consent?: SwapConsentInput; // 조율 필요 후보의 양해 확인 — §14-4 동등성 (직권도 양해는 받아야 함)
   }
 ): Promise<{ request: SwapRequest; change: TimetableChange }> {
   const week = await loadWeek(domain, params.weekId);
@@ -4012,6 +4069,7 @@ export async function directCommit(
       candidate: params.candidate,
       reason: params.reason,
       targetWeekId: params.targetWeekId,
+      consent: params.consent,
     },
     { skipManagerNotify: true, direct: true, batchId: params.batchId }
   );
