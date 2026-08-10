@@ -2898,3 +2898,33 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   - U9: 사전 양해 임시저장함 섹션을 "내 신청 내역" 탭에서 "내 시간표" 탭 하단으로 이동.
 - 다음 할 일: U2 재작업·U3·U4·U8·U9 표적 검수 요청.
 
+
+## [2026-08-11] §3-2d U2 재작업·U3·U4·U8·U9 표적 검수 — 통과 (Claude 직접 수정 2건 `56cf795`)
+
+**U2 렌더 실증 — 통과** (전 회차 "죽은 코드" 결함 실해소 확인):
+- `renderToStaticMarkup` 실렌더 4조합 전부 통과 — ① counterpart+조율: 일반 교환 카드 + "특별실 겹침 (조율 필요)" 경고 블록(특별실·점유 교사 실내용 포함) 렌더 ② occupant: 당사자 변형 카드, 상대용 블록 미렌더 ③ variant 미지정+조율: 기존 동작(당사자 카드) 유지 ④ 무조율: 일반 카드·경고 없음.
+- 결선: 사이드바 조율 후보 선택 시 [📋 상대 교사용]/[🤝 조율 당사자용] 2버튼, 초안 카드도 동일 2버튼(무조율 초안은 단일 버튼) — variant가 handleCopyShareImage/handleCopyDraftShareImage로 정확히 전달.
+
+**U3·U4·U8·U9 — 통과**:
+- U3: 🗑️ 초안 전체 비우기(0건 시 disabled) → 확인 모달(건수 명시·되돌릴 수 없음 고지) → `draft_delete_all` → deletedCount 토스트+my_projected 갱신 ✓.
+- U4: my_projected 응답의 주별 `commonActivitySlots`로 보라 점선·hover·cursor 제외 + 클릭도 차단(눈높이 안내) ✓ — 서버 S1과 결선 정상.
+- U8: 교사 포털 확정 변경 셀 sky-100/300+▲ sky-600, UI 범례에 7색 일람(감점 3색·경고 red·체인 purple·초안 indigo 점선·확정 sky) ✓. 잔존 빨강 ▲ 마커 grep 0.
+- U9: 임시저장함이 내 시간표 탭 하단으로 실이동(내 신청 내역 탭에 중복 렌더 없음) ✓.
+- **직전 검수 치명 4건 회귀 생존 확인**(1,600줄 churn 속): U6ⓐ 암묵 진입 제거·후보 카드 stopPropagation·소스 재선택 시 체인 결과 초기화·U7 분기 방향(조건부 생존=amber 대기 / 전제 소멸=성립 불가 red) 전부 유지.
+
+**Claude 직접 수정 2건 (`56cf795`)**:
+1. **내 신청 내역 탭 잔존 draft_list 자동 호출** — U9로 초안 UI가 이관됐는데 마운트 useEffect `fetchDrafts()`가 남아 탭 진입마다 불필요한 Firestore 읽기 발생 → 제거(읽기 예산 규율).
+2. ProjectedWeek 타입에 `commonActivitySlots` 결선 — `(week as any)` 우회 제거.
+
+**Antigravity 후속 배치 3건 (비차단·기능 정상)**:
+1. **U8 잔여 범위**: 스펙 "학생 카드 포함 전부"인데 `StudentTimetableCard`·`TodayTimetableCard` 변경 셀이 amber 유지(새 일람에서 amber=담김) → sky 계열 통일.
+2. **내 신청 내역 탭 죽은 초안 기계장치 제거**: drafts state·fetchDrafts·handleBatchSubmit·executeCreateBatchInTab·confirmingDraft·batch 양해 상태·handleCopyDraftShareImage·draftShareRef 등 미사용 클러스터(~300줄) — UI가 없어 전부 도달 불가.
+3. **융합 netMoves 경로 조율 경고(전 검수 지적 잔존)**: 직권 일괄 카드가 교환을 netMoves로만 렌더하는데 `ConsolidatedNetMove`에 conflicts가 없어 조율 담기 항목의 특별실 겹침이 카드에 미표시 — cartItems의 coordination을 요약 블록으로 동봉 필요(피드백 2 취지).
+
+**관찰(비차단, 기존 기재 유지)**: 연속 chain_search 응답 역전 레이스 — 보류 지속.
+
+**검증**: `npx tsc --noEmit` ✅ / `NODE_OPTIONS=--max-old-space-size=6144 npm run build` ✅ (Claude 재실행). 미push 2커밋: `2ec656f`(구현)·`56cf795`(검수 수정) + 이 문서 커밋 — push는 사용자 승인 후.
+
+### 재개 문구
+- Antigravity 후속 배치: *"project_notes.md 마지막 체크포인트 읽어줘. 후속 배치 3건(U8 학생·모바일 카드 sky 통일 / 내 신청 내역 탭 죽은 초안 코드 제거 / 융합 netMoves 카드에 조율 겹침 요약 동봉) 구현해줘."*
+- 원복(재테스트 후): *"재테스트 끝났어. 박윤흡 치환 원복해줘."*
