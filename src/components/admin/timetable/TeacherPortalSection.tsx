@@ -197,6 +197,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const handleExecuteChainSearch = async (tgtWeekId: string, day: number, period: number) => {
     if (!selectedCell) return;
     setIsChainMode(true);
+    setApplyingCandidate(null);
     setChainTarget({ weekId: tgtWeekId, day, period });
     setChainSearching(true);
     setChainSearchError(null);
@@ -1123,6 +1124,11 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                       <div
                                         title={tooltipText}
                                         onClick={() => {
+                                          setIsChainMode(false);
+                                          setChainTarget(null);
+                                          setChainSearchResults(null);
+                                          setChainSearchError(null);
+                                          setChainSearchReason(null);
                                           if (isCoordination) {
                                             setPendingCoordinationSave({ candidate, weekId: week.weekId });
                                           } else {
@@ -1217,11 +1223,20 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     <button
                       type="button"
                       onClick={() => {
-                        setIsChainMode(!isChainMode);
-                        setChainSearchResults(null);
-                        setChainSearchError(null);
-                        setChainSearchReason(null);
-                        setChainTarget(null);
+                        if (isChainMode) {
+                          setIsChainMode(false);
+                          setChainSearchResults(null);
+                          setChainSearchError(null);
+                          setChainSearchReason(null);
+                          setChainTarget(null);
+                        } else {
+                          setIsChainMode(true);
+                          setApplyingCandidate(null);
+                          setChainSearchResults(null);
+                          setChainSearchError(null);
+                          setChainSearchReason(null);
+                          setChainTarget(null);
+                        }
                       }}
                       className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg cursor-pointer transition-all ${
                         isChainMode
@@ -1299,7 +1314,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                   <span>{chain.steps.length}단계 체인 경로</span>
                                 </span>
                                 <span className={`px-1.5 py-0.5 rounded text-[10px] ${chain.totalScore > 0 ? "bg-amber-100 text-amber-900 border border-amber-300" : "bg-purple-100 text-purple-900 font-extrabold border border-purple-200"}`}>
-                                  {chain.totalScore > 0 ? `총 감점 ${chain.totalScore}점` : "0점 (깨끗함)"}
+                                  {chain.totalScore > 0 ? `총 감점 ${chain.totalScore}점` : "0점 (시간표 감점 없음)"}
                                 </span>
                               </div>
 
@@ -1335,41 +1350,49 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               {/* 상대 교사 시간표 미리보기 미니 그리드 및 후보 상세/사이드바 액션 */}
               {applyingCandidate && (
                 <div className="space-y-3">
-                  {/* §3-2c ①: 선택된 후보 정보 요약 & 감점 사유 전체 목록 (툴팁 의존 제거 — 사이드바 고정 표출) */}
-                  <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 space-y-2 text-xs text-amber-950">
-                    <div className="font-extrabold flex items-center justify-between">
-                      <span className="flex items-center gap-1">
-                        <span>📊</span>
-                        <span>{applyingCandidate.counterpartName} 교사 교환안</span>
-                      </span>
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-black ${
-                        (applyingCandidate.counterpartScore ?? applyingCandidate.score ?? 0) === 0
-                          ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
-                          : "bg-amber-100 text-amber-950 border border-amber-300"
-                      }`}>
-                        {(applyingCandidate.counterpartScore ?? applyingCandidate.score ?? 0) === 0
-                          ? "✓ 0점 (깨끗함)"
-                          : `총 감점 ${applyingCandidate.counterpartScore ?? applyingCandidate.score ?? 0}점`}
-                      </span>
-                    </div>
+                  {/* §3-2c ① / §3-2d U5: 선택된 후보 정보 요약 & 상대 교사 감점 사유 목록 (scope==="counterpart"만 표출) */}
+                  {(() => {
+                    const counterpartPenalties = (applyingCandidate.penaltyDetails || []).filter((pd) => pd.scope === "counterpart");
+                    const cpScore = applyingCandidate.counterpartScore ?? applyingCandidate.score ?? 0;
+                    const isCoord = !!applyingCandidate.coordination;
 
-                    {applyingCandidate.penaltyDetails && applyingCandidate.penaltyDetails.length > 0 ? (
-                      <div className="space-y-1 pt-1.5 border-t border-amber-200">
-                        <div className="text-[11px] font-bold text-amber-950">감점 상세 사유 목록:</div>
-                        <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-900 font-medium">
-                          {applyingCandidate.penaltyDetails.map((pd, pIdx) => (
-                            <li key={pIdx}>
-                              {pd.text} <span className="text-[10px] text-amber-700">({pd.scope === "counterpart" ? "상대 교사" : "공통"})</span>
-                            </li>
-                          ))}
-                        </ul>
+                    return (
+                      <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 space-y-2 text-xs text-amber-950">
+                        <div className="font-extrabold flex items-center justify-between">
+                          <span className="flex items-center gap-1">
+                            <span>📊</span>
+                            <span>{applyingCandidate.counterpartName} 교사 교환안</span>
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-black ${
+                            cpScore === 0
+                              ? (isCoord ? "bg-red-100 text-red-950 border border-red-300" : "bg-emerald-100 text-emerald-900 border border-emerald-300")
+                              : "bg-amber-100 text-amber-950 border border-amber-300"
+                          }`}>
+                            {cpScore === 0
+                              ? (isCoord ? "시간표 감점 없음 · 특별실 겹침 조율 필요" : "✓ 0점 (시간표 감점 없음)")
+                              : `총 감점 ${cpScore}점`}
+                          </span>
+                        </div>
+
+                        {counterpartPenalties.length > 0 ? (
+                          <div className="space-y-1 pt-1.5 border-t border-amber-200">
+                            <div className="text-[11px] font-bold text-amber-950">상대 교사 감점 사유:</div>
+                            <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-900 font-medium">
+                              {counterpartPenalties.map((pd, pIdx) => (
+                                <li key={pIdx}>{pd.text}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-emerald-800 font-bold pt-0.5">
+                            {isCoord
+                              ? "시간표 감점은 없으나, 특별실 겹침에 대한 양해가 필요합니다."
+                              : "시간표 감점 사유가 없는 맞교환 경로입니다."}
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <div className="text-[11px] text-emerald-800 font-bold pt-0.5">
-                        ✓ 양측 교사 부담 없는 깨끗한 맞교환 경로입니다.
-                      </div>
-                    )}
-                  </div>
+                    );
+                  })()}
 
                   {applyingCandidate.coordination && (
                     <div className="bg-red-50 border-2 border-red-500 rounded-xl p-3.5 space-y-2 text-xs">
@@ -2619,9 +2642,16 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                           </div>
                         )}
                         {draft.conditional && (
-                          <div className="text-[11px] font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1">
-                            ⚠️ 내 대기 신청이 모두 승인된 후 신청 가능
-                          </div>
+                          errorMsg && isConditionalError(errorMsg) ? (
+                            <div className="text-[11px] font-extrabold text-red-900 bg-red-50 border border-red-300 rounded px-2.5 py-1.5 mt-1 space-y-0.5">
+                              <div>❌ 성립 불가 — 전제 신청이 취소 또는 반려되었습니다.</div>
+                              <div className="text-[10px] text-red-700 font-medium">더 이상 신청할 수 없는 안입니다. 이 초안을 삭제해 주세요.</div>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 mt-1 space-y-1">
+                              <div>⏳ 아래 대기 신청이 <span className="underline font-extrabold text-amber-950">승인되어야만</span> 가능한 안입니다. 그 신청을 취소하면 이 안도 함께 사라집니다.</div>
+                            </div>
+                          )
                         )}
                       </div>
                     </div>
@@ -2649,12 +2679,12 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                       <button
                         onClick={() => handleDeleteDraft(draft.id)}
                         className={`py-1.5 px-3 font-bold rounded-lg text-xs transition-colors shrink-0 cursor-pointer ${
-                          errorMsg && !isConditionalError(errorMsg)
+                          errorMsg
                             ? "bg-red-600 hover:bg-red-700 text-white shadow-xs ring-2 ring-red-400 animate-pulse"
                             : "bg-gray-100 hover:bg-gray-200 text-gray-600"
                         }`}
                       >
-                        {errorMsg && !isConditionalError(errorMsg) ? "이 초안 삭제 권장" : "삭제"}
+                        {errorMsg ? "이 초안 삭제" : "삭제"}
                       </button>
                     </div>
                   </div>

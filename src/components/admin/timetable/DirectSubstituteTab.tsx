@@ -1080,7 +1080,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                               </ul>
                             </div>
                           ) : (
-                            <div className="text-[11px] font-bold text-emerald-700 pt-1 border-t border-indigo-100">✨ 감점 없음 (0점) — 상대 교사 부담 없는 교환입니다.</div>
+                            <div className="text-[11px] font-bold text-emerald-700 pt-1 border-t border-indigo-100">
+                              {selectedCandidate.coordination
+                                ? "시간표 감점 없음 · 특별실 겹침 조율 필요"
+                                : "시간표 감점 없음 (0점)"}
+                            </div>
                           )}
                         </div>
                         <div className="space-y-2">

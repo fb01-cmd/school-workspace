@@ -71,6 +71,7 @@
 
 
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2836,6 +2837,23 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 ### 재개 문구
 - 서버부: *"project_notes.md 마지막 체크포인트 읽어줘. §3-2d 서버부(S1~S3) 구현하자."*
-- U1~U7 검수: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 §3-2d U1~U7 반영했다 함 — 상태 전이 전수 감사 포함 검수해줘."*
+- U1~U7 검수: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 §3-2d U1~U7(U1·U2·U5·U6·U7) 반영했다 함 — 상태 전이 전수 감사 포함 검수해줘."*
 - Phase 3 착수: *"project_notes.md 마지막 체크포인트 읽어줘. Phase 3(동시수업 통 이동) 서버부 구현하자."*
 - 원복: *"재테스트 끝났어. 박윤흡 치환 원복해줘."*
+
+## [2026-08-11] Antigravity → Claude (spec §3-2d UI배치 피드백 U1·U2·U5·U6·U7 구현 완료 핸드오버)
+- **요약**:
+  - **U1. 문구 전수 스위프**: `formatCoordinationText` 및 조율 문구 처방/지시 표현("장소 양보", "추천 조율 방식") 폐기 및 플랫한 사실 서술 전환(`교체하면 이 시간 ○○실 사용이 겹칩니다 ─ 사용 중: △△ 선생님`), coordination 존재 시 0점 축하 문구 억제 및 두 축 결합 표현(`시간표 감점 없음 · 특별실 겹침 조율 필요`), 버튼 라벨 행위 지정("이 초안 삭제" — "권장" 메타 단어 제거).
+  - **U2. 양해 카드 특별실 겹침 명시**: 상대 교사용 맞교환 카드(단건 `OffscreenShareCard` 및 융합 `OffscreenConsolidatedCard`)에 coordination 특별실 겹침 경고 블록(시간·장소·점유 교사) 추가 표기.
+  - **U5. 사이드바 감점 상대만**: 교사 포털 사이드바 감점 목록 `scope === "counterpart"`만 표출하도록 원복 (배지 점수와 기준 일치).
+  - **U6. 체인/일반 상태기계 재설계**: 빈 칸 클릭 시 암묵적 체인 탐색 진입 조건 제거 (`isChainMode` 토글 명시 진입만), 일반 후보 선택과 체인 모드 전환 시 상대 모드 상태 상호 배타 전면 초기화, 체인 모드 중 목적지 빈 공강 셀 재클릭 시 `chain_search` 재호출 및 결과 갱신.
+  - **U7. 조건부 초안 인과 안내**: 조건부 초안 카드 안내 문구 인과 명시형으로 정비(`아래 대기 신청이 승인되어야만 가능한 안입니다`), 전제 신청 취소/반려 시 "성립 불가 — 전제 신청이 취소 또는 반려되었습니다" ❌ 경고 안내 및 삭제 유도.
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **변경 파일**:
+  - `src/lib/timetable/utils.ts`
+  - `src/components/admin/timetable/OffscreenShareCard.tsx`
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`
+  - `src/components/admin/timetable/DirectSubstituteTab.tsx`
+- **주의점**: 서버 파일 변경 0. U3·U4·U8·U9는 서버부(S1/S2) 및 색상 시안 확정 후 후속 배치 인계 예정.
+- **다음 할 일**: Claude 표적 검수 & 상호작용 상태 전이 전수 감사 (소스×후보×체인×모달 조합) 요청
+

@@ -81,8 +81,8 @@ ${params.requesterName} 교사입니다. 이렇게 수업 교체가 가능할까
 import type { CandidateCoordination, CoordinationOccupant } from "./types";
 
 /**
- * 조율 필요 후보의 충돌 내용을 수신자 눈높이 문장으로 변환 (consent_swap_opening_spec §3-2)
- * 예: "이 시간에 탁구장을 정동희 선생님(2-3 체Ⅱ)이 사용 중 — 장소 양보 양해가 필요합니다"
+ * 조율 필요 후보의 충돌 내용을 수신자 눈높이 문장으로 변환 (consent_swap_opening_spec §3-2d U1: 처방/지시 표현 제거 및 사실 서술)
+ * 예: "교체하면 이 시간 탁구장 사용이 겹칩니다 ─ 사용 중: 정동희 선생님(2-3 체Ⅱ)"
  */
 export function formatCoordinationText(coordination?: CandidateCoordination): string {
   if (!coordination || !coordination.conflicts || coordination.conflicts.length === 0) return "";
@@ -91,7 +91,7 @@ export function formatCoordinationText(coordination?: CandidateCoordination): st
       const occupantsStr = c.occupants
         .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
         .join(", ");
-      return `이 시간에 ${c.roomName}을 ${occupantsStr}이 사용 중 — 장소 양보 양해가 필요합니다`;
+      return `교체하면 이 시간 ${c.roomName} 사용이 겹칩니다 ─ 사용 중: ${occupantsStr}`;
     })
     .join(" / ");
 }
