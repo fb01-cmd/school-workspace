@@ -65,6 +65,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "토큰에 이메일이 없습니다." }, { status: 400 });
   }
 
+  const tokenName = typeof decoded.name === "string" && decoded.name.trim() ? decoded.name.trim() : undefined;
+
   const domain = email.split("@")[1] || "";
   const userRef = adminDb.collection("users").doc(uid);
   const snap = await userRef.get();
@@ -93,6 +95,7 @@ export async function POST(req: NextRequest) {
         role: "student",
         isApproved: true,
         createdAt: snap.exists ? (snap.data()?.createdAt ?? FieldValue.serverTimestamp()) : FieldValue.serverTimestamp(),
+        ...(tokenName ? { name: tokenName } : {}),
       });
       return NextResponse.json({ success: true, role: "student" });
     }
@@ -101,7 +104,11 @@ export async function POST(req: NextRequest) {
     const role = isWorkspaceAdmin ? "super_admin" : "teacher";
 
     if (snap.exists) {
-      await userRef.update({ role, isApproved: isWorkspaceAdmin });
+      await userRef.update({
+        role,
+        isApproved: isWorkspaceAdmin,
+        ...(tokenName ? { name: tokenName } : {}),
+      });
     } else {
       await userRef.set({
         email,
@@ -109,6 +116,7 @@ export async function POST(req: NextRequest) {
         role,
         isApproved: isWorkspaceAdmin,
         createdAt: FieldValue.serverTimestamp(),
+        ...(tokenName ? { name: tokenName } : {}),
       });
     }
     return NextResponse.json({ success: true, role });

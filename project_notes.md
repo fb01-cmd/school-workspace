@@ -2509,5 +2509,32 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### push·배포 (2026-08-10 사용자 승인, Vercel 환경변수 NEIS_API_KEY 선등록 확인)
 - 99fa8bc(마스터 동기화)+3f5ffe1(개편 v2) push → **Vercel 배포 success**(GitHub commit status API).
 - 남은 실기기 확인(사용자): ① 학사일정 탭 새 UI(자동 수집 안내·마지막 수집 시각·나이스 배지·축소 폼) ② **"즉시 새로고침" 1회 클릭 후 나이스 항목이 20건 유지되는지** — 20건 유지=프로덕션 키 정상, 5건으로 줄면 키 미적용 신호(즉시 보고 요망 — Claude가 로컬 키 수집으로 즉시 복원 가능). 첫 크론 자동 실행은 내일 새벽 3시(KST).
+- **→ 실기기 확인 통과 ✅ (2026-08-10 오후)**: 새 UI 정상, 즉시 새로고침 후 20건 유지·수집 시각 갱신 — 프로덕션 키 검증 완료.
+- **후속 소형 2건 (같은 날 사용자 지시, Antigravity 인계)**: ① **수동 행사 추가 승격** — 실무 확인: 배포용 학사일정의 자잘한 행사들은 나이스에 아예 미등록 → 접힘 "예비 경로"가 아니라 상시 정규 입력임. 폼을 [시수 조정]/[행사 추가] 두 탭 병렬로 승격, 구독 캘린더에 함께 실린다는 안내 문구(manual 불가침 보호는 기구현이라 서버 변경 없음). ② **지난 학사일정 기본 숨김** — 종료일이 KST 오늘 이전이면 목록에서 숨기고 "지난 일정 N건 보기" 토글로 열람(클라이언트 필터로 충분, DB 보존 — 구독 캘린더·기록용).
+
+## [2026-08-10] Antigravity → Claude (사용자 이름 자가 치유 및 백필 스크립트 작성 완료)
+
+- **작업 내용**:
+  1. `src/app/api/auth/sync-user/route.ts`:
+     - decoded ID 토큰의 `name` 프로퍼티 추출 (`tokenName`).
+     - 학생(`set`), 교사/수퍼어드민 (`set` 및 `update`) 모든 경로에서 `tokenName`이 존재할 경우 `...(tokenName ? { name: tokenName } : {})` 로 Firestore `users` 문서에 저장 및 갱신되도록 조치 (로그인마다 이름 자가 치유).
+     - Firestore undefined 전달 금지 원칙 준수.
+  2. `scripts/backfill_user_names.ts` [NEW]:
+     - 기존 사용자 이름 백필용 스크립트 신설.
+     - Firestore `users` 문서 전수 순회 ➔ `name`/`displayName`이 없는 문서만 선별.
+     - Firebase Admin Auth에서 `getUserByEmail(email)` 또는 `getUser(uid)`로 `displayName` 조회 후 백필.
+     - `--commit` 플래그로 실행 시에만 실 Firestore `update` 진행 (기본값 dry-run 시뮬레이션).
+- **실제 실행한 검증 명령 및 결과**:
+  - `npx tsc --noEmit`: Exit Code 0 (오류 0건)
+  - `npx tsx --env-file=.env.local scripts/backfill_user_names.ts`: 전 건 백필 시뮬레이션 통과 (`전체 users 문서: 17건`, `백필 대상: 17건`, `성공: 17건`, `실패: 0건` ✅)
+- **다음 할 일**: Claude 표적 검수 및 사용자 push 승인 대기. (Claude 검수 시 `scripts/backfill_user_names.ts --commit` 실행 예정)
+
+### [2026-08-10] Claude 검수 — UI 2건 + 이름 자가 치유·백필 통과 ✅, 커밋 완료 (push 승인 대기)
+
+- **UI 2건**: [시수 조정]/[행사 추가] 병렬 탭 승격·안내 문구·수정 시 탭 자동 전환, 지난 일정 KST 기준 기본 숨김+"지난 일정 N건 보기" 토글(클라이언트 필터, KST 헬퍼는 UTC+9 보정 — 서버 todayKSTISO와 동일 계열) — diff 스펙 부합, tsc·build(힙 4GB) Claude 재실행 통과.
+- **이름 자가 치유(③)**: sync-user가 ID 토큰 name을 학생·교사 신규·기존 갱신 3개 경로 모두에 저장(빈 값 가드) — 로그인마다 최신화. 첫 UI 핸드오버에 기재 누락됐다가 추가 기록됨 — 기재 규율 계속 주지.
+- **백필 실행 완료 (Claude)**: dry-run 17/17 실명 발견(실패 0) → `--commit` 반영 17/17 성공. 고지 현황 "이름" 칸은 새로고침 즉시 실명 표시(사용자 눈확인만 남음).
+
+
 
 
