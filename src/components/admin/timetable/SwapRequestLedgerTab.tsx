@@ -393,7 +393,9 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
               {statusInfo.label}
             </span>
             <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-semibold text-[11px] rounded border border-indigo-100 shrink-0">
-              {isCross
+              {req.type === "chain"
+                ? "🔗 체인교환"
+                : isCross
                 ? "↔️ 교차주"
                 : req.type === "swap"
                 ? "↔️ 맞교환"
@@ -422,7 +424,36 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
               {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
             </span>
             <span className="text-gray-400 font-bold px-0.5">→</span>
-            {req.type === "swap" || req.type === "cross_swap" ? (
+            {req.type === "chain" ? (
+              <div className="w-full space-y-1 mt-1">
+                <div className="flex items-center gap-1 font-bold text-purple-900">
+                  <span>→ 목적지:</span>
+                  <span>
+                    {formatSlotWithDate(
+                      req.targetWeekId || req.chainTarget?.weekId || (req.candidate as any)?.targetWeekId || req.weekId,
+                      req.candidate?.targetDay ?? req.chainTarget?.day ?? 0,
+                      req.candidate?.targetPeriod ?? req.chainTarget?.period ?? 0
+                    )}
+                  </span>
+                  <span className="text-gray-600">
+                    · 체인 경로 ({req.chainSteps?.length || (req.candidate as any)?.chainSteps?.length || 2}단계)
+                  </span>
+                </div>
+                {req.chainSteps && req.chainSteps.length > 0 && (
+                  <div className="text-[11px] bg-purple-50 border border-purple-200 text-purple-950 rounded-lg p-2 font-mono space-y-1 mt-1">
+                    <div className="font-bold text-[10px] text-purple-900 flex items-center gap-1">
+                      <span>🔗</span>
+                      <span>체인 수열 ({req.chainSteps.length}단계):</span>
+                    </div>
+                    {req.chainSteps.map((step: any, idx: number) => (
+                      <div key={idx} className="text-[10px] leading-tight text-purple-900">
+                        Step {idx + 1}: {step.stepSummary || step.summary || `${step.sourceTeacherName || ""} → ${step.candidate?.counterpartName || ""} (${step.targetDay}요일 ${step.targetPeriod}교시)`}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : req.type === "swap" || req.type === "cross_swap" ? (
               <>
                 <span className="font-bold text-indigo-800">
                   {formatSlotWithDate(

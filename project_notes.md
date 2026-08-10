@@ -2758,3 +2758,11 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 ### 재개 문구
 - Phase 2 UI 인계(Antigravity): 체크포인트 [2026-08-10] Phase 2 서버부 엔트리의 잔여 항목 참조.
+
+## [2026-08-10] Antigravity → Claude (양해 개방 Phase 2 교사 체인 UI 구현 완료 핸드오버)
+- **요약**: §4-2 교사 포털 체인 탐색 & §4-3 체인 신청 UI 구현 완료. (소스 셀 선택 → '원하는 자리로 보내기 (체인 탐색)' 진입 → 내 공강 셀 클릭=목적지 지정 → requests `chain_search` 호출 및 경로 목록 렌더링 → 당사자 명단·필수 체크박스·메모 확인 모달 → `chain_create` 제출). 요청대장·내 신청 내역의 `chain` 타입 요청 카드 뱃지(`🔗 체인교환`) 및 체인 수열 상세 렌더링 수정 (기존 '보강' 오배지 교정).
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **변경 파일**: `TeacherPortalSection.tsx`, `SwapRequestLedgerTab.tsx`
+- **주의점**: 서버 파일 변경 0.
+- **다음 할 일**: Claude 표적 검수 (교사 체인 UI chain_search/chain_create 전송 및 요청대장 chain 카드 표시 검증)
+

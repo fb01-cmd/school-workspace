@@ -31,6 +31,8 @@ import {
   TeacherTimetableCell,
   TimetableSettings,
   TimetableWeek,
+  ChainSearchChain,
+  ChainStepItem,
 } from "@/lib/timetable/types";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import {
@@ -172,10 +174,138 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   // §3-2b v1.1: 조율 필요 후보 인라인 클릭 시 2단 경고 다이얼로그 상태
   const [pendingCoordinationSave, setPendingCoordinationSave] = useState<{ candidate: SwapCandidate; weekId: string } | null>(null);
 
+  // §4-2 교사 체인 탐색 & 신청 관련 상태 (consent_swap_opening_spec §4-2·§4-3)
+  const [isChainMode, setIsChainMode] = useState(false);
+  const [chainTarget, setChainTarget] = useState<{ weekId?: string; day: number; period: number } | null>(null);
+  const [chainSearching, setChainSearching] = useState(false);
+  const [chainSearchError, setChainSearchError] = useState<string | null>(null);
+  const [chainSearchResults, setChainSearchResults] = useState<ChainSearchChain[] | null>(null);
+  const [chainSearchReason, setChainSearchReason] = useState<string | null>(null);
+  const [selectedChainForSubmit, setSelectedChainForSubmit] = useState<ChainSearchChain | null>(null);
+  const [chainConsentModalOpen, setChainConsentModalOpen] = useState(false);
+  const [chainConsentConfirmed, setChainConsentConfirmed] = useState(false);
+  const [chainConsentNote, setChainConsentNote] = useState("");
+  const [chainReasonType, setChainReasonType] = useState<any>("수업교환");
+  const [chainReasonNote, setChainReasonNote] = useState("");
+  const [submittingChain, setSubmittingChain] = useState(false);
+
   useEffect(() => {
     setConsentConfirmed(false);
     setConsentNote("");
   }, [applyingCandidate]);
+
+  const handleExecuteChainSearch = async (tgtWeekId: string, day: number, period: number) => {
+    if (!selectedCell) return;
+    setIsChainMode(true);
+    setChainTarget({ weekId: tgtWeekId, day, period });
+    setChainSearching(true);
+    setChainSearchError(null);
+    setChainSearchResults(null);
+    setChainSearchReason(null);
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "chain_search",
+          weekId: selectedCell.weekId,
+          source: {
+            grade: selectedCell.grade,
+            classNum: selectedCell.classNum,
+            day: selectedCell.day,
+            period: selectedCell.period,
+            subjectName: selectedCell.subjectName,
+          },
+          chainTarget: {
+            weekId: tgtWeekId || selectedCell.weekId,
+            day,
+            period,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "체인 경로 탐색에 실패했습니다.");
+      }
+      setChainSearchResults(data.chains || []);
+      setChainSearchReason(data.reason || null);
+    } catch (e: any) {
+      setChainSearchError(e.message || "체인 탐색 중 오류가 발생했습니다.");
+    } finally {
+      setChainSearching(false);
+    }
+  };
+
+  const handleOpenChainConsentModal = (chain: ChainSearchChain) => {
+    setSelectedChainForSubmit(chain);
+    setChainConsentConfirmed(false);
+    setChainConsentNote("");
+    setChainReasonType("수업교환");
+    setChainReasonNote("");
+    setChainConsentModalOpen(true);
+  };
+
+  const handleExecuteChainCreate = async () => {
+    if (!selectedCell || !chainTarget || !selectedChainForSubmit) return;
+    if (!chainConsentConfirmed) {
+      alert("관련 선생님 전원에게 사전 양해를 받았음을 확인해 주세요.");
+      return;
+    }
+    if (chainReasonType === "기타" && !chainReasonNote.trim()) {
+      alert("사유가 '기타'인 경우 상세 사유를 입력해 주세요.");
+      return;
+    }
+
+    setSubmittingChain(true);
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "chain_create",
+          weekId: selectedCell.weekId,
+          source: {
+            grade: selectedCell.grade,
+            classNum: selectedCell.classNum,
+            day: selectedCell.day,
+            period: selectedCell.period,
+            subjectName: selectedCell.subjectName,
+          },
+          chainTarget: {
+            weekId: chainTarget.weekId || selectedCell.weekId,
+            day: chainTarget.day,
+            period: chainTarget.period,
+          },
+          chainSteps: selectedChainForSubmit.steps,
+          reason: {
+            type: chainReasonType,
+            note: chainReasonNote.trim() || undefined,
+          },
+          consent: {
+            confirmed: true,
+            note: chainConsentNote.trim() || undefined,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "체인 신청 제출에 실패했습니다.");
+      }
+      setFlash("⚡ 징검다리 체인 교체 신청이 접수되었습니다! 관련 선생님 전원에게 통지가 발송되었습니다.");
+      setChainConsentModalOpen(false);
+      setSelectedChainForSubmit(null);
+      setIsChainMode(false);
+      setChainTarget(null);
+      setChainSearchResults(null);
+      setApplyingCandidate(null);
+      setSelectedCell(null);
+      await fetchMyProjected();
+    } catch (e: any) {
+      alert(`체인 신청 오류: ${e.message}`);
+    } finally {
+      setSubmittingChain(false);
+    }
+  };
 
 
   const [submitting, setSubmitting] = useState(false);
@@ -891,14 +1021,22 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                               ? weekCandidates.find((c) => c.targetDay === d.num && c.targetPeriod === period)
                               : null;
 
+                            const isChainTargetSlot = !hasLesson && selectedCell && chainTarget?.weekId === week.weekId && chainTarget?.day === d.num && chainTarget?.period === period;
+
                             return (
                               <td
                                 key={d.num}
                                 className={`p-1 border-r border-gray-100 text-center align-middle h-16 transition-all ${
                                   isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""
-                                } ${hasLesson && !isSelected ? "hover:bg-indigo-50/60 cursor-pointer" : ""}`}
+                                } ${hasLesson && !isSelected ? "hover:bg-indigo-50/60 cursor-pointer" : ""} ${
+                                  !hasLesson && selectedCell && isChainMode ? "hover:bg-purple-100/90 cursor-pointer border-2 border-dashed border-purple-400 bg-purple-50/40" : ""
+                                } ${isChainTargetSlot ? "ring-2 ring-purple-600 bg-purple-100" : ""}`}
                                 onClick={() => {
-                                  if (hasLesson) handleCellClick(matched[0], week.weekId);
+                                  if (hasLesson) {
+                                    handleCellClick(matched[0], week.weekId);
+                                  } else if (selectedCell && (isChainMode || !candidate)) {
+                                    handleExecuteChainSearch(week.weekId, d.num, period);
+                                  }
                                 }}
                               >
                                 {hasLesson ? (
@@ -1065,6 +1203,132 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   <p className="text-[11px] text-indigo-800">
                     좌측 전 주 시간표 그리드의 <b>공강 칸(초록/주황/빨간 배지)</b>을 직접 클릭하면 해당 교시로 교체안이 자동 저장됩니다.
                   </p>
+                </div>
+              )}
+
+              {/* 🔗 §4-2 교사 징검다리 체인 탐색 UI */}
+              {!candidatesLoading && !applyingCandidate && (
+                <div className="bg-purple-50/80 border border-purple-200 rounded-xl p-3.5 space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="font-extrabold text-purple-950 flex items-center gap-1.5 text-xs">
+                      <span>🔗</span>
+                      <span>원하는 자리로 보내기 (체인 탐색)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsChainMode(!isChainMode);
+                        setChainSearchResults(null);
+                        setChainSearchError(null);
+                        setChainSearchReason(null);
+                        setChainTarget(null);
+                      }}
+                      className={`px-2.5 py-1 text-[11px] font-extrabold rounded-lg cursor-pointer transition-all ${
+                        isChainMode
+                          ? "bg-purple-700 text-white shadow-2xs"
+                          : "bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300"
+                      }`}
+                    >
+                      {isChainMode ? "탐색 해제" : "체인 탐색 모드"}
+                    </button>
+                  </div>
+
+                  <details className="text-[11px] text-purple-900 cursor-pointer">
+                    <summary className="font-bold text-purple-950 hover:underline">
+                      💡 여러 선생님의 양해가 필요한 방법입니다
+                    </summary>
+                    <p className="mt-1 leading-relaxed bg-white/80 p-2 rounded-lg border border-purple-200 text-purple-950 text-[10px]">
+                      1단계 직접 맞교환 후보가 없더라도 2~3단계 징검다리 경로(연속 수업 교환)를 통해 이 수업을 내 원하는 공강 교시로 보낼 수 있습니다.
+                    </p>
+                  </details>
+
+                  {isChainMode && (
+                    <div className="p-2.5 bg-purple-100/90 border border-purple-300 rounded-lg text-purple-950 font-bold text-[11px] text-center animate-pulse">
+                      🎯 왼쪽 시간표 그리드에서 이 수업을 보내고 싶은 <span className="underline text-purple-900 font-extrabold">내 공강 교시</span>를 클릭하세요.
+                    </div>
+                  )}
+
+                  {chainSearching && (
+                    <div className="p-3 bg-white border border-purple-300 rounded-xl text-center space-y-1 animate-pulse">
+                      <div className="text-xs font-extrabold text-purple-950">🔗 징검다리 체인 경로 탐색 중...</div>
+                      <div className="text-[10px] text-purple-800">
+                        목적지: {chainTarget ? formatSlotWithDate(chainTarget.weekId || selectedCell.weekId, chainTarget.day, chainTarget.period) : ""}
+                      </div>
+                    </div>
+                  )}
+
+                  {chainSearchError && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 space-y-1">
+                      <div className="font-bold">⚠️ 체인 탐색 오류</div>
+                      <div className="text-[11px]">{chainSearchError}</div>
+                    </div>
+                  )}
+
+                  {!chainSearching && chainSearchReason && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 space-y-1">
+                      <div className="font-bold">💡 경로 탐색 실패 사유</div>
+                      <div className="text-[11px] text-amber-900 leading-relaxed">{chainSearchReason}</div>
+                    </div>
+                  )}
+
+                  {!chainSearching && chainSearchResults && chainSearchResults.length > 0 && (
+                    <div className="space-y-2.5 pt-1 border-t border-purple-200">
+                      <div className="text-xs font-extrabold text-purple-950 flex items-center justify-between">
+                        <span>발견된 체인 경로 ({chainSearchResults.length}건)</span>
+                        <span className="text-[10px] bg-purple-200 text-purple-900 px-1.5 py-0.5 rounded font-bold">
+                          {chainTarget ? `${chainTarget.day}요일 ${chainTarget.period}교시` : ""}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                        {chainSearchResults.map((chain, cIdx) => {
+                          const currentTeacherName = user?.displayName || teacherProfile?.name || "";
+                          const uniqueTeachers = Array.from(
+                            new Set(
+                              chain.steps
+                                .flatMap((s) => [s.sourceTeacherName, s.candidate.counterpartName])
+                                .filter((n) => n && n !== currentTeacherName)
+                            )
+                          );
+
+                          return (
+                            <div key={cIdx} className="bg-white border border-purple-300 rounded-xl p-3 space-y-2 text-xs shadow-2xs hover:border-purple-500 transition-all">
+                              <div className="flex items-center justify-between font-extrabold text-purple-950">
+                                <span className="flex items-center gap-1">
+                                  <span>🔗</span>
+                                  <span>{chain.steps.length}단계 체인 경로</span>
+                                </span>
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] ${chain.totalScore > 0 ? "bg-amber-100 text-amber-900 border border-amber-300" : "bg-purple-100 text-purple-900 font-extrabold border border-purple-200"}`}>
+                                  {chain.totalScore > 0 ? `총 감점 ${chain.totalScore}점` : "0점 (깨끗함)"}
+                                </span>
+                              </div>
+
+                              <div className="text-[11px] text-gray-700 font-medium">
+                                👥 <strong>거치는 교사:</strong> <span className="font-extrabold text-indigo-900">{uniqueTeachers.join(", ")}</span>
+                              </div>
+
+                              <div className="bg-purple-50/70 border border-purple-200 rounded-lg p-2 font-mono text-[10px] text-purple-950 space-y-1">
+                                {chain.steps.map((step, sIdx) => (
+                                  <div key={sIdx} className="leading-tight">
+                                    Step {sIdx + 1}: {step.stepSummary || `${step.sourceTeacherName} → ${step.candidate?.counterpartName} (${step.candidate?.targetDay}요일 ${step.candidate?.targetPeriod}교시)`}
+                                  </div>
+                                ))}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenChainConsentModal(chain)}
+                                className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1"
+                              >
+                                <span>🤝</span>
+                                <span>이 체인 경로 선택 (양해 확인)</span>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1360,6 +1624,146 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl shadow-sm cursor-pointer"
               >
                 양해 전제로 검토
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔗 §4-3: 교사 징검다리 체인 신청 전 당사자 양해 확인 모달 */}
+      {chainConsentModalOpen && selectedChainForSubmit && selectedCell && chainTarget && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-purple-200 max-w-lg w-full p-6 space-y-4 max-h-[90vh] flex flex-col animate-scale-up">
+            <div className="border-b border-purple-100 pb-3 flex items-center justify-between shrink-0">
+              <h4 className="text-base font-extrabold text-purple-950 flex items-center gap-2">
+                <span>🔗</span>
+                <span>징검다리 체인 교체 신청전 사전 양해 확인</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setChainConsentModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto space-y-3.5 pr-1 shrink">
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-3.5 space-y-2 text-xs text-purple-950">
+                <div className="font-bold flex items-center justify-between">
+                  <span>📌 신청 원 수업: {selectedCell.grade}-{selectedCell.classNum}반 {selectedCell.subjectName}</span>
+                  <span>({formatSlotWithDate(selectedCell.weekId, selectedCell.day, selectedCell.period)})</span>
+                </div>
+                <div className="font-bold flex items-center justify-between border-t border-purple-200 pt-1 text-purple-900">
+                  <span>🎯 목적지 교시: {formatSlotWithDate(chainTarget.weekId || selectedCell.weekId, chainTarget.day, chainTarget.period)}</span>
+                  <span className="bg-purple-200 text-purple-950 px-2 py-0.5 rounded font-extrabold">{selectedChainForSubmit.steps.length}단계 체인</span>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-1.5 text-xs">
+                <div className="font-bold text-gray-800">📋 체인 단계 상세:</div>
+                <div className="font-mono text-[11px] text-gray-700 space-y-1">
+                  {selectedChainForSubmit.steps.map((step, idx) => (
+                    <div key={idx} className="bg-white p-1.5 rounded border border-gray-200">
+                      Step {idx + 1}: {step.stepSummary || `${step.sourceTeacherName} → ${step.candidate?.counterpartName} (${step.candidate?.targetDay}요일 ${step.candidate?.targetPeriod}교시)`}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 양해 당사자 목록 */}
+              {(() => {
+                const currentTeacherName = user?.displayName || teacherProfile?.name || "";
+                const partyMap = new Map<string, string>();
+                for (const s of selectedChainForSubmit.steps) {
+                  const srcEmail = s.sourceTeacherEmail.trim().toLowerCase();
+                  if (s.sourceTeacherName && s.sourceTeacherName !== currentTeacherName && !partyMap.has(srcEmail)) {
+                    partyMap.set(srcEmail, s.sourceTeacherName);
+                  }
+                  const cpEmail = s.candidate.counterpartEmail.trim().toLowerCase();
+                  if (s.candidate.counterpartName && s.candidate.counterpartName !== currentTeacherName && !partyMap.has(cpEmail)) {
+                    partyMap.set(cpEmail, s.candidate.counterpartName);
+                  }
+                }
+                const parties = Array.from(partyMap.entries()).map(([email, name]) => ({ email, name }));
+
+                return (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs text-red-950">
+                    <div className="font-bold flex items-center justify-between">
+                      <span>👥 사전 양해 필요 당사자 선생님 ({parties.length}명)</span>
+                      <span className="text-[10px] bg-red-200 text-red-950 px-2 py-0.5 rounded font-black">양해 필수</span>
+                    </div>
+                    <div className="font-extrabold text-red-900 text-xs">
+                      {parties.map((p) => `${p.name} 선생님`).join(", ")}
+                    </div>
+                    <p className="text-[11px] text-red-800 leading-relaxed pt-1 border-t border-red-200">
+                      💡 체인은 관련 선생님 전원의 수업이 연속 이동하므로 사전 양해 없이는 신청할 수 없습니다.
+                    </p>
+                  </div>
+                );
+              })()}
+
+              <div className="space-y-2 pt-1">
+                <label className="flex items-start gap-2 cursor-pointer bg-red-50/60 p-2.5 rounded-lg border border-red-200 shadow-2xs">
+                  <input
+                    type="checkbox"
+                    checked={chainConsentConfirmed}
+                    onChange={(e) => setChainConsentConfirmed(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
+                  />
+                  <span className="text-xs font-bold text-red-950">
+                    위 선생님들 전원에게 사전 양해를 받았음을 확인합니다 (필수)
+                  </span>
+                </label>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-gray-700">신청 사유</label>
+                  <select
+                    value={chainReasonType}
+                    onChange={(e) => setChainReasonType(e.target.value as any)}
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    {SWAP_REASON_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={chainReasonNote}
+                  onChange={(e) => setChainReasonNote(e.target.value)}
+                  placeholder="상세 사유 (선택, '기타' 사유 선택 시 필수)"
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+                />
+
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={chainConsentNote}
+                  onChange={(e) => setChainConsentNote(e.target.value)}
+                  placeholder="사전 양해 메모 (선택, 예: 당사자 전원 카톡 양해 확인)"
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
+              <button
+                type="button"
+                onClick={() => setChainConsentModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteChainCreate}
+                disabled={submittingChain || !chainConsentConfirmed || (chainReasonType === "기타" && !chainReasonNote.trim())}
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs rounded-xl shadow-sm disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                {submittingChain ? "신청 제출 중..." : "양해 확인 및 체인 교체 신청 제출"}
               </button>
             </div>
           </div>
@@ -1859,7 +2263,9 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
               {statusInfo.label}
             </span>
             <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-semibold text-[11px] rounded border border-indigo-100 shrink-0">
-              {isCross
+              {req.type === "chain"
+                ? "🔗 체인교환"
+                : isCross
                 ? "↔️ 교차주"
                 : req.type === "swap"
                 ? "↔️ 맞교환"
@@ -1889,6 +2295,22 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
             <span className="text-gray-600">
               ({req.source.subjectName}, {req.source.grade}-{req.source.classNum}반)
             </span>
+
+            {req.type === "chain" && (
+              <>
+                <span className="text-gray-400 font-bold px-0.5">→</span>
+                <span className="font-bold text-purple-800">
+                  {formatSlotWithDate(
+                    targetWeekVal || req.chainTarget?.weekId || req.weekId,
+                    req.candidate?.targetDay ?? req.chainTarget?.day ?? 0,
+                    req.candidate?.targetPeriod ?? req.chainTarget?.period ?? 0
+                  )} (목적지)
+                </span>
+                <span className="text-gray-600">
+                  · 체인 경로 ({req.chainSteps?.length || (req.candidate as any)?.chainSteps?.length || 2}단계)
+                </span>
+              </>
+            )}
 
             {(req.type === "swap" || req.type === "cross_swap") && req.candidate.targetDay != null && (
               <>
@@ -1920,6 +2342,20 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
               + 사유 [{req.reason.type}]
             </span>
             {req.reason.note && <span className="text-gray-600">({req.reason.note})</span>}
+
+            {req.type === "chain" && req.chainSteps && req.chainSteps.length > 0 && (
+              <div className="w-full text-[11px] bg-purple-50 border border-purple-200 text-purple-950 rounded-lg p-2 font-mono space-y-1 mt-1.5">
+                <div className="font-bold text-[10px] text-purple-900 flex items-center gap-1">
+                  <span>🔗</span>
+                  <span>체인 수열 ({req.chainSteps.length}단계):</span>
+                </div>
+                {req.chainSteps.map((step: any, idx: number) => (
+                  <div key={idx} className="text-[10px] leading-tight text-purple-900">
+                    Step {idx + 1}: {step.stepSummary || step.summary || `${step.sourceTeacherName || ""} → ${step.candidate?.counterpartName || ""} (${step.targetDay}요일 ${step.targetPeriod}교시)`}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* 처리 정보 및 결정 사유 */}
             {req.decidedAt && (
