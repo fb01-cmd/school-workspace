@@ -39,7 +39,10 @@ import {
   getWeekRangeLabel,
   formatSlotWithDate,
   buildShareCardMessage,
+  formatCoordinationText,
+  getCoordinationOccupants,
 } from "@/lib/timetable/utils";
+
 import PaginationControls from "./PaginationControls";
 import MiniPreviewGrid from "./MiniPreviewGrid";
 import {
@@ -154,8 +157,16 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
   // 호버/선택 후보 및 신청 사유
   const [applyingCandidate, setApplyingCandidate] = useState<SwapCandidate | null>(null);
+  const [consentConfirmed, setConsentConfirmed] = useState(false);
+  const [consentNote, setConsentNote] = useState("");
   const [reason, setReason] = useState<SwapRequestReason>({ type: "출장" });
   const [batchReason, setBatchReason] = useState<SwapRequestReason>({ type: "출장" });
+
+  useEffect(() => {
+    setConsentConfirmed(false);
+    setConsentNote("");
+  }, [applyingCandidate]);
+
   const [submitting, setSubmitting] = useState(false);
   const [submittingBatch, setSubmittingBatch] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -1006,6 +1017,52 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               {/* 상대 교사 시간표 미리보기 미니 그리드 */}
               {applyingCandidate && (
                 <div className="space-y-3">
+                  {applyingCandidate.coordination && (
+                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-2 text-xs">
+                      <div className="font-extrabold text-amber-950 flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <span>🤝</span>
+                          <span>양해가 필요한 후보</span>
+                        </span>
+                        <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-black">
+                          장소 조율 필요
+                        </span>
+                      </div>
+                      <div className="text-amber-900 text-xs leading-relaxed font-semibold">
+                        {formatCoordinationText(applyingCandidate.coordination)}
+                      </div>
+                      <div className="pt-2 border-t border-amber-200 space-y-2">
+                        <div className="font-bold text-gray-800 text-[11px]">
+                          👥 양해 필요 당사자:{" "}
+                          <span className="text-indigo-900 font-extrabold">
+                            {getCoordinationOccupants(applyingCandidate.coordination)
+                              .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
+                              .join(", ")}
+                          </span>
+                        </div>
+                        <label className="flex items-start gap-2 cursor-pointer bg-white p-2 rounded-lg border border-amber-300 shadow-2xs">
+                          <input
+                            type="checkbox"
+                            checked={consentConfirmed}
+                            onChange={(e) => setConsentConfirmed(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                          />
+                          <span className="text-xs font-bold text-gray-900">
+                            위 선생님들께 사전 양해를 받았습니다 (필수)
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={200}
+                          value={consentNote}
+                          onChange={(e) => setConsentNote(e.target.value)}
+                          placeholder="양해 메모 (선택, 예: 체육관 합반으로 양해)"
+                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <div className="text-xs font-bold text-gray-800 flex items-center justify-between">
                     <span>
                       🔍 {applyingCandidate.counterpartName} 교사 시간표 미리보기
@@ -1066,6 +1123,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                             counterpartEmail: applyingCandidate.counterpartEmail,
                             counterpartName: applyingCandidate.counterpartName,
                             counterpartSubjectName: applyingCandidate.counterpartSubjectName,
+                            coordination: applyingCandidate.coordination,
                           },
                           previewCells,
                           counterpartSourceCells,
@@ -1087,8 +1145,12 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
                     <button
                       onClick={handleSingleSubmit}
-                      disabled={submitting || (reason.type === "기타" && !reason.note?.trim())}
-                      className="py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 rounded-lg text-xs transition-colors shadow-2xs disabled:opacity-50 flex items-center justify-center gap-1"
+                      disabled={
+                        submitting ||
+                        (reason.type === "기타" && !reason.note?.trim()) ||
+                        (!!applyingCandidate.coordination && !consentConfirmed)
+                      }
+                      className="py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 rounded-lg text-xs transition-colors shadow-2xs disabled:opacity-50 flex items-center justify-center gap-1 cursor-pointer"
                     >
                       <span>⚡</span>
                       <span>{submitting ? "신청 중..." : "단건 즉시 신청"}</span>
@@ -1107,6 +1169,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   </button>
                 </div>
               )}
+
             </div>
           </div>
         )}

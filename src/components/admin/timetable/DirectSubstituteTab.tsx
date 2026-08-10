@@ -11,7 +11,8 @@ import {
   DirectPendingOverlayItem,
   DirectCommitBatchItemResult,
 } from "@/lib/timetable/types";
-import { DAY_LABEL, formatSlotWithDate } from "@/lib/timetable/utils";
+import { DAY_LABEL, formatSlotWithDate, formatCoordinationText, getCoordinationOccupants } from "@/lib/timetable/utils";
+
 import MiniPreviewGrid from "./MiniPreviewGrid";
 import {
   ConsolidatedShareData,
@@ -656,9 +657,20 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     } catch (err: any) { setSubmitError(err.message || "일괄 반영 실패"); } finally { setSubmitting(false); }
   };
 
+  const [consentConfirmed, setConsentConfirmed] = useState(false);
+  const [consentNote, setConsentNote] = useState("");
+
+  useEffect(() => {
+    setConsentConfirmed(false);
+    setConsentNote("");
+  }, [selectedCandidate]);
+
   const handleDirectCommitSingle = async () => {
     if (!selectedCandidate || !selectedSlot) { setSubmitError("배정할 후보(맞교환 또는 특별보강)를 선택해 주세요."); return; }
     if (reasonType === "기타" && !reasonNote.trim()) { setSubmitError("사유가 '기타'인 경우 상세 메모를 입력해 주세요."); return; }
+    const isCoordination = activeCandidateType === "swap" && !!(selectedCandidate as any)?.coordination;
+    if (isCoordination && !consentConfirmed) { setSubmitError("조율 필요 후보의 당사자 양해 확인란을 체크해 주세요."); return; }
+
     if (!confirm("선택한 후보로 직권 수업교환/특별보강을 즉시 승인 및 적용하시겠습니까?")) return;
     setSubmitting(true); setSubmitError(null);
     try {
@@ -667,12 +679,25 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       let candidateSnapshot: any;
       if (activeCandidateType === "swap") {
         const sc = selectedCandidate as any;
-        candidateSnapshot = { targetWeekId: targetWeekId || sourceWeekId, targetDay: sc.targetDay, targetPeriod: sc.targetPeriod, counterpartEmail: sc.counterpartEmail, counterpartName: sc.counterpartName, counterpartSubjectName: sc.counterpartSubjectName, score: sc.score, penalties: sc.penalties || [] };
+        candidateSnapshot = { targetWeekId: targetWeekId || sourceWeekId, targetDay: sc.targetDay, targetPeriod: sc.targetPeriod, counterpartEmail: sc.counterpartEmail, counterpartName: sc.counterpartName, counterpartSubjectName: sc.counterpartSubjectName, score: sc.score, penalties: sc.penalties || [], coordination: sc.coordination };
       } else {
         const subc = selectedCandidate as SubstituteCandidate;
         candidateSnapshot = { counterpartEmail: subc.teacherEmail, counterpartName: subc.teacherName, score: 0, penalties: [] };
       }
-      const commitRes = await fetch("/api/timetable/manage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "direct_commit", weekId: sourceWeekId, ...(activeCandidateType === "swap" && targetWeekId ? { targetWeekId } : {}), type: activeCandidateType, source: { grade: selectedSlot.grade, classNum: selectedSlot.classNum, day: selectedSlot.day, period: selectedSlot.period, subjectName: sourceLessonInfo?.subjectName || "" }, candidate: candidateSnapshot, reason: { type: reasonType, note: reasonNote.trim() || undefined } }) });
+      const commitRes = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "direct_commit",
+          weekId: sourceWeekId,
+          ...(activeCandidateType === "swap" && targetWeekId ? { targetWeekId } : {}),
+          type: activeCandidateType,
+          source: { grade: selectedSlot.grade, classNum: selectedSlot.classNum, day: selectedSlot.day, period: selectedSlot.period, subjectName: sourceLessonInfo?.subjectName || "" },
+          candidate: candidateSnapshot,
+          reason: { type: reasonType, note: reasonNote.trim() || undefined },
+          consent: isCoordination ? { confirmed: true, note: consentNote.trim() || undefined } : undefined,
+        }),
+      });
       const commitData = await commitRes.json();
       if (!commitRes.ok || !commitData.success) throw new Error(commitData.error || "직권 배정 처리 중 오류가 발생했습니다.");
       setSuccessMsg(`⚡ 직권 배정 완료! ${selectedSlot.grade}학년 ${selectedSlot.classNum}반 ${formatSlotWithDate(sourceWeekId, selectedSlot.day, selectedSlot.period)} 수업이 성공적으로 처리 및 반영되었습니다.`);
@@ -682,6 +707,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       if (selectedTeacherEmail) await fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks);
     } catch (err: any) { setSubmitError(err.message || "직권 배정 실패"); } finally { setSubmitting(false); }
   };
+
 
   const getCellForSlotInWeek = (wId: string, d: number, p: number) => { const cells = teacherWeekCellsMap[wId] || []; return cells.filter((c) => c.day === d && c.period === p); };
   const totalSwapCount = swapCandidateWeeks.reduce((acc, w) => acc + (w.swapCandidates?.length || 0), 0);
@@ -939,6 +965,52 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                   <>
                     {selectedCandidate ? (
                       <div className="space-y-4 pt-1 animate-in fade-in duration-200">
+                        {selectedCandidate.coordination && (
+                          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 space-y-2 text-xs">
+                            <div className="font-extrabold text-amber-950 flex items-center justify-between">
+                              <span className="flex items-center gap-1">
+                                <span>🤝</span>
+                                <span>양해가 필요한 후보</span>
+                              </span>
+                              <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-black">
+                                장소 조율 필요
+                              </span>
+                            </div>
+                            <div className="text-amber-900 text-xs leading-relaxed font-semibold">
+                              {formatCoordinationText(selectedCandidate.coordination)}
+                            </div>
+                            <div className="pt-2 border-t border-amber-200 space-y-2">
+                              <div className="font-bold text-gray-800 text-[11px]">
+                                👥 양해 필요 당사자:{" "}
+                                <span className="text-indigo-900 font-extrabold">
+                                  {getCoordinationOccupants(selectedCandidate.coordination)
+                                    .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
+                                    .join(", ")}
+                                </span>
+                              </div>
+                              <label className="flex items-start gap-2 cursor-pointer bg-white p-2 rounded-lg border border-amber-300 shadow-2xs">
+                                <input
+                                  type="checkbox"
+                                  checked={consentConfirmed}
+                                  onChange={(e) => setConsentConfirmed(e.target.checked)}
+                                  className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                                />
+                                <span className="text-xs font-bold text-gray-900">
+                                  위 선생님들께 사전 양해를 받았습니다 (필수)
+                                </span>
+                              </label>
+                              <input
+                                type="text"
+                                maxLength={200}
+                                value={consentNote}
+                                onChange={(e) => setConsentNote(e.target.value)}
+                                placeholder="양해 메모 (선택, 예: 체육관 합반으로 양해)"
+                                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+                              />
+                            </div>
+                          </div>
+                        )}
+
                         <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="font-extrabold text-xs text-indigo-950">🔄 {selectedCandidate.counterpartName} 교사 ({selectedCandidate.counterpartSubjectName})</span>
@@ -960,11 +1032,12 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                           <MiniPreviewGrid isCrossWeek={isCrossWeek} sourceWeekId={selectedSlot.weekId} targetWeekId={targetWeekId} sourceWeekObj={sourceWeekObj} targetWeekObj={targetWeekObj} selectedCell={{ grade: selectedSlot.grade, classNum: selectedSlot.classNum, day: selectedSlot.day, period: selectedSlot.period, subjectName: sourceLessonInfo.subjectName }} applyingCandidate={{ targetDay: selectedCandidate.targetDay, targetPeriod: selectedCandidate.targetPeriod, counterpartName: selectedCandidate.counterpartName, counterpartSubjectName: selectedCandidate.counterpartSubjectName }} periodsPerDay={7} previewCells={previewCells} counterpartSourceCells={counterpartSourceCells} counterpartTargetCells={counterpartTargetCells} counterpartTitle={selectedCandidate.counterpartName} />
                         </div>
                         <div className="grid grid-cols-2 gap-2 pt-2">
-                          <button type="button" onClick={handleAddToCart} className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1"><span>🛒</span><span>담기</span></button>
-                          <button type="button" onClick={handleDirectCommitSingle} disabled={submitting} className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50"><span>⚡</span><span>즉시 1건 반영</span></button>
+                          <button type="button" onClick={handleAddToCart} className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"><span>🛒</span><span>담기</span></button>
+                          <button type="button" onClick={handleDirectCommitSingle} disabled={submitting || (!!selectedCandidate.coordination && !consentConfirmed)} className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"><span>⚡</span><span>즉시 1건 반영</span></button>
                         </div>
                       </div>
                     ) : (
+
                       <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl text-center text-xs text-indigo-900">
                         시간표 그리드에서 맞교환할 상대 셀(초록색 배지)을 클릭해 주세요.
                       </div>

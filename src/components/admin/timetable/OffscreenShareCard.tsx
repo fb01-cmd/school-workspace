@@ -1,7 +1,6 @@
 "use client";
 
-import React from "react";
-import { SwapDraft, TeacherTimetableCell, TimetableWeek } from "@/lib/timetable/types";
+import { CandidateCoordination, SwapDraft, TeacherTimetableCell, TimetableWeek } from "@/lib/timetable/types";
 import { formatSlotWithDate, getDayDateLabel, getWeekRangeLabel } from "@/lib/timetable/utils";
 import MiniPreviewGrid, { DAYS } from "./MiniPreviewGrid";
 
@@ -18,6 +17,7 @@ export interface ShareCardData {
     counterpartEmail?: string;
     counterpartName?: string;
     counterpartSubjectName?: string;
+    coordination?: CandidateCoordination;
   };
   previewCells?: TeacherTimetableCell[] | null;
   counterpartSourceCells?: TeacherTimetableCell[] | null;
@@ -58,7 +58,7 @@ export interface ConsolidatedShareData {
     sourceWeekId: string;
     targetWeekId?: string;
     source: { grade: number; classNum: number; day: number; period: number; subjectName: string };
-    candidate: { targetDay?: number; targetPeriod?: number; counterpartName?: string; counterpartSubjectName?: string };
+    candidate: { targetDay?: number; targetPeriod?: number; counterpartName?: string; counterpartSubjectName?: string; coordination?: CandidateCoordination };
   }>;
   weekBlocks: Array<{
     weekId: string;
@@ -72,6 +72,7 @@ export interface ConsolidatedShareData {
 /**
  * 사전 양해 요청 공유 카드 DOM (offscreen 렌더링 — display:none 금지, position:absolute; left:-9999px 사용)
  * 공유 카드 v2: 수신자(상대 교사) 관점으로 문구 및 일정 전면 반전 + 공용 MiniPreviewGrid 수록
+ * (consent_swap_opening_spec §3-2: candidate.coordination 조율 당사자 변형 수록)
  */
 export function OffscreenShareCard({
   cardRef,
@@ -98,6 +99,19 @@ export function OffscreenShareCard({
 
   const isCrossWeek = !!(data.targetWeekId && data.targetWeekId !== data.sourceWeekId);
 
+  // 조율 당사자 변형 (consent_swap_opening_spec §3-2)
+  const coordination = data.candidate.coordination;
+  const isCoordinationVariant = !!(coordination && coordination.conflicts && coordination.conflicts.length > 0);
+  const primaryConflict = isCoordinationVariant ? coordination.conflicts[0] : null;
+  const roomName = primaryConflict?.roomName || "특별실";
+  const occupants = primaryConflict?.occupants || [];
+  const occupantTitle = occupants.length > 0
+    ? occupants.map((o) => `${o.teacherName} 선생님`).join(", ")
+    : counterpartTitle;
+  const conflictSlotStr = primaryConflict
+    ? formatSlotWithDate(primaryConflict.slot.weekId, primaryConflict.slot.day, primaryConflict.slot.period)
+    : targetSlotStr;
+
   return (
     <div style={{ position: "absolute", left: "-9999px", top: "-9999px", pointerEvents: "none" }}>
       <div
@@ -106,66 +120,104 @@ export function OffscreenShareCard({
       >
         <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
           <div className="text-[10px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
-          <div className="text-lg font-black mt-0.5 tracking-tight">수업교환 양해 요청</div>
-        </div>
-
-        <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3.5 space-y-1 text-xs">
-          <div className="font-extrabold text-indigo-950 text-sm">
-            안녕하세요, {counterpartTitle}! 👋
-          </div>
-          <div className="text-gray-700 leading-relaxed text-xs">
-            <span className="font-bold text-indigo-900">{data.requesterName} 교사</span>입니다.<br />
-            아래 일정으로 수업 교체가 가능할까요? 😊
+          <div className="text-lg font-black mt-0.5 tracking-tight">
+            {isCoordinationVariant ? "🤝 장소 양해 요청" : "수업교환 양해 요청"}
           </div>
         </div>
 
-        <div className="border border-gray-200 rounded-xl p-3.5 space-y-2.5 text-xs bg-gray-50/40">
-          <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5 flex items-center justify-between">
-            <span>🔄 수업교환 상세 일정 (선생님 기준)</span>
-            {data.targetWeekId && data.targetWeekId !== data.sourceWeekId && (
-              <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full border border-indigo-200">
-                ↔ {data.targetWeekId} 주 교차 주
-              </span>
-            )}
-          </div>
-          <div className="space-y-2 pt-0.5">
-            {/* 1행: 상대 교사의 수업 이동 */}
-            <div className="flex items-start justify-between bg-amber-50/90 border border-amber-200 rounded-lg p-2.5">
-              <div>
-                <div className="text-[11px] font-extrabold text-amber-800">
-                  선생님의 수업 (이동)
-                </div>
-                <div className="font-bold text-gray-900 text-sm mt-0.5">
-                  선생님의 {counterpartLessonName}
-                </div>
-                <div className="text-amber-900 font-bold text-xs mt-0.5">
-                  {targetSlotStr} → {sourceSlotStr}로 이동
-                </div>
-              </div>
-              <span className="text-amber-800 font-extrabold text-[11px] bg-amber-100 border border-amber-300 px-2 py-1 rounded shrink-0">
-                선생님 수업
-              </span>
+        {isCoordinationVariant ? (
+          /* 조율 당사자 변형 카드 (spec §3-2) */
+          <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-3.5 space-y-1.5 text-xs">
+            <div className="font-extrabold text-amber-950 text-sm">
+              안녕하세요, {occupantTitle}! 👋
             </div>
-
-            {/* 2행: 신청자 교사의 수업 이동 */}
-            <div className="flex items-start justify-between bg-emerald-50/90 border border-emerald-200 rounded-lg p-2.5">
-              <div>
-                <div className="text-[11px] font-extrabold text-emerald-800">
-                  제 수업 (이동)
-                </div>
-                <div className="font-bold text-gray-900 text-sm mt-0.5">
-                  제 {data.source.grade}-{data.source.classNum}반 {data.source.subjectName}
-                </div>
-                <div className="text-emerald-900 font-bold text-xs mt-0.5">
-                  {sourceSlotStr} → {targetSlotStr}로 이동
-                </div>
-              </div>
-              <span className="text-emerald-800 font-extrabold text-[11px] bg-emerald-100 border border-emerald-300 px-2 py-1 rounded shrink-0">
-                제 수업
-              </span>
+            <div className="text-amber-900 leading-relaxed text-xs">
+              <span className="font-bold text-indigo-900">{data.requesterName} 교사</span>입니다.<br />
+              <b>{conflictSlotStr}</b>에 <b>{roomName}</b>을(를) 함께 쓰게 될 것 같습니다 — 합반 또는 교실 수업으로 양해 부탁드립니다 😊
             </div>
           </div>
-        </div>
+        ) : (
+          /* 기존 수업교환 양해 카드 */
+          <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3.5 space-y-1 text-xs">
+            <div className="font-extrabold text-indigo-950 text-sm">
+              안녕하세요, {counterpartTitle}! 👋
+            </div>
+            <div className="text-gray-700 leading-relaxed text-xs">
+              <span className="font-bold text-indigo-900">{data.requesterName} 교사</span>입니다.<br />
+              아래 일정으로 수업 교체가 가능할까요? 😊
+            </div>
+          </div>
+        )}
+
+        {isCoordinationVariant ? (
+          /* 조율 당사자 상세 내용 */
+          <div className="border border-amber-200 rounded-xl p-3.5 space-y-2.5 text-xs bg-amber-50/30">
+            <div className="font-bold text-amber-950 border-b border-amber-200 pb-1.5 flex items-center justify-between">
+              <span>🤝 특별실 양해 요청 상세 (선생님 기준)</span>
+              <span className="text-[10px] bg-amber-100 text-amber-900 font-extrabold px-2 py-0.5 rounded-full border border-amber-300">
+                장소 양보
+              </span>
+            </div>
+            <div className="space-y-1.5 pt-0.5 text-gray-800">
+              <div>• <b>특별실:</b> <span className="font-bold text-amber-950">{roomName}</span></div>
+              <div>• <b>요청 교시:</b> <span className="font-bold text-indigo-900">{conflictSlotStr}</span></div>
+              <div>• <b>선생님 수업:</b> {occupants.map((o) => `${o.teacherName} 선생님 (${o.grade}-${o.classNum}반 ${o.subjectName})`).join(", ")}</div>
+              <div>• <b>신청자 수업:</b> {data.requesterName} 교사 ({data.source.grade}-{data.source.classNum}반 {data.source.subjectName})</div>
+              <div className="bg-white/80 p-2 rounded-lg border border-amber-200 text-amber-900 font-semibold mt-1">
+                💡 추천 조율 방식: 체육관/운동장/특별실 합반 진행 또는 교실 이론 수업 전환
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* 기존 수업교환 상세 내용 */
+          <div className="border border-gray-200 rounded-xl p-3.5 space-y-2.5 text-xs bg-gray-50/40">
+            <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5 flex items-center justify-between">
+              <span>🔄 수업교환 상세 일정 (선생님 기준)</span>
+              {data.targetWeekId && data.targetWeekId !== data.sourceWeekId && (
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full border border-indigo-200">
+                  ↔ {data.targetWeekId} 주 교차 주
+                </span>
+              )}
+            </div>
+            <div className="space-y-2 pt-0.5">
+              {/* 1행: 상대 교사의 수업 이동 */}
+              <div className="flex items-start justify-between bg-amber-50/90 border border-amber-200 rounded-lg p-2.5">
+                <div>
+                  <div className="text-[11px] font-extrabold text-amber-800">
+                    선생님의 수업 (이동)
+                  </div>
+                  <div className="font-bold text-gray-900 text-sm mt-0.5">
+                    선생님의 {counterpartLessonName}
+                  </div>
+                  <div className="text-amber-900 font-bold text-xs mt-0.5">
+                    {targetSlotStr} → {sourceSlotStr}로 이동
+                  </div>
+                </div>
+                <span className="text-amber-800 font-extrabold text-[11px] bg-amber-100 border border-amber-300 px-2 py-1 rounded shrink-0">
+                  선생님 수업
+                </span>
+              </div>
+
+              {/* 2행: 신청자 교사의 수업 이동 */}
+              <div className="flex items-start justify-between bg-emerald-50/90 border border-emerald-200 rounded-lg p-2.5">
+                <div>
+                  <div className="text-[11px] font-extrabold text-emerald-800">
+                    제 수업 (이동)
+                  </div>
+                  <div className="font-bold text-gray-900 text-sm mt-0.5">
+                    제 {data.source.grade}-{data.source.classNum}반 {data.source.subjectName}
+                  </div>
+                  <div className="text-emerald-900 font-bold text-xs mt-0.5">
+                    {sourceSlotStr} → {targetSlotStr}로 이동
+                  </div>
+                </div>
+                <span className="text-emerald-800 font-extrabold text-[11px] bg-emerald-100 border border-emerald-300 px-2 py-1 rounded shrink-0">
+                  제 수업
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 상대 시간표 미리보기 미니 그리드 (공용 MiniPreviewGrid 컴포넌트 사용) */}
         <MiniPreviewGrid
@@ -190,6 +242,7 @@ export function OffscreenShareCard({
     </div>
   );
 }
+
 
 /** 융합 카드의 주 단위 그리드: 상대 교사 실제 시간표 + 전 건의 빠짐/들어옴 마커 일괄 표시 */
 export function RecipientWeekBlock({

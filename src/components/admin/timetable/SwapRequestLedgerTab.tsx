@@ -356,6 +356,20 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
     const invalid = isPending && validity[req.id]?.ok === false;
     const invalidReason = invalid ? validity[req.id]?.reason : undefined;
 
+    const isCross =
+      req.type === "cross_swap" ||
+      (req.targetWeekId && req.targetWeekId !== req.weekId) ||
+      !!(req.candidate as any).targetWeekId;
+
+    const statusInfo = isPending
+      ? { label: "⏳ 대기", className: "bg-amber-100 text-amber-900 border-amber-300" }
+      : isApproved
+      ? { label: "✅ 승인됨", className: "bg-emerald-100 text-emerald-900 border-emerald-300" }
+      : isRejected
+      ? { label: "❌ 반려됨", className: "bg-red-100 text-red-900 border-red-300" }
+      : { label: "⚪ 취소됨", className: "bg-gray-100 text-gray-700 border-gray-300" };
+
+
     return (
       <div
         key={req.id}
@@ -374,30 +388,23 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
               {formatDateTimeCompact(req.createdAt, isSameMinuteDuplicate(req.createdAt))}
             </span>
             <span
-              className={`px-1.5 py-0.5 rounded text-[11px] font-bold border shrink-0 ${
-                isPending
-                  ? "bg-amber-100 text-amber-900 border-amber-300"
-                  : isApproved
-                  ? "bg-emerald-100 text-emerald-900 border-emerald-300"
-                  : isRejected
-                  ? "bg-red-100 text-red-900 border-red-300"
-                  : "bg-gray-100 text-gray-700 border-gray-300"
-              }`}
+              className={`px-1.5 py-0.5 rounded text-[11px] font-bold border shrink-0 ${statusInfo.className}`}
             >
-              {isPending ? "⏳ 대기" : isApproved ? "✅ 승인됨" : isRejected ? "❌ 반려됨" : "⚪ 취소됨"}
+              {statusInfo.label}
             </span>
-
             <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-semibold text-[11px] rounded border border-indigo-100 shrink-0">
-              {req.type === "cross_swap" || (req.targetWeekId && req.targetWeekId !== req.weekId)
+              {isCross
                 ? "↔️ 교차주"
                 : req.type === "swap"
                 ? "↔️ 맞교환"
                 : "👤 보강"}
             </span>
-
-            <span className="text-xs font-bold text-gray-900 truncate">
-              {req.requesterName} <span className="text-gray-500 font-normal text-[11px]">({req.requesterEmail})</span>
-            </span>
+            {req.consent?.confirmed && (
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-sky-100 text-sky-900 border border-sky-300 shrink-0 flex items-center gap-0.5">
+                <span>🤝</span>
+                <span>양해 확인됨</span>
+              </span>
+            )}
           </div>
 
           <span className="text-[11px] text-gray-400 shrink-0">
@@ -499,6 +506,30 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
             </div>
           )}
         </div>
+
+        {/* 양해 상세 정보 줄 */}
+        {req.consent?.confirmed && (
+          <div className="mt-1 bg-sky-50/80 border border-sky-200 rounded p-2 text-[11px] text-sky-950 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-extrabold text-sky-900 flex items-center gap-1">
+              <span>🤝 사전 양해 확인됨</span>
+              {req.consent.confirmedAt && (
+                <span className="text-[10px] text-sky-600 font-normal">
+                  ({formatShortDate(req.consent.confirmedAt)})
+                </span>
+              )}
+            </span>
+            {req.consent.parties && req.consent.parties.length > 0 && (
+              <span>
+                <b>양해 당사자:</b> {req.consent.parties.map((p) => `${p.name} 선생님`).join(", ")}
+              </span>
+            )}
+            {req.consent.note && (
+              <span className="bg-white/80 px-2 py-0.5 rounded border border-sky-200 text-sky-900 font-medium">
+                메모: {req.consent.note}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* 성립 불가 경고 줄 */}
         {invalid && (

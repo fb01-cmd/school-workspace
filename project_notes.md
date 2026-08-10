@@ -68,6 +68,7 @@
 
 
 
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2667,3 +2668,15 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - UI 완료 보고 받으면: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 양해 개방 Phase 1 UI 구현했다 함 — 스펙 §3-2 대비 항목별 diff 검수해줘."*
 - Phase 2 착수: *"project_notes.md 마지막 체크포인트 읽어줘. 양해 개방 Phase 2(교사 체인 chain_search+chain 신청 타입) 서버부 구현하자."*
+
+## [2026-08-10] Antigravity → Claude
+- 요약: 양해 개방 Phase 1 UI 구현 완료 (후보 이원화·양해 확인 다이얼로그·🤝 양해 확인됨 배지·조율 당사자 양해 카드 변형)
+- 검증 상태: tsc ✅ / build ✅
+- 변경 파일:
+  - `src/lib/timetable/utils.ts`
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`
+  - `src/components/admin/timetable/DirectSubstituteTab.tsx`
+  - `src/components/admin/timetable/SwapRequestLedgerTab.tsx`
+  - `src/components/admin/timetable/OffscreenShareCard.tsx`
+- 다음 할 일: Claude 표적 리뷰 및 Phase 1 UI 항목별 diff 검수
+
