@@ -484,6 +484,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               counterpartSubjectName: sc.counterpartSubjectName,
               score: sc.score,
               penalties: sc.penalties,
+              coordination: sc.coordination, // 조율 필요 표시 보존 — 임시저장함·일괄 제출 양해 흐름의 재료
             },
             reason: reason,
             conditional: !!sc.conditional,
@@ -607,6 +608,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
           },
           candidate,
           reason,
+          // 조율 필요 후보는 양해 확인 필수 — 서버가 coordination 재계산으로 판정·명단 도출
+          ...(swapC.coordination
+            ? { consent: { confirmed: consentConfirmed, note: consentNote.trim() || undefined } }
+            : {}),
         }),
       });
       if (res.ok) {

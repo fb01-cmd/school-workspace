@@ -2680,3 +2680,14 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   - `src/components/admin/timetable/OffscreenShareCard.tsx`
 - 다음 할 일: Claude 표적 리뷰 및 Phase 1 UI 항목별 diff 검수
 
+
+## [2026-08-10] 양해 개방 Phase 1 UI 표적 검수 — 부분 통과 (치명 1건 포함 Claude 직접 수정 3건, UX 4건 Antigravity 반려)
+
+- **통과**: ④ 공유 카드 조율 당사자 변형(수신자 관점·문구 스펙 반영) ✓ / ③ 요청대장 🤝 배지+당사자·메모·시각 ✓ / ② 다이얼로그 UI·버튼 가드 ✓ / 직권 단건 consent 전송 ✓.
+- **Claude 직접 수정 3건 (기계적)**: ① `handleSingleSubmit` body에 consent 미전송 — 체크해도 서버 400, **조율 후보 신청 100% 실패였음** (커밋 메시지 "body.consent 전송"은 직권 단건에만 사실 — 핸드오버 과장 재발 부류, diff 대조로 검출) ② 그리드 클릭 draft 조립에 coordination 누락(임시저장함 양해 흐름 재료 소실) ③ 직권 cart 조립에 coordination 누락. tsc·build ✅.
+- **Antigravity 반려 4건 (제출 다이얼로그 UX — 설계 방침 포함)**: ⓐ 인라인 그리드 조율 후보 구분 표시(🤝 배지 — 현재 깨끗한 후보와 동일 렌더) ⓑ 교사 일괄 제출(create_batch): 제출 확인 단계에서 조율 초안 목록 표시+양해 확인 체크 → `items[].consent` 전송 (**양해 수집 시점 = 제출 시**로 확정 — 클릭은 쌓고 양해는 나중이 실무 흐름) ⓒ 임시저장함 단건 제출(handleSubmitDraftConfirm) 확인 다이얼로그에 양해 블록+consent 전송 ⓓ 직권 일괄 반영 다이얼로그도 동일(items[].consent) + 내 신청 내역 카드 🤝 배지(커밋 메시지 주장과 달리 미구현). 반려분 완료 전까지 조율 후보는 **단건 경로(교사 신청·직권 단건)로만 작동** — 일괄 경로는 서버가 항목별 사유로 거부(무결성 훼손 없음).
+- 실기기 확인 항목(사용자·Antigravity): 조율 후보 단건 신청 1회(체크→접수→요청대장 배지→승인→당사자 DM 수신).
+
+### 재개 문구
+- 반려분 완료 보고 받으면: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 양해 개방 Phase 1 UI 반려 4건 반영했다 함 — items[].consent 전송 중심으로 diff 검수해줘."*
+- Phase 2 착수: *"project_notes.md 마지막 체크포인트 읽어줘. 양해 개방 Phase 2(교사 체인 chain_search+chain 신청 타입) 서버부 구현하자."*
