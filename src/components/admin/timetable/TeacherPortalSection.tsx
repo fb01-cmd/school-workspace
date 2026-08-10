@@ -971,6 +971,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                     let badgeStyle = "bg-emerald-100 border-emerald-300 text-emerald-950";
                                     if (cpScore >= 3) badgeStyle = "bg-rose-100 border-rose-300 text-rose-950";
                                     else if (cpScore >= 1) badgeStyle = "bg-amber-100 border-amber-300 text-amber-950";
+                                    // 조율 필요 후보는 감점 색과 별개의 구분(점선 테두리) — 클릭 전 인지가 목적 (spec §3-2 ①)
+                                    if (isCoordination) badgeStyle = "bg-amber-50 border-amber-400 border-dashed text-amber-950";
 
                                     const isSavingThis = savingDraft && applyingCandidate === candidate;
 
@@ -996,10 +998,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                         ) : (
                                           <>
                                             <div className="font-extrabold text-xs truncate">
-                                              {candidate.conditional ? "⏳ " : ""}{candidate.counterpartName}
+                                              {isCoordination ? "🤝 " : ""}{candidate.conditional ? "⏳ " : ""}{candidate.counterpartName}
                                             </div>
                                             <div className="text-[10px] font-black underline mt-0.5">
-                                              {cpScore === 0 ? "✓ 0점" : `⚠ ${cpScore}점`}
+                                              {isCoordination ? "양해 필요" : cpScore === 0 ? "✓ 0점" : `⚠ ${cpScore}점`}
                                             </div>
                                           </>
                                         )}

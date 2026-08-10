@@ -2701,3 +2701,13 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   - `src/components/admin/timetable/TeacherPortalSection.tsx`
   - `src/components/admin/timetable/DirectSubstituteTab.tsx`
 - 다음 할 일: Claude 표적 검수 및 items[].consent 전송 중심 검증
+
+## [2026-08-10] 양해 개방 Phase 1 UI 반려 4건 검수 — 통과 (경미 1건 Claude 직접 수정)
+
+- **items[].consent 중심 검수 결과**: ⓑ 교사 일괄 2경로(상단·탭 내) 모두 조율 초안 존재 시 양해 모달(목록·당사자·필수 체크) → 조율 항목에만 `consent:{confirmed,note}` 부착 ✓, 체크 전 버튼 disabled ✓ ⓒ 임시저장 단건 다이얼로그 양해 블록+가드+consent ✓ ⓓ 직권 일괄 동일 패턴(cartBatchModal) ✓ + 내 신청 내역 🤝 배지·상세 ✓. `confirmed:true` 하드코딩은 전부 모달 게이트 뒤라 안전. 서버가 재계산 기준으로 판정하므로 낡은 초안(깨끗→조율 전환)도 항목별 사유로 안전 거부.
+- **회귀 대조(고정 항목)**: 직전 cbd5afd 수정 3건(단건 consent·초안/cart coordination 보존) 전부 생존 ✓ — 404줄 재작성에서 소실 없음.
+- **Claude 직접 수정 1건**: ⓐ 교사 포털 인라인 셀 🤝가 툴팁에만 있고 셀 본문·색 구분 없음(직권 탭은 완료와 대조) → 이름 앞 🤝 + "양해 필요" 라벨 + 점선 amber 스타일. tsc·build ✅.
+- **Phase 1 완결**: 조율 필요 후보의 전 경로(단건·일괄·초안·직권) 작동. 실기기 확인(사용자): 조율 후보 표시(점선 🤝)→단건 신청→요청대장 배지→승인→당사자 DM 1회.
+
+### 재개 문구
+- Phase 2 착수: *"project_notes.md 마지막 체크포인트 읽어줘. 양해 개방 Phase 2(교사 체인 chain_search+chain 신청 타입) 서버부 구현하자."*
