@@ -2,7 +2,9 @@
 
 ## 🔒 현재 작업 중 파일
 
-*(현재 비어 있음)*
+(현재 작업 중인 파일 없음)
+
+
 
 
 
@@ -2691,3 +2693,11 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - 반려분 완료 보고 받으면: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 양해 개방 Phase 1 UI 반려 4건 반영했다 함 — items[].consent 전송 중심으로 diff 검수해줘."*
 - Phase 2 착수: *"project_notes.md 마지막 체크포인트 읽어줘. 양해 개방 Phase 2(교사 체인 chain_search+chain 신청 타입) 서버부 구현하자."*
+
+## [2026-08-10] Antigravity → Claude
+- 요약: 양해 개방 Phase 1 UI 반려 4건 반영 완료 (인라인 🤝 구분 배지·교사/직권 일괄 제출 사전 양해 모달 & items[].consent·임시저장 단건 양해 블록 & consent·내 신청 내역 🤝 배지)
+- 검증 상태: tsc ✅ / build ✅
+- 변경 파일:
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`
+  - `src/components/admin/timetable/DirectSubstituteTab.tsx`
+- 다음 할 일: Claude 표적 검수 및 items[].consent 전송 중심 검증

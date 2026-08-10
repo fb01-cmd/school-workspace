@@ -629,19 +629,33 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     } catch (err: any) { alert(`양해 이미지 생성 실패: ${err.message}`); setGeneratingShareFor(null); }
   };
 
-  const handleBatchCommit = async () => {
-    if (cartItems.length === 0) { setSubmitError("담긴 항목이 없습니다."); return; }
-    if (reasonType === "기타" && !reasonNote.trim()) { setSubmitError("사유가 '기타'인 경우 상세 메모를 입력해 주세요."); return; }
-    if (!confirm(`담긴 ${cartItems.length}건의 직권 배정/수업교환을 승인 및 일괄 반영하시겠습니까?`)) return;
+  const [cartBatchModalOpen, setCartBatchModalOpen] = useState(false);
+  const [cartBatchConsentConfirmed, setCartBatchConsentConfirmed] = useState(false);
+  const [cartBatchConsentNote, setCartBatchConsentNote] = useState("");
+
+  const executeBatchCommit = async (consentNoteInput?: string) => {
     setSubmitting(true); setSubmitError(null);
     try {
-      const payload = { action: "direct_commit_batch", items: cartItems.map((item) => ({ weekId: item.weekId, ...(item.targetWeekId ? { targetWeekId: item.targetWeekId } : {}), type: item.type, source: item.source, candidate: item.candidate, reason: { type: reasonType, note: reasonNote.trim() || undefined } })), reason: { type: reasonType, note: reasonNote.trim() || undefined } };
+      const payload = {
+        action: "direct_commit_batch",
+        items: cartItems.map((item) => ({
+          weekId: item.weekId,
+          ...(item.targetWeekId ? { targetWeekId: item.targetWeekId } : {}),
+          type: item.type,
+          source: item.source,
+          candidate: item.candidate,
+          reason: { type: reasonType, note: reasonNote.trim() || undefined },
+          consent: item.candidate?.coordination
+            ? { confirmed: true, note: consentNoteInput || undefined }
+            : undefined,
+        })),
+        reason: { type: reasonType, note: reasonNote.trim() || undefined },
+      };
       const res = await fetch("/api/timetable/manage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "일괄 반영 처리 중 오류가 발생했습니다.");
       const results: DirectCommitBatchItemResult[] = data.results || [];
       const successIndices = new Set(results.filter((r) => r.ok).map((r) => r.index));
-      // 실패 항목의 오류 사유는 원본 배열 인덱스로 대조해야 함 — filter 후 인덱스는 어긋난다
       const remainingCart = cartItems
         .map((item, origIdx) => ({ item, origIdx }))
         .filter(({ origIdx }) => !successIndices.has(origIdx))
@@ -652,9 +666,25 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       setSuccessMsg(`⚡ 일괄 반영 완료! (성공 ${successCount}건${failCount > 0 ? `, 실패 ${failCount}건` : ""})`);
       const affectedWeeks = Array.from(new Set(cartItems.filter((_, idx) => successIndices.has(idx)).flatMap((item) => [item.weekId, item.targetWeekId].filter(Boolean) as string[])));
       setRecentlyUpdatedWeeks(affectedWeeks);
-      // 성공분은 실 반영됐으므로 남은(실패) 항목만 가상 적용해 갱신 — 구 cartItems를 넘기면 이중 반영된다
+      setCartBatchModalOpen(false);
       if (selectedTeacherEmail) await fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, remainingCart);
     } catch (err: any) { setSubmitError(err.message || "일괄 반영 실패"); } finally { setSubmitting(false); }
+  };
+
+  const handleBatchCommit = async () => {
+    if (cartItems.length === 0) { setSubmitError("담긴 항목이 없습니다."); return; }
+    if (reasonType === "기타" && !reasonNote.trim()) { setSubmitError("사유가 '기타'인 경우 상세 메모를 입력해 주세요."); return; }
+
+    const hasCoordination = cartItems.some((item) => !!item.candidate?.coordination);
+    if (hasCoordination) {
+      setCartBatchModalOpen(true);
+      setCartBatchConsentConfirmed(false);
+      setCartBatchConsentNote("");
+      return;
+    }
+
+    if (!confirm(`담긴 ${cartItems.length}건의 직권 배정/수업교환을 승인 및 일괄 반영하시겠습니까?`)) return;
+    executeBatchCommit();
   };
 
   const [consentConfirmed, setConsentConfirmed] = useState(false);
@@ -850,7 +880,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                     ) : inlineCand ? (
                                       <button type="button" onClick={() => handleSelectCandidate(inlineCand, w.id, w.startDate)} className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${activeCandidateType === "swap" && selectedCandidate?.targetWeekId === w.id && selectedCandidate?.targetDay === inlineCand.targetDay && selectedCandidate?.targetPeriod === inlineCand.targetPeriod && selectedCandidate?.counterpartEmail === inlineCand.counterpartEmail ? "bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-300 scale-[1.02]" : "bg-emerald-50 hover:bg-emerald-100/90 border-emerald-300 hover:border-emerald-500 text-emerald-950 shadow-2xs"}`}>
                                         <div className="flex items-center justify-between gap-1">
-                                          <span className="font-black text-[11px] truncate">{inlineCand.counterpartName}</span>
+                                          <span className="font-black text-[11px] truncate flex items-center gap-0.5">{inlineCand.coordination && <span>🤝</span>}<span>{inlineCand.counterpartName}</span></span>
                                           <span className={`px-1 py-0.5 rounded text-[9px] font-extrabold shrink-0 ${inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0) ? "bg-amber-100 text-amber-900 border border-amber-300" : "bg-emerald-200 text-emerald-900"}`}>{inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0) ? `감점 ${inlineCand.score}` : "0점"}</span>
                                         </div>
                                         <div className="text-[10px] mt-0.5 font-bold truncate text-emerald-800">{inlineCand.counterpartSubjectName}</div>
@@ -1256,6 +1286,94 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                 </div>
               </div>
             ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* ⚡ 직권 일괄 반영 사전 양해 확인 모달 (반려 4건 반영) */}
+      {cartBatchModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-lg p-6 space-y-4 max-h-[90vh] flex flex-col">
+            <div className="border-b border-gray-100 pb-3 flex items-center justify-between shrink-0">
+              <h4 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
+                <span>🤝 직권 일괄 반영 사전 양해 확인</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setCartBatchModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto space-y-3 pr-1 shrink">
+              <div className="text-xs font-semibold text-gray-700">
+                담김 목록 <strong>{cartItems.length}건</strong> 중 사전 장소 양해가 필요한 교환 건이 포함되어 있습니다.
+              </div>
+
+              {cartItems
+                .filter((item) => !!item.candidate?.coordination)
+                .map((item, i) => (
+                  <div key={item.id || i} className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-1.5 text-xs">
+                    <div className="font-extrabold text-amber-950 flex items-center justify-between">
+                      <span>🔄 {item.source.subjectName}({item.source.grade}-{item.source.classNum}) ↔ {item.candidate.counterpartName} 선생님</span>
+                      <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-bold">장소 조율</span>
+                    </div>
+                    <div className="text-amber-900 text-xs font-semibold">
+                      {formatCoordinationText(item.candidate.coordination)}
+                    </div>
+                    <div className="text-[11px] text-gray-800 font-bold">
+                      👥 양해 당사자:{" "}
+                      <span className="text-indigo-900">
+                        {getCoordinationOccupants(item.candidate.coordination)
+                          .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
+                          .join(", ")}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+
+              <div className="pt-2 border-t border-gray-100 space-y-2">
+                <label className="flex items-start gap-2 cursor-pointer bg-amber-50 p-2.5 rounded-lg border border-amber-300 shadow-2xs">
+                  <input
+                    type="checkbox"
+                    checked={cartBatchConsentConfirmed}
+                    onChange={(e) => setCartBatchConsentConfirmed(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                  />
+                  <span className="text-xs font-bold text-gray-900">
+                    위 조율 건에 대해 해당 선생님들께 사전 양해를 완료하였습니다 (필수)
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={cartBatchConsentNote}
+                  onChange={(e) => setCartBatchConsentNote(e.target.value)}
+                  placeholder="일괄 양해 메모 (선택, 예: 직권 배정 장소 사용 양해 완료)"
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
+              <button
+                type="button"
+                onClick={() => setCartBatchModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => executeBatchCommit(cartBatchConsentNote.trim())}
+                disabled={submitting || !cartBatchConsentConfirmed}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                {submitting ? "일괄 반영 중..." : `양해 확인 및 ${cartItems.length}건 직권 반영`}
+              </button>
+            </div>
           </div>
         </div>
       )}

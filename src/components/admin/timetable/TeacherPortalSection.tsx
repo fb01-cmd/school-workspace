@@ -162,10 +162,18 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [reason, setReason] = useState<SwapRequestReason>({ type: "출장" });
   const [batchReason, setBatchReason] = useState<SwapRequestReason>({ type: "출장" });
 
+  // 임시저장함 단건/일괄 신청 양해 확인 상태 (반려 4건 반영)
+  const [draftConsentConfirmed, setDraftConsentConfirmed] = useState(false);
+  const [draftConsentNote, setDraftConsentNote] = useState("");
+  const [batchConfirmingDrafts, setBatchConfirmingDrafts] = useState<SwapDraft[] | null>(null);
+  const [batchConsentConfirmed, setBatchConsentConfirmed] = useState(false);
+  const [batchConsentNote, setBatchConsentNote] = useState("");
+
   useEffect(() => {
     setConsentConfirmed(false);
     setConsentNote("");
   }, [applyingCandidate]);
+
 
   const [submitting, setSubmitting] = useState(false);
   const [submittingBatch, setSubmittingBatch] = useState(false);
@@ -508,6 +516,50 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     }
   };
 
+  const executeCreateBatchFromHeader = async (itemsToSubmit: SwapDraft[], consentNoteInput?: string) => {
+    setSubmittingBatch(true);
+    setSubmitResult(null);
+
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_batch",
+          items: itemsToSubmit.map((d) => ({
+            draftId: d.id,
+            weekId: d.sourceWeekId,
+            targetWeekId: d.targetWeekId,
+            type: "swap",
+            source: d.source,
+            candidate: d.candidate,
+            consent: d.candidate?.coordination
+              ? { confirmed: true, note: consentNoteInput || undefined }
+              : undefined,
+          })),
+          reason: batchReason,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const okCount = data.createdCount || 0;
+        const results: SwapBatchItemResult[] = data.results || [];
+        const failCount = results.filter((r) => !r.ok).length;
+
+        setSubmitResult(`🚀 ${okCount}건의 수업교환 신청이 성공적으로 일괄 접수되었습니다.${failCount > 0 ? ` (${failCount}건 거부됨)` : ""}`);
+        await fetchMyProjected();
+        setBatchConfirmingDrafts(null);
+      } else {
+        setSubmitResult(`❌ 일괄 신청 실패: ${data.error || "알 수 없는 오류"}`);
+      }
+    } catch (e: any) {
+      setSubmitResult(`❌ 오류: ${e.message}`);
+    } finally {
+      setSubmittingBatch(false);
+    }
+  };
+
   // 상단 일괄 제출 (create_batch -> my_projected 갱신)
   const handleBatchSubmitFromHeader = async () => {
     if (batchReason.type === "기타" && !batchReason.note?.trim()) {
@@ -529,45 +581,21 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         return;
       }
 
+      const hasCoordination = activeDrafts.some((d) => !!d.candidate?.coordination);
+      if (hasCoordination) {
+        setBatchConfirmingDrafts(activeDrafts);
+        setBatchConsentConfirmed(false);
+        setBatchConsentNote("");
+        return;
+      }
+
       if (!confirm(`등록된 주간 전체의 임시저장 초안 ${activeDrafts.length}건을 한 번에 일괄 신청(일과계 제출)하시겠습니까?`)) {
         return;
       }
 
-      setSubmittingBatch(true);
-      setSubmitResult(null);
-
-      const res = await fetch("/api/timetable/requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create_batch",
-          items: activeDrafts.map((d) => ({
-            draftId: d.id,
-            weekId: d.sourceWeekId,
-            targetWeekId: d.targetWeekId,
-            type: "swap",
-            source: d.source,
-            candidate: d.candidate,
-          })),
-          reason: batchReason,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        const okCount = data.createdCount || 0;
-        const results: SwapBatchItemResult[] = data.results || [];
-        const failCount = results.filter((r) => !r.ok).length;
-
-        setSubmitResult(`🚀 ${okCount}건의 수업교환 신청이 성공적으로 일괄 접수되었습니다.${failCount > 0 ? ` (${failCount}건 거부됨)` : ""}`);
-        await fetchMyProjected();
-      } else {
-        setSubmitResult(`❌ 일괄 신청 실패: ${data.error || "알 수 없는 오류"}`);
-      }
+      executeCreateBatchFromHeader(activeDrafts);
     } catch (e: any) {
       setSubmitResult(`❌ 오류: ${e.message}`);
-    } finally {
-      setSubmittingBatch(false);
     }
   };
 
@@ -930,11 +958,15 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                 ) : candidate ? (
                                   /* §14-2 v2.1: 공강 칸 인라인 후보 카딩 (클릭 = draft_save 실행) */
                                   (() => {
+                                    const isCoordination = !!candidate.coordination;
+                                    const coordText = isCoordination ? formatCoordinationText(candidate.coordination) : "";
                                     const cpScore = candidate.counterpartScore ?? 0;
                                     const counterpartPenalties = (candidate.penaltyDetails || []).filter((p) => p.scope === "counterpart");
-                                    const tooltipText = `[${candidate.counterpartSubjectName}] ${candidate.counterpartName} 교사 · 상대 감점 ${cpScore}점${
-                                      counterpartPenalties.length > 0 ? ` (${counterpartPenalties.map((p) => p.text).join(", ")})` : ""
-                                    }${candidate.conditional ? " · ⏳ 조건부 — 내 대기 신청 승인 전제" : ""}`;
+                                    const tooltipText = isCoordination
+                                      ? `🤝 [양해 필요 후보] ${coordText}`
+                                      : `[${candidate.counterpartSubjectName}] ${candidate.counterpartName} 교사 · 상대 감점 ${cpScore}점${
+                                          counterpartPenalties.length > 0 ? ` (${counterpartPenalties.map((p) => p.text).join(", ")})` : ""
+                                        }${candidate.conditional ? " · ⏳ 조건부 — 내 대기 신청 승인 전제" : ""}`;
 
                                     let badgeStyle = "bg-emerald-100 border-emerald-300 text-emerald-950";
                                     if (cpScore >= 3) badgeStyle = "bg-rose-100 border-rose-300 text-rose-950";
@@ -1183,6 +1215,91 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       {/* 오프스크린 사전 양해 공유 카드 DOM (클립보드 복사용) */}
       <OffscreenShareCard cardRef={shareCardRef} data={shareCardData} />
       <OffscreenConsolidatedShareCard cardRef={consolidatedCardRef} data={consolidatedData} />
+
+      {/* 🚀 상단 일괄 제출 사전 양해 확인 모달 (반려 4건 반영) */}
+      {batchConfirmingDrafts && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-lg p-6 space-y-4 max-h-[90vh] flex flex-col">
+            <div className="border-b border-gray-100 pb-3 flex items-center justify-between shrink-0">
+              <h4 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
+                <span>🤝 일괄 신청 사전 양해 확인</span>
+              </h4>
+              <button
+                onClick={() => setBatchConfirmingDrafts(null)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto space-y-3 pr-1 shrink">
+              <div className="text-xs font-semibold text-gray-700">
+                신청 대상 초안 <strong>{batchConfirmingDrafts.length}건</strong> 중 사전 장소 양해가 필요한 교환 건이 포함되어 있습니다.
+              </div>
+
+              {batchConfirmingDrafts
+                .filter((d) => !!d.candidate?.coordination)
+                .map((d, i) => (
+                  <div key={d.id || i} className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-1.5 text-xs">
+                    <div className="font-extrabold text-amber-950 flex items-center justify-between">
+                      <span>🔄 {d.source.subjectName}({d.source.grade}-{d.source.classNum}) ↔ {d.candidate.counterpartName} 선생님</span>
+                      <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-bold">장소 조율</span>
+                    </div>
+                    <div className="text-amber-900 text-xs font-semibold">
+                      {formatCoordinationText(d.candidate.coordination)}
+                    </div>
+                    <div className="text-[11px] text-gray-800 font-bold">
+                      👥 양해 당사자:{" "}
+                      <span className="text-indigo-900">
+                        {getCoordinationOccupants(d.candidate.coordination)
+                          .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
+                          .join(", ")}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+
+              <div className="pt-2 border-t border-gray-100 space-y-2">
+                <label className="flex items-start gap-2 cursor-pointer bg-amber-50 p-2.5 rounded-lg border border-amber-300 shadow-2xs">
+                  <input
+                    type="checkbox"
+                    checked={batchConsentConfirmed}
+                    onChange={(e) => setBatchConsentConfirmed(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                  />
+                  <span className="text-xs font-bold text-gray-900">
+                    위 조율 건에 대해 해당 선생님들께 사전 양해를 완료하였습니다 (필수)
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={batchConsentNote}
+                  onChange={(e) => setBatchConsentNote(e.target.value)}
+                  placeholder="일괄 양해 메모 (선택, 예: 특별실 사용 양해 완료)"
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
+              <button
+                onClick={() => setBatchConfirmingDrafts(null)}
+                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => executeCreateBatchFromHeader(batchConfirmingDrafts, batchConsentNote.trim())}
+                disabled={submittingBatch || !batchConsentConfirmed}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                {submittingBatch ? "일괄 제출 중..." : `양해 확인 및 ${batchConfirmingDrafts.length}건 일괄 신청`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1307,22 +1424,19 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
       setDraftsLoading(false);
     }
   }, []);
+  // 단건/일괄 제출 사전 양해 확인 상태 (반려 4건 반영)
+  const [draftConsentConfirmed, setDraftConsentConfirmed] = useState(false);
+  const [draftConsentNote, setDraftConsentNote] = useState("");
+  const [batchConfirmingDrafts, setBatchConfirmingDrafts] = useState<SwapDraft[] | null>(null);
+  const [batchConsentConfirmed, setBatchConsentConfirmed] = useState(false);
+  const [batchConsentNote, setBatchConsentNote] = useState("");
 
-  const handleBatchSubmit = async () => {
-    const itemsToSubmit = drafts.filter((d) => selectedDraftIds.includes(d.id));
-    if (itemsToSubmit.length === 0) {
-      alert("일괄 제출할 초안 항목을 선택해 주세요.");
-      return;
-    }
-    if (batchReason.type === "기타" && !batchReason.note?.trim()) {
-      alert("신청 사유(기타) 상세 내용을 입력해 주세요.");
-      return;
-    }
+  useEffect(() => {
+    setDraftConsentConfirmed(false);
+    setDraftConsentNote("");
+  }, [confirmingDraft]);
 
-    if (!confirm(`선택한 ${itemsToSubmit.length}건의 수업교환 초안을 한 번에 일괄 신청(일과계 제출)하시겠습니까?`)) {
-      return;
-    }
-
+  const executeCreateBatchInTab = async (itemsToSubmit: SwapDraft[], consentNoteInput?: string) => {
     setSubmittingBatch(true);
     setSuccessMsg(null);
     setError(null);
@@ -1340,6 +1454,9 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
             type: "swap",
             source: d.source,
             candidate: d.candidate,
+            consent: d.candidate?.coordination
+              ? { confirmed: true, note: consentNoteInput || undefined }
+              : undefined,
           })),
           reason: batchReason,
         }),
@@ -1371,6 +1488,7 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
 
         fetchDrafts();
         fetchMyList();
+        setBatchConfirmingDrafts(null);
       } else {
         setError(data.error || "일괄 신청 처리에 실패했습니다.");
       }
@@ -1379,6 +1497,32 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
     } finally {
       setSubmittingBatch(false);
     }
+  };
+
+  const handleBatchSubmit = async () => {
+    const itemsToSubmit = drafts.filter((d) => selectedDraftIds.includes(d.id));
+    if (itemsToSubmit.length === 0) {
+      alert("일괄 제출할 초안 항목을 선택해 주세요.");
+      return;
+    }
+    if (batchReason.type === "기타" && !batchReason.note?.trim()) {
+      alert("신청 사유(기타) 상세 내용을 입력해 주세요.");
+      return;
+    }
+
+    const hasCoordination = itemsToSubmit.some((d) => !!d.candidate?.coordination);
+    if (hasCoordination) {
+      setBatchConfirmingDrafts(itemsToSubmit);
+      setBatchConsentConfirmed(false);
+      setBatchConsentNote("");
+      return;
+    }
+
+    if (!confirm(`선택한 ${itemsToSubmit.length}건의 수업교환 초안을 한 번에 일괄 신청(일과계 제출)하시겠습니까?`)) {
+      return;
+    }
+
+    executeCreateBatchInTab(itemsToSubmit);
   };
 
   useEffect(() => {
@@ -1412,6 +1556,12 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
   const handleSubmitDraftConfirm = async () => {
     if (!confirmingDraft) return;
     const draft = confirmingDraft;
+    const isCoordination = !!draft.candidate?.coordination;
+    if (isCoordination && !draftConsentConfirmed) {
+      alert("당사자 사전 양해 확인란을 체크해 주세요.");
+      return;
+    }
+
     setSubmittingDraftId(draft.id);
     setSuccessMsg(null);
     try {
@@ -1426,6 +1576,9 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
           source: draft.source,
           candidate: draft.candidate,
           reason: draftReason,
+          consent: isCoordination
+            ? { confirmed: true, note: draftConsentNote.trim() || undefined }
+            : undefined,
         }),
       });
       if (res.ok) {
@@ -1647,6 +1800,12 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                 ? "↔️ 맞교환"
                 : "👤 보강"}
             </span>
+            {req.consent?.confirmed && (
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 shrink-0 flex items-center gap-0.5">
+                <span>🤝</span>
+                <span>양해 확인됨</span>
+              </span>
+            )}
           </div>
 
           <span className="text-[11px] text-gray-400 shrink-0">
@@ -1721,6 +1880,26 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
             </button>
           )}
         </div>
+
+        {/* 3줄째: 사전 양해 상세 정보 */}
+        {req.consent?.confirmed && (
+          <div className="text-[11px] bg-amber-50/80 border border-amber-200 rounded-lg p-2 space-y-0.5 text-amber-950 font-medium mt-1">
+            <div className="font-bold flex items-center gap-1 text-amber-900">
+              <span>🤝 당사자 사전 양해 확인 완료</span>
+              {req.consent.confirmedAt && (
+                <span className="text-[10px] text-amber-700 font-normal">
+                  ({new Date(req.consent.confirmedAt).toLocaleDateString("ko-KR")} {new Date(req.consent.confirmedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })})
+                </span>
+              )}
+            </div>
+            {req.consent.parties && req.consent.parties.length > 0 && (
+              <div>
+                • 양해 당사자: {req.consent.parties.map((p) => `${p.name} 선생님`).join(", ")}
+              </div>
+            )}
+            {req.consent.note && <div>• 양해 메모: {req.consent.note}</div>}
+          </div>
+        )}
       </div>
     );
   };
@@ -1955,6 +2134,52 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
               </div>
             </div>
 
+            {confirmingDraft.candidate?.coordination && (
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 space-y-2 text-xs">
+                <div className="font-extrabold text-amber-950 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <span>🤝</span>
+                    <span>양해가 필요한 후보</span>
+                  </span>
+                  <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-black">
+                    장소 조율 필요
+                  </span>
+                </div>
+                <div className="text-amber-900 text-xs leading-relaxed font-semibold">
+                  {formatCoordinationText(confirmingDraft.candidate.coordination)}
+                </div>
+                <div className="pt-2 border-t border-amber-200 space-y-2">
+                  <div className="font-bold text-gray-800 text-[11px]">
+                    👥 양해 필요 당사자:{" "}
+                    <span className="text-indigo-900 font-extrabold">
+                      {getCoordinationOccupants(confirmingDraft.candidate.coordination)
+                        .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
+                        .join(", ")}
+                    </span>
+                  </div>
+                  <label className="flex items-start gap-2 cursor-pointer bg-white p-2 rounded-lg border border-amber-300 shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={draftConsentConfirmed}
+                      onChange={(e) => setDraftConsentConfirmed(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                    />
+                    <span className="text-xs font-bold text-gray-900">
+                      위 선생님들께 사전 양해를 받았습니다 (필수)
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={200}
+                    value={draftConsentNote}
+                    onChange={(e) => setDraftConsentNote(e.target.value)}
+                    placeholder="양해 메모 (선택, 예: 체육관 합반으로 양해)"
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-800">신청 사유 선택 (필수)</label>
               <select
@@ -1986,10 +2211,99 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
               </button>
               <button
                 onClick={handleSubmitDraftConfirm}
-                disabled={submittingDraftId === confirmingDraft.id || (draftReason.type === "기타" && !draftReason.note?.trim())}
+                disabled={
+                  submittingDraftId === confirmingDraft.id ||
+                  (draftReason.type === "기타" && !draftReason.note?.trim()) ||
+                  (!!confirmingDraft.candidate?.coordination && !draftConsentConfirmed)
+                }
                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
               >
                 {submittingDraftId === confirmingDraft.id ? "신청 중..." : "확인 및 수업교환 신청"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 교사 일괄 제출 사전 양해 확인 모달 (반려 4건 반영) */}
+      {batchConfirmingDrafts && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-lg p-6 space-y-4 max-h-[90vh] flex flex-col">
+            <div className="border-b border-gray-100 pb-3 flex items-center justify-between shrink-0">
+              <h4 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
+                <span>🤝 일괄 신청 사전 양해 확인</span>
+              </h4>
+              <button
+                onClick={() => setBatchConfirmingDrafts(null)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto space-y-3 pr-1 shrink">
+              <div className="text-xs font-semibold text-gray-700">
+                신청 대상 초안 <strong>{batchConfirmingDrafts.length}건</strong> 중 사전 장소 양해가 필요한 교환 건이 포함되어 있습니다.
+              </div>
+
+              {batchConfirmingDrafts
+                .filter((d) => !!d.candidate?.coordination)
+                .map((d, i) => (
+                  <div key={d.id || i} className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-1.5 text-xs">
+                    <div className="font-extrabold text-amber-950 flex items-center justify-between">
+                      <span>🔄 {d.source.subjectName}({d.source.grade}-{d.source.classNum}) ↔ {d.candidate.counterpartName} 선생님</span>
+                      <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-bold">장소 조율</span>
+                    </div>
+                    <div className="text-amber-900 text-xs font-semibold">
+                      {formatCoordinationText(d.candidate.coordination)}
+                    </div>
+                    <div className="text-[11px] text-gray-800 font-bold">
+                      👥 양해 당사자:{" "}
+                      <span className="text-indigo-900">
+                        {getCoordinationOccupants(d.candidate.coordination)
+                          .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
+                          .join(", ")}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+
+              <div className="pt-2 border-t border-gray-100 space-y-2">
+                <label className="flex items-start gap-2 cursor-pointer bg-amber-50 p-2.5 rounded-lg border border-amber-300 shadow-2xs">
+                  <input
+                    type="checkbox"
+                    checked={batchConsentConfirmed}
+                    onChange={(e) => setBatchConsentConfirmed(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                  />
+                  <span className="text-xs font-bold text-gray-900">
+                    위 조율 건에 대해 해당 선생님들께 사전 양해를 완료하였습니다 (필수)
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={batchConsentNote}
+                  onChange={(e) => setBatchConsentNote(e.target.value)}
+                  placeholder="일괄 양해 메모 (선택, 예: 특별실 사용 양해 완료)"
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
+              <button
+                onClick={() => setBatchConfirmingDrafts(null)}
+                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => executeCreateBatchInTab(batchConfirmingDrafts, batchConsentNote.trim())}
+                disabled={submittingBatch || !batchConsentConfirmed}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                {submittingBatch ? "일괄 제출 중..." : `양해 확인 및 ${batchConfirmingDrafts.length}건 일괄 신청`}
               </button>
             </div>
           </div>
