@@ -52,6 +52,9 @@ export interface ConsolidatedShareData {
   netMoves?: ConsolidatedNetMove[];
   /** netMoves 경로에서 원 교환 항목 수 — 2건 이상이면 "단계적 반영·최종 결과 기준" 참고 문구 표시 */
   swapStepCount?: number;
+  /** §3-2d 후속 3: netMoves 경로의 특별실 겹침 요약 — netMoves엔 교환 항목의 coordination이
+   *  접혀 사라지고 items엔 보강만 실리므로, 조립측(직권 담기)이 교환 담기의 conflicts를 직접 동봉한다 */
+  coordinationConflicts?: CandidateCoordination["conflicts"];
   items: SwapDraft[] | Array<{
     id?: string;
     /** "substitute"면 보강 요청 서식 — 상대는 수업을 받기만 하므로 교환 문구를 쓰지 않는다 (2026-08-07) */
@@ -423,24 +426,21 @@ export function OffscreenConsolidatedCard({
                   ※ 여러 단계로 나뉘어 처리되는 교환이지만, 위 내용과 아래 시간표는 최종 결과 기준입니다.
                 </div>
               )}
-              {data.items.some((d: any) => d.candidate?.coordination?.conflicts?.length > 0) && (
+              {(data.coordinationConflicts?.length || 0) > 0 && (
                 <div className="bg-amber-50 border border-amber-300 rounded-lg p-2.5 space-y-1 text-amber-950 font-bold">
                   <div className="text-amber-900 font-extrabold text-[11px] flex items-center gap-1">
                     <span>⚠️</span>
                     <span>특별실 겹침 조율 경고</span>
                   </div>
-                  {data.items
-                    .filter((d: any) => d.candidate?.coordination?.conflicts?.length > 0)
-                    .map((d: any, idx: number) => {
-                      const conflict = d.candidate.coordination.conflicts[0];
-                      const slotStr = formatSlotWithDate(conflict.slot.weekId, conflict.slot.day, conflict.slot.period);
-                      const occStr = conflict.occupants.map((o: any) => `${o.teacherName} 선생님`).join(", ");
-                      return (
-                        <div key={idx} className="text-[11px] font-semibold text-amber-900">
-                          • {slotStr} {conflict.roomName} 사용 겹침 (사용 중: {occStr})
-                        </div>
-                      );
-                    })}
+                  {data.coordinationConflicts!.map((conflict, idx) => {
+                    const slotStr = formatSlotWithDate(conflict.slot.weekId, conflict.slot.day, conflict.slot.period);
+                    const occStr = conflict.occupants.map((o) => `${o.teacherName} 선생님`).join(", ");
+                    return (
+                      <div key={idx} className="text-[11px] font-semibold text-amber-900">
+                        • {slotStr} {conflict.roomName} 사용 겹침 (사용 중: {occStr})
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </>

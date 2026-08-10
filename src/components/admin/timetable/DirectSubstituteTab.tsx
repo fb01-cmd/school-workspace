@@ -621,6 +621,13 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         items: subItems.map((ci) => ({ id: ci.id, type: ci.type, sourceWeekId: ci.weekId, targetWeekId: ci.targetWeekId, source: ci.source, candidate: ci.candidate })),
         netMoves,
         swapStepCount: swapItemCount,
+        // 교환 담기의 특별실 겹침은 netMoves로 접히며 사라지므로 요약을 직접 동봉 (§3-2d 후속 3)
+        coordinationConflicts: (() => {
+          const conflicts = cartItems
+            .filter((ci) => ci.type !== "substitute")
+            .flatMap((ci) => ci.candidate?.coordination?.conflicts || []);
+          return conflicts.length > 0 ? conflicts : undefined;
+        })(),
         weekBlocks,
         periodsPerDay: 7,
       };
