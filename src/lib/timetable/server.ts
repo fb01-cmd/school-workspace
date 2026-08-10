@@ -1040,6 +1040,7 @@ import {
   TimetableWeek,
   WeekRegisterInput,
   WeeklyClassGrid,
+  WeeklyLesson,
   WeeklySynthesisResult,
 } from "./types";
 
@@ -3144,6 +3145,144 @@ export async function listSwapRequests(
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
+// ── 교사 체인 신청 (consent_swap_opening_spec §4-3) ───────────
+
+/** 체인 단계열의 동일성 서명 — computeChainSearch pushChain의 중복 키와 같은 형식 */
+function chainSignature(steps: ChainStepItem[]): string {
+  return steps
+    .map((s) => `${s.weekId}:${s.source.day}-${s.source.period}>${s.candidate.targetDay}-${s.candidate.targetPeriod}:${s.candidate.counterpartEmail}`)
+    .join("|");
+}
+
+/**
+ * 체인 신청 생성 — 후보 위조 차단을 위해 서버가 체인을 재탐색해 제출 단계열과 대조하고,
+ * **서버 계산 스냅샷**을 원장에 저장한다 (create 재검증과 같은 정신). 체인은 다른 교사 명의의
+ * 수업 이동을 포함하므로 관련 교사 전원의 양해(consent)가 필수 — parties는 서버 도출.
+ */
+export async function createChainSwapRequest(
+  domain: string,
+  requesterEmail: string,
+  params: {
+    weekId: string;
+    source: { grade: number; classNum: number; day: number; period: number };
+    chainTarget: { weekId?: string; day: number; period: number };
+    steps: ChainStepItem[];
+    reason?: SwapRequestReason;
+    consent?: SwapConsentInput;
+  },
+  options?: { skipManagerNotify?: boolean } // 검증 스크립트 전용 — 라우트는 항상 알림
+): Promise<SwapRequest> {
+  const reason = validateReason(params.reason);
+  const week = await loadWeek(domain, params.weekId);
+  if (!week) throw new Error(`등록되지 않은 주(${params.weekId})입니다.`);
+  if (!Array.isArray(params.steps) || params.steps.length < 1 || params.steps.length > 3)
+    throw new Error("체인 단계는 1~3단계여야 합니다.");
+
+  // 서버 재탐색 대조 — 소유 검증(requesterEmail)은 computeChainSearch가 수행
+  const search = await computeChainSearch(domain, {
+    weekId: params.weekId,
+    source: params.source,
+    target: params.chainTarget,
+    maxDepth: params.steps.length,
+    requesterEmail,
+  });
+  if (search.error) throw new Error(search.error);
+  const wanted = chainSignature(params.steps);
+  const serverChain = search.chains.find((c) => chainSignature(c.steps) === wanted);
+  if (!serverChain)
+    throw new Error("선택한 체인이 더 이상 유효하지 않습니다. 체인을 다시 탐색해 주세요.");
+
+  // 양해 필수 — 당사자 = 체인의 전 관련 교사 (단계 소스 담당 + 맞교환 상대, 본인 제외), 서버 도출
+  if (params.consent?.confirmed !== true)
+    throw new Error("체인 교체는 관련 선생님 전원의 양해가 필요합니다. 양해를 받은 뒤 확인란을 체크해 주세요.");
+  const me = requesterEmail.trim().toLowerCase();
+  const partyMap = new Map<string, string>();
+  for (const s of serverChain.steps) {
+    const src = s.sourceTeacherEmail.trim().toLowerCase();
+    if (src !== me && !partyMap.has(src)) partyMap.set(src, s.sourceTeacherName);
+    const cp = s.candidate.counterpartEmail.trim().toLowerCase();
+    if (cp !== me && !partyMap.has(cp)) partyMap.set(cp, s.candidate.counterpartName);
+  }
+  const consentNote = (params.consent.note || "").trim().slice(0, 200);
+  const consent: SwapConsent = {
+    confirmed: true,
+    parties: [...partyMap.entries()].map(([email, name]) => ({ email, name })),
+    ...(consentNote ? { note: consentNote } : {}),
+    confirmedAt: Date.now(),
+  };
+
+  // 같은 소스 셀 중복 PENDING 차단 (기존 create와 동일 규칙)
+  const dupSnap = await swapRequestsColRef(domain)
+    .where("weekId", "==", params.weekId)
+    .where("requesterEmail", "==", me)
+    .where("status", "==", "PENDING")
+    .get();
+  const dup = dupSnap.docs.some((d) => {
+    const s = (d.data() as SwapRequest).source;
+    return (
+      s.grade === params.source.grade && s.classNum === params.source.classNum &&
+      s.day === params.source.day && s.period === params.source.period
+    );
+  });
+  if (dup) throw new Error("같은 수업에 대해 이미 대기 중인 신청이 있습니다.");
+
+  const mover = search.sourceTeacher!;
+  const last = serverChain.steps[serverChain.steps.length - 1];
+  const targetWeekId =
+    params.chainTarget.weekId && params.chainTarget.weekId !== params.weekId
+      ? params.chainTarget.weekId
+      : undefined;
+  const ref = swapRequestsColRef(domain).doc();
+  const request: SwapRequest = {
+    id: ref.id,
+    termId: week.termId,
+    weekId: params.weekId,
+    type: "chain",
+    requesterEmail: me,
+    requesterName: mover.teacherName,
+    source: { ...params.source, subjectName: mover.subjectName },
+    // 사람용 요약 스냅샷 — 목적지 슬롯 + 마지막 단계 상대 (상세는 chainSteps)
+    candidate: {
+      targetDay: params.chainTarget.day,
+      targetPeriod: params.chainTarget.period,
+      ...(targetWeekId ? { targetWeekId } : {}),
+      counterpartEmail: last.candidate.counterpartEmail,
+      counterpartName: last.candidate.counterpartName,
+      score: serverChain.totalScore,
+      penalties: serverChain.steps.map((s) => s.stepSummary),
+    },
+    chainSteps: serverChain.steps,
+    chainTarget: {
+      ...(targetWeekId ? { weekId: targetWeekId } : {}),
+      day: params.chainTarget.day,
+      period: params.chainTarget.period,
+    },
+    reason,
+    status: "PENDING",
+    createdAt: Date.now(),
+    consent,
+  };
+  await ref.set(request);
+
+  // 일과계 알림 (기존 create와 동일 채널)
+  if (options?.skipManagerNotify) return request;
+  const settings = await loadTimetableSettings(domain);
+  const summary =
+    `📋 새 수업교환 신청 (🔗 징검다리 ${serverChain.steps.length}단계)\n` +
+    `신청자: ${mover.teacherName} (${me})\n` +
+    `${serverChain.summary}\n` +
+    `🤝 양해 확인됨: ${consent.parties.map((p) => p.name).join(", ")}${consent.note ? ` — ${consent.note}` : ""}\n` +
+    `사유: ${reason.type}${reason.note ? ` — ${reason.note}` : ""}`;
+  for (const manager of settings.managerEmails) {
+    try {
+      await sendGoogleChat(manager, summary);
+    } catch (e: any) {
+      console.error(`[chain_create] 일과계 알림 실패 (${manager}):`, e.message);
+    }
+  }
+  return request;
+}
+
 /**
  * 요청대장 사전 검증: PENDING 신청이 현재 확정 시간표 기준으로 여전히 성립하는지.
  * 승인 트랜잭션(approveSwapRequest)의 재검증과 같은 규칙을 목록 시점에 미리 돌려,
@@ -3192,6 +3331,12 @@ export async function validatePendingSwapRequests(
       }
       if (r.type === "substitute") {
         // 특별보강은 소스 수업 성립만 사전 확인 (보강 교사 가용성은 승인 트랜잭션에서 재검증)
+        out[r.id] = { ok: true };
+        continue;
+      }
+      if (r.type === "chain") {
+        // 체인은 단계별 가상 누적 위 재검증이 필요해(뒤 단계 소스가 앞 단계 이동 후 위치)
+        // 목록 시점엔 신청자 소스 성립(위에서 통과)까지만 — 전량 재검증은 승인 트랜잭션 몫 (§4-3)
         out[r.id] = { ok: true };
         continue;
       }
@@ -3261,7 +3406,8 @@ export async function cancelSwapRequest(
 export async function approveSwapRequest(
   domain: string,
   managerEmail: string,
-  requestId: string
+  requestId: string,
+  options?: { skipNotify?: boolean } // 검증 스크립트 전용 — 라우트·직권 경로는 항상 알림
 ): Promise<{ request: SwapRequest; change: TimetableChange }> {
   // 기초 그리드·설정·주는 승인 중 변하지 않으므로 트랜잭션 밖에서 읽는다.
   const reqSnapPre = await swapRequestsColRef(domain).doc(requestId).get();
@@ -3279,8 +3425,28 @@ export async function approveSwapRequest(
   if (isCross && !targetWeek)
     throw new Error(`등록되지 않은 주(${reqPre.targetWeekId})입니다. 대상 주 등록이 삭제되어 승인할 수 없습니다.`);
 
-  // 기초는 개정판 주차별 해석 (spec §E) — 교차 주는 두 주의 기초판이 다를 수 있다
-  const baseDates = [week.startDate, ...(targetWeek ? [targetWeek.startDate] : [])];
+  // 체인(consent_swap_opening_spec §4-3): 단계들이 걸치는 모든 주 문서를 트랜잭션 밖에서 로드
+  const chainWeekIds =
+    reqPre.type === "chain"
+      ? Array.from(new Set([
+          reqPre.weekId,
+          ...(reqPre.chainSteps || []).flatMap((s) => [s.weekId, ...(s.targetWeekId ? [s.targetWeekId] : [])]),
+        ]))
+      : [];
+  const chainWeeks = new Map<string, TimetableWeek>();
+  for (const wid of chainWeekIds) {
+    const w = wid === reqPre.weekId ? week : await loadWeek(domain, wid);
+    if (!w)
+      throw new Error(`등록되지 않은 주(${wid})입니다. 체인 대상 주 등록이 삭제되어 승인할 수 없습니다.`);
+    chainWeeks.set(wid, w);
+  }
+
+  // 기초는 개정판 주차별 해석 (spec §E) — 교차 주·체인은 주별 기초판이 다를 수 있다
+  const baseDates = [
+    week.startDate,
+    ...(targetWeek ? [targetWeek.startDate] : []),
+    ...[...chainWeeks.values()].map((w) => w.startDate),
+  ];
   const baseByWeekMap = await loadBaseGridsByWeek(domain, reqPre.termId, baseDates);
   const baseGrids = baseByWeekMap.get(week.startDate)!;
   const targetBaseGrids = targetWeek ? baseByWeekMap.get(targetWeek.startDate)! : null;
@@ -3314,6 +3480,221 @@ export async function approveSwapRequest(
     const { grids } = synthesizeWeeklyGrids(baseGrids, week, changes, settings);
     const src = resolveSourceLesson(grids, request.requesterEmail, request.source);
     if (!src.ok) throw new Error(`승인 불가 — ${src.error} 신청자의 재신청이 필요합니다.`);
+
+    // ── 체인 승인 (consent_swap_opening_spec §4-3): 단계 순차 재검증(가상 누적) → 전 단계
+    //    단일 트랜잭션 원자 커밋. 부분 성공 금지 — 체인은 단계 의존적이라 중간까지만 실행되면
+    //    시간표가 어정쩡하게 남는다 (직권 batch의 부분 성공 원칙과 다른 이유). ──
+    if (request.type === "chain") {
+      const steps = request.chainSteps || [];
+      if (steps.length === 0) throw new Error("체인 단계 정보가 없습니다.");
+      if (!request.consent?.confirmed)
+        throw new Error("승인 불가 — 체인 교체는 관련 교사 전원의 양해 기록이 필요합니다. 신청자의 재신청이 필요합니다.");
+
+      // 관련 주 changes 전부 재읽기 — 트랜잭션 규칙상 모든 read를 write 전에 수행
+      const chainChanges = new Map<string, TimetableChange[]>();
+      chainChanges.set(request.weekId, changes);
+      for (const wid of chainWeekIds) {
+        if (wid === request.weekId) continue;
+        const snap = await tx.get(timetableChangesColRef(domain).where("weekId", "==", wid));
+        chainChanges.set(
+          wid,
+          snap.docs
+            .map((d) => ({ ...(d.data() as TimetableChange), id: d.id }))
+            .sort((a, b) => a.appliedAt - b.appliedAt)
+        );
+      }
+
+      // 검증된 앞 단계를 가상 오버레이로 누적하며 각 단계를 엔진으로 재검증 —
+      // computeChainSearch의 탐색 구성과 동일한 방식이라 판정이 어긋날 수 없다
+      const virtualByWeek = new Map<string, TimetableChange[]>();
+      const synthChain = (wid: string): WeeklyClassGrid[] => {
+        const w = chainWeeks.get(wid)!;
+        return synthesizeWeeklyGrids(
+          baseByWeekMap.get(w.startDate)!,
+          w,
+          [...(chainChanges.get(wid) || []), ...(virtualByWeek.get(wid) || [])],
+          settings
+        ).grids;
+      };
+
+      const now = Date.now();
+      const futureBase = now + 30_000_000;
+      const newChanges: TimetableChange[] = [];
+      const changeRefs: FirebaseFirestore.DocumentReference[] = [];
+
+      steps.forEach((step, i) => {
+        const stepNo = i + 1;
+        const sGrids = synthChain(step.weekId);
+        const stepSrc = resolveDirectSource(sGrids, step.source);
+        if (
+          !stepSrc.ok ||
+          stepSrc.info.teacherEmail !== step.sourceTeacherEmail ||
+          stepSrc.info.subjectName !== step.source.subjectName
+        )
+          throw new Error(`승인 불가 — ${stepNo}단계 수업이 다른 변경으로 바뀌었습니다. 신청자의 재신청이 필요합니다.`);
+
+        const isCrossStep = step.type === "cross_swap" && !!step.targetWeekId;
+        const sWeek = chainWeeks.get(step.weekId)!;
+        const stepSource: SwapSourceSlot = { ...step.source };
+        let still: SwapCandidate | undefined;
+        let counterpartLesson: WeeklyLesson | undefined;
+        if (!isCrossStep) {
+          const r = findSwapCandidates(sGrids, sWeek, settings, step.sourceTeacherEmail, stepSource);
+          if (r.error) throw new Error(`승인 불가 — ${stepNo}단계: ${r.error}`);
+          still = r.candidates.find(
+            (c) =>
+              c.targetDay === step.candidate.targetDay &&
+              c.targetPeriod === step.candidate.targetPeriod &&
+              c.counterpartEmail === step.candidate.counterpartEmail
+          );
+        } else {
+          const tGrids = synthChain(step.targetWeekId!);
+          const tWeek = chainWeeks.get(step.targetWeekId!)!;
+          const r = findCrossSwapCandidates(
+            sGrids, sWeek, tGrids, tWeek, settings, step.sourceTeacherEmail, stepSource
+          );
+          if (r.error) throw new Error(`승인 불가 — ${stepNo}단계: ${r.error}`);
+          still = r.candidates.find(
+            (c) =>
+              c.targetDay === step.candidate.targetDay &&
+              c.targetPeriod === step.candidate.targetPeriod &&
+              c.counterpartEmail === step.candidate.counterpartEmail
+          );
+          if (still) {
+            counterpartLesson = tGrids
+              .find((g) => g.grade === step.source.grade && g.classNum === step.source.classNum)
+              ?.cells.find((c) => c.day === still!.targetDay && c.period === still!.targetPeriod)
+              ?.lessons[0];
+          }
+        }
+        if (!still)
+          throw new Error(
+            `승인 불가 — ${stepNo}단계 교환이 더 이상 성립하지 않습니다 (${step.stepSummary}). 신청자의 재신청이 필요합니다.`
+          );
+
+        // 실 change 조립 — 단건 승인과 동일 문서 형태, appliedAt은 단계 순서 보존(now + i)
+        const appliedAt = now + i;
+        if (!isCrossStep) {
+          const ref = timetableChangesColRef(domain).doc();
+          newChanges.push({
+            id: ref.id,
+            termId: request.termId,
+            weekId: step.weekId,
+            type: "swap",
+            requestId,
+            swap: {
+              grade: step.source.grade,
+              classNum: step.source.classNum,
+              a: {
+                day: step.source.day,
+                period: step.source.period,
+                subjectName: step.source.subjectName,
+                teacherEmail: step.sourceTeacherEmail,
+                teacherName: step.sourceTeacherName,
+              },
+              b: {
+                day: still.targetDay,
+                period: still.targetPeriod,
+                subjectName: still.counterpartSubjectName,
+                teacherEmail: still.counterpartEmail,
+                teacherName: still.counterpartName,
+              },
+            },
+            appliedBy: managerEmail.toLowerCase(),
+            appliedAt,
+          });
+          changeRefs.push(ref);
+        } else {
+          const myLesson = sGrids
+            .find((g) => g.grade === step.source.grade && g.classNum === step.source.classNum)!
+            .cells.find((c) => c.day === step.source.day && c.period === step.source.period)!
+            .lessons[0];
+          const myRef: CrossSwapLessonRef = {
+            subjectName: step.source.subjectName,
+            subjectShort: myLesson.subjectShort,
+            teacherEmail: step.sourceTeacherEmail,
+            teacherName: step.sourceTeacherName,
+            ...(myLesson.room ? { room: myLesson.room } : {}),
+          };
+          const otherRef: CrossSwapLessonRef = {
+            subjectName: counterpartLesson!.subjectName,
+            subjectShort: counterpartLesson!.subjectShort,
+            teacherEmail: still.counterpartEmail,
+            teacherName: still.counterpartName,
+            ...(counterpartLesson!.room ? { room: counterpartLesson!.room } : {}),
+          };
+          const exchangeId = timetableChangesColRef(domain).doc().id;
+          const refA = timetableChangesColRef(domain).doc();
+          const refB = timetableChangesColRef(domain).doc();
+          const common = {
+            termId: request.termId,
+            type: "cross_swap" as const,
+            requestId,
+            appliedBy: managerEmail.toLowerCase(),
+            appliedAt,
+          };
+          newChanges.push(
+            {
+              id: refA.id, weekId: step.weekId, ...common,
+              crossSwap: {
+                exchangeId, otherWeekId: step.targetWeekId!,
+                grade: step.source.grade, classNum: step.source.classNum,
+                day: step.source.day, period: step.source.period,
+                out: myRef, in: otherRef,
+              },
+            },
+            {
+              id: refB.id, weekId: step.targetWeekId!, ...common,
+              crossSwap: {
+                exchangeId, otherWeekId: step.weekId,
+                grade: step.source.grade, classNum: step.source.classNum,
+                day: still.targetDay, period: still.targetPeriod,
+                out: otherRef, in: myRef,
+              },
+            }
+          );
+          changeRefs.push(refA, refB);
+        }
+
+        // 다음 단계 재검증용 가상 오버레이 누적 (futureBase + i — 실 변경 뒤·단계 순서 보존)
+        const it: VirtualSwapItem = {
+          key: `appr-${i}`,
+          termId: request.termId,
+          weekId: step.weekId,
+          ...(step.targetWeekId ? { targetWeekId: step.targetWeekId } : {}),
+          type: step.type,
+          requesterEmail: step.sourceTeacherEmail,
+          requesterName: step.sourceTeacherName,
+          source: stepSource,
+          candidate: {
+            targetDay: still.targetDay,
+            targetPeriod: still.targetPeriod,
+            ...(step.targetWeekId ? { targetWeekId: step.targetWeekId } : {}),
+            counterpartEmail: still.counterpartEmail,
+            counterpartName: still.counterpartName,
+            counterpartSubjectName: still.counterpartSubjectName,
+            score: still.score,
+            penalties: still.penalties,
+          },
+        };
+        for (const wid of chainWeekIds) {
+          const chs = buildVirtualChanges(it, wid, futureBase + i);
+          if (chs.length) virtualByWeek.set(wid, [...(virtualByWeek.get(wid) || []), ...chs]);
+        }
+      });
+
+      newChanges.forEach((c, idx) => tx.set(changeRefs[idx], c));
+      tx.update(reqRef, {
+        status: "APPROVED",
+        decidedBy: managerEmail.toLowerCase(),
+        decidedAt: now,
+        appliedChangeIds: newChanges.map((c) => c.id),
+      });
+      return {
+        request: { ...request, status: "APPROVED" as const, appliedChangeIds: newChanges.map((c) => c.id) },
+        change: newChanges[0],
+      };
+    }
 
     // ── 교차 주 맞교환 승인: 양방향 재검증 → 문서쌍(exchangeId) 원자 커밋 (§4-3b) ──
     if (isCross) {
@@ -3513,8 +3894,31 @@ export async function approveSwapRequest(
   await bumpTimetableCacheVersion(domain);
 
   // 알림: 신청자 + 상대 교사 (§5 — 교무부장은 열람 전용, DM 없음)
+  if (options?.skipNotify) return result;
   const dayNames = ["", "월", "화", "수", "목", "금"];
   const r = result.request;
+
+  // 체인 승인: 신청자 + 관련 교사 전원(consent.parties — 서버 도출 집합) 통지 (§4-3)
+  if (r.type === "chain") {
+    const chainMsg =
+      `✅ 징검다리 수업교환 승인 완료 (${(r.chainSteps || []).length}단계)\n` +
+      (r.chainSteps || []).map((s) => s.stepSummary).join("\n") +
+      (r.consent
+        ? `\n🤝 양해 확인됨: ${r.consent.parties.map((p) => p.name).join(", ")}${r.consent.note ? ` — ${r.consent.note}` : ""}`
+        : "") +
+      `\n승인: ${managerEmail}`;
+    const chainRecipients = Array.from(
+      new Set([r.requesterEmail, ...(r.consent?.parties || []).map((p) => p.email)])
+    );
+    for (const to of chainRecipients) {
+      try {
+        await sendGoogleChat(to, chainMsg);
+      } catch (e: any) {
+        console.error(`[chain_approve] 알림 실패 (${to}):`, e.message);
+      }
+    }
+    return result;
+  }
   // 교차 주는 주가 다르므로 날짜를 병기한다 (§4-3b UI 원칙과 동일)
   const dateOfDay = (w: TimetableWeek | null, day: number): string =>
     w?.days.find((d) => d.day === day)?.date?.slice(5).replace("-", "/") || "";
@@ -3585,7 +3989,8 @@ export async function rejectSwapRequest(
 export async function revertTimetableChange(
   domain: string,
   managerEmail: string,
-  changeId: string
+  changeId: string,
+  options?: { skipNotify?: boolean } // 검증 스크립트 전용 — 라우트는 항상 알림
 ): Promise<TimetableChange> {
   const reverted = await adminDb.runTransaction(async (tx) => {
     const targetRef = timetableChangesColRef(domain).doc(changeId);
@@ -3605,6 +4010,20 @@ export async function revertTimetableChange(
       targets = pairSnap.docs.map((d) => ({ ...(d.data() as TimetableChange), id: d.id }));
       if (!targets.some((t) => t.id === changeId)) targets.push(target);
     }
+    // 체인 승인이 만든 변경은 신청 단위로만 취소 — 부분 취소 금지 (consent_swap_opening_spec §4-3).
+    // 체인 안의 교차 주 단계도 이 확장이 문서쌍까지 포괄한다 (전 단계가 같은 requestId를 공유).
+    if (target.requestId) {
+      const reqSnap = await tx.get(swapRequestsColRef(domain).doc(target.requestId));
+      if (reqSnap.exists && (reqSnap.data() as SwapRequest).type === "chain") {
+        const groupSnap = await tx.get(
+          timetableChangesColRef(domain).where("requestId", "==", target.requestId)
+        );
+        targets = groupSnap.docs
+          .map((d) => ({ ...(d.data() as TimetableChange), id: d.id }))
+          .filter((t) => t.type !== "revert");
+        if (!targets.some((t) => t.id === changeId)) targets.push(target);
+      }
+    }
 
     for (const t of targets) {
       const existingRevert = await tx.get(
@@ -3615,7 +4034,11 @@ export async function revertTimetableChange(
 
     const now = Date.now();
     const reverts: TimetableChange[] = [];
-    for (const t of targets) {
+    // 되돌리기는 뒤 단계부터(LIFO) — 체인처럼 순차 의존 변경의 역연산은 적용 역순이어야
+    // 원복된다. revert appliedAt에 역순 오프셋을 줘 합성기의 appliedAt 정렬이 이를 보장한다.
+    // (검증 실측에서 검출: 동일 appliedAt이면 정순 역연산이 걸려 적용 불능 → 원복 실패)
+    const orderedTargets = [...targets].sort((a, b) => b.appliedAt - a.appliedAt);
+    orderedTargets.forEach((t, idx) => {
       const ref = timetableChangesColRef(domain).doc();
       const revert: TimetableChange = {
         id: ref.id,
@@ -3624,11 +4047,11 @@ export async function revertTimetableChange(
         type: "revert",
         revertOf: t.id,
         appliedBy: managerEmail.toLowerCase(),
-        appliedAt: now,
+        appliedAt: now + idx,
       };
       tx.set(ref, revert);
       reverts.push(revert);
-    }
+    });
     if (target.requestId) {
       tx.update(swapRequestsColRef(domain).doc(target.requestId), {
         status: "CANCELED",
@@ -3644,6 +4067,7 @@ export async function revertTimetableChange(
   await bumpTimetableCacheVersion(domain);
 
   // 알림: 원 승인 알림 수신자 전원 (§5)
+  if (options?.skipNotify) return reverted.revert;
   const recipients = new Set<string>();
   const t = reverted.target;
   if (t.swap) {
@@ -3746,6 +4170,8 @@ export async function computeChainSearch(
     source: { grade: number; classNum: number; day: number; period: number };
     target: { weekId?: string; day: number; period: number };
     maxDepth?: number;
+    /** 교사용 경로(§4-2): 지정 시 소스 수업 담당자가 이 이메일과 일치해야 탐색 진행 (본인 소유 검증) */
+    requesterEmail?: string;
   }
 ): Promise<{
   chains: ChainSearchChain[];
@@ -3819,6 +4245,13 @@ export async function computeChainSearch(
   const resolved = resolveDirectSource(grids0, params.source);
   if (!resolved.ok) return { chains: [], error: resolved.error };
   const mover = resolved.info;
+  // 교사용 경로: 본인 수업만 체인 시작 가능 (consent_swap_opening_spec §4-2 — 탐색 전 조기 차단)
+  if (
+    params.requesterEmail &&
+    mover.teacherEmail !== params.requesterEmail.trim().toLowerCase()
+  ) {
+    return { chains: [], error: "본인의 수업만 체인 교체를 시작할 수 있습니다." };
+  }
 
   const DAYS_KO = ["", "월", "화", "수", "목", "금"];
   const slotLabel = (weekId: string, day: number, period: number) => {

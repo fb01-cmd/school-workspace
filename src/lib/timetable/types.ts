@@ -508,7 +508,8 @@ export interface TimetableChange {
 // ── 수업교환 신청 (swap_requests) ─────────────────────────────
 
 export type SwapRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELED";
-export type SwapRequestType = "swap" | "substitute" | "cross_swap";
+// "chain" = 교사 징검다리 체인 신청 (consent_swap_opening_spec §4-3) — 승인 시 단계별 swap/cross_swap change로 전개
+export type SwapRequestType = "swap" | "substitute" | "cross_swap" | "chain";
 
 export const SWAP_REASON_TYPES = ["출장", "연수", "병가", "공가", "학교행사", "기타"] as const;
 export type SwapReasonType = (typeof SWAP_REASON_TYPES)[number];
@@ -599,6 +600,9 @@ export interface SwapRequest {
   direct?: boolean; // 일과계 직권 배정 경유 (교사 사전 신청 없음)
   batchId?: string; // 장바구니 일괄 제출 묶음 (phase9b_spec §14-2) — 같은 제출의 신청들이 공유
   consent?: SwapConsent; // 조율 필요 후보의 양해 기록 (consent_swap_opening_spec §3-1) — 승인 판단·책임 보호 근거
+  // ── type === "chain" 전용 (consent_swap_opening_spec §4-3) ──
+  chainSteps?: ChainStepItem[]; // 서버 재계산 스냅샷 — 승인 시 이 단계열을 순차 재검증 후 원자 커밋
+  chainTarget?: { weekId?: string; day: number; period: number }; // 목적지 (weekId 없으면 소스 주)
 }
 
 // ── 사전 양해 임시저장 (swap_drafts — phase9b_spec §13-1) ─────
@@ -754,7 +758,9 @@ export type SwapRequestAction =
   | "cancel"
   | "draft_save"
   | "draft_list"
-  | "draft_delete";
+  | "draft_delete"
+  | "chain_search" // 교사 체인 탐색 — 소스 본인 소유 검증 후 computeChainSearch (consent_swap_opening_spec §4-2)
+  | "chain_create"; // 체인 신청 생성 — 서버 재탐색 대조 + consent 필수 (§4-3)
 
 /** 장바구니 일괄 제출 항목 (phase9b_spec §14-2). 교차 주는 type:"swap"+targetWeekId — create와 동일 규약 */
 export interface SwapBatchCreateItem {
@@ -845,6 +851,10 @@ export interface SwapRequestApiRequest {
   includeDrafts?: boolean;
   // 장바구니 일괄 제출 (create_batch — §14-2)
   items?: SwapBatchCreateItem[];
+  // 교사 체인 (chain_search / chain_create — consent_swap_opening_spec §4-2·§4-3)
+  chainTarget?: { weekId?: string; day: number; period: number };
+  chainMaxDepth?: number; // 기본 2, 상한 3 (§C-2)
+  chainSteps?: ChainStepItem[]; // chain_create: 화면에서 선택한 체인의 단계열 — 서버가 재탐색 대조 후 서버 값 스냅샷
   // 임시저장 (draft_save / draft_delete)
   draftId?: string;
   draft?: {

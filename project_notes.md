@@ -2711,3 +2711,30 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 ### 재개 문구
 - Phase 2 착수: *"project_notes.md 마지막 체크포인트 읽어줘. 양해 개방 Phase 2(교사 체인 chain_search+chain 신청 타입) 서버부 구현하자."*
+
+## [2026-08-10] Antigravity → Claude (spec §3-2b v1.1 마찰·시각 위계 보강 반영 완료)
+- 변경 파일:
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`
+  - `src/components/admin/timetable/DirectSubstituteTab.tsx`
+- 검증 상태: tsc ✅ / build ✅ (NODE_OPTIONS 4GB 메모리)
+- 요약 (spec §3-2b v1.1):
+  ① 조율 후보 시각 위계 강화: 빨간 경고 스타일(`bg-red-100`, `border-2 border-red-600`) + '⚠️ 양해 필수' 라벨 (교사 포털 인라인 셀 + 직권 그리드 버튼 & 사이드바 카드)
+  ② 후보 클릭 마찰 (2단 진입): 조율 후보 클릭 시 2단 경고 다이얼로그 (충돌 요지+당사자 실명, `[취소]`/`[양해 전제로 검토]`) 후 진행 시에만 선택/초안 저장
+  ③ 확정 직전 양해 체크 원칙: 직권 사이드바 필수 체크 제거(정보만 노출), `[즉시 1건 반영]` 클릭 시 양해 확인 다이얼로그 이동
+- 다음 할 일: Claude 표적 검수 요청
+
+
+## [2026-08-10] 양해 개방 Phase 2 서버부 구현 완료 ✅ (Claude — 교사 체인 개방, 실측 결함 1건 검출·수정 포함)
+
+- **§4-2 교사 탐색**: computeChainSearch에 `requesterEmail` 소유 검증(탐색 전 조기 차단) + requests 라우트 `chain_search` 신설 — manage 쪽 기존 호출 무변경.
+- **§4-3 체인 신청**: `SwapRequestType`에 "chain" + `chainSteps`/`chainTarget` 원장 필드. `createChainSwapRequest` — 서버 재탐색 후 단계열 서명 대조(위조 차단, 스냅샷은 서버 값), **consent 필수**(parties = 단계 소스 담당+상대 전원 − 본인, 서버 도출), 중복 PENDING 차단, 라우트 `chain_create`. 기존 create의 chain 타입은 400(우회 차단 기확인).
+- **원자 승인**: approveSwapRequest chain 분기 — 관련 주 changes 트랜잭션 내 재읽기 → 단계 순차 재검증(검증된 앞 단계를 buildVirtualChanges 가상 오버레이로 누적 — 탐색과 동일 구성) → 전 단계 change 일괄 커밋(appliedAt = now+i 순서 보존, 교차 주 단계는 exchangeId 쌍). **부분 성공 금지**(중간 실패 시 전체 승인 실패+단계 사유). 체인 재검증은 clean 전용 유지(조율 후보 미포함 §2-3 정합).
+- **체인 revert**: requestId 단위 전체 확장(부분 취소 금지) + **실측 검출 결함 수정 — revert LIFO**: 동일 appliedAt 정순 역연산이면 순차 의존 변경이 원복 안 됨 → targets를 appliedAt 역순 정렬해 revert appliedAt에 역순 오프셋(now+idx). 이 수정은 기존 교차 주 쌍에도 무해(주가 달라 순서 무관).
+- **알림**: 생성 → 일과계(체인 요약+양해 라인), 승인/취소 → 신청자+관련 교사 전원. 검증용 skipNotify/skipManagerNotify 옵션 3곳(라우트는 항상 알림).
+- **실측(scripts/verify_chain_phase2.ts — 알림 억제·원장 흔적 5건 하드 삭제·합성 최초 상태 대조)**: ① 타인 소스 탐색 거부 ② 실데이터 2단계 체인 확보(박윤흡 월1→목6→월3, 김은호·송지연 경유) ③ consent 없는 생성·위조 단계열 거부 ④ parties 서버 도출 일치 ⑤ 원자 승인 — change 2건·순서·연결·**합성 실반영** ⑥ revert — 전 단계 취소·**합성 원복**(수정 후) ⑦ 정리·캐시 범프. 1차 실행에서 [6] 원복 실패로 결함 잡음 + 스크립트 finally 미실행 결함도 수정(문서 잔존 즉시 수동 정리 완료). tsc·build ✅.
+- validatePendingSwapRequests: chain은 신청자 소스 성립까지만 사전 표시(뒤 단계 소스가 앞 단계 이동 후 위치라 단순 대조 불가 — 전량 재검증은 승인 몫).
+- **잔여**: Phase 2 UI(교사 포털 체인 진입 — 소스 셀 → "원하는 자리로 보내기" → 내 공강 클릭=목적지 → 체인 목록 → 양해 확인 → chain_create; 요청대장 chain 카드 표시(단계 요약·현재 "보강" 오배지)) = Antigravity, §3-2b 완료 후. Phase 3(통 이동)은 그 뒤.
+
+### 재개 문구
+- §3-2b UI 보강 검수: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 §3-2b(마찰·시각 위계) 반영했다 함 — 경고 다이얼로그 경유 흐름 중심으로 diff 검수해줘."*
+- Phase 2 UI 인계 후 검수: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 체인 교사 UI 구현했다 함 — chain_create 전송·양해 흐름 중심으로 검수해줘."*

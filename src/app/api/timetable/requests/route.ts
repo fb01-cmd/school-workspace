@@ -4,7 +4,9 @@ import {
   cancelSwapRequest,
   computeCandidates,
   computeCandidatesAllWeeks,
+  computeChainSearch,
   computeMyProjectedWeeks,
+  createChainSwapRequest,
   createSwapRequest,
   deleteSwapDraft,
   listSwapDrafts,
@@ -220,6 +222,74 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
         return NextResponse.json({ success: true, action, request });
+      }
+
+      // ── 교사 체인 (consent_swap_opening_spec §4-2·§4-3) ───────
+      // "탐색은 모두에게, 확정 권한은 역할대로" — 탐색·신청만 개방, 반영은 일과계 승인 경로 그대로.
+
+      case "chain_search": {
+        const src = body.source as any;
+        const tgt = body.chainTarget as any;
+        const okSlot = (o: any, keys: string[]) =>
+          o && keys.every((k) => Number.isInteger(o[k]) && o[k] > 0);
+        if (!body.weekId || !okSlot(src, ["grade", "classNum", "day", "period"])) {
+          return NextResponse.json({ error: "weekId와 source(grade·classNum·day·period)가 필요합니다." }, { status: 400 });
+        }
+        if (!okSlot(tgt, ["day", "period"])) {
+          return NextResponse.json({ error: "chainTarget(day·period)가 필요합니다." }, { status: 400 });
+        }
+        // 소스 본인 소유 검증은 computeChainSearch의 requesterEmail 파라미터가 탐색 전에 수행
+        const result = await computeChainSearch(domain, {
+          weekId: body.weekId,
+          source: { grade: src.grade, classNum: src.classNum, day: src.day, period: src.period },
+          target: { weekId: tgt.weekId || undefined, day: tgt.day, period: tgt.period },
+          maxDepth: body.chainMaxDepth,
+          requesterEmail: auth.email,
+        });
+        return NextResponse.json({ success: true, action, ...result });
+      }
+
+      case "chain_create": {
+        const src = body.source as any;
+        const tgt = body.chainTarget as any;
+        const okSlot = (o: any, keys: string[]) =>
+          o && keys.every((k) => Number.isInteger(o[k]) && o[k] > 0);
+        if (!body.weekId || !okSlot(src, ["grade", "classNum", "day", "period"])) {
+          return NextResponse.json({ error: "weekId와 source(grade·classNum·day·period)가 필요합니다." }, { status: 400 });
+        }
+        if (!okSlot(tgt, ["day", "period"])) {
+          return NextResponse.json({ error: "chainTarget(day·period)가 필요합니다." }, { status: 400 });
+        }
+        if (!Array.isArray(body.chainSteps) || body.chainSteps.length < 1 || body.chainSteps.length > 3) {
+          return NextResponse.json({ error: "chainSteps 배열(1~3단계)이 필요합니다." }, { status: 400 });
+        }
+        try {
+          const request = await createChainSwapRequest(domain, auth.email, {
+            weekId: body.weekId,
+            source: { grade: src.grade, classNum: src.classNum, day: src.day, period: src.period },
+            chainTarget: { weekId: tgt.weekId || undefined, day: tgt.day, period: tgt.period },
+            steps: body.chainSteps,
+            reason: body.reason,
+            consent: body.consent,
+          });
+          await writeAuditLog({
+            operatorEmail: auth.email,
+            targetEmail: request.candidate.counterpartEmail,
+            action: "create_chain_request",
+            details: `징검다리 교체 신청 (${(request.chainSteps || []).length}단계): ${request.source.grade}-${request.source.classNum} ${request.source.day}요일 ${request.source.period}교시 → 목적지 ${request.chainTarget?.day}요일 ${request.chainTarget?.period}교시${request.chainTarget?.weekId ? ` (${request.chainTarget.weekId} 주)` : ""} · 양해 ${request.consent?.parties.length || 0}명`,
+            status: "success",
+          });
+          return NextResponse.json({ success: true, action, request });
+        } catch (e: any) {
+          const msg = e.message || "";
+          if (
+            msg.includes("양해") || msg.includes("유효하지") || msg.includes("본인의 수업만") ||
+            msg.includes("대기 중인 신청") || msg.includes("사유") || msg.includes("단계")
+          ) {
+            return NextResponse.json({ error: msg }, { status: 400 });
+          }
+          throw e;
+        }
       }
 
       // ── 사전 양해 임시저장 API (phase9b_spec §13-1) ───────────
