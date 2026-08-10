@@ -279,6 +279,33 @@ export async function POST(req: NextRequest) {
         // 가상·블록 교사는 공강 목록에서도 제외 — 보강 후보 엔진(findSubstituteCandidates)과
         // 동일 기준. 수업 없는 교시의 창체·SLAT이 공강 교사로 잡히는 것을 막는다.
         const blockIdx = buildSlotIndex(allGrids);
+
+        // 전교 공통 활동 교시 판정 (consent_swap_opening_spec §4-1b) — SLAT·창체처럼 수업이
+        // 가상(이메일 없음)·블록 교사 명의인 학급이 과반이면, 그리드상 비어 보이는 실교사들도
+        // 실제로는 담임·부담임·교과·동아리로 투입되므로 공강 개념이 성립하지 않는다.
+        let classesWithLesson = 0;
+        let commonActivityClasses = 0;
+        for (const grid of allGrids) {
+          const cell = (grid.cells || []).find((c) => c.day === day && c.period === period);
+          if (!cell || !(cell.lessons || []).length) continue;
+          classesWithLesson++;
+          const isCommon = cell.lessons.some((l) => {
+            const ts = l.teachers || [];
+            if (ts.length === 0 || ts.every((t) => !(t.email || "").trim())) return true; // 가상
+            return ts.some((t) => isBlockTeacher(blockIdx, t.email)); // 블록(전교 공통)
+          });
+          if (isCommon) commonActivityClasses++;
+        }
+        if (classesWithLesson > 0 && commonActivityClasses * 2 >= classesWithLesson) {
+          const res: ViewTimetableResponse = {
+            term: termMeta,
+            action,
+            data: [],
+            commonActivitySlot: true,
+          };
+          return NextResponse.json(withWeek(res, warnings));
+        }
+
         const allTeachers = Array.from(teacherMap.values()).filter(
           (t) => !isBlockTeacher(blockIdx, t.email)
         );

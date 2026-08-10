@@ -300,6 +300,9 @@ export interface ViewTimetableResponse {
   data: ClassGrid | ClassGrid[] | TeacherTimetable | FreeTeacher[] | null;
   week?: { id: string; startDate: string; days: TimetableWeekDay[] } | null; // 합성 적용 시
   integrityWarnings?: string[]; // 일과계·super_admin에게만 동봉 (phase9b_spec §3-4)
+  /** free 전용 (consent_swap_opening_spec §4-1b): 해당 교시가 전교 공통 활동(SLAT·창체 등)이라
+   *  공강 개념이 적용되지 않음 — 그리드상 비어 보여도 실교사들은 담임·부담임·교과·동아리로 투입됨 */
+  commonActivitySlot?: boolean;
 }
 
 export type ManageAction =

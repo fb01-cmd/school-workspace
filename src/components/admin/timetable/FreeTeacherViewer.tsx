@@ -20,6 +20,8 @@ export default function FreeTeacherViewer({
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 전교 공통 활동 교시(SLAT·창체 등) — 공강 개념 미적용 (consent_swap_opening_spec §4-1b)
+  const [commonActivitySlot, setCommonActivitySlot] = useState(false);
 
   const DAYS = [
     { num: 1, label: "월요일" },
@@ -47,6 +49,7 @@ export default function FreeTeacherViewer({
       if (res.ok) {
         const result = await res.json();
         setTermMeta(result.term || null);
+        setCommonActivitySlot(!!result.commonActivitySlot);
         if (Array.isArray(result.data)) {
           setFreeTeachers(result.data);
         } else {
@@ -158,6 +161,14 @@ export default function FreeTeacherViewer({
       {error ? (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-xs text-red-800 text-center">
           {error}
+        </div>
+      ) : commonActivitySlot ? (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-5 text-xs text-indigo-900 text-center space-y-1">
+          <div className="font-bold text-sm">🏫 이 교시는 학교 공통 활동 시간입니다</div>
+          <div>
+            자율활동·동아리 등 학교 공통 활동 시간에는 시간표에 수업이 없어 보여도
+            선생님들이 담임·지도 등으로 참여하고 있어, 공강 조회 대상이 아닙니다.
+          </div>
         </div>
       ) : (
         /* 공강 교사 리스트 그리드 */
