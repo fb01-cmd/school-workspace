@@ -185,7 +185,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [chainConsentModalOpen, setChainConsentModalOpen] = useState(false);
   const [chainConsentConfirmed, setChainConsentConfirmed] = useState(false);
   const [chainConsentNote, setChainConsentNote] = useState("");
-  const [chainReasonType, setChainReasonType] = useState<any>("수업교환");
+  const [chainReasonType, setChainReasonType] = useState<any>("출장"); // SWAP_REASON_TYPES 내 값이어야 — 목록 밖 초기값이면 기본 경로 제출이 서버 400
   const [chainReasonNote, setChainReasonNote] = useState("");
   const [submittingChain, setSubmittingChain] = useState(false);
 
@@ -240,7 +240,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     setSelectedChainForSubmit(chain);
     setChainConsentConfirmed(false);
     setChainConsentNote("");
-    setChainReasonType("수업교환");
+    setChainReasonType("출장");
     setChainReasonNote("");
     setChainConsentModalOpen(true);
   };
