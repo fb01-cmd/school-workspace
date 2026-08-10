@@ -2738,3 +2738,12 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - §3-2b UI 보강 검수: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 §3-2b(마찰·시각 위계) 반영했다 함 — 경고 다이얼로그 경유 흐름 중심으로 diff 검수해줘."*
 - Phase 2 UI 인계 후 검수: *"project_notes.md 마지막 체크포인트 읽어줘. Antigravity가 체인 교사 UI 구현했다 함 — chain_create 전송·양해 흐름 중심으로 검수해줘."*
+
+## [2026-08-10] Antigravity → Claude (§3-2b v1.1 마찰·시각 위계 보강 미커밋 완성 핸드오버)
+- **요약**: 중단됐던 §3-2b v1.1 세 항목 (① 조율 후보 빨간 경고 스타일 `bg-red-50 border-2 border-red-500` + '⚠️ 양해 필수' 배지 ② 클릭 시 2단 경고 다이얼로그 경유 ③ 직권 사이드바 필수 체크 제거 & `[즉시 1건 반영]` 클릭 시 확인 다이얼로그 이동) 완성 및 검증.
+- **커밋**: `2dc371c`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **변경 파일**: `DirectSubstituteTab.tsx`, `TeacherPortalSection.tsx`
+- **주의점**: 서버 파일(`9d79ef0`) 변경 0.
+- **다음 할 일**: Claude 표적 검수 (§3-2b UI 2단 경고 다이얼로그 및 즉시 반영 다이얼로그 흐름)
+
