@@ -169,6 +169,33 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      case "set_publish_weeks_ahead": {
+        const ahead = Number(body.publishWeeksAhead);
+        if (!Number.isInteger(ahead) || ahead < 0 || ahead > 7) {
+          return NextResponse.json(
+            { error: "노출 범위(publishWeeksAhead)는 0~7 사이의 정수여야 합니다." },
+            { status: 400 }
+          );
+        }
+        const updatedSettings = await saveTimetableSettings(domain, {
+          publishWeeksAhead: ahead,
+        });
+
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "set_publish_weeks_ahead",
+          details: `시간표 노출 범위 변경: 오늘 주 포함 총 ${ahead + 1}주 (publishWeeksAhead=${ahead})`,
+          status: "success",
+        });
+
+        return NextResponse.json({
+          success: true,
+          action,
+          settings: updatedSettings,
+        });
+      }
+
       case "import_validate": {
         if (!body.importPayload) {
           return NextResponse.json(

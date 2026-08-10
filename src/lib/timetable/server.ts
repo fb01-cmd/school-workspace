@@ -1947,17 +1947,47 @@ export async function computeDirectProjectedWeeks(
   weeks: Array<{ weekId: string; startDate: string; cells: TeacherTimetableCell[] }>;
   appliedCount: number;
 }> {
-  const term = await loadActiveTerm(domain);
+  const [settings, term] = await Promise.all([
+    loadTimetableSettings(domain),
+    loadActiveTerm(domain),
+  ]);
   if (!term) return { termId: null, weeks: [], appliedCount: 0 };
 
-  const weeks = await listWeeks(domain, term.id);
+  let weeks = await listWeeks(domain, term.id);
+
+  // 파생 게이트: [현재 주, 현재 주 + publishWeeksAhead주] 범위의 월요일 중 목록에 없는 주가 하나라도 있으면 파생 후 재조회
+  const currMonday = currentMondayISO();
+  const ahead = settings.publishWeeksAhead ?? 2;
+  const existingMondays = new Set(weeks.map((w) => w.startDate || w.id));
+
+  let missingAny = false;
+  let mondayIter = currMonday;
+  for (let i = 0; i <= ahead; i++) {
+    if (!existingMondays.has(mondayIter)) {
+      missingAny = true;
+      break;
+    }
+    mondayIter = addDaysISO(mondayIter, 7);
+  }
+
+  if (missingAny) {
+    await ensureDerivedWeeks(domain);
+    weeks = await listWeeks(domain, term.id);
+  }
+
+  // 주 목록 필터: 종료일(startDate+6일)이 KST 오늘 이상 & startDate가 현재 주+publishWeeksAhead주 이하
+  const today = todayKSTISO();
+  const maxMonday = addDaysISO(currMonday, ahead * 7);
+
+  weeks = weeks.filter((w) => {
+    const weekEnd = addDaysISO(w.startDate, 6);
+    return weekEnd >= today && w.startDate <= maxMonday;
+  });
+
   weeks.sort((a, b) => a.startDate.localeCompare(b.startDate));
   const extra = buildDirectExtraOverlay(extraItems, term.id, teacherEmail, weeks.map((w) => w.id), null);
 
-  const [baseByWeek, settings] = await Promise.all([
-    loadBaseGridsByWeek(domain, term.id, weeks.map((w) => w.startDate)), // 개정판 주차별 반영 (spec §E)
-    loadTimetableSettings(domain),
-  ]);
+  const baseByWeek = await loadBaseGridsByWeek(domain, term.id, weeks.map((w) => w.startDate));
   const changesByWeek = new Map(
     await Promise.all(
       weeks.map(async (w) => [w.id, await loadWeekChanges(domain, w.id)] as const)
@@ -2004,20 +2034,49 @@ export async function computeMyProjectedWeeks(
   assumedPendingCount: number;
   assumedDraftCount: number;
 }> {
-  const term = await loadActiveTerm(domain);
+  const [settings, term] = await Promise.all([
+    loadTimetableSettings(domain),
+    loadActiveTerm(domain),
+  ]);
   if (!term) return { termId: null, weeks: [], assumedPendingCount: 0, assumedDraftCount: 0 };
 
-  const weeks = await listWeeks(domain, term.id);
+  let weeks = await listWeeks(domain, term.id);
+
+  // 파생 게이트: [현재 주, 현재 주 + publishWeeksAhead주] 범위의 월요일 중 목록에 없는 주가 하나라도 있으면 파생 후 재조회
+  const currMonday = currentMondayISO();
+  const ahead = settings.publishWeeksAhead ?? 2;
+  const existingMondays = new Set(weeks.map((w) => w.startDate || w.id));
+
+  let missingAny = false;
+  let mondayIter = currMonday;
+  for (let i = 0; i <= ahead; i++) {
+    if (!existingMondays.has(mondayIter)) {
+      missingAny = true;
+      break;
+    }
+    mondayIter = addDaysISO(mondayIter, 7);
+  }
+
+  if (missingAny) {
+    await ensureDerivedWeeks(domain);
+    weeks = await listWeeks(domain, term.id);
+  }
+
+  // 주 목록 필터: 종료일(startDate+6일)이 KST 오늘 이상 & startDate가 현재 주+publishWeeksAhead주 이하
+  const today = todayKSTISO();
+  const maxMonday = addDaysISO(currMonday, ahead * 7);
+
+  weeks = weeks.filter((w) => {
+    const weekEnd = addDaysISO(w.startDate, 6);
+    return weekEnd >= today && w.startDate <= maxMonday;
+  });
+
   weeks.sort((a, b) => a.startDate.localeCompare(b.startDate));
   const overlay = await loadMyVirtualOverlay(
     domain, userEmail, weeks.map((w) => w.id), opts, null
   );
 
-  // 설정은 주마다 같으므로 1회만, 기초는 개정판 주차별 해석 (spec §E)
-  const [baseByWeek, settings] = await Promise.all([
-    loadBaseGridsByWeek(domain, term.id, weeks.map((w) => w.startDate)),
-    loadTimetableSettings(domain),
-  ]);
+  const baseByWeek = await loadBaseGridsByWeek(domain, term.id, weeks.map((w) => w.startDate));
 
   // 주별 changes는 서로 독립이므로 병렬 조회 — 직렬 왕복 누적(주 수 × RTT) 방지
   const changesByWeek = new Map(

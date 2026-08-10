@@ -283,7 +283,14 @@ export default function TimetableSection() {
       </div>
 
       {/* 탭 액티브 뷰 */}
-      {activeTab === "weeks" && <WeekManageTab activeTermId={activeTermId} periodsPerDay={periodsPerDay} />}
+      {activeTab === "weeks" && (
+        <WeekManageTab
+          activeTermId={activeTermId}
+          periodsPerDay={periodsPerDay}
+          publishWeeksAhead={settings?.publishWeeksAhead ?? 2}
+          onSettingsChange={() => fetchSettingsAndTerms(true)}
+        />
+      )}
 
       {activeTab === "ledger" && <SwapRequestLedgerTab activeTermId={activeTermId} />}
 

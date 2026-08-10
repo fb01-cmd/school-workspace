@@ -6,13 +6,56 @@ import { TimetableWeek, TimetableWeekDay } from "@/lib/timetable/types";
 interface WeekManageTabProps {
   activeTermId: string | null;
   periodsPerDay?: number;
+  publishWeeksAhead?: number;
+  onSettingsChange?: () => void;
 }
 
-export default function WeekManageTab({ activeTermId, periodsPerDay = 7 }: WeekManageTabProps) {
+export default function WeekManageTab({
+  activeTermId,
+  periodsPerDay = 7,
+  publishWeeksAhead = 2,
+  onSettingsChange,
+}: WeekManageTabProps) {
   const [weeks, setWeeks] = useState<TimetableWeek[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // 공개 범위 설정 상태 (선택값 1~8주 = 오늘 주 포함 총 주수 / publishWeeksAhead = 선택값 - 1)
+  const [selectedTotalWeeks, setSelectedTotalWeeks] = useState(publishWeeksAhead + 1);
+  const [savingPublishAhead, setSavingPublishAhead] = useState(false);
+
+  useEffect(() => {
+    setSelectedTotalWeeks(publishWeeksAhead + 1);
+  }, [publishWeeksAhead]);
+
+  const handleSavePublishAhead = async () => {
+    const ahead = selectedTotalWeeks - 1;
+    setSavingPublishAhead(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_publish_weeks_ahead",
+          publishWeeksAhead: ahead,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSuccessMsg(`시간표 공개 범위가 오늘 주 포함 총 ${selectedTotalWeeks}주로 설정되었습니다.`);
+        if (onSettingsChange) onSettingsChange();
+        setTimeout(() => setSuccessMsg(null), 4000);
+      } else {
+        setError(data.error || "공개 범위 설정 저장 실패");
+      }
+    } catch (err: any) {
+      setError(`네트워크 오류: ${err.message}`);
+    } finally {
+      setSavingPublishAhead(false);
+    }
+  };
 
   // 등록 모달 상태
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
@@ -201,6 +244,49 @@ export default function WeekManageTab({ activeTermId, periodsPerDay = 7 }: WeekM
           <span>➕</span>
           <span>새 주 등록</span>
         </button>
+      </div>
+
+      {/* 시간표 공개 범위 설정 카드 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+            <span>👁️</span>
+            <span>교사 시간표 공개 범위 설정</span>
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">
+            교사 및 학생 화면에 오늘 기준으로 몇 주 앞까지 시간표를 공개할지 설정합니다.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 self-start md:self-auto">
+          <div className="flex items-center gap-2">
+            <label htmlFor="publish-weeks-select" className="text-xs font-bold text-gray-700 whitespace-nowrap">
+              공개 범위:
+            </label>
+            <select
+              id="publish-weeks-select"
+              value={selectedTotalWeeks}
+              onChange={(e) => setSelectedTotalWeeks(Number(e.target.value))}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-bold text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((w) => (
+                <option key={w} value={w}>
+                  총 {w}주 ({w === 1 ? "오늘 주만" : `오늘 주 + ${w - 1}주`})
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleSavePublishAhead}
+            disabled={savingPublishAhead || selectedTotalWeeks === publishWeeksAhead + 1}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors ${
+              selectedTotalWeeks === publishWeeksAhead + 1
+                ? "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+            }`}
+          >
+            {savingPublishAhead ? "저장 중..." : "설정 저장"}
+          </button>
+        </div>
       </div>
 
       {/* 성공/오류 메시지 */}
