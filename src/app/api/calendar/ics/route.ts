@@ -89,6 +89,7 @@ export async function GET(req: Request) {
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
       "PRODID:-//Hyomyeong High School//Timetable Calendar//KO",
+      "NAME:효명고 학사일정",
       "X-WR-CALNAME:효명고 학사일정",
       "X-PUBLISHED-TTL:PT12H",
       "CALSCALE:GREGORIAN",

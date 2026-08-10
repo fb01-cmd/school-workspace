@@ -96,6 +96,10 @@ export default function CalendarSubscribeCard({
           <p className="text-xs text-slate-600 leading-relaxed">
             한 번 추가해 두면 학사일정이 바뀔 때 캘린더가 자동으로 따라 바뀝니다.
           </p>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            추가 직후에는 일정이 보이기까지 시간이 걸릴 수 있습니다(길면 반나절). 캘린더 이름이 주소로
+            보이면 구글 캘린더 설정에서 &quot;효명고 학사일정&quot;으로 바꿔 쓰세요.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 pt-1 sm:pt-0">
