@@ -17,6 +17,7 @@ export interface TimetableSettings {
   teacherPilotEmails?: string[]; // 오픈 게이트 전 파일럿 허용 명단 — 테스트·실무사 계정만 교사 화면 접근 (2026-08-04)
   publishWeeksAhead?: number; // 학사일정 주차 자동 파생 범위 — 오늘 주부터 몇 주 앞까지 (기본 2, pre_opening_3features_spec §B)
   lastNeisSyncAt?: number; // 나이스 학사일정 마지막 수집 시각 (ms epoch)
+  icsToken?: string; // 구독형 학사일정 캘린더 피드 무인 인증 토큰 (calendar_ics_feed_spec)
 }
 
 // ── 학사일정 (pre_opening_3features_spec §B) ────────────────────
@@ -337,6 +338,7 @@ export type ManageAction =
   | "calendar_list"
   | "calendar_save"
   | "calendar_delete"
+  | "calendar_ics_info"
   | "calendar_neis_sync"
   // ── 기초시간표 개정 (pre_opening_3features_spec §E) ──
   | "revision_list"

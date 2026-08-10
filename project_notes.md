@@ -62,6 +62,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2541,3 +2543,22 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 ### push·배포 (2026-08-10 사용자 승인)
 - 6f5b17b push → Vercel 배포 success. 실기기 확인 항목: [시수 조정]/[행사 추가] 병렬 탭(접힘 링크 소멸), 여름방학 등 지난 일정 숨김+토글, 고지 현황 실명(백필로 push 전부터 반영됨).
+
+## [2026-08-10] Antigravity → Claude (체인 탐색 실패 사유 표시 & 구독형 학사일정 캘린더 ics 피드 구현 완료)
+
+- **요약**:
+  1. **체인 탐색 실패 사유 표시**: 체인 탐색 경로 0건일 때 서버가 이미 아는 지배적 실패 원인(목적지 점유 수업의 대안 0건 / 이동 대상 수업 대안 0건 / 목적지 빈 슬롯 충돌 / 중간 경로 전멸)을 0개의 추가 Firestore 읽기로 `reason` 응답에 포함 및 직권 배정 화면 모달 오류 메시지에 동시 표시.
+  2. **구독형 학사일정 캘린더**: `docs/calendar_ics_feed_spec.md` 구현 (수제 ics 생성 `/api/calendar/ics?token=`, `calendar_ics_info` 관리 액션, 교사 대시보드·학생 포털·학사일정 탭 3곳 구독 안내 카드 마운트).
+- **실제 실행한 검증 명령 및 결과**:
+  - `npx tsc --noEmit`: Exit Code 0 (오류 0건)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build`: Exit Code 0 (`✓ Compiled successfully in 15.2s`, `✓ Finished TypeScript in 21.8s`, `✓ Generating static pages (36/36)`)
+  - `npx tsx --env-file=.env.local scripts/verify_calendar_ics.ts`: 전 과정 통과 (`[1] icsToken 발급/조회 성공`, `[2] 무효 토큰 404`, `[3] ics 피드 200 수신 (4224 bytes)`, `[4] CRLF 줄바꿈 규격`, `[5] VEVENT 20건 대조`, `[6] DTEND exclusive(+1일)`, `[7] 학년 접미사·DESCRIPTION·이스케이프 검사 통과 ✅`)
+- **다음 할 일**: Claude 표적 검수 및 사용자 push 승인 대기.
+
+
+### [2026-08-10] Claude 위험 지점 표적 검수 — 통과(경미 2건 Claude 직접 수정 포함), 커밋 완료 (push 승인 대기)
+
+- **체인 실패 사유**: 경로 0건일 때만 계산, 사유 블록 await 0건 실증(추가 Firestore 읽기 0 지시 준수), 지배 원인 4분기(목적지 직접 이동 불가/점유 수업 대안 0/이동 수업 대안 0/깊이 내 연결 실패) 모두 탐색 중 확보 정보만 요약.
+- **ics 피드**: crypto.randomBytes(24) 강한 토큰·불일치 404 은닉·이스케이프·DTEND+1·보관 학기 제외·응답에 토큰 외 settings 누설 없음. authz의 calendar_ics_info 전 구성원 개방은 스펙 §3(관리 관문)과 §4(학생 포털 카드)의 내부 모순을 옳은 쪽으로 해소한 것 — 반환값이 구독 URL뿐이라 안전, 스펙 §3이 틀렸던 것(기록 정정).
+- **Claude 직접 수정 2건(재발 부류)**: ① `loadTimetableSettings` 정규화에 icsToken 누락 — 호출마다 토큰 재발급→기배포 구독 주소 전멸 구조(lastNeisSyncAt 때와 동일 함정 재발, 2회 호출 실측으로 잡음). 두 분기에 추가, 수정 후 토큰 안정성 실측 ✓. **정규화 명시 조립 패턴은 설정 필드 추가 시마다 이 함정을 재생산 — 이후 검수 체크리스트 고정 항목.** ② 폴백 호스트 오기 school.hmh.or.kr → portal.hmh.or.kr(프로덕션 카드는 요청 호스트라 무해했으나 지뢰 제거).
+- Claude 재검증: tsc·build(힙 4GB)·ics 구조 검사 스크립트·토큰 안정성 전부 통과. 구글 캘린더 실추가는 배포 후 사용자 실기기 항목.

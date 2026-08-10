@@ -326,7 +326,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         const chains = data.chains || [];
         setChainResults(chains);
         if (chains.length === 0) {
-          setChainSearchError(`${depth}단계 안에서는 경로(체인)가 없습니다.`);
+          const reasonText = data.reason ? ` (${data.reason})` : "";
+          setChainSearchError(`${depth}단계 안에서는 경로(체인)가 없습니다.${reasonText}`);
         }
       } else {
         setChainSearchError(data.error || "체인 탐색 실패");

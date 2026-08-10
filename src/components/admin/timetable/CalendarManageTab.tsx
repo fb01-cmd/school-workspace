@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { CalendarEventType, TimetableCalendarEvent } from "@/lib/timetable/types";
+import CalendarSubscribeCard from "@/components/calendar/CalendarSubscribeCard";
+
 
 interface CalendarManageTabProps {
   activeTermId?: string | null;
@@ -287,7 +289,11 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
 
   return (
     <div className="space-y-6">
+      {/* 구독형 학사일정 캘린더 안내 카드 */}
+      <CalendarSubscribeCard variant="full" />
+
       {/* 1. 상단 안내 카드 & 자동 수집 헤더 */}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-4">
           <div>

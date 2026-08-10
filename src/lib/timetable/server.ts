@@ -87,6 +87,7 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
       teacherPilotEmails: [],
       publishWeeksAhead: 2,
       lastNeisSyncAt: undefined,
+      icsToken: undefined,
     };
   }
   const data = snap.data() || {};
@@ -109,6 +110,7 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
       ? Math.max(0, Math.min(8, Number(data.publishWeeksAhead)))
       : 2,
     lastNeisSyncAt: typeof data.lastNeisSyncAt === "number" ? data.lastNeisSyncAt : undefined,
+    icsToken: typeof data.icsToken === "string" && data.icsToken.trim() ? data.icsToken : undefined,
   };
 }
 
@@ -3915,10 +3917,59 @@ export async function computeChainSearch(
   dfs([], { weekId: params.weekId, day: params.source.day, period: params.source.period }, new Set());
 
   chains.sort((a, b) => a.totalScore - b.totalScore || a.steps.length - b.steps.length);
+
+  let reason: string | undefined;
+  if (chains.length === 0) {
+    const tGrids = synthWith([]).get(targetWeekId)!;
+    const occ = resolveDirectSource(tGrids, {
+      grade: params.source.grade,
+      classNum: params.source.classNum,
+      day: params.target.day,
+      period: params.target.period,
+    });
+
+    if (!occ.ok) {
+      if (occ.error.includes("수업이 없습니다")) {
+        reason = `목적지(${slotLabel(targetWeekId, params.target.day, params.target.period)})가 빈 슬롯이나 ${mover.teacherName} 교사의 시간표/특별실 충돌로 직접 이동할 수 없습니다.`;
+      } else {
+        reason = `목적지 점유 수업이 직권 배정 제외 대상입니다 (${occ.error}).`;
+      }
+    } else {
+      const occSource: SwapSourceSlot = {
+        grade: params.source.grade,
+        classNum: params.source.classNum,
+        day: params.target.day,
+        period: params.target.period,
+        subjectName: occ.info.subjectName,
+      };
+      const occRes = findSwapCandidates(tGrids, tgtWeek, settings, occ.info.teacherEmail, occSource);
+      const occCandsCount = (occRes.candidates || []).length;
+
+      const sSource: SwapSourceSlot = {
+        grade: params.source.grade,
+        classNum: params.source.classNum,
+        day: params.source.day,
+        period: params.source.period,
+        subjectName: mover.subjectName,
+      };
+      const sRes = findSwapCandidates(grids0, srcWeek, settings, mover.teacherEmail, sSource);
+      const sCandsCount = (sRes.candidates || []).length;
+
+      if (occCandsCount === 0) {
+        reason = `목적지 점유 수업(${occ.info.teacherName} · ${occ.info.subjectName})이 특별실·구장 제약 또는 시간표 충돌로 이동 가능한 대안 슬롯이 없습니다 (후보 0건).`;
+      } else if (sCandsCount === 0) {
+        reason = `이동 대상 수업(${mover.teacherName} · ${mover.subjectName})이 특별실·구장 제약 또는 시간표 충돌로 이동 가능한 대안 슬롯이 없습니다 (후보 0건).`;
+      } else {
+        reason = `목적지 점유 수업(${occ.info.subjectName}, 대안 ${occCandsCount}건)과 이동 대상 수업(${mover.subjectName}, 대안 ${sCandsCount}건) 간 탐색 깊이(${maxDepth}단계) 내 연결 가능한 경로가 없습니다.`;
+      }
+    }
+  }
+
   return {
     chains: chains.slice(0, CHAIN_MAX_RESULTS),
     sourceTeacher: mover,
     ...(truncated ? { truncated: true } : {}),
+    ...(reason ? { reason } : {}),
   };
 }
 
@@ -4196,5 +4247,70 @@ export async function deleteSwapDraft(domain: string, userEmail: string, draftId
     throw new Error("해당 초안을 삭제할 권한이 없습니다.");
   }
   await docRef.delete();
+}
+
+// ── 구독형 학사일정 캘린더 (calendar_ics_feed_spec) ──────────────
+
+/**
+ * 구독형 학사일정 캘린더 (calendar_ics_feed_spec) 토큰 조회 및 자동 생성
+ */
+export async function getCalendarIcsInfo(domain: string, baseUrl?: string): Promise<{
+  icsToken: string;
+  feedUrl: string;
+  webcalUrl: string;
+}> {
+  const settings = await loadTimetableSettings(domain);
+  let icsToken = settings.icsToken;
+
+  if (!icsToken || icsToken.trim().length < 32) {
+    const crypto = await import("crypto");
+    icsToken = crypto.randomBytes(24).toString("hex");
+    await timetableSettingsDocRef(domain).set({ icsToken }, { merge: true });
+    await bumpTimetableCacheVersion(domain);
+  }
+
+  const hostBase = baseUrl || process.env.NEXT_PUBLIC_APP_URL || "https://portal.hmh.or.kr";
+  const cleanHost = hostBase.replace(/^https?:\/\//, "");
+  const feedUrl = `${hostBase}/api/calendar/ics?token=${icsToken}`;
+  const webcalUrl = `webcal://${cleanHost}/api/calendar/ics?token=${icsToken}`;
+
+  return { icsToken, feedUrl, webcalUrl };
+}
+
+/**
+ * ics 피드용 학사일정 이벤트 전수 조회 (보관된 학기 제외 전 학기 이벤트)
+ */
+export async function loadAllCalendarEventsForICS(domain: string): Promise<TimetableCalendarEvent[]> {
+  const terms: TimetableTerm[] = await loadAllTerms(domain);
+  const activeTerms = terms.filter((t: TimetableTerm) => t.status !== "archived");
+  const activeTermIds = new Set(activeTerms.map((t: TimetableTerm) => t.id));
+
+
+  const snap = await timetableCalendarColRef(domain).get();
+  const events: TimetableCalendarEvent[] = [];
+
+  snap.docs.forEach((d) => {
+    const data = d.data() || {};
+    const termId = data.termId || "";
+    if (activeTermIds.size > 0 && !activeTermIds.has(termId)) return;
+
+    events.push({
+      id: d.id,
+      termId,
+      type: data.type as CalendarEventType,
+      startDate: data.startDate || "",
+      endDate: data.endDate || data.startDate || "",
+      ...(data.title ? { title: data.title } : {}),
+      ...(Array.isArray(data.grades) ? { grades: data.grades } : {}),
+      ...(data.periodsByGrade ? { periodsByGrade: data.periodsByGrade } : {}),
+      ...(data.note ? { note: data.note } : {}),
+      source: (data.source as "neis" | "manual") || "manual",
+      ...(data.neisKey ? { neisKey: data.neisKey } : {}),
+      createdBy: data.createdBy || "",
+      createdAt: toMillis(data.createdAt) || 0,
+    });
+  });
+
+  return events.sort((a, b) => a.startDate.localeCompare(b.startDate));
 }
 

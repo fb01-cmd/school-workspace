@@ -36,6 +36,11 @@ export function canManageTimetable(
   const normEmail = ctx.email.toLowerCase();
   const isManager = ctx.managerEmails.some((m) => m.toLowerCase() === normEmail);
 
+  // 0. 구독형 학사일정 캘린더 피드 안내 정보 (전 구성원 공개)
+  if (action === "calendar_ics_info") {
+    return { allowed: true, basis: "all_users_ics_info" };
+  }
+
   // 1. 학생 차단
   if (ctx.role === "student") {
     return { allowed: false, basis: "denied:student_role" };

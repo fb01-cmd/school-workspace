@@ -10,6 +10,8 @@ import { doc, getDoc } from "firebase/firestore";
 import StudentTimetableCard from "@/components/student/StudentTimetableCard";
 import MealCard from "@/components/common/MealCard";
 import PushNotificationManager from "@/components/common/PushNotificationManager";
+import CalendarSubscribeCard from "@/components/calendar/CalendarSubscribeCard";
+
 
 export default function StudentPortal() {
   const { userData } = useAuth();
@@ -305,6 +307,9 @@ export default function StudentPortal() {
 
           {/* 🔔 알림 설정 관리자 */}
           <PushNotificationManager />
+
+          {/* 📅 학사일정 구독 카드 */}
+          <CalendarSubscribeCard variant="compact" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* 소속 정보 카드는 제거 — 이메일만 크게 보여줘 급식을 밀어내던 자리 (2026-08-07 사용자 지시) */}

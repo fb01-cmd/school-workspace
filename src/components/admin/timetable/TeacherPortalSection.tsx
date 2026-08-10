@@ -49,6 +49,7 @@ import {
   OffscreenConsolidatedCard as OffscreenConsolidatedShareCard,
   copyShareImageElement,
 } from "./OffscreenShareCard";
+import CalendarSubscribeCard from "@/components/calendar/CalendarSubscribeCard";
 
 const DAYS = [
   { num: 1, label: "월" },
@@ -2313,7 +2314,10 @@ export default function TeacherPortalSection() {
         </p>
       </div>
 
+      <CalendarSubscribeCard variant="compact" />
+
       <div className="bg-white rounded-xl p-2 shadow-sm border border-gray-200 flex flex-wrap gap-2 text-xs font-bold">
+
         <button
           onClick={() => setActiveTab("my_tt")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${

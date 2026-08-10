@@ -38,6 +38,7 @@ import {
   validateVenueGroupPayload,
   venueGroupsColRef,
   registerWeek,
+  getCalendarIcsInfo,
   rejectSwapRequest,
   revertTimetableChange,
   saveTimetableSettings,
@@ -902,6 +903,22 @@ export async function POST(req: NextRequest) {
           message: result.message,
           stats: result.stats,
           settings: updatedSettings,
+        });
+      }
+
+      case "calendar_ics_info": {
+        let baseUrl: string | undefined;
+        try {
+          const u = new URL(req.url);
+          baseUrl = `${u.protocol}//${u.host}`;
+        } catch {
+          // fallback
+        }
+        const info = await getCalendarIcsInfo(domain, baseUrl);
+        return NextResponse.json({
+          success: true,
+          action,
+          ...info,
         });
       }
 
