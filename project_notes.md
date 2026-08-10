@@ -2578,3 +2578,6 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 - **통과 확인**: icsStaffToken·staffOnly 정규화 두 분기+loadCalendarEvents 통과(고정 체크 항목 — 이번엔 Antigravity가 지킴), 학생 role 응답에 교직원 주소 미포함, 나이스 수집 add/update에 staffOnly 미기록(오염 없음), 학생용 토큰 기존 주소 불변(기구독 안 깨짐), 이중 피드 검증 스크립트·tsc·build 통과, 테스트 데이터 잔여 0.
 - **Claude 직접 수정 2건**: ① NAME 속성 회귀 — efef793에서 넣은 표준 이름 줄이 라우트 재작성 때 소실 → `NAME:${calName}`로 복원(교직원용 이름 구분 포함). **회귀 교훈: 직전 커밋의 소수 라인 수정은 재작성 diff에서 대조 필수.** ② staffOnly 해제 불가 — calendar_save 수정이 merge 쓰기라 validate가 필드를 생략하면 체크 해제가 반영 안 됨 → validate가 항상 true/false 명시하도록 수정, 해제 시 명시적 false 실측 ✓.
+
+### push·배포 (2026-08-10 사용자 승인)
+- eacf415 push → Vercel success. 프로덕션 실측: 학생용(기존 토큰) NAME/이름 정상, 교직원용 피드 이름 "(교직원)" 구분·20건 수신. **다음 = 기존 수동 캘린더(공개 ics 568건) 이행 dry-run** — 남은 학기분·나이스 중복 제외·업무 마감류 staffOnly 자동 분류 목록을 사용자 확인 후 실반영.
