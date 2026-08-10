@@ -88,6 +88,7 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
       publishWeeksAhead: 2,
       lastNeisSyncAt: undefined,
       icsToken: undefined,
+      icsStaffToken: undefined,
     };
   }
   const data = snap.data() || {};
@@ -111,6 +112,7 @@ export async function loadTimetableSettings(domain: string): Promise<TimetableSe
       : 2,
     lastNeisSyncAt: typeof data.lastNeisSyncAt === "number" ? data.lastNeisSyncAt : undefined,
     icsToken: typeof data.icsToken === "string" && data.icsToken.trim() ? data.icsToken : undefined,
+    icsStaffToken: typeof data.icsStaffToken === "string" && data.icsStaffToken.trim() ? data.icsStaffToken : undefined,
   };
 }
 
@@ -1218,6 +1220,7 @@ export async function loadCalendarEvents(
         ...(Array.isArray(data.grades) ? { grades: data.grades } : {}),
         ...(data.periodsByGrade ? { periodsByGrade: data.periodsByGrade } : {}),
         ...(data.note ? { note: data.note } : {}),
+        ...(typeof data.staffOnly === "boolean" ? { staffOnly: data.staffOnly } : {}),
         source: (data.source as "neis" | "manual") || "manual",
         ...(data.neisKey ? { neisKey: data.neisKey } : {}),
         createdBy: data.createdBy || "",
@@ -1275,6 +1278,7 @@ export function validateCalendarEventPayload(
   }
 
   const note = typeof raw?.note === "string" ? raw.note.trim().slice(0, 200) : "";
+  const staffOnly = Boolean(raw?.staffOnly);
   return {
     ok: true,
     event: {
@@ -1286,6 +1290,8 @@ export function validateCalendarEventPayload(
       ...(grades ? { grades } : {}),
       ...(periodsByGrade ? { periodsByGrade } : {}),
       ...(note ? { note } : {}),
+      // 항상 명시(true/false) — calendar_save 수정이 merge 쓰기라 생략 시 체크 해제가 반영되지 않음
+      staffOnly,
     },
   };
 }
@@ -4258,23 +4264,38 @@ export async function getCalendarIcsInfo(domain: string, baseUrl?: string): Prom
   icsToken: string;
   feedUrl: string;
   webcalUrl: string;
+  icsStaffToken: string;
+  staffFeedUrl: string;
+  staffWebcalUrl: string;
 }> {
   const settings = await loadTimetableSettings(domain);
   let icsToken = settings.icsToken;
+  let icsStaffToken = settings.icsStaffToken;
+  let updated = false;
 
+  const crypto = await import("crypto");
   if (!icsToken || icsToken.trim().length < 32) {
-    const crypto = await import("crypto");
     icsToken = crypto.randomBytes(24).toString("hex");
-    await timetableSettingsDocRef(domain).set({ icsToken }, { merge: true });
+    updated = true;
+  }
+  if (!icsStaffToken || icsStaffToken.trim().length < 32) {
+    icsStaffToken = crypto.randomBytes(24).toString("hex");
+    updated = true;
+  }
+
+  if (updated) {
+    await timetableSettingsDocRef(domain).set({ icsToken, icsStaffToken }, { merge: true });
     await bumpTimetableCacheVersion(domain);
   }
 
-  const hostBase = baseUrl || process.env.NEXT_PUBLIC_APP_URL || "https://portal.hmh.or.kr";
+  const hostBase = baseUrl || process.env.NEXT_PUBLIC_APP_URL || "https://school.hmh.or.kr";
   const cleanHost = hostBase.replace(/^https?:\/\//, "");
   const feedUrl = `${hostBase}/api/calendar/ics?token=${icsToken}`;
   const webcalUrl = `webcal://${cleanHost}/api/calendar/ics?token=${icsToken}`;
+  const staffFeedUrl = `${hostBase}/api/calendar/ics?token=${icsStaffToken}`;
+  const staffWebcalUrl = `webcal://${cleanHost}/api/calendar/ics?token=${icsStaffToken}`;
 
-  return { icsToken, feedUrl, webcalUrl };
+  return { icsToken, feedUrl, webcalUrl, icsStaffToken, staffFeedUrl, staffWebcalUrl };
 }
 
 /**
@@ -4284,7 +4305,6 @@ export async function loadAllCalendarEventsForICS(domain: string): Promise<Timet
   const terms: TimetableTerm[] = await loadAllTerms(domain);
   const activeTerms = terms.filter((t: TimetableTerm) => t.status !== "archived");
   const activeTermIds = new Set(activeTerms.map((t: TimetableTerm) => t.id));
-
 
   const snap = await timetableCalendarColRef(domain).get();
   const events: TimetableCalendarEvent[] = [];
@@ -4304,6 +4324,7 @@ export async function loadAllCalendarEventsForICS(domain: string): Promise<Timet
       ...(Array.isArray(data.grades) ? { grades: data.grades } : {}),
       ...(data.periodsByGrade ? { periodsByGrade: data.periodsByGrade } : {}),
       ...(data.note ? { note: data.note } : {}),
+      ...(typeof data.staffOnly === "boolean" ? { staffOnly: data.staffOnly } : {}),
       source: (data.source as "neis" | "manual") || "manual",
       ...(data.neisKey ? { neisKey: data.neisKey } : {}),
       createdBy: data.createdBy || "",

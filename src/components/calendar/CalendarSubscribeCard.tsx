@@ -5,15 +5,19 @@ import { useAuth } from "@/context/AuthContext";
 
 interface CalendarSubscribeCardProps {
   variant?: "compact" | "full";
+  defaultTarget?: "staff" | "student";
   className?: string;
 }
 
 export default function CalendarSubscribeCard({
   variant = "compact",
+  defaultTarget = "staff",
   className = "",
 }: CalendarSubscribeCardProps) {
   const { user } = useAuth();
   const [webcalUrl, setWebcalUrl] = useState<string>("");
+  const [staffWebcalUrl, setStaffWebcalUrl] = useState<string>("");
+  const [activeTarget, setActiveTarget] = useState<"staff" | "student">(defaultTarget);
   const [loading, setLoading] = useState<boolean>(true);
   const [copied, setCopied] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +38,14 @@ export default function CalendarSubscribeCard({
         });
         const data = await res.json();
         if (isMounted) {
-          if (res.ok && data.success && data.webcalUrl) {
-            setWebcalUrl(data.webcalUrl);
+          if (res.ok && data.success) {
+            setWebcalUrl(data.webcalUrl || "");
+            if (data.staffWebcalUrl) {
+              setStaffWebcalUrl(data.staffWebcalUrl);
+              setActiveTarget(defaultTarget);
+            } else {
+              setActiveTarget("student");
+            }
           } else {
             setError("구독 주소를 가져오지 못했습니다.");
           }
@@ -52,12 +62,15 @@ export default function CalendarSubscribeCard({
     return () => {
       isMounted = false;
     };
-  }, [user]);
+  }, [user, defaultTarget]);
 
-  const handleCopyUrl = async () => {
-    if (!webcalUrl) return;
+  const currentUrl = activeTarget === "staff" && staffWebcalUrl ? staffWebcalUrl : webcalUrl;
+
+  const handleCopyUrl = async (urlToCopy?: string) => {
+    const targetUrl = urlToCopy || currentUrl;
+    if (!targetUrl) return;
     try {
-      await navigator.clipboard.writeText(webcalUrl);
+      await navigator.clipboard.writeText(targetUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
@@ -65,8 +78,8 @@ export default function CalendarSubscribeCard({
     }
   };
 
-  const googleCalLink = webcalUrl
-    ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl)}`
+  const googleCalLink = currentUrl
+    ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(currentUrl)}`
     : "#";
 
   if (loading) {
@@ -77,9 +90,11 @@ export default function CalendarSubscribeCard({
     );
   }
 
-  if (error || !webcalUrl) {
+  if (error || (!webcalUrl && !staffWebcalUrl)) {
     return null;
   }
+
+  const hasStaffFeed = Boolean(staffWebcalUrl);
 
   return (
     <div
@@ -91,18 +106,46 @@ export default function CalendarSubscribeCard({
             <span className="text-base">📅</span>
             <h4 className="font-bold text-slate-800 text-sm sm:text-base">
               학사일정을 내 캘린더로 받기
+              {hasStaffFeed && (
+                <span className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                  {activeTarget === "staff" ? "교직원용" : "학생·학부모용"}
+                </span>
+              )}
             </h4>
           </div>
           <p className="text-xs text-slate-600 leading-relaxed">
             한 번 추가해 두면 학사일정이 바뀔 때 캘린더가 자동으로 따라 바뀝니다.
           </p>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            추가 직후에는 일정이 보이기까지 시간이 걸릴 수 있습니다(길면 반나절). 캘린더 이름이 주소로
-            보이면 구글 캘린더 설정에서 &quot;효명고 학사일정&quot;으로 바꿔 쓰세요.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 pt-1 sm:pt-0">
+          {hasStaffFeed && (
+            <div className="inline-flex rounded-xl p-0.5 bg-slate-200/70 text-[11px] font-bold shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTarget("staff")}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  activeTarget === "staff"
+                    ? "bg-white text-indigo-700 shadow-2xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                교직원용
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTarget("student")}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  activeTarget === "student"
+                    ? "bg-white text-indigo-700 shadow-2xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                학생용
+              </button>
+            </div>
+          )}
+
           <a
             href={googleCalLink}
             target="_blank"
@@ -115,7 +158,7 @@ export default function CalendarSubscribeCard({
 
           <button
             type="button"
-            onClick={handleCopyUrl}
+            onClick={() => handleCopyUrl(currentUrl)}
             className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-medium text-xs border border-slate-200 rounded-xl shadow-2xs transition-all"
           >
             <span>{copied ? "✅" : "📋"}</span>
@@ -126,10 +169,42 @@ export default function CalendarSubscribeCard({
 
       {variant === "full" && (
         <div className="mt-3.5 pt-3 border-t border-indigo-100/80 space-y-2">
-          <div className="flex items-center gap-2 text-xs text-slate-500 font-mono bg-white/70 px-3 py-1.5 rounded-lg border border-indigo-100 select-all overflow-x-auto">
-            <span className="text-indigo-400 font-sans font-medium text-[11px] shrink-0">구독 주소:</span>
-            <span className="truncate">{webcalUrl}</span>
-          </div>
+          {hasStaffFeed ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+              <div className="bg-white/80 p-2.5 rounded-xl border border-indigo-100 space-y-1">
+                <div className="flex items-center justify-between text-[11px] font-sans">
+                  <span className="font-bold text-indigo-700">🔒 교직원용 구독 주소 (전체 일정 포함)</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyUrl(staffWebcalUrl)}
+                    className="text-xs text-indigo-600 hover:underline font-medium"
+                  >
+                    복사
+                  </button>
+                </div>
+                <div className="truncate text-slate-600 text-[11px] select-all">{staffWebcalUrl}</div>
+              </div>
+
+              <div className="bg-white/80 p-2.5 rounded-xl border border-indigo-100 space-y-1">
+                <div className="flex items-center justify-between text-[11px] font-sans">
+                  <span className="font-bold text-slate-700">📢 학생·학부모용 구독 주소 (교직원 전용 제외)</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyUrl(webcalUrl)}
+                    className="text-xs text-slate-600 hover:underline font-medium"
+                  >
+                    복사
+                  </button>
+                </div>
+                <div className="truncate text-slate-600 text-[11px] select-all">{webcalUrl}</div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs text-slate-500 font-mono bg-white/70 px-3 py-1.5 rounded-lg border border-indigo-100 select-all overflow-x-auto">
+              <span className="text-indigo-400 font-sans font-medium text-[11px] shrink-0">구독 주소:</span>
+              <span className="truncate">{webcalUrl}</span>
+            </div>
+          )}
         </div>
       )}
 

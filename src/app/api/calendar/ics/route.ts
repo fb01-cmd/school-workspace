@@ -72,25 +72,43 @@ export async function GET(req: Request) {
       return new NextResponse("Not Found", { status: 404 });
     }
 
-    const snap = await adminDb
+    // 1. icsToken (학생용) 검색
+    let snap = await adminDb
       .collection("timetable_settings")
       .where("icsToken", "==", token)
       .limit(1)
       .get();
 
+    let audience: "student" | "staff" = "student";
+    let calName = "효명고 학사일정";
+
     if (snap.empty) {
-      return new NextResponse("Not Found", { status: 404 });
+      // 2. icsStaffToken (교직원용) 검색
+      snap = await adminDb
+        .collection("timetable_settings")
+        .where("icsStaffToken", "==", token)
+        .limit(1)
+        .get();
+
+      if (snap.empty) {
+        return new NextResponse("Not Found", { status: 404 });
+      }
+      audience = "staff";
+      calName = "효명고 학사일정(교직원)";
     }
 
     const domain = snap.docs[0].id;
-    const events = await loadAllCalendarEventsForICS(domain);
+    const allEvents = await loadAllCalendarEventsForICS(domain);
+
+    // audience === "student" 이면 staffOnly 이벤트 제외
+    const events = audience === "student" ? allEvents.filter((ev) => !ev.staffOnly) : allEvents;
 
     const icsLines: string[] = [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
       "PRODID:-//Hyomyeong High School//Timetable Calendar//KO",
-      "NAME:효명고 학사일정",
-      "X-WR-CALNAME:효명고 학사일정",
+      `NAME:${calName}`,
+      `X-WR-CALNAME:${calName}`,
       "X-PUBLISHED-TTL:PT12H",
       "CALSCALE:GREGORIAN",
       "METHOD:PUBLISH",

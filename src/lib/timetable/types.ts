@@ -18,6 +18,7 @@ export interface TimetableSettings {
   publishWeeksAhead?: number; // 학사일정 주차 자동 파생 범위 — 오늘 주부터 몇 주 앞까지 (기본 2, pre_opening_3features_spec §B)
   lastNeisSyncAt?: number; // 나이스 학사일정 마지막 수집 시각 (ms epoch)
   icsToken?: string; // 구독형 학사일정 캘린더 피드 무인 인증 토큰 (calendar_ics_feed_spec)
+  icsStaffToken?: string; // 교직원용 학사일정 캘린더 피드 무인 인증 토큰 (calendar_ics_feed_spec §4-2)
 }
 
 // ── 학사일정 (pre_opening_3features_spec §B) ────────────────────
@@ -35,6 +36,7 @@ export interface TimetableCalendarEvent {
   grades?: number[]; // 해당 학년(1~3). 없으면 전 학년
   periodsByGrade?: Record<string, number>; // 단축수업·고사 — 요일별 시수
   note?: string;
+  staffOnly?: boolean; // 교직원 전용 일정 여부 (calendar_ics_feed_spec §4-2)
   source?: "neis" | "manual"; // 없으면 manual로 간주(레거시). neis 항목은 재수집이 관리
   neisKey?: string; // source=neis 전용 dedupe 키: `${AA_YMD}|${EVENT_NM}`
   createdBy?: string;

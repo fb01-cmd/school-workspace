@@ -915,6 +915,15 @@ export async function POST(req: NextRequest) {
           // fallback
         }
         const info = await getCalendarIcsInfo(domain, baseUrl);
+        if (auth.role === "student") {
+          return NextResponse.json({
+            success: true,
+            action,
+            icsToken: info.icsToken,
+            feedUrl: info.feedUrl,
+            webcalUrl: info.webcalUrl,
+          });
+        }
         return NextResponse.json({
           success: true,
           action,

@@ -36,6 +36,7 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
   const [startDate, setStartDate] = useState<string>(getTodayKSTISO());
   const [endDate, setEndDate] = useState<string>(getTodayKSTISO());
   const [note, setNote] = useState("");
+  const [staffOnly, setStaffOnly] = useState(false);
 
   // Target grades (1, 2, 3)
   const [grade1, setGrade1] = useState(true);
@@ -123,6 +124,7 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
     setStartDate(todayStr);
     setEndDate(todayStr);
     setNote("");
+    setStaffOnly(false);
     setGrade1(true);
     setGrade2(true);
     setGrade3(true);
@@ -144,6 +146,7 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
     setStartDate(todayStr);
     setEndDate(todayStr);
     setNote("");
+    setStaffOnly(false);
   };
 
   const handleEditClick = (event: TimetableCalendarEvent) => {
@@ -157,6 +160,7 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
     setStartDate(event.startDate);
     setEndDate(event.endDate || event.startDate);
     setNote(event.note || "");
+    setStaffOnly(Boolean(event.staffOnly));
 
     if (event.grades) {
       setGrade1(event.grades.includes(1));
@@ -219,6 +223,7 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
         grades,
         periodsByGrade,
         note: note.trim() || undefined,
+        staffOnly: staffOnly ? true : undefined,
       };
 
       const res = await fetch("/api/timetable/manage", {
@@ -592,6 +597,22 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
               />
             </div>
 
+            {/* 교직원 전용 체크박스 ([행사 추가] 탭 또는 체크박스 노출) */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={staffOnly}
+                  onChange={(e) => setStaffOnly(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                />
+                <span>🔒 교직원만 보기</span>
+              </label>
+              <p className="text-[11px] text-slate-500 pl-6">
+                학생·학부모 캘린더에는 실리지 않고, 교직원 전용 구독 캘린더에만 노출됩니다.
+              </p>
+            </div>
+
             {/* 저장 버튼 */}
             <div className="flex justify-end gap-2 pt-2">
               {editingId && (
@@ -691,6 +712,13 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
                             ) : (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 직접 등록
+                              </span>
+                            )}
+
+                            {/* 교직원 전용 배지 */}
+                            {evt.staffOnly && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                                🔒 교직원 전용
                               </span>
                             )}
 

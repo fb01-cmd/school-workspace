@@ -64,6 +64,8 @@
 
 
 
+
+
 > `AGENTS.md` §3 "동시 작업 충돌 방지" 집행 목록. **파일을 편집하기 전에 반드시 여기부터 확인한다.** 다른 쪽이 이미 올려둔 파일이면 편집을 시작하지 않고 먼저 확인한다. 작업 시작 시 아래 형식으로 추가하고, 끝나면(커밋 후) 자기 항목을 지운다. 비어 있으면 현재 충돌 우려 없음.
 
 ## Firebase Configuration
@@ -2544,16 +2546,21 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### push·배포 (2026-08-10 사용자 승인)
 - 6f5b17b push → Vercel 배포 success. 실기기 확인 항목: [시수 조정]/[행사 추가] 병렬 탭(접힘 링크 소멸), 여름방학 등 지난 일정 숨김+토글, 고지 현황 실명(백필로 push 전부터 반영됨).
 
-## [2026-08-10] Antigravity → Claude (체인 탐색 실패 사유 표시 & 구독형 학사일정 캘린더 ics 피드 구현 완료)
+## [2026-08-10] Antigravity → Claude (체인 탐색 실패 사유 표시 & 구독형 학사일정 캘린더 교직원/학생 이중 ics 피드 구현 완료)
 
 - **요약**:
-  1. **체인 탐색 실패 사유 표시**: 체인 탐색 경로 0건일 때 서버가 이미 아는 지배적 실패 원인(목적지 점유 수업의 대안 0건 / 이동 대상 수업 대안 0건 / 목적지 빈 슬롯 충돌 / 중간 경로 전멸)을 0개의 추가 Firestore 읽기로 `reason` 응답에 포함 및 직권 배정 화면 모달 오류 메시지에 동시 표시.
-  2. **구독형 학사일정 캘린더**: `docs/calendar_ics_feed_spec.md` 구현 (수제 ics 생성 `/api/calendar/ics?token=`, `calendar_ics_info` 관리 액션, 교사 대시보드·학생 포털·학사일정 탭 3곳 구독 안내 카드 마운트).
+  1. **체인 탐색 실패 사유 표시**: 체인 탐색 경로 0건일 때 서버가 이미 아는 지배적 실패 원인을 0개의 추가 Firestore 읽기로 `reason` 응답에 포함 및 직권 배정 모달 오류 메시지에 통합 표시.
+  2. **구독형 학사일정 캘린더 이중 피드 (§4-2)**:
+     - `types.ts` & `server.ts`: `staffOnly?: boolean` 및 `icsStaffToken?: string` 추가. `loadTimetableSettings` (정규화 두 분기), `loadCalendarEvents`, `validateCalendarEventPayload` 정규화 통과 완료.
+     - `/api/calendar/ics`: `icsToken`(학생/학부모용 — `staffOnly` 미포함, 캘린더명 "효명고 학사일정") / `icsStaffToken`(교직원용 — 전건 포함, 캘린더명 "효명고 학사일정(교직원)") 구분. 기존 `icsToken` 불변 작동.
+     - `calendar_ics_info` 액션: 학생 role에는 학생용 주소만, 교사·수퍼어드민·일과계에는 두 주소 반환.
+     - UI: [행사 추가] 폼에 "🔒 교직원만 보기" 체크박스, 학사일정 목록에 "🔒 교직원 전용" 배지, 구독 안내 카드(교사 대시보드=교직원용, 학생 포털=학생용, 학사일정 탭=두 주소 모두 표시).
 - **실제 실행한 검증 명령 및 결과**:
   - `npx tsc --noEmit`: Exit Code 0 (오류 0건)
-  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build`: Exit Code 0 (`✓ Compiled successfully in 15.2s`, `✓ Finished TypeScript in 21.8s`, `✓ Generating static pages (36/36)`)
-  - `npx tsx --env-file=.env.local scripts/verify_calendar_ics.ts`: 전 과정 통과 (`[1] icsToken 발급/조회 성공`, `[2] 무효 토큰 404`, `[3] ics 피드 200 수신 (4224 bytes)`, `[4] CRLF 줄바꿈 규격`, `[5] VEVENT 20건 대조`, `[6] DTEND exclusive(+1일)`, `[7] 학년 접미사·DESCRIPTION·이스케이프 검사 통과 ✅`)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build`: Exit Code 0 (`✓ Compiled successfully in 19.1s`, `✓ Finished TypeScript in 25.8s`, `✓ Generating static pages (37/37)`)
+  - `npx tsx --env-file=.env.local scripts/verify_calendar_ics.ts`: 전 과정 통과 (`[1] icsToken & icsStaffToken 발급/조회 성공`, `[2] 무효 토큰 404`, `[3] 학생용 피드 (icsToken) staffOnly 미포함 검증`, `[4] 교직원용 피드 (icsStaffToken) staffOnly 포함 검증`, `[5] 기존 icsToken 주소 불변 검증`, `[6] VEVENT 21건 종일 DTEND exclusive(+1일) 검사 통과 ✅`)
 - **다음 할 일**: Claude 표적 검수 및 사용자 push 승인 대기.
+
 
 
 ### [2026-08-10] Claude 위험 지점 표적 검수 — 통과(경미 2건 Claude 직접 수정 포함), 커밋 완료 (push 승인 대기)
@@ -2566,3 +2573,8 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### push·배포 (2026-08-10 사용자 승인)
 - eb38695 push → Vercel 배포 success. **프로덕션 피드 실측 완료**: 실토큰 200·VEVENT 20건·무효 토큰 404. 남은 실기기 확인(사용자): 구독 카드 3곳 노출 + [구글 캘린더에 추가] 실추가 1회(반영 지연 최대 하루는 정상), 직권 배정에서 경로 없는 체인 시도 시 사유 문구 확인.
 - (추가) efef793 배포 success: ics NAME 속성(표준 이름)·구독 카드 지연/이름변경 안내 — 프로덕션 피드 헤더 실측 확인. 사용자 실기기 증상 2건(첫 동기화 지연·이름 URL 표시)은 구글 측 동작으로 판정, 기추가분은 캘린더 설정에서 수동 개명 안내됨. 내일까지 빈 캘린더 지속 시 재조사.
+
+### [2026-08-10] Claude 이중 피드(§4-2) 위험 지점 검수 — 통과(결함 2건 직접 수정), 커밋 완료 (push 승인 대기)
+
+- **통과 확인**: icsStaffToken·staffOnly 정규화 두 분기+loadCalendarEvents 통과(고정 체크 항목 — 이번엔 Antigravity가 지킴), 학생 role 응답에 교직원 주소 미포함, 나이스 수집 add/update에 staffOnly 미기록(오염 없음), 학생용 토큰 기존 주소 불변(기구독 안 깨짐), 이중 피드 검증 스크립트·tsc·build 통과, 테스트 데이터 잔여 0.
+- **Claude 직접 수정 2건**: ① NAME 속성 회귀 — efef793에서 넣은 표준 이름 줄이 라우트 재작성 때 소실 → `NAME:${calName}`로 복원(교직원용 이름 구분 포함). **회귀 교훈: 직전 커밋의 소수 라인 수정은 재작성 diff에서 대조 필수.** ② staffOnly 해제 불가 — calendar_save 수정이 merge 쓰기라 validate가 필드를 생략하면 체크 해제가 반영 안 됨 → validate가 항상 true/false 명시하도록 수정, 해제 시 명시적 false 실측 ✓.
