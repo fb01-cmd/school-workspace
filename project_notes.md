@@ -3078,3 +3078,21 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - push 승인: *"푸시하자."*
 - 솔버 선행 착수: *"project_notes.md 마지막 체크포인트 읽어줘. 9c Phase C(솔버 코어) 시작하자."*
 - 등록부 UI 인계(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. 9c 등록부 UI 3종(특별교사 금지·연속수업·복수교사) 만들어줘. 타입은 types.ts의 TeacherSlotBan·ConsecutiveRule·CoTeachingRule, UI 문법은 기존 동시수업 등록부 탭 복제."*
+
+## [2026-08-11] Antigravity → Claude/사용자 (9c 등록부 UI 3종 구현 완료 핸드오버)
+
+- **변경 파일**:
+  - `src/components/admin/timetable/TeacherSlotBanTab.tsx` (신규 - 🚫 특별교사 금지)
+  - `src/components/admin/timetable/ConsecutiveRuleTab.tsx` (신규 - 🔁 연속수업)
+  - `src/components/admin/timetable/CoTeachingRuleTab.tsx` (신규 - 👥 복수교사)
+  - `src/components/admin/timetable/TimetableSection.tsx` (탭 버튼 3종 및 컴포넌트 마운트 추가)
+  - `src/lib/timetable/types.ts` (`ManageAction` 및 `ManageTimetableRequest` 9c 등록부 타입 확장)
+  - `src/lib/timetable/server.ts` (Firestore ref 3종 및 로더/검증 순수 함수 6종 추가)
+  - `src/app/api/timetable/manage/route.ts` (9c 등록부 CRUD action 9종 추가)
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **구현 내용**:
+  1. **특별교사 금지 (`TeacherSlotBanTab.tsx`)**: 배정금지(assign - H3)/이동금지(move) 속성 구분, 요일x교시 7교시 타일 인터랙티브 셀렉터 + 요일/교시 일괄 퀵 추가, 사유 비고 등록, 카드 리스트 렌더링.
+  2. **연속수업 (`ConsecutiveRuleTab.tsx`)**: 학년/반 토글, 과목명, 패턴 입력(2, 2,2, 3 추천 프리셋 버튼), 특정 교사 한정 옵션, 매뉴얼 §6-라 소유 규칙 안내.
+  3. **복수교사 (`CoTeachingRuleTab.tsx`)**: 학년/반 토글, 과목명, 2인 이상 공동 투입 교사 이메일 태그 관리 UI.
+  4. **서버 CRUD 연동**: `slot_ban_*`, `consecutive_rule_*`, `co_teaching_rule_*` 9종 API 액션 완비.
+

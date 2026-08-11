@@ -33,9 +33,18 @@ import {
   loadSimulGroups,
   loadTimetableSettings,
   loadVenueGroups,
+  loadTeacherSlotBans,
+  loadConsecutiveRules,
+  loadCoTeachingRules,
   simulGroupsColRef,
+  teacherSlotBansColRef,
+  consecutiveRulesColRef,
+  coTeachingRulesColRef,
   validateSimulGroupPayload,
   validateVenueGroupPayload,
+  validateTeacherSlotBanPayload,
+  validateConsecutiveRulePayload,
+  validateCoTeachingRulePayload,
   venueGroupsColRef,
   registerWeek,
   getCalendarIcsInfo,
@@ -980,6 +989,161 @@ export async function POST(req: NextRequest) {
           targetEmail: domain,
           action: "timetable_base_revision_delete",
           details: `기초시간표 개정 임시안 삭제: ${body.revisionId}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action });
+      }
+
+      // ── Phase 9c: 특별교사 금지 / 연속수업 / 복수교사 등록부 ──────
+
+      case "slot_ban_list": {
+        const termId = body.termId || settings.activeTermId;
+        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        const rules = await loadTeacherSlotBans(domain, termId);
+        return NextResponse.json({ success: true, action, rules, data: rules });
+      }
+
+      case "slot_ban_save": {
+        const termId = body.rule?.termId || body.termId || settings.activeTermId;
+        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        const v = validateTeacherSlotBanPayload({ ...body.rule, termId });
+        if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+        const isUpdate = !!body.ruleId;
+        const ref = isUpdate
+          ? teacherSlotBansColRef(domain).doc(body.ruleId!)
+          : teacherSlotBansColRef(domain).doc();
+        if (isUpdate) {
+          const existing = await ref.get();
+          if (!existing.exists) return NextResponse.json({ error: "수정할 규칙을 찾을 수 없습니다." }, { status: 404 });
+          await ref.set({ ...v.rule, updatedBy: auth.email.toLowerCase(), updatedAt: Date.now() }, { merge: true });
+        } else {
+          await ref.set({ ...v.rule, createdBy: auth.email.toLowerCase(), createdAt: Date.now() });
+        }
+        await bumpTimetableCacheVersion(domain);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: isUpdate ? "slot_ban_update" : "slot_ban_create",
+          details: `특별교사 금지 규칙 ${isUpdate ? "수정" : "등록"}: ${v.rule.teacherEmail} (${v.rule.kind === "move" ? "이동금지" : "배정금지"}) ${v.rule.slots.length}슬롯`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, ruleId: ref.id });
+      }
+
+      case "slot_ban_delete": {
+        if (!body.ruleId) return NextResponse.json({ error: "ruleId가 필요합니다." }, { status: 400 });
+        const ref = teacherSlotBansColRef(domain).doc(body.ruleId);
+        const snap = await ref.get();
+        if (!snap.exists) return NextResponse.json({ error: "삭제할 규칙을 찾을 수 없습니다." }, { status: 404 });
+        await ref.delete();
+        await bumpTimetableCacheVersion(domain);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "slot_ban_delete",
+          details: `특별교사 금지 규칙 삭제: ${body.ruleId}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action });
+      }
+
+      case "consecutive_rule_list": {
+        const termId = body.termId || settings.activeTermId;
+        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        const rules = await loadConsecutiveRules(domain, termId);
+        return NextResponse.json({ success: true, action, rules, data: rules });
+      }
+
+      case "consecutive_rule_save": {
+        const termId = body.rule?.termId || body.termId || settings.activeTermId;
+        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        const v = validateConsecutiveRulePayload({ ...body.rule, termId });
+        if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+        const isUpdate = !!body.ruleId;
+        const ref = isUpdate
+          ? consecutiveRulesColRef(domain).doc(body.ruleId!)
+          : consecutiveRulesColRef(domain).doc();
+        if (isUpdate) {
+          const existing = await ref.get();
+          if (!existing.exists) return NextResponse.json({ error: "수정할 규칙을 찾을 수 없습니다." }, { status: 404 });
+          await ref.set({ ...v.rule, updatedBy: auth.email.toLowerCase(), updatedAt: Date.now() }, { merge: true });
+        } else {
+          await ref.set({ ...v.rule, createdBy: auth.email.toLowerCase(), createdAt: Date.now() });
+        }
+        await bumpTimetableCacheVersion(domain);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: isUpdate ? "consecutive_rule_update" : "consecutive_rule_create",
+          details: `연속수업 규칙 ${isUpdate ? "수정" : "등록"}: ${v.rule.grade}학년 ${v.rule.classNums.join(",")}반 / ${v.rule.subjectName} (패턴: ${v.rule.pattern})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, ruleId: ref.id });
+      }
+
+      case "consecutive_rule_delete": {
+        if (!body.ruleId) return NextResponse.json({ error: "ruleId가 필요합니다." }, { status: 400 });
+        const ref = consecutiveRulesColRef(domain).doc(body.ruleId);
+        const snap = await ref.get();
+        if (!snap.exists) return NextResponse.json({ error: "삭제할 규칙을 찾을 수 없습니다." }, { status: 404 });
+        await ref.delete();
+        await bumpTimetableCacheVersion(domain);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "consecutive_rule_delete",
+          details: `연속수업 규칙 삭제: ${body.ruleId}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action });
+      }
+
+      case "co_teaching_rule_list": {
+        const termId = body.termId || settings.activeTermId;
+        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        const rules = await loadCoTeachingRules(domain, termId);
+        return NextResponse.json({ success: true, action, rules, data: rules });
+      }
+
+      case "co_teaching_rule_save": {
+        const termId = body.rule?.termId || body.termId || settings.activeTermId;
+        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        const v = validateCoTeachingRulePayload({ ...body.rule, termId });
+        if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+        const isUpdate = !!body.ruleId;
+        const ref = isUpdate
+          ? coTeachingRulesColRef(domain).doc(body.ruleId!)
+          : coTeachingRulesColRef(domain).doc();
+        if (isUpdate) {
+          const existing = await ref.get();
+          if (!existing.exists) return NextResponse.json({ error: "수정할 규칙을 찾을 수 없습니다." }, { status: 404 });
+          await ref.set({ ...v.rule, updatedBy: auth.email.toLowerCase(), updatedAt: Date.now() }, { merge: true });
+        } else {
+          await ref.set({ ...v.rule, createdBy: auth.email.toLowerCase(), createdAt: Date.now() });
+        }
+        await bumpTimetableCacheVersion(domain);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: isUpdate ? "co_teaching_rule_update" : "co_teaching_rule_create",
+          details: `복수교사 규칙 ${isUpdate ? "수정" : "등록"}: ${v.rule.grade}학년 ${v.rule.classNums.join(",")}반 / ${v.rule.subjectName} (${v.rule.teacherEmails.join(", ")})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, ruleId: ref.id });
+      }
+
+      case "co_teaching_rule_delete": {
+        if (!body.ruleId) return NextResponse.json({ error: "ruleId가 필요합니다." }, { status: 400 });
+        const ref = coTeachingRulesColRef(domain).doc(body.ruleId);
+        const snap = await ref.get();
+        if (!snap.exists) return NextResponse.json({ error: "삭제할 규칙을 찾을 수 없습니다." }, { status: 404 });
+        await ref.delete();
+        await bumpTimetableCacheVersion(domain);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "co_teaching_rule_delete",
+          details: `복수교사 규칙 삭제: ${body.ruleId}`,
           status: "success",
         });
         return NextResponse.json({ success: true, action });

@@ -356,7 +356,17 @@ export type ManageAction =
   | "revision_list"
   | "revision_save_draft"
   | "revision_apply"
-  | "revision_delete";
+  | "revision_delete"
+  // ── Phase 9c 등록부 (phase9c_spec §2-3) ──
+  | "slot_ban_list"
+  | "slot_ban_save"
+  | "slot_ban_delete"
+  | "consecutive_rule_list"
+  | "consecutive_rule_save"
+  | "consecutive_rule_delete"
+  | "co_teaching_rule_list"
+  | "co_teaching_rule_save"
+  | "co_teaching_rule_delete";
 
 export interface ManageTimetableRequest {
   action: ManageAction;
@@ -402,6 +412,9 @@ export interface ManageTimetableRequest {
   revisionOps?: BaseRevisionOp[]; // revision_save_draft 본문 (전체 교체)
   revisionNote?: string; // revision_save_draft 메모
   effectiveFrom?: string; // revision_apply — 적용 시작 주 월요일 (기본: 다음 주 월요일)
+  // Phase 9c 등록부 (phase9c_spec §2-3)
+  rule?: Partial<TeacherSlotBan> | Partial<ConsecutiveRule> | Partial<CoTeachingRule>;
+  ruleId?: string;
 }
 
 export interface ManageTimetableResponse {

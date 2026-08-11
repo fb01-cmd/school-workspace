@@ -18,6 +18,9 @@ import {
   IntermediateImportPayload,
   SimulGroup,
   VenueGroup,
+  TeacherSlotBan,
+  ConsecutiveRule,
+  CoTeachingRule,
   SwapDraft,
   SuspiciousMappingIssue,
   TeacherOverlapIssue,
@@ -60,6 +63,15 @@ export const simulGroupsColRef = (domain: string) =>
 
 export const venueGroupsColRef = (domain: string) =>
   adminDb.collection("timetable_venue_groups").doc(domain).collection("groups");
+
+export const teacherSlotBansColRef = (domain: string) =>
+  adminDb.collection("timetable_slot_bans").doc(domain).collection("rules");
+
+export const consecutiveRulesColRef = (domain: string) =>
+  adminDb.collection("timetable_consecutive_rules").doc(domain).collection("rules");
+
+export const coTeachingRulesColRef = (domain: string) =>
+  adminDb.collection("timetable_coteaching_rules").doc(domain).collection("rules");
 
 // ── 직렬화 헬퍼 ────────────────────────────────────────────────
 
@@ -325,6 +337,171 @@ export function validateVenueGroupPayload(raw: any): { ok: true; group: Omit<Ven
       classNums: (classNums as number[]).sort((a, b) => a - b),
       subjectNames: subjectNames as string[],
       ...(slots ? { slots } : {}),
+      active: raw?.active !== false,
+    },
+  };
+}
+
+// ── 특별교사 금지 등록부 (phase9c_spec §2-3·매뉴얼 §6-가) ──────
+
+export async function loadTeacherSlotBans(domain: string, termId: string): Promise<TeacherSlotBan[]> {
+  const snap = await teacherSlotBansColRef(domain).where("termId", "==", termId).get();
+  return snap.docs.map((doc) => {
+    const data = doc.data() || {};
+    return {
+      id: doc.id,
+      termId: data.termId || termId,
+      teacherEmail: data.teacherEmail || "",
+      teacherName: data.teacherName || "",
+      kind: data.kind === "move" ? "move" : "assign",
+      slots: Array.isArray(data.slots)
+        ? data.slots.map((s: any) => ({ day: Number(s.day), period: Number(s.period) }))
+        : [],
+      note: data.note || "",
+      active: data.active !== false,
+      createdBy: data.createdBy || "",
+      createdAt: toMillis(data.createdAt) || 0,
+      ...(data.updatedBy ? { updatedBy: data.updatedBy } : {}),
+      ...(toMillis(data.updatedAt) ? { updatedAt: toMillis(data.updatedAt)! } : {}),
+    };
+  });
+}
+
+export function validateTeacherSlotBanPayload(raw: any): { ok: true; rule: Omit<TeacherSlotBan, "id" | "createdBy" | "createdAt"> } | { ok: false; error: string } {
+  const termId = typeof raw?.termId === "string" ? raw.termId.trim() : "";
+  if (!termId) return { ok: false, error: "학기가 지정되지 않았습니다." };
+  const teacherEmail = typeof raw?.teacherEmail === "string" ? raw.teacherEmail.trim().toLowerCase() : "";
+  if (!teacherEmail) return { ok: false, error: "교사 이메일을 입력해 주세요." };
+  const teacherName = typeof raw?.teacherName === "string" ? raw.teacherName.trim() : undefined;
+  const kind = raw?.kind === "move" ? "move" : "assign";
+  if (!Array.isArray(raw?.slots) || raw.slots.length === 0) {
+    return { ok: false, error: "금지 교시를 최소 1개 이상 지정해 주세요." };
+  }
+  const slots: { day: number; period: number }[] = [];
+  for (const s of raw.slots) {
+    const day = Number(s?.day);
+    const period = Number(s?.period);
+    if (!Number.isInteger(day) || day < 1 || day > 5 || !Number.isInteger(period) || period < 1 || period > 8) {
+      return { ok: false, error: "교시 값이 올바르지 않습니다 (월~금, 1~8교시)." };
+    }
+    slots.push({ day, period });
+  }
+  const note = typeof raw?.note === "string" ? raw.note.trim().slice(0, 100) : undefined;
+
+  return {
+    ok: true,
+    rule: {
+      termId,
+      teacherEmail,
+      ...(teacherName ? { teacherName } : {}),
+      kind,
+      slots,
+      ...(note ? { note } : {}),
+      active: raw?.active !== false,
+    },
+  };
+}
+
+// ── 연속수업 등록부 (phase9c_spec §2-3·매뉴얼 §6-라) ──────────
+
+export async function loadConsecutiveRules(domain: string, termId: string): Promise<ConsecutiveRule[]> {
+  const snap = await consecutiveRulesColRef(domain).where("termId", "==", termId).get();
+  return snap.docs.map((doc) => {
+    const data = doc.data() || {};
+    return {
+      id: doc.id,
+      termId: data.termId || termId,
+      grade: Number(data.grade) || 0,
+      classNums: Array.isArray(data.classNums) ? data.classNums.map(Number).filter(Boolean) : [],
+      subjectName: data.subjectName || "",
+      ...(data.teacherEmail ? { teacherEmail: data.teacherEmail } : {}),
+      pattern: data.pattern || "2",
+      active: data.active !== false,
+      createdBy: data.createdBy || "",
+      createdAt: toMillis(data.createdAt) || 0,
+      ...(data.updatedBy ? { updatedBy: data.updatedBy } : {}),
+      ...(toMillis(data.updatedAt) ? { updatedAt: toMillis(data.updatedAt)! } : {}),
+    };
+  });
+}
+
+export function validateConsecutiveRulePayload(raw: any): { ok: true; rule: Omit<ConsecutiveRule, "id" | "createdBy" | "createdAt"> } | { ok: false; error: string } {
+  const termId = typeof raw?.termId === "string" ? raw.termId.trim() : "";
+  if (!termId) return { ok: false, error: "학기가 지정되지 않았습니다." };
+  const grade = Number(raw?.grade);
+  if (![1, 2, 3].includes(grade)) return { ok: false, error: "학년은 1~3 중에서 지정해야 합니다." };
+  const classNums: number[] = Array.isArray(raw?.classNums)
+    ? [...new Set<number>(raw.classNums.map(Number))].filter((n) => Number.isInteger(n) && n >= 1 && n <= 15)
+    : [];
+  if (classNums.length < 1) return { ok: false, error: "대상 반을 1개 이상 지정해야 합니다." };
+  const subjectName = typeof raw?.subjectName === "string" ? raw.subjectName.trim() : "";
+  if (!subjectName) return { ok: false, error: "대상 과목명을 입력해 주세요." };
+  const pattern = typeof raw?.pattern === "string" ? raw.pattern.trim() : "";
+  if (!pattern) return { ok: false, error: "연속패턴(예: 2, 2,2, 3)을 입력해 주세요." };
+  const teacherEmail = typeof raw?.teacherEmail === "string" && raw.teacherEmail.trim()
+    ? raw.teacherEmail.trim().toLowerCase()
+    : undefined;
+
+  return {
+    ok: true,
+    rule: {
+      termId,
+      grade,
+      classNums: classNums.sort((a, b) => a - b),
+      subjectName,
+      ...(teacherEmail ? { teacherEmail } : {}),
+      pattern,
+      active: raw?.active !== false,
+    },
+  };
+}
+
+// ── 복수교사 등록부 (phase9c_spec §2-3·매뉴얼 §6-사) ──────────
+
+export async function loadCoTeachingRules(domain: string, termId: string): Promise<CoTeachingRule[]> {
+  const snap = await coTeachingRulesColRef(domain).where("termId", "==", termId).get();
+  return snap.docs.map((doc) => {
+    const data = doc.data() || {};
+    return {
+      id: doc.id,
+      termId: data.termId || termId,
+      grade: Number(data.grade) || 0,
+      classNums: Array.isArray(data.classNums) ? data.classNums.map(Number).filter(Boolean) : [],
+      subjectName: data.subjectName || "",
+      teacherEmails: Array.isArray(data.teacherEmails) ? data.teacherEmails.map(String) : [],
+      active: data.active !== false,
+      createdBy: data.createdBy || "",
+      createdAt: toMillis(data.createdAt) || 0,
+      ...(data.updatedBy ? { updatedBy: data.updatedBy } : {}),
+      ...(toMillis(data.updatedAt) ? { updatedAt: toMillis(data.updatedAt)! } : {}),
+    };
+  });
+}
+
+export function validateCoTeachingRulePayload(raw: any): { ok: true; rule: Omit<CoTeachingRule, "id" | "createdBy" | "createdAt"> } | { ok: false; error: string } {
+  const termId = typeof raw?.termId === "string" ? raw.termId.trim() : "";
+  if (!termId) return { ok: false, error: "학기가 지정되지 않았습니다." };
+  const grade = Number(raw?.grade);
+  if (![1, 2, 3].includes(grade)) return { ok: false, error: "학년은 1~3 중에서 지정해야 합니다." };
+  const classNums: number[] = Array.isArray(raw?.classNums)
+    ? [...new Set<number>(raw.classNums.map(Number))].filter((n) => Number.isInteger(n) && n >= 1 && n <= 15)
+    : [];
+  if (classNums.length < 1) return { ok: false, error: "대상 반을 1개 이상 지정해야 합니다." };
+  const subjectName = typeof raw?.subjectName === "string" ? raw.subjectName.trim() : "";
+  if (!subjectName) return { ok: false, error: "대상 과목명을 입력해 주세요." };
+  const teacherEmails: string[] = Array.isArray(raw?.teacherEmails)
+    ? [...new Set<string>(raw.teacherEmails.map((e: any) => String(e).trim().toLowerCase()).filter(Boolean))]
+    : [];
+  if (teacherEmails.length < 2) return { ok: false, error: "복수 교사는 2명 이상 등록해야 합니다." };
+
+  return {
+    ok: true,
+    rule: {
+      termId,
+      grade,
+      classNums: classNums.sort((a, b) => a - b),
+      subjectName,
+      teacherEmails,
       active: raw?.active !== false,
     },
   };

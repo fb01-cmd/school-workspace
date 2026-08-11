@@ -15,6 +15,9 @@ import NeisExportTab from "./NeisExportTab";
 import HourTotalsTab from "./HourTotalsTab";
 import SimulGroupTab from "./SimulGroupTab";
 import VenueGroupTab from "./VenueGroupTab";
+import TeacherSlotBanTab from "./TeacherSlotBanTab";
+import ConsecutiveRuleTab from "./ConsecutiveRuleTab";
+import CoTeachingRuleTab from "./CoTeachingRuleTab";
 import CalendarManageTab from "./CalendarManageTab";
 import BaseRevisionTab from "./BaseRevisionTab";
 
@@ -29,7 +32,22 @@ export default function TimetableSection() {
   const [error, setError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
-    "weeks" | "ledger" | "direct" | "simul" | "venue" | "calendar" | "revision" | "neis" | "hours" | "view" | "class" | "free" | "import"
+    | "weeks"
+    | "ledger"
+    | "direct"
+    | "simul"
+    | "venue"
+    | "slot_ban"
+    | "consecutive"
+    | "coteaching"
+    | "calendar"
+    | "revision"
+    | "neis"
+    | "hours"
+    | "view"
+    | "class"
+    | "free"
+    | "import"
   >("weeks");
 
   const fetchSettingsAndTerms = async (forceRefresh = false) => {
@@ -190,6 +208,39 @@ export default function TimetableSection() {
         </button>
 
         <button
+          onClick={() => setActiveTab("slot_ban")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "slot_ban"
+              ? "bg-rose-700 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>🚫 특별교사 금지</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("consecutive")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "consecutive"
+              ? "bg-sky-700 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>🔁 연속수업</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("coteaching")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "coteaching"
+              ? "bg-purple-700 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>👥 복수교사</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab("calendar")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
             activeTab === "calendar"
@@ -299,6 +350,12 @@ export default function TimetableSection() {
       {activeTab === "simul" && <SimulGroupTab activeTermId={activeTermId} />}
 
       {activeTab === "venue" && <VenueGroupTab activeTermId={activeTermId} />}
+
+      {activeTab === "slot_ban" && <TeacherSlotBanTab activeTermId={activeTermId} />}
+
+      {activeTab === "consecutive" && <ConsecutiveRuleTab activeTermId={activeTermId} />}
+
+      {activeTab === "coteaching" && <CoTeachingRuleTab activeTermId={activeTermId} />}
 
       {activeTab === "calendar" && <CalendarManageTab activeTermId={activeTermId} />}
 
