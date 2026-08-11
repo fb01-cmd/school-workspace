@@ -379,7 +379,9 @@ export type ManageAction =
   // ── Phase 9c-F NEIS 일괄 내보내기 (phase9c_f_spec §4) ──
   | "neis_map_get"   // 매핑 등록부 + 학기 과목 seed
   | "neis_map_save"  // 등록부 전체 교체 (sanitize·감사 로그)
-  | "neis_precheck"; // 사전 검증 리포트 (termId 또는 draftId 대상)
+  | "neis_precheck"  // 사전 검증 리포트 (termId 또는 draftId 대상)
+  // ── Phase 9c-E AI 보조층 (phase9c_e_spec §4) — E2~E4 액션은 해당 단계 구현 시 추가 ──
+  | "ai_diagnose";   // E1 불능 진단 (draftId 대상, 표시 전용, 키 미설정 시 enabled:false)
 
 export interface ManageTimetableRequest {
   action: ManageAction;

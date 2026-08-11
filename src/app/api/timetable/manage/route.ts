@@ -67,8 +67,10 @@ import {
   saveNeisMapRegistry,
   computeNeisPrecheck,
   loadTimetableTerm,
+  computeAiDiagnosis,
 } from "@/lib/timetable/server";
 import { sanitizeNeisMapPayload } from "@/lib/timetable/neis";
+import { AiCallError, isAiEnabled } from "@/lib/timetable/ai";
 import {
   DirectCommitBatchItemResult,
   ManageAction,
@@ -1330,12 +1332,29 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, action, report, target });
       }
 
+      // ── Phase 9c-E AI 보조 (phase9c_e_spec §4) ──
+
+      case "ai_diagnose": {
+        // 표시 전용 (spec §0 철칙) — 이 액션은 어떤 저장도 하지 않는다
+        if (!isAiEnabled()) {
+          return NextResponse.json({ success: true, action, enabled: false });
+        }
+        if (!body.draftId)
+          return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
+        const { clean, result } = await computeAiDiagnosis(domain, body.draftId);
+        return NextResponse.json({ success: true, action, enabled: true, clean, result });
+      }
+
       default:
         return NextResponse.json({ error: "지원하지 않는 action입니다." }, { status: 400 });
     }
   } catch (error: any) {
     if (error instanceof DraftOpConflictError || error?.name === "DraftOpConflictError" || error?.statusCode === 409) {
       return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error instanceof AiCallError || error?.name === "AiCallError") {
+      // AI 호출 실패는 눈높이 메시지 그대로 (fail-visible — phase9c_e_spec §4)
+      return NextResponse.json({ error: error.message }, { status: error.statusCode || 502 });
     }
     console.error("[POST /api/timetable/manage] Error:", error);
     return NextResponse.json(

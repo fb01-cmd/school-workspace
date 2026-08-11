@@ -5290,20 +5290,22 @@ export class DraftOpConflictError extends Error {
   }
 }
 
-/** 초안 op 1건 적용 — 재생 → 검사 → 하드 신규 발생 시 409 거부 → DB 저장 */
-export async function applyDraftOp(
+/** 초안 검증 모델 로더 — draft_op·undo·redo·ai_diagnose 공용.
+ *  동일 블록이 3곳에 복제돼 있던 것을 단일 소재지로 추출 (2026-08-11, D-2 F1 교훈 계열). */
+async function loadDraftConstraintModel(
   domain: string,
-  draftId: string,
-  op: BaseRevisionOp,
-  operatorEmail: string,
-  customUnplaced?: import("./types").TimetableDraftUnplaced[]
+  meta: import("./types").TimetableDraft,
+  baseGrids: ClassGrid[]
 ): Promise<{
-  meta: import("./types").TimetableDraft;
-  baseGrids: ClassGrid[];
-  currentGrids: ClassGrid[];
-  report: import("./types").TimetableAuditReport;
+  model: import("./types").TimetableConstraintModel;
+  registryStats: {
+    simulGroups: number;
+    venueGroups: number;
+    teacherSlotBans: number;
+    consecutiveRules: number;
+    coTeaching: number;
+  };
 }> {
-  const { meta, baseGrids } = await getDraft(domain, draftId);
   const settings = await loadTimetableSettings(domain);
   const sourceTermId = meta.sourceTermId || settings.activeTermId || "";
 
@@ -5331,6 +5333,33 @@ export async function applyDraftOp(
     consecutiveRules,
     coTeaching,
   };
+  return {
+    model,
+    registryStats: {
+      simulGroups: simulGroups.length,
+      venueGroups: venueGroups.length,
+      teacherSlotBans: teacherSlotBans.length,
+      consecutiveRules: consecutiveRules.length,
+      coTeaching: coTeaching.length,
+    },
+  };
+}
+
+/** 초안 op 1건 적용 — 재생 → 검사 → 하드 신규 발생 시 409 거부 → DB 저장 */
+export async function applyDraftOp(
+  domain: string,
+  draftId: string,
+  op: BaseRevisionOp,
+  operatorEmail: string,
+  customUnplaced?: import("./types").TimetableDraftUnplaced[]
+): Promise<{
+  meta: import("./types").TimetableDraft;
+  baseGrids: ClassGrid[];
+  currentGrids: ClassGrid[];
+  report: import("./types").TimetableAuditReport;
+}> {
+  const { meta, baseGrids } = await getDraft(domain, draftId);
+  const { model } = await loadDraftConstraintModel(domain, meta, baseGrids);
 
   const truncatedOps = meta.ops.slice(0, meta.opCursor);
   const oldGrids = cloneClassGrids(baseGrids);
@@ -5412,33 +5441,7 @@ export async function undoDraftOp(
     throw new Error("더 이상 실행 취소할 수 없습니다.");
   }
 
-  const settings = await loadTimetableSettings(domain);
-  const sourceTermId = meta.sourceTermId || settings.activeTermId || "";
-
-  const [simulGroups, venueGroups, teacherSlotBans, consecutiveRules, coTeaching] =
-    await Promise.all([
-      loadSimulGroups(domain, sourceTermId),
-      loadVenueGroups(domain, sourceTermId),
-      loadTeacherSlotBans(domain, sourceTermId),
-      loadConsecutiveRules(domain, sourceTermId),
-      loadCoTeachingRules(domain, sourceTermId),
-    ]);
-
-  const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
-  const hours = (meta.hoursSnapshot && meta.hoursSnapshot.length > 0)
-    ? meta.hoursSnapshot
-    : deriveHoursFromGrids(baseGrids);
-  const model: import("./types").TimetableConstraintModel = {
-    lunchAfterPeriod: settings.lunchAfterPeriod || 4,
-    periodsPerDay: settings.periodsPerDay || 7,
-    gradeDayPeriods,
-    hours,
-    simulGroups,
-    venueGroups,
-    teacherSlotBans,
-    consecutiveRules,
-    coTeaching,
-  };
+  const { model } = await loadDraftConstraintModel(domain, meta, baseGrids);
 
   const newCursor = meta.opCursor - 1;
   const currentGrids = cloneClassGrids(baseGrids);
@@ -5487,33 +5490,7 @@ export async function redoDraftOp(
     throw new Error("더 이상 다시 실행할 수 없습니다.");
   }
 
-  const settings = await loadTimetableSettings(domain);
-  const sourceTermId = meta.sourceTermId || settings.activeTermId || "";
-
-  const [simulGroups, venueGroups, teacherSlotBans, consecutiveRules, coTeaching] =
-    await Promise.all([
-      loadSimulGroups(domain, sourceTermId),
-      loadVenueGroups(domain, sourceTermId),
-      loadTeacherSlotBans(domain, sourceTermId),
-      loadConsecutiveRules(domain, sourceTermId),
-      loadCoTeachingRules(domain, sourceTermId),
-    ]);
-
-  const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
-  const hours = (meta.hoursSnapshot && meta.hoursSnapshot.length > 0)
-    ? meta.hoursSnapshot
-    : deriveHoursFromGrids(baseGrids);
-  const model: import("./types").TimetableConstraintModel = {
-    lunchAfterPeriod: settings.lunchAfterPeriod || 4,
-    periodsPerDay: settings.periodsPerDay || 7,
-    gradeDayPeriods,
-    hours,
-    simulGroups,
-    venueGroups,
-    teacherSlotBans,
-    consecutiveRules,
-    coTeaching,
-  };
+  const { model } = await loadDraftConstraintModel(domain, meta, baseGrids);
 
   const newCursor = meta.opCursor + 1;
   const currentGrids = cloneClassGrids(baseGrids);
@@ -5621,4 +5598,63 @@ export async function computeNeisPrecheck(
     report: buildNeisPrecheckReport(grids, registry),
     target: { kind: "term", id: opts.termId, label: term?.name || opts.termId },
   };
+}
+
+// ═════════════════════════════════════════════════════════════
+// Phase 9c-E: AI 보조 — E1 불능 진단 (phase9c_e_spec §3)
+// ═════════════════════════════════════════════════════════════
+
+/**
+ * E1 불능 진단 — 서버가 초안 리포트를 재산출(클라 신뢰 0)해 가명화 입력을 만들고 AI를 호출한다.
+ * 하드 0·미배정 0이면 API 호출 없이 즉시 반환 (무료 한도 절약).
+ */
+export async function computeAiDiagnosis(
+  domain: string,
+  draftId: string
+): Promise<{ clean: boolean; result?: import("./ai").AiDiagnoseResult }> {
+  // 모델 파생(hoursSnapshot 폴백·요일별 교시수)은 draft_op 경로와 동일하게 base 그리드 기준
+  const { meta, baseGrids, currentGrids } = await getDraft(domain, draftId);
+  const { model, registryStats } = await loadDraftConstraintModel(domain, meta, baseGrids);
+  const report = validateTimetable(currentGrids, model);
+
+  if (report.hard.length === 0 && (meta.unplaced || []).length === 0) {
+    return { clean: true };
+  }
+
+  // 가명 사전 원천 = 그리드 전체 교사 (위반·미배정 문장의 실명이 전부 이 집합에서 나옴)
+  const teachers: import("./ai").AiTeacherRef[] = [];
+  const seen = new Set<string>();
+  for (const grid of currentGrids) {
+    for (const cell of grid.cells) {
+      for (const lesson of cell.lessons) {
+        for (const t of lesson.teachers || []) {
+          const key = `${(t.email || "").toLowerCase()}|${t.name || ""}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          teachers.push({ email: t.email, name: t.name });
+        }
+      }
+    }
+  }
+
+  const term = await loadTimetableTerm(domain, meta.sourceTermId);
+  const { runDiagnose } = await import("./ai");
+  const result = await runDiagnose(
+    {
+      termLabel: term?.name || meta.sourceTermId,
+      draftLabel: meta.label,
+      teachers,
+      hard: report.hard.map((h) => ({
+        code: h.code,
+        text: h.text,
+        ...(h.registryGap ? { registryGap: true } : {}),
+        ...(h.hint ? { hint: h.hint } : {}),
+      })),
+      unplaced: (meta.unplaced || []).map((u) => ({ label: u.label, remaining: u.remaining })),
+      softTotal: report.soft.total,
+      registryStats,
+    },
+    (process.env.GEMINI_API_KEY || "").trim()
+  );
+  return { clean: false, result };
 }

@@ -3395,3 +3395,15 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - push 승인: *"푸시하자."*
 - 키 발급 후 구현 착수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. GEMINI_API_KEY 넣어놨어. Phase E-1a(ai.ts+불능 진단) 구현해줘."*
+
+## [2026-08-11] 9c Phase E-1a 구현 ✅ — ai.ts + 불능 진단, 가명화 실측·실호출 스모크 통과
+
+- **구현**: `src/lib/timetable/ai.ts`(Claude 소유 — 가명화·프롬프트·Gemini 호출·파싱) + server.ts `computeAiDiagnosis`(서버 리포트 재산출, 하드 0·미배정 0이면 API 무호출) + 라우트 `ai_diagnose`(키 미설정 시 `enabled:false`, AiCallError 눈높이 매핑 429/502/504).
+- **모델 실측 (스펙 §8 미결 해소)**: 신규 발급 키에 `gemini-2.5-flash`는 404("no longer available to new users") — **롤링 별칭 `gemini-flash-latest` 채택**(퇴역 재발 구조적 회피). 3.x flash는 사고 토큰이 출력 예산 잠식(실측: 100토큰이면 JSON 잘림, thinkingBudget:0은 400) → maxOutputTokens 8192.
+- **부수 정리(단일 소재지)**: draft_op·undo·redo에 3중 복제돼 있던 검증 모델 로딩 블록을 `loadDraftConstraintModel` 헬퍼로 추출 — ai_diagnose가 4번째 사본을 만들지 않기 위한 선행 정리(D-2 F1 교훈 계열). 검사기·솔버 자가 테스트 회귀 통과로 확인.
+- **검증**: `scripts/ai_selftest.ts` 17항목(가명화 왕복·겹침 이름·프롬프트 무PII 기계 검증·파싱 상한) 통과 / `scripts/verify_ai_smoke.ts` 실호출(합성 데이터만) — 전송 프롬프트 실명·이메일 0건 기계 검증 + JSON 파싱 + 역치환 복원 ✅, 진단 품질 실무 수준 확인 / tsc 0 / build ✅.
+- **잔여**: E-1b UI(Antigravity — DraftAutoTab 진단 카드, actionable 하드 >0일 때만 [원인 진단 (AI 도움)] 버튼, "AI가 작성한 참고 의견" 라벨 필수, 키 미설정(`enabled:false`) 시 진입점 숨김) / E-2 정식화 / Vercel `GEMINI_API_KEY`는 사용자가 등록 완료(다음 배포부터 적용).
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- E-1b UI(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/phase9c_e_spec.md §5 대로 E-1b(진단 카드 UI) 구현해줘."*
