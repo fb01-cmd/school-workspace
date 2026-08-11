@@ -3359,3 +3359,16 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - push 승인: *"푸시하자."*
 - F-1b UI 구현(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/phase9c_f_spec.md §5 대로 NEIS 사전 검증 UI(NeisExportTab 섹션 2) 구현해줘."*
 - UI 구현 후 리뷰(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase F-1b UI 표적 리뷰해줘."*
+
+## [2026-08-11] Phase F-1b UI 구현 완료 (Antigravity)
+
+- **구현 파일**: `src/components/admin/timetable/NeisExportTab.tsx` (전체 재작성)
+- **검증**: tsc ✅ / build ✅ (NODE_OPTIONS=--max-old-space-size=4096)
+- **내용**: 기존 섹션 1(수업교환 목록) 보존 + 섹션 2(기초시간표 일괄 내보내기 사전 검증) 신설.
+  섹션 2 구성 — 대상 선택(현행학기/초안 드롭다운) · [사전 검증 실행] · B1 차단(빨강) · W1 가상교사(주황) · W2·W3 체크리스트(amber, 항목별 "나이스에서 확인함" 체크) · 진행률 3종 · 과목 등재명 입력표(seed 기반, 빈칸 빨강, 일괄 채우기, 저장) · CSV 스텁 비활성.
+- **규칙 준수**: 새 탭 신설 금지 ✅ / UI 문구에 개발 용어 금지("나이스 등재명"·"나이스에서 확인함") ✅
+- **잔여**: Claude 표적 리뷰 후 push / F-2는 9월 샘플 대기 / Phase E(AI 보조) 미착수.
+
+### 재개 문구
+- F-1b 리뷰(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase F-1b UI(NeisExportTab 섹션 2) 표적 리뷰해줘."*
+- push 승인: *"푸시하자."*
