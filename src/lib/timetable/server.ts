@@ -10,6 +10,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { bumpTimetableCacheVersion } from "./cacheVersion";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
+import { deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "./validate";
 import {
   ClassCellIssue,
   ClassGrid,
@@ -5316,4 +5317,261 @@ export async function deleteDraft(domain: string, draftId: string): Promise<void
     await batch.commit();
   }
   await timetableDraftsColRef(domain).doc(draftId).delete();
+}
+
+export class DraftOpConflictError extends Error {
+  statusCode = 409;
+  constructor(message: string) {
+    super(message);
+    this.name = "DraftOpConflictError";
+  }
+}
+
+/** 초안 op 1건 적용 — 재생 → 검사 → 하드 신규 발생 시 409 거부 → DB 저장 */
+export async function applyDraftOp(
+  domain: string,
+  draftId: string,
+  op: BaseRevisionOp,
+  operatorEmail: string,
+  customUnplaced?: import("./types").TimetableDraftUnplaced[]
+): Promise<{
+  meta: import("./types").TimetableDraft;
+  baseGrids: ClassGrid[];
+  currentGrids: ClassGrid[];
+  report: import("./types").TimetableAuditReport;
+}> {
+  const { meta, baseGrids } = await getDraft(domain, draftId);
+  const settings = await loadTimetableSettings(domain);
+  const sourceTermId = meta.sourceTermId || settings.activeTermId || "";
+
+  const [simulGroups, venueGroups, teacherSlotBans, consecutiveRules, coTeaching] =
+    await Promise.all([
+      loadSimulGroups(domain, sourceTermId),
+      loadVenueGroups(domain, sourceTermId),
+      loadTeacherSlotBans(domain, sourceTermId),
+      loadConsecutiveRules(domain, sourceTermId),
+      loadCoTeachingRules(domain, sourceTermId),
+    ]);
+
+  const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
+  const hours = deriveHoursFromGrids(baseGrids);
+  const model: import("./types").TimetableConstraintModel = {
+    lunchAfterPeriod: settings.lunchAfterPeriod || 4,
+    periodsPerDay: settings.periodsPerDay || 7,
+    gradeDayPeriods,
+    hours,
+    simulGroups,
+    venueGroups,
+    teacherSlotBans,
+    consecutiveRules,
+    coTeaching,
+  };
+
+  const truncatedOps = meta.ops.slice(0, meta.opCursor);
+  const oldGrids = cloneClassGrids(baseGrids);
+  if (truncatedOps.length > 0) {
+    applyRevisionOps(oldGrids, truncatedOps);
+  }
+  const oldReport = validateTimetable(oldGrids, model);
+
+  const newOps = [...truncatedOps, op];
+  const newGrids = cloneClassGrids(baseGrids);
+  applyRevisionOps(newGrids, newOps);
+  const newReport = validateTimetable(newGrids, model);
+
+  const oldHardKeys = new Set(
+    oldReport.hard.map(
+      (h) => `${h.code}:${h.grade ?? 0}:${h.classNum ?? 0}:${h.day ?? 0}:${h.period ?? 0}:${h.teacherEmail || ""}`
+    )
+  );
+  const newHards = newReport.hard.filter(
+    (h) => !oldHardKeys.has(`${h.code}:${h.grade ?? 0}:${h.classNum ?? 0}:${h.day ?? 0}:${h.period ?? 0}:${h.teacherEmail || ""}`)
+  );
+
+  if (newHards.length > 0) {
+    const firstErr = newHards[0];
+    throw new DraftOpConflictError(
+      `이동/교환 후 중대 문제(하드 위반)가 새로 발생합니다: [${firstErr.code}] ${firstErr.text}`
+    );
+  }
+
+  const now = Date.now();
+  const lastReport: import("./types").TimetableDraftLastReport = {
+    hardCount: newReport.hard.length,
+    actionableHard: newReport.summary.actionableHard,
+    softTotal: newReport.soft.total,
+  };
+
+  const updatedOps = newOps;
+  const updatedCursor = newOps.length;
+
+  const updateData: any = {
+    ops: updatedOps,
+    opCursor: updatedCursor,
+    lastReport,
+    updatedAt: now,
+    updatedBy: operatorEmail,
+  };
+  if (customUnplaced) {
+    updateData.unplaced = customUnplaced;
+  }
+
+  await timetableDraftsColRef(domain).doc(draftId).update(updateData);
+
+  const updatedMeta: import("./types").TimetableDraft = {
+    ...meta,
+    ops: updatedOps,
+    opCursor: updatedCursor,
+    lastReport,
+    ...(customUnplaced ? { unplaced: customUnplaced } : {}),
+    updatedAt: now,
+    updatedBy: operatorEmail,
+  };
+
+  return { meta: updatedMeta, baseGrids, currentGrids: newGrids, report: newReport };
+}
+
+/** 초안 undo — opCursor - 1 */
+export async function undoDraftOp(
+  domain: string,
+  draftId: string,
+  operatorEmail: string
+): Promise<{
+  meta: import("./types").TimetableDraft;
+  baseGrids: ClassGrid[];
+  currentGrids: ClassGrid[];
+  report: import("./types").TimetableAuditReport;
+}> {
+  const { meta, baseGrids } = await getDraft(domain, draftId);
+  if (meta.opCursor <= 0) {
+    throw new Error("더 이상 실행 취소할 수 없습니다.");
+  }
+
+  const settings = await loadTimetableSettings(domain);
+  const sourceTermId = meta.sourceTermId || settings.activeTermId || "";
+
+  const [simulGroups, venueGroups, teacherSlotBans, consecutiveRules, coTeaching] =
+    await Promise.all([
+      loadSimulGroups(domain, sourceTermId),
+      loadVenueGroups(domain, sourceTermId),
+      loadTeacherSlotBans(domain, sourceTermId),
+      loadConsecutiveRules(domain, sourceTermId),
+      loadCoTeachingRules(domain, sourceTermId),
+    ]);
+
+  const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
+  const hours = deriveHoursFromGrids(baseGrids);
+  const model: import("./types").TimetableConstraintModel = {
+    lunchAfterPeriod: settings.lunchAfterPeriod || 4,
+    periodsPerDay: settings.periodsPerDay || 7,
+    gradeDayPeriods,
+    hours,
+    simulGroups,
+    venueGroups,
+    teacherSlotBans,
+    consecutiveRules,
+    coTeaching,
+  };
+
+  const newCursor = meta.opCursor - 1;
+  const currentGrids = cloneClassGrids(baseGrids);
+  if (newCursor > 0) {
+    applyRevisionOps(currentGrids, meta.ops.slice(0, newCursor));
+  }
+  const report = validateTimetable(currentGrids, model);
+  const lastReport: import("./types").TimetableDraftLastReport = {
+    hardCount: report.hard.length,
+    actionableHard: report.summary.actionableHard,
+    softTotal: report.soft.total,
+  };
+
+  const now = Date.now();
+  await timetableDraftsColRef(domain).doc(draftId).update({
+    opCursor: newCursor,
+    lastReport,
+    updatedAt: now,
+    updatedBy: operatorEmail,
+  });
+
+  const updatedMeta: import("./types").TimetableDraft = {
+    ...meta,
+    opCursor: newCursor,
+    lastReport,
+    updatedAt: now,
+    updatedBy: operatorEmail,
+  };
+
+  return { meta: updatedMeta, baseGrids, currentGrids, report };
+}
+
+/** 초안 redo — opCursor + 1 */
+export async function redoDraftOp(
+  domain: string,
+  draftId: string,
+  operatorEmail: string
+): Promise<{
+  meta: import("./types").TimetableDraft;
+  baseGrids: ClassGrid[];
+  currentGrids: ClassGrid[];
+  report: import("./types").TimetableAuditReport;
+}> {
+  const { meta, baseGrids } = await getDraft(domain, draftId);
+  if (meta.opCursor >= meta.ops.length) {
+    throw new Error("더 이상 다시 실행할 수 없습니다.");
+  }
+
+  const settings = await loadTimetableSettings(domain);
+  const sourceTermId = meta.sourceTermId || settings.activeTermId || "";
+
+  const [simulGroups, venueGroups, teacherSlotBans, consecutiveRules, coTeaching] =
+    await Promise.all([
+      loadSimulGroups(domain, sourceTermId),
+      loadVenueGroups(domain, sourceTermId),
+      loadTeacherSlotBans(domain, sourceTermId),
+      loadConsecutiveRules(domain, sourceTermId),
+      loadCoTeachingRules(domain, sourceTermId),
+    ]);
+
+  const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
+  const hours = deriveHoursFromGrids(baseGrids);
+  const model: import("./types").TimetableConstraintModel = {
+    lunchAfterPeriod: settings.lunchAfterPeriod || 4,
+    periodsPerDay: settings.periodsPerDay || 7,
+    gradeDayPeriods,
+    hours,
+    simulGroups,
+    venueGroups,
+    teacherSlotBans,
+    consecutiveRules,
+    coTeaching,
+  };
+
+  const newCursor = meta.opCursor + 1;
+  const currentGrids = cloneClassGrids(baseGrids);
+  applyRevisionOps(currentGrids, meta.ops.slice(0, newCursor));
+
+  const report = validateTimetable(currentGrids, model);
+  const lastReport: import("./types").TimetableDraftLastReport = {
+    hardCount: report.hard.length,
+    actionableHard: report.summary.actionableHard,
+    softTotal: report.soft.total,
+  };
+
+  const now = Date.now();
+  await timetableDraftsColRef(domain).doc(draftId).update({
+    opCursor: newCursor,
+    lastReport,
+    updatedAt: now,
+    updatedBy: operatorEmail,
+  });
+
+  const updatedMeta: import("./types").TimetableDraft = {
+    ...meta,
+    opCursor: newCursor,
+    lastReport,
+    updatedAt: now,
+    updatedBy: operatorEmail,
+  };
+
+  return { meta: updatedMeta, baseGrids, currentGrids, report };
 }

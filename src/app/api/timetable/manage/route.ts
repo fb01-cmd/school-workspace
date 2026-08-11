@@ -59,6 +59,10 @@ import {
   createDraft,
   getDraft,
   deleteDraft,
+  applyDraftOp,
+  undoDraftOp,
+  redoDraftOp,
+  DraftOpConflictError,
 } from "@/lib/timetable/server";
 import {
   DirectCommitBatchItemResult,
@@ -1196,13 +1200,14 @@ export async function POST(req: NextRequest) {
           (origin.kind === "solver"
             ? `자동 작성 #${origin.seed ?? 0} (${new Date().toLocaleDateString("ko-KR")})`
             : `현행 복제 (${new Date().toLocaleDateString("ko-KR")})`);
-        const lastReport = body.draftReport
-          ? {
-              hardCount: body.draftReport.hard.length,
-              actionableHard: body.draftReport.summary.actionableHard,
-              softTotal: body.draftReport.soft.total,
-            }
-          : undefined;
+        const lastReport =
+          body.draftReport && Array.isArray(body.draftReport.hard)
+            ? {
+                hardCount: body.draftReport.hard.length,
+                actionableHard: body.draftReport.summary?.actionableHard ?? body.draftReport.hard.length,
+                softTotal: body.draftReport.soft?.total ?? 0,
+              }
+            : undefined;
         const draftId = await createDraft(
           domain,
           label,
@@ -1244,10 +1249,42 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, action });
       }
 
+      case "draft_op": {
+        if (!body.draftId)
+          return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
+        if (!body.draftOp)
+          return NextResponse.json({ error: "draftOp가 필요합니다." }, { status: 400 });
+        const result = await applyDraftOp(
+          domain,
+          body.draftId,
+          body.draftOp,
+          auth.email,
+          body.draftUnplaced
+        );
+        return NextResponse.json({ success: true, action, ...result });
+      }
+
+      case "draft_undo": {
+        if (!body.draftId)
+          return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
+        const result = await undoDraftOp(domain, body.draftId, auth.email);
+        return NextResponse.json({ success: true, action, ...result });
+      }
+
+      case "draft_redo": {
+        if (!body.draftId)
+          return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
+        const result = await redoDraftOp(domain, body.draftId, auth.email);
+        return NextResponse.json({ success: true, action, ...result });
+      }
+
       default:
         return NextResponse.json({ error: "지원하지 않는 action입니다." }, { status: 400 });
     }
   } catch (error: any) {
+    if (error instanceof DraftOpConflictError || error?.name === "DraftOpConflictError" || error?.statusCode === 409) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error("[POST /api/timetable/manage] Error:", error);
     return NextResponse.json(
       { error: error.message || "서버 내부 오류가 발생했습니다." },

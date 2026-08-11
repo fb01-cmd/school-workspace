@@ -130,8 +130,10 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
   useEffect(() => {
     const targetClass = classNums.length > 0 ? classNums[0] : 1;
     setPreviewClassNum(targetClass);
-    fetchPreviewClassGrid(grade, targetClass);
-  }, [grade, classNums[0], activeTermId]);
+    if (subjectName.trim() || editingRuleId !== null) {
+      fetchPreviewClassGrid(grade, targetClass);
+    }
+  }, [grade, classNums[0], activeTermId, subjectName, editingRuleId]);
 
   const resetForm = () => {
     setEditingRuleId(null);

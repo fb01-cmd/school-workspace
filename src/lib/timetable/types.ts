@@ -372,7 +372,10 @@ export type ManageAction =
   | "draft_create"
   | "draft_get"
   | "draft_delete"
-  | "draft_model"; // 제약 모델 + 기준 그리드 한번에 로드 (편집 진입 시 1회 요청, spec §5)
+  | "draft_model" // 제약 모델 + 기준 그리드 한번에 로드 (편집 진입 시 1회 요청, spec §5)
+  | "draft_op"    // op 1건 적용 (재생 → 검사 → 하드 신규 발생 시 409)
+  | "draft_undo"  // opCursor - 1
+  | "draft_redo"; // opCursor + 1
 
 export interface ManageTimetableRequest {
   action: ManageAction;
@@ -428,6 +431,7 @@ export interface ManageTimetableRequest {
   draftGrids?: ClassGrid[]; // draft_create 시 솔버 산출 그리드 (optional — 없으면 서버가 현행 복제)
   draftUnplaced?: TimetableDraftUnplaced[];
   draftReport?: TimetableAuditReport; // draft_create 시 클라에서 검사기 실행 결과 동봉
+  draftOp?: BaseRevisionOp; // draft_op 적용 연산 1건
 }
 
 export interface ManageTimetableResponse {

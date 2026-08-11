@@ -78,7 +78,66 @@ ${params.requesterName} 교사입니다. 이렇게 수업 교체가 가능할까
 확인 부탁드립니다. 감사합니다!`;
 }
 
-import type { CandidateCoordination, CoordinationOccupant } from "./types";
+import type { BaseRevisionOp, CandidateCoordination, ClassGrid, CoordinationOccupant } from "./types";
+
+export function cloneClassGrids(grids: ClassGrid[]): ClassGrid[] {
+  return grids.map((g) => ({
+    grade: g.grade,
+    classNum: g.classNum,
+    cells: (g.cells || []).map((c) => ({
+      day: c.day,
+      period: c.period,
+      lessons: (c.lessons || []).map((l) => ({
+        ...l,
+        teachers: (l.teachers || []).map((t) => ({ ...t })),
+      })),
+    })),
+  }));
+}
+
+const DAY_KO = ["", "월", "화", "수", "목", "금"];
+
+export function applyRevisionOps(grids: ClassGrid[], ops: BaseRevisionOp[]): string[] {
+  const warnings: string[] = [];
+  const findGrid = (grade: number, classNum: number) =>
+    grids.find((g) => g.grade === grade && g.classNum === classNum);
+  const getOrCreateCell = (grid: ClassGrid, day: number, period: number) => {
+    let cell = grid.cells.find((c) => c.day === day && c.period === period);
+    if (!cell) {
+      cell = { day, period, lessons: [] };
+      grid.cells.push(cell);
+    }
+    return cell;
+  };
+  for (const op of ops) {
+    const grid = findGrid(op.grade, op.classNum);
+    if (!grid) {
+      warnings.push(`${op.grade}-${op.classNum}반 시간표가 없어 편집 1건을 건너뜀`);
+      continue;
+    }
+    if (op.type === "swap") {
+      const cellA = getOrCreateCell(grid, op.a.day, op.a.period);
+      const cellB = getOrCreateCell(grid, op.b.day, op.b.period);
+      if (cellA.lessons.length === 0 && cellB.lessons.length === 0) {
+        warnings.push(
+          `${op.grade}-${op.classNum}반 ${DAY_KO[op.a.day]}${op.a.period}·${DAY_KO[op.b.day]}${op.b.period}교시 모두 빈 교시라 맞바꿈을 건너뜀`
+        );
+        continue;
+      }
+      const tmp = cellA.lessons;
+      cellA.lessons = cellB.lessons;
+      cellB.lessons = tmp;
+    } else {
+      const cell = getOrCreateCell(grid, op.day, op.period);
+      cell.lessons = op.lessons.map((l) => ({
+        ...l,
+        teachers: (l.teachers || []).map((t) => ({ ...t })),
+      }));
+    }
+  }
+  return warnings;
+}
+
 
 /**
  * 조율 필요 후보의 충돌 내용을 수신자 눈높이 문장으로 변환 (consent_swap_opening_spec §3-2d U1: 처방/지시 표현 제거 및 사실 서술)

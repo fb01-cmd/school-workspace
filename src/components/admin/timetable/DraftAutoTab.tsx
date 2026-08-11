@@ -1,19 +1,31 @@
 "use client";
 
 /**
- * Phase 9c-D: 자동 작성 탭 (phase9c_d_spec §3 · §4 · §5)
+ * Phase 9c-D: 자동 작성 탭 (phase9c_d_spec §3 · §4 · §5 · §6)
  *
- * Phase D-1 범위:
- *  - 초안 목록 화면: 카드(라벨·출처·하드/소프트·수정시각·[열기][삭제]) + [🤖 자동 작성][현행 복제]
- *  - 자동 작성 실행: solverClient.solveTimetableInWorker → 진행률 바 → 완료 시 draft_create 저장
- *  - 초안 열기: draft_get → 3면 편집기 골격 (메타 표시 + 학급 그리드 뷰어 — 이동/교환 UX는 Phase D-2)
- *
- * 솔버 사용 규칙: solverClient.solveTimetableInWorker만 사용, solver.worker.ts 직접 import 금지.
+ * Phase D-2 구현:
+ *  - 초안 목록 및 솔버 연동 (Phase D-1)
+ *  - 3면 편집기 UX (학급 그리드, 교사 파생 그리드, 미배정 목록)
+ *  - 셀 이동/교환 UX + What-if 검증 미리보기
+ *  - 연쇄 영향 다이얼로그 (하드 위반 발생 시 [적용] 버튼 비활성화 차단 - 컴시간 §8-다)
+ *  - draft_op (409 Conflict 관문), draft_undo (opCursor-1), draft_redo (opCursor+1)
+ *  - 고정 밴드 셀(동시수업 simul) 수동 이동 차단 🔒
  */
 
 import { useEffect, useRef, useState } from "react";
-import { TimetableDraft, TimetableConstraintModel, ClassGrid } from "@/lib/timetable/types";
+import {
+  TimetableDraft,
+  TimetableConstraintModel,
+  ClassGrid,
+  BaseRevisionOp,
+  TimetableAuditReport,
+  HardViolation,
+  TimetableDraftUnplaced,
+  TimetableCell,
+} from "@/lib/timetable/types";
 import { solveTimetableInWorker, SolverDone, SolverRun } from "@/lib/timetable/solverClient";
+import { deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "@/lib/timetable/validate";
+import { applyRevisionOps, cloneClassGrids } from "@/lib/timetable/utils";
 
 interface DraftAutoTabProps {
   activeTermId?: string | null;
@@ -31,29 +43,88 @@ function fmtTime(ts?: number) {
   return new Date(ts).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+/** 초안 그리드에서 특정 교사의 주간 시간표 파생 (클라이언트 파생 — spec §4) */
+function synthesizeTeacherGrid(
+  grids: ClassGrid[],
+  teacherEmail: string,
+  maxPeriod: number
+): { day: number; period: number; grade: number; classNum: number; subjectName: string }[] {
+  if (!teacherEmail) return [];
+  const target = teacherEmail.trim().toLowerCase();
+  const result: { day: number; period: number; grade: number; classNum: number; subjectName: string }[] = [];
+
+  for (const grid of grids) {
+    for (const cell of grid.cells || []) {
+      for (const lesson of cell.lessons || []) {
+        const matches = (lesson.teachers || []).some(
+          (t) => (t.email || "").trim().toLowerCase() === target
+        );
+        if (matches) {
+          result.push({
+            day: cell.day,
+            period: cell.period,
+            grade: grid.grade,
+            classNum: grid.classNum,
+            subjectName: lesson.subjectName,
+          });
+        }
+      }
+    }
+  }
+  return result;
+}
+
 export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftAutoTabProps) {
-  // ── 상태: 목록 ──
+  // ── 목록 상태 ──
   const [drafts, setDrafts] = useState<TimetableDraft[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
 
-  // ── 상태: 솔버 실행 ──
+  // ── 솔버 실행 상태 ──
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ phase: string; done: number; total: number } | null>(null);
   const [solverError, setSolverError] = useState<string | null>(null);
   const runRef = useRef<SolverRun | null>(null);
 
-  // ── 상태: 초안 편집기 ──
+  // ── 초안 편집기 상태 ──
   const [openDraft, setOpenDraft] = useState<{
     meta: TimetableDraft;
+    baseGrids: ClassGrid[];
     currentGrids: ClassGrid[];
+    model: TimetableConstraintModel;
+    report: TimetableAuditReport;
   } | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
 
-  // 편집기 내부 그리드 뷰어 상태
+  // 뷰어 및 교사 선택
   const [viewGrade, setViewGrade] = useState(1);
   const [viewClass, setViewClass] = useState(1);
+  const [selectedTeacherEmail, setSelectedTeacherEmail] = useState<string | null>(null);
+
+  // 선택 셀 A 상태 (이동 소스)
+  const [selectedSlotA, setSelectedSlotA] = useState<{
+    day: number;
+    period: number;
+  } | null>(null);
+
+  // 미배정 배정 모드 상태
+  const [selectedUnplaced, setSelectedUnplaced] = useState<TimetableDraftUnplaced | null>(null);
+
+  // 연쇄 영향 다이얼로그 (Impact Modal) 상태
+  const [proposedOp, setProposedOp] = useState<BaseRevisionOp | null>(null);
+  const [impactAnalysis, setImpactAnalysis] = useState<{
+    newHards: HardViolation[];
+    oldSoftTotal: number;
+    newSoftTotal: number;
+    deltaScore: number;
+    opDescription: string;
+  } | null>(null);
+  const [savingOp, setSavingOp] = useState(false);
+  const [opApiError, setOpApiError] = useState<string | null>(null);
+
+  // 작업기록 모달 상태
+  const [showOpsHistory, setShowOpsHistory] = useState(false);
 
   // ── 목록 로드 ──
   const fetchDrafts = async () => {
@@ -84,7 +155,6 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     setSolverError(null);
     setProgress(null);
 
-    // 1) 제약 모델 + 기준 그리드 로드 (draft_model)
     let model: TimetableConstraintModel;
     let baseGrids: ClassGrid[];
     try {
@@ -107,7 +177,6 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
       return;
     }
 
-    // 2) 워커 실행
     setRunning(true);
     const run = solveTimetableInWorker({ grids: baseGrids, model }, (phase, done, total) => {
       setProgress({ phase, done, total });
@@ -128,7 +197,6 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
       return;
     }
 
-    // 3) 결과 저장 (draft_create)
     try {
       setProgress({ phase: "초안 저장 중...", done: 0, total: 1 });
       const unplaced = (result.unplaced || []).map((u) => ({
@@ -191,19 +259,50 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     }
   };
 
-  // ── 초안 열기 ──
+  // ── 초안 열기 (getDraft + model 로드 + validate) ──
   const handleOpen = async (draft: TimetableDraft) => {
     setLoadingDraft(true);
     setDraftError(null);
+    setSelectedSlotA(null);
+    setSelectedUnplaced(null);
     try {
-      const res = await fetch("/api/timetable/manage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "draft_get", draftId: draft.id }),
+      const [getRes, modelRes] = await Promise.all([
+        fetch("/api/timetable/manage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "draft_get", draftId: draft.id }),
+        }),
+        fetch("/api/timetable/manage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "draft_model", termId: draft.sourceTermId || activeTermId }),
+        }),
+      ]);
+
+      const getData = await getRes.json();
+      const modelData = await modelRes.json();
+
+      if (!getRes.ok || getData.error) throw new Error(getData.error || "초안을 열지 못했습니다.");
+      if (!modelRes.ok || modelData.error) throw new Error(modelData.error || "모델 로드 실패.");
+
+      const meta: TimetableDraft = getData.meta;
+      const baseGrids: ClassGrid[] = getData.baseGrids;
+      const currentGrids: ClassGrid[] = getData.currentGrids;
+      const model: TimetableConstraintModel = modelData.model;
+
+      const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
+      const hours = deriveHoursFromGrids(baseGrids);
+      const fullModel = { ...model, gradeDayPeriods, hours };
+
+      const report = validateTimetable(currentGrids, fullModel);
+
+      setOpenDraft({
+        meta,
+        baseGrids,
+        currentGrids,
+        model: fullModel,
+        report,
       });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "초안을 열지 못했습니다.");
-      setOpenDraft({ meta: data.meta, currentGrids: data.currentGrids });
       setViewGrade(1);
       setViewClass(1);
     } catch (err: any) {
@@ -231,46 +330,295 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     }
   };
 
-  // ── 편집기 뷰: 현재 선택 반 그리드 ──
+  // ── Undo / Redo 실행 ──
+  const handleUndo = async () => {
+    if (!openDraft || openDraft.meta.opCursor <= 0) return;
+    setLoadingDraft(true);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "draft_undo", draftId: openDraft.meta.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "실행 취소 실패.");
+      setOpenDraft({
+        meta: data.meta,
+        baseGrids: data.baseGrids,
+        currentGrids: data.currentGrids,
+        model: openDraft.model,
+        report: data.report,
+      });
+      setSelectedSlotA(null);
+    } catch (err: any) {
+      alert(`실행 취소 오류: ${err.message}`);
+    } finally {
+      setLoadingDraft(false);
+    }
+  };
+
+  const handleRedo = async () => {
+    if (!openDraft || openDraft.meta.opCursor >= openDraft.meta.ops.length) return;
+    setLoadingDraft(true);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "draft_redo", draftId: openDraft.meta.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "다시 실행 실패.");
+      setOpenDraft({
+        meta: data.meta,
+        baseGrids: data.baseGrids,
+        currentGrids: data.currentGrids,
+        model: openDraft.model,
+        report: data.report,
+      });
+      setSelectedSlotA(null);
+    } catch (err: any) {
+      alert(`다시 실행 오류: ${err.message}`);
+    } finally {
+      setLoadingDraft(false);
+    }
+  };
+
+  // ── 셀 이동 / 맞교환 what-if 미리보기 ──
+  const analyzeOpImpact = (op: BaseRevisionOp, desc: string) => {
+    if (!openDraft) return;
+    const { baseGrids, meta, model, report: oldReport } = openDraft;
+
+    const testOps = [...meta.ops.slice(0, meta.opCursor), op];
+    const testGrids = cloneClassGrids(baseGrids);
+    applyRevisionOps(testGrids, testOps);
+    const testReport = validateTimetable(testGrids, model);
+
+    const oldHardKeys = new Set(
+      oldReport.hard.map(
+        (h) => `${h.code}:${h.grade ?? 0}:${h.classNum ?? 0}:${h.day ?? 0}:${h.period ?? 0}:${h.teacherEmail || ""}`
+      )
+    );
+    const newHards = testReport.hard.filter(
+      (h) => !oldHardKeys.has(`${h.code}:${h.grade ?? 0}:${h.classNum ?? 0}:${h.day ?? 0}:${h.period ?? 0}:${h.teacherEmail || ""}`)
+    );
+
+    const deltaScore = testReport.soft.total - oldReport.soft.total;
+
+    setProposedOp(op);
+    setImpactAnalysis({
+      newHards,
+      oldSoftTotal: oldReport.soft.total,
+      newSoftTotal: testReport.soft.total,
+      deltaScore,
+      opDescription: desc,
+    });
+    setOpApiError(null);
+  };
+
+  // ── 셀 클릭 핸들러 (학급 그리드) ──
+  const handleCellClick = (day: number, period: number) => {
+    if (!openDraft) return;
+    const { currentGrids } = openDraft;
+    const grid = currentGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
+    const cell = grid?.cells?.find((c) => c.day === day && c.period === period);
+    const lesson = cell?.lessons?.[0];
+
+    // Case 1: 미배정 항목 배정 모드인 경우
+    if (selectedUnplaced) {
+      // 미배정 항목을 이 셀에 배정 (edit_cell op)
+      // label 형태: "2-3반 통합과학 김○○"
+      const desc = `${viewGrade}학년 ${viewClass}반 ${DAYS[day - 1]}${period}교시에 [${selectedUnplaced.label}] 배정`;
+      const op: BaseRevisionOp = {
+        type: "edit_cell",
+        grade: viewGrade,
+        classNum: viewClass,
+        day,
+        period,
+        lessons: [
+          {
+            subjectName: selectedUnplaced.label.split(" ")[1] || "미배정과목",
+            subjectShort: selectedUnplaced.label.split(" ")[1] || "미배정",
+            teachers: [{ email: "", name: selectedUnplaced.label.split(" ")[2] || "" }],
+          },
+        ],
+      };
+      analyzeOpImpact(op, desc);
+      return;
+    }
+
+    // Case 2: 셀 A가 선택된 상태에서 셀 B(이동/맞교환 목적지) 클릭
+    if (selectedSlotA) {
+      if (selectedSlotA.day === day && selectedSlotA.period === period) {
+        // 동일 셀 클릭 시 선택 해제
+        setSelectedSlotA(null);
+        return;
+      }
+
+      const cellA = grid?.cells?.find((c) => c.day === selectedSlotA.day && c.period === selectedSlotA.period);
+      const lessonA = cellA?.lessons?.[0];
+
+      const slotAName = `${DAYS[selectedSlotA.day - 1]}${selectedSlotA.period}교시(${lessonA?.subjectShort || lessonA?.subjectName || "빈교시"})`;
+      const slotBName = `${DAYS[day - 1]}${period}교시(${lesson?.subjectShort || lesson?.subjectName || "빈교시"})`;
+      const desc = `${viewGrade}학년 ${viewClass}반 ${slotAName} ↔ ${slotBName} 이동/맞교환`;
+
+      const op: BaseRevisionOp = {
+        type: "swap",
+        grade: viewGrade,
+        classNum: viewClass,
+        a: { day: selectedSlotA.day, period: selectedSlotA.period },
+        b: { day, period },
+      };
+
+      analyzeOpImpact(op, desc);
+      return;
+    }
+
+    // Case 3: 소스 셀 A 선택
+    if (!lesson) {
+      // 빈 셀 클릭 시 조용히 무시
+      return;
+    }
+
+    // 고정 밴드 셀(동시수업 simul) 방어 🔒
+    if (lesson.simul) {
+      alert(`🔒 동시수업(분반 이동수업 그룹 '${lesson.simul}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다. (스펙 §5)`);
+      return;
+    }
+
+    // 셀 A 선택 완료
+    setSelectedSlotA({ day, period });
+
+    // 해당 수업 교사가 존재하면 우측 교사 그리드 자동 선택
+    if (lesson.teachers?.[0]?.email) {
+      setSelectedTeacherEmail(lesson.teachers[0].email);
+    }
+  };
+
+  // ── op 연쇄 영향 다이얼로그에서 [적용하기] 실행 ──
+  const handleApplyOp = async () => {
+    if (!openDraft || !proposedOp) return;
+    setSavingOp(true);
+    setOpApiError(null);
+
+    try {
+      // 미배정 배정 적용 시 unplaced 차감 업데이트
+      let updatedUnplacedList: TimetableDraftUnplaced[] | undefined = undefined;
+      if (selectedUnplaced) {
+        updatedUnplacedList = openDraft.meta.unplaced
+          .map((u) => {
+            if (u.sectionId === selectedUnplaced.sectionId) {
+              return { ...u, remaining: u.remaining - 1 };
+            }
+            return u;
+          })
+          .filter((u) => u.remaining > 0);
+      }
+
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "draft_op",
+          draftId: openDraft.meta.id,
+          draftOp: proposedOp,
+          ...(updatedUnplacedList ? { draftUnplaced: updatedUnplacedList } : {}),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "이동/교환 적용에 실패했습니다.");
+      }
+
+      // 갱신 성공
+      setOpenDraft({
+        meta: data.meta,
+        baseGrids: data.baseGrids,
+        currentGrids: data.currentGrids,
+        model: openDraft.model,
+        report: data.report,
+      });
+
+      // 상태 초기화
+      setProposedOp(null);
+      setImpactAnalysis(null);
+      setSelectedSlotA(null);
+      setSelectedUnplaced(null);
+    } catch (err: any) {
+      setOpApiError(err.message);
+    } finally {
+      setSavingOp(false);
+    }
+  };
+
+  // ── 현재 학급 그리드 ──
   const currentGrid = openDraft?.currentGrids.find(
     (g) => g.grade === viewGrade && g.classNum === viewClass
   );
 
-  // ── 편집기 화면 ──
+  // ── 우측 파생 교사 그리드 ──
+  const teacherSlots = openDraft && selectedTeacherEmail
+    ? synthesizeTeacherGrid(openDraft.currentGrids, selectedTeacherEmail, periodsPerDay)
+    : [];
+
+  // ── 초안 편집기 화면 ──
   if (openDraft) {
-    const { meta } = openDraft;
-    const report = meta.lastReport;
+    const { meta, report } = openDraft;
+    const canUndo = meta.opCursor > 0;
+    const canRedo = meta.opCursor < meta.ops.length;
+
     return (
-      <div className="space-y-5">
-        {/* 상단 바 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 px-5 py-3 flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => setOpenDraft(null)}
-            className="text-xs text-gray-500 hover:text-gray-800 font-bold flex items-center gap-1"
-          >
-            ← 목록으로
-          </button>
-          <span className="font-bold text-sm text-gray-900 flex-1 min-w-0 truncate">
-            🧩 {meta.label}
-          </span>
-          <div className="flex items-center gap-2">
-            {report && (
-              <>
-                <span
-                  className={`text-[11px] px-2 py-0.5 rounded-full border font-extrabold ${hardBadgeColor(report.hardCount)}`}
-                >
-                  하드 {report.hardCount}건
-                </span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full border font-extrabold bg-amber-100 text-amber-800 border-amber-300">
-                  소프트 {report.softTotal}점
-                </span>
-              </>
-            )}
-            <span className="text-[11px] text-gray-500">
-              {meta.origin.kind === "solver"
-                ? `🤖 자동 작성 (시드 ${meta.origin.seed ?? "—"})`
-                : "📋 현행 복제"}
+      <div className="space-y-5 font-sans">
+        {/* 상단 바 (컴시간 §8 재현: 명칭·배지·Undo/Redo·작업기록) */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 px-5 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => setOpenDraft(null)}
+              className="text-xs text-gray-500 hover:text-gray-800 font-bold flex items-center gap-1"
+            >
+              ← 목록으로
+            </button>
+            <span className="font-extrabold text-sm text-gray-900 truncate">
+              🧩 {meta.label}
             </span>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* 배지 */}
+            <span
+              className={`text-[11px] px-2.5 py-0.5 rounded-full border font-extrabold ${hardBadgeColor(report.hard.length)}`}
+            >
+              하드 위반 {report.hard.length}건
+            </span>
+            <span className="text-[11px] px-2.5 py-0.5 rounded-full border font-extrabold bg-amber-100 text-amber-900 border-amber-300">
+              소프트 {report.soft.total}점
+            </span>
+
+            <div className="h-4 w-px bg-gray-200 mx-1" />
+
+            {/* Undo / Redo / 작업기록 */}
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo || loadingDraft}
+              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 text-gray-700 font-bold rounded-lg text-xs transition-all flex items-center gap-1"
+              title="실행 취소 (Undo)"
+            >
+              <span>↩ 실행취소</span>
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo || loadingDraft}
+              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 text-gray-700 font-bold rounded-lg text-xs transition-all flex items-center gap-1"
+              title="다시 실행 (Redo)"
+            >
+              <span>↪ 다시실행</span>
+            </button>
+            <button
+              onClick={() => setShowOpsHistory(true)}
+              className="px-3 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold rounded-lg text-xs border border-purple-200 transition-all"
+            >
+              📋 작업기록 ({meta.opCursor}/{meta.ops.length})
+            </button>
           </div>
         </div>
 
@@ -280,50 +628,79 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
           </div>
         )}
 
-        {/* 3면 골격: 좌=학급 그리드, 우=미배정 목록 */}
+        {/* 미배정 배정 알림 팁 */}
+        {selectedUnplaced && (
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2.5 text-xs text-indigo-900 flex items-center justify-between font-bold">
+            <span>
+              🎯 미배정 수업 [<strong>{selectedUnplaced.label}</strong>] 배정 모드 — 시간표 상 원하는 셀을 클릭해 배정하세요.
+            </span>
+            <button
+              onClick={() => setSelectedUnplaced(null)}
+              className="text-indigo-600 hover:underline text-[11px]"
+            >
+              배정 취소 ✕
+            </button>
+          </div>
+        )}
+
+        {/* 3면 IA 레이아웃: 좌=학급 그리드(8 col), 우=교사 파생 그리드 + 미배정 목록(4 col) */}
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          {/* 좌: 학급 그리드 뷰어 */}
+          {/* 좌: 학급 그리드 */}
           <div className="xl:col-span-8 space-y-4">
-            {/* 학년/반 선택 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-              <div className="flex flex-wrap gap-2 items-center">
-                <span className="text-xs font-bold text-gray-700">학년:</span>
-                {[1, 2, 3].map((g) => (
-                  <button
-                    key={g}
-                    onClick={() => { setViewGrade(g); setViewClass(1); }}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
-                      viewGrade === g
-                        ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
-                    }`}
-                  >
-                    {g}학년
-                  </button>
-                ))}
-                <span className="text-xs font-bold text-gray-700 ml-3">반:</span>
-                {Array.from({ length: 12 }, (_, i) => i + 1)
-                  .filter((c) =>
-                    openDraft.currentGrids.some((g) => g.grade === viewGrade && g.classNum === c)
-                  )
-                  .map((c) => (
+            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
+              <div className="flex flex-wrap gap-2 items-center justify-between">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-gray-700">학년:</span>
+                  {[1, 2, 3].map((g) => (
                     <button
-                      key={c}
-                      onClick={() => setViewClass(c)}
-                      className={`w-8 h-8 rounded-lg text-xs font-bold border transition-all ${
-                        viewClass === c
+                      key={g}
+                      onClick={() => {
+                        setViewGrade(g);
+                        setViewClass(1);
+                        setSelectedSlotA(null);
+                      }}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                        viewGrade === g
                           ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
                           : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
                       }`}
                     >
-                      {c}
+                      {g}학년
                     </button>
                   ))}
+                  <span className="text-xs font-bold text-gray-700 ml-3">반:</span>
+                  {Array.from({ length: 12 }, (_, i) => i + 1)
+                    .filter((c) =>
+                      openDraft.currentGrids.some((g) => g.grade === viewGrade && g.classNum === c)
+                    )
+                    .map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => {
+                          setViewClass(c);
+                          setSelectedSlotA(null);
+                        }}
+                        className={`w-8 h-8 rounded-lg text-xs font-bold border transition-all ${
+                          viewClass === c
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                            : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
+                        }`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                </div>
+
+                {selectedSlotA && (
+                  <span className="text-xs font-bold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200">
+                    선택: {DAYS[selectedSlotA.day - 1]}요일 {selectedSlotA.period}교시 (이동할 목적지 셀을 선택하세요)
+                  </span>
+                )}
               </div>
             </div>
 
             {/* 그리드 테이블 */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto shadow-xs">
               {!currentGrid ? (
                 <div className="p-8 text-center text-xs text-gray-400">
                   {viewGrade}학년 {viewClass}반 시간표가 없습니다.
@@ -331,42 +708,77 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
               ) : (
                 <table className="w-full text-center text-xs border-collapse">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200 font-bold text-gray-700">
-                      <th className="py-2 px-2 border-r border-gray-200 w-10">교시</th>
+                    <tr className="bg-gray-100 border-b border-gray-200 font-bold text-gray-700">
+                      <th className="py-2.5 px-2 border-r border-gray-200 w-10">교시</th>
                       {DAYS.map((d) => (
-                        <th key={d} className="py-2 px-1 border-r border-gray-200 min-w-[5.5rem]">
+                        <th key={d} className="py-2.5 px-1 border-r border-gray-200 min-w-[5.5rem]">
                           {d}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-gray-200">
                     {Array.from({ length: Math.max(7, periodsPerDay) }, (_, i) => i + 1).map((period) => (
                       <tr key={period}>
                         <td className="py-2 px-2 font-bold bg-gray-50 border-r border-gray-200 text-gray-600">
                           {period}
                         </td>
                         {[1, 2, 3, 4, 5].map((day) => {
-                          const cell = currentGrid.cells.find(
-                            (c) => c.day === day && c.period === period
-                          );
+                          const cell = currentGrid.cells.find((c) => c.day === day && c.period === period);
                           const lesson = cell?.lessons?.[0];
+
+                          const isSelectedA = selectedSlotA?.day === day && selectedSlotA?.period === period;
+                          const isCandidateB = !!selectedSlotA && !isSelectedA;
+                          const isBandLocked = !!lesson?.simul;
+
+                          // 하드 위반 셀 체크 (현재 그리드 기준)
+                          const hasHardError = report.hard.some(
+                            (h) => h.grade === viewGrade && h.classNum === viewClass && h.day === day && h.period === period
+                          );
+
                           return (
                             <td
                               key={day}
-                              className="p-1.5 border-r border-gray-100 bg-white text-gray-700 align-top"
+                              onClick={() => handleCellClick(day, period)}
+                              className={`p-2 border-r border-gray-200 align-top transition-all cursor-pointer select-none ${
+                                isSelectedA
+                                  ? "bg-sky-100 border-2 border-sky-500 ring-2 ring-sky-400/50 shadow-sm"
+                                  : isCandidateB
+                                  ? "bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-300 font-semibold"
+                                  : hasHardError
+                                  ? "bg-red-100 text-red-950 font-bold border-2 border-red-400"
+                                  : isBandLocked
+                                  ? "bg-gray-100/80 text-gray-400 cursor-not-allowed"
+                                  : "bg-white hover:bg-gray-50 text-gray-800"
+                              }`}
                             >
                               {lesson ? (
-                                <div className="space-y-0.5">
+                                <div className="space-y-0.5 relative">
                                   <div className="font-bold text-[11px] truncate leading-tight">
                                     {lesson.subjectShort || lesson.subjectName}
                                   </div>
                                   <div className="text-[10px] text-gray-500 truncate leading-tight">
                                     {lesson.teachers?.map((t) => t.name).join(", ")}
                                   </div>
+                                  {lesson.simul && (
+                                    <div className="text-[9px] text-purple-700 font-extrabold mt-0.5">
+                                      🔒 {lesson.simul}
+                                    </div>
+                                  )}
+                                  {isCandidateB && (
+                                    <div className="text-[10px] text-emerald-700 font-black mt-1">
+                                      ⇄ 맞교환
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
-                                <span className="text-[10px] text-gray-300">—</span>
+                                <div className="py-1">
+                                  {isCandidateB ? (
+                                    <span className="text-[10px] text-emerald-700 font-bold">📥 이동</span>
+                                  ) : (
+                                    <span className="text-[10px] text-gray-300">—</span>
+                                  )}
+                                </div>
                               )}
                             </td>
                           );
@@ -377,62 +789,301 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
                 </table>
               )}
             </div>
-
-            <div className="text-[11px] text-gray-400 text-center">
-              💡 Phase D-2에서 셀 이동·교환 UX 및 연쇄 영향 다이얼로그가 추가됩니다.
-            </div>
           </div>
 
-          {/* 우: 미배정 목록 */}
-          <div className="xl:col-span-4">
-            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 sticky top-4">
-              <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                <span>📭 미배정 수업</span>
+          {/* 우: 교사 파생 그리드 + 미배정 목록 */}
+          <div className="xl:col-span-4 space-y-4">
+            {/* 교사 파생 그리드 카드 */}
+            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                  <span>👤 교사 주간 시간표 파생</span>
+                </h4>
+                {selectedTeacherEmail && (
+                  <span className="text-[11px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded">
+                    {selectedTeacherEmail}
+                  </span>
+                )}
+              </div>
+
+              {!selectedTeacherEmail ? (
+                <div className="py-6 text-center text-xs text-gray-400">
+                  시간표 셀을 클릭하면 해당 교사의 주간 시간표가 자동 표시됩니다.
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-gray-100 rounded-lg text-[11px]">
+                  <table className="w-full text-center border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 font-bold text-gray-600">
+                        <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
+                        {DAYS.map((d) => (
+                          <th key={d} className="py-1 px-1 border-r border-gray-200">
+                            {d}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {Array.from({ length: Math.max(7, periodsPerDay) }, (_, i) => i + 1).map((p) => (
+                        <tr key={p}>
+                          <td className="py-1 px-1 font-bold bg-gray-50 border-r border-gray-200 text-gray-500 text-[10px]">
+                            {p}
+                          </td>
+                          {[1, 2, 3, 4, 5].map((d) => {
+                            const hit = teacherSlots.find((s) => s.day === d && s.period === p);
+                            return (
+                              <td
+                                key={d}
+                                className={`p-1 border-r border-gray-100 text-[10px] ${
+                                  hit ? "bg-indigo-100 text-indigo-950 font-bold" : "bg-white text-gray-300"
+                                }`}
+                              >
+                                {hit ? `${hit.grade}-${hit.classNum}` : "—"}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* 미배정 목록 카드 */}
+            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
+              <h4 className="text-xs font-bold text-gray-900 flex items-center justify-between">
+                <span>📭 미배정 수업 목록</span>
                 {meta.unplaced.length > 0 && (
                   <span className="bg-red-100 text-red-800 text-[11px] px-2 py-0.5 rounded-full font-extrabold border border-red-300">
                     {meta.unplaced.length}건
                   </span>
                 )}
               </h4>
+
               {meta.unplaced.length === 0 ? (
-                <div className="py-6 text-center text-xs text-emerald-700 font-semibold">
-                  ✅ 미배정 수업이 없습니다
+                <div className="py-6 text-center text-xs text-emerald-700 font-bold bg-emerald-50/50 rounded-lg">
+                  ✅ 모든 수업이 배정되었습니다!
                 </div>
               ) : (
-                <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-                  {meta.unplaced.map((u, idx) => (
-                    <div
-                      key={idx}
-                      className="p-2.5 rounded-lg border border-red-100 bg-red-50 text-xs space-y-0.5"
-                    >
-                      <div className="font-bold text-red-900">{u.label}</div>
-                      <div className="text-[10px] text-red-500">{u.remaining}시수 미배정</div>
-                    </div>
-                  ))}
+                <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                  {meta.unplaced.map((u) => {
+                    const isSelected = selectedUnplaced?.sectionId === u.sectionId;
+                    return (
+                      <div
+                        key={u.sectionId}
+                        className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                          isSelected
+                            ? "bg-indigo-100 border-indigo-500 ring-2 ring-indigo-400/50"
+                            : "bg-red-50/80 border-red-200 hover:border-red-300"
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-bold text-xs text-red-950 truncate">{u.label}</p>
+                          <p className="text-[10px] text-red-700 font-semibold mt-0.5">
+                            잔여 {u.remaining}시수 미배정
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setSelectedUnplaced(isSelected ? null : u)}
+                          className={`px-2.5 py-1 rounded text-xs font-bold shadow-xs shrink-0 transition-all ${
+                            isSelected
+                              ? "bg-indigo-600 text-white"
+                              : "bg-red-600 hover:bg-red-700 text-white"
+                          }`}
+                        >
+                          {isSelected ? "선택됨" : "배정하기"}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
         </div>
+
+        {/* 연쇄 영향 다이얼로그 모달 (Impact Modal - 컴시간 §8-다 재현) */}
+        {impactAnalysis && proposedOp && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 max-w-lg w-full p-6 space-y-4 font-sans">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <span>⚡ 연쇄 영향 미리보기 및 확인</span>
+                </h3>
+                <button
+                  onClick={() => {
+                    setImpactAnalysis(null);
+                    setProposedOp(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 font-bold text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* 변경 내용 요약 */}
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1">
+                <span className="font-bold text-gray-700">작업 내용:</span>
+                <p className="font-semibold text-indigo-900">{impactAnalysis.opDescription}</p>
+              </div>
+
+              {/* 중대 문제 (하드 위반) 경고 — 차단 조건 */}
+              {impactAnalysis.newHards.length > 0 ? (
+                <div className="p-4 bg-red-50 border-2 border-red-300 rounded-xl space-y-2 text-xs">
+                  <div className="font-extrabold text-red-900 flex items-center gap-1.5 text-sm">
+                    <span>🛑 중대 문제 발생 (이동 실행 비활성)</span>
+                  </div>
+                  <p className="text-red-700 leading-relaxed font-semibold">
+                    이 이동/맞교환을 적용하면 시간표에 해결할 수 없는 중대한 하드 위반이 새로 발생합니다:
+                  </p>
+                  <ul className="list-disc pl-5 text-red-800 space-y-1 font-bold">
+                    {impactAnalysis.newHards.map((h, idx) => (
+                      <li key={idx}>
+                        [{h.code}] {h.text}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-[11px] text-red-600 font-semibold pt-1">
+                    💡 컴시간 매뉴얼 §8-다 원칙에 따라 중대한 위반이 동반되는 이동은 실행할 수 없습니다.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-bold flex items-center gap-2">
+                  <span>✅ 중대 문제(하드 위반) 없음 — 정상 적용 가능합니다.</span>
+                </div>
+              )}
+
+              {/* 소프트 점수 변화 */}
+              <div className="p-3.5 border border-gray-200 rounded-xl text-xs space-y-2 bg-white">
+                <div className="flex justify-between items-center font-bold">
+                  <span className="text-gray-700">소프트 감점 변화:</span>
+                  <div className="space-x-2">
+                    <span className="text-gray-500">{impactAnalysis.oldSoftTotal}점</span>
+                    <span>→</span>
+                    <span className="text-indigo-900 font-black">{impactAnalysis.newSoftTotal}점</span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[11px] font-extrabold ${
+                        impactAnalysis.deltaScore <= 0
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-amber-100 text-amber-800"
+                      }`}
+                    >
+                      {impactAnalysis.deltaScore <= 0
+                        ? `${Math.abs(impactAnalysis.deltaScore)}점 개선`
+                        : `${impactAnalysis.deltaScore}점 증가`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {opApiError && (
+                <div className="p-3 bg-red-100 text-red-900 border border-red-300 rounded-lg text-xs font-bold">
+                  ⚠️ {opApiError}
+                </div>
+              )}
+
+              {/* 버튼 */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setImpactAnalysis(null);
+                    setProposedOp(null);
+                  }}
+                  className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition-all"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleApplyOp}
+                  disabled={impactAnalysis.newHards.length > 0 || savingOp}
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-bold rounded-xl text-xs transition-all shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  {savingOp && (
+                    <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
+                  )}
+                  <span>
+                    {impactAnalysis.newHards.length > 0
+                      ? "중대 문제로 실행 비활성"
+                      : "이동/교환 적용"}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 작업기록 열람 모달 */}
+        {showOpsHistory && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 max-w-md w-full p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                <h3 className="text-sm font-bold text-gray-900">📋 초안 작업기록 열람</h3>
+                <button onClick={() => setShowOpsHistory(false)} className="text-gray-400 font-bold">
+                  ✕
+                </button>
+              </div>
+
+              {meta.ops.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6">기록된 수동 조정 연산이 없습니다.</p>
+              ) : (
+                <div className="space-y-2 max-h-[50vh] overflow-y-auto text-xs pr-1">
+                  {meta.ops.map((op, idx) => {
+                    const isCurrent = idx === meta.opCursor - 1;
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-2.5 rounded-lg border text-xs font-semibold transition-all ${
+                          isCurrent
+                            ? "bg-purple-100 border-purple-400 text-purple-950 font-bold ring-1 ring-purple-400"
+                            : idx < meta.opCursor
+                            ? "bg-gray-50 border-gray-200 text-gray-700"
+                            : "bg-gray-100/50 border-gray-200 text-gray-400 line-through"
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span>
+                            #{idx + 1} {op.type === "swap" ? "맞교환/이동" : "셀 통째 수정"} ({op.grade}학년 {op.classNum}반)
+                          </span>
+                          {isCurrent && (
+                            <span className="text-[10px] bg-purple-700 text-white font-extrabold px-1.5 py-0.5 rounded">
+                              현재 지점
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <button
+                onClick={() => setShowOpsHistory(false)}
+                className="w-full py-2 bg-gray-100 hover:bg-gray-200 font-bold rounded-xl text-xs text-gray-700"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
-  // ── 목록 화면 ──
+  // ── 초안 목록 화면 ──
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       {/* 안내 박스 */}
       <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 text-indigo-900 text-xs leading-relaxed space-y-1">
         <div className="font-bold text-sm flex items-center gap-1.5">
           <span>🧩</span>
-          <span>자동 작성 (Phase 9c-D)</span>
+          <span>자동 작성 & 수동 조정 (Phase 9c-D)</span>
         </div>
         <p>
-          솔버가 등록부 제약을 만족하는 기초시간표 초안을 자동으로 작성합니다. 초안을 저장·수정하며
-          하드 위반 0건 완성본을 만들 수 있습니다.
+          솔버가 작성한 초안을 기반으로 셀 이동·맞교환 및 연쇄 영향 미리보기를 수행하여 하드 위반 0건 완성을 진행합니다.
         </p>
         <p className="text-[11px] text-indigo-700 font-semibold">
-          💡 현행 시간표 복제 초안으로 소규모 수동 수정도 가능합니다.
+          💡 중대한 위반(하드 위반)을 유발하는 이동은 실행이 자동으로 차단됩니다. (컴시간 매뉴얼 §8-다)
         </p>
       </div>
 
