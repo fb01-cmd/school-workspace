@@ -2445,7 +2445,10 @@ export async function computeDirectProjectedWeeks(
   opts?: { extraWeeks?: number }
 ): Promise<{
   termId: string | null;
-  weeks: Array<{ weekId: string; startDate: string; cells: TeacherTimetableCell[] }>;
+  weeks: Array<{
+    weekId: string; startDate: string; cells: TeacherTimetableCell[];
+    dayPeriodCounts: Array<{ day: number; periods: number }>; // 수집 20 — 미편성 교시 렌더 제외 재료 (my_projected와 동일)
+  }>;
   appliedCount: number;
   /** 반환 범위 밖에 아직 남은 등록 주가 있는지 — UI의 [이후 주 더 보기] 노출 판정 (§3-2d 수집 24) */
   hasMore: boolean;
@@ -2502,12 +2505,19 @@ export async function computeDirectProjectedWeeks(
     )
   );
 
-  const out: Array<{ weekId: string; startDate: string; cells: TeacherTimetableCell[] }> = [];
+  const out: Array<{
+    weekId: string; startDate: string; cells: TeacherTimetableCell[];
+    dayPeriodCounts: Array<{ day: number; periods: number }>;
+  }> = [];
   for (const week of weeks) {
     const changes = changesByWeek.get(week.id) || [];
     const virtual = extra.byWeek.get(week.id) || [];
     const { grids } = synthesizeWeeklyGrids(baseByWeek.get(week.startDate)!, week, [...changes, ...virtual], settings);
-    out.push({ weekId: week.id, startDate: week.startDate, cells: synthesizeTeacherTimetable(grids, teacherEmail) });
+    out.push({
+      weekId: week.id, startDate: week.startDate,
+      cells: synthesizeTeacherTimetable(grids, teacherEmail),
+      dayPeriodCounts: computeDayPeriodCounts(grids),
+    });
   }
   return { termId: term.id, weeks: out, appliedCount: extra.count, hasMore };
 }
