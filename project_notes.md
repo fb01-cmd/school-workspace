@@ -3142,3 +3142,18 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   5. **termId 하드코딩 제거 (5)**: 클라이언트 `"2026-2"` 폴백 리터럴 전면 제거 (서버가 `settings.activeTermId` 자동 폴백).
   6. **동적 교시/반 연동 (6)**: `periodsPerDay` 전달 받아 퀵 추가 및 교시 그리드 연동, 1~12반 선택 지원.
 
+
+## [2026-08-11] 등록부 UI 수정 배치(7b71e9c) 재검수 — 4.5/6 통과, 재수정 2건 ⚠️
+
+**통과 확인(diff 실측)**: ② 서버 이메일 정규식 3검증기 전부 ✓ ③ 패턴 검증 서버+클라 ✓ ⑤ 신규 3탭 termId 리터럴 제거 ✓ ⑥ periodsPerDay·반 연동 ✓ ④ assign/move/솔버/H3 오기 제거 ✓ / tsc 실측 ✓.
+
+**재수정 필요**:
+- **R1 (핵심 — 지적 1의 절반만 반영)**: AutocompleteInput은 적용됐으나 **선택 강제 원칙이 우회됨** — 3탭 모두 원시 검색 문자열이 `@` 포함이면 제출값으로 승격되는 경로가 남음. AGENTS 규칙 4의 금지 패턴("onChange 원시 텍스트를 제출 상태에 직접 바인딩") 그대로: ⓐ TeacherSlotBanTab — onChange의 `if (val.includes("@")) setTeacherEmail(val)` + 저장부 `teacherSearchTerm` 폴백 ⓑ ConsecutiveRuleTab — 동일 패턴(저장부 166행·onChange 396행) ⓒ CoTeachingRuleTab — 저장 시 `teacherEmailInput` 원시 push(156~162행). **수정 방향**: 제출값은 onSelect에서만 세팅, onChange에서는 오히려 선택값을 즉시 무효화(`setTeacherEmail("")`), 저장 가드는 선택값 null 가드로만. 서버 정규식은 형식 쓰레기만 막고 **형식은 맞는 오타 이메일**(규칙 조용한 무력화)은 못 막으므로 선택 강제가 본질 방어선.
+- **R2 (경미)**: 안내 문구에 "검사기 H5 경고" 내부 코드 잔존 1건(TeacherSlotBanTab 224행) — "위반 시 자동 검사에서 문제로 표시됩니다" 수준으로.
+
+**별건 발견(이번 범위 밖, 기존 부채)**: `activeTermId || "2026-2"` 하드코딩이 기존 탭 4곳에 원래부터 존재 — SimulGroupTab(196·254)·VenueGroupTab(214·273)·BaseRevisionTab(204)·CalendarManageTab(218). 다음 학기 전환 시 일괄 오등록 시한폭탄이므로 후속 배치에서 신규 3탭과 같은 방식(리터럴 제거)으로 정리 권장.
+
+### 재개 문구
+- Antigravity 재수정: *"project_notes.md 마지막 체크포인트 읽어줘. 등록부 UI 재검수 R1·R2 수정해줘 (+별건 termId 하드코딩 4탭 정리 포함)."*
+- 재수정 후 최종 검수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. R1·R2 재수정 최종 검수해줘."*
+- push 승인: *"푸시하자."* (미push 5커밋: db6b755·dd82399·33f2c45·7b71e9c + 이 문서)
