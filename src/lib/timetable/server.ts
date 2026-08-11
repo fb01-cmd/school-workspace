@@ -2564,6 +2564,28 @@ export function computeCommonActivitySlots(
   return out.sort((a, b) => a.day - b.day || a.period - b.period);
 }
 
+/**
+ * 요일별 실제 운영 교시 수 = 그 요일에 어느 학급이든 수업이 있는 마지막 교시 (§3-2d 수집 20).
+ *
+ * 주 메타(days[].periodsByGrade)는 우리 학교 실데이터에서 비어 있고(2026-08-11 실측),
+ * 진실은 기초시간표에 있다 — 금요일은 6교시까지만 편성되어 있으나 settings.periodsPerDay는 7.
+ * 클라이언트는 자기 그리드만 알아 판정할 수 없으므로 서버가 동봉한다. 편성이 바뀌면
+ * 이 값도 따라 바뀌므로(하드코딩 없음) 이후 시간표 편성 기능에도 그대로 유효하다.
+ * 휴업일·미운영 요일은 0.
+ */
+export function computeDayPeriodCounts(
+  grids: WeeklyClassGrid[]
+): Array<{ day: number; periods: number }> {
+  const maxByDay = new Map<number, number>();
+  for (const grid of grids) {
+    for (const cell of grid.cells || []) {
+      if (!(cell.lessons || []).length) continue;
+      maxByDay.set(cell.day, Math.max(maxByDay.get(cell.day) || 0, cell.period));
+    }
+  }
+  return [1, 2, 3, 4, 5].map((day) => ({ day, periods: maxByDay.get(day) || 0 }));
+}
+
 export async function computeMyProjectedWeeks(
   domain: string,
   userEmail: string,
@@ -2577,6 +2599,7 @@ export async function computeMyProjectedWeeks(
     cells: TeacherTimetableCell[];
     dayLoads: ProjectedDayLoad[];
     commonActivitySlots: Array<{ day: number; period: number }>; // §3-2d S1 — U4(체인 목적지 제외) 재료
+    dayPeriodCounts: Array<{ day: number; periods: number }>; // 수집 20 — 미편성 교시(금7 등) 렌더 제외 재료
   }>;
   assumedPendingCount: number;
   assumedDraftCount: number;
@@ -2636,6 +2659,7 @@ export async function computeMyProjectedWeeks(
     weekId: string; startDate: string; days: TimetableWeek["days"];
     cells: TeacherTimetableCell[]; dayLoads: ProjectedDayLoad[];
     commonActivitySlots: Array<{ day: number; period: number }>;
+    dayPeriodCounts: Array<{ day: number; periods: number }>;
   }> = [];
   for (const week of weeks) {
     const changes = changesByWeek.get(week.id) || [];
@@ -2648,6 +2672,7 @@ export async function computeMyProjectedWeeks(
       cells: synthesizeTeacherTimetable(grids, userEmail),
       dayLoads: countMyDayLoads(grids, userEmail),
       commonActivitySlots: computeCommonActivitySlots(grids),
+      dayPeriodCounts: computeDayPeriodCounts(grids),
     });
   }
   return {

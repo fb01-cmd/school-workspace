@@ -117,6 +117,7 @@ interface ProjectedWeek {
   cells: TeacherTimetableCell[];
   dayLoads: ProjectedDayLoad[];
   commonActivitySlots?: Array<{ day: number; period: number }>; // §3-2d S1 — U4 체인 목적지 제외 재료
+  dayPeriodCounts?: Array<{ day: number; periods: number }>; // 수집 20 — 그 요일의 실제 운영 교시 수(금7 등 미편성 제외)
 }
 
 function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
