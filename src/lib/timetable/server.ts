@@ -5174,3 +5174,146 @@ export async function loadAllCalendarEventsForICS(domain: string): Promise<Timet
   return events.sort((a, b) => a.startDate.localeCompare(b.startDate));
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// Phase 9c-D: 자동 작성 초안 CRUD (phase9c_d_spec §2 · §7)
+// ═══════════════════════════════════════════════════════════════
+
+export const timetableDraftsColRef = (domain: string) =>
+  adminDb.collection("timetable_drafts").doc(domain).collection("drafts");
+
+export const timetableDraftGridsColRef = (domain: string, draftId: string) =>
+  adminDb
+    .collection("timetable_drafts")
+    .doc(domain)
+    .collection("drafts")
+    .doc(draftId)
+    .collection("classGrids");
+
+/** 초안 목록 (메타 전용 — base 그리드 제외) */
+export async function listDrafts(domain: string): Promise<import("./types").TimetableDraft[]> {
+  const snap = await timetableDraftsColRef(domain)
+    .orderBy("updatedAt", "desc")
+    .limit(50)
+    .get();
+  return snap.docs.map((doc) => {
+    const d = doc.data();
+    return {
+      id: doc.id,
+      label: d.label || "무제 초안",
+      sourceTermId: d.sourceTermId || "",
+      origin: d.origin || { kind: "copy" },
+      ops: Array.isArray(d.ops) ? d.ops : [],
+      opCursor: typeof d.opCursor === "number" ? d.opCursor : 0,
+      unplaced: Array.isArray(d.unplaced) ? d.unplaced : [],
+      lastReport: d.lastReport || undefined,
+      createdBy: d.createdBy,
+      createdAt: toMillis(d.createdAt) ?? undefined,
+      updatedBy: d.updatedBy,
+      updatedAt: toMillis(d.updatedAt) ?? undefined,
+    } as import("./types").TimetableDraft;
+  });
+}
+
+/** 초안 생성 — grids 없으면 서버가 현행 기초 시간표를 복제 */
+export async function createDraft(
+  domain: string,
+  label: string,
+  sourceTermId: string,
+  origin: import("./types").TimetableDraftOrigin,
+  grids: ClassGrid[] | null,
+  unplaced: import("./types").TimetableDraftUnplaced[],
+  lastReport: import("./types").TimetableDraftLastReport | undefined,
+  createdBy: string
+): Promise<string> {
+  let baseGrids: ClassGrid[] = grids ?? [];
+  if (baseGrids.length === 0) {
+    baseGrids = await loadAllClassGrids(domain, sourceTermId);
+  }
+  if (baseGrids.length === 0) {
+    throw new Error(
+      "기초 시간표가 없어 초안을 생성할 수 없습니다. 먼저 기초 시간표를 가져오기 해 주세요."
+    );
+  }
+
+  const now = Date.now();
+  const draftRef = timetableDraftsColRef(domain).doc();
+  const draftId = draftRef.id;
+
+  await draftRef.set({
+    label,
+    sourceTermId,
+    origin,
+    ops: [],
+    opCursor: 0,
+    unplaced,
+    ...(lastReport ? { lastReport } : {}),
+    createdBy,
+    createdAt: now,
+    updatedBy: createdBy,
+    updatedAt: now,
+  });
+
+  const batch = adminDb.batch();
+  for (const grid of baseGrids) {
+    const docId = `${grid.grade}-${grid.classNum}`;
+    const ref = timetableDraftGridsColRef(domain, draftId).doc(docId);
+    batch.set(ref, { grade: grid.grade, classNum: grid.classNum, cells: grid.cells });
+  }
+  await batch.commit();
+
+  return draftId;
+}
+
+/** 초안 상세 — 메타 + base 그리드 + ops 재생 그리드 */
+export async function getDraft(
+  domain: string,
+  draftId: string
+): Promise<{
+  meta: import("./types").TimetableDraft;
+  baseGrids: ClassGrid[];
+  currentGrids: ClassGrid[];
+}> {
+  const draftRef = timetableDraftsColRef(domain).doc(draftId);
+  const snap = await draftRef.get();
+  if (!snap.exists) throw new Error("초안을 찾을 수 없습니다.");
+  const d = snap.data()!;
+  const meta: import("./types").TimetableDraft = {
+    id: draftId,
+    label: d.label || "무제 초안",
+    sourceTermId: d.sourceTermId || "",
+    origin: d.origin || { kind: "copy" },
+    ops: Array.isArray(d.ops) ? d.ops : [],
+    opCursor: typeof d.opCursor === "number" ? d.opCursor : 0,
+    unplaced: Array.isArray(d.unplaced) ? d.unplaced : [],
+    lastReport: d.lastReport || undefined,
+    createdBy: d.createdBy,
+    createdAt: toMillis(d.createdAt) ?? undefined,
+    updatedBy: d.updatedBy,
+    updatedAt: toMillis(d.updatedAt) ?? undefined,
+  };
+
+  const gridSnap = await timetableDraftGridsColRef(domain, draftId).get();
+  const baseGrids: ClassGrid[] = gridSnap.docs.map((doc) => {
+    const g = doc.data();
+    return { grade: g.grade, classNum: g.classNum, cells: g.cells || [] };
+  });
+
+  const currentGrids = cloneClassGrids(baseGrids);
+  if (meta.ops.length > 0 && meta.opCursor > 0) {
+    applyRevisionOps(currentGrids, meta.ops.slice(0, meta.opCursor));
+  }
+
+  return { meta, baseGrids, currentGrids };
+}
+
+/** 초안 삭제 — 메타 + classGrids 서브컬렉션 일괄 삭제 */
+export async function deleteDraft(domain: string, draftId: string): Promise<void> {
+  const gridSnap = await timetableDraftGridsColRef(domain, draftId).get();
+  if (gridSnap.docs.length > 0) {
+    const batch = adminDb.batch();
+    for (const doc of gridSnap.docs) batch.delete(doc.ref);
+    await batch.commit();
+  }
+  await timetableDraftsColRef(domain).doc(draftId).delete();
+}

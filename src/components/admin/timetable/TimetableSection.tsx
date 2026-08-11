@@ -20,6 +20,7 @@ import ConsecutiveRuleTab from "./ConsecutiveRuleTab";
 import CoTeachingRuleTab from "./CoTeachingRuleTab";
 import CalendarManageTab from "./CalendarManageTab";
 import BaseRevisionTab from "./BaseRevisionTab";
+import DraftAutoTab from "./DraftAutoTab";
 
 export default function TimetableSection() {
   const { userData } = useAuth();
@@ -41,6 +42,7 @@ export default function TimetableSection() {
     | "consecutive"
     | "coteaching"
     | "calendar"
+    | "draft"
     | "revision"
     | "neis"
     | "hours"
@@ -252,6 +254,17 @@ export default function TimetableSection() {
         </button>
 
         <button
+          onClick={() => setActiveTab("draft")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "draft"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>🧩 자동 작성</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab("revision")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
             activeTab === "revision"
@@ -358,6 +371,10 @@ export default function TimetableSection() {
       {activeTab === "coteaching" && <CoTeachingRuleTab activeTermId={activeTermId} periodsPerDay={periodsPerDay} />}
 
       {activeTab === "calendar" && <CalendarManageTab activeTermId={activeTermId} />}
+
+      {activeTab === "draft" && (
+        <DraftAutoTab activeTermId={activeTermId} periodsPerDay={periodsPerDay} />
+      )}
 
       {activeTab === "revision" && <BaseRevisionTab activeTermId={activeTermId} />}
 

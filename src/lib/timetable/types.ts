@@ -366,7 +366,13 @@ export type ManageAction =
   | "consecutive_rule_delete"
   | "co_teaching_rule_list"
   | "co_teaching_rule_save"
-  | "co_teaching_rule_delete";
+  | "co_teaching_rule_delete"
+  // ── Phase 9c-D 자동 작성 초안 (phase9c_d_spec §7) ──
+  | "draft_list"
+  | "draft_create"
+  | "draft_get"
+  | "draft_delete"
+  | "draft_model"; // 제약 모델 + 기준 그리드 한번에 로드 (편집 진입 시 1회 요청, spec §5)
 
 export interface ManageTimetableRequest {
   action: ManageAction;
@@ -415,6 +421,13 @@ export interface ManageTimetableRequest {
   // Phase 9c 등록부 (phase9c_spec §2-3)
   rule?: Partial<TeacherSlotBan> | Partial<ConsecutiveRule> | Partial<CoTeachingRule>;
   ruleId?: string;
+  // Phase 9c-D 자동 작성 초안 (phase9c_d_spec §7)
+  draftId?: string;
+  draftLabel?: string;
+  draftOrigin?: TimetableDraftOrigin;
+  draftGrids?: ClassGrid[]; // draft_create 시 솔버 산출 그리드 (optional — 없으면 서버가 현행 복제)
+  draftUnplaced?: TimetableDraftUnplaced[];
+  draftReport?: TimetableAuditReport; // draft_create 시 클라에서 검사기 실행 결과 동봉
 }
 
 export interface ManageTimetableResponse {
@@ -1064,3 +1077,41 @@ export interface TimetableAuditReport {
   };
 }
 
+// ═════════════════════════════════════════════════════════════
+// Phase 9c-D: 자동 작성 초안 (phase9c_d_spec §2)
+// ═════════════════════════════════════════════════════════════
+
+export interface TimetableDraftOrigin {
+  kind: "solver" | "copy";
+  seed?: number; // solver 전용
+  ranking?: number; // 포트폴리오 내 순위 (1-based)
+}
+
+/** 솔버 미배정 항목 — SolverResult.unplaced와 동형 (저장 후 재사용) */
+export interface TimetableDraftUnplaced {
+  sectionId: string;
+  label: string;   // "2-3반 통합과학 김○○" 형태 (솔버가 조립)
+  remaining: number; // 미배정 시수
+}
+
+export interface TimetableDraftLastReport {
+  hardCount: number;
+  actionableHard: number;
+  softTotal: number;
+}
+
+/** 초안 메타 문서 (timetable_drafts/{domain}/drafts/{id}) — §2 스펙 */
+export interface TimetableDraft {
+  id?: string;
+  label: string;
+  sourceTermId: string;
+  origin: TimetableDraftOrigin;
+  ops: BaseRevisionOp[]; // 조정 연산 로그 (undo/redo 재생 원본)
+  opCursor: number; // 현재 그리드 = base + ops[0..opCursor)
+  unplaced: TimetableDraftUnplaced[];
+  lastReport?: TimetableDraftLastReport;
+  createdBy?: string;
+  createdAt?: number;
+  updatedBy?: string;
+  updatedAt?: number;
+}

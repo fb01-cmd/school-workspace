@@ -55,6 +55,10 @@ import {
   syncDerivedWeeksWithCalendar,
   runNeisCalendarSync,
   validateTimetableImport,
+  listDrafts,
+  createDraft,
+  getDraft,
+  deleteDraft,
 } from "@/lib/timetable/server";
 import {
   DirectCommitBatchItemResult,
@@ -1144,6 +1148,97 @@ export async function POST(req: NextRequest) {
           targetEmail: domain,
           action: "co_teaching_rule_delete",
           details: `복수교사 규칙 삭제: ${body.ruleId}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action });
+      }
+
+      // ── Phase 9c-D 자동 작성 초안 (phase9c_d_spec §7) ──
+
+      case "draft_model": {
+        // 편집 진입 시 1회 — 등록부 5종 + 현행 기초 그리드 한번에 내려줌 (spec §5)
+        const termId = body.termId || settings.activeTermId;
+        if (!termId)
+          return NextResponse.json({ error: "대상 학기(termId)가 없습니다." }, { status: 400 });
+        const [baseGrids, simulGroups, venueGroups, slotBans, consecutiveRules, coTeachingRules] =
+          await Promise.all([
+            loadAllClassGrids(domain, termId),
+            loadSimulGroups(domain, termId),
+            loadVenueGroups(domain, termId),
+            loadTeacherSlotBans(domain, termId),
+            loadConsecutiveRules(domain, termId),
+            loadCoTeachingRules(domain, termId),
+          ]);
+        const model = {
+          lunchAfterPeriod: settings.lunchAfterPeriod || 4,
+          periodsPerDay: settings.periodsPerDay || 7,
+          simulGroups,
+          venueGroups,
+          teacherSlotBans: slotBans,
+          consecutiveRules,
+          coTeaching: coTeachingRules,
+        };
+        return NextResponse.json({ success: true, action, model, baseGrids });
+      }
+
+      case "draft_list": {
+        const drafts = await listDrafts(domain);
+        return NextResponse.json({ success: true, action, drafts });
+      }
+
+      case "draft_create": {
+        const termId = body.termId || settings.activeTermId;
+        if (!termId)
+          return NextResponse.json({ error: "대상 학기(termId)가 없습니다." }, { status: 400 });
+        const origin = body.draftOrigin || { kind: "copy" as const };
+        const label =
+          body.draftLabel ||
+          (origin.kind === "solver"
+            ? `자동 작성 #${origin.seed ?? 0} (${new Date().toLocaleDateString("ko-KR")})`
+            : `현행 복제 (${new Date().toLocaleDateString("ko-KR")})`);
+        const lastReport = body.draftReport
+          ? {
+              hardCount: body.draftReport.hard.length,
+              actionableHard: body.draftReport.summary.actionableHard,
+              softTotal: body.draftReport.soft.total,
+            }
+          : undefined;
+        const draftId = await createDraft(
+          domain,
+          label,
+          termId,
+          origin,
+          body.draftGrids ?? null,
+          body.draftUnplaced ?? [],
+          lastReport,
+          auth.email
+        );
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "draft_create",
+          details: `새 초안 생성: ${draftId} (${label})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, draftId, label });
+      }
+
+      case "draft_get": {
+        if (!body.draftId)
+          return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
+        const result = await getDraft(domain, body.draftId);
+        return NextResponse.json({ success: true, action, ...result });
+      }
+
+      case "draft_delete": {
+        if (!body.draftId)
+          return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
+        await deleteDraft(domain, body.draftId);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "draft_delete",
+          details: `초안 삭제: ${body.draftId}`,
           status: "success",
         });
         return NextResponse.json({ success: true, action });
