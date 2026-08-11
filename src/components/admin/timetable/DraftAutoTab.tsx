@@ -812,6 +812,13 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
               </button>
             )}
 
+            {/* 버튼이 조용히 사라지면 고장으로 오해한다 — 사라진 자리에 이유를 한 줄 남긴다 */}
+            {aiEnabled === false && (
+              <span className="text-[11px] text-gray-500 font-medium">
+                AI 도움 기능이 아직 설정되지 않아 사용할 수 없습니다.
+              </span>
+            )}
+
             <div className="h-4 w-px bg-gray-200 mx-1" />
 
             {/* Undo / Redo / 작업기록 */}

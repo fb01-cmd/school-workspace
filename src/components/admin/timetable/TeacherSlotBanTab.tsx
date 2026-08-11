@@ -328,6 +328,13 @@ export default function TeacherSlotBanTab({ activeTermId, periodsPerDay = 7 }: T
         </div>
       </div>
 
+      {/* AI 미설정 시 상자가 통째로 사라지면 고장으로 오해한다 — 사라진 자리에 이유를 한 줄 남긴다 */}
+      {aiEnabled === false && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs text-gray-600 font-medium">
+          🗣️ 말로 금지 규칙 입력하기 — AI 도움 기능이 아직 설정되지 않아 사용할 수 없습니다.
+        </div>
+      )}
+
       {/* ── AI 말로 입력하기 (E-2) 접힘 입력창 ── */}
       {aiEnabled !== false && (
         <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 rounded-xl p-4 space-y-3">
