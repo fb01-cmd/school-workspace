@@ -24,7 +24,7 @@ import {
   TimetableCell,
   TimetableLesson,
 } from "@/lib/timetable/types";
-import type { AiDiagnoseResult } from "@/lib/timetable/ai";
+import type { AiDiagnoseResult, AiExplainResult, AiCritiqueResult } from "@/lib/timetable/ai";
 import { solveTimetableInWorker, SolverDone, SolverRun } from "@/lib/timetable/solverClient";
 import { deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "@/lib/timetable/validate";
 import { applyRevisionOps, cloneClassGrids } from "@/lib/timetable/utils";
@@ -148,13 +148,31 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
   const [aiDiagError, setAiDiagError] = useState<string | null>(null);
   const [aiCardOpen, setAiCardOpen] = useState(false);
 
-  // 초안 전환·닫기 시 진단 초기화 — 이전 초안의 진단이 다른 초안에 붙어 보이는 오귀속 방지.
+  // ── AI 결과 설명 상태 (E-3) ──
+  const [aiExplain, setAiExplain] = useState<AiExplainResult | null>(null);
+  const [aiExplaining, setAiExplaining] = useState(false);
+  const [aiExplainError, setAiExplainError] = useState<string | null>(null);
+  const [aiExplainCardOpen, setAiExplainCardOpen] = useState(false);
+
+  // ── AI 정성 비평 상태 (E-4) ──
+  const [aiCritique, setAiCritique] = useState<AiCritiqueResult | null>(null);
+  const [aiCritiquing, setAiCritiquing] = useState(false);
+  const [aiCritiqueError, setAiCritiqueError] = useState<string | null>(null);
+  const [aiCritiqueCardOpen, setAiCritiqueCardOpen] = useState(false);
+
+  // 초안 전환·닫기 시 AI 상태 초기화 — 이전 초안의 결과가 다른 초안에 붙어 보이는 오귀속 방지.
   // 같은 초안 내 조정(draft_op·undo·redo)에는 유지 — 제안을 따라가며 적용하는 흐름 보존.
   const openDraftId = openDraft?.meta.id;
   useEffect(() => {
     setAiDiagnosis(null);
     setAiDiagError(null);
     setAiCardOpen(false);
+    setAiExplain(null);
+    setAiExplainError(null);
+    setAiExplainCardOpen(false);
+    setAiCritique(null);
+    setAiCritiqueError(null);
+    setAiCritiqueCardOpen(false);
   }, [openDraftId]);
 
   // ── 목록 로드 ──
@@ -447,6 +465,64 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     }
   };
 
+  // ── AI 결과 설명 호출 (E-3) ──
+  const handleAiExplain = async () => {
+    if (!openDraft) return;
+    setAiExplaining(true);
+    setAiExplainError(null);
+    setAiExplain(null);
+    setAiExplainCardOpen(false);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "ai_explain", draftId: openDraft.meta.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "AI 설명 생성 중 오류가 발생했습니다.");
+      if (data.enabled === false) {
+        setAiEnabled(false);
+        return;
+      }
+      setAiEnabled(true);
+      setAiExplain(data.result ?? null);
+      setAiExplainCardOpen(true);
+    } catch (err: any) {
+      setAiExplainError(err.message);
+    } finally {
+      setAiExplaining(false);
+    }
+  };
+
+  // ── AI 정성 비평 호출 (E-4) ──
+  const handleAiCritique = async () => {
+    if (!openDraft) return;
+    setAiCritiquing(true);
+    setAiCritiqueError(null);
+    setAiCritique(null);
+    setAiCritiqueCardOpen(false);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "ai_critique", draftId: openDraft.meta.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "AI 개선 제안 생성 중 오류가 발생했습니다.");
+      if (data.enabled === false) {
+        setAiEnabled(false);
+        return;
+      }
+      setAiEnabled(true);
+      setAiCritique(data.result ?? null);
+      setAiCritiqueCardOpen(true);
+    } catch (err: any) {
+      setAiCritiqueError(err.message);
+    } finally {
+      setAiCritiquing(false);
+    }
+  };
+
   // ── 셀 이동 / 맞교환 what-if 미리보기 ──
   const analyzeOpImpact = (op: BaseRevisionOp, desc: string) => {
     if (!openDraft) return;
@@ -670,7 +746,7 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
               소프트 {report.soft.total}점
             </span>
 
-            {/* AI 원인 진단 버튼 — actionable 하드 > 0 이고 키 설정 시에만 노출 (E-1b) */}
+            {/* AI 원인 진단 버튼 — 하드 > 0 이고 키 설정 시에만 노출 (E-1b) */}
             {report.hard.length > 0 && aiEnabled !== false && (
               <button
                 onClick={handleAiDiagnose}
@@ -687,6 +763,50 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
                   <>
                     <span>🔍</span>
                     <span>원인 진단 (AI 도움)</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* E-3 결과 설명 버튼 — 키 설정 시에만 노출 */}
+            {aiEnabled !== false && (
+              <button
+                onClick={handleAiExplain}
+                disabled={aiExplaining || aiCritiquing}
+                className="px-3 py-1 bg-sky-50 hover:bg-sky-100 disabled:opacity-60 text-sky-800 font-bold rounded-lg text-xs border border-sky-300 transition-all flex items-center gap-1.5"
+                title="이 시간표가 어떻게 배치됐는지 설명합니다 (참고용)"
+              >
+                {aiExplaining ? (
+                  <>
+                    <span className="animate-spin rounded-full h-3 w-3 border-2 border-sky-600 border-t-transparent" />
+                    <span>설명 생성 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>💬</span>
+                    <span>이 시간표 설명 (AI 도움)</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* E-4 개선 제안 버튼 — 키 설정 시에만 노출 */}
+            {aiEnabled !== false && (
+              <button
+                onClick={handleAiCritique}
+                disabled={aiCritiquing || aiExplaining}
+                className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-60 text-emerald-800 font-bold rounded-lg text-xs border border-emerald-300 transition-all flex items-center gap-1.5"
+                title="이 시간표의 개선 여지를 제안합니다 (참고용)"
+              >
+                {aiCritiquing ? (
+                  <>
+                    <span className="animate-spin rounded-full h-3 w-3 border-2 border-emerald-600 border-t-transparent" />
+                    <span>제안 생성 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>✨</span>
+                    <span>개선 제안 (AI 도움)</span>
                   </>
                 )}
               </button>
@@ -726,18 +846,17 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
           </div>
         )}
 
-        {/* AI 진단 에러 */}
-        {aiDiagError && (
+        {/* AI 에러 배너 (E-1b / E-3 / E-4 공용) */}
+        {(aiDiagError || aiExplainError || aiCritiqueError) && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-800 font-semibold flex items-start gap-2">
             <span>⚠️</span>
-            <span>{aiDiagError}</span>
+            <span>{aiDiagError || aiExplainError || aiCritiqueError}</span>
           </div>
         )}
 
         {/* AI 진단 카드 (E-1b) — 접이식, 결과 있을 때만 */}
         {aiDiagnosis && (
           <div className="rounded-xl border border-violet-200 bg-violet-50/60 overflow-hidden">
-            {/* 카드 헤더 */}
             <button
               onClick={() => setAiCardOpen((o) => !o)}
               className="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-violet-100/60 transition-colors"
@@ -753,17 +872,12 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
                 {aiCardOpen ? "▲ 접기" : "▼ 펼치기"}
               </span>
             </button>
-
-            {/* 카드 본문 */}
             {aiCardOpen && (
               <div className="px-5 pb-5 space-y-4">
-                {/* 진단 요약 */}
                 <div className="bg-white rounded-xl border border-violet-100 p-4 text-xs text-gray-800 leading-relaxed font-medium">
                   <p className="font-bold text-violet-900 mb-2 text-[11px] uppercase tracking-wide">진단 요약</p>
                   <p>{aiDiagnosis.diagnosis}</p>
                 </div>
-
-                {/* 완화 제안 목록 */}
                 {aiDiagnosis.suggestions.length > 0 && (
                   <div className="space-y-2">
                     <p className="font-bold text-violet-900 text-[11px] uppercase tracking-wide">완화 제안</p>
@@ -782,9 +896,85 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
                     </ul>
                   </div>
                 )}
-
-                {/* AI 주의 문구 (하단 재명시) */}
                 <p className="text-[11px] text-violet-700 font-semibold text-center pt-1">
+                  ⚠️ AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AI 결과 설명 카드 (E-3) — 접이식, 결과 있을 때만 */}
+        {aiExplain && (
+          <div className="rounded-xl border border-sky-200 bg-sky-50/60 overflow-hidden">
+            <button
+              onClick={() => setAiExplainCardOpen((o) => !o)}
+              className="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-sky-100/60 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">💬</span>
+                <span className="text-xs font-bold text-sky-900">이 시간표 설명</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-200 text-sky-800 font-bold border border-sky-300">
+                  AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
+                </span>
+              </div>
+              <span className="text-sky-500 text-xs font-bold">
+                {aiExplainCardOpen ? "▲ 접기" : "▼ 펼치기"}
+              </span>
+            </button>
+            {aiExplainCardOpen && (
+              <div className="px-5 pb-5 space-y-4">
+                <div className="bg-white rounded-xl border border-sky-100 p-4 text-xs text-gray-800 leading-relaxed font-medium whitespace-pre-line">
+                  {aiExplain.explanation}
+                </div>
+                <p className="text-[11px] text-sky-700 font-semibold text-center pt-1">
+                  ⚠️ AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AI 개선 제안 카드 (E-4) — 접이식, 결과 있을 때만 */}
+        {aiCritique && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 overflow-hidden">
+            <button
+              onClick={() => setAiCritiqueCardOpen((o) => !o)}
+              className="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-emerald-100/60 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">✨</span>
+                <span className="text-xs font-bold text-emerald-900">개선 제안</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-800 font-bold border border-emerald-300">
+                  AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
+                </span>
+              </div>
+              <span className="text-emerald-500 text-xs font-bold">
+                {aiCritiqueCardOpen ? "▲ 접기" : "▼ 펼치기"}
+              </span>
+            </button>
+            {aiCritiqueCardOpen && (
+              <div className="px-5 pb-5 space-y-4">
+                {aiCritique.suggestions.length === 0 ? (
+                  <div className="bg-white rounded-xl border border-emerald-100 p-4 text-xs text-gray-500 italic">
+                    뚜렷한 개선 제안이 없습니다. 현재 시간표가 데이터 기준으로 최적에 가깝습니다.
+                  </div>
+                ) : (
+                  <ul className="space-y-2">
+                    {aiCritique.suggestions.map((s, i) => (
+                      <li
+                        key={i}
+                        className="flex items-start gap-2.5 bg-white rounded-lg border border-emerald-100 px-3.5 py-2.5 text-xs text-gray-800 font-medium"
+                      >
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold flex items-center justify-center mt-0.5">
+                          {i + 1}
+                        </span>
+                        <span>{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-[11px] text-emerald-700 font-semibold text-center pt-1">
                   ⚠️ AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
                 </p>
               </div>
