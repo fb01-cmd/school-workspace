@@ -3555,3 +3555,20 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
   - `PWAInstallPrompt`: 아이폰(iOS) 및 수동 설치 미지원 환경에서 5단계 안내 모달 팝업 추가.
   - `PWAInstallGuideTab`: 아이폰(iOS) 5단계 가이드 카드 및 현재 접속 기기(iOS) 감지 표시 추가.
 
+## [2026-08-11] Phase 9c-E E-3·4 UI 구현 완료 (Antigravity → f8a782a)
+
+- **변경 파일**: `src/components/admin/timetable/DraftAutoTab.tsx`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **내용**: spec §5 대로 초안 편집기 헤더에 [이 시간표 설명]·[개선 제안] 버튼 + 접이식 결과 카드 구현.
+  - E-3 (💬 이 시간표 설명): `ai_explain` 호출 → sky 색상 접이식 카드 (`whitespace-pre-line`으로 줄바꿈 보존).
+  - E-4 (✨ 개선 제안): `ai_critique` 호출 → emerald 색상 접이식 카드 + suggestions 번호 목록 / 빈 배열 시 "뚜렷한 개선 제안 없음" 안내.
+  - 두 버튼 모두 `aiEnabled !== false` 시에만 노출(키 미설정 시 완전 숨김), 동시 클릭 방지(disabled 교차).
+  - **초안 전환 시 E-3·E-4 상태도 초기화** (E-1b 오귀속 방지와 동일 패턴).
+  - AI 표식 상·하단 필수("AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요").
+  - E-1b·E-3·E-4 에러 배너 통합(aiDiagError || aiExplainError || aiCritiqueError).
+- **잔여**: F-2(9월 샘플) / 9월 질문지 / 실기기 확인은 실사용 첫 회.
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- F-2·질문지(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase 9c E 완결 확인 후 다음 단계 결정해줘."*
+
