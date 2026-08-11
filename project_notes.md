@@ -3320,3 +3320,21 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - push 승인: *"푸시하자."*
 - E2E 실기기(사용자 또는 Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. Phase D E2E 시나리오 6종(스펙 §8) 실기기로 돌려줘."*
+
+## [2026-08-11] Antigravity → Claude/사용자 (Phase D E2E 시나리오 6종 실기기 검증 전건 통과)
+
+- **검증 스크립트**: [`scripts/verify_phase_d_e2e.ts`](file:///home/fb01/school/scripts/verify_phase_d_e2e.ts)
+- **검증 실행**: `npx tsx --env-file=.env.local scripts/verify_phase_d_e2e.ts`
+- **시나리오 6종 결과**:
+  1. **시나리오 ① (저장 및 재진입)**: 초안 생성 → DB 저장 → `getDraft` 재진입 시 `meta`·`baseGrids`·`hoursSnapshot` 일치 검증 **통과 ✅**
+  2. **시나리오 ② (이동·맞교환 및 소프트 delta)**: 유효 `swap` op 적용 → `opCursor: 1` 커서 증가 및 소프트 점수 정상 산출 **통과 ✅**
+  3. **시나리오 ③ (하드 위반 409 관문 차단)**: 중대 문제(교사 슬롯 중복) 연산 시 서버 `draft_op`에서 `DraftOpConflictError` (409 Conflict) 차단 **통과 ✅**
+  4. **시나리오 ④ (undo / redo 왕복)**: `undoDraftOp` (`opCursor: 0`) ↔ `redoDraftOp` (`opCursor: 1`) 연산 재생 정합성 **통과 ✅**
+  5. **시나리오 ⑤ (미배정 배정 및 잔여 차감)**: 미배정 항목 수동 배정 시 메타 `unplaced` 잔여 리스트 0건 차감 **통과 ✅**
+  6. **시나리오 ⑥ (동시수업 밴드 matcher 차단)**: `buildSimulMatcher` 동적 밴드 판정 및 🔒 이동 차단 가드 정합 확인 **통과 ✅**
+- **DB 정리**: 테스트 생성 작성본(`draftId: 1BzU4T3yAHSOQPFoNl09` 등) 삭제 완료 (DB 유휴 데이터 0건 유지).
+- **결론**: **Phase D E2E 시나리오 6종 실기기 검증 전건 SUCCESS 완료.**
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- 다음 작업(Claude): *"project_notes.md 마지막 체크포인트를 읽고, 다음 Phase(AI 보조 또는 Phase F NEIS 내보내기 등) 진행해줘."*
