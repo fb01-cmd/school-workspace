@@ -3256,3 +3256,37 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - push 승인: *"푸시하자."*
 - D-2 인계(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. Phase D-2(이동/교환 UX — draft_op·undo/redo·409 관문) 구현해줘. 리뷰 비차단 2건도 함께."*
 - D-2 리뷰(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase D-2 표적 리뷰해줘 (draft_op 관문·재생 결정론·409)."*
+
+## [2026-08-11] Antigravity → Claude/사용자 (Phase D-2 수동 조정 UI 및 409 관문 구현)
+
+- **커밋**: `9ad7ce5`
+- **검증**: `npx tsc --noEmit` ✅
+- **구현 내용**:
+  - **백엔드/API**: `draft_op` (op 적용 → `validateTimetable` 검증 → 신규 하드 위반 시 `409 Conflict` 차단), `draft_undo` (`opCursor - 1`), `draft_redo` (`opCursor + 1`) 구현. `draft_create` `draftReport` 안전 가드 보완 (리뷰 비차단 1).
+  - **공용 헬퍼**: `utils.ts`에 `cloneClassGrids`, `applyRevisionOps` 내보내 클라이언트/서버 공유.
+  - **UI (`DraftAutoTab.tsx`)**:
+    - 3면 IA: 학급 그리드 + 교사 파생 그리드 (`synthesizeTeacherGrid`) + 미배정 목록
+    - 이동/교환 UX: 셀 A 클릭(sky 테두리) → 후보 셀 B(emerald 배경, ⇄ 맞교환) → 클릭 시 what-if 미리보기
+    - **연쇄 영향 다이얼로그**: 하드 위반 새로 발생 시 빨간 경고 표시 및 **[적용하기] 버튼 비활성화 (하드 차단 - 컴시간 §8-다 재현)**. 소프트 감점 변화 및 상세 변동 표시.
+    - **Undo / Redo / 작업기록**: `[↩ 실행취소]`, `[↪ 다시실행]`, 작업기록 모달 연동.
+    - **고정 밴드 셀 방어**: 동시수업(`simul`) 🔒 수동 이동 차단.
+  - **판정 미리보기 비차단 보완**: `ConsecutiveRuleTab`, `CoTeachingRuleTab` 폼 미사용 시 유휴 fetch 방지 가드 추가.
+
+### 재개 문구
+- 검수/리뷰(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase D-2 표적 리뷰해줘 (draft_op 관문·재생 결정론·409)."*
+- push 승인: *"푸시하자."* (미push: 9d8f7e5·b55202a·9ad7ce5 포함 10커밋)
+
+## [2026-08-11] Phase D-2(9ad7ce5) 표적 리뷰 — 조건부, 재수정 2건 ⚠️ (스펙 v1.1 정정 동반)
+
+**통과(실측)**: draft_op 관문 구조 ✓ — 서버측 모델 재로드(클라 신뢰 0)·기존 하드 허용·**신규 하드만 409**(코드+위치+교사 키 비교)·커서 뒤 truncate(분기 금지)·409 라우트 매핑·클라 실패 시 로컬 상태 불변. undo/redo 경계 가드 ✓ / 클라 what-if도 validateTimetable 단일 관문 ✓ / 연쇄 다이얼로그 하드 시 [적용] 비활성 ✓ / D-1 이월 2건(draftReport 가드·유휴 fetch) 해소 ✓ / tsc·build(Claude 재실행) ✓.
+
+**재수정 필요**:
+- **F1 — applyRevisionOps·cloneClassGrids 중복 정의**: utils.ts로 "공유"했다면서 server.ts 자체 사본을 남김(현재 바이트 동일 — 시간이 지나면 갈라져 재생 결정론을 깨는 시한폭탄). server.ts 사본 삭제 → utils에서 import(+기존 소비자 호환 re-export). 스펙 §7에 단일 소재지 명시함.
+- **F2 — 미배정 배정이 409로 오차단되는 설계 결함(잠복)**: 서버·클라 모두 시수표를 **초안 base 그리드에서 역산** → 미배정 있는 솔버 초안에서 [배정하기](edit_cell)가 H4 "시수표에 없는/초과 배정" 신규 하드로 걸려 무조건 409. 현행 실측은 미배정 0이라 잠복이나 9월 등록부 실데이터부터 실사고. **수정 = 스펙 v1.1 (§7)**: draft_create 시 서버가 현행 학기 그리드 역산 시수표를 `hoursSnapshot`으로 저장, draft_op·undo·redo·draft_get 모델은 `hoursSnapshot ?? base 역산` 폴백, draft_get이 hours 동봉해 클라 미리보기 동일 기준.
+- **밴드 셀 차단 보강(F2에 묶음)**: 현재 `lesson.simul` 스탬프 기준 — **솔버 산출 그리드는 스탬프가 제거돼 있어**(판정은 등록부 단일 원본 원칙) 솔버 초안에서 차단 무력, 현행 복제 초안만 동작. draft_model의 simulGroups로 `buildSimulMatcher` 판정으로 교체(스탬프 의존 제거).
+
+**비차단(후속 후보)**: ① draft_op 1회당 등록부 5종+그리드 재로드 ~40 reads — 조정 세션 누적 부담, 로더 메모이즈/캐시 검토 ② 신규 하드 비교 키가 H1 악화(같은 과목 미배정 2→3시간)를 동일 키로 묶어 미탐 — 키에 text 포함 검토.
+
+### 재개 문구
+- 재수정(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. Phase D-2 리뷰 F1·F2(+밴드 matcher) 수정해줘 — 스펙 v1.1 §7 기준."*
+- 최종 검수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. F1·F2 재수정 최종 검수해줘."*
