@@ -3184,3 +3184,15 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - push 승인: *"푸시하자."* (미push 7커밋: db6b755·dd82399·33f2c45·7b71e9c·628474c·773c26f + 이 문서)
 - 솔버 고도화(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 9c 솔버 고도화(시드 포트폴리오·Web Worker) 하자."*
 - 판정 미리보기 배치(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. 연속수업·복수교사 탭에 판정 미리보기 붙여줘 (SimulGroupTab §A-5 문법)."*
+
+## [2026-08-11] 9c Phase C-2 솔버 고도화 — 시드 포트폴리오·Web Worker ✅ (`580c22e`)
+
+- **시드 포트폴리오**(`solveTimetablePortfolio`, 기본 8시드): 미배정 최소 → 소프트 최소 선발, 시드별 결정론 ⇒ 전체 결정론. **실측: 시드별 38~55점 편차 → 선발 38점 < 컴시간 기준선 39점** (8시드 27초 — Web Worker 진행률 스트림 전제로 충분).
+- **Web Worker 탑재**: `solver.worker.ts`(컴파일 → 포트폴리오 → **검사기 관문까지 워커 안에서** 수행 후 리포트 동봉 — §0-1 철칙) + `solverClient.ts`(Phase D UI 단일 진입점 — 진행률 콜백·취소 terminate+reject·SSR 가드). **워커 파일 직접 import 금지** — 프로토콜 타입은 solver.ts에서 가져올 것.
+- **검증**: tsc·build·자가 테스트 2종(솔버 6·검사기 33) ✅. 재현 스크립트는 시드 인자 없으면 포트폴리오 모드. **브라우저 E2E는 Phase D 화면 연결 시**(Antigravity — solverClient 사용 예시는 파일 헤더 주석).
+- **Phase C 종결 판단**: 코어+고도화 완료. 잔여는 Phase D(수동 조정 UI)·작성본 저장 모델(§11)·신학기 시수표 직접 입력 경로(C-2 컴파일러)·9월 질문지 회수 후 등록부 실데이터 검증.
+
+### 재개 문구
+- push 승인: *"푸시하자."* (미push: 580c22e + 이 문서)
+- Phase D 착수(Claude 스펙 먼저): *"project_notes.md 마지막 체크포인트 읽어줘. 9c Phase D(수동 조정 UI) 스펙 잡자."*
+- 판정 미리보기 배치(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. 연속수업·복수교사 탭에 판정 미리보기 붙여줘 (SimulGroupTab §A-5 문법)."*
