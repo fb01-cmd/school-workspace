@@ -24,6 +24,7 @@ import {
   TimetableCell,
   TimetableLesson,
 } from "@/lib/timetable/types";
+import type { AiDiagnoseResult } from "@/lib/timetable/ai";
 import { solveTimetableInWorker, SolverDone, SolverRun } from "@/lib/timetable/solverClient";
 import { deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "@/lib/timetable/validate";
 import { applyRevisionOps, cloneClassGrids } from "@/lib/timetable/utils";
@@ -139,6 +140,22 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
 
   // 작업기록 모달 상태
   const [showOpsHistory, setShowOpsHistory] = useState(false);
+
+  // ── AI 불능 진단 상태 (E-1b) ──
+  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null); // null=미확인, false=키없음
+  const [aiDiagnosis, setAiDiagnosis] = useState<AiDiagnoseResult | null>(null);
+  const [aiDiagnosing, setAiDiagnosing] = useState(false);
+  const [aiDiagError, setAiDiagError] = useState<string | null>(null);
+  const [aiCardOpen, setAiCardOpen] = useState(false);
+
+  // 초안 전환·닫기 시 진단 초기화 — 이전 초안의 진단이 다른 초안에 붙어 보이는 오귀속 방지.
+  // 같은 초안 내 조정(draft_op·undo·redo)에는 유지 — 제안을 따라가며 적용하는 흐름 보존.
+  const openDraftId = openDraft?.meta.id;
+  useEffect(() => {
+    setAiDiagnosis(null);
+    setAiDiagError(null);
+    setAiCardOpen(false);
+  }, [openDraftId]);
 
   // ── 목록 로드 ──
   const fetchDrafts = async () => {
@@ -401,6 +418,35 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     }
   };
 
+  // ── AI 불능 진단 호출 (E-1b) ──
+  const handleAiDiagnose = async () => {
+    if (!openDraft) return;
+    setAiDiagnosing(true);
+    setAiDiagError(null);
+    setAiDiagnosis(null);
+    setAiCardOpen(false);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "ai_diagnose", draftId: openDraft.meta.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "AI 진단 중 오류가 발생했습니다.");
+      if (data.enabled === false) {
+        setAiEnabled(false);
+        return;
+      }
+      setAiEnabled(true);
+      setAiDiagnosis(data.result ?? null);
+      setAiCardOpen(true);
+    } catch (err: any) {
+      setAiDiagError(err.message);
+    } finally {
+      setAiDiagnosing(false);
+    }
+  };
+
   // ── 셀 이동 / 맞교환 what-if 미리보기 ──
   const analyzeOpImpact = (op: BaseRevisionOp, desc: string) => {
     if (!openDraft) return;
@@ -624,6 +670,28 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
               소프트 {report.soft.total}점
             </span>
 
+            {/* AI 원인 진단 버튼 — actionable 하드 > 0 이고 키 설정 시에만 노출 (E-1b) */}
+            {report.hard.length > 0 && aiEnabled !== false && (
+              <button
+                onClick={handleAiDiagnose}
+                disabled={aiDiagnosing}
+                className="px-3 py-1 bg-violet-50 hover:bg-violet-100 disabled:opacity-60 text-violet-800 font-bold rounded-lg text-xs border border-violet-300 transition-all flex items-center gap-1.5"
+                title="AI가 하드 위반 원인을 분석합니다 (참고용)"
+              >
+                {aiDiagnosing ? (
+                  <>
+                    <span className="animate-spin rounded-full h-3 w-3 border-2 border-violet-600 border-t-transparent" />
+                    <span>분석 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔍</span>
+                    <span>원인 진단 (AI 도움)</span>
+                  </>
+                )}
+              </button>
+            )}
+
             <div className="h-4 w-px bg-gray-200 mx-1" />
 
             {/* Undo / Redo / 작업기록 */}
@@ -655,6 +723,72 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
         {draftError && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-800 font-semibold">
             {draftError}
+          </div>
+        )}
+
+        {/* AI 진단 에러 */}
+        {aiDiagError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-800 font-semibold flex items-start gap-2">
+            <span>⚠️</span>
+            <span>{aiDiagError}</span>
+          </div>
+        )}
+
+        {/* AI 진단 카드 (E-1b) — 접이식, 결과 있을 때만 */}
+        {aiDiagnosis && (
+          <div className="rounded-xl border border-violet-200 bg-violet-50/60 overflow-hidden">
+            {/* 카드 헤더 */}
+            <button
+              onClick={() => setAiCardOpen((o) => !o)}
+              className="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-violet-100/60 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">🔍</span>
+                <span className="text-xs font-bold text-violet-900">원인 진단 결과</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-200 text-violet-800 font-bold border border-violet-300">
+                  AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
+                </span>
+              </div>
+              <span className="text-violet-500 text-xs font-bold">
+                {aiCardOpen ? "▲ 접기" : "▼ 펼치기"}
+              </span>
+            </button>
+
+            {/* 카드 본문 */}
+            {aiCardOpen && (
+              <div className="px-5 pb-5 space-y-4">
+                {/* 진단 요약 */}
+                <div className="bg-white rounded-xl border border-violet-100 p-4 text-xs text-gray-800 leading-relaxed font-medium">
+                  <p className="font-bold text-violet-900 mb-2 text-[11px] uppercase tracking-wide">진단 요약</p>
+                  <p>{aiDiagnosis.diagnosis}</p>
+                </div>
+
+                {/* 완화 제안 목록 */}
+                {aiDiagnosis.suggestions.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="font-bold text-violet-900 text-[11px] uppercase tracking-wide">완화 제안</p>
+                    <ul className="space-y-2">
+                      {aiDiagnosis.suggestions.map((s, i) => (
+                        <li
+                          key={i}
+                          className="flex items-start gap-2.5 bg-white rounded-lg border border-violet-100 px-3.5 py-2.5 text-xs text-gray-800 font-medium"
+                        >
+                          <span className="shrink-0 w-5 h-5 rounded-full bg-violet-600 text-white text-[10px] font-extrabold flex items-center justify-center mt-0.5">
+                            {i + 1}
+                          </span>
+                          <span>{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* AI 주의 문구 (하단 재명시) */}
+                <p className="text-[11px] text-violet-700 font-semibold text-center pt-1">
+                  ⚠️ AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
+                </p>
+              </div>
+            )}
           </div>
         )}
 

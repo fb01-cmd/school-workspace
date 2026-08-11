@@ -3407,3 +3407,33 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - push 승인: *"푸시하자."*
 - E-1b UI(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/phase9c_e_spec.md §5 대로 E-1b(진단 카드 UI) 구현해줘."*
+
+## [2026-08-11] Phase E-1b UI 구현 완료 (Antigravity)
+
+- **구현 파일**: `src/components/admin/timetable/DraftAutoTab.tsx`
+- **검증**: tsc ✅ / build ✅ (NODE_OPTIONS=--max-old-space-size=4096)
+- **내용**: 초안 편집기 상단 바에 [원인 진단 (AI 도움)] 버튼 + 접이식 진단 카드 신설.
+  - actionable 하드 > 0 이고 `aiEnabled !== false`일 때만 버튼 노출 (존재 숨김, 비활성 X)
+  - 첫 호출에서 `enabled:false` 응답 시 `aiEnabled=false` 세트 → 버튼 즉시 사라짐
+  - 결과 카드: 진단 요약 + 완화 제안 번호 목록, 접기/펼치기 토글
+  - "AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요" 라벨 헤더+하단 2중 표시
+  - AI 에러(429·502 등)는 에러 배너로 fail-visible 처리
+  - AI 상태 변수: `aiEnabled / aiDiagnosis / aiDiagnosing / aiDiagError / aiCardOpen`
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- E-1b UI 리뷰 후 다음(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase E-1b UI 표적 리뷰해줘."*
+- E-2 착수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase E-2(ai_formalize) 구현해줘."*
+
+## [2026-08-11] E-1b UI(DraftAutoTab 진단 카드) 표적 리뷰 — 조건부 1건 Claude 직접 수정 후 통과 ✅ (Claude가 커밋)
+
+- **검수 방식**: 미커밋 작업 트리 diff 직접 대조 → 통과 후 Claude 커밋(유실 방지 전례).
+- **통과(실측)**: 진입점 존재 숨김(비활성 아님) ✓ / `enabled:false` 시 버튼 소멸 ✓ / fail-visible 에러 배너(429·502 눈높이 메시지 관통) ✓ / "AI가 작성한 참고 의견" 라벨 헤더+하단 2중 ✓ / `import type`이라 서버 모듈 런타임 유입 없음 ✓ / 경고색 원칙(red 미사용, violet) ✓ / tsc·build(Claude 재실행) ✓.
+- **F1 (Claude 직접 수정)**: 초안 전환·닫기 시 AI 진단 상태 미초기화 — **초안 A의 진단 카드가 초안 B에 붙어 보이는 오귀속**. `openDraftId` 기준 useEffect로 초기화. 같은 초안 내 조정(draft_op·undo·redo)에는 유지 — 제안 따라가며 적용하는 흐름 보존.
+- **스펙 정정(v1.1, 코드가 옳음)**: §5 버튼 노출 조건 "actionable 하드 > 0" → **전체 하드 > 0** — 등록부미비 전용 위반도 진단 가치(프롬프트가 registryGap 명시 처리). 단 핸드오버 기재("actionable 하드 > 0")와 실제 코드가 달랐던 점은 기재 정확성 문제로 남김 — 핸드오버는 코드가 하는 일을 그대로 적을 것.
+- **비차단(후속 후보)**: `enabled:false` 첫 클릭 시 안내 없이 버튼만 소실 — 실서비스는 키 설정 완료 상태라 저위험.
+- **잔여**: E-2(ai_formalize — 말로 제약 입력) / E-3·4(설명·비평, 11월 리허설 전) / 진단 카드 실기기 확인은 실사용 첫 회(증상 소멸 기준).
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- E-2 착수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase E-2(ai_formalize — 말로 제약 입력) 구현해줘."*
