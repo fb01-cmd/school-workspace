@@ -3219,3 +3219,14 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - push 승인: *"푸시하자."* (미push: 이 문서뿐)
 - Phase D 스펙(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 9c Phase D(수동 조정 UI) 스펙 잡자."*
+
+## [2026-08-11] 9c Phase D 스펙 v1 작성 ✅ ([`docs/phase9c_d_spec.md`](./docs/phase9c_d_spec.md))
+
+- **저장 모델 확정**(9c 스펙 §11 미결 해소): `timetable_drafts/{domain}/drafts/{id}` 별도 컬렉션 — base 그리드(서브컬렉션, 학기 classGrids 동형) + **ops 재생**(BaseRevisionOp·applyRevisionOps 재사용, 현재 그리드 비저장) + opCursor undo/redo. draft 학기 방식은 기각(목록 오염·다중 초안 불가).
+- **핵심 설계**: 판정은 전부 `validateTimetable` 단일 관문(클라 미리보기 + 서버 `draft_op` 최종 재검증 — 하드 신규 발생 409) / 3면 IA(학급·교사 그리드 + 미배정 목록, TimetableSection "🧩 자동 작성" 탭) / 연쇄 영향 다이얼로그(하드 = 실행 비활성 — 컴시간 §8-다 계승) / 색은 U8 통합·red 경고 전용 / 밴드 셀 이동은 v1 금지.
+- **분업**: 구현 = Antigravity(스펙 §8에 E2E 시나리오 6종 명시), Claude = 완료 후 위험 지점 표적 리뷰(draft_op 관문·재생 결정론·409).
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- 구현 인계(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/phase9c_d_spec.md 대로 Phase D(자동 작성 탭) 구현해줘."*
+- 구현 후 리뷰(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase D 구현 표적 리뷰해줘."*
