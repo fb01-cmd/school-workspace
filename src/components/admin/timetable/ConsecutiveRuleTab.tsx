@@ -10,6 +10,28 @@ interface ConsecutiveRuleTabProps {
   periodsPerDay?: number;
 }
 
+// 클라이언트 전용 순수 판정 헬퍼 (서버 normSubject 규약 동일)
+const normSubj = (s: string) =>
+  (s || "").normalize("NFC").replace(/\s+/g, "").trim().toLowerCase();
+const normEmail = (e: string) => (e || "").trim().toLowerCase();
+
+function isConsecutiveCell(
+  lessonSubjectName: string,
+  lessonTeacherEmails: string[],
+  formSubjectName: string,
+  formTeacherEmail: string
+): boolean {
+  if (!formSubjectName.trim()) return false;
+  if (normSubj(lessonSubjectName) !== normSubj(formSubjectName)) return false;
+  if (formTeacherEmail.trim()) {
+    // 교사 한정이 지정된 경우: 해당 교사가 이 수업에 포함돼야 함
+    return lessonTeacherEmails
+      .map(normEmail)
+      .includes(normEmail(formTeacherEmail));
+  }
+  return true;
+}
+
 export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: ConsecutiveRuleTabProps) {
   const { userData } = useAuth();
   const domain = userData?.domain || userData?.email?.split("@")[1] || "hmh.or.kr";
@@ -34,6 +56,17 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
   // Preview state (기초/주간 시간표 미리보기용)
   const [previewGrid, setPreviewGrid] = useState<ClassGrid | null>(null);
   const [previewClassNum, setPreviewClassNum] = useState<number>(1);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
+  const DAYS = [
+    { num: 1, label: "월" },
+    { num: 2, label: "화" },
+    { num: 3, label: "수" },
+    { num: 4, label: "목" },
+    { num: 5, label: "금" },
+  ];
+
+  const maxPeriod = Math.max(7, periodsPerDay || 7);
 
   const fetchRules = async () => {
     setLoading(true);
@@ -65,6 +98,7 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
 
   // 미리보기 클래스 그리드 로드
   const fetchPreviewClassGrid = async (g: number, c: number) => {
+    setLoadingPreview(true);
     try {
       const res = await fetch("/api/timetable/view", {
         method: "POST",
@@ -88,6 +122,8 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
       }
     } catch {
       setPreviewGrid(null);
+    } finally {
+      setLoadingPreview(false);
     }
   };
 
@@ -236,6 +272,26 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
     );
   });
 
+  // 미리보기 판정: 과목명 일치 + 교사 한정(옵셔널) — 현재 폼 기준
+  const showPreview = subjectName.trim() !== "" || editingRuleId !== null;
+
+  // 미리보기에 걸리는 셀 수 (선택된 반 중 현재 previewClassNum 기준)
+  const hitCount = previewGrid
+    ? (previewGrid.cells || []).reduce((acc, cell) => {
+        return (
+          acc +
+          (cell.lessons || []).filter((lesson) =>
+            isConsecutiveCell(
+              lesson.subjectName,
+              (lesson.teachers || []).map((t) => t.email || ""),
+              subjectName,
+              teacherEmail
+            )
+          ).length
+        );
+      }, 0)
+    : 0;
+
   return (
     <div className="space-y-6 font-sans">
       {/* 안내 박스 - 눈높이 문구로 정리 */}
@@ -253,202 +309,344 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* 좌측: 등록/수정 폼 */}
-        <div className="lg:col-span-5 bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-            <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              <span>{editingRuleId ? "✏️ 연속수업 규칙 수정" : "➕ 연속수업 규칙 등록"}</span>
-            </h3>
-            {editingRuleId && (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="text-xs text-gray-500 hover:text-gray-700 underline font-semibold"
-              >
-                취소하고 신규 등록
-              </button>
-            )}
-          </div>
-
-          <form onSubmit={handleSaveRule} className="space-y-4 text-xs">
-            {/* 학년 선택 */}
-            <div>
-              <label className="block font-bold text-gray-700 mb-1.5">
-                대상 학년 <span className="text-red-500">*</span>
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[1, 2, 3].map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setGrade(g)}
-                    className={`py-2 px-3 rounded-lg font-bold border text-center transition-all ${
-                      grade === g
-                        ? "bg-sky-600 text-white border-sky-600 shadow-sm"
-                        : "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100"
-                    }`}
-                  >
-                    {g}학년
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 반 선택 (multi select toggle buttons) */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="font-bold text-gray-700">
-                  대상 반 선택 <span className="text-red-500">*</span>
-                </label>
+        {/* 좌측: 등록/수정 폼 + 미리보기 (SimulGroupTab §A-5 문법) */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <span>{editingRuleId ? "✏️ 연속수업 규칙 수정" : "➕ 연속수업 규칙 등록"}</span>
+              </h3>
+              {editingRuleId && (
                 <button
                   type="button"
-                  onClick={handleSelectAllClasses}
-                  className="text-[11px] font-semibold text-sky-700 hover:underline"
+                  onClick={resetForm}
+                  className="text-xs text-gray-500 hover:text-gray-700 underline font-semibold"
                 >
-                  1~12반 전체 선택
+                  취소하고 신규 등록
                 </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((num) => {
-                  const isSelected = classNums.includes(num);
-                  return (
-                    <button
-                      key={num}
-                      type="button"
-                      onClick={() => handleToggleClassNum(num)}
-                      className={`w-9 h-9 rounded-lg font-bold text-xs transition-all flex items-center justify-center border ${
-                        isSelected
-                          ? "bg-sky-600 text-white border-sky-600 shadow-xs"
-                          : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
-                      }`}
-                    >
-                      {num}반
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] text-gray-500 mt-1">선택된 반: {classNums.join(", ")}반</p>
-            </div>
-
-            {/* 과목명 */}
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">
-                대상 과목명 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={subjectName}
-                onChange={(e) => setSubjectName(e.target.value)}
-                placeholder="예: 과학탐구실험, 체육, 미술"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                required
-              />
-            </div>
-
-            {/* 연속패턴 (pattern) & 프리셋 */}
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">
-                연속 블록 패턴 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={pattern}
-                onChange={(e) => setPattern(e.target.value)}
-                placeholder="예: 2 또는 2,2 또는 3"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 mb-2 font-mono font-bold"
-                required
-              />
-              <div className="flex flex-wrap gap-1.5 text-[11px]">
-                <span className="font-bold text-gray-500 self-center">추천 패턴:</span>
-                <button
-                  type="button"
-                  onClick={() => setPattern("2")}
-                  className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded font-bold"
-                >
-                  2 (2시간 연속 1회)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPattern("2,2")}
-                  className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded font-bold"
-                >
-                  2,2 (2시간 연속 2회)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPattern("3")}
-                  className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded font-bold"
-                >
-                  3 (3시간 연속 1회)
-                </button>
-              </div>
-            </div>
-
-            {/* 특정 교사 이메일 (AutocompleteInput 적용) */}
-            <div className="space-y-1.5">
-              <label className="block font-bold text-gray-700">
-                특정 교사 한정 검색 (선택)
-              </label>
-              <AutocompleteInput
-                value={teacherSearchTerm}
-                onChange={(val) => {
-                  setTeacherSearchTerm(val);
-                  // onChange에서는 선택값을 절대 승격하지 않는다 (선택 강제 원칙 — AGENTS 규칙 4)
-                  // 검색어 변경 시 이전 선택값 무효화
-                  setTeacherEmail("");
-                }}
-                onSelect={handleSelectTeacher}
-                placeholder="지정 안함 (교사명/이메일 검색...)"
-                type="user"
-                domain={domain}
-              />
-              {teacherEmail && (
-                <div className="flex items-center justify-between p-2 bg-sky-50 border border-sky-200 rounded-lg text-sky-900 text-xs font-semibold">
-                  <span>
-                    ✅ 선택된 교사: <strong>{teacherEmail}</strong>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTeacherEmail("");
-                      setTeacherSearchTerm("");
-                    }}
-                    className="text-sky-700 hover:text-sky-950 font-bold ml-2 underline"
-                  >
-                    제거 (전 교사 대상)
-                  </button>
-                </div>
               )}
             </div>
 
-            {/* 활성화 여부 */}
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                type="checkbox"
-                id="consec-active"
-                checked={active}
-                onChange={(e) => setActive(e.target.checked)}
-                className="w-4 h-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500"
-              />
-              <label htmlFor="consec-active" className="font-bold text-gray-700 cursor-pointer">
-                이 규칙 활성화 (검사기 및 자동 조정에 적용)
-              </label>
-            </div>
+            <form onSubmit={handleSaveRule} className="space-y-4 text-xs">
+              {/* 학년 선택 */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1.5">
+                  대상 학년 <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[1, 2, 3].map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setGrade(g)}
+                      className={`py-2 px-3 rounded-lg font-bold border text-center transition-all ${
+                        grade === g
+                          ? "bg-sky-600 text-white border-sky-600 shadow-sm"
+                          : "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100"
+                      }`}
+                    >
+                      {g}학년
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            {/* 제출 버튼 */}
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full py-2.5 bg-sky-600 hover:bg-sky-700 disabled:bg-gray-400 text-white font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 text-xs"
-            >
-              {saving && <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />}
-              <span>{editingRuleId ? "연속수업 규칙 수정 저장" : "연속수업 규칙 등록"}</span>
-            </button>
-          </form>
+              {/* 반 선택 (multi select toggle buttons) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="font-bold text-gray-700">
+                    대상 반 선택 <span className="text-red-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleSelectAllClasses}
+                    className="text-[11px] font-semibold text-sky-700 hover:underline"
+                  >
+                    1~12반 전체 선택
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((num) => {
+                    const isSelected = classNums.includes(num);
+                    return (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => handleToggleClassNum(num)}
+                        className={`w-9 h-9 rounded-lg font-bold text-xs transition-all flex items-center justify-center border ${
+                          isSelected
+                            ? "bg-sky-600 text-white border-sky-600 shadow-xs"
+                            : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
+                        }`}
+                      >
+                        {num}반
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1">선택된 반: {classNums.join(", ")}반</p>
+              </div>
+
+              {/* 과목명 */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  대상 과목명 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={subjectName}
+                  onChange={(e) => setSubjectName(e.target.value)}
+                  placeholder="예: 과학탐구실험, 체육, 미술"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  required
+                />
+              </div>
+
+              {/* 연속패턴 (pattern) & 프리셋 */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  연속 블록 패턴 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={pattern}
+                  onChange={(e) => setPattern(e.target.value)}
+                  placeholder="예: 2 또는 2,2 또는 3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 mb-2 font-mono font-bold"
+                  required
+                />
+                <div className="flex flex-wrap gap-1.5 text-[11px]">
+                  <span className="font-bold text-gray-500 self-center">추천 패턴:</span>
+                  <button
+                    type="button"
+                    onClick={() => setPattern("2")}
+                    className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded font-bold"
+                  >
+                    2 (2시간 연속 1회)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPattern("2,2")}
+                    className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded font-bold"
+                  >
+                    2,2 (2시간 연속 2회)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPattern("3")}
+                    className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded font-bold"
+                  >
+                    3 (3시간 연속 1회)
+                  </button>
+                </div>
+              </div>
+
+              {/* 특정 교사 이메일 (AutocompleteInput 적용) */}
+              <div className="space-y-1.5">
+                <label className="block font-bold text-gray-700">
+                  특정 교사 한정 검색 (선택)
+                </label>
+                <AutocompleteInput
+                  value={teacherSearchTerm}
+                  onChange={(val) => {
+                    setTeacherSearchTerm(val);
+                    // onChange에서는 선택값을 절대 승격하지 않는다 (선택 강제 원칙 — AGENTS 규칙 4)
+                    // 검색어 변경 시 이전 선택값 무효화
+                    setTeacherEmail("");
+                  }}
+                  onSelect={handleSelectTeacher}
+                  placeholder="지정 안함 (교사명/이메일 검색...)"
+                  type="user"
+                  domain={domain}
+                />
+                {teacherEmail && (
+                  <div className="flex items-center justify-between p-2 bg-sky-50 border border-sky-200 rounded-lg text-sky-900 text-xs font-semibold">
+                    <span>
+                      ✅ 선택된 교사: <strong>{teacherEmail}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTeacherEmail("");
+                        setTeacherSearchTerm("");
+                      }}
+                      className="text-sky-700 hover:text-sky-950 font-bold ml-2 underline"
+                    >
+                      제거 (전 교사 대상)
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 활성화 여부 */}
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="consec-active"
+                  checked={active}
+                  onChange={(e) => setActive(e.target.checked)}
+                  className="w-4 h-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500"
+                />
+                <label htmlFor="consec-active" className="font-bold text-gray-700 cursor-pointer">
+                  이 규칙 활성화 (검사기 및 자동 조정에 적용)
+                </label>
+              </div>
+
+              {/* 제출 버튼 */}
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full py-2.5 bg-sky-600 hover:bg-sky-700 disabled:bg-gray-400 text-white font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 text-xs"
+              >
+                {saving && <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />}
+                <span>{editingRuleId ? "연속수업 규칙 수정 저장" : "연속수업 규칙 등록"}</span>
+              </button>
+            </form>
+          </div>
+
+          {/* 판정 미리보기 카드 (SimulGroupTab §A-5 문법) */}
+          {showPreview && (
+            <div className="bg-white rounded-xl shadow-sm border border-sky-200 p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-sky-100 pb-3">
+                <div>
+                  <h4 className="text-sm font-bold text-sky-950 flex items-center gap-2">
+                    <span>🔍 지정 수업 미리보기 검증</span>
+                    {hitCount > 0 && (
+                      <span className="text-[11px] bg-sky-600 text-white font-extrabold px-2 py-0.5 rounded-full">
+                        {hitCount}셀 해당
+                      </span>
+                    )}
+                    {subjectName.trim() && hitCount === 0 && !loadingPreview && (
+                      <span className="text-[11px] bg-amber-500 text-white font-extrabold px-2 py-0.5 rounded-full">
+                        일치 수업 없음 ⚠️
+                      </span>
+                    )}
+                  </h4>
+                  <p className="text-xs text-sky-700 mt-0.5">
+                    현재 작성 중인 과목명 기준으로 실제 시간표에서 해당 수업 셀을 미리 확인합니다.
+                    {subjectName.trim() && hitCount === 0 && !loadingPreview && (
+                      <span className="text-amber-700 font-semibold"> 과목명 표기 불일치를 의심해 주세요.</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* 반 선택 버튼 */}
+                <div className="flex items-center gap-1 bg-sky-50 p-1 rounded-lg flex-wrap">
+                  <span className="text-[11px] font-bold text-sky-800 px-1.5">미리보기 반:</span>
+                  {classNums.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => {
+                        setPreviewClassNum(c);
+                        fetchPreviewClassGrid(grade, c);
+                      }}
+                      className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${
+                        previewClassNum === c
+                          ? "bg-sky-600 text-white shadow-xs"
+                          : "text-sky-700 hover:bg-sky-100"
+                      }`}
+                    >
+                      {c}반
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {loadingPreview ? (
+                <div className="py-8 text-center text-xs text-gray-500 font-semibold">
+                  {grade}학년 {previewClassNum}반 시간표를 불러오는 중입니다...
+                </div>
+              ) : !previewGrid ? (
+                <div className="py-6 text-center text-xs text-gray-400">
+                  시간표 데이터를 찾을 수 없습니다.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-3 bg-sky-50/70 border border-sky-200 rounded-lg text-xs text-sky-900 leading-relaxed">
+                    🏫 <strong>{previewGrid.grade}학년 {previewGrid.classNum}반 시간표 대조</strong> — 하이라이트된 셀이 <strong>이 규칙의 연속수업 대상</strong>으로 적용됩니다.
+                    {teacherEmail && (
+                      <span className="ml-1 font-semibold text-sky-700">({teacherEmail} 한정)</span>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                    <table className="w-full text-center text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-gray-100 border-b border-gray-200 font-bold text-gray-700">
+                          <th className="py-2 px-1 border-r border-gray-200 w-12">교시</th>
+                          {DAYS.map((d) => (
+                            <th key={d.num} className="py-2 px-1 border-r border-gray-200 min-w-[5.5rem]">
+                              {d.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {Array.from({ length: maxPeriod }).map((_, pIdx) => {
+                          const period = pIdx + 1;
+                          return (
+                            <tr key={period}>
+                              <td className="py-2 px-1 font-bold bg-gray-50 border-r border-gray-200 text-gray-600">
+                                {period}
+                              </td>
+                              {DAYS.map((d) => {
+                                const cell = previewGrid.cells?.find(
+                                  (c) => c.day === d.num && c.period === period
+                                );
+                                const lesson = cell?.lessons?.[0];
+                                const hit = lesson
+                                  ? isConsecutiveCell(
+                                      lesson.subjectName,
+                                      (lesson.teachers || []).map((t) => t.email || ""),
+                                      subjectName,
+                                      teacherEmail
+                                    )
+                                  : false;
+
+                                return (
+                                  <td
+                                    key={d.num}
+                                    className={`p-2 border-r border-gray-200 transition-colors ${
+                                      hit
+                                        ? "bg-sky-100/90 text-sky-950 font-black ring-2 ring-sky-400 ring-inset"
+                                        : "bg-white text-gray-700"
+                                    }`}
+                                  >
+                                    {lesson ? (
+                                      <div className="space-y-0.5">
+                                        <div className="font-bold text-[11px] truncate">
+                                          {lesson.subjectName}
+                                        </div>
+                                        <div className="text-[10px] text-gray-500 truncate">
+                                          {lesson.teachers?.map((t) => t.name).join(", ")}
+                                        </div>
+                                        {hit && (
+                                          <span className="inline-block text-[9px] bg-sky-700 text-white font-extrabold px-1 rounded mt-0.5">
+                                            🔁 연속대상
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-[10px] text-gray-300">-</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 우측: 규칙 목록 */}
-        <div className="lg:col-span-7 space-y-4">
+        <div className="lg:col-span-5 space-y-4">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
               <div>
