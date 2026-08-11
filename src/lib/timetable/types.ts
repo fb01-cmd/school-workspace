@@ -114,6 +114,8 @@ export interface SimulGroup {
   subjectNames: string[];
   /** 지정 시 이 교시들만 대상 (과목명만으로 모호할 때). 미지정이면 과목명 일치 셀 전부 */
   slots?: SimulSlot[];
+  /** 연속시수 콤마 표기 "2"·"2,2" (phase9c_spec §2-3 소유 규칙 — 연속수업이 동시수업이면 이 등록부가 연속 속성을 소유) */
+  consecutive?: string;
   active: boolean;
   createdBy?: string;
   createdAt?: number;
@@ -135,6 +137,8 @@ export interface VenueGroup {
   subjectNames: string[];
   /** 지정 시 이 교시들만 대상 (과탐 실험처럼 일부 시수만 특별실인 경우). 미지정이면 과목명 일치 셀 전부 */
   slots?: SimulSlot[];
+  /** 연속시수 콤마 표기 (phase9c_spec §2-3 소유 규칙 — 연속수업이 특별실이면 이 등록부가 연속 속성을 소유, 매뉴얼 §6-바) */
+  consecutive?: string;
   active: boolean;
   createdBy?: string;
   createdAt?: number;
@@ -873,6 +877,177 @@ export interface SwapRequestApiRequest {
     candidate?: SwapCandidateSnapshot;
     reason?: SwapRequestReason;
     note?: string;
+  };
+}
+
+// ── Phase 9c: 기초시간표 제약 모델·검사기 (phase9c_spec §2-3·§3) ──
+
+/** 특별교사 금지 속성 (매뉴얼 §6-가): assign=배정금지(아예 배정 불가 — 정적 검사 대상),
+ *  move=이동금지(솔버가 옮기지 못함 — 완성본 정적 검사에서는 위반이 성립하지 않음) */
+export type SlotBanKind = "assign" | "move";
+
+/** 특별교사 이동금지/배정금지 등록부 — 교사별 금지 교시 집합.
+ *  요일 전체·교시 전체 토글은 UI가 슬롯 목록으로 전개해 저장한다 (저장 모델은 슬롯 나열 단일형). */
+export interface TeacherSlotBan {
+  id?: string;
+  termId: string;
+  teacherEmail: string;
+  teacherName?: string;
+  kind: SlotBanKind;
+  slots: SimulSlot[];
+  note?: string;
+  active: boolean;
+  createdBy?: string;
+  createdAt?: number;
+  updatedBy?: string;
+  updatedAt?: number;
+}
+
+/** 일괄 배정 등록부 (매뉴얼 §6-나) — 한 (요일,교시)에 여러 학급 고정 배치(창체·SLAT·재량).
+ *  로테이션(주중 여러 교시)은 블록 여러 건으로 표현한다. 배정된 교사는 자동 이동금지(매뉴얼 규칙 — 솔버 단계 적용). */
+export interface FixedBlock {
+  id?: string;
+  termId: string;
+  label: string;
+  day: number; // 1~5
+  period: number;
+  entries: Array<{
+    grade: number;
+    classNum: number;
+    subjectName: string;
+    /** 지정 시 해당 교사 배치까지 검사 (가상 교사는 이름 기준) */
+    teacherName?: string;
+  }>;
+  active: boolean;
+  createdBy?: string;
+  createdAt?: number;
+  updatedBy?: string;
+  updatedAt?: number;
+}
+
+/** 연속수업 등록부 (매뉴얼 §6-라) — 콤마 표기 "2"·"2,2"·"3" = 연속 블록 길이 목록(잔여 시수는 단독 1교시).
+ *  소유 규칙: 대상이 동시수업·특별실 그룹이면 이 등록부가 아니라 그 그룹의 consecutive 필드에 등재한다 (이중 등재 금지). */
+export interface ConsecutiveRule {
+  id?: string;
+  termId: string;
+  grade: number;
+  classNums: number[];
+  subjectName: string;
+  /** 지정 시 해당 교사 수업만 대상 */
+  teacherEmail?: string;
+  pattern: string;
+  active: boolean;
+  createdBy?: string;
+  createdAt?: number;
+  updatedBy?: string;
+  updatedAt?: number;
+}
+
+/** 복수교사 등록부 (매뉴얼 §6-사) — 동일 학급·동일 슬롯에 2교사 이상 동시 투입, 시수 동일 강제 */
+export interface CoTeachingRule {
+  id?: string;
+  termId: string;
+  grade: number;
+  classNums: number[];
+  subjectName: string;
+  teacherEmails: string[];
+  active: boolean;
+  createdBy?: string;
+  createdAt?: number;
+  updatedBy?: string;
+  updatedAt?: number;
+}
+
+/** 시수표 1행 (phase9c_spec §2-1) — teacher × subject × class → 주당 시수.
+ *  teacherKey는 이메일(소문자) 우선, 가상 교사(이메일 없음)는 "name:이름" 형식. */
+export interface HoursRequirement {
+  grade: number;
+  classNum: number;
+  subjectName: string;
+  teacherKey: string;
+  hours: number;
+}
+
+/** 검사기 입력 제약 모델 (phase9c_spec §2) — 등록부가 아직 없는 항목은 생략 가능(해당 검사만 건너뜀) */
+export interface TimetableConstraintModel {
+  lunchAfterPeriod: number;
+  periodsPerDay: number;
+  /** 학년별 요일별 운영 교시수 — grade → day(1~5) → periods. 없으면 그리드에서 역산(자기 일관 검사만 수행) */
+  gradeDayPeriods?: Record<number, Record<number, number>>;
+  /** 시수표 — 없으면 H1·H4 생략 */
+  hours?: HoursRequirement[];
+  simulGroups?: SimulGroup[];
+  venueGroups?: VenueGroup[];
+  teacherSlotBans?: TeacherSlotBan[];
+  fixedBlocks?: FixedBlock[];
+  consecutiveRules?: ConsecutiveRule[];
+  coTeaching?: CoTeachingRule[];
+}
+
+export type HardViolationCode =
+  | "H1" // 미배정 시수 (시수표 대비 부족)
+  | "H2" // 교사 동시 2곳 배정
+  | "H3" // 학급 슬롯 중복 (같은 슬롯 이중 배정)
+  | "H4" // 시수 초과 배정
+  | "H5" // 배정금지 교시 위반
+  | "H6" // 일괄 배정 고정 위반
+  | "H7" // 동시수업 그룹 동시성 위반
+  | "H8" // 특별실 초과 점유
+  | "H9" // 연속수업 패턴 위반
+  | "H10" // 복수교사 동시성 위반
+  | "H11"; // 미편성 교시 배정
+
+export interface HardViolation {
+  code: HardViolationCode;
+  text: string; // 사람이 읽는 문장 (눈높이 원칙 — 개발 용어 금지)
+  grade?: number;
+  classNum?: number;
+  day?: number;
+  period?: number;
+  teacherEmail?: string;
+  teacherName?: string;
+  subjectName?: string;
+  /** 등록부 미비로 추정되는 위반 (§3-4 문제점만 검색) — 기본 노출에서 접고 등재 후보·질문지 문항으로 안내 */
+  registryGap?: boolean;
+  hint?: string;
+}
+
+export type SoftPenaltyCode =
+  | "S1" // 요일 시수 쏠림 (기존 '최적')
+  | "S2" // 연속 3교시 이상 (기존 '연속3')
+  | "S3" // 점심 전후 연속 (기존 '점심')
+  | "S4" // 같은 학급 같은 요일 동일 과목 중복 (기존 '중복')
+  | "S5" // 교사 같은 요일 3과목 이상 (매뉴얼 '학년')
+  | "S6" // 오전/오후 균형 (매뉴얼 '오후' — 가중치 잠정, 질문지 회수 후 확정)
+  | "S7"; // 순배 (v1 미구현 — 실효 검증 후)
+
+/** 학기 전체 감점 1건 — (scope, text, points) 규약 유지 (수집 18 점수 병기·21 3인칭 라벨) */
+export interface TermPenaltyDetail {
+  code: SoftPenaltyCode;
+  scope: "teacher" | "class";
+  /** teacherEmail 또는 "grade-classNum" */
+  key: string;
+  label: string;
+  day: number; // 1~5
+  text: string;
+  points: number;
+}
+
+/** 검사기 출력 (phase9c_spec §3) — 솔버·AI·수동 편집 공통 관문 */
+export interface TimetableAuditReport {
+  hard: HardViolation[];
+  soft: {
+    total: number;
+    byCode: Partial<Record<SoftPenaltyCode, number>>;
+    details: TermPenaltyDetail[];
+  };
+  summary: {
+    classes: number;
+    lessons: number;
+    teachers: number;
+    hardByCode: Partial<Record<HardViolationCode, number>>;
+    /** 등록부 미비 추정(registryGap) 제외 — 지금 조치 가능한 위반 수 (§3-4) */
+    actionableHard: number;
   };
 }
 
