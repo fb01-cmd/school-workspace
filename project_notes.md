@@ -3608,3 +3608,16 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - push 승인: *"푸시하자."*
 - 쪽지 스펙(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 쪽지(사내 메신저) 스펙 작성해줘."*
 - 공동교육 차단 스펙(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 공동교육 계정 포털 차단 스펙 작성해줘."*
+
+## [2026-08-11] 공동교육 계정 포털 차단 스펙 v1 확정 ✅ ([`docs/coop_account_block_spec.md`](./docs/coop_account_block_spec.md))
+
+- **위험 실측 2건이 근거**: ① 비학번 이메일 → teacher(승인 대기) 오분류(승인 대기열 오염·오승인 위험) ② **배포 firestore.rules의 isTeacher()가 isApproved를 안 봄** — 공동교육 계정이 한 번 로그인하면 규칙상 교직원으로 통해 settings 쓰기 등이 열림(더 중대).
+- **설계**: settings.blockedOuPaths(하위 OU 포함 프리픽스 매칭, 하드코딩 금지) + sync-user 관문 — 기존 GWS users.get 응답의 orgUnitPath 재사용(추가 호출 0), 매칭 시 users 문서 미생성+기존 문서 삭제(재로그인 자연 정리)+403 blocked. 보호 계정 3종 항상 통과. fail-open 수용 기록(GWS 조회 실패 시 통과 — 오승인 관문이 후방에 있음). 학번 형식 경로는 검사 제외(호출 0 유지, 공동교육은 전부 비학번 실측).
+- **함정 선반영**: AuthContext 자가 치유가 차단 계정에서 매 로드 403 재시도+로딩 잔류 — blocked 응답 시 signOut 필수(§3). 클라 처리도 Claude 소관으로 배정.
+- **분업**: ① 서버부+클라 차단 처리+자가 테스트(Claude) → ② 환경설정 UI 섹션(Antigravity, §4 문구 확정 포함) → ③ 기존 오염 inspect→cleanup 일회(Claude). §8 = isTeacher 승인 조건 강화는 별도 리뷰로 분리(범위 밖).
+- **잔여**: 스펙 구현 착수(사용자 지시 대기) / 쪽지 가을 스펙(8월 내 후보) / 질문지 전달(9월).
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- 차단 구현 착수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. docs/coop_account_block_spec.md §2·§3 서버부 구현해줘."*
+- 쪽지 스펙(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 쪽지(사내 메신저) 스펙 작성해줘."*
