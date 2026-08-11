@@ -3230,3 +3230,29 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - push 승인: *"푸시하자."*
 - 구현 인계(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/phase9c_d_spec.md 대로 Phase D(자동 작성 탭) 구현해줘."*
 - 구현 후 리뷰(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase D 구현 표적 리뷰해줘."*
+
+## [2026-08-11] Phase D-1 구현 (b55202a)
+
+- **커밋**: `b55202a`
+- **검증**: `npx tsc --noEmit` ✅
+- **범위**: 스펙 §3 초안 목록 + §4 편집기 골격 (그리드 뷰어) + §7 API 5종 (draft_list·create·get·delete·model)
+- **주요 설계 결정**:
+  - `TimetableDraftUnplaced`를 솔버 실제 반환(`{sectionId, label, remaining}`)과 동형으로 정의 (기존 계획과 다름)
+  - `canManageTimetable` 기본 거부 의존 → switch case 내 isManager 가드 불필요
+  - `draft_model` action 신설: 등록부 5종 + 기초 그리드 1회 로드 (편집 진입 시)
+
+### 다음 단계
+- **Phase D-2 (이동/교환 UX)**: draft_op·draft_undo·draft_redo API + 3면 편집기 셀 이동 UX (spec §5·§6)
+- **Claude 리뷰 요청**: *"project_notes.md 마지막 체크포인트 읽어줘. Phase D-1 구현 표적 리뷰해줘. (draft_op 관문·op 재생 결정론·409)"*
+
+## [2026-08-11] Phase D-1(b55202a) 표적 리뷰 — 통과 (Claude 보완 1건 직접 수정) ✅
+
+- **통과**: 저장 모델 스펙 §2 정합(별도 컬렉션·base 서브컬렉션·ops+opCursor·현재 그리드 비저장) ✓ / 재생 경로 `cloneClassGrids + applyRevisionOps(slice(0, opCursor))` — 스펙 재사용 강제 준수 ✓ / authz 기본 거부 의존 판단 올바름 ✓ / solverClient 규칙 준수(워커 직접 import 없음·진행률·취소) ✓ / draft_model 1회 로드(등록부 5종+기초) 읽기 예산 합리 ✓ / 반 선택 숫자 순회라 서브컬렉션 docId 사전순 무해 ✓ / tsc·build(Claude 재실행)·솔버 자가 테스트 ✓.
+- **Claude 직접 수정 1건**(`solver.worker.ts`는 Claude 소유 파일): draft_model 모델에 hours(시수표)가 없어 **워커 관문 리포트의 H1/H4 감시가 죽는 문제** — 워커가 hours 미제공 시 기준 그리드에서 역산하도록 폴백 추가(스펙 §7 "H1/H4가 base 대비 시수 보존 감시" 복원).
+- **D-2에 묶을 비차단 2건**: ① route draft_create의 `body.draftReport.hard.length` — 클라 페이로드 형태 무가드(악형 입력 시 500; 관리자 전용이라 저위험, 옵셔널 체이닝+형태 가드 권장) ② lastReport는 클라 산출 신뢰 — 표시 전용이라 허용이나 **승격(promote) 시 서버 재검증 필수** 원칙 재확인(스펙 §7 기재 유지).
+- **E2E ① (자동 작성→저장→재진입 재생 일치)**: 미실행 상태 — D-2 완료 시 스펙 §8 시나리오 6종 일괄 실행으로 몰아도 되나, 실기기 확인 전까지 "완료" 보고 금지 원칙 유지.
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- D-2 인계(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. Phase D-2(이동/교환 UX — draft_op·undo/redo·409 관문) 구현해줘. 리뷰 비차단 2건도 함께."*
+- D-2 리뷰(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase D-2 표적 리뷰해줘 (draft_op 관문·재생 결정론·409)."*
