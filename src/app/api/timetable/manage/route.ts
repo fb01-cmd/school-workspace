@@ -69,6 +69,8 @@ import {
   loadTimetableTerm,
   computeAiDiagnosis,
   computeAiFormalize,
+  computeAiExplain,
+  computeAiCritique,
 } from "@/lib/timetable/server";
 import { sanitizeNeisMapPayload } from "@/lib/timetable/neis";
 import { AiCallError, isAiEnabled } from "@/lib/timetable/ai";
@@ -1358,6 +1360,28 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "요구 문장(aiText)이 필요합니다." }, { status: 400 });
         const proposal = await computeAiFormalize(domain, termId, body.aiText);
         return NextResponse.json({ success: true, action, enabled: true, proposal });
+      }
+
+      case "ai_explain": {
+        // E3 — 표시 전용 (spec §0 철칙: 어떤 저장도 하지 않는다)
+        if (!isAiEnabled()) {
+          return NextResponse.json({ success: true, action, enabled: false });
+        }
+        if (!body.draftId)
+          return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
+        const explainResult = await computeAiExplain(domain, body.draftId);
+        return NextResponse.json({ success: true, action, enabled: true, result: explainResult });
+      }
+
+      case "ai_critique": {
+        // E4 — 표시 전용 (spec §0 철칙, v1은 셀 연동 없음)
+        if (!isAiEnabled()) {
+          return NextResponse.json({ success: true, action, enabled: false });
+        }
+        if (!body.draftId)
+          return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
+        const critiqueResult = await computeAiCritique(domain, body.draftId);
+        return NextResponse.json({ success: true, action, enabled: true, result: critiqueResult });
       }
 
       default:

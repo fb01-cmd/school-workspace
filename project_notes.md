@@ -3535,6 +3535,16 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 - 오늘 배포분(IA 2분리·AI 진단 카드·말로 입력)의 브라우저 실기기 확인은 Antigravity 불가(Playwright 드라이버 오류) → **사용자가 추후 눈으로 확인**. 확인 전까지 "완료" 확정 보고 금지 원칙 유지(증상 소멸 기준). 서버 경로는 전부 실측 완료 상태라 위험 부담 구간은 검증돼 있음.
 
+## [2026-08-11] 9c Phase E-3·4(ai_explain·ai_critique) 서버부 구현 ✅ — 실호출 스모크 통과
+
+- **구현**: ai.ts에 E3·E4(공용 그리드 요약 `AiGridSummaryInput` + 프롬프트·파싱·runExplain/runCritique, 호출-재시도 패턴은 `callGeminiParsed` 헬퍼로 E1~E4 통합) + server.ts `computeAiExplain`·`computeAiCritique`(공용 `buildAiGridSummary` — 서버가 draftId로 그리드·리포트 재산출, 그리드 전문 전송 없이 감점 상세·교사별 요일 부하 요약만) + 라우트 `ai_explain`·`ai_critique`(표시 전용, 저장 0). 권한은 authz 기본 거부 폴스루로 일과계+수퍼어드민만 — authz.ts 무변경(스펙 §4 그대로).
+- **검증**: ai_selftest 45항목(E3·E4 프롬프트 무PII·파싱 상한·빈 suggestions 유효 포함) ✅ / 스모크 실호출(합성 데이터만) — E3·E4 프롬프트 실명·이메일 0건 기계 검증, 설명 문단·비평 제안 품질 실무 수준, 역치환 후 가명 잔존 0 ✅ / tsc 0 / build ✅.
+- **잔여**: E-3·4 UI(Antigravity — spec §5: 초안 편집기 헤더 [이 시간표 설명]·[개선 제안] 버튼, 초안 열림 시. `enabled:false`면 진입점 숨김, "AI가 작성한 참고 의견" 라벨, **초안 전환 시 결과 초기화**(E-1b F1 오귀속 교훈 동일 적용)) / F-2(9월 샘플) / 9월 질문지 / 실기기 확인은 실사용 첫 회.
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- E-3·4 UI(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/phase9c_e_spec.md §5 대로 E-3·4 UI([이 시간표 설명]·[개선 제안] 버튼 + 결과 카드) 구현해줘."*
+
 ## [2026-08-11] 아이폰 설치 안내 화면 반영 완료 (Antigravity)
 
 - **변경 파일**: `src/components/pwa/PWAInstallPrompt.tsx`, `src/components/admin/PWAInstallGuideTab.tsx`

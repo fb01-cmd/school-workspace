@@ -233,6 +233,27 @@ async function callGemini(prompt: string, apiKey: string): Promise<string> {
   }
 }
 
+/** 호출 → 파싱, 실패 시 1회 재시도 — E1~E4 공통 (fail-visible: 최종 실패는 AiCallError) */
+async function callGeminiParsed<T>(
+  prompt: string,
+  apiKey: string,
+  parse: (raw: string) => T | null
+): Promise<T> {
+  let parsed = parse(await callGemini(prompt, apiKey));
+  if (!parsed) {
+    parsed = parse(
+      await callGemini(
+        `${prompt}\n\n(직전 응답이 JSON 형식이 아니었습니다. 다른 텍스트 없이 JSON 하나만 다시 출력하세요.)`,
+        apiKey
+      )
+    );
+  }
+  if (!parsed) {
+    throw new AiCallError("AI 응답을 해석하지 못했습니다. 다시 시도해 주세요.", 502);
+  }
+  return parsed;
+}
+
 /**
  * E1 불능 진단 실행 — 가명화 → 프롬프트 → 호출 → 파싱(실패 시 1회 재시도) → 역치환.
  * fail-visible: 최종 실패는 AiCallError로 던져 라우트가 눈높이 메시지로 표시한다.
@@ -243,19 +264,7 @@ export async function runDiagnose(
 ): Promise<AiDiagnoseResult> {
   const p = buildPseudonymizer(input.teachers);
   const prompt = buildDiagnosePrompt(input, p);
-
-  let raw = await callGemini(prompt, apiKey);
-  let parsed = parseDiagnoseResponse(raw);
-  if (!parsed) {
-    raw = await callGemini(
-      `${prompt}\n\n(직전 응답이 JSON 형식이 아니었습니다. 다른 텍스트 없이 JSON 하나만 다시 출력하세요.)`,
-      apiKey
-    );
-    parsed = parseDiagnoseResponse(raw);
-  }
-  if (!parsed) {
-    throw new AiCallError("AI 응답을 해석하지 못했습니다. 다시 시도해 주세요.", 502);
-  }
+  const parsed = await callGeminiParsed(prompt, apiKey, parseDiagnoseResponse);
   return {
     diagnosis: p.unmask(parsed.diagnosis),
     suggestions: parsed.suggestions.map((s) => p.unmask(s)),
@@ -428,18 +437,7 @@ export async function runFormalize(
   }
 
   const prompt = buildFormalizePrompt(masked, p.aliases(), input.periodsPerDay);
-  let raw = await callGemini(prompt, apiKey);
-  let parsed = parseFormalizeResponse(raw);
-  if (!parsed) {
-    raw = await callGemini(
-      `${prompt}\n\n(직전 응답이 JSON 형식이 아니었습니다. 다른 텍스트 없이 JSON 하나만 다시 출력하세요.)`,
-      apiKey
-    );
-    parsed = parseFormalizeResponse(raw);
-  }
-  if (!parsed) {
-    throw new AiCallError("AI 응답을 해석하지 못했습니다. 다시 시도해 주세요.", 502);
-  }
+  const parsed = await callGeminiParsed(prompt, apiKey, parseFormalizeResponse);
 
   const { entries, warnings } = normalizeFormalizeItems(parsed.items, p, input.periodsPerDay);
   return {
@@ -447,4 +445,183 @@ export async function runFormalize(
     entries,
     warnings: warnings.map((w) => p.unmask(w)),
   };
+}
+
+// ── E3 결과 설명 · E4 정성 비평 (spec §3) — 공용 그리드 요약 ──
+
+/** 감점 코드 → 눈높이 라벨 (프롬프트·요약 표시용) — types.ts SoftPenaltyCode 주석과 동기 유지 */
+export const SOFT_CODE_LABELS: Record<string, string> = {
+  S1: "요일 시수 쏠림",
+  S2: "연속 3교시 이상",
+  S3: "점심 전후 연속 수업",
+  S4: "같은 반 같은 날 동일 과목 중복",
+  S5: "교사 하루 3과목 이상",
+  S6: "오전/오후 불균형",
+  S7: "순배",
+};
+
+export interface AiTeacherLoad {
+  /** 실명 — 프롬프트 조립 시 mask로 가명화 */
+  name: string;
+  total: number;
+  /** [월..금] 5칸 시수 */
+  byDay: number[];
+}
+
+/**
+ * E3·E4 공용 입력 — 서버가 draftId로 재산출한 요약만 담는다 (spec §3: 그리드 전문 전송 금지).
+ * penalties·teacherLoads의 실명은 프롬프트 조립 시 가명화된다.
+ */
+export interface AiGridSummaryInput {
+  termLabel: string;
+  draftLabel: string;
+  /** 가명 사전 구축용 — 그리드에 등장하는 전체 교사 */
+  teachers: AiTeacherRef[];
+  classes: number;
+  lessons: number;
+  hardCount: number;
+  unplaced: Array<{ label: string; remaining: number }>;
+  softTotal: number;
+  /** 코드별 감점 합계 (label = SOFT_CODE_LABELS) */
+  softByCode: Array<{ label: string; points: number }>;
+  /** 감점 상세 — 점수 내림차순 정렬 상태로 받는다. 상한 절단은 프롬프트 조립이 담당 */
+  penalties: Array<{ text: string; points: number }>;
+  teacherLoads: AiTeacherLoad[];
+}
+
+export interface AiExplainResult {
+  explanation: string;
+}
+
+export interface AiCritiqueResult {
+  suggestions: string[];
+}
+
+const MAX_PENALTY_LINES = 40;
+const MAX_TEACHER_LOAD_LINES = 80;
+const MAX_CRITIQUE_SUGGESTIONS = 8;
+
+/** E3·E4 공용 요약 섹션 (순수) — 반환 문자열은 가명화 완료 상태 */
+function buildSummarySection(input: AiGridSummaryInput, p: Pseudonymizer): string {
+  const softLines = input.softByCode
+    .filter((s) => s.points > 0)
+    .map((s) => `- ${s.label}: ${s.points}점`)
+    .join("\n");
+  const penaltyLines = input.penalties
+    .slice(0, MAX_PENALTY_LINES)
+    .map((d) => `- ${p.mask(d.text)} (${d.points}점)`)
+    .join("\n");
+  const omittedPenalties = input.penalties.length - Math.min(input.penalties.length, MAX_PENALTY_LINES);
+  const loadLines = input.teacherLoads
+    .slice(0, MAX_TEACHER_LOAD_LINES)
+    .map((t) => `- ${p.mask(t.name)}: 주 ${t.total}시간 (월~금 ${t.byDay.join("/")})`)
+    .join("\n");
+  const unplacedLines = input.unplaced
+    .slice(0, MAX_UNPLACED_LINES)
+    .map((u) => `- ${p.mask(u.label)} — 미배정 ${u.remaining}시간`)
+    .join("\n");
+
+  return [
+    `## 대상: ${p.mask(input.termLabel)} / 작성본 "${p.mask(input.draftLabel)}"`,
+    `학급 ${input.classes}개 · 배정 수업 ${input.lessons}건 · 교사 ${input.teacherLoads.length}명 · 중대 문제(하드 위반) ${input.hardCount}건 · 미배정 ${input.unplaced.length}건`,
+    ``,
+    `## 감점 합계: ${input.softTotal}점`,
+    softLines || "(감점 없음)",
+    ``,
+    `## 감점 상세 (점수 높은 순${omittedPenalties > 0 ? `, 처음 ${MAX_PENALTY_LINES}건만 표시` : ""})`,
+    penaltyLines || "(없음)",
+    ``,
+    `## 교사별 주간 부하 (요일별 시수)`,
+    loadLines || "(없음)",
+    ``,
+    `## 미배정`,
+    unplacedLines || "(없음)",
+  ].join("\n");
+}
+
+/** E3 프롬프트 조립 (순수) */
+export function buildExplainPrompt(input: AiGridSummaryInput, p: Pseudonymizer): string {
+  return [
+    `당신은 완성된 고등학교 시간표를 교사들에게 설명하는 보조입니다. 아래 요약 데이터만 근거로, 이 시간표가 어떤 절충(트레이드오프)을 거쳐 이렇게 배치됐는지를 시간표를 잘 모르는 교사도 이해할 수 있는 한국어 문단으로 설명합니다.`,
+    ``,
+    `규칙:`,
+    `1. 교사 이름은 T01 같은 가명입니다. 가명을 그대로 사용하세요 (실명을 추측하지 마세요).`,
+    `2. 데이터에 없는 사실을 만들지 마세요. 요약에 있는 감점·부하·미배정만 근거로 쓰세요.`,
+    `3. 남아 있는 감점·하드 위반·미배정은 숨기지 말고 "불가피했던 절충" 또는 "남은 과제"로 설명하세요.`,
+    `4. 감점이 큰 항목부터 왜 그런 배치가 나왔을지 추정 이유를 붙이되, 추정임을 드러내는 표현("~로 보입니다")을 쓰세요.`,
+    `5. 반드시 JSON 하나만 출력: {"explanation": "설명 문단 (4~8문장, 줄바꿈 허용)"}`,
+    ``,
+    buildSummarySection(input, p),
+  ].join("\n");
+}
+
+/** E3 응답 파싱 (순수) — 실패 시 null */
+export function parseExplainResponse(text: string): AiExplainResult | null {
+  let body = (text || "").trim();
+  const fence = body.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) body = fence[1].trim();
+  try {
+    const obj = JSON.parse(body);
+    if (!obj || typeof obj.explanation !== "string" || !obj.explanation.trim()) return null;
+    return { explanation: obj.explanation.slice(0, 3000) };
+  } catch {
+    return null;
+  }
+}
+
+/** E4 프롬프트 조립 (순수) */
+export function buildCritiquePrompt(input: AiGridSummaryInput, p: Pseudonymizer): string {
+  return [
+    `당신은 고등학교 시간표의 품질을 검토하는 비평 보조입니다. 아래 요약 데이터에서 개선 여지를 찾아, 시간표 담당 교사가 조정 방향을 잡을 수 있는 구체적 제안을 만듭니다.`,
+    ``,
+    `규칙:`,
+    `1. 교사 이름은 T01 같은 가명입니다. 가명을 그대로 사용하세요 (실명을 추측하지 마세요).`,
+    `2. 제안은 구체적으로: 누구(가명)·어느 반의 어떤 문제(감점 항목·부하 쏠림)를 어느 방향으로 조정하면 좋아질지. 데이터에 없는 문제를 만들지 마세요.`,
+    `3. 감점이 크거나 특정 교사·반에 쏠린 것부터 우선하세요. 미배정·하드 위반이 있으면 그것이 최우선입니다.`,
+    `4. 뚜렷한 개선점이 없으면 suggestions를 빈 배열로 하세요 (억지 제안 금지).`,
+    `5. 반드시 JSON 하나만 출력: {"suggestions": ["개선 제안 1", "..."]} — 최대 ${MAX_CRITIQUE_SUGGESTIONS}개.`,
+    ``,
+    buildSummarySection(input, p),
+  ].join("\n");
+}
+
+/** E4 응답 파싱 (순수) — 실패 시 null. 빈 suggestions는 유효(개선점 없음) */
+export function parseCritiqueResponse(text: string): AiCritiqueResult | null {
+  let body = (text || "").trim();
+  const fence = body.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) body = fence[1].trim();
+  try {
+    const obj = JSON.parse(body);
+    if (!obj || !Array.isArray(obj.suggestions)) return null;
+    return {
+      suggestions: obj.suggestions
+        .filter((s: unknown) => typeof s === "string" && (s as string).trim())
+        .slice(0, MAX_CRITIQUE_SUGGESTIONS)
+        .map((s: string) => s.slice(0, 300)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** E3 결과 설명 실행 — 표시 전용 (spec §0) */
+export async function runExplain(
+  input: AiGridSummaryInput,
+  apiKey: string
+): Promise<AiExplainResult> {
+  const p = buildPseudonymizer(input.teachers);
+  const prompt = buildExplainPrompt(input, p);
+  const parsed = await callGeminiParsed(prompt, apiKey, parseExplainResponse);
+  return { explanation: p.unmask(parsed.explanation) };
+}
+
+/** E4 정성 비평 실행 — 표시 전용 (spec §0, v1은 셀 연동 없음) */
+export async function runCritique(
+  input: AiGridSummaryInput,
+  apiKey: string
+): Promise<AiCritiqueResult> {
+  const p = buildPseudonymizer(input.teachers);
+  const prompt = buildCritiquePrompt(input, p);
+  const parsed = await callGeminiParsed(prompt, apiKey, parseCritiqueResponse);
+  return { suggestions: parsed.suggestions.map((s) => p.unmask(s)) };
 }

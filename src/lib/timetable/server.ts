@@ -5694,3 +5694,78 @@ export async function computeAiFormalize(
     (process.env.GEMINI_API_KEY || "").trim()
   );
 }
+
+/**
+ * E3·E4 공용 요약 조립 — 서버가 초안 그리드·리포트를 재산출(클라 신뢰 0)해
+ * 요약 통계만 만든다 (spec §3: 그리드 전문 전송 금지, 실명은 ai.ts가 전송 직전 가명화).
+ */
+async function buildAiGridSummary(
+  domain: string,
+  draftId: string
+): Promise<import("./ai").AiGridSummaryInput> {
+  const { meta, baseGrids, currentGrids } = await getDraft(domain, draftId);
+  const { model } = await loadDraftConstraintModel(domain, meta, baseGrids);
+  const report = validateTimetable(currentGrids, model);
+
+  // 가명 사전 원천 + 교사별 주간 부하 — 그리드 한 번 순회로 함께 수집
+  const teachers: import("./ai").AiTeacherRef[] = [];
+  const loadByKey = new Map<string, import("./ai").AiTeacherLoad>();
+  for (const grid of currentGrids) {
+    for (const cell of grid.cells) {
+      for (const lesson of cell.lessons) {
+        for (const t of lesson.teachers || []) {
+          const key = `${(t.email || "").toLowerCase()}|${t.name || ""}`;
+          let load = loadByKey.get(key);
+          if (!load) {
+            teachers.push({ email: t.email, name: t.name });
+            load = { name: t.name || t.email || "", total: 0, byDay: [0, 0, 0, 0, 0] };
+            loadByKey.set(key, load);
+          }
+          load.total += 1;
+          if (cell.day >= 1 && cell.day <= 5) load.byDay[cell.day - 1] += 1;
+        }
+      }
+    }
+  }
+
+  const term = await loadTimetableTerm(domain, meta.sourceTermId);
+  const { SOFT_CODE_LABELS } = await import("./ai");
+  return {
+    termLabel: term?.name || meta.sourceTermId,
+    draftLabel: meta.label,
+    teachers,
+    classes: report.summary.classes,
+    lessons: report.summary.lessons,
+    hardCount: report.hard.length,
+    unplaced: (meta.unplaced || []).map((u) => ({ label: u.label, remaining: u.remaining })),
+    softTotal: report.soft.total,
+    softByCode: Object.entries(report.soft.byCode).map(([code, points]) => ({
+      label: SOFT_CODE_LABELS[code] || code,
+      points: points || 0,
+    })),
+    penalties: [...report.soft.details]
+      .sort((a, b) => b.points - a.points)
+      .map((d) => ({ text: d.text, points: d.points })),
+    teacherLoads: Array.from(loadByKey.values()).sort((a, b) => b.total - a.total),
+  };
+}
+
+/** E3 결과 설명 — 표시 전용 (spec §0 철칙: 어떤 저장도 하지 않는다) */
+export async function computeAiExplain(
+  domain: string,
+  draftId: string
+): Promise<import("./ai").AiExplainResult> {
+  const input = await buildAiGridSummary(domain, draftId);
+  const { runExplain } = await import("./ai");
+  return runExplain(input, (process.env.GEMINI_API_KEY || "").trim());
+}
+
+/** E4 정성 비평 — 표시 전용 (spec §0 철칙: 어떤 저장도 하지 않는다) */
+export async function computeAiCritique(
+  domain: string,
+  draftId: string
+): Promise<import("./ai").AiCritiqueResult> {
+  const input = await buildAiGridSummary(domain, draftId);
+  const { runCritique } = await import("./ai");
+  return runCritique(input, (process.env.GEMINI_API_KEY || "").trim());
+}

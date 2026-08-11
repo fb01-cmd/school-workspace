@@ -9,11 +9,16 @@
  */
 import {
   AiDiagnoseInput,
+  AiGridSummaryInput,
+  buildCritiquePrompt,
   buildDiagnosePrompt,
+  buildExplainPrompt,
   buildFormalizePrompt,
   buildPseudonymizer,
   isAiEnabled,
+  runCritique,
   runDiagnose,
+  runExplain,
   runFormalize,
 } from "../src/lib/timetable/ai";
 
@@ -86,7 +91,49 @@ async function main() {
       (e) => e.teacherEmail.includes("@") && e.slots.every((s) => s.day >= 1 && s.day <= 5 && s.period >= 1 && s.period <= 7)
     );
   console.log(`\n[③] 제안 형태(slot_ban 정합): ${okShape ? "✅" : "❌"}`);
-  process.exit(okShape ? 0 : 1);
+  if (!okShape) process.exit(1);
+
+  // ④ E3 결과 설명 · E4 정성 비평 실호출 — 프롬프트 무PII 기계 검증 + 파싱·역치환
+  const summary: AiGridSummaryInput = {
+    termLabel: "검증용 학기",
+    draftLabel: "스모크 초안",
+    teachers,
+    classes: 6,
+    lessons: 180,
+    hardCount: 0,
+    unplaced: [],
+    softTotal: 57,
+    softByCode: [
+      { label: "연속 3교시 이상", points: 30 },
+      { label: "점심 전후 연속 수업", points: 27 },
+    ],
+    penalties: [
+      { text: "테스트교사갑 — 화요일 3교시 연속 수업", points: 30 },
+      { text: "테스트교사을 — 금요일 점심 전후 연속", points: 27 },
+    ],
+    teacherLoads: [
+      { name: "테스트교사갑", total: 18, byDay: [4, 4, 4, 3, 3] },
+      { name: "테스트교사을", total: 16, byDay: [3, 3, 4, 3, 3] },
+    ],
+  };
+  const sp = buildPseudonymizer(teachers);
+  const sLeaks = ["테스트교사갑", "테스트교사을", "@example.com"].filter(
+    (s) => buildExplainPrompt(summary, sp).includes(s) || buildCritiquePrompt(summary, sp).includes(s)
+  );
+  console.log(`\n[④] E3·E4 프롬프트 PII 검사: ${sLeaks.length === 0 ? "✅ 실명·이메일 0건" : `❌ 유출 ${sLeaks.join(",")}`}`);
+  if (sLeaks.length > 0) process.exit(1);
+
+  console.log("[④] E3 결과 설명 실호출 중…");
+  const explain = await runExplain(summary, (process.env.GEMINI_API_KEY || "").trim());
+  console.log(`\n설명: ${explain.explanation}`);
+  console.log("\n[④] E4 정성 비평 실호출 중…");
+  const critique = await runCritique(summary, (process.env.GEMINI_API_KEY || "").trim());
+  critique.suggestions.forEach((s, i) => console.log(`제안 ${i + 1}: ${s}`));
+  const okE34 =
+    explain.explanation.length > 0 &&
+    !/T\d{2}/.test(explain.explanation + critique.suggestions.join(" "));
+  console.log(`\n[④] E3·E4 파싱·역치환: ${okE34 ? "✅ (내용 존재 + 가명 잔존 0)" : "⚠️ 가명 잔존 또는 빈 응답"}`);
+  process.exit(okE34 ? 0 : 1);
 }
 
 main().catch((e) => {

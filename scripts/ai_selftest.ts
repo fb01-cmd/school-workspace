@@ -9,11 +9,16 @@
 import {
   AiCallError,
   AiDiagnoseInput,
+  AiGridSummaryInput,
+  buildCritiquePrompt,
   buildDiagnosePrompt,
+  buildExplainPrompt,
   buildFormalizePrompt,
   buildPseudonymizer,
   normalizeFormalizeItems,
+  parseCritiqueResponse,
   parseDiagnoseResponse,
+  parseExplainResponse,
   parseFormalizeResponse,
   runFormalize,
 } from "../src/lib/timetable/ai";
@@ -133,6 +138,65 @@ console.log("── E2 정식화: 파싱·별칭 해석·슬롯 전개 ──");
   expect("빈 periods+요일 지정 → 전일 해석", vNorm.entries[1]?.slots.length === 7);
   const prompt = buildFormalizePrompt(p.mask("홍길동은 월 1교시 회피"), p.aliases(), 7);
   expect("정식화 프롬프트 무PII", !prompt.includes("홍길동") && !prompt.includes("hong@"));
+}
+
+console.log("── E3·E4: 요약 프롬프트 무PII·파싱 ──");
+{
+  const teachers = [
+    { email: "hong@hmh.or.kr", name: "홍길동" },
+    { email: "sung@hmh.or.kr", name: "성춘향" },
+  ];
+  const input: AiGridSummaryInput = {
+    termLabel: "2026학년도 2학기",
+    draftLabel: "자동 작성 #1",
+    teachers,
+    classes: 18,
+    lessons: 540,
+    hardCount: 1,
+    unplaced: [{ label: "2-3반 통합과학 홍길동", remaining: 2 }],
+    softTotal: 87,
+    softByCode: [
+      { label: "연속 3교시 이상", points: 60 },
+      { label: "점심 전후 연속 수업", points: 27 },
+      { label: "순배", points: 0 },
+    ],
+    penalties: [
+      { text: "홍길동 — 화요일 3교시 연속 수업", points: 30 },
+      { text: "성춘향 — 금요일 점심 전후 연속", points: 27 },
+    ],
+    teacherLoads: [
+      { name: "홍길동", total: 18, byDay: [4, 4, 4, 3, 3] },
+      { name: "성춘향", total: 16, byDay: [3, 3, 4, 3, 3] },
+    ],
+  };
+  const p = buildPseudonymizer(teachers);
+  const ePrompt = buildExplainPrompt(input, p);
+  const cPrompt = buildCritiquePrompt(input, p);
+  for (const [label, prompt] of [["E3 설명", ePrompt], ["E4 비평", cPrompt]] as const) {
+    expect(`${label} 프롬프트 실명 0건`, !prompt.includes("홍길동") && !prompt.includes("성춘향"));
+    expect(`${label} 프롬프트 이메일 0건`, !prompt.includes("@hmh.or.kr"));
+    expect(`${label} 프롬프트 가명 존재`, /T\d{2}/.test(prompt));
+  }
+  expect("감점 0 코드는 요약에서 제외", !ePrompt.includes("순배"));
+  expect("부하 분포 포함", ePrompt.includes("주 18시간") && ePrompt.includes("4/4/4/3/3"));
+  expect("E3 JSON 출력 지시", ePrompt.includes('"explanation"'));
+  expect("E4 JSON 출력 지시", cPrompt.includes('"suggestions"'));
+
+  const okE = parseExplainResponse('{"explanation":"T01의 화요일 연속은 동시수업 제약의 절충으로 보입니다."}');
+  expect("E3 정상 JSON", okE?.explanation.includes("T01") === true);
+  expect("E3 빈 문자열 → null", parseExplainResponse('{"explanation":"  "}') === null);
+  expect("E3 비JSON → null", parseExplainResponse("그냥 텍스트") === null);
+  const longE = parseExplainResponse(JSON.stringify({ explanation: "가".repeat(5000) }));
+  expect("E3 3000자 상한", (longE?.explanation.length || 0) === 3000);
+
+  const okC = parseCritiqueResponse('{"suggestions":["T01의 화3 연속을 분산", "  ", 5]}');
+  expect("E4 정상 JSON (비문자열·공백 제거)", okC?.suggestions.length === 1);
+  expect("E4 빈 배열 유효 (개선점 없음)", parseCritiqueResponse('{"suggestions":[]}')?.suggestions.length === 0);
+  expect("E4 형태 위반 → null", parseCritiqueResponse('{"foo":1}') === null);
+  const manyC = parseCritiqueResponse(
+    JSON.stringify({ suggestions: Array.from({ length: 12 }, (_, i) => `s${i}`) })
+  );
+  expect("E4 8개 상한", manyC?.suggestions.length === 8);
 }
 
 console.log("── E2 사전 거절 (외부 호출 차단) ──");
