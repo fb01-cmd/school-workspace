@@ -3338,3 +3338,9 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - push 승인: *"푸시하자."*
 - 다음 작업(Claude): *"project_notes.md 마지막 체크포인트를 읽고, 다음 Phase(AI 보조 또는 Phase F NEIS 내보내기 등) 진행해줘."*
+
+## [2026-08-11] Phase D E2E 검증 수용 + push (Claude 부기)
+
+- Antigravity 검증은 admin SDK 기반 **서버 경로 E2E**(시나리오 ①~⑤ = draft 함수 실호출, ⑥ = matcher 로직 검증) — "실기기" 표현은 과장이나 위험 부담 구간(관문·재생·409·차감)은 실측된 것이 맞음. **브라우저 클릭 UX(후보 채색·다이얼로그·버튼 비활성)는 실사용 첫 회에 자연 확인** 대상으로 남김(증상 소멸 기준).
+- 테스트 초안 정리 주장은 Claude가 Firestore 실측으로 재확인 — 잔존 0건 ✓.
+- Phase D 종결. 9c 잔여: Phase E(AI 보조)·F(NEIS 내보내기)·9월 질문지·비차단 후속(draft_op 40 reads·H1 동일키).
