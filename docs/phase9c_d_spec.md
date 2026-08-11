@@ -74,8 +74,9 @@ timetable_drafts/{domain}/drafts/{draftId}/classGrids/{grade}-{classNum}   ← b
 
 `draft_list` / `draft_create`(body: origin, label, grids?(솔버 산출 — 페이로드 수백 KB, 4.5MB 한도 내), 현행 복제면 서버가 로드) / `draft_get`(메타+base+재생 그리드+검증 리포트) / `draft_op`(op 1건 적용: 재생→검사→하드 신규 발생 시 409→저장+lastReport 갱신) / `draft_undo` · `draft_redo` / `draft_rename` / `draft_delete`. 감사 로그·캐시 규약은 등록부 CRUD와 동일.
 
-- **재사용 강제**: op 적용은 `applyRevisionOps`, 판정은 `validateTimetable` — 서버에 별도 구현 금지.
-- 제약 모델 로드는 기존 로더 5종(`load*`) + `deriveGradeDayPeriods`·`deriveHoursFromGrids`(base 기준 — H1/H4가 "base 대비 시수 보존"을 감시).
+- **재사용 강제**: op 적용은 `applyRevisionOps`, 판정은 `validateTimetable` — 서버에 별도 구현 금지. **단일 소재지는 utils.ts**(클라·서버 공용, 2026-08-11 이관) — server.ts는 utils에서 import만 하고 자체 사본을 두지 않는다.
+- 제약 모델 로드는 기존 로더 5종(`load*`) + `deriveGradeDayPeriods`.
+- **시수 기준 = 초안 메타의 `hoursSnapshot`** (v1.1 정정, 2026-08-11 D-2 리뷰): base 그리드 역산은 미배정 있는 솔버 초안에서 "미배정 배정"을 H4 초과로 오판해 409로 차단하는 결함이 있다. `draft_create` 시 서버가 **sourceTermId 현행 학기 기초 그리드에서 역산한 시수표를 `hoursSnapshot`으로 저장**(클라 전송 신뢰 금지 — 관문 기준이므로 서버 산출만)하고, draft_op·undo·redo·draft_get의 모델은 `hoursSnapshot ?? deriveHoursFromGrids(base)`(구초안 폴백)를 쓴다. draft_get 응답에 hours를 동봉해 클라 미리보기도 같은 기준을 쓴다.
 - 승격(promote)은 v1 범위 밖(Phase F에서 NEIS 내보내기와 함께 — 하드 0 필수 조건만 여기 명시).
 
 ## 8. 분업·검증
