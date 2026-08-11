@@ -144,11 +144,10 @@ export default function OUConfiguration() {
     }
   };
 
-  // Fetch OUs and Load Settings
+  // Fetch OUs (도메인 확정 시 1회)
   const loadData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch OUs from API
       const res = await fetch("/api/workspace/ou");
       const data = await res.json();
       if (res.ok) {
@@ -157,44 +156,6 @@ export default function OUConfiguration() {
       } else {
         throw new Error(data.error);
       }
-
-      // 2. Initialize settings from context
-      if (domain && schoolSettings) {
-        const defaultClassroomGroup = `classroom_teachers@${domain}`;
-        setGradesCount(schoolSettings.gradesCount || 6);
-        setClassCounts(schoolSettings.classCounts || {});
-        setAllowedBookmarkOUs((schoolSettings as any).allowedBookmarkOUs || ["/교직원", "/학생"]);
-        setTeacherOU(schoolSettings.ouMapping?.teachers || "");
-        setStudentOUMappings(schoolSettings.ouMapping?.students || {});
-        setGraduatesOU(schoolSettings.ouMapping?.graduates || "");
-        setTransferOutOU(schoolSettings.ouMapping?.transferOut || "");
-        setTeachersOB(schoolSettings.ouMapping?.teachersOB || "");
-        setBlockedOuPaths((schoolSettings as any).blockedOuPaths || []);
-        
-        let loadedGroups = schoolSettings.teacherSettings?.autoJoinGroups || [];
-        if (!loadedGroups.includes(defaultClassroomGroup)) {
-          loadedGroups = [defaultClassroomGroup, ...loadedGroups];
-        }
-        setAutoJoinGroups(loadedGroups);
-        checkSecurityForGroups(loadedGroups);
-
-        // Load schedule and department/position masters
-        if (schoolSettings.schedule) setSchedule(schoolSettings.schedule);
-        if (schoolSettings.departments) setDepartments(schoolSettings.departments);
-        if (schoolSettings.positions) setPositions(schoolSettings.positions);
-      } else if (domain) {
-        // Fallback default setup
-        setAllowedBookmarkOUs(["/교직원", "/학생"]);
-        const defaultClassroomGroup = `classroom_teachers@${domain}`;
-        const defaultGroups = [
-          `ts@${domain}`,
-          defaultClassroomGroup,
-          `hmhteacher@${domain}`,
-          `hmh_teachers@${domain}`,
-        ];
-        setAutoJoinGroups(defaultGroups);
-        checkSecurityForGroups(defaultGroups);
-      }
     } catch (error) {
       console.error("Failed to load settings data", error);
       alert("설정 데이터를 불러오는 데 실패했습니다.");
@@ -202,6 +163,52 @@ export default function OUConfiguration() {
       setLoading(false);
     }
   };
+
+  // 설정 구독값 → 폼 상태 수화.
+  // schoolSettings가 도착하기 전 [domain]만으로 1회 초기화하고 끝나던 종전 구조에서는,
+  // 구독 도착이 늦으면 전 섹션이 기본값(빈 차단 목록 등)으로 남은 채 저장이 가능해
+  // 저장 시 실데이터를 기본값으로 덮어쓸 수 있었다 (2026-08-11 차단 OU 빈 화면 실증).
+  // 구독값이 도착/변경될 때마다 다시 수화한다.
+  useEffect(() => {
+    if (!domain) return;
+    if (schoolSettings) {
+      const defaultClassroomGroup = `classroom_teachers@${domain}`;
+      setGradesCount(schoolSettings.gradesCount || 6);
+      setClassCounts(schoolSettings.classCounts || {});
+      setAllowedBookmarkOUs((schoolSettings as any).allowedBookmarkOUs || ["/교직원", "/학생"]);
+      setTeacherOU(schoolSettings.ouMapping?.teachers || "");
+      setStudentOUMappings(schoolSettings.ouMapping?.students || {});
+      setGraduatesOU(schoolSettings.ouMapping?.graduates || "");
+      setTransferOutOU(schoolSettings.ouMapping?.transferOut || "");
+      setTeachersOB(schoolSettings.ouMapping?.teachersOB || "");
+      setBlockedOuPaths((schoolSettings as any).blockedOuPaths || []);
+
+      let loadedGroups = schoolSettings.teacherSettings?.autoJoinGroups || [];
+      if (!loadedGroups.includes(defaultClassroomGroup)) {
+        loadedGroups = [defaultClassroomGroup, ...loadedGroups];
+      }
+      setAutoJoinGroups(loadedGroups);
+      checkSecurityForGroups(loadedGroups);
+
+      // Load schedule and department/position masters
+      if (schoolSettings.schedule) setSchedule(schoolSettings.schedule);
+      if (schoolSettings.departments) setDepartments(schoolSettings.departments);
+      if (schoolSettings.positions) setPositions(schoolSettings.positions);
+    } else {
+      // Fallback default setup (설정 문서 미도착/부재 — 이 상태에서는 저장이 막혀 있다)
+      setAllowedBookmarkOUs(["/교직원", "/학생"]);
+      const defaultClassroomGroup = `classroom_teachers@${domain}`;
+      const defaultGroups = [
+        `ts@${domain}`,
+        defaultClassroomGroup,
+        `hmhteacher@${domain}`,
+        `hmh_teachers@${domain}`,
+      ];
+      setAutoJoinGroups(defaultGroups);
+      checkSecurityForGroups(defaultGroups);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domain, schoolSettings]);
 
   useEffect(() => {
     if (domain) {
@@ -212,6 +219,14 @@ export default function OUConfiguration() {
   // Handle saving configurations to Firestore
   const handleSaveSettings = async () => {
     if (!domain) return;
+    // 구독값 도착 전 저장 차단 — 이 폼은 전 섹션을 한 번에 쓰므로, 수화되지 않은
+    // 기본값 상태로 저장하면 저장된 실데이터(차단 OU·매핑 등)를 통째로 덮어쓴다.
+    // (트레이드오프: 설정 문서가 아예 없는 신규 도메인 최초 저장도 막히지만, 단일 학교
+    //  운영 현실에서 문서는 이미 존재 — 데이터 보전을 우선한다.)
+    if (!schoolSettings) {
+      alert("설정을 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
     setSaving(true);
     try {
       const defaultClassroomGroup = `classroom_teachers@${domain}`;
@@ -892,7 +907,7 @@ export default function OUConfiguration() {
           <div className="pt-4 flex justify-end">
             <button
               onClick={handleSaveSettings}
-              disabled={saving}
+              disabled={saving || !schoolSettings}
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-md focus:outline-none disabled:opacity-50 transition-colors shadow-sm"
             >
               {saving ? "설정 저장 중..." : "매핑 설정 저장"}
