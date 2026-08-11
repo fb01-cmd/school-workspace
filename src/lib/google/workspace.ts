@@ -532,9 +532,31 @@ export const updateUser = async (
     primaryEmail?: string;
   }
 ) => {
-  // 보호 계정 정지 하드 차단 (활성화 방향은 허용 — 복구 경로는 막지 않는다)
-  if (updates.suspended === true && isProtectedAccountEmail(email)) {
-    throw new Error("보호 계정은 정지할 수 없습니다 (시스템 운영 계정).");
+  // 보호 계정 하드 차단 — 정지·아이디 변경·OU 이동 (활성화·이름·별칭·비밀번호는 허용)
+  if (isProtectedAccountEmail(email)) {
+    if (updates.suspended === true) {
+      throw new Error("보호 계정은 정지할 수 없습니다 (시스템 운영 계정).");
+    }
+    // 아이디(주 이메일) 변경 차단 — 알림 발신·DWD 사칭·인프라 연동이 전부 이 주소 문자열에 묶여 있다
+    if (
+      updates.primaryEmail &&
+      updates.primaryEmail.trim().toLowerCase() !== email.trim().toLowerCase()
+    ) {
+      throw new Error("보호 계정의 아이디(이메일)는 변경할 수 없습니다 (시스템 운영 계정).");
+    }
+    // OU 이동 차단 — 수정 화면이 OU를 항상 함께 보내는 구조라, 실제로 달라질 때만 막는다
+    if (updates.orgUnitPath) {
+      let currentOu = "";
+      if (isMock) {
+        currentOu = mockUsers.find((u) => u.primaryEmail === email)?.orgUnitPath || "";
+      } else {
+        const current = await getUser(email);
+        currentOu = current?.orgUnitPath || "";
+      }
+      if (currentOu && updates.orgUnitPath.trim() !== currentOu) {
+        throw new Error("보호 계정의 조직단위는 이동할 수 없습니다 (시스템 운영 계정).");
+      }
+    }
   }
   if (isMock) {
     const userIndex = mockUsers.findIndex((u) => u.primaryEmail === email);
