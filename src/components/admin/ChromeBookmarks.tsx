@@ -26,6 +26,19 @@ function flattenBookmarks(items: BookmarkItem[], prefix = ""): FlatItem[] {
   return result;
 }
 
+// 서버가 문자열로 변환해 보내지만, 과거 형태(Firestore Timestamp 객체)가 섞여 와도
+// 화면이 죽지 않도록 방어한다 — 객체를 그대로 렌더링하면 React가 크래시한다.
+function formatLogTime(ts: unknown): string {
+  if (!ts) return "";
+  if (typeof ts === "string") {
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? ts : d.toLocaleString("ko-KR");
+  }
+  const secs = (ts as any)?._seconds ?? (ts as any)?.seconds;
+  if (typeof secs === "number") return new Date(secs * 1000).toLocaleString("ko-KR");
+  return "";
+}
+
 function computeBookmarkDiff(before: BookmarkItem[], after: BookmarkItem[]) {
   const fb = flattenBookmarks(before);
   const fa = flattenBookmarks(after);
@@ -369,7 +382,7 @@ export default function ChromeBookmarks() {
                         <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-indigo-100 text-indigo-800">북마크 변경</span>
                         <strong className="text-sm text-gray-900">{log.orgUnitPath}</strong>
                       </div>
-                      <span className="text-gray-400 font-mono text-[10px]">{log.timestamp}</span>
+                      <span className="text-gray-400 font-mono text-[10px]">{formatLogTime(log.timestamp)}</span>
                     </div>
 
                     <div className="flex flex-wrap gap-1.5 items-center">

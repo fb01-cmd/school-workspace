@@ -61,7 +61,22 @@ export async function GET(req: NextRequest) {
           .orderBy("timestamp", "desc")
           .limit(20)
           .get();
-        const logs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Firestore Timestamp를 그대로 내려보내면 클라이언트가 {_seconds,_nanoseconds} 객체를
+        // JSX에 렌더링하다 React가 크래시한다(2026-08-11 북마크 이력 실사고와 동일 계열). 문자열로 변환한다.
+        const logs = snap.docs.map(doc => {
+          const data = doc.data();
+          const ts = data.timestamp;
+          return {
+            id: doc.id,
+            ...data,
+            timestamp:
+              ts && typeof ts.toDate === "function"
+                ? ts.toDate().toISOString()
+                : typeof ts === "string"
+                  ? ts
+                  : null,
+          };
+        });
         return NextResponse.json({ logs });
       } catch (err: any) {
         // Fallback if index is building or query fails

@@ -3752,3 +3752,14 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 ### 재개 문구
 - push 승인: *"푸시하자."*
+
+## [2026-08-11] 크롬 북마크 변경 이력 화면 전체 크래시 — 원인 확정·수정 ✅ (Claude, 실데이터 확증)
+
+- **증상**: 크롬 북마크 "변경 이력" 탭 진입 시 화면 전체 백지("This page couldn't load"). 콘솔 = `Minified React error #31: object with keys {_seconds,...}` (객체를 JSX에 렌더링).
+- **원인 확정**: `chrome_bookmark_logs` 쓰기는 `FieldValue.serverTimestamp()`(Timestamp)인데, logs API가 `{id, ...doc.data()}`로 **가공 없이 JSON 반환** → 클라이언트에 `{_seconds,_nanoseconds}` 객체로 도착 → `{log.timestamp}` 렌더에서 React 크래시. 전수 실측: 8건 중 **Timestamp 객체 1건**(id `JL4pW2ZWRxOSCtqim3Yc`, `{_seconds:1785978143,...}` — 콘솔 값과 일치), 나머지 7건은 과거 문자열.
+- **진단 중 함정(기록 필수)**: 처음 `orderBy("timestamp","desc").limit(3)`로 조회했을 때 문자열 문서만 나와 "타임스탬프는 원인이 아니다"라고 **오판**했음. 원인은 **Firestore 타입 정렬 순서**(timestamp < string) — desc 정렬에서 문자열이 앞서 Timestamp 문서가 가려짐. **혼합 타입 필드는 orderBy+limit 표본으로 타입을 판단하지 말고 전수 조회할 것.**
+- **수정**: ① `bookmarks/route.ts` logs 응답에서 timestamp를 ISO 문자열로 변환(서버 = 근본 수정) ② `classroom/route.ts`도 동일 패턴 선제 수정(classroom_sync_logs는 현재 전부 문자열이나 쓰기가 serverTimestamp라 시한폭탄이었음) ③ 화면 2곳(ChromeBookmarks·classroom/page)에 `formatLogTime` 방어 헬퍼 — 과거·혼합 형태가 와도 크래시 대신 표시. tsc 0 / build ✅.
+- **동일 계열 재발 이력**: `PolicyAckStatusTab`에 이미 같은 방어 코드가 있었음(고지 현황 날짜 장애). **API가 admin SDK 문서를 그대로 스프레드해 반환하는 패턴이 이 사고의 공통 원인** — 중간점검 ②(보안·권한 전수) 때 API 라우트 전수로 이 패턴을 훑을 것(권고).
+
+### 재개 문구
+- push 승인: *"푸시하자."*
