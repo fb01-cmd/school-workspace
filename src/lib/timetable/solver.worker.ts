@@ -14,7 +14,7 @@ import {
   SolverWorkerMessage,
   SolverWorkerRequest,
 } from "./solver";
-import { deriveGradeDayPeriods, validateTimetable } from "./validate";
+import { deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "./validate";
 
 const post = (msg: SolverWorkerMessage) => (self as unknown as Worker).postMessage(msg);
 
@@ -22,6 +22,9 @@ self.onmessage = (e: MessageEvent<SolverWorkerRequest>) => {
   try {
     const { grids, model, seeds, localSearchIterations } = e.data;
     const gradeDayPeriods = model.gradeDayPeriods || deriveGradeDayPeriods(grids);
+    // 시수표 미제공 시 입력(기준) 그리드에서 역산 — 관문 리포트의 H1/H4가
+    // "기준 대비 시수 보존"을 감시하게 한다 (phase9c_d_spec §7 — draft_model엔 hours가 없음)
+    const hours = model.hours?.length ? model.hours : deriveHoursFromGrids(grids);
     const sections = compileSectionsFromGrids(grids, model);
     const { best, ranking } = solveTimetablePortfolio({
       sections,
@@ -31,7 +34,7 @@ self.onmessage = (e: MessageEvent<SolverWorkerRequest>) => {
       localSearchIterations,
       onProgress: (phase, done, total) => post({ type: "progress", phase, done, total }),
     });
-    const report = validateTimetable(best.grids, { ...model, gradeDayPeriods });
+    const report = validateTimetable(best.grids, { ...model, gradeDayPeriods, hours });
     post({
       type: "done",
       seed: best.seed,
