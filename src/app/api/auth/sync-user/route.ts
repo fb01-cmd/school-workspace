@@ -3,6 +3,7 @@ import { getAuth } from "firebase-admin/auth";
 import { google } from "googleapis";
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { isBlockedOuPath, isProtectedAccountEmail } from "@/lib/auth/blockedOu";
 
 /**
  * POST /api/auth/sync-user
@@ -20,12 +21,19 @@ import { FieldValue } from "firebase-admin/firestore";
 
 const STUDENT_EMAIL_REGEX = /^\d{5}@hmh\.or\.kr$/;
 
-const checkIsWorkspaceAdmin = async (email: string): Promise<boolean> => {
+/**
+ * GWS 디렉터리 프로필 — isAdmin(역할 판정)과 orgUnitPath(차단 OU 판정)를 한 호출로.
+ * 조회 실패는 fail-open: isAdmin=false(→teacher 승인 대기)·orgUnitPath=null(→차단 판정 불가
+ * 시 통과). 차단이 가용성보다 우선할 위협 모델이 아니며 오승인 관문이 후방에 있다 (spec §2-3).
+ */
+const getWorkspaceProfile = async (
+  email: string
+): Promise<{ isAdmin: boolean; orgUnitPath: string | null }> => {
   const hasCredentials =
     process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL &&
     process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY &&
     process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL;
-  if (!hasCredentials) return false;
+  if (!hasCredentials) return { isAdmin: false, orgUnitPath: null };
 
   try {
     const privateKey = process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY!.replace(/\\n/g, "\n");
@@ -37,10 +45,25 @@ const checkIsWorkspaceAdmin = async (email: string): Promise<boolean> => {
     });
     const admin = google.admin({ version: "directory_v1", auth });
     const res = await admin.users.get({ userKey: email, projection: "basic" });
-    return res.data.isAdmin === true;
+    return {
+      isAdmin: res.data.isAdmin === true,
+      orgUnitPath: typeof res.data.orgUnitPath === "string" ? res.data.orgUnitPath : null,
+    };
   } catch (error: any) {
-    console.error("Failed to check admin status from Google Workspace:", error.message);
-    return false;
+    console.error("Failed to fetch Workspace profile:", error.message);
+    return { isAdmin: false, orgUnitPath: null };
+  }
+};
+
+/** settings/{domain}.blockedOuPaths — 없으면 빈 목록 (기능 자연 비활성) */
+const loadBlockedOuPaths = async (domain: string): Promise<string[]> => {
+  try {
+    const snap = await adminDb.collection("settings").doc(domain).get();
+    const raw = snap.exists ? snap.data()?.blockedOuPaths : null;
+    return Array.isArray(raw) ? raw.filter((p: unknown) => typeof p === "string") : [];
+  } catch (e: any) {
+    console.warn(`[sync-user] blockedOuPaths 로드 실패 (${domain}): ${e.message}`);
+    return [];
   }
 };
 
@@ -100,7 +123,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, role: "student" });
     }
 
-    const isWorkspaceAdmin = await checkIsWorkspaceAdmin(email);
+    const profile = await getWorkspaceProfile(email);
+
+    // ── 포털 접속 차단 OU 관문 (coop_account_block_spec §2) ──
+    // 공동교육과정 등 타교생용 계정은 포털 대상이 아니다. 보호 계정 3종은 항상 통과
+    // (오등록으로 인프라 계정이 잠기는 사고 방지). orgUnitPath를 모르면(조회 실패) 통과.
+    if (!isProtectedAccountEmail(email) && profile.orgUnitPath) {
+      const blockedList = await loadBlockedOuPaths(domain);
+      if (isBlockedOuPath(profile.orgUnitPath, blockedList)) {
+        // 문서를 만들지 않고, 과거 잔재(teacher 오분류)가 있으면 그 자리에서 삭제 —
+        // 차단 계정은 users 문서가 없어야 Firestore 규칙상 아무 권한도 갖지 않는다.
+        try {
+          const staleSnap = await adminDb.collection("users").where("email", "==", email).get();
+          if (!staleSnap.empty) {
+            const batch = adminDb.batch();
+            staleSnap.docs.forEach((d) => batch.delete(d.ref));
+            await batch.commit();
+            console.log(`[sync-user] 차단 OU 계정 ${email}의 users 잔재 ${staleSnap.size}건 삭제`);
+          }
+        } catch (e: any) {
+          console.warn(`[sync-user] 차단 계정 잔재 정리 실패 (${email}): ${e.message}`);
+        }
+        console.log(`[sync-user] 차단 OU 로그인 거부: ${email} (${profile.orgUnitPath})`);
+        return NextResponse.json(
+          { error: "이 포털은 효명고등학교 구성원 계정만 사용할 수 있습니다.", blocked: true },
+          { status: 403 }
+        );
+      }
+    }
+
+    const isWorkspaceAdmin = profile.isAdmin;
     const role = isWorkspaceAdmin ? "super_admin" : "teacher";
 
     if (snap.exists) {

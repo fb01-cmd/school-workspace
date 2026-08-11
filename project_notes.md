@@ -3621,3 +3621,14 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - push 승인: *"푸시하자."*
 - 차단 구현 착수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. docs/coop_account_block_spec.md §2·§3 서버부 구현해줘."*
 - 쪽지 스펙(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 쪽지(사내 메신저) 스펙 작성해줘."*
+
+## [2026-08-11] 공동교육 계정 포털 차단 §2·§3 서버부 구현 ✅ (Claude)
+
+- **구현**: `src/lib/auth/blockedOu.ts`(순수 매칭 — 하위 OU 프리픽스·정규화·루트 등록 무시, 보호 계정 3종 상수) + sync-user 개편(`getWorkspaceProfile`로 isAdmin+orgUnitPath 한 호출, 차단 시 users 문서 미생성+잔재 삭제+403 blocked) + 클라(`BlockedAccountError` — **차단 시 즉시 signOut**(자가 치유 재시도 루프 차단), 로그인 화면에 서버 안내 문구 관통).
+- **가정 실측 확정**: `users.get(projection:"basic")`이 orgUnitPath 반환 확인(실계정 ch_01@) — 추가 API 호출 0 성립. **실존 공동교육 OU = `/학생/공동교육과정(26)`(ch_01~05@)**, `/학생/공동교육`·s10@은 현재 없음(스펙에 반영). 리다이렉트 복귀 로그인의 차단 메시지 미표시(로그인 화면 복귀만)는 수용 — 팝업 경로가 기본.
+- **검증**: `scripts/blocked_ou_selftest.ts` 17항목(프리픽스 겹침 오탐 방어·루트 등록 무시 포함) ✅ / tsc 0 / build ✅. 기능은 `settings.blockedOuPaths` 미설정 시 자연 비활성(현재 상태) — UI(§4) 전이라도 Firestore 콘솔로 등록하면 즉시 작동.
+- **잔여**: §4 환경설정 UI(Antigravity) → §5 오염 inspect·cleanup(Claude, UI 후 무방) → 실기기 차단 확인(ch_* 계정, 사용자 또는 실사용 자연 확인).
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- §4 UI(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/coop_account_block_spec.md §4 대로 환경설정 '포털 접속 차단 조직단위' 섹션 구현해줘."*

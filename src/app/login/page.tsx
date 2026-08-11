@@ -49,7 +49,12 @@ export default function LoginPage() {
       // The useEffect will handle redirect once user and userData update
     } catch (err: any) {
       console.error(err);
-      setError("로그인에 실패했습니다. 다시 시도해주세요.");
+      // 차단 계정 거부는 서버가 준 안내 문구를 그대로 보여준다 (coop_account_block_spec §3)
+      setError(
+        err?.name === "BlockedAccountError"
+          ? err.message
+          : "로그인에 실패했습니다. 다시 시도해주세요."
+      );
       setIsSigningIn(false);
     }
   };

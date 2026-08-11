@@ -59,6 +59,14 @@ export const signInWithGoogle = async () => {
 
 
 
+/** 차단 OU 계정 로그인 거부 (coop_account_block_spec §3) — 로그인 화면이 message를 그대로 표시 */
+export class BlockedAccountError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BlockedAccountError";
+  }
+}
+
 export const handleUserRoles = async (user: User) => {
   if (!user.email) throw new Error("No email found for user.");
 
@@ -71,6 +79,12 @@ export const handleUserRoles = async (user: User) => {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
+    if (data.blocked) {
+      // 세션을 즉시 끊는다 — 남겨두면 AuthContext 자가 치유(users 문서 부재 감지)가
+      // 페이지 로드마다 이 호출을 재시도하는 루프가 된다 (spec §3 함정).
+      await signOut(auth).catch(() => {});
+      throw new BlockedAccountError(data.error || "이 포털은 효명고등학교 구성원 계정만 사용할 수 있습니다.");
+    }
     throw new Error(data.error || "사용자 역할 동기화에 실패했습니다.");
   }
 };
