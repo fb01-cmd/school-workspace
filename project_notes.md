@@ -3382,3 +3382,16 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **비차단 수정 1건**: loadMap의 selectedDraftId stale 클로저 — 저장 후 재로드마다 초안 선택이 첫 항목으로 리셋 → 함수형 갱신으로 교체. 용어 2건("플랫폼 과목명"→"시간표 과목명" — UI 개발 용어 금지 반복 지적).
 - **비차단 잔여(후속 후보)**: ① 체크 전부 해제 시 하단 저장 버튼 소실(헤더 저장 버튼으로 우회 가능) ② 탭 진입·저장마다 draft_list 재로드(관리자 전용·수동이라 허용).
 - **브라우저 실기기 확인**: 관리자 인증 화면이라 헤드리스 불가 — Phase D와 동일하게 실사용 첫 회 자연 확인 대상(증상 소멸 기준).
+
+## [2026-08-11] 9c Phase E(AI 보조층) 스펙 v1 작성 ✅ ([`docs/phase9c_e_spec.md`](./docs/phase9c_e_spec.md))
+
+- **4역할 계약 확정**: E1 불능 진단(표시 전용)·E2 선호 정식화(사람 확인→기존 slot_ban_save만, AI 전용 쓰기 경로 금지)·E3 결과 설명·E4 정성 비평. 우선순위 E1→E2→E3·4 (E1이 등록부 미비→질문지 흐름과 직결).
+- **엔진**: Gemini 무료 등급 정식 1키(무료 원칙+로드맵 §2 기확정 전제), REST 직접 호출(신규 의존성 0), 모델명은 구현 시점 확인해 ai.ts 상수 1곳(추측 금지). 키 미설정 = 자연 비활성(진입점 숨김).
+- **개인정보 결정 (Claude 소관)**: 무료 등급 입력은 모델 개선 활용 가능 → **교사 실명·이메일 가명화(T01…) 후 전송·응답 역치환, PII 외부 전송 0건** — 처리방침·인벤토리 갱신 불요. 가명화 제거 변경은 Claude 재검토 필수 명기.
+- **아키텍처**: manage 액션 4종(ai_diagnose·ai_formalize·ai_explain·ai_critique, 권한 폴스루), 서버가 draftId로 리포트 재산출(클라 신뢰 0), JSON 강제+재시도 1회+fail-visible, 프롬프트·가명화 = `src/lib/timetable/ai.ts`(Claude 소유).
+- **선행 조건 = 사용자 키 발급**: AI Studio(https://aistudio.google.com/apikey) → `.env.local`·Vercel에 `GEMINI_API_KEY`.
+- **잔여**: E-1a 구현(Claude, 키 발급 후)·E-1b UI(Antigravity) / F-2는 9월 샘플 대기 / 9월 질문지.
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- 키 발급 후 구현 착수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. GEMINI_API_KEY 넣어놨어. Phase E-1a(ai.ts+불능 진단) 구현해줘."*
