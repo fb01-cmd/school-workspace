@@ -3157,3 +3157,30 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - Antigravity 재수정: *"project_notes.md 마지막 체크포인트 읽어줘. 등록부 UI 재검수 R1·R2 수정해줘 (+별건 termId 하드코딩 4탭 정리 포함)."*
 - 재수정 후 최종 검수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. R1·R2 재수정 최종 검수해줘."*
 - push 승인: *"푸시하자."* (미push 5커밋: db6b755·dd82399·33f2c45·7b71e9c + 이 문서)
+
+## [2026-08-11] Antigravity → Claude/사용자 (R1·R2 재수정 + 별건 termId 4탭 정리)
+
+- **커밋**: `773c26f`
+- **검증**: `npx tsc --noEmit` ✅ / `npm run build` OOM(인프라 메모리 부족, 코드 무관)
+- **완료**:
+  - R1: 3탭 onChange @ 승격 경로 전면 제거 + 저장 가드 선택값 null 가드로 정리 (선택 강제 원칙 준수)
+  - R2: TeacherSlotBanTab 안내 문구 H5 코드 → 눈높이 문구
+  - 별건: SimulGroupTab·VenueGroupTab·BaseRevisionTab·CalendarManageTab termId "2026-2" 리터럴 제거
+- **주의**: SimulGroup/VenueGroup payload termId는 타입이 `string`(필수)이므로 `activeTermId ?? ""` — undefined 불가
+
+### 재개 문구
+- 최종 검수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. R1·R2 재수정 최종 검수해줘."*
+- push 승인: *"푸시하자."* (미push 6커밋: db6b755·dd82399·33f2c45·7b71e9c·+ 이전 문서커밋·773c26f)
+
+## [2026-08-11] R1·R2 재수정(773c26f) 최종 검수 — 전부 통과 ✅ (9c 등록부 UI 3종 종결)
+
+- **R1 (선택 강제)**: 3탭 실측 통과 — onChange는 검색어만 갱신 + 선택값 즉시 무효화(`setTeacherEmail("")`), 저장 가드는 선택값 null 가드 전용, CoTeaching은 onSelect 전용 추가(인자 없는 호출부 0 확인). 잔존은 `handleAddTeacherEmail`의 미사용 `teacherEmailInput` 폴백 파라미터(죽은 코드)뿐 — 비차단, 후일 버튼 추가 시 구멍 재개 소지만 유의.
+- **R2**: H5 코드 문구 제거 ✓ ("검사기"·"자동 조정" 등 한국어 기능 서술은 허용 범위).
+- **별건 termId 4탭**: 리터럴 제거 ✓ + 서버 폴백 체인(`group?.termId || body.termId || settings.activeTermId`) 실측 — 빈 문자열은 falsy라 정상 폴백, activeTermId 부재 시 400(무언 오등록보다 옳음).
+- **검증**: tsc ✅ / build ✅ (Claude 재실행 — Antigravity의 build OOM은 `NODE_OPTIONS="--max-old-space-size=4096"` 미적용 탓, 코드 무관. 워크어라운드는 Phase A 체크포인트 참조).
+- **9c 등록부 UI 3종(특별교사 금지·연속수업·복수교사) 검수 종결.** 남은 UI 후속 후보(비차단): 연속·복수교사 탭 판정 미리보기("걸리는 수업 N셀").
+
+### 재개 문구
+- push 승인: *"푸시하자."* (미push 7커밋: db6b755·dd82399·33f2c45·7b71e9c·628474c·773c26f + 이 문서)
+- 솔버 고도화(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 9c 솔버 고도화(시드 포트폴리오·Web Worker) 하자."*
+- 판정 미리보기 배치(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. 연속수업·복수교사 탭에 판정 미리보기 붙여줘 (SimulGroupTab §A-5 문법)."*
