@@ -291,7 +291,7 @@ export default function CoTeachingRuleTab({ activeTermId, periodsPerDay = 7 }: C
       <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 text-purple-900 text-xs leading-relaxed space-y-1">
         <div className="font-bold text-sm flex items-center gap-1.5 text-purple-900">
           <span>👥</span>
-          <span>복수교사 등록부 (매뉴얼 §6-사)</span>
+          <span>복수교사 등록부</span>
         </div>
         <p>
           동일 학급의 동일 요일·교시 시간에 2명 이상의 교사가 함께 수업에 투입되는 형태를 지정합니다. (투입 교사 간 동일 교시수 배치 검사)

@@ -269,7 +269,7 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
             <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
               <span>🔀 동시수업(분반 이동수업) 교체 불가 관리</span>
               <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-purple-100 text-purple-800 border border-purple-200">
-                컴시간 등록부 계승
+                이동수업 그룹
               </span>
             </h3>
             <p className="text-xs text-gray-600 mt-1 leading-relaxed">

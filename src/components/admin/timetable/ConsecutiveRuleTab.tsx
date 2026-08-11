@@ -300,7 +300,7 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
       <div className="bg-sky-50 border border-sky-200 rounded-xl p-5 text-sky-900 text-xs leading-relaxed space-y-1">
         <div className="font-bold text-sm flex items-center gap-1.5 text-sky-900">
           <span>🔁</span>
-          <span>연속수업 등록부 (매뉴얼 §6-라)</span>
+          <span>연속수업 등록부</span>
         </div>
         <p>
           과목별 주당 연속 배치 블록 규칙을 지정합니다 (예: <strong>2</strong> = 2시간 연속 1회, <strong>2,2</strong> = 2시간 연속 2회, <strong>3</strong> = 3시간 연속 1회).

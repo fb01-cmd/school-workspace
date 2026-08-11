@@ -491,7 +491,7 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     if (selectedUnplaced) {
       const targetSimulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
       if (targetSimulLabel) {
-        alert(`🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다. (스펙 §5)`);
+        alert(`🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`);
         return;
       }
       // 미배정 항목을 이 셀에 배정 (edit_cell op)
@@ -525,7 +525,7 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
 
       const targetSimulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
       if (targetSimulLabel) {
-        alert(`🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다. (스펙 §5)`);
+        alert(`🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`);
         return;
       }
 
@@ -557,7 +557,7 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     // 고정 밴드 셀(동시수업 simul) 방어 🔒
     const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
     if (simulLabel) {
-      alert(`🔒 동시수업(분반 이동수업 그룹 '${simulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다. (스펙 §5)`);
+      alert(`🔒 동시수업(분반 이동수업 그룹 '${simulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`);
       return;
     }
 
@@ -1110,7 +1110,7 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
                     ))}
                   </ul>
                   <p className="text-[11px] text-red-600 font-semibold pt-1">
-                    💡 컴시간 매뉴얼 §8-다 원칙에 따라 중대한 위반이 동반되는 이동은 실행할 수 없습니다.
+                    💡 중대한 문제가 생기는 이동은 실행할 수 없습니다.
                   </p>
                 </div>
               ) : (
@@ -1242,13 +1242,13 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
       <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 text-indigo-900 text-xs leading-relaxed space-y-1">
         <div className="font-bold text-sm flex items-center gap-1.5">
           <span>🧩</span>
-          <span>자동 작성 & 수동 조정 (Phase 9c-D)</span>
+          <span>자동 작성 & 수동 조정</span>
         </div>
         <p>
           솔버가 작성한 초안을 기반으로 셀 이동·맞교환 및 연쇄 영향 미리보기를 수행하여 하드 위반 0건 완성을 진행합니다.
         </p>
         <p className="text-[11px] text-indigo-700 font-semibold">
-          💡 중대한 위반(하드 위반)을 유발하는 이동은 실행이 자동으로 차단됩니다. (컴시간 매뉴얼 §8-다)
+          💡 중대한 문제가 생기는 이동은 실행이 자동으로 차단됩니다.
         </p>
       </div>
 

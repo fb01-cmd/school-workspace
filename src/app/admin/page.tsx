@@ -32,7 +32,8 @@ const PasswordReset = dynamic(() => import("@/components/admin/PasswordReset"), 
 const ProfileApprovals = dynamic(() => import("@/components/admin/ProfileApprovals"), { loading: TabLoading });
 const ClassroomCleanupTab = dynamic(() => import("@/components/admin/ClassroomCleanupTab"), { loading: TabLoading });
 const DisciplineSection = dynamic(() => import("@/components/admin/discipline/DisciplineSection"), { loading: TabLoading });
-const TimetableSection = dynamic(() => import("@/components/admin/timetable/TimetableSection"), { loading: TabLoading });
+const TimetableOperationSection = dynamic(() => import("@/components/admin/timetable/TimetableOperationSection"), { loading: TabLoading });
+const TimetableCreationSection = dynamic(() => import("@/components/admin/timetable/TimetableCreationSection"), { loading: TabLoading });
 const TeacherPortalSection = dynamic(() => import("@/components/admin/timetable/TeacherPortalSection"), { loading: TabLoading });
 const PolicyAckStatusTab = dynamic(() => import("@/components/admin/PolicyAckStatusTab"), { loading: TabLoading });
 const PWAInstallGuideTab = dynamic(() => import("@/components/admin/PWAInstallGuideTab"), { loading: TabLoading });
@@ -47,7 +48,7 @@ import { TimetableSettings } from "@/lib/timetable/types";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable" | "my_timetable" | "policy_ack" | "pwa_guide";
+type MenuType = "home" | "users" | "groups" | "settings" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable_operation" | "timetable_creation" | "my_timetable" | "policy_ack" | "pwa_guide";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
@@ -188,8 +189,10 @@ export default function AdminPage() {
       case "forms":
       case "discipline":
         return <DisciplineSection />;
-      case "timetable":
-        return canSeeTimetableMenu ? <TimetableSection /> : null;
+      case "timetable_operation":
+        return canSeeTimetableMenu ? <TimetableOperationSection /> : null;
+      case "timetable_creation":
+        return isTimetableManager ? <TimetableCreationSection /> : null;
       case "my_timetable":
         // 교사 신청 화면 (phase9b_spec §7 순서 4). 학생·canSeeTimetableMenu 게이트는 컴포넌트 내부에서 재검증.
         return <TeacherPortalSection />;
@@ -548,16 +551,29 @@ export default function AdminPage() {
                   {!collapsedSections.timetable && (
                     <div className="space-y-1">
                       <button
-                        onClick={() => setActiveMenu("timetable")}
+                        onClick={() => setActiveMenu("timetable_operation")}
                         className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          activeMenu === "timetable"
+                          activeMenu === "timetable_operation"
                             ? "bg-indigo-800 text-white font-bold shadow-sm"
                             : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
                         }`}
                       >
-                        <span>📦</span>
-                        <span>시간표 관리 (일과계)</span>
+                        <span>🗓️</span>
+                        <span>시간표 운영</span>
                       </button>
+                      {isTimetableManager && (
+                        <button
+                          onClick={() => setActiveMenu("timetable_creation")}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                            activeMenu === "timetable_creation"
+                              ? "bg-indigo-800 text-white font-bold shadow-sm"
+                              : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                          }`}
+                        >
+                          <span>🧩</span>
+                          <span>시간표 작성</span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -816,6 +832,8 @@ export default function AdminPage() {
                 {activeMenu === "classroom" && "구글 클래스룸 학생 즉시 배정"}
                 {activeMenu === "teachers" && "교직원 계정 및 생애주기 관리"}
                 {activeMenu === "lifecycle" && "학생 계정 생애주기 관리"}
+                {activeMenu === "timetable_operation" && "시간표 운영 (학기 중)"}
+                {activeMenu === "timetable_creation" && "시간표 작성 & 학기 관리"}
                 {activeMenu === "my_timetable" && "내 시간표"}
               </h1>
             </div>

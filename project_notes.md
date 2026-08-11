@@ -3460,3 +3460,45 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - push 승인: *"푸시하자."*
 - 구현(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/timetable_ia_split_spec.md 대로 시간표 메뉴 2분리 + 메타문구 일소 구현해줘."*
+
+## [2026-08-11] Antigravity → Claude (시간표 IA 2분리 + 화면 메타문구 일소 구현 완료)
+
+- **변경 파일**:
+  - `src/components/admin/timetable/useTimetableSettings.ts` (신규 - 설정 및 권한 가드 공통 훅)
+  - `src/components/admin/timetable/TimetableOperationSection.tsx` (신규 - 시간표 운영 탭 9종 컨테이너)
+  - `src/components/admin/timetable/TimetableCreationSection.tsx` (신규 - 시간표 작성 탭 9종 컨테이너)
+  - `src/components/admin/timetable/NeisBatchExportTab.tsx` (신규 - 나이스 사전 검증/매핑표 탭)
+  - `src/components/admin/timetable/NeisExportTab.tsx` (수업교환 목록 탭 전용으로 정돈, 배지 "나이스 입력 양식")
+  - `src/components/admin/timetable/TimetableSection.tsx` (re-export 하위 호환 정돈)
+  - `src/app/admin/page.tsx` (`timetable_operation` & `timetable_creation` 사이드바 2메뉴 분리)
+  - `src/components/admin/timetable/ConsecutiveRuleTab.tsx` (메타문구 제거)
+  - `src/components/admin/timetable/CoTeachingRuleTab.tsx` (메타문구 제거)
+  - `src/components/admin/timetable/TeacherSlotBanTab.tsx` (메타문구 제거)
+  - `src/components/admin/timetable/SimulGroupTab.tsx` (메타문구 제거)
+  - `src/components/admin/timetable/DraftAutoTab.tsx` (메타문구 및 스펙 참조 제거, 지정 문구 반영)
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **구현 요약**:
+  1. **사이드바 2분리**:
+     - `시간표 운영`: `canSeeTimetableMenu` (일과계 + 수퍼어드민 + 참관자) 노출.
+     - `시간표 작성`: `isTimetableManager` (일과계 + 수퍼어드민) 노출.
+  2. **NEIS 탭 분할**:
+     - 섹션 1(수업교환 목록) → 운영 메뉴 `나이스 입력 목록` (`NeisExportTab`)
+     - 섹션 2(사전 검증 & 과목 등재명 매핑표) → 작성 메뉴 `나이스 일괄 내보내기` (`NeisBatchExportTab`)
+  3. **화면 메타문구 일소**: §번호, 매뉴얼 조항, Phase 명칭 제거. 지정 문구 반영 ("중대한 문제가 생기는 이동은 실행할 수 없습니다" / 배지 "나이스 입력 양식"). 파일 출처 지시문 내 컴시간 명칭 유지.
+
+### 재개 문구
+- 표적 리뷰(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 시간표 IA 2분리 + 메타문구 일소 표적 리뷰해줘."*
+- push 승인: *"푸시하자."*
+
+
+## [2026-08-11] IA 2분리 + 메타문구 일소 표적 리뷰 — 전부 통과 ✅ (Claude가 커밋)
+
+- **검수 방식**: 미커밋 작업 트리 직접 대조(핸드오버 주장 항목별 확인) → 통과 후 Claude 커밋.
+- **통과(실측)**: 탭 18종(운영 9·작성 9) 유실 0 ✓ / 기본 탭 = 운영 weeks·작성 draft(스펙 §2) ✓ / 사이드바 게이트 보정 ① 정확 반영 — 운영은 참관자 포함(canSeeTimetableMenu)·작성은 일과계+수퍼어드민만(isTimetableManager), 렌더 가드 이중 방어 ✓ / 참관자 렌더링 = 요청대장 전용+안내 배너(기존 동작 보존) ✓ / NeisBatchExportTab 이관 무결 — **F-1b 리뷰 F1 수정(이전 학기 매핑 carry-over)·mapError 처리 생존 확인** ✓ / 공통 훅 useTimetableSettings에 캐시(timetable:settings) 보존 ✓ / 지정 문구 2건 반영("중대한 문제가 생기는 이동…"·"나이스 입력 양식") ✓ / 메타문구 잔존분은 전부 허용 범주(가져오기 화면의 컴시간 파일 출처 지시문 = 스펙 §5 정밀 기준 유지 대상, 나머지는 코드 주석) ✓ / 구 TimetableSection은 deprecated 위임 셸, 외부 참조 0 ✓ / tsc 0·build(Claude 재실행) ✓.
+- **비차단(후속 정리 후보)**: TimetableSection 셸은 참조 0이라 삭제 가능(잠정 유지 무해).
+- **실기기 확인**: 메뉴 2종 노출·탭 전환은 실사용 첫 회 자연 확인 대상. 참관자 계정 경로(작성 메뉴 비노출)는 교무부장 계정 실접속 시 확인.
+- **잔여**: E-2 UI(말로 입력하기 — TeacherSlotBanTab, 별건) / E-3·4 / F-2(9월 샘플) / 9월 질문지.
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- E-2 UI(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/phase9c_e_spec.md §5 대로 E-2 UI(말로 입력하기 → 확인 다이얼로그 → slot_ban_save) 구현해줘."*

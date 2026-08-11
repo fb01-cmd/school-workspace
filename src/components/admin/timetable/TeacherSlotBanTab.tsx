@@ -215,7 +215,7 @@ export default function TeacherSlotBanTab({ activeTermId, periodsPerDay = 7 }: T
       <div className="bg-rose-50 border border-rose-200 rounded-xl p-5 text-rose-900 text-xs leading-relaxed space-y-1">
         <div className="font-bold text-sm flex items-center gap-1.5 text-rose-900">
           <span>🚫</span>
-          <span>특별교사 금지 등록부 (매뉴얼 §6-가)</span>
+          <span>특별교사 금지 등록부</span>
         </div>
         <p>
           특정 교사의 특정 요일·교시 수업 배정을 금지하거나 지정된 위치에 고정합니다.
