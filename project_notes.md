@@ -3344,3 +3344,18 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - Antigravity 검증은 admin SDK 기반 **서버 경로 E2E**(시나리오 ①~⑤ = draft 함수 실호출, ⑥ = matcher 로직 검증) — "실기기" 표현은 과장이나 위험 부담 구간(관문·재생·409·차감)은 실측된 것이 맞음. **브라우저 클릭 UX(후보 채색·다이얼로그·버튼 비활성)는 실사용 첫 회에 자연 확인** 대상으로 남김(증상 소멸 기준).
 - 테스트 초안 정리 주장은 Claude가 Firestore 실측으로 재확인 — 잔존 0건 ✓.
 - Phase D 종결. 9c 잔여: Phase E(AI 보조)·F(NEIS 내보내기)·9월 질문지·비차단 후속(draft_op 40 reads·H1 동일키).
+
+## [2026-08-11] 9c Phase F 스펙 v1 + F-1a(사전 검증 리포트) 구현 ✅ ([`docs/phase9c_f_spec.md`](./docs/phase9c_f_spec.md))
+
+- **범위 분할 확정**: F-1(매핑 등록부+사전 검증 — 샘플 없이 설계가 닫힘, 선행) / F-2(CSV 직렬화 — 9월 질문지 샘플 확보 후). 검증 이원화 = 차단 B1(플랫폼이 아는 것: 과목 NEIS명 매핑 유무) vs 체크리스트 W2·W3(NEIS 쪽 등록 상태 — 플랫폼 검증 불가, 일과계 자가 확인).
+- **9c 스펙 §8 정정**: 매핑을 term.subjects에 열 추가하는 원안 기각 — 가져오기마다 재생성돼 신학기마다 유실. **`timetable_neis_map/{domain}` 학기 무관 영속 단일 문서**로 확정.
+- **구현(F-1a, Claude)**: `src/lib/timetable/neis.ts`(순수 — buildNeisPrecheckReport·sanitize·neisPairKey, normSubject는 validate.ts에서 export해 단일 소재지) + server.ts 로더/저장/computeNeisPrecheck(대상 = 학기 기초 or 초안 재생 그리드) + manage 라우트 action 3종(`neis_map_get`·`neis_map_save`[감사 로그]·`neis_precheck`, 권한 = authz 기본 거부 폴스루로 일과계+super_admin, authz.ts 무변경).
+- **검증**: 자가 테스트 `scripts/neis_precheck_selftest.ts` 24항목 전건 통과 / 실데이터 실측 `scripts/verify_neis_precheck.ts`(읽기 전용 ~33 reads) — 2026-2에서 학급 30·수업 1,020·과목 56·실교사 60·담당 pair 86 집계, 판정 2종(매핑+미확정=전수, 전 과목 시드 시 B1=0) ✅ / tsc 0건 / build ✅.
+- **실측 발견 (F-2·UI에 중요)**: 그리드 과목명은 "통과·독작·영Ⅱ" 등 **약칭 계열 56종** — NEIS 등재명과 전부 다를 가능성이 높아 매핑표가 형식적 절차가 아니라 실질 필수. W1 가상 교사 = SLAT·창체 2건(각 주 60시간) — NEIS 파일 표현은 F-2 열린 질문(9월 질문지에 샘플+창체 표현+복수교사 표기 3문항, F 스펙 §6).
+- **부수 정리**: `scripts/verify_phase_d_e2e.ts` 선재 타입 오류 3건 수정(subjectShort 누락 2·SimulGroup termId 누락 1) — 직전 핸드오버의 "tsc ✅" 주장과 어긋나던 부채. 실행 결과에는 영향 없음(tsx는 타입 무시 실행).
+- **잔여**: F-1b UI(Antigravity — F 스펙 §5, 기존 NeisExportTab 섹션 2 추가·새 탭 금지·개발 용어 금지) / F-2는 9월 샘플 대기 / 9c 나머지 = Phase E(AI 보조)·9월 질문지.
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- F-1b UI 구현(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/phase9c_f_spec.md §5 대로 NEIS 사전 검증 UI(NeisExportTab 섹션 2) 구현해줘."*
+- UI 구현 후 리뷰(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase F-1b UI 표적 리뷰해줘."*

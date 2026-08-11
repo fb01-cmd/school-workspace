@@ -44,7 +44,7 @@ async function run() {
 
     let removedCellDay = 5;
     let removedCellPeriod = 7;
-    let removedLesson: TimetableLesson = { subjectName: "국어", teachers: [{ email: "test@hmh.or.kr", name: "테스트" }] };
+    let removedLesson: TimetableLesson = { subjectName: "국어", subjectShort: "국어", teachers: [{ email: "test@hmh.or.kr", name: "테스트" }] };
 
     const targetCell = g1_1.cells.find((c) => c.day === 5 && c.period === 7) || g1_1.cells[g1_1.cells.length - 1];
     if (targetCell && targetCell.lessons.length > 0) {
@@ -153,6 +153,7 @@ async function run() {
       lessons: [
         {
           subjectName: "철학",
+          subjectShort: "철학",
           teachers: [{ email: occupiedCells[0].lessons[0]?.teachers?.[0]?.email || "test@test.com", name: "테스트" }],
         },
       ],
@@ -235,7 +236,7 @@ async function run() {
       }
     } else {
       const testMatcher = buildSimulMatcher([
-        { id: "sim-1", label: "제2외국어", grade: 2, classNums: [1, 2], subjectNames: ["중국어"], active: true },
+        { id: "sim-1", termId: "test", label: "제2외국어", grade: 2, classNums: [1, 2], subjectNames: ["중국어"], active: true },
       ]);
       const matched = testMatcher(2, 1, 3, 5, "중국어");
       if (matched !== "제2외국어") {

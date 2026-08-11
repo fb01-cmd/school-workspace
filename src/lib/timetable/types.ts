@@ -375,7 +375,11 @@ export type ManageAction =
   | "draft_model" // 제약 모델 + 기준 그리드 한번에 로드 (편집 진입 시 1회 요청, spec §5)
   | "draft_op"    // op 1건 적용 (재생 → 검사 → 하드 신규 발생 시 409)
   | "draft_undo"  // opCursor - 1
-  | "draft_redo"; // opCursor + 1
+  | "draft_redo"  // opCursor + 1
+  // ── Phase 9c-F NEIS 일괄 내보내기 (phase9c_f_spec §4) ──
+  | "neis_map_get"   // 매핑 등록부 + 학기 과목 seed
+  | "neis_map_save"  // 등록부 전체 교체 (sanitize·감사 로그)
+  | "neis_precheck"; // 사전 검증 리포트 (termId 또는 draftId 대상)
 
 export interface ManageTimetableRequest {
   action: ManageAction;
@@ -432,6 +436,8 @@ export interface ManageTimetableRequest {
   draftUnplaced?: TimetableDraftUnplaced[];
   draftReport?: TimetableAuditReport; // draft_create 시 클라에서 검사기 실행 결과 동봉
   draftOp?: BaseRevisionOp; // draft_op 적용 연산 1건
+  // Phase 9c-F NEIS 매핑 (phase9c_f_spec §4) — neis_precheck 대상은 termId/draftId 재사용
+  neisMap?: Partial<NeisMapRegistry>; // neis_map_save 본문 (전체 교체)
 }
 
 export interface ManageTimetableResponse {
@@ -1119,4 +1125,83 @@ export interface TimetableDraft {
   createdAt?: number;
   updatedBy?: string;
   updatedAt?: number;
+}
+
+// ═════════════════════════════════════════════════════════════
+// Phase 9c-F: NEIS 일괄 내보내기 — 매핑 등록부·사전 검증 (phase9c_f_spec)
+// ═════════════════════════════════════════════════════════════
+
+/** 과목 NEIS 등재명 매핑 1행 — neisName "" = 미확정 (동일해도 명시 저장 = 확인의 의미) */
+export interface NeisSubjectMapping {
+  platformName: string; // 우리 정식 과목명 (term.subjects[].name)
+  neisName: string;
+}
+
+/** NEIS 매핑 등록부 — timetable_neis_map/{domain} 단일 문서, 학기 무관 영속 (spec §2).
+ *  term.subjects는 가져오기마다 재생성되므로 거기에 두면 신학기마다 유실 — 별도 문서가 원칙. */
+export interface NeisMapRegistry {
+  subjects: NeisSubjectMapping[];
+  /** "NEIS에 교원 등재 확인함" — teacherKey(이메일 소문자) 집합 */
+  confirmedTeachers: string[];
+  /** "NEIS에 담당 등록 확인함" — 서버 리포트가 산출한 pair key를 그대로 반송 (클라 조립 금지) */
+  confirmedPairs: string[];
+  updatedBy?: string;
+  updatedAt?: number;
+}
+
+/** B1 — NEIS명 미확정 과목 (차단) */
+export interface NeisPrecheckSubjectIssue {
+  platformName: string;
+  lessonCount: number;
+  classCount: number;
+  text: string;
+}
+
+/** W1(가상 교사 수업)·W2(교원 등재 미확인) 공용 행 */
+export interface NeisPrecheckTeacherIssue {
+  teacherKey: string; // W1은 "name:이름" 형식
+  teacherName: string;
+  lessonCount: number;
+  text: string;
+}
+
+/** W3 — 담당 등록 미확인 (교사×과목) */
+export interface NeisPrecheckPairIssue {
+  key: string; // confirmedPairs 저장용 — 서버 산출 값 그대로 반송
+  teacherKey: string;
+  teacherName: string;
+  platformName: string;
+  neisName?: string; // 매핑 확정 시 병기
+  classCount: number;
+  text: string;
+}
+
+/** 사전 검증 리포트 (spec §3) — 빈칸 3원인 예방. 차단=플랫폼이 아는 것, 체크리스트=NEIS 쪽 상태(자가 확인) */
+export interface NeisPrecheckReport {
+  readyForExport: boolean; // B1 == 0
+  blockers: {
+    unmappedSubjects: NeisPrecheckSubjectIssue[]; // B1
+  };
+  warnings: {
+    virtualLessons: NeisPrecheckTeacherIssue[]; // W1 — 창체·SLAT, NEIS 표현은 F-2 열린 질문
+    unconfirmedTeachers: NeisPrecheckTeacherIssue[]; // W2
+    unconfirmedPairs: NeisPrecheckPairIssue[]; // W3
+  };
+  summary: {
+    classes: number;
+    lessons: number;
+    subjects: number;
+    mappedSubjects: number;
+    teachers: number; // 실교사만
+    confirmedTeachers: number;
+    pairs: number;
+    confirmedPairs: number;
+  };
+}
+
+/** neis_precheck 응답의 대상 표식 */
+export interface NeisPrecheckTarget {
+  kind: "term" | "draft";
+  id: string;
+  label: string;
 }

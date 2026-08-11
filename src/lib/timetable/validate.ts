@@ -33,7 +33,8 @@ import {
 } from "./types";
 
 const norm = (e: string) => (e || "").trim().toLowerCase();
-const normSubject = (s: string) =>
+/** 과목명 매칭 정규화 — NFC·공백 제거·소문자. NEIS 매핑(neis.ts)도 이 규약을 공유한다 (단일 소재지) */
+export const normSubject = (s: string) =>
   (s || "").normalize("NFC").replace(/\s+/g, "").trim().toLowerCase();
 const DAY_LABEL = ["", "월", "화", "수", "목", "금"];
 

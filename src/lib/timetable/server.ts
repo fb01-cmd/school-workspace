@@ -13,9 +13,13 @@ import { applyVenueMarks } from "./venue";
 import { deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "./validate";
 import { applyRevisionOps, cloneClassGrids } from "./utils";
 export { applyRevisionOps, cloneClassGrids };
+import { buildNeisPrecheckReport, emptyNeisMapRegistry } from "./neis";
 import {
   ClassCellIssue,
   ClassGrid,
+  NeisMapRegistry,
+  NeisPrecheckReport,
+  NeisPrecheckTarget,
   FreeTeacher,
   IntermediateClassGrid,
   IntermediateImportPayload,
@@ -5539,4 +5543,82 @@ export async function redoDraftOp(
   };
 
   return { meta: updatedMeta, baseGrids, currentGrids, report };
+}
+
+// ═════════════════════════════════════════════════════════════
+// Phase 9c-F: NEIS 매핑 등록부 · 사전 검증 (phase9c_f_spec §2·§4)
+// ═════════════════════════════════════════════════════════════
+
+/** 학기 무관 영속 단일 문서 — term.subjects에 두면 신학기마다 유실되므로 별도 문서 (spec §2) */
+export const neisMapDocRef = (domain: string) =>
+  adminDb.collection("timetable_neis_map").doc(domain);
+
+export async function loadNeisMapRegistry(domain: string): Promise<NeisMapRegistry> {
+  const snap = await neisMapDocRef(domain).get();
+  if (!snap.exists) return emptyNeisMapRegistry();
+  const d = snap.data() || {};
+  return {
+    subjects: Array.isArray(d.subjects)
+      ? d.subjects
+          .filter((r: any) => r && typeof r.platformName === "string")
+          .map((r: any) => ({
+            platformName: String(r.platformName),
+            neisName: typeof r.neisName === "string" ? r.neisName : "",
+          }))
+      : [],
+    confirmedTeachers: Array.isArray(d.confirmedTeachers)
+      ? d.confirmedTeachers.filter((t: any) => typeof t === "string")
+      : [],
+    confirmedPairs: Array.isArray(d.confirmedPairs)
+      ? d.confirmedPairs.filter((p: any) => typeof p === "string")
+      : [],
+    updatedBy: typeof d.updatedBy === "string" ? d.updatedBy : undefined,
+    updatedAt: toMillis(d.updatedAt) ?? undefined,
+  };
+}
+
+/** 등록부 전체 교체 저장 — sanitize는 호출부(route)에서 sanitizeNeisMapPayload로 선행 */
+export async function saveNeisMapRegistry(
+  domain: string,
+  registry: NeisMapRegistry,
+  operatorEmail: string
+): Promise<void> {
+  await neisMapDocRef(domain).set({
+    subjects: registry.subjects,
+    confirmedTeachers: registry.confirmedTeachers,
+    confirmedPairs: registry.confirmedPairs,
+    updatedBy: operatorEmail,
+    updatedAt: Date.now(),
+  });
+}
+
+/**
+ * 사전 검증 리포트 계산 — 대상은 초안(draftId, 재생 현재 그리드) 또는 학기 기초 그리드.
+ * 읽기 예산: 학급 그리드 ~30 + 등록부 1 (수동 버튼 트리거 전용 — spec §4).
+ */
+export async function computeNeisPrecheck(
+  domain: string,
+  opts: { termId?: string; draftId?: string }
+): Promise<{ report: NeisPrecheckReport; target: NeisPrecheckTarget }> {
+  const registry = await loadNeisMapRegistry(domain);
+
+  if (opts.draftId) {
+    const { meta, currentGrids } = await getDraft(domain, opts.draftId);
+    return {
+      report: buildNeisPrecheckReport(currentGrids, registry),
+      target: { kind: "draft", id: opts.draftId, label: meta.label },
+    };
+  }
+
+  if (!opts.termId) {
+    throw new Error("대상 학기(termId) 또는 초안(draftId)이 필요합니다.");
+  }
+  const [term, grids] = await Promise.all([
+    loadTimetableTerm(domain, opts.termId),
+    loadAllClassGrids(domain, opts.termId),
+  ]);
+  return {
+    report: buildNeisPrecheckReport(grids, registry),
+    target: { kind: "term", id: opts.termId, label: term?.name || opts.termId },
+  };
 }

@@ -63,7 +63,12 @@ import {
   undoDraftOp,
   redoDraftOp,
   DraftOpConflictError,
+  loadNeisMapRegistry,
+  saveNeisMapRegistry,
+  computeNeisPrecheck,
+  loadTimetableTerm,
 } from "@/lib/timetable/server";
+import { sanitizeNeisMapPayload } from "@/lib/timetable/neis";
 import {
   DirectCommitBatchItemResult,
   ManageAction,
@@ -1276,6 +1281,53 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
         const result = await redoDraftOp(domain, body.draftId, auth.email);
         return NextResponse.json({ success: true, action, ...result });
+      }
+
+      // ── Phase 9c-F NEIS 일괄 내보내기 (phase9c_f_spec §4) ──
+
+      case "neis_map_get": {
+        const termId = body.termId || settings.activeTermId;
+        const [registry, term] = await Promise.all([
+          loadNeisMapRegistry(domain),
+          termId ? loadTimetableTerm(domain, termId) : Promise.resolve(null),
+        ]);
+        // seed = 매핑표 UI의 행 원천 (학기 과목명·약칭 — term 문서에 이미 있어 추가 읽기 0)
+        const subjectsSeed = (term?.subjects || []).map((s) => ({
+          name: s.name,
+          shortName: s.shortName,
+        }));
+        return NextResponse.json({ success: true, action, registry, subjectsSeed, termId });
+      }
+
+      case "neis_map_save": {
+        const { registry, error } = sanitizeNeisMapPayload(body.neisMap);
+        if (error || !registry) {
+          return NextResponse.json({ error: error || "등록부 본문이 올바르지 않습니다." }, { status: 400 });
+        }
+        await saveNeisMapRegistry(domain, registry, auth.email);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "neis_map_save",
+          details: `NEIS 매핑 등록부 저장: 과목 ${registry.subjects.length}건 · 교원 확인 ${registry.confirmedTeachers.length}건 · 담당 확인 ${registry.confirmedPairs.length}건`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action });
+      }
+
+      case "neis_precheck": {
+        const termId = body.termId || settings.activeTermId;
+        if (!body.draftId && !termId) {
+          return NextResponse.json(
+            { error: "대상 학기(termId) 또는 초안(draftId)이 필요합니다." },
+            { status: 400 }
+          );
+        }
+        const { report, target } = await computeNeisPrecheck(domain, {
+          termId: termId || undefined,
+          draftId: body.draftId,
+        });
+        return NextResponse.json({ success: true, action, report, target });
       }
 
       default:
