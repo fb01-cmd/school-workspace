@@ -3307,3 +3307,16 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - 최종 검수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. F1·F2 재수정 최종 검수해줘."*
 - push 승인: *"푸시하자."*
+
+## [2026-08-11] F1·F2 재수정 최종 검수 — 전부 통과 ✅ (Phase D-2 종결, Claude가 커밋)
+
+- **검수 방식**: 미커밋 작업 트리 diff 직접 대조 → 통과 후 Claude 커밋(유실 방지, 8a949dd 전례).
+- **F1**: server.ts 사본 삭제 + utils import·re-export ✓ — applyRevisionOps·cloneClassGrids 단일 소재지 확립(재생 결정론 위험 해소).
+- **F2**: hoursSnapshot 생성 규칙 정확(솔버 초안 = 현행 학기 재역산, 복제 = base 재사용) ✓ / draft_op·undo·redo·getDraft 4경로 모두 `hoursSnapshot ?? base 역산` 폴백 ✓ / getDraft가 hours 동봉, 클라 미리보기 동일 기준(getData.hours → snapshot → 역산 3단 폴백) ✓ — 미배정 배정 409 오차단 해소·구초안 호환.
+- **밴드 matcher**: getSimulLabel(스탬프 우선+matcher 폴백)로 선택·후보·미배정 타겟·렌더 배지 전 사용처 교체 ✓ — 솔버 초안 차단 무력 해소.
+- **검증**: tsc ✅ / build ✅ / 검사기·솔버 자가 테스트 ✅ (전부 Claude 재실행).
+- **Phase D-2 코드 종결.** 잔여: 스펙 §8 E2E 시나리오 6종 실기기 확인(완료 보고 전 필수 — 증상 소멸 기준), 비차단 2건(draft_op 40 reads·H1 악화 동일키)은 후속.
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- E2E 실기기(사용자 또는 Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. Phase D E2E 시나리오 6종(스펙 §8) 실기기로 돌려줘."*
