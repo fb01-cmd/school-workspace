@@ -367,11 +367,15 @@ export async function loadTeacherSlotBans(domain: string, termId: string): Promi
   });
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function validateTeacherSlotBanPayload(raw: any): { ok: true; rule: Omit<TeacherSlotBan, "id" | "createdBy" | "createdAt"> } | { ok: false; error: string } {
   const termId = typeof raw?.termId === "string" ? raw.termId.trim() : "";
   if (!termId) return { ok: false, error: "학기가 지정되지 않았습니다." };
   const teacherEmail = typeof raw?.teacherEmail === "string" ? raw.teacherEmail.trim().toLowerCase() : "";
-  if (!teacherEmail) return { ok: false, error: "교사 이메일을 입력해 주세요." };
+  if (!teacherEmail || !EMAIL_REGEX.test(teacherEmail)) {
+    return { ok: false, error: "올바른 교사 이메일 형식이 아닙니다 (예: name@domain.com)." };
+  }
   const teacherName = typeof raw?.teacherName === "string" ? raw.teacherName.trim() : undefined;
   const kind = raw?.kind === "move" ? "move" : "assign";
   if (!Array.isArray(raw?.slots) || raw.slots.length === 0) {
@@ -438,9 +442,20 @@ export function validateConsecutiveRulePayload(raw: any): { ok: true; rule: Omit
   if (!subjectName) return { ok: false, error: "대상 과목명을 입력해 주세요." };
   const pattern = typeof raw?.pattern === "string" ? raw.pattern.trim() : "";
   if (!pattern) return { ok: false, error: "연속패턴(예: 2, 2,2, 3)을 입력해 주세요." };
+  if (!/^\d+(\s*,\s*\d+)*$/.test(pattern)) {
+    return { ok: false, error: "연속패턴은 '2' 또는 '2,2'와 같이 숫자와 쉼표로만 작성해야 합니다." };
+  }
+  const blockNums = pattern.split(",").map((s: string) => Number(s.trim())).filter((n: number) => !isNaN(n));
+  if (!blockNums.some((n: number) => n >= 2)) {
+    return { ok: false, error: "연속 블록 길이(2 이상)가 1개 이상 포함되어야 합니다." };
+  }
+
   const teacherEmail = typeof raw?.teacherEmail === "string" && raw.teacherEmail.trim()
     ? raw.teacherEmail.trim().toLowerCase()
     : undefined;
+  if (teacherEmail && !EMAIL_REGEX.test(teacherEmail)) {
+    return { ok: false, error: "올바른 교사 이메일 형식이 아닙니다 (예: name@domain.com)." };
+  }
 
   return {
     ok: true,
@@ -493,6 +508,11 @@ export function validateCoTeachingRulePayload(raw: any): { ok: true; rule: Omit<
     ? [...new Set<string>(raw.teacherEmails.map((e: any) => String(e).trim().toLowerCase()).filter(Boolean))]
     : [];
   if (teacherEmails.length < 2) return { ok: false, error: "복수 교사는 2명 이상 등록해야 합니다." };
+  for (const email of teacherEmails) {
+    if (!EMAIL_REGEX.test(email)) {
+      return { ok: false, error: `올바르지 않은 교사 이메일 형식입니다: ${email}` };
+    }
+  }
 
   return {
     ok: true,

@@ -351,11 +351,11 @@ export default function TimetableSection() {
 
       {activeTab === "venue" && <VenueGroupTab activeTermId={activeTermId} />}
 
-      {activeTab === "slot_ban" && <TeacherSlotBanTab activeTermId={activeTermId} />}
+      {activeTab === "slot_ban" && <TeacherSlotBanTab activeTermId={activeTermId} periodsPerDay={periodsPerDay} />}
 
-      {activeTab === "consecutive" && <ConsecutiveRuleTab activeTermId={activeTermId} />}
+      {activeTab === "consecutive" && <ConsecutiveRuleTab activeTermId={activeTermId} periodsPerDay={periodsPerDay} />}
 
-      {activeTab === "coteaching" && <CoTeachingRuleTab activeTermId={activeTermId} />}
+      {activeTab === "coteaching" && <CoTeachingRuleTab activeTermId={activeTermId} periodsPerDay={periodsPerDay} />}
 
       {activeTab === "calendar" && <CalendarManageTab activeTermId={activeTermId} />}
 

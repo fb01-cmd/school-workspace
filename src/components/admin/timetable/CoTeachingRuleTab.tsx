@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { CoTeachingRule, ClassGrid } from "@/lib/timetable/types";
+import AutocompleteInput from "@/components/admin/AutocompleteInput";
 
 interface CoTeachingRuleTabProps {
   activeTermId?: string | null;
+  periodsPerDay?: number;
 }
 
-export default function CoTeachingRuleTab({ activeTermId }: CoTeachingRuleTabProps) {
+export default function CoTeachingRuleTab({ activeTermId, periodsPerDay = 7 }: CoTeachingRuleTabProps) {
+  const { userData } = useAuth();
+  const domain = userData?.domain || userData?.email?.split("@")[1] || "hmh.or.kr";
+
   const [rules, setRules] = useState<CoTeachingRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +41,7 @@ export default function CoTeachingRuleTab({ activeTermId }: CoTeachingRuleTabPro
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "co_teaching_rule_list", termId: activeTermId }),
+        body: JSON.stringify({ action: "co_teaching_rule_list", termId: activeTermId || undefined }),
       });
 
       if (res.ok) {
@@ -100,11 +106,11 @@ export default function CoTeachingRuleTab({ activeTermId }: CoTeachingRuleTabPro
     setActive(true);
   };
 
-  const handleAddTeacherEmail = () => {
-    const trimmed = teacherEmailInput.trim().toLowerCase();
-    if (!trimmed) return;
-    if (!teacherEmails.includes(trimmed)) {
-      setTeacherEmails([...teacherEmails, trimmed]);
+  const handleAddTeacherEmail = (emailToAdd?: string) => {
+    const target = (emailToAdd || teacherEmailInput).trim().toLowerCase();
+    if (!target || !target.includes("@")) return;
+    if (!teacherEmails.includes(target)) {
+      setTeacherEmails([...teacherEmails, target]);
     }
     setTeacherEmailInput("");
   };
@@ -123,7 +129,7 @@ export default function CoTeachingRuleTab({ activeTermId }: CoTeachingRuleTabPro
   };
 
   const handleSelectAllClasses = () => {
-    setClassNums([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    setClassNums([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   };
 
   const handleEditClick = (rule: CoTeachingRule) => {
@@ -148,12 +154,16 @@ export default function CoTeachingRuleTab({ activeTermId }: CoTeachingRuleTabPro
     }
 
     let finalEmails = [...teacherEmails];
-    if (teacherEmailInput.trim() && !finalEmails.includes(teacherEmailInput.trim().toLowerCase())) {
+    if (
+      teacherEmailInput.trim() &&
+      teacherEmailInput.includes("@") &&
+      !finalEmails.includes(teacherEmailInput.trim().toLowerCase())
+    ) {
       finalEmails.push(teacherEmailInput.trim().toLowerCase());
     }
 
     if (finalEmails.length < 2) {
-      alert("복수 교사는 2명 이상의 교사 이메일을 입력해야 합니다.");
+      alert("복수 교사는 2명 이상의 교사 이메일을 등록해야 합니다.");
       return;
     }
 
@@ -161,7 +171,7 @@ export default function CoTeachingRuleTab({ activeTermId }: CoTeachingRuleTabPro
     try {
       const payload: CoTeachingRule = {
         id: editingRuleId || undefined,
-        termId: activeTermId || "2026-2",
+        termId: activeTermId || "",
         grade,
         classNums,
         subjectName: subjectName.trim(),
@@ -228,14 +238,14 @@ export default function CoTeachingRuleTab({ activeTermId }: CoTeachingRuleTabPro
 
   return (
     <div className="space-y-6 font-sans">
-      {/* 안내 박스 */}
+      {/* 안내 박스 - 눈높이 문구로 정리 */}
       <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 text-purple-900 text-xs leading-relaxed space-y-1">
         <div className="font-bold text-sm flex items-center gap-1.5 text-purple-900">
           <span>👥</span>
           <span>복수교사 등록부 (매뉴얼 §6-사)</span>
         </div>
         <p>
-          동일 학급의 동일 요일·교시 슬롯에 2명 이상의 교사가 함께 투입되는 수업을 지정합니다. (시수 동일 강제 검사기 H8 대상)
+          동일 학급의 동일 요일·교시 시간에 2명 이상의 교사가 함께 수업에 투입되는 형태를 지정합니다. (투입 교사 간 동일 교시수 배치 검사)
         </p>
       </div>
 
@@ -292,7 +302,7 @@ export default function CoTeachingRuleTab({ activeTermId }: CoTeachingRuleTabPro
                   onClick={handleSelectAllClasses}
                   className="text-[11px] font-semibold text-purple-700 hover:underline"
                 >
-                  1~10반 선택
+                  1~12반 전체 선택
                 </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -332,37 +342,23 @@ export default function CoTeachingRuleTab({ activeTermId }: CoTeachingRuleTabPro
               />
             </div>
 
-            {/* 공동 담당 교사 이메일 목록 입력 */}
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">
-                투입 교사 이메일 목록 (최소 2명) <span className="text-red-500">*</span>
+            {/* 공동 담당 교사 검색 및 추가 (AutocompleteInput 적용) */}
+            <div className="space-y-1.5">
+              <label className="block font-bold text-gray-700">
+                투입 교사 검색 및 추가 (최소 2명) <span className="text-red-500">*</span>
               </label>
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="email"
-                  value={teacherEmailInput}
-                  onChange={(e) => setTeacherEmailInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddTeacherEmail();
-                    }
-                  }}
-                  placeholder="teacher1@hmh.or.kr"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddTeacherEmail}
-                  className="px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold rounded-lg shrink-0"
-                >
-                  + 추가
-                </button>
-              </div>
+              <AutocompleteInput
+                value={teacherEmailInput}
+                onChange={(val) => setTeacherEmailInput(val)}
+                onSelect={(email) => handleAddTeacherEmail(email)}
+                placeholder="교사 성명 또는 이메일 검색 후 선택..."
+                type="user"
+                domain={domain}
+              />
 
               {/* 추가된 교사 이메일 태그 목록 */}
               {teacherEmails.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5 p-2.5 bg-gray-50 border border-gray-200 rounded-lg max-h-32 overflow-y-auto">
+                <div className="flex flex-wrap gap-1.5 p-2.5 bg-gray-50 border border-gray-200 rounded-lg max-h-32 overflow-y-auto mt-2">
                   {teacherEmails.map((email) => (
                     <span
                       key={email}
@@ -394,7 +390,7 @@ export default function CoTeachingRuleTab({ activeTermId }: CoTeachingRuleTabPro
                 className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
               />
               <label htmlFor="coteach-active" className="font-bold text-gray-700 cursor-pointer">
-                이 규칙 활성화 (검사기 및 솔버에 적용)
+                이 규칙 활성화 (검사기 및 자동 조정에 적용)
               </label>
             </div>
 

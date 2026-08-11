@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { TeacherSlotBan, SimulSlot, SlotBanKind } from "@/lib/timetable/types";
+import AutocompleteInput from "@/components/admin/AutocompleteInput";
 
 interface TeacherSlotBanTabProps {
   activeTermId?: string | null;
+  periodsPerDay?: number;
 }
 
-export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabProps) {
+export default function TeacherSlotBanTab({ activeTermId, periodsPerDay = 7 }: TeacherSlotBanTabProps) {
+  const { userData } = useAuth();
+  const domain = userData?.domain || userData?.email?.split("@")[1] || "hmh.or.kr";
+
   const [rules, setRules] = useState<TeacherSlotBan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,16 +23,13 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
 
   // Form states
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [teacherSearchTerm, setTeacherSearchTerm] = useState("");
   const [teacherEmail, setTeacherEmail] = useState("");
   const [teacherName, setTeacherName] = useState("");
   const [kind, setKind] = useState<SlotBanKind>("assign");
   const [slots, setSlots] = useState<SimulSlot[]>([]);
   const [note, setNote] = useState("");
   const [active, setActive] = useState(true);
-
-  // Slot selector helper states
-  const [slotDay, setSlotDay] = useState<number>(1);
-  const [slotPeriod, setSlotPeriod] = useState<number>(1);
 
   const DAYS = [
     { num: 1, label: "월" },
@@ -36,7 +39,8 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
     { num: 5, label: "금" },
   ];
 
-  const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
+  const maxPeriod = Math.max(7, periodsPerDay || 7);
+  const PERIOD_LIST = Array.from({ length: maxPeriod }, (_, i) => i + 1);
 
   const fetchRules = async () => {
     setLoading(true);
@@ -45,7 +49,7 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "slot_ban_list", termId: activeTermId }),
+        body: JSON.stringify({ action: "slot_ban_list", termId: activeTermId || undefined }),
       });
 
       if (res.ok) {
@@ -68,12 +72,19 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
 
   const resetForm = () => {
     setEditingRuleId(null);
+    setTeacherSearchTerm("");
     setTeacherEmail("");
     setTeacherName("");
     setKind("assign");
     setSlots([]);
     setNote("");
     setActive(true);
+  };
+
+  const handleSelectTeacher = (email: string, name?: string) => {
+    setTeacherEmail(email);
+    setTeacherName(name || "");
+    setTeacherSearchTerm(name ? `${name} (${email})` : email);
   };
 
   const handleToggleSlot = (day: number, period: number) => {
@@ -85,16 +96,9 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
     }
   };
 
-  const handleAddSlotExplicit = () => {
-    const exists = slots.some((s) => s.day === slotDay && s.period === slotPeriod);
-    if (!exists) {
-      setSlots([...slots, { day: slotDay, period: slotPeriod }].sort((a, b) => a.day - b.day || a.period - b.period));
-    }
-  };
-
   const handleQuickAddDay = (day: number) => {
     const newSlots = [...slots];
-    for (let p = 1; p <= 7; p++) {
+    for (let p = 1; p <= maxPeriod; p++) {
       if (!newSlots.some((s) => s.day === day && s.period === p)) {
         newSlots.push({ day, period: p });
       }
@@ -116,6 +120,7 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
     setEditingRuleId(rule.id || null);
     setTeacherEmail(rule.teacherEmail);
     setTeacherName(rule.teacherName || "");
+    setTeacherSearchTerm(rule.teacherName ? `${rule.teacherName} (${rule.teacherEmail})` : rule.teacherEmail);
     setKind(rule.kind || "assign");
     setSlots(rule.slots || []);
     setNote(rule.note || "");
@@ -124,12 +129,13 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
 
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!teacherEmail.trim()) {
-      alert("교사 이메일을 입력해 주세요.");
+    const finalEmail = teacherEmail.trim() || (teacherSearchTerm.includes("@") ? teacherSearchTerm.trim() : "");
+    if (!finalEmail) {
+      alert("교사 검색에서 대상 교사를 선택하거나 올바른 이메일을 입력해 주세요.");
       return;
     }
     if (slots.length === 0) {
-      alert("금지 요시/교시를 최소 1개 이상 선택해 주세요.");
+      alert("금지 요일/교시를 최소 1개 이상 선택해 주세요.");
       return;
     }
 
@@ -137,8 +143,8 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
     try {
       const payload: TeacherSlotBan = {
         id: editingRuleId || undefined,
-        termId: activeTermId || "2026-2",
-        teacherEmail: teacherEmail.trim().toLowerCase(),
+        termId: activeTermId || "",
+        teacherEmail: finalEmail.toLowerCase(),
         teacherName: teacherName.trim() || undefined,
         kind,
         slots,
@@ -205,18 +211,18 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
 
   return (
     <div className="space-y-6 font-sans">
-      {/* 안내 박스 */}
+      {/* 안내 박스 - 눈높이 문구로 정리 (개발용어/코드 오기 제거) */}
       <div className="bg-rose-50 border border-rose-200 rounded-xl p-5 text-rose-900 text-xs leading-relaxed space-y-1">
         <div className="font-bold text-sm flex items-center gap-1.5 text-rose-900">
           <span>🚫</span>
           <span>특별교사 금지 등록부 (매뉴얼 §6-가)</span>
         </div>
         <p>
-          특정 교사의 특정 요일·교시 수업 배정을 금지(<strong>assign</strong>)하거나 솔버 자동 이동을 금지(<strong>move</strong>)합니다.
+          특정 교사의 특정 요일·교시 수업 배정을 금지하거나 지정된 위치에 고정합니다.
         </p>
         <div className="flex flex-wrap gap-4 pt-1 font-semibold text-[11px] text-rose-800">
-          <span>• 배정금지(assign): 해당 슬롯에 수업 배치 시 검사기 H3 하드 위반</span>
-          <span>• 이동금지(move): 솔버가 기본 배정을 다른 슬롯으로 옮기지 못함</span>
+          <span>• 배정금지: 이 교시에는 수업을 아예 배치하지 않음 (위반 시 검사기 H5 경고)</span>
+          <span>• 이동금지: 시간표 자동 조정 시 지금 위치를 다른 교시로 옮기지 못하게 고정함</span>
         </div>
       </div>
 
@@ -239,7 +245,7 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
           </div>
 
           <form onSubmit={handleSaveRule} className="space-y-4 text-xs">
-            {/* 구분 (Kind) 선택 */}
+            {/* 구분 선택 */}
             <div>
               <label className="block font-bold text-gray-700 mb-1.5">
                 금지 속성 <span className="text-red-500">*</span>
@@ -254,7 +260,7 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
                       : "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100"
                   }`}
                 >
-                  🚫 배정금지 (assign)
+                  🚫 배정금지 (수업 배치 불가)
                 </button>
                 <button
                   type="button"
@@ -265,36 +271,45 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
                       : "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100"
                   }`}
                 >
-                  🔒 이동금지 (move)
+                  🔒 이동금지 (위치 고정)
                 </button>
               </div>
             </div>
 
-            {/* 교사 이메일 & 이름 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  교사 이메일 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  value={teacherEmail}
-                  onChange={(e) => setTeacherEmail(e.target.value)}
-                  placeholder="teacher@hmh.or.kr"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">교사 성명 (선택)</label>
-                <input
-                  type="text"
-                  value={teacherName}
-                  onChange={(e) => setTeacherName(e.target.value)}
-                  placeholder="예: 홍길동"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                />
-              </div>
+            {/* 교사 검색 AutocompleteInput (자동완성 규칙 4) */}
+            <div className="space-y-1.5">
+              <label className="block font-bold text-gray-700">
+                대상 교사 검색 및 선택 <span className="text-red-500">*</span>
+              </label>
+              <AutocompleteInput
+                value={teacherSearchTerm}
+                onChange={(val) => {
+                  setTeacherSearchTerm(val);
+                  if (val.includes("@")) setTeacherEmail(val.trim());
+                }}
+                onSelect={handleSelectTeacher}
+                placeholder="교사 성명 또는 이메일 검색..."
+                type="user"
+                domain={domain}
+              />
+              {teacherEmail && (
+                <div className="flex items-center justify-between p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-900 text-xs font-semibold">
+                  <span>
+                    ✅ 선택된 교사: <strong>{teacherName || teacherEmail}</strong> ({teacherEmail})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTeacherEmail("");
+                      setTeacherName("");
+                      setTeacherSearchTerm("");
+                    }}
+                    className="text-rose-700 hover:text-rose-950 font-bold ml-2 underline"
+                  >
+                    변경
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 슬롯 선택 (요일 x 교시 그리드 및 퀵 버튼) */}
@@ -314,7 +329,7 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
                     <div key={d.num}>{d.label}</div>
                   ))}
                 </div>
-                {[1, 2, 3, 4, 5, 6, 7].map((p) => (
+                {PERIOD_LIST.map((p) => (
                   <div key={p} className="grid grid-cols-6 gap-1 items-center text-center">
                     <span className="font-bold text-gray-500 text-[11px]">{p}교시</span>
                     {DAYS.map((d) => {
@@ -425,7 +440,7 @@ export default function TeacherSlotBanTab({ activeTermId }: TeacherSlotBanTabPro
                 className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
               />
               <label htmlFor="rule-active" className="font-bold text-gray-700 cursor-pointer">
-                이 규칙 활성화 (검사기 및 솔버에 즉시 적용)
+                이 규칙 활성화 (검사기 및 자동 조정에 적용)
               </label>
             </div>
 

@@ -3124,3 +3124,21 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - Antigravity 수정 배치: *"project_notes.md 마지막 체크포인트 읽어줘. 9c 등록부 UI 검수 지적 6건 수정해줘 (검수 엔트리 [2026-08-11] 참조)."*
 - 수정 후 재검수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 등록부 UI 수정 배치 재검수해줘."*
 - 솔버 고도화(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 9c 솔버 고도화(시드 포트폴리오·Web Worker) 하자."*
+
+## [2026-08-11] Antigravity → Claude/사용자 (9c 등록부 UI 검수 지적 6건 수정 완료 핸드오버)
+
+- **변경 파일**:
+  - `src/components/admin/timetable/TeacherSlotBanTab.tsx`
+  - `src/components/admin/timetable/ConsecutiveRuleTab.tsx`
+  - `src/components/admin/timetable/CoTeachingRuleTab.tsx`
+  - `src/components/admin/timetable/TimetableSection.tsx`
+  - `src/lib/timetable/server.ts`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **구현 요약 (지적 6건 완료)**:
+  1. **교사 이메일 자동완성 (1)**: 3탭 모두 `AutocompleteInput` 적용 (onSelect 선택 강제 + 검색어/제출값 분리, AGENTS 규칙 4 준수).
+  2. **서버 이중 방어 (2)**: `server.ts` 검증 함수 3종에 이메일 정규식(`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`) 필수 검사 추가.
+  3. **연속 pattern 검증 (3)**: 서버/클라이언트 모두 `/^\d+(\s*,\s*\d+)*$/` 및 2 이상 블록 1개 이상 필수 검증 추가.
+  4. **눈높이 문구 교체 (4)**: 개발용어(`assign`, `move`, `솔버`) 및 오기(`H3` → `H5`) 전면 교체 (배정금지: 이 교시에는 수업을 아예 넣지 않음 / 이동금지: 지금 위치를 자동 조정이 옮기지 못함).
+  5. **termId 하드코딩 제거 (5)**: 클라이언트 `"2026-2"` 폴백 리터럴 전면 제거 (서버가 `settings.activeTermId` 자동 폴백).
+  6. **동적 교시/반 연동 (6)**: `periodsPerDay` 전달 받아 퀵 추가 및 교시 그리드 연동, 1~12반 선택 지원.
+

@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { ConsecutiveRule, ClassGrid } from "@/lib/timetable/types";
+import AutocompleteInput from "@/components/admin/AutocompleteInput";
 
 interface ConsecutiveRuleTabProps {
   activeTermId?: string | null;
+  periodsPerDay?: number;
 }
 
-export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabProps) {
+export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: ConsecutiveRuleTabProps) {
+  const { userData } = useAuth();
+  const domain = userData?.domain || userData?.email?.split("@")[1] || "hmh.or.kr";
+
   const [rules, setRules] = useState<ConsecutiveRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +26,7 @@ export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabP
   const [grade, setGrade] = useState<number>(1);
   const [classNums, setClassNums] = useState<number[]>([1]);
   const [subjectName, setSubjectName] = useState("");
+  const [teacherSearchTerm, setTeacherSearchTerm] = useState("");
   const [teacherEmail, setTeacherEmail] = useState("");
   const [pattern, setPattern] = useState("2");
   const [active, setActive] = useState(true);
@@ -35,7 +42,7 @@ export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabP
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "consecutive_rule_list", termId: activeTermId }),
+        body: JSON.stringify({ action: "consecutive_rule_list", termId: activeTermId || undefined }),
       });
 
       if (res.ok) {
@@ -95,9 +102,15 @@ export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabP
     setGrade(1);
     setClassNums([1]);
     setSubjectName("");
+    setTeacherSearchTerm("");
     setTeacherEmail("");
     setPattern("2");
     setActive(true);
+  };
+
+  const handleSelectTeacher = (email: string, name?: string) => {
+    setTeacherEmail(email);
+    setTeacherSearchTerm(name ? `${name} (${email})` : email);
   };
 
   const handleToggleClassNum = (num: number) => {
@@ -110,7 +123,7 @@ export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabP
   };
 
   const handleSelectAllClasses = () => {
-    setClassNums([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    setClassNums([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   };
 
   const handleEditClick = (rule: ConsecutiveRule) => {
@@ -119,6 +132,7 @@ export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabP
     setClassNums(rule.classNums || []);
     setSubjectName(rule.subjectName || "");
     setTeacherEmail(rule.teacherEmail || "");
+    setTeacherSearchTerm(rule.teacherEmail || "");
     setPattern(rule.pattern || "2");
     setActive(rule.active !== false);
   };
@@ -133,21 +147,34 @@ export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabP
       alert("대상 반을 1개 이상 선택해 주세요.");
       return;
     }
-    if (!pattern.trim()) {
+
+    const trimmedPattern = pattern.trim();
+    if (!trimmedPattern) {
       alert("연속패턴(예: 2, 2,2, 3)을 입력해 주세요.");
       return;
     }
+    if (!/^\d+(\s*,\s*\d+)*$/.test(trimmedPattern)) {
+      alert("연속패턴은 '2' 또는 '2,2'와 같이 숫자와 쉼표로만 작성해야 합니다.");
+      return;
+    }
+    const blockNums = trimmedPattern.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n));
+    if (!blockNums.some((n) => n >= 2)) {
+      alert("연속 블록 길이(2 이상)가 1개 이상 포함되어야 합니다.");
+      return;
+    }
+
+    const finalTeacherEmail = teacherEmail.trim() || (teacherSearchTerm.includes("@") ? teacherSearchTerm.trim() : "");
 
     setSaving(true);
     try {
       const payload: ConsecutiveRule = {
         id: editingRuleId || undefined,
-        termId: activeTermId || "2026-2",
+        termId: activeTermId || "",
         grade,
         classNums,
         subjectName: subjectName.trim(),
-        teacherEmail: teacherEmail.trim() ? teacherEmail.trim().toLowerCase() : undefined,
-        pattern: pattern.trim(),
+        teacherEmail: finalTeacherEmail ? finalTeacherEmail.toLowerCase() : undefined,
+        pattern: trimmedPattern,
         active,
       };
 
@@ -211,7 +238,7 @@ export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabP
 
   return (
     <div className="space-y-6 font-sans">
-      {/* 안내 박스 */}
+      {/* 안내 박스 - 눈높이 문구로 정리 */}
       <div className="bg-sky-50 border border-sky-200 rounded-xl p-5 text-sky-900 text-xs leading-relaxed space-y-1">
         <div className="font-bold text-sm flex items-center gap-1.5 text-sky-900">
           <span>🔁</span>
@@ -221,7 +248,7 @@ export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabP
           과목별 주당 연속 배치 블록 규칙을 지정합니다 (예: <strong>2</strong> = 2시간 연속 1회, <strong>2,2</strong> = 2시간 연속 2회, <strong>3</strong> = 3시간 연속 1회).
         </p>
         <p className="text-[11px] text-sky-800 font-semibold">
-          💡 <strong>소유 규칙</strong>: 이동수업(분반)이나 특별실 그룹에 속한 연속수업은 이 등록부가 아닌 해당 그룹(이동수업/특별실) 설정에서 연속을 소유해야 합니다 (이중 등재 금지).
+          💡 <strong>소유 규칙</strong>: 이동수업(분반)이나 특별실 그룹에 속한 연속수업은 이 등록부가 아닌 해당 그룹 설정에서 연속을 소유해야 합니다 (이중 등재 금지).
         </p>
       </div>
 
@@ -278,7 +305,7 @@ export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabP
                   onClick={handleSelectAllClasses}
                   className="text-[11px] font-semibold text-sky-700 hover:underline"
                 >
-                  1~10반 선택
+                  1~12반 전체 선택
                 </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -357,21 +384,40 @@ export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabP
               </div>
             </div>
 
-            {/* 특정 교사 이메일 (선택) */}
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">
-                특정 교사 한정 이메일 (선택)
+            {/* 특정 교사 이메일 (AutocompleteInput 적용) */}
+            <div className="space-y-1.5">
+              <label className="block font-bold text-gray-700">
+                특정 교사 한정 검색 (선택)
               </label>
-              <input
-                type="email"
-                value={teacherEmail}
-                onChange={(e) => setTeacherEmail(e.target.value)}
-                placeholder="지정 안함 (해당 과목 담당 전 교사 대상)"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+              <AutocompleteInput
+                value={teacherSearchTerm}
+                onChange={(val) => {
+                  setTeacherSearchTerm(val);
+                  if (val.includes("@")) setTeacherEmail(val.trim());
+                  else if (!val) setTeacherEmail("");
+                }}
+                onSelect={handleSelectTeacher}
+                placeholder="지정 안함 (교사명/이메일 검색...)"
+                type="user"
+                domain={domain}
               />
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                특정 교사가 가르치는 수업만 연속을 적용하려면 이메일을 입력하세요.
-              </p>
+              {teacherEmail && (
+                <div className="flex items-center justify-between p-2 bg-sky-50 border border-sky-200 rounded-lg text-sky-900 text-xs font-semibold">
+                  <span>
+                    ✅ 선택된 교사: <strong>{teacherEmail}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTeacherEmail("");
+                      setTeacherSearchTerm("");
+                    }}
+                    className="text-sky-700 hover:text-sky-950 font-bold ml-2 underline"
+                  >
+                    제거 (전 교사 대상)
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 활성화 여부 */}
@@ -384,7 +430,7 @@ export default function ConsecutiveRuleTab({ activeTermId }: ConsecutiveRuleTabP
                 className="w-4 h-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500"
               />
               <label htmlFor="consec-active" className="font-bold text-gray-700 cursor-pointer">
-                이 규칙 활성화 (검사기 및 솔버에 적용)
+                이 규칙 활성화 (검사기 및 자동 조정에 적용)
               </label>
             </div>
 
