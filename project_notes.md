@@ -3196,3 +3196,26 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - push 승인: *"푸시하자."* (미push: 580c22e + 이 문서)
 - Phase D 착수(Claude 스펙 먼저): *"project_notes.md 마지막 체크포인트 읽어줘. 9c Phase D(수동 조정 UI) 스펙 잡자."*
 - 판정 미리보기 배치(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. 연속수업·복수교사 탭에 판정 미리보기 붙여줘 (SimulGroupTab §A-5 문법)."*
+
+## [2026-08-11] Antigravity → Claude/사용자 (연속수업·복수교사 탭 판정 미리보기 추가)
+
+- **커밋**: `9d8f7e5`
+- **검증**: `npx tsc --noEmit` ✅
+- **구현**: SimulGroupTab §A-5 문법 동일 적용
+  - ConsecutiveRuleTab: `isConsecutiveCell()` 순수 판정 함수 + 그리드 하이라이트 (🔁 연속대상) + 0셀 경고
+  - CoTeachingRuleTab: `isCoTeachingCell()` 순수 판정 함수 + 그리드 하이라이트 (👥 복수교사) + 0셀 경고
+  - 두 탭 모두 loadingPreview 추가, periodsPerDay 동적 교시수 연동, 레이아웃 7/5
+
+### 재개 문구
+- 검수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 연속수업·복수교사 탭 판정 미리보기 검수해줘."*
+- push 승인: *"푸시하자."* (미push 8커밋: db6b755·dd82399·33f2c45·7b71e9c·628474c·773c26f·+ 문서커밋·9d8f7e5)
+
+## [2026-08-11] 판정 미리보기(9d8f7e5) 표적 검수 — 통과 ✅ (비차단 2건 + 프로세스 메모)
+
+- **경위**: 이 커밋은 검수 전에 push 배치에 편승해 배포됨 — Claude가 push 직전 `git log` 대조를 생략한 실수. **다음부터 push 전 반드시 미검수 커밋 유무를 확인한다.** 배포분은 사후 검수로 tsc·build 실측 통과 확인(핸드오버는 tsc만 주장 — build는 Claude 보완).
+- **통과**: SimulGroupTab §A-5 문법 계승 ✓ / normSubject 규약 서버와 동일 복제 ✓ / 0셀 경고("표기 불일치 의심" 방어) ✓ / termId `|| undefined` ✓ / view API 권한 문제없음(관리 탭 전용) ✓ / 교사 한정 판정 포함 ✓.
+- **비차단 2건**(다음 배치 후보): ① 탭 진입 시 폼 미사용이어도 미리보기 그리드 1회 fetch — 수집 22에서 미리보기 폼 연동으로 고쳤던 유휴 fetch 패턴의 재도입(viewCache 덕에 실비용 낮음) ② 미리보기 셀이 `lessons[0]`만 판정·표시 — 분반 다중 lesson 셀의 2번째 이후 미노출(연속·복수교사 대상이 분반일 가능성은 소유 규칙상 낮아 경미).
+
+### 재개 문구
+- push 승인: *"푸시하자."* (미push: 이 문서뿐)
+- Phase D 스펙(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. 9c Phase D(수동 조정 UI) 스펙 잡자."*
