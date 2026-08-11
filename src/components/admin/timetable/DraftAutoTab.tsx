@@ -957,7 +957,7 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
               <div className="px-5 pb-5 space-y-4">
                 {aiCritique.suggestions.length === 0 ? (
                   <div className="bg-white rounded-xl border border-emerald-100 p-4 text-xs text-gray-500 italic">
-                    뚜렷한 개선 제안이 없습니다. 현재 시간표가 데이터 기준으로 최적에 가깝습니다.
+                    AI가 뚜렷한 개선점을 찾지 못했습니다.
                   </div>
                 ) : (
                   <ul className="space-y-2">
