@@ -3632,3 +3632,14 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - push 승인: *"푸시하자."*
 - §4 UI(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/coop_account_block_spec.md §4 대로 환경설정 '포털 접속 차단 조직단위' 섹션 구현해줘."*
+
+## [2026-08-11] 공동교육 계정 포털 차단 §4 환경설정 UI 구현 완료 (Antigravity)
+
+- **변경 파일**: `src/components/admin/OUConfiguration.tsx`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **내용**: `docs/coop_account_block_spec.md` §4 대로 "포털 접속 차단 조직단위" 설정 섹션 구현.
+  - UI 구성: `OUTreeSelector` 드롭다운 재사용으로 차단 조직단위 선택, 추가/삭제 (🛑 태그 칩 형태) 목록 기능 구현.
+  - 안내 문구 적용: "여기에 등록한 조직단위와 그 하위 조직단위의 계정은 이 포털에 로그인할 수 없습니다..." 안내 및 ⚠️ 주의 안내 박스 포함 (개발 용어 및 메타문구 0).
+  - 안전장치: 등록 시 confirm 1회 확인 창 동작.
+  - 데이터 저장: `settings/{domain}` 문서의 `blockedOuPaths: string[]` 로드 및 저장 (`merge: true` 보존 준수).
+

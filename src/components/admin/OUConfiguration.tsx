@@ -41,6 +41,8 @@ export default function OUConfiguration() {
   ]);
   const [newGroupInput, setNewGroupInput] = useState("");
   const [securityMap, setSecurityMap] = useState<Record<string, boolean>>({});
+  const [blockedOuPaths, setBlockedOuPaths] = useState<string[]>([]);
+  const [selectedBlockedOUInput, setSelectedBlockedOUInput] = useState<string>("");
 
   // Schedule state (일과표)
   const DEFAULT_SCHEDULE: SchedulePeriod[] = [
@@ -167,6 +169,7 @@ export default function OUConfiguration() {
         setGraduatesOU(schoolSettings.ouMapping?.graduates || "");
         setTransferOutOU(schoolSettings.ouMapping?.transferOut || "");
         setTeachersOB(schoolSettings.ouMapping?.teachersOB || "");
+        setBlockedOuPaths((schoolSettings as any).blockedOuPaths || []);
         
         let loadedGroups = schoolSettings.teacherSettings?.autoJoinGroups || [];
         if (!loadedGroups.includes(defaultClassroomGroup)) {
@@ -222,6 +225,7 @@ export default function OUConfiguration() {
         gradesCount,
         classCounts,
         allowedBookmarkOUs,
+        blockedOuPaths,
         ouMapping: {
           teachers: teacherOU,
           students: studentOUMappings,
@@ -572,10 +576,87 @@ export default function OUConfiguration() {
 
           <hr className="border-gray-200" />
 
+          {/* 포털 접속 차단 조직단위 설정 (coop_account_block_spec §4) */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              9. 포털 접속 차단 조직단위 설정
+            </label>
+            <p className="text-gray-500 text-xs mb-1">
+              여기에 등록한 조직단위와 그 하위 조직단위의 계정은 이 포털에 로그인할 수 없습니다. 공동교육과정처럼 우리 학교 구성원이 아닌 계정을 막는 용도입니다.
+            </p>
+
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 my-3 text-xs flex items-center gap-2">
+              <span className="text-amber-600 font-bold shrink-0">⚠️ 주의:</span>
+              <span>교직원·학생 조직단위를 등록하면 해당 구성원 전체가 로그인할 수 없게 되므로 주의하세요.</span>
+            </div>
+
+            <div className="space-y-3 max-w-md">
+              <div className="flex gap-2 items-center flex-1">
+                <div className="flex-1">
+                  <OUTreeSelector
+                    orgUnits={orgUnits}
+                    value={selectedBlockedOUInput}
+                    onChange={setSelectedBlockedOUInput}
+                    placeholder="-- 차단할 조직단위를 선택하세요 --"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedBlockedOUInput) return;
+                    const path = selectedBlockedOUInput.trim();
+                    if (blockedOuPaths.includes(path)) {
+                      alert("이미 등록된 조직단위입니다.");
+                      return;
+                    }
+                    if (
+                      confirm(
+                        `'${path}' 및 그 하위 조직단위에 속한 계정의 포털 접속이 차단됩니다.\n정말 등록하시겠습니까?`
+                      )
+                    ) {
+                      setBlockedOuPaths([...blockedOuPaths, path]);
+                      setSelectedBlockedOUInput("");
+                    }
+                  }}
+                  className="bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-md text-sm transition-colors shrink-0 cursor-pointer"
+                >
+                  추가
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {blockedOuPaths.length === 0 ? (
+                  <span className="text-gray-400 text-xs">등록된 차단 조직단위가 없습니다.</span>
+                ) : (
+                  blockedOuPaths.map((path) => (
+                    <span
+                      key={path}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200"
+                    >
+                      <span>🛑 {path}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBlockedOuPaths(blockedOuPaths.filter((p) => p !== path));
+                        }}
+                        className="text-red-400 hover:text-red-600 focus:outline-none text-[16px] leading-none ml-1 cursor-pointer"
+                        title="삭제"
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <hr className="border-gray-200" />
+
           {/* === 일과표 설정 === */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              9. 일과표 (교시별 시간) 설정
+              10. 일과표 (교시별 시간) 설정
             </label>
             <p className="text-gray-500 text-xs mb-3">
               시간표 및 티칭러닝 라이센스 배정에 활용됩니다. 교시는 자유롭게 추가/삭제하세요.
@@ -629,7 +710,7 @@ export default function OUConfiguration() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* 부서 목록 */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">10. 부서 목록 관리</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">11. 부서 목록 관리</label>
               <p className="text-gray-500 text-xs mb-3">교직원이 조직 정보 신청 시 선택할 수 있는 부서 목록입니다. 행을 드래그하거나 위/아래 화살표(▲ ▼) 버튼으로 우선순위를 변경하세요.</p>
               <div className="flex gap-2 mb-3">
                 <input
@@ -719,7 +800,7 @@ export default function OUConfiguration() {
 
             {/* 직책 목록 */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">11. 직책 목록 관리</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">12. 직책 목록 관리</label>
               <p className="text-gray-500 text-xs mb-3">교직원이 선택할 수 있는 직책 목록입니다. 행을 드래그하거나 위/아래 화살표(▲ ▼) 버튼으로 우선순위를 변경하세요.</p>
               <div className="flex gap-2 mb-3">
                 <input
