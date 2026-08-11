@@ -74,6 +74,7 @@ function NeisPreCheckSection({ activeTermId }: NeisSectionProps) {
   const [mapLoading, setMapLoading] = useState(false);
   const [mapSaving, setMapSaving] = useState(false);
   const [mapSaved, setMapSaved] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   // ── 검증 리포트 상태 ──
   const [report, setReport] = useState<NeisPrecheckReport | null>(null);
@@ -91,10 +92,14 @@ function NeisPreCheckSection({ activeTermId }: NeisSectionProps) {
   // ── 초기 로드: 등록부 + seed + 초안 목록 ──
   const loadMap = useCallback(async () => {
     setMapLoading(true);
+    setMapError(null);
     const [mapRes, draftRes] = await Promise.all([
-      api({ action: "neis_map_get", termId: activeTermId || undefined }),
-      api({ action: "draft_list" }),
+      api({ action: "neis_map_get", termId: activeTermId || undefined }).catch(() => ({})),
+      api({ action: "draft_list" }).catch(() => ({})),
     ]);
+    if (!mapRes.success) {
+      setMapError(mapRes.error || "등재명 정보를 불러오지 못했습니다. 새로고침 후 다시 시도하세요.");
+    }
     if (mapRes.success) {
       const reg: NeisMapRegistry = mapRes.registry;
       const seed: SubjectSeed[] = mapRes.subjectsSeed || [];
@@ -115,7 +120,9 @@ function NeisPreCheckSection({ activeTermId }: NeisSectionProps) {
     if (draftRes.success) {
       const list = (draftRes.drafts || []) as any[];
       setDrafts(list.map((d: any) => ({ id: d.id, label: d.label })));
-      if (list.length > 0 && !selectedDraftId) setSelectedDraftId(list[0].id);
+      // 함수형 갱신 — deps에 없는 selectedDraftId를 stale 클로저로 읽으면
+      // 저장 후 재로드 때마다 사용자의 초안 선택이 첫 항목으로 리셋된다
+      if (list.length > 0) setSelectedDraftId((cur) => cur || list[0].id);
     }
     setMapLoading(false);
   }, [activeTermId]);
@@ -139,14 +146,20 @@ function NeisPreCheckSection({ activeTermId }: NeisSectionProps) {
   // ── 등록부 저장 ──
   const saveMap = async () => {
     setMapSaving(true);
-    const subjects = subjectsSeed.map((s) => ({
+    setMapError(null);
+    // 등록부는 학기 무관 영속 + 저장 API는 전체 교체(spec §2) — 현재 학기 seed에 없는
+    // 기존 매핑(이전 학기 과목)을 함께 실어 보내지 않으면 저장 순간 유실된다.
+    // seed 행을 앞에 두어 동일 과목은 현재 편집값이 우선(서버 sanitize가 첫 항목 채택).
+    const seedRows = subjectsSeed.map((s) => ({
       platformName: s.name,
       neisName: neisNames[s.name] ?? "",
     }));
+    const seedNames = new Set(subjectsSeed.map((s) => s.name));
+    const carried = (registry?.subjects || []).filter((r) => !seedNames.has(r.platformName));
     const res = await api({
       action: "neis_map_save",
       neisMap: {
-        subjects,
+        subjects: [...seedRows, ...carried],
         confirmedTeachers: Array.from(checkedTeachers),
         confirmedPairs: Array.from(checkedPairs),
       },
@@ -158,6 +171,8 @@ function NeisPreCheckSection({ activeTermId }: NeisSectionProps) {
       savedTimer.current = setTimeout(() => setMapSaved(false), 3000);
       // registry 갱신
       await loadMap();
+    } else {
+      setMapError(res.error || "저장하지 못했습니다. 입력 내용을 확인하고 다시 시도하세요.");
     }
   };
 
@@ -471,6 +486,11 @@ function NeisPreCheckSection({ activeTermId }: NeisSectionProps) {
       )}
 
       {/* ── 나이스 등재명 입력표 ────────────────────────────────── */}
+      {mapError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-xs text-red-800">
+          {mapError}
+        </div>
+      )}
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 bg-indigo-950">
           <p className="text-xs font-bold text-white">📝 과목별 나이스 등재명 입력</p>
@@ -478,9 +498,9 @@ function NeisPreCheckSection({ activeTermId }: NeisSectionProps) {
             <button
               onClick={fillAllWithPlatformName}
               className="px-3 py-1 bg-indigo-700 hover:bg-indigo-600 text-white text-[11px] font-bold rounded-lg transition-colors"
-              title="우리 플랫폼 과목명이 나이스 등재명과 동일한 경우 일괄 채웁니다."
+              title="시간표 과목명이 나이스 등재명과 동일한 경우 일괄 채웁니다."
             >
-              플랫폼명 그대로 일괄 채우기
+              시간표 과목명 그대로 일괄 채우기
             </button>
             <button
               onClick={saveMap}
@@ -508,7 +528,7 @@ function NeisPreCheckSection({ activeTermId }: NeisSectionProps) {
               <thead>
                 <tr className="bg-slate-50 text-left">
                   <th className="py-2.5 px-4 border-b border-r border-gray-100 font-bold text-slate-700 w-8 text-center">#</th>
-                  <th className="py-2.5 px-4 border-b border-r border-gray-100 font-bold text-slate-700">플랫폼 과목명</th>
+                  <th className="py-2.5 px-4 border-b border-r border-gray-100 font-bold text-slate-700">시간표 과목명</th>
                   <th className="py-2.5 px-4 border-b border-r border-gray-100 font-bold text-slate-700 w-24">약칭</th>
                   <th className="py-2.5 px-4 border-b border-gray-100 font-bold text-slate-700">
                     나이스 등재명
