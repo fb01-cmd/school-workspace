@@ -505,8 +505,10 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
+        // extraWeeks: UI의 [이후 주 더 보기] 누적 횟수 — 기본 노출 창을 주 단위로 넓힌다 (수집 24)
+        const extraWeeks = Number.isFinite(Number(body.extraWeeks)) ? Number(body.extraWeeks) : 0;
         const result = await computeDirectProjectedWeeks(
-          domain, String(body.teacherEmail).trim().toLowerCase(), pendingItems
+          domain, String(body.teacherEmail).trim().toLowerCase(), pendingItems, { extraWeeks }
         );
         return NextResponse.json({ success: true, action, ...result });
       }

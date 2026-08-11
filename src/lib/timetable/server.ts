@@ -2441,17 +2441,20 @@ function buildDirectExtraOverlay(
 export async function computeDirectProjectedWeeks(
   domain: string,
   teacherEmail: string,
-  extraItems: DirectPendingOverlayItem[]
+  extraItems: DirectPendingOverlayItem[],
+  opts?: { extraWeeks?: number }
 ): Promise<{
   termId: string | null;
   weeks: Array<{ weekId: string; startDate: string; cells: TeacherTimetableCell[] }>;
   appliedCount: number;
+  /** 반환 범위 밖에 아직 남은 등록 주가 있는지 — UI의 [이후 주 더 보기] 노출 판정 (§3-2d 수집 24) */
+  hasMore: boolean;
 }> {
   const [settings, term] = await Promise.all([
     loadTimetableSettings(domain),
     loadActiveTerm(domain),
   ]);
-  if (!term) return { termId: null, weeks: [], appliedCount: 0 };
+  if (!term) return { termId: null, weeks: [], appliedCount: 0, hasMore: false };
 
   let weeks = await listWeeks(domain, term.id);
 
@@ -2479,10 +2482,15 @@ export async function computeDirectProjectedWeeks(
   const today = todayKSTISO();
   const maxMonday = addDaysISO(currMonday, ahead * 7);
 
-  weeks = weeks.filter((w) => {
-    const weekEnd = addDaysISO(w.startDate, 6);
-    return weekEnd >= today && w.startDate <= maxMonday;
-  });
+  // 일과계는 노출 창 밖의 미래 주(9월 출장 선등록 등)도 작업할 수 있어야 한다 — 다만 전 주를
+  // 항상 그리면 스크롤 압박이 되므로, 기본은 노출 창이고 UI의 [이후 주 더 보기]가 주 단위로 넓힌다
+  // (§3-2d 수집 24, 2026-08-11 사용자 확정). 과거 주 제외는 유지.
+  const extraWeeks = Math.max(0, Math.min(52, Math.floor(opts?.extraWeeks ?? 0)));
+  const windowMaxMonday = addDaysISO(maxMonday, extraWeeks * 7);
+
+  const notPast = weeks.filter((w) => addDaysISO(w.startDate, 6) >= today);
+  weeks = notPast.filter((w) => w.startDate <= windowMaxMonday);
+  const hasMore = notPast.some((w) => w.startDate > windowMaxMonday);
 
   weeks.sort((a, b) => a.startDate.localeCompare(b.startDate));
   const extra = buildDirectExtraOverlay(extraItems, term.id, teacherEmail, weeks.map((w) => w.id), null);
@@ -2501,7 +2509,7 @@ export async function computeDirectProjectedWeeks(
     const { grids } = synthesizeWeeklyGrids(baseByWeek.get(week.startDate)!, week, [...changes, ...virtual], settings);
     out.push({ weekId: week.id, startDate: week.startDate, cells: synthesizeTeacherTimetable(grids, teacherEmail) });
   }
-  return { termId: term.id, weeks: out, appliedCount: extra.count };
+  return { termId: term.id, weeks: out, appliedCount: extra.count, hasMore };
 }
 
 /** 가상 합성본에서 본인 요일별 시수 집계 (§14-1 projectedDayLoads) */

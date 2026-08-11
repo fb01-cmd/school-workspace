@@ -378,6 +378,7 @@ export interface ManageTimetableRequest {
   consent?: SwapConsentInput; // direct_commit: 조율 필요 후보의 양해 확인 (consent_swap_opening_spec §3, §14-4 동등성)
   // §14-4 직권 담기 — 후보 재탐색 가상 적용(direct_candidates_all) / 일괄 반영(direct_commit_batch)
   pendingItems?: DirectPendingOverlayItem[];
+  extraWeeks?: number; // direct_projected — 기본 노출 창 밖으로 더 볼 주 수 ([이후 주 더 보기], 상한 52)
   items?: DirectCommitBatchItem[];
   // 운영 도구 (neis_list / hour_totals) — phase9b_spec §8
   startDate?: string; // "YYYY-MM-DD"

@@ -82,17 +82,32 @@ export function canManageTimetable(
 
 /**
  * 시간표 열람 (view) 권한 판정.
- * 
+ *
  * 규칙:
- *   1. 교사 / super_admin -> 전체 뷰 (my, teacher, class, school, free) 허용
- *   2. 학생 -> 'class' 액션 중 자기 반(studentClass)만 허용. 다른 액션 및 다른 반은 차단.
+ *   1. 교사 / super_admin -> my, teacher, class, school 허용
+ *   2. free(공강 교사 조회) -> 일과계 관리자 / super_admin 전용
+ *   3. 학생 -> 'class' 액션 중 자기 반(studentClass)만 허용. 다른 액션 및 다른 반은 차단.
  */
 export function canViewTimetable(
   ctx: TimetableAuthzContext,
   action: ViewAction,
   targetClass?: { grade: number; classNum: number }
 ): TimetableAuthzResult {
-  // 교사 및 수퍼어드민은 모든 뷰 접근 허용
+  // 공강 교사 조회는 배정 도구 — 보강 배치 권한이 없는 일반 교사에게는 열지 않는다
+  // (2026-08-11 사용자 확정: 전 교사 공강 상시 노출은 실사용 근거가 약하고 오독·부탁 쏠림 우려).
+  // 참관자는 요청대장만 보므로 이 축소에 영향 없음.
+  if (action === "free") {
+    if (ctx.role === "super_admin") {
+      return { allowed: true, basis: "super_admin" };
+    }
+    const normEmail = ctx.email.toLowerCase();
+    if (ctx.managerEmails.some((m) => m.toLowerCase() === normEmail)) {
+      return { allowed: true, basis: "manager" };
+    }
+    return { allowed: false, basis: "denied:free_manager_only" };
+  }
+
+  // 교사 및 수퍼어드민은 나머지 뷰 접근 허용
   if (ctx.role === "teacher" || ctx.role === "super_admin") {
     return { allowed: true, basis: ctx.role };
   }
