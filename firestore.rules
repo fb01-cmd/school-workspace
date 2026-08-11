@@ -115,6 +115,18 @@ service cloud.firestore {
       allow write: if isTeacher();
     }
 
+    // ── memos/{domain}/items — 쪽지 (docs/memo_spec.md §3) ─────
+    // 읽기: 승인된 교직원 중 발신자·수신자 본인만. 쓰기: 서버 API 전용.
+    // isApproved를 여기서 직접 검사한다 — 전역 isTeacher()의 승인 미검사(별건 §8)와 독립.
+    match /memos/{domain}/items/{memoId} {
+      allow read: if isSchool()
+        && myUserDoc().role in ['teacher', 'super_admin']
+        && myUserDoc().isApproved == true
+        && (request.auth.token.email == resource.data.senderEmail
+            || request.auth.token.email in resource.data.recipientEmails);
+      allow write: if false;
+    }
+
     // ── 로그성 컬렉션 — 클라이언트는 읽기만, 조작 금지 ─────────
     // (서버가 admin SDK로 기록하므로 클라이언트 쓰기 불필요.
     //  audit_logs만 예외적으로 클라이언트 create 허용 — 화면에서 직접 기록하는

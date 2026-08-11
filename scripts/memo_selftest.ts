@@ -1,0 +1,117 @@
+/**
+ * 쪽지 서버 로직 자가 테스트 (docs/memo_spec.md §8) — 네트워크·Firestore 무의존
+ *
+ * 사용법: npx tsx scripts/memo_selftest.ts
+ */
+import {
+  MEMO_DEFAULT_RETENTION_DAYS,
+  expandGroupEmails,
+  resolveRecipients,
+  resolveRetentionDays,
+  validateMemoContent,
+} from "../src/lib/memo/logic";
+
+let failed = 0;
+function expect(name: string, cond: boolean) {
+  if (cond) console.log(`  ✅ ${name}`);
+  else {
+    failed++;
+    console.log(`  ❌ ${name}`);
+  }
+}
+
+async function main() {
+  console.log("── 본문 검증 ──");
+  {
+    const ok = validateMemoContent({ title: " 회의 안내 ", body: "내용", links: [{ url: "https://drive.google.com/x", label: "양식" }] });
+    expect("정상 입력 통과 + 트림", ok.ok && ok.content.title === "회의 안내");
+    expect("빈 제목 거부", !validateMemoContent({ title: "  ", body: "x" }).ok);
+    expect("빈 본문 거부", !validateMemoContent({ title: "t", body: "" }).ok);
+    expect("제목 상한 초과 거부", !validateMemoContent({ title: "가".repeat(201), body: "x" }).ok);
+    expect("본문 상한 초과 거부", !validateMemoContent({ title: "t", body: "가".repeat(10001) }).ok);
+    expect("http 링크 거부", !validateMemoContent({ title: "t", body: "x", links: [{ url: "http://a.com" }] }).ok);
+    expect("링크 6개 거부", !validateMemoContent({ title: "t", body: "x", links: Array(6).fill({ url: "https://a.com" }) }).ok);
+    expect("링크 생략 허용", validateMemoContent({ title: "t", body: "x" }).ok);
+    const sum = validateMemoContent({ title: "t", body: "x", recipientSummary: "요".repeat(200) });
+    expect("요약 100자 절단", sum.ok && sum.content.recipientSummary.length === 100);
+  }
+
+  console.log("── 그룹 확장 ──");
+  {
+    const tree: Record<string, Array<{ email: string; type: string }>> = {
+      "all@hmh.or.kr": [
+        { email: "t1@hmh.or.kr", type: "USER" },
+        { email: "sub@hmh.or.kr", type: "GROUP" },
+      ],
+      "sub@hmh.or.kr": [
+        { email: "t2@hmh.or.kr", type: "USER" },
+        { email: "all@hmh.or.kr", type: "GROUP" }, // 순환
+      ],
+    };
+    const lister = async (g: string) => {
+      if (!tree[g]) throw new Error("group not found: " + g);
+      return tree[g];
+    };
+    const r = await expandGroupEmails(["all@hmh.or.kr"], lister);
+    expect("중첩 그룹 재귀 확장", r.users.includes("t1@hmh.or.kr") && r.users.includes("t2@hmh.or.kr"));
+    expect("순환 그룹 무한 루프 없음", r.users.length === 2);
+
+    const deep: Record<string, Array<{ email: string; type: string }>> = {
+      "g1@h.kr": [{ email: "g2@h.kr", type: "GROUP" }],
+      "g2@h.kr": [{ email: "g3@h.kr", type: "GROUP" }],
+      "g3@h.kr": [{ email: "g4@h.kr", type: "GROUP" }, { email: "u3@h.kr", type: "USER" }],
+      "g4@h.kr": [{ email: "u4@h.kr", type: "USER" }],
+    };
+    const rd = await expandGroupEmails(["g1@h.kr"], async (g) => deep[g] || []);
+    expect("깊이 3까지 확장", rd.users.includes("u3@h.kr"));
+    expect("깊이 초과 그룹 미확장·보고", !rd.users.includes("u4@h.kr") && rd.skippedDepth.includes("g4@h.kr"));
+
+    let threw = false;
+    try {
+      await expandGroupEmails(["none@hmh.or.kr"], lister);
+    } catch {
+      threw = true;
+    }
+    expect("존재하지 않는 그룹은 throw (삼키지 않음)", threw);
+  }
+
+  console.log("── 수신자 확정 ──");
+  {
+    const directory = [
+      { primaryEmail: "T1@hmh.or.kr", orgUnitPath: "/교직원" },
+      { primaryEmail: "t2@hmh.or.kr", orgUnitPath: "/교직원/부장" },
+      { primaryEmail: "25001@hmh.or.kr", orgUnitPath: "/학생/1학년" },
+      { primaryEmail: "ch_01@hmh.or.kr", orgUnitPath: "/학생/공동교육과정(26)" },
+      { primaryEmail: "root@hmh.or.kr", orgUnitPath: "/" },
+    ];
+    const r = resolveRecipients(
+      ["t1@hmh.or.kr", "T1@HMH.or.kr", "t2@hmh.or.kr", "25001@hmh.or.kr", "ch_01@hmh.or.kr", "ghost@hmh.or.kr", "out@gmail.com", "broken@@", "root@hmh.or.kr"],
+      directory,
+      "hmh.or.kr"
+    );
+    expect("교직원 수용 + 대소문자 정규화·중복 제거", r.accepted.filter((e) => e === "t1@hmh.or.kr").length === 1);
+    expect("하위 OU 교직원 수용", r.accepted.includes("t2@hmh.or.kr"));
+    expect("학생(/학생 하위) 제외", r.students.includes("25001@hmh.or.kr"));
+    expect("공동교육 계정도 /학생 하위라 제외", r.students.includes("ch_01@hmh.or.kr"));
+    expect("실존하지 않는 계정 제외", r.notFound.includes("ghost@hmh.or.kr"));
+    expect("도메인 외 제외", r.outOfDomain.includes("out@gmail.com"));
+    expect("형식 불량 제외", r.invalidFormat.length === 1);
+    expect("루트 OU 계정은 학생 아님", r.accepted.includes("root@hmh.or.kr"));
+    expect("확정 인원 정확", r.accepted.length === 3);
+  }
+
+  console.log("── 보존 일수 ──");
+  {
+    expect("미설정 → 기본 365", resolveRetentionDays(undefined) === MEMO_DEFAULT_RETENTION_DAYS);
+    expect("정상값 반영", resolveRetentionDays(180) === 180);
+    expect("소수점 내림", resolveRetentionDays(90.9) === 90);
+    expect("0 이하 → 기본", resolveRetentionDays(0) === MEMO_DEFAULT_RETENTION_DAYS);
+    expect("과대값 → 기본", resolveRetentionDays(99999) === MEMO_DEFAULT_RETENTION_DAYS);
+    expect("문자열 → 기본", resolveRetentionDays("365" as any) === MEMO_DEFAULT_RETENTION_DAYS);
+  }
+
+  console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);
+  process.exit(failed === 0 ? 0 : 1);
+}
+
+main();

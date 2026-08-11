@@ -3666,3 +3666,15 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - push 승인: *"푸시하자."*
 - 서버부 구현(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. docs/memo_spec.md §1~§3·§5 서버부 구현해줘."* (§10 확인 답과 함께)
+
+## [2026-08-11] 쪽지 §10 전건 확정 + §1~§3·§5 서버부 구현 ✅ (Claude)
+
+- **§10 사용자 확정**: 보존 365일 / 발신 = 승인된 전 교직원 / **착수 즉시**(가을 대기 철회 — "구현 가능하면 미루지 않는다").
+- **구현**: `src/lib/memo/logic.ts`(순수 로직 — 본문 검증·그룹 재귀 확장(순환 방지·깊이 3)·수신자 확정(orgUnitPath `/학생` 실데이터 제외)·보존 일수) + `/api/memo`(send·read — 승인 교직원 게이트 users 문서 직접 확인, 읽음은 **FieldPath** 기록·멱등) + `webpush.ts notifyMemo`(쪽지별 tag, 제목까지만, no-throw) + firestore.rules memos 블록(발신·수신자 본인 + isApproved 지역 강제).
+- **검증**: `scripts/memo_selftest.ts` 30항목 ✅ / tsc 0 / build ✅. 인벤토리 memos 등재(**/privacy 문안·POLICY_VERSION 갱신은 화면 공개 시점에 일괄** — 재고지 선행 방지 명기).
+- **운영 액션(화면 구현 후)**: ① firestore.rules 게시 ② 복합 색인 2건(받은함 array-contains+createdAt / 보낸함 senderEmail+createdAt — 첫 쿼리 에러의 콘솔 링크로 생성).
+- **잔여**: §4 화면(Antigravity — 데스크톱 admin "memo" 메뉴 + /m 열람 섹션) → Claude 표적 리뷰 → 실기기 시연 시나리오(§8).
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- §4 화면(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/memo_spec.md §4 대로 쪽지 화면(관리자 포털 'memo' 메뉴 + /m 열람 섹션) 구현해줘."*

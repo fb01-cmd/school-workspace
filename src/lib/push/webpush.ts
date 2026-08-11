@@ -306,3 +306,35 @@ export async function notifyTimetableChanges(
     console.error("[web_push] 변경 알림 처리 실패:", e?.message || e);
   }
 }
+
+/**
+ * 쪽지 발송 알림 (docs/memo_spec.md §2-6·§5).
+ * - tag는 쪽지별 — 여러 쪽지 알림이 서로 덮어쓰지 않는다(시간표의 단일 tag 집계와 반대).
+ * - 페이로드는 발신자 이름·제목까지만 — 본문·수신자 목록 금지(잠금화면 노출 텍스트).
+ * - 어떤 실패도 throw하지 않는다 — 알림 실패가 쪽지 저장을 깨면 안 된다.
+ */
+export async function notifyMemo(
+  domain: string,
+  recipientEmails: string[],
+  senderName: string,
+  title: string,
+  memoId: string
+): Promise<void> {
+  try {
+    if (!isWebPushConfigured()) return;
+    const subs = await listSubsByEmails(domain, recipientEmails);
+    if (subs.length === 0) return;
+    const shortTitle = title.length > 60 ? title.slice(0, 59) + "…" : title;
+    const r = await sendToSubs(domain, subs, {
+      title: "새 쪽지",
+      body: `${senderName} 선생님: ${shortTitle}`,
+      url: "/",
+      tag: `memo:${memoId}`,
+    });
+    console.log(
+      `[web_push] 쪽지 알림 — 발송 ${r.sent}, 만료 정리 ${r.removed}, 실패 ${r.failed}`
+    );
+  } catch (e: any) {
+    console.error("[web_push] 쪽지 알림 처리 실패:", e?.message || e);
+  }
+}
