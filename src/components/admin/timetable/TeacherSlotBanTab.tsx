@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { TeacherSlotBan, SimulSlot, SlotBanKind } from "@/lib/timetable/types";
+import type { AiFormalizeResult } from "@/lib/timetable/ai";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 
 interface TeacherSlotBanTabProps {
@@ -30,6 +31,15 @@ export default function TeacherSlotBanTab({ activeTermId, periodsPerDay = 7 }: T
   const [slots, setSlots] = useState<SimulSlot[]>([]);
   const [note, setNote] = useState("");
   const [active, setActive] = useState(true);
+
+  // E-2 AI formalize (말하기 입력) states
+  const [aiFormalizeOpen, setAiFormalizeOpen] = useState(false);
+  const [aiText, setAiText] = useState("");
+  const [aiFormalizing, setAiFormalizing] = useState(false);
+  const [aiFormalizeError, setAiFormalizeError] = useState<string | null>(null);
+  const [aiFormalizeResult, setAiFormalizeResult] = useState<AiFormalizeResult | null>(null);
+  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
+  const [savingFormalizeEntries, setSavingFormalizeEntries] = useState(false);
 
   const DAYS = [
     { num: 1, label: "월" },
@@ -209,6 +219,98 @@ export default function TeacherSlotBanTab({ activeTermId, periodsPerDay = 7 }: T
     );
   });
 
+  const handleRunAiFormalize = async () => {
+    if (!aiText.trim()) return;
+    setAiFormalizing(true);
+    setAiFormalizeError(null);
+
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "ai_formalize",
+          aiText: aiText.trim(),
+          termId: activeTermId || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.enabled === false) {
+          setAiEnabled(false);
+          return;
+        }
+        setAiFormalizeResult(data.proposal || null);
+      } else {
+        setAiFormalizeError(data.error || "자연어 해석에 실패했습니다. 성명을 정확히 입력하셨는지 확인해 보세요.");
+      }
+    } catch (err: any) {
+      setAiFormalizeError(`네트워크 오류: ${err.message}`);
+    } finally {
+      setAiFormalizing(false);
+    }
+  };
+
+  const handleSaveFormalizeEntries = async () => {
+    if (!aiFormalizeResult || aiFormalizeResult.entries.length === 0) return;
+    setSavingFormalizeEntries(true);
+    let successCount = 0;
+    let failError: string | null = null;
+    // 부분 실패 시 실패 항목만 다이얼로그에 남긴다 — 전체 재시도는 성공분을 중복 등록시킴
+    const failedEntries: typeof aiFormalizeResult.entries = [];
+
+    for (const entry of aiFormalizeResult.entries) {
+      try {
+        const payload: TeacherSlotBan = {
+          termId: activeTermId || "",
+          teacherEmail: entry.teacherEmail.toLowerCase(),
+          teacherName: entry.teacherName,
+          kind: entry.kind,
+          slots: entry.slots,
+          note: "AI 말로 입력 반영",
+          active: true,
+        };
+
+        const res = await fetch("/api/timetable/manage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "slot_ban_save",
+            rule: payload,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          successCount++;
+        } else {
+          failError = data.error || "규칙 저장에 실패했습니다.";
+          failedEntries.push(entry);
+        }
+      } catch (err: any) {
+        failError = err.message;
+        failedEntries.push(entry);
+      }
+    }
+
+    setSavingFormalizeEntries(false);
+
+    if (failedEntries.length === 0) {
+      alert(`${successCount}건의 특별교사 금지 규칙이 등록부에 저장되었습니다.`);
+      setAiFormalizeResult(null);
+      setAiText("");
+      fetchRules();
+    } else {
+      // 부분 실패 보고 + 실패 항목만 남김 — 성공분 중복 재등록 방지, 실패 사실 무음 방지
+      alert(
+        `${successCount}건 저장 / ${failedEntries.length}건 실패${failError ? `: ${failError}` : ""}\n실패한 항목만 확인 창에 남겨두었습니다. 다시 시도하거나 취소하세요.`
+      );
+      setAiFormalizeResult({ ...aiFormalizeResult, entries: failedEntries });
+      if (successCount > 0) fetchRules();
+    }
+  };
+
   return (
     <div className="space-y-6 font-sans">
       {/* 안내 박스 - 눈높이 문구로 정리 (개발용어/코드 오기 제거) */}
@@ -225,6 +327,71 @@ export default function TeacherSlotBanTab({ activeTermId, periodsPerDay = 7 }: T
           <span>• 이동금지: 시간표 자동 조정 시 지금 위치를 다른 교시로 옮기지 못하게 고정함</span>
         </div>
       </div>
+
+      {/* ── AI 말로 입력하기 (E-2) 접힘 입력창 ── */}
+      {aiEnabled !== false && (
+        <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setAiFormalizeOpen(!aiFormalizeOpen)}
+              className="flex items-center gap-2 text-xs font-bold text-violet-900 hover:text-violet-700 transition-colors"
+            >
+              <span>🗣️ 말로 금지 규칙 입력하기 (AI 도움)</span>
+              <span className="text-[10px] bg-violet-200 text-violet-800 px-2 py-0.5 rounded-full font-semibold">
+                {aiFormalizeOpen ? "접기 ▲" : "펼치기 ▼"}
+              </span>
+            </button>
+            <span className="text-[11px] text-violet-700 font-medium hidden sm:inline">
+              💡 AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
+            </span>
+          </div>
+
+          {aiFormalizeOpen && (
+            <div className="space-y-3 pt-1 border-t border-violet-100">
+              <p className="text-xs text-violet-800">
+                원하는 금지/고정 규칙을 자연어로 입력하세요. 교사 성명을 정확히 입력해 주세요. (예: &quot;홍길동 선생님은 월요일 1교시 배정 금지&quot;)
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={aiText}
+                  onChange={(e) => setAiText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !aiFormalizing) {
+                      e.preventDefault();
+                      handleRunAiFormalize();
+                    }
+                  }}
+                  placeholder="예: 홍길동 교사 금요일 전일 배정 금지, 김철수 교사 수요일 1~2교시 이동 금지"
+                  className="flex-1 border border-violet-300 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={handleRunAiFormalize}
+                  disabled={aiFormalizing || !aiText.trim()}
+                  className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  {aiFormalizing ? (
+                    <>
+                      <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
+                      <span>해석 중...</span>
+                    </>
+                  ) : (
+                    <span>🤖 규칙 해석하기</span>
+                  )}
+                </button>
+              </div>
+
+              {aiFormalizeError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800">
+                  {aiFormalizeError}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* 좌측: 등록/수정 폼 */}
@@ -579,6 +746,125 @@ export default function TeacherSlotBanTab({ activeTermId, periodsPerDay = 7 }: T
           </div>
         </div>
       </div>
+
+      {/* ── E-2 AI 해석 확인 다이얼로그 ── */}
+      {aiFormalizeResult && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 max-w-lg w-full p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <span>🤖 금지 규칙 해석 결과 확인</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setAiFormalizeResult(null)}
+                className="text-gray-400 font-bold hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* AI 표식 상단 */}
+            <div className="bg-violet-50 border border-violet-200 rounded-lg p-2.5 text-center text-xs font-semibold text-violet-800">
+              💡 AI가 작성한 참고 의견입니다 — 반영 전 내용과 대상을 직접 확인하세요.
+            </div>
+
+            {/* 해석 요약 */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-1.5">
+              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">AI 해석 요약</span>
+              <p className="text-xs font-bold text-gray-900 leading-relaxed">
+                {aiFormalizeResult.interpretation}
+              </p>
+            </div>
+
+            {/* 경고 사항 (있을 경우) */}
+            {aiFormalizeResult.warnings && aiFormalizeResult.warnings.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1">
+                <div className="font-bold flex items-center gap-1">
+                  <span>⚠️ 주의 안내</span>
+                </div>
+                <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+                  {aiFormalizeResult.warnings.map((w, idx) => (
+                    <li key={idx}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* 해석된 규칙 목록 */}
+            <div className="space-y-2">
+              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                등록 예정 규칙 ({aiFormalizeResult.entries.length}건)
+              </span>
+              {aiFormalizeResult.entries.length === 0 ? (
+                <div className="p-4 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
+                  해석된 금지 규칙 항목이 없습니다. 성명과 요일·교시를 더 명확하게 입력해 보세요.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {aiFormalizeResult.entries.map((entry, idx) => (
+                    <div key={idx} className="p-3 border border-gray-200 rounded-lg bg-white text-xs space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-gray-900">
+                          {entry.teacherName ? `${entry.teacherName} (${entry.teacherEmail})` : entry.teacherEmail}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            entry.kind === "assign"
+                              ? "bg-rose-100 text-rose-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {entry.kind === "assign" ? "배정금지" : "이동금지"}
+                        </span>
+                      </div>
+                      <div className="text-gray-600 font-medium text-[11px]">
+                        금지 요일/교시:{" "}
+                        <span className="font-bold text-indigo-700">
+                          {entry.slots
+                            .map((s) => `${DAYS.find((d) => d.num === s.day)?.label || s.day}${s.period}교시`)
+                            .join(", ")}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* AI 표식 하단 & 버튼 */}
+            <div className="space-y-3 pt-2">
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAiFormalizeResult(null)}
+                  className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveFormalizeEntries}
+                  disabled={savingFormalizeEntries || aiFormalizeResult.entries.length === 0}
+                  className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  {savingFormalizeEntries ? (
+                    <>
+                      <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
+                      <span>저장 중...</span>
+                    </>
+                  ) : (
+                    <span>💾 규칙 등록부에 저장</span>
+                  )}
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 text-center">
+                💡 AI가 작성한 참고 의견입니다 — 반영 전 내용을 확인하셨습니까?
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3502,3 +3502,31 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - push 승인: *"푸시하자."*
 - E-2 UI(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/phase9c_e_spec.md §5 대로 E-2 UI(말로 입력하기 → 확인 다이얼로그 → slot_ban_save) 구현해줘."*
+
+## [2026-08-11] Phase E-2 UI 구현 완료 (Antigravity)
+
+- **구현 파일**: `src/components/admin/timetable/TeacherSlotBanTab.tsx`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **내용**: `TeacherSlotBanTab` 상단에 "🗣️ 말로 금지 규칙 입력하기 (AI 도움)" 접이식 카드 및 해석 확인 모달 신설.
+  - 자연어 입력 → `POST /api/timetable/manage` `{ action: "ai_formalize", aiText, termId }` 호출
+  - 게이트: `aiEnabled !== false` (첫 호출 시 `enabled: false` 응답이면 진입점 카드 숨김)
+  - fail-visible: 미등록 교사명/422/502 등 에러 발생 시 눈높이 에러 배너 노출
+  - 다이얼로그: `interpretation` (해석 요약 문장), `warnings` (주의 안내), `entries` (교사, 배정/이동금지 구분, 금지 요일/교시 목록) 렌더링
+  - [저장 적용하기] 클릭 시 각 entry별 정규 `slot_ban_save` API 순차 호출 및 감사로그/Sanitize 통과
+  - "AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요" 안내 표식 상단 및 하단 배치
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- E-2 UI 리뷰(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase E-2 UI(TeacherSlotBanTab 말로 입력하기) 표적 리뷰해줘."*
+
+
+## [2026-08-11] E-2 UI(말로 입력하기) 표적 리뷰 — 조건부 1건 Claude 직접 수정 후 통과 ✅ (Phase E-2 완결, Claude가 커밋)
+
+- **통과(실측)**: ai_formalize 호출·enabled:false 진입점 숨김·fail-visible(422 "성명 정확히" 안내 관통) ✓ / 다이얼로그 = 해석 요약+warnings+entries(교사·배정/이동금지·요일교시) ✓ / 저장은 항목별 **정규 slot_ban_save만**(AI 전용 쓰기 경로 없음, sanitize·감사 로그·캐시 버전 범프 관통) ✓ / entries 0건 시 저장 비활성+재입력 안내 ✓ / AI 표식 상·하단 ✓ / 비고 "AI 말로 입력 반영"으로 등록부에서 출처 추적 가능 ✓ / termId 빈 값 폴백은 서버 fallback 체인으로 무해 확인 ✓.
+- **F1 (Claude 직접 수정) — 부분 실패 무음+중복 재등록 위험**: 여러 건 저장 중 일부 실패 시 성공이 1건이라도 있으면 실패 사유가 버려지고 다이얼로그가 닫힘 → 전부 저장된 줄 오인, 재실행하면 성공분 중복 등록. 수정 = 실패 항목만 다이얼로그에 남기고 "N건 저장 / M건 실패: 사유" 보고, 성공분은 목록 갱신.
+- **검증**: tsc 0 / build ✅ (Claude 재실행). 실기기 확인은 실사용 첫 회(증상 소멸 기준).
+- **Phase E-2 완결** (서버부 4541d92 + UI). 9c 잔여: E-3·4(결과 설명·정성 비평 — 11월 리허설 전) / F-2(9월 샘플) / 9월 질문지 / 비차단 후속(draft_op 40 reads·H1 동일키·TimetableSection 셸 삭제).
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- E-3·4 착수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase E-3·4(ai_explain·ai_critique) 구현해줘."*
