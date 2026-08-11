@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { isProtectedAccountEmail } from "@/lib/auth/blockedOu";
 
 // Check if Google Workspace credentials are provided in the environment
 const hasCredentials =
@@ -492,6 +493,11 @@ export const createUser = async (
 
 // 5. Delete User
 export const deleteUser = async (email: string) => {
+  // 보호 계정 하드 차단 — 모든 삭제 경로(개별·일괄·크론·전출)가 이 함수를 지나므로
+  // 여기가 단일 소재지다 (로드맵 §2 "보호 계정 가드", 2026-08-11 hmnotice@ 정지 실사고 계기).
+  if (isProtectedAccountEmail(email)) {
+    throw new Error("보호 계정은 삭제할 수 없습니다 (시스템 운영 계정).");
+  }
   if (isMock) {
     mockUsers = mockUsers.filter((user) => user.primaryEmail !== email);
     invalidateUserCache();
@@ -526,6 +532,10 @@ export const updateUser = async (
     primaryEmail?: string;
   }
 ) => {
+  // 보호 계정 정지 하드 차단 (활성화 방향은 허용 — 복구 경로는 막지 않는다)
+  if (updates.suspended === true && isProtectedAccountEmail(email)) {
+    throw new Error("보호 계정은 정지할 수 없습니다 (시스템 운영 계정).");
+  }
   if (isMock) {
     const userIndex = mockUsers.findIndex((u) => u.primaryEmail === email);
     if (userIndex === -1) throw new Error("사용자를 찾을 수 없습니다.");

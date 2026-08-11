@@ -21,6 +21,7 @@ import {
 } from "@/lib/google/workspace";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { deleteAuthUserByEmail, verifyAuthAccess, adminDb } from "@/lib/firebase/admin";
+import { isProtectedAccountEmail } from "@/lib/auth/blockedOu";
 import { FieldValue } from "firebase-admin/firestore";
 import { mapConcurrent, mapConcurrentSettled } from "@/lib/concurrency";
 
@@ -1537,6 +1538,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { error: "올바른 이메일 형식이 아닙니다. 전체 주소(아이디@도메인)로 입력해 주세요." },
           { status: 400 }
+        );
+      }
+      // 보호 계정(fb01@·hmnotice@·admin@)은 전출 큐 등재 금지 — 기한 도래 시 삭제로 이어지는 경로
+      if (isProtectedAccountEmail(teacherEmail)) {
+        return NextResponse.json(
+          { error: "이 계정은 시스템 운영에 필요한 보호 계정이라 전출 등록할 수 없습니다." },
+          { status: 403 }
         );
       }
 

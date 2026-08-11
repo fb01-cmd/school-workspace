@@ -3,6 +3,13 @@ import { listUsersInOUs, createUser, deleteUser, updateUser, addAlias, deleteAli
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { deleteAuthUserByEmail, verifyAuthAccess, adminDb } from "@/lib/firebase/admin";
 import { mapConcurrentSettled, retryOnRateLimit } from "@/lib/concurrency";
+import { isProtectedAccountEmail } from "@/lib/auth/blockedOu";
+
+// 보호 계정 차단 안내 (fb01@·hmnotice@·admin@ — 플랫폼 인프라·알림 발신·DWD 사칭 계정.
+// GWS 최고관리자 승격은 콘솔 방어일 뿐, 이 플랫폼은 Admin SDK로 동작하므로 여기서 직접 막아야 한다.
+// 2026-08-11 실사고: hmnotice@가 화면에서 일시정지되어 알림 발신이 전면 중단될 뻔함.)
+const PROTECTED_BLOCK_MESSAGE =
+  "이 계정은 시스템 운영에 필요한 보호 계정이라 정지하거나 삭제할 수 없습니다.";
 
 // Vercel 함수 실행 시간 한도 명시 — 일괄 삭제/정지/저장이 수백 명 단위일 때 대비
 export const maxDuration = 60;
@@ -192,7 +199,13 @@ export async function POST(req: NextRequest) {
             users = users.map((u: any) => {
               if (u.primaryEmail?.toLowerCase() === email && record.data) {
                 const updatedUser = { ...u, ...record.data };
-                if (record.data.orgUnitPath && !orgUnitPaths.includes(record.data.orgUnitPath)) {
+                // "all" 요청은 전 OU 포함이므로 OU 이동 패치로 제외하면 안 된다
+                // (2026-08-11 실사고: 정지상태 수정 직후 계정이 목록·검색에서 120초+캐시 TTL 동안 실종)
+                if (
+                  record.data.orgUnitPath &&
+                  !orgUnitPaths.includes("all") &&
+                  !orgUnitPaths.includes(record.data.orgUnitPath)
+                ) {
                   return null;
                 }
                 return updatedUser;
@@ -311,6 +324,19 @@ export async function POST(req: NextRequest) {
       if (!email || !updates) {
         return NextResponse.json({ error: "Email and updates are required" }, { status: 400 });
       }
+      // 보호 계정 정지 차단 (활성화 방향은 허용 — 복구 경로는 막지 않는다)
+      if (updates.suspended === true && isProtectedAccountEmail(email)) {
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "계정 정지",
+          targetEmail: email,
+          details: "보호 계정이라 정지 요청을 차단함",
+          status: "failure",
+          error: "protected-account",
+        });
+        return NextResponse.json({ error: PROTECTED_BLOCK_MESSAGE }, { status: 403 });
+      }
       try {
         const user = await updateUser(email, updates);
         
@@ -374,6 +400,18 @@ export async function POST(req: NextRequest) {
       if (!email) {
         return NextResponse.json({ error: "Email is required" }, { status: 400 });
       }
+      if (isProtectedAccountEmail(email)) {
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "계정 삭제",
+          targetEmail: email,
+          details: "보호 계정이라 삭제 요청을 차단함",
+          status: "failure",
+          error: "protected-account",
+        });
+        return NextResponse.json({ error: PROTECTED_BLOCK_MESSAGE }, { status: 403 });
+      }
       try {
         // Firebase Auth에서도 해당 유저 레코드 동기화 삭제
         await deleteAuthUserByEmail(email);
@@ -411,10 +449,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "bulk_delete") {
-      const { emails } = body;
-      if (!Array.isArray(emails)) {
+      const { emails: rawEmails } = body;
+      if (!Array.isArray(rawEmails)) {
         return NextResponse.json({ error: "emails must be an array" }, { status: 400 });
       }
+      // 보호 계정은 대상에서 제외하고 실패 항목으로 보고 (일괄 선택에 휩쓸리는 사고 방지)
+      const protectedTargets: string[] = rawEmails.filter((e: string) => isProtectedAccountEmail(e));
+      const emails: string[] = rawEmails.filter((e: string) => !isProtectedAccountEmail(e));
       try {
         // Firebase Auth에서도 해당 유저 레코드들을 즉시 일괄 삭제
         // (동시성 제한 — 무제한 동시 발사는 API 429로 부분 실패 발생)
@@ -428,9 +469,12 @@ export async function POST(req: NextRequest) {
           retryOnRateLimit(() => deleteUser(email))
         );
 
-        const failures = results
-          .map((res, idx) => (res.status === "rejected" ? { email: emails[idx], reason: res.reason?.message } : null))
-          .filter(Boolean);
+        const failures = [
+          ...protectedTargets.map((email) => ({ email, reason: "보호 계정 — 삭제 불가" })),
+          ...results
+            .map((res, idx) => (res.status === "rejected" ? { email: emails[idx], reason: res.reason?.message } : null))
+            .filter(Boolean),
+        ];
 
         // Add successful deletions to buffer cache to prevent propagation latency
         results.forEach((res, idx) => {
@@ -478,16 +522,24 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "bulk_suspend") {
-      const { emails, suspended } = body;
-      if (!Array.isArray(emails) || suspended === undefined) {
+      const { emails: rawEmails, suspended } = body;
+      if (!Array.isArray(rawEmails) || suspended === undefined) {
         return NextResponse.json({ error: "emails and suspended status are required" }, { status: 400 });
       }
+      // 보호 계정은 정지 방향에서만 제외 (활성화 방향은 허용 — 복구 경로는 막지 않는다)
+      const protectedTargets: string[] = suspended === true
+        ? rawEmails.filter((e: string) => isProtectedAccountEmail(e))
+        : [];
+      const emails: string[] = rawEmails.filter((e: string) => !protectedTargets.includes(e));
       try {
         const results = await mapConcurrentSettled(emails, 8, (email: string) => updateUser(email, { suspended }));
-        
-        const failures = results
-          .map((res, idx) => (res.status === "rejected" ? { email: emails[idx], reason: res.reason?.message } : null))
-          .filter(Boolean);
+
+        const failures = [
+          ...protectedTargets.map((email) => ({ email, reason: "보호 계정 — 정지 불가" })),
+          ...results
+            .map((res, idx) => (res.status === "rejected" ? { email: emails[idx], reason: res.reason?.message } : null))
+            .filter(Boolean),
+        ];
 
         // Add successful suspensions to buffer cache to prevent propagation latency
         results.forEach((res, idx) => {
