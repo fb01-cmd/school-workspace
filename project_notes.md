@@ -3534,3 +3534,14 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ## [2026-08-11] 실기기 확인 담당 변경 — Antigravity Playwright 드라이버 오류, 사용자 직접 확인으로
 
 - 오늘 배포분(IA 2분리·AI 진단 카드·말로 입력)의 브라우저 실기기 확인은 Antigravity 불가(Playwright 드라이버 오류) → **사용자가 추후 눈으로 확인**. 확인 전까지 "완료" 확정 보고 금지 원칙 유지(증상 소멸 기준). 서버 경로는 전부 실측 완료 상태라 위험 부담 구간은 검증돼 있음.
+
+## [2026-08-11] 아이폰 설치 안내 화면 반영 완료 (Antigravity)
+
+- **변경 파일**: `src/components/pwa/PWAInstallPrompt.tsx`, `src/components/admin/PWAInstallGuideTab.tsx`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **내용**: `development_roadmap.md` §2의 아이폰 설치 안내 반영 아이디어를 두 컴포넌트에 구현.
+  - 문안: `docs/web_push_spec.md` §11-3의 5단계 안내 적용 (Safari 열기 → 공유 ⬆️ → 홈 화면에 추가 → 앱 실행 및 로그인 → 알림 받기 허용 → 설정 완료).
+  - 규칙 준수: PWA 등 개발 용어 배제 ("앱으로 설치", "앱 사용 설정" 등 눈높이 표현 사용), 메타문구 유출 없음.
+  - `PWAInstallPrompt`: 아이폰(iOS) 및 수동 설치 미지원 환경에서 5단계 안내 모달 팝업 추가.
+  - `PWAInstallGuideTab`: 아이폰(iOS) 5단계 가이드 카드 및 현재 접속 기기(iOS) 감지 표시 추가.
+
