@@ -153,14 +153,8 @@ export default function CoTeachingRuleTab({ activeTermId, periodsPerDay = 7 }: C
       return;
     }
 
-    let finalEmails = [...teacherEmails];
-    if (
-      teacherEmailInput.trim() &&
-      teacherEmailInput.includes("@") &&
-      !finalEmails.includes(teacherEmailInput.trim().toLowerCase())
-    ) {
-      finalEmails.push(teacherEmailInput.trim().toLowerCase());
-    }
+    // 저장 시 onSelect로 추가된 teacherEmails만 사용 — teacherEmailInput 원시 푸시 금지 (R1)
+    const finalEmails = [...teacherEmails];
 
     if (finalEmails.length < 2) {
       alert("복수 교사는 2명 이상의 교사 이메일을 등록해야 합니다.");

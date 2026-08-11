@@ -215,7 +215,7 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
       const grades = selectedGrades.length > 0 && selectedGrades.length < 3 ? selectedGrades : undefined;
 
       const payload: Partial<TimetableCalendarEvent> = {
-        termId: activeTermId || "2026-2",
+        termId: activeTermId || undefined,
         type,
         title: title.trim() || undefined,
         startDate,

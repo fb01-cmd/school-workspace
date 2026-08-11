@@ -193,7 +193,7 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
     try {
       const payload: SimulGroup = {
         id: editingGroupId || undefined,
-        termId: activeTermId || "2026-2",
+        termId: activeTermId ?? "",
         label: label.trim(),
         grade,
         classNums,
@@ -251,7 +251,7 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
 
   // 현재 폼 작성 내용에 기반한 가상 그룹 객체 (미리보기 판정용)
   const currentFormGroup: SimulGroup = {
-    termId: activeTermId || "2026-2",
+    termId: activeTermId ?? "",
     label: label || "미리보기 그룹",
     grade,
     classNums,

@@ -201,7 +201,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "revision_save_draft",
-          termId: activeTermId || "2026-2",
+          termId: activeTermId || undefined,
           revisionId: currentDraftId || undefined,
           revisionOps: ops,
           revisionNote,

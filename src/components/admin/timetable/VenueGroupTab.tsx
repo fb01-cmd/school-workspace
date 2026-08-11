@@ -211,7 +211,7 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
     try {
       const payload: VenueGroup = {
         id: editingGroupId || undefined,
-        termId: activeTermId || "2026-2",
+        termId: activeTermId ?? "",
         roomName: roomName.trim(),
         label: label.trim(),
         grade,
@@ -270,7 +270,7 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
 
   // 현재 폼 작성 내용에 기반한 가상 그룹 객체 (미리보기 판정용)
   const currentFormGroup: VenueGroup = {
-    termId: activeTermId || "2026-2",
+    termId: activeTermId ?? "",
     roomName: roomName || "특별실",
     label: label || "미리보기",
     grade,

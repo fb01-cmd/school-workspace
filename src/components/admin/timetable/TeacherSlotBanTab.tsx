@@ -129,9 +129,9 @@ export default function TeacherSlotBanTab({ activeTermId, periodsPerDay = 7 }: T
 
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalEmail = teacherEmail.trim() || (teacherSearchTerm.includes("@") ? teacherSearchTerm.trim() : "");
+    const finalEmail = teacherEmail.trim();
     if (!finalEmail) {
-      alert("교사 검색에서 대상 교사를 선택하거나 올바른 이메일을 입력해 주세요.");
+      alert("교사 검색에서 대상 교사를 반드시 선택해 주세요.");
       return;
     }
     if (slots.length === 0) {
@@ -221,7 +221,7 @@ export default function TeacherSlotBanTab({ activeTermId, periodsPerDay = 7 }: T
           특정 교사의 특정 요일·교시 수업 배정을 금지하거나 지정된 위치에 고정합니다.
         </p>
         <div className="flex flex-wrap gap-4 pt-1 font-semibold text-[11px] text-rose-800">
-          <span>• 배정금지: 이 교시에는 수업을 아예 배치하지 않음 (위반 시 검사기 H5 경고)</span>
+          <span>• 배정금지: 이 교시에는 수업을 아예 배치하지 않음 (위반 시 자동 검사에서 문제로 표시됩니다)</span>
           <span>• 이동금지: 시간표 자동 조정 시 지금 위치를 다른 교시로 옮기지 못하게 고정함</span>
         </div>
       </div>
@@ -285,7 +285,10 @@ export default function TeacherSlotBanTab({ activeTermId, periodsPerDay = 7 }: T
                 value={teacherSearchTerm}
                 onChange={(val) => {
                   setTeacherSearchTerm(val);
-                  if (val.includes("@")) setTeacherEmail(val.trim());
+                  // onChange에서는 선택값을 절대 승격하지 않는다 (선택 강제 원칙 — AGENTS 규칙 4)
+                  // 검색어 변경 시 이전 선택값 무효화
+                  setTeacherEmail("");
+                  setTeacherName("");
                 }}
                 onSelect={handleSelectTeacher}
                 placeholder="교사 성명 또는 이메일 검색..."

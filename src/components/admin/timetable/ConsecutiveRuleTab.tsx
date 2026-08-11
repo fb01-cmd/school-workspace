@@ -163,7 +163,7 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
       return;
     }
 
-    const finalTeacherEmail = teacherEmail.trim() || (teacherSearchTerm.includes("@") ? teacherSearchTerm.trim() : "");
+    const finalTeacherEmail = teacherEmail.trim();
 
     setSaving(true);
     try {
@@ -393,8 +393,9 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
                 value={teacherSearchTerm}
                 onChange={(val) => {
                   setTeacherSearchTerm(val);
-                  if (val.includes("@")) setTeacherEmail(val.trim());
-                  else if (!val) setTeacherEmail("");
+                  // onChange에서는 선택값을 절대 승격하지 않는다 (선택 강제 원칙 — AGENTS 규칙 4)
+                  // 검색어 변경 시 이전 선택값 무효화
+                  setTeacherEmail("");
                 }}
                 onSelect={handleSelectTeacher}
                 placeholder="지정 안함 (교사명/이메일 검색...)"
