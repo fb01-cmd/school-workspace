@@ -164,6 +164,70 @@ export default function OUConfiguration() {
     }
   };
 
+  const [savedSnapshot, setSavedSnapshot] = useState<string>("");
+
+  const getSettingsSnapshot = (data: {
+    gradesCount: number;
+    classCounts: Record<number, number>;
+    allowedBookmarkOUs: string[];
+    teacherOU: string;
+    studentOUMappings: Record<number, string>;
+    graduatesOU: string;
+    transferOutOU: string;
+    teachersOB: string;
+    autoJoinGroups: string[];
+    blockedOuPaths: string[];
+    schedule: SchedulePeriod[];
+    departments: string[];
+    positions: string[];
+  }) => {
+    return JSON.stringify({
+      gradesCount: data.gradesCount,
+      classCounts: data.classCounts,
+      allowedBookmarkOUs: data.allowedBookmarkOUs,
+      teacherOU: data.teacherOU,
+      studentOUMappings: data.studentOUMappings,
+      graduatesOU: data.graduatesOU,
+      transferOutOU: data.transferOutOU,
+      teachersOB: data.teachersOB,
+      autoJoinGroups: data.autoJoinGroups,
+      blockedOuPaths: data.blockedOuPaths,
+      schedule: data.schedule,
+      departments: data.departments,
+      positions: data.positions,
+    });
+  };
+
+  const currentSnapshot = getSettingsSnapshot({
+    gradesCount,
+    classCounts,
+    allowedBookmarkOUs,
+    teacherOU,
+    studentOUMappings,
+    graduatesOU,
+    transferOutOU,
+    teachersOB,
+    autoJoinGroups,
+    blockedOuPaths,
+    schedule,
+    departments,
+    positions,
+  });
+
+  const isDirty = Boolean(savedSnapshot && currentSnapshot !== savedSnapshot);
+
+  // dirty 상태에서 페이지 이탈(탭 닫기, 새로고침 등) 시 브라우저 경고창 (UX 개선 ④)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
   // 설정 구독값 → 폼 상태 수화.
   // schoolSettings가 도착하기 전 [domain]만으로 1회 초기화하고 끝나던 종전 구조에서는,
   // 구독 도착이 늦으면 전 섹션이 기본값(빈 차단 목록 등)으로 남은 채 저장이 가능해
@@ -173,27 +237,58 @@ export default function OUConfiguration() {
     if (!domain) return;
     if (schoolSettings) {
       const defaultClassroomGroup = `classroom_teachers@${domain}`;
-      setGradesCount(schoolSettings.gradesCount || 6);
-      setClassCounts(schoolSettings.classCounts || {});
-      setAllowedBookmarkOUs((schoolSettings as any).allowedBookmarkOUs || ["/교직원", "/학생"]);
-      setTeacherOU(schoolSettings.ouMapping?.teachers || "");
-      setStudentOUMappings(schoolSettings.ouMapping?.students || {});
-      setGraduatesOU(schoolSettings.ouMapping?.graduates || "");
-      setTransferOutOU(schoolSettings.ouMapping?.transferOut || "");
-      setTeachersOB(schoolSettings.ouMapping?.teachersOB || "");
-      setBlockedOuPaths((schoolSettings as any).blockedOuPaths || []);
+      const gCount = schoolSettings.gradesCount || 6;
+      const cCounts = schoolSettings.classCounts || {};
+      const bookmarkOUs = (schoolSettings as any).allowedBookmarkOUs || ["/교직원", "/학생"];
+      const tOU = schoolSettings.ouMapping?.teachers || "";
+      const sOUMappings = schoolSettings.ouMapping?.students || {};
+      const gOU = schoolSettings.ouMapping?.graduates || "";
+      const tOutOU = schoolSettings.ouMapping?.transferOut || "";
+      const tOB = schoolSettings.ouMapping?.teachersOB || "";
+      const bOuPaths = (schoolSettings as any).blockedOuPaths || [];
 
       let loadedGroups = schoolSettings.teacherSettings?.autoJoinGroups || [];
       if (!loadedGroups.includes(defaultClassroomGroup)) {
         loadedGroups = [defaultClassroomGroup, ...loadedGroups];
       }
+
+      const sched = schoolSettings.schedule || DEFAULT_SCHEDULE;
+      const depts = schoolSettings.departments || DEFAULT_DEPARTMENTS;
+      const pos = schoolSettings.positions || DEFAULT_POSITIONS;
+
+      setGradesCount(gCount);
+      setClassCounts(cCounts);
+      setAllowedBookmarkOUs(bookmarkOUs);
+      setTeacherOU(tOU);
+      setStudentOUMappings(sOUMappings);
+      setGraduatesOU(gOU);
+      setTransferOutOU(tOutOU);
+      setTeachersOB(tOB);
+      setBlockedOuPaths(bOuPaths);
       setAutoJoinGroups(loadedGroups);
       checkSecurityForGroups(loadedGroups);
+      setSchedule(sched);
+      setDepartments(depts);
+      setPositions(pos);
 
-      // Load schedule and department/position masters
-      if (schoolSettings.schedule) setSchedule(schoolSettings.schedule);
-      if (schoolSettings.departments) setDepartments(schoolSettings.departments);
-      if (schoolSettings.positions) setPositions(schoolSettings.positions);
+      // 미저장 변경 판단용 스냅샷 저장
+      setSavedSnapshot(
+        getSettingsSnapshot({
+          gradesCount: gCount,
+          classCounts: cCounts,
+          allowedBookmarkOUs: bookmarkOUs,
+          teacherOU: tOU,
+          studentOUMappings: sOUMappings,
+          graduatesOU: gOU,
+          transferOutOU: tOutOU,
+          teachersOB: tOB,
+          autoJoinGroups: loadedGroups,
+          blockedOuPaths: bOuPaths,
+          schedule: sched,
+          departments: depts,
+          positions: pos,
+        })
+      );
     } else {
       // Fallback default setup (설정 문서 미도착/부재 — 이 상태에서는 저장이 막혀 있다)
       setAllowedBookmarkOUs(["/교직원", "/학생"]);
@@ -257,6 +352,26 @@ export default function OUConfiguration() {
         updatedAt: new Date(),
       }, { merge: true }); // 전체 덮어쓰기 금지 — masterSheetId 등 이 폼에 없는 필드 보존
       setAutoJoinGroups(finalGroups);
+
+      // 저장 성공 시 미저장 변경 스냅샷 갱신 (UX 개선 ②)
+      setSavedSnapshot(
+        getSettingsSnapshot({
+          gradesCount,
+          classCounts,
+          allowedBookmarkOUs,
+          teacherOU,
+          studentOUMappings,
+          graduatesOU,
+          transferOutOU,
+          teachersOB,
+          autoJoinGroups: finalGroups,
+          blockedOuPaths,
+          schedule,
+          departments,
+          positions,
+        })
+      );
+
       alert("설정이 성공적으로 저장되었습니다!");
     } catch (error) {
       console.error("Failed to save settings", error);
@@ -626,7 +741,7 @@ export default function OUConfiguration() {
                     }
                     if (
                       confirm(
-                        `'${path}' 및 그 하위 조직단위에 속한 계정의 포털 접속이 차단됩니다.\n정말 등록하시겠습니까?`
+                        `'${path}' 및 그 하위 조직단위에 속한 계정을 등록 목록에 추가합니다.\n아래 '설정 저장'을 눌러야 실제로 적용됩니다.`
                       )
                     ) {
                       setBlockedOuPaths([...blockedOuPaths, path]);
@@ -904,13 +1019,23 @@ export default function OUConfiguration() {
             </div>
           </div>
 
-          <div className="pt-4 flex justify-end">
+          <div className="pt-4 flex items-center justify-end gap-3">
+            {isDirty && (
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-xs animate-pulse">
+                <span>⚠️</span>
+                <span>저장되지 않은 변경이 있습니다</span>
+              </span>
+            )}
             <button
               onClick={handleSaveSettings}
               disabled={saving || !schoolSettings}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-md focus:outline-none disabled:opacity-50 transition-colors shadow-sm"
+              className={`font-medium px-6 py-2.5 rounded-md focus:outline-none disabled:opacity-50 transition-all shadow-sm cursor-pointer ${
+                isDirty
+                  ? "bg-indigo-600 hover:bg-indigo-700 text-white font-bold ring-2 ring-indigo-500 ring-offset-2 scale-105"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white"
+              }`}
             >
-              {saving ? "설정 저장 중..." : "매핑 설정 저장"}
+              {saving ? "설정 저장 중..." : "설정 저장"}
             </button>
           </div>
         </div>

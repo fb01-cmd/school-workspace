@@ -3725,3 +3725,10 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 ### 재개 문구
 - push 승인: *"푸시하자."*
+
+## [2026-08-11] 환경설정 저장 UX 개선 결정 ①~④ 구현 완료 (Antigravity)
+
+- **변경 파일**: `src/components/admin/OUConfiguration.tsx`
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+- **작업 내용**: 환경설정 탭 저장 UX 혼란 개선 결정 ①~④ 전항목 구현 (confirm 안내 정직화, dirty 스냅샷 대조로 미저장 배너+버튼 강조/해제, 버튼명 '설정 저장' 변경, beforeunload 페이지 이탈 경고창).
+
