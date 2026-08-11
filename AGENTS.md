@@ -48,6 +48,16 @@ This version has breaking changes — APIs, conventions, and file structure may 
 **금지 행동**: 서버 로그 파일을 여러 번 읽거나, `status`를 반복 호출하여 무한 루프에 빠지는 것. 이 문제가 3번 반복되었으므로 반드시 준수할 것.
 <!-- END:local-dev-server-rules -->
 
+<!-- BEGIN:infrastructure-account-rules -->
+# 플랫폼 인프라 소유 계정 — fb01@hmh.or.kr (2026-08-11 사용자 확정)
+
+`fb01@hmh.or.kr`은 개인 교사 계정이 아니라 **플랫폼 인프라의 소유 계정**이다. Firebase·Vercel·GitHub이 전부 이 계정으로 연동되어 있으며, 담당자가 바뀌어도 **이 계정 자체가 대대로 인수인계**된다.
+
+1. **새 외부 서비스 키·연동을 만들 때는 이 계정으로 발급한다** (예: Gemini API 키). 개인 계정·타 계정으로 발급해 자격증명을 분산시키지 않는다.
+2. **이 계정을 삭제·정지·OU 이동 대상에 포함시키지 않는다** — 생애주기 자동화(일괄 삭제·전출 크론 등)를 설계할 때 이 계정이 휩쓸리지 않는지 반드시 확인한다.
+3. 역할 구분: `admin@` = Workspace 도메인 관리·DWD 사칭용, `hmnotice@` = 알림 발신 전용, **`fb01@` = 개발·배포 인프라 소유**.
+<!-- END:infrastructure-account-rules -->
+
 <!-- BEGIN:notification-sender-rules -->
 # 이메일 및 구글 챗 발신자 규칙
 
