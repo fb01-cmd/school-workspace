@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { getRedirectResult } from "firebase/auth";
+import { auth } from "@/lib/firebase/config";
 import { signInWithGoogle, logOut } from "@/lib/firebase/auth";
 import { useAuth } from "@/context/AuthContext";
 import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt";
@@ -12,6 +14,16 @@ export default function LoginPage() {
   const { user, userData, loading } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // 설치형 앱(standalone) redirect 로그인에서 돌아온 경우의 오류 표시 전용.
+    // 성공 흐름은 AuthContext의 onAuthStateChanged가 처리하므로 여기서는 건드리지 않는다.
+    // 아이폰 설치형 앱은 원격 디버깅이 안 되므로 실패를 화면에 드러내는 것이 유일한 단서다.
+    getRedirectResult(auth).catch((err: any) => {
+      console.error("Redirect sign-in error", err);
+      setError(`로그인에 실패했습니다. 다시 시도해주세요. (${err?.code || err?.message || "알 수 없는 오류"})`);
+    });
+  }, []);
 
   useEffect(() => {
     // If the user is already logged in and we have their data, redirect them based on their role

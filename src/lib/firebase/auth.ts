@@ -15,10 +15,26 @@ export interface UserData {
   };
 }
 
+// 홈 화면에 설치한 앱(standalone)으로 실행 중인지. iOS는 이 모드에서 팝업 로그인이
+// 결과를 앱으로 돌려주지 못한 채 오류도 없이 멈추므로(2026-08-11 아이폰 실기기 실증)
+// 팝업을 시도조차 하지 않고 처음부터 redirect 방식을 쓴다.
+// navigator.standalone은 iOS 사파리 전용 레거시 플래그 — display-mode 미디어쿼리의 이중 방어.
+const isStandaloneApp = () =>
+  typeof window !== "undefined" &&
+  (window.matchMedia?.("(display-mode: standalone)").matches ||
+    (window.navigator as any).standalone === true);
+
 export const signInWithGoogle = async () => {
   try {
     // 기존 세션을 무조건 종료 후 새 계정으로 로그인
     await signOut(auth);
+    if (isStandaloneApp()) {
+      // 복귀 후에는 AuthContext의 onAuthStateChanged가 handleUserRoles를 호출해
+      // 나머지 흐름(역할 동기화 → 화면 이동)을 이어간다. 오류는 로그인 페이지의
+      // getRedirectResult가 표시한다.
+      await signInWithRedirect(auth, googleProvider);
+      return null; // 이 직후 페이지가 이동하므로 반환값은 사용되지 않음
+    }
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
     await handleUserRoles(user);
