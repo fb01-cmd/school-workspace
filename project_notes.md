@@ -3732,3 +3732,13 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 - **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
 - **작업 내용**: 환경설정 탭 저장 UX 혼란 개선 결정 ①~④ 전항목 구현 (confirm 안내 정직화, dirty 스냅샷 대조로 미저장 배너+버튼 강조/해제, 버튼명 '설정 저장' 변경, beforeunload 페이지 이탈 경고창).
 
+
+## [2026-08-11] 환경설정 UX 개선 표적 리뷰 — 편집 중 유실 위험 발견·직접 수정 ✅ (Claude, Sonnet 5)
+
+- **①~④ 대조**: confirm 문구 정직화 ✓ / dirty 배너+저장 버튼 강조 ✓(첫 로드 오탐 없음 확인) / 버튼명 "설정 저장" ✓ / beforeunload 경고 ✓ — 결정대로 정확히 구현.
+- **발견 위험(Claude 직접 수정)**: "OU 설정"·"명단 API 키" 두 탭이 OUConfiguration 한 컴포넌트 안에서 마운트를 공유(428행 RosterApiKeyManager). 명단 API 키 탭의 마스터 시트 ID 저장도 같은 `settings/{domain}` 문서를 병합 쓰기(`roster-sheet/route.ts:52`) — 그 갱신이 실시간 구독으로 들어오면 하이드레이션 effect(55ff417에서 반응형으로 만든 그 effect)가 재실행되어 **저장 전 편집(예: 방금 추가한 차단 OU)이 경고 없이 사라지고 미저장 배너까지 꺼짐**. 두 번째 탭이나 다른 관리자 없이 **같은 화면 안 탭 전환만으로 재현되는** 실질 위험.
+- **수정**: `isDirtyRef`(ref로 최신 dirty 상태 추적, effect deps 오염 방지) 추가 — 하이드레이션 effect 진입 시 `isDirtyRef.current`가 true면 즉시 return, 원격 갱신으로 덮어쓰지 않음. 저장 성공 시 savedSnapshot이 즉시 갱신되어 isDirty가 false로 돌아오므로, 뒤이어 도착하는 자기 저장의 echo는 정상적으로 반영됨(회귀 없음). tsc 0 / build ✅.
+- **실기기 확인 시나리오(추가)**: 환경설정 → OU 설정에서 차단 OU 하나 추가(저장 안 함) → 명단 API 키 탭으로 전환 → 마스터 시트 ID 저장 → OU 설정 탭으로 복귀 → **방금 추가한 차단 OU와 미저장 배너가 그대로 남아 있으면 정상**(수정 전엔 사라졌음).
+
+### 재개 문구
+- push 승인: *"푸시하자."*

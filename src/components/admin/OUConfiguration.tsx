@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/context/AuthContext";
@@ -216,6 +216,12 @@ export default function OUConfiguration() {
 
   const isDirty = Boolean(savedSnapshot && currentSnapshot !== savedSnapshot);
 
+  // effect가 참조할 최신 isDirty — dependency로 넣으면 매 키입력마다 effect가 재구성되므로 ref로 우회
+  const isDirtyRef = useRef(false);
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
   // dirty 상태에서 페이지 이탈(탭 닫기, 새로고침 등) 시 브라우저 경고창 (UX 개선 ④)
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -235,6 +241,12 @@ export default function OUConfiguration() {
   // 구독값이 도착/변경될 때마다 다시 수화한다.
   useEffect(() => {
     if (!domain) return;
+    // 미저장 편집 중에는 원격 갱신으로 로컬 상태를 덮어쓰지 않는다.
+    // "OU 설정"·"명단 API 키" 두 탭이 이 컴포넌트 안에서 마운트를 공유하는데, 명단 API 키
+    // 탭의 저장도 같은 settings/{domain} 문서를 병합 쓰기한다 — 그 갱신이 실시간 구독을
+    // 타고 들어오면 이 effect가 재실행되어 저장 전 편집(예: 방금 추가한 차단 OU)이
+    // 경고 없이 사라지고 "저장되지 않은 변경" 배너까지 함께 꺼지는 사고가 있었다.
+    if (isDirtyRef.current) return;
     if (schoolSettings) {
       const defaultClassroomGroup = `classroom_teachers@${domain}`;
       const gCount = schoolSettings.gradesCount || 6;
