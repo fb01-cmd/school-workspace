@@ -68,6 +68,7 @@ import {
   computeNeisPrecheck,
   loadTimetableTerm,
   computeAiDiagnosis,
+  computeAiFormalize,
 } from "@/lib/timetable/server";
 import { sanitizeNeisMapPayload } from "@/lib/timetable/neis";
 import { AiCallError, isAiEnabled } from "@/lib/timetable/ai";
@@ -1343,6 +1344,20 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
         const { clean, result } = await computeAiDiagnosis(domain, body.draftId);
         return NextResponse.json({ success: true, action, enabled: true, clean, result });
+      }
+
+      case "ai_formalize": {
+        // E2 — 제안만 반환, 저장 없음 (spec §0 철칙: 반영은 UI 확인 후 slot_ban_save로만)
+        if (!isAiEnabled()) {
+          return NextResponse.json({ success: true, action, enabled: false });
+        }
+        const termId = body.termId || settings.activeTermId;
+        if (!termId)
+          return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        if (typeof body.aiText !== "string" || !body.aiText.trim())
+          return NextResponse.json({ error: "요구 문장(aiText)이 필요합니다." }, { status: 400 });
+        const proposal = await computeAiFormalize(domain, termId, body.aiText);
+        return NextResponse.json({ success: true, action, enabled: true, proposal });
       }
 
       default:

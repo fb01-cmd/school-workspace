@@ -3437,3 +3437,16 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - push 승인: *"푸시하자."*
 - E-2 착수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. Phase E-2(ai_formalize — 말로 제약 입력) 구현해줘."*
+
+## [2026-08-11] 9c Phase E-2(ai_formalize) 서버부 구현 ✅ — 말로 제약 입력, 실호출 스모크 통과
+
+- **구현**: ai.ts에 E2(runFormalize·프롬프트·파싱·normalizeFormalizeItems) + server.ts `computeAiFormalize`(활성 학기 그리드 실교사만 로스터, 가상 교사 제외) + 라우트 `ai_formalize`(제안만 반환, 저장 0 — 반영은 UI 확인 후 기존 slot_ban_save로만, spec §0 철칙).
+- **출력 계약**: 제안 entries = `validateTeacherSlotBanPayload`를 그대로 통과하는 형태(teacherEmail·kind assign/move·slots[{day,period}]) — AI 전용 쓰기 경로 없음.
+- **PII 방어선 추가**: 입력 문장 자체가 실명을 담으므로 — 등록 교사명이 하나도 치환되지 않으면 **외부 호출 없이 422 거절**(미등록 이름·오타 원문 유출 차단). 일부 일치+일부 오타 잔여 위험은 수용 기록, UI가 "성명 정확히" 안내. 가명 로스터만 전송(실명 매핑은 서버 역치환).
+- **실측 보강 2건**: 모델이 `periods:"all"` 대신 `["all"]`(배열 안 문자열)·빈 배열을 내보내는 변형 실측 → 파서 수용(문자열 변종 "전체" 포함) + 빈 periods+요일 지정 = 전일 해석(과대 해석은 사람 확인 관문이 있어 안전 방향).
+- **검증**: ai_selftest 27항목(E2 파싱·별칭 해석·가상 교사 제외·변형 2종·422 사전 거절 포함) ✅ / 스모크 실호출 — 프롬프트 무PII 기계 검증 + "월1 배정 금지·금요일 전일 이동 금지" 문장이 slot_ban 정합 제안 2건(금1~7 전개)으로 ✅ / tsc 0 / build ✅.
+- **잔여**: E-2 UI(Antigravity — spec §5: TeacherSlotBanTab 상단 "말로 입력하기" 접힘 입력창 → 해석 확인 다이얼로그(interpretation+entries 표시) → 항목별 기존 slot_ban_save 호출, warnings 표시, "AI가 작성한 참고 의견" 라벨) / E-3·4(11월 리허설 전) / F-2(9월 샘플).
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- E-2 UI(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. docs/phase9c_e_spec.md §5 대로 E-2 UI(말로 입력하기 → 확인 다이얼로그 → slot_ban_save) 구현해줘."*

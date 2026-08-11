@@ -10,9 +10,11 @@
 import {
   AiDiagnoseInput,
   buildDiagnosePrompt,
+  buildFormalizePrompt,
   buildPseudonymizer,
   isAiEnabled,
   runDiagnose,
+  runFormalize,
 } from "../src/lib/timetable/ai";
 
 async function main() {
@@ -56,7 +58,35 @@ async function main() {
     result.suggestions.some((s) => s.includes("테스트교사")) ||
     (!/T\d{2}/.test(result.diagnosis) && !result.suggestions.some((s) => /T\d{2}/.test(s)));
   console.log(`\n[②] 파싱·역치환: ${restored ? "✅ (실명 복원 또는 가명 무언급)" : "⚠️ 가명 잔존 — unmask 확인 필요"}`);
-  process.exit(restored ? 0 : 1);
+  if (!restored) process.exit(1);
+
+  // ③ E2 정식화 실호출 — 프롬프트 무PII 기계 검증 + 제안이 slot_ban 형태로 나오는지
+  const fText = "테스트교사갑은 월요일 1교시 배정 금지, 테스트교사을은 금요일 하루 종일 이동 금지";
+  const fp = buildPseudonymizer(teachers);
+  const fPrompt = buildFormalizePrompt(fp.mask(fText), fp.aliases(), 7);
+  const fLeaks = ["테스트교사갑", "테스트교사을", "@example.com"].filter((s) => fPrompt.includes(s));
+  console.log(`\n[③] 정식화 프롬프트 PII 검사: ${fLeaks.length === 0 ? "✅ 실명·이메일 0건" : `❌ 유출 ${fLeaks.join(",")}`}`);
+  if (fLeaks.length > 0) process.exit(1);
+
+  console.log("[③] 정식화 실호출 중…");
+  const proposal = await runFormalize(
+    { text: fText, teachers, periodsPerDay: 7 },
+    (process.env.GEMINI_API_KEY || "").trim()
+  );
+  console.log(`\n해석: ${proposal.interpretation}`);
+  for (const e of proposal.entries) {
+    console.log(
+      `제안: ${e.teacherName}(${e.teacherEmail}) ${e.kind === "move" ? "이동금지" : "배정금지"} — ${e.slots.map((s) => `${["", "월", "화", "수", "목", "금"][s.day]}${s.period}`).join(", ")}`
+    );
+  }
+  proposal.warnings.forEach((w) => console.log(`경고: ${w}`));
+  const okShape =
+    proposal.entries.length >= 1 &&
+    proposal.entries.every(
+      (e) => e.teacherEmail.includes("@") && e.slots.every((s) => s.day >= 1 && s.day <= 5 && s.period >= 1 && s.period <= 7)
+    );
+  console.log(`\n[③] 제안 형태(slot_ban 정합): ${okShape ? "✅" : "❌"}`);
+  process.exit(okShape ? 0 : 1);
 }
 
 main().catch((e) => {

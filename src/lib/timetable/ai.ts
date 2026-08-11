@@ -37,6 +37,10 @@ export interface Pseudonymizer {
   mask(text: string): string;
   /** 가명 → 실명. 응답 문자열에 적용 */
   unmask(text: string): string;
+  /** 가명 → 교사 참조 (E2 정식화의 별칭 해석용). 모르는 가명은 null */
+  resolve(alias: string): AiTeacherRef | null;
+  /** 전체 가명 목록 (프롬프트 로스터용) */
+  aliases(): string[];
   size: number;
 }
 
@@ -63,11 +67,13 @@ export function buildPseudonymizer(teachers: AiTeacherRef[]): Pseudonymizer {
 
   const aliasByToken: Array<{ token: string; alias: string }> = [];
   const nameByAlias = new Map<string, string>();
+  const teacherByAlias = new Map<string, AiTeacherRef>();
   sorted.forEach((t, i) => {
     const alias = `T${String(i + 1).padStart(2, "0")}`;
     if (t.email) aliasByToken.push({ token: t.email, alias });
     if (t.name) aliasByToken.push({ token: t.name, alias });
     nameByAlias.set(alias, t.name || t.email || alias);
+    teacherByAlias.set(alias, t);
   });
   // 긴 토큰 먼저 — "김지구" 치환 전에 "지구"가 먼저 먹으면 "김T05" 잔여가 생긴다
   aliasByToken.sort((a, b) => b.token.length - a.token.length);
@@ -84,7 +90,13 @@ export function buildPseudonymizer(teachers: AiTeacherRef[]): Pseudonymizer {
     return (text ?? "").replace(/T\d{2,}/g, (m) => nameByAlias.get(m) || m);
   };
 
-  return { mask, unmask, size: sorted.length };
+  return {
+    mask,
+    unmask,
+    resolve: (alias: string) => teacherByAlias.get((alias || "").trim().toUpperCase()) || null,
+    aliases: () => Array.from(teacherByAlias.keys()),
+    size: sorted.length,
+  };
 }
 
 // ── E1 불능 진단 (spec §3) ────────────────────────────────────
@@ -247,5 +259,192 @@ export async function runDiagnose(
   return {
     diagnosis: p.unmask(parsed.diagnosis),
     suggestions: parsed.suggestions.map((s) => p.unmask(s)),
+  };
+}
+
+// ── E2 선호 정식화 (spec §3) — 자연어 → teacherSlotBans 후보 ──
+
+export interface AiFormalizeInput {
+  /** 일과계가 입력한 자연어 문장 — 실명 포함 가능. runFormalize가 전송 전 가명화한다 */
+  text: string;
+  /** 실교사만 (이메일 있는) — 별칭 로스터·해석의 원천 */
+  teachers: AiTeacherRef[];
+  periodsPerDay: number;
+}
+
+/** slot_ban_save가 그대로 받는 형태 — AI 전용 쓰기 경로를 만들지 않기 위한 정렬 (spec §0 철칙) */
+export interface AiFormalizeEntry {
+  teacherEmail: string;
+  teacherName?: string;
+  kind: "assign" | "move";
+  slots: Array<{ day: number; period: number }>;
+}
+
+export interface AiFormalizeResult {
+  /** 사람 확인 다이얼로그에 보여줄 해석 문장 (역치환 완료) */
+  interpretation: string;
+  entries: AiFormalizeEntry[];
+  /** 해석하지 못한 별칭·항목에 대한 안내 (역치환 완료) */
+  warnings: string[];
+}
+
+const MAX_FORMALIZE_TEXT = 200;
+const MAX_FORMALIZE_ENTRIES = 10;
+const MAX_SLOTS_PER_ENTRY = 40;
+
+/** 프롬프트 조립 (순수) — maskedText는 이미 가명화된 문장이어야 한다 */
+export function buildFormalizePrompt(
+  maskedText: string,
+  aliases: string[],
+  periodsPerDay: number
+): string {
+  return [
+    `당신은 고등학교 시간표의 "교사 교시 금지" 등록을 돕는 해석기입니다. 담당 교사가 쓴 한국어 요구를 구조화된 규칙으로 번역합니다.`,
+    ``,
+    `규칙:`,
+    `1. 교사는 가명(${aliases.slice(0, 5).join(", ")}…)으로만 지칭됩니다. 문장에 등장한 가명만 사용하세요.`,
+    `2. kind: "assign" = 배정금지(그 교시에 수업을 아예 두지 않음), "move" = 이동금지(솔버가 그 교시의 수업을 옮기지 못함). 문장이 "회피·금지·비우기"면 assign, "고정·움직이지 말 것"이면 move. 애매하면 assign.`,
+    `3. days: 1=월 2=화 3=수 4=목 5=금. periods: 1~${periodsPerDay}. 요일 전체면 periods에 "all".`,
+    `4. 반드시 JSON 하나만 출력:`,
+    `{"interpretation": "해석을 한 문장으로 (가명 사용)", "items": [{"teacher": "T01", "kind": "assign", "days": [1], "periods": [1, 2]}]}`,
+    `5. 문장에 없는 요구를 만들지 마세요. 해석 불가면 items를 빈 배열로 하고 interpretation에 이유를 쓰세요.`,
+    ``,
+    `## 요구 문장`,
+    maskedText,
+  ].join("\n");
+}
+
+interface RawFormalizeItem {
+  teacher: string;
+  kind: "assign" | "move";
+  days: number[];
+  periods: number[] | "all";
+}
+
+/** 응답 파싱 (순수) — 형태 검증만. 별칭 해석·범위 정리는 normalizeFormalizeItems가 담당 */
+export function parseFormalizeResponse(
+  text: string
+): { interpretation: string; items: RawFormalizeItem[] } | null {
+  let body = (text || "").trim();
+  const fence = body.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) body = fence[1].trim();
+  try {
+    const obj = JSON.parse(body);
+    if (!obj || typeof obj.interpretation !== "string" || !Array.isArray(obj.items)) return null;
+    const items: RawFormalizeItem[] = [];
+    for (const it of obj.items.slice(0, MAX_FORMALIZE_ENTRIES)) {
+      if (!it || typeof it.teacher !== "string") continue;
+      // 모델 출력 변형 실측 2건 수용: "all" 리터럴 대신 문자열 변종("전체" 등) / 배열 안 문자열 ["all"]
+      const rawPeriods = it.periods;
+      let periods: number[] | "all";
+      if (typeof rawPeriods === "string") {
+        periods = "all";
+      } else if (Array.isArray(rawPeriods)) {
+        periods = rawPeriods.some((v: unknown) => typeof v === "string" && /all|전체|전부/i.test(v))
+          ? "all"
+          : rawPeriods.map(Number);
+      } else {
+        periods = [];
+      }
+      items.push({
+        teacher: it.teacher,
+        kind: it.kind === "move" ? "move" : "assign",
+        days: Array.isArray(it.days) ? it.days.map(Number) : [],
+        periods,
+      });
+    }
+    return { interpretation: obj.interpretation.slice(0, 500), items };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 별칭 해석·범위 정리·슬롯 전개 (순수) — 모르는 별칭·범위 밖 값은 버리고 warnings로 보고.
+ * 반환 entries는 slot_ban_save 검증(validateTeacherSlotBanPayload)을 그대로 통과하는 형태.
+ */
+export function normalizeFormalizeItems(
+  items: RawFormalizeItem[],
+  p: Pseudonymizer,
+  periodsPerDay: number
+): { entries: AiFormalizeEntry[]; warnings: string[] } {
+  const entries: AiFormalizeEntry[] = [];
+  const warnings: string[] = [];
+  for (const it of items) {
+    const teacher = p.resolve(it.teacher);
+    if (!teacher || !teacher.email) {
+      warnings.push(`${it.teacher}: 등록된 교사와 연결하지 못해 제외했습니다.`);
+      continue;
+    }
+    const days = Array.from(new Set(it.days.filter((d) => Number.isInteger(d) && d >= 1 && d <= 5)));
+    // 교시 미지정 + 요일 지정 = "그 요일 전체"로 해석 (실측: "하루 종일" 요구에서 모델이 periods를
+    // 비우는 경우 발생 — 과대 해석이어도 사람 확인 다이얼로그가 관문이라 안전한 방향)
+    const periods =
+      it.periods === "all" || (Array.isArray(it.periods) && it.periods.length === 0 && days.length > 0)
+        ? Array.from({ length: periodsPerDay }, (_, i) => i + 1)
+        : Array.from(
+            new Set(
+              (it.periods as number[]).filter(
+                (q) => Number.isInteger(q) && q >= 1 && q <= periodsPerDay
+              )
+            )
+          );
+    if (days.length === 0 || periods.length === 0) {
+      warnings.push(`${it.teacher}: 요일·교시를 해석하지 못해 제외했습니다.`);
+      continue;
+    }
+    const slots: Array<{ day: number; period: number }> = [];
+    for (const d of days) for (const q of periods) slots.push({ day: d, period: q });
+    entries.push({
+      teacherEmail: (teacher.email || "").toLowerCase(),
+      ...(teacher.name ? { teacherName: teacher.name } : {}),
+      kind: it.kind,
+      slots: slots.slice(0, MAX_SLOTS_PER_ENTRY),
+    });
+  }
+  return { entries, warnings };
+}
+
+/**
+ * E2 정식화 실행 — 입력 문장 가명화 → 호출 → 파싱(1회 재시도) → 별칭 해석 → 역치환.
+ * PII 방어선: 문장에서 등록 교사 이름이 하나도 치환되지 않으면 **외부 호출 없이** 422로 거절
+ * (모르는 이름·오타가 원문 그대로 나가는 것을 차단. 일부 일치·일부 오타의 잔여 위험은
+ * 스펙 §3 E2에 수용 기록 — UI가 "성명을 정확히" 안내).
+ */
+export async function runFormalize(
+  input: AiFormalizeInput,
+  apiKey: string
+): Promise<AiFormalizeResult> {
+  const text = (input.text || "").trim().slice(0, MAX_FORMALIZE_TEXT);
+  if (!text) throw new AiCallError("요구 문장을 입력해 주세요.", 400);
+
+  const p = buildPseudonymizer(input.teachers);
+  const masked = p.mask(text);
+  if (masked === text) {
+    throw new AiCallError(
+      "문장에서 등록된 교사 성명을 찾지 못했습니다. 시간표에 있는 교사의 성명을 정확히 넣어 주세요.",
+      422
+    );
+  }
+
+  const prompt = buildFormalizePrompt(masked, p.aliases(), input.periodsPerDay);
+  let raw = await callGemini(prompt, apiKey);
+  let parsed = parseFormalizeResponse(raw);
+  if (!parsed) {
+    raw = await callGemini(
+      `${prompt}\n\n(직전 응답이 JSON 형식이 아니었습니다. 다른 텍스트 없이 JSON 하나만 다시 출력하세요.)`,
+      apiKey
+    );
+    parsed = parseFormalizeResponse(raw);
+  }
+  if (!parsed) {
+    throw new AiCallError("AI 응답을 해석하지 못했습니다. 다시 시도해 주세요.", 502);
+  }
+
+  const { entries, warnings } = normalizeFormalizeItems(parsed.items, p, input.periodsPerDay);
+  return {
+    interpretation: p.unmask(parsed.interpretation),
+    entries,
+    warnings: warnings.map((w) => p.unmask(w)),
   };
 }

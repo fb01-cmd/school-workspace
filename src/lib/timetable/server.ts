@@ -5658,3 +5658,39 @@ export async function computeAiDiagnosis(
   );
   return { clean: false, result };
 }
+
+/**
+ * E2 선호 정식화 — 활성 학기 그리드의 실교사(이메일 있는)만 로스터로 삼아 자연어를
+ * slot_ban 제안으로 번역한다. 저장은 하지 않는다 — UI가 사람 확인 후 slot_ban_save 호출.
+ */
+export async function computeAiFormalize(
+  domain: string,
+  termId: string,
+  text: string
+): Promise<import("./ai").AiFormalizeResult> {
+  const [settings, grids] = await Promise.all([
+    loadTimetableSettings(domain),
+    loadAllClassGrids(domain, termId),
+  ]);
+
+  const teachers: import("./ai").AiTeacherRef[] = [];
+  const seen = new Set<string>();
+  for (const grid of grids) {
+    for (const cell of grid.cells) {
+      for (const lesson of cell.lessons) {
+        for (const t of lesson.teachers || []) {
+          const email = (t.email || "").trim().toLowerCase();
+          if (!email || seen.has(email)) continue; // 가상 교사(창체·SLAT)는 금지 규칙 대상 아님
+          seen.add(email);
+          teachers.push({ email, name: t.name });
+        }
+      }
+    }
+  }
+
+  const { runFormalize } = await import("./ai");
+  return runFormalize(
+    { text, teachers, periodsPerDay: settings.periodsPerDay || 7 },
+    (process.env.GEMINI_API_KEY || "").trim()
+  );
+}

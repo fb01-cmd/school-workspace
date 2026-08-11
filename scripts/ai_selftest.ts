@@ -7,10 +7,15 @@
  * 가명화 로직을 고치면 이 스크립트부터 통과시킬 것 (spec §2 — PII 외부 전송 0 보증의 근거).
  */
 import {
+  AiCallError,
   AiDiagnoseInput,
   buildDiagnosePrompt,
+  buildFormalizePrompt,
   buildPseudonymizer,
+  normalizeFormalizeItems,
   parseDiagnoseResponse,
+  parseFormalizeResponse,
+  runFormalize,
 } from "../src/lib/timetable/ai";
 
 let failed = 0;
@@ -83,5 +88,70 @@ console.log("── 응답 파싱 ──");
   expect("diagnosis 2000자 상한", (long?.diagnosis.length || 0) === 2000);
 }
 
-console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);
-process.exit(failed === 0 ? 0 : 1);
+console.log("── E2 정식화: 파싱·별칭 해석·슬롯 전개 ──");
+{
+  const p = buildPseudonymizer([
+    { email: "hong@hmh.or.kr", name: "홍길동" },
+    { email: "", name: "창체" }, // 가상 교사 — 금지 규칙 대상 아님
+  ]);
+  // 별칭은 이름 가나다순 배정 — 하드코딩하지 않고 mask로 실제 별칭을 얻는다
+  const hongAlias = p.mask("홍길동");
+  const virtAlias = p.mask("창체");
+  const parsed = parseFormalizeResponse(
+    JSON.stringify({
+      interpretation: `${hongAlias}의 월 1교시 배정금지`,
+      items: [
+        { teacher: hongAlias, kind: "assign", days: [1], periods: [1] },
+        { teacher: "T99", kind: "move", days: [2], periods: "all" },
+        { teacher: hongAlias, kind: "move", days: [0, 3, 9], periods: [1, 99] },
+        { teacher: virtAlias, kind: "assign", days: [1], periods: [1] },
+      ],
+    })
+  );
+  expect("정식화 파싱", parsed !== null && parsed.items.length === 4);
+  const { entries, warnings } = normalizeFormalizeItems(parsed!.items, p, 7);
+  expect("정상 항목 → slot_ban 형태", entries.length === 2 &&
+    entries[0].teacherEmail === "hong@hmh.or.kr" && entries[0].slots.length === 1,
+    JSON.stringify(entries));
+  expect("모르는 별칭 T99 + 가상 교사 제외+경고 2건", warnings.length === 2 &&
+    warnings.some((w) => w.includes("T99")), JSON.stringify(warnings));
+  expect("범위 밖 요일·교시 걸러냄", entries[1]?.slots.length === 1 &&
+    entries[1].slots[0].day === 3 && entries[1].slots[0].period === 1);
+  const all = normalizeFormalizeItems(
+    [{ teacher: hongAlias, kind: "assign", days: [5], periods: "all" }], p, 7
+  );
+  expect('"all" → 1~7교시 전개', all.entries[0]?.slots.length === 7);
+  // 모델 출력 변형 실측: periods가 ["all"](배열 안 문자열)·빈 배열인 경우도 전일로 해석
+  const variant = parseFormalizeResponse(
+    JSON.stringify({ interpretation: "v", items: [
+      { teacher: hongAlias, kind: "move", days: [5], periods: ["all"] },
+      { teacher: hongAlias, kind: "move", days: [2], periods: [] },
+    ]})
+  );
+  const vNorm = normalizeFormalizeItems(variant!.items, p, 7);
+  expect('변형 ["all"] → 전일 전개', vNorm.entries[0]?.slots.length === 7, JSON.stringify(vNorm));
+  expect("빈 periods+요일 지정 → 전일 해석", vNorm.entries[1]?.slots.length === 7);
+  const prompt = buildFormalizePrompt(p.mask("홍길동은 월 1교시 회피"), p.aliases(), 7);
+  expect("정식화 프롬프트 무PII", !prompt.includes("홍길동") && !prompt.includes("hong@"));
+}
+
+console.log("── E2 사전 거절 (외부 호출 차단) ──");
+{
+  // 등록 교사 이름이 하나도 치환되지 않으면 fetch 없이 422 — 미등록 이름의 원문 유출 차단
+  const teachers = [{ email: "hong@hmh.or.kr", name: "홍길동" }];
+  runFormalize({ text: "김모르는사람은 월1 회피", teachers, periodsPerDay: 7 }, "dummy-key")
+    .then(() => {
+      failed++;
+      console.log("  ❌ 미등록 이름인데 호출이 진행됨");
+      finish();
+    })
+    .catch((e) => {
+      expect("미등록 이름 → 422 사전 거절", e instanceof AiCallError && e.statusCode === 422, e?.message);
+      finish();
+    });
+}
+
+function finish() {
+  console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);
+  process.exit(failed === 0 ? 0 : 1);
+}

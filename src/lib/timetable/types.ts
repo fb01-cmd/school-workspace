@@ -380,8 +380,9 @@ export type ManageAction =
   | "neis_map_get"   // 매핑 등록부 + 학기 과목 seed
   | "neis_map_save"  // 등록부 전체 교체 (sanitize·감사 로그)
   | "neis_precheck"  // 사전 검증 리포트 (termId 또는 draftId 대상)
-  // ── Phase 9c-E AI 보조층 (phase9c_e_spec §4) — E2~E4 액션은 해당 단계 구현 시 추가 ──
-  | "ai_diagnose";   // E1 불능 진단 (draftId 대상, 표시 전용, 키 미설정 시 enabled:false)
+  // ── Phase 9c-E AI 보조층 (phase9c_e_spec §4) — E3·E4 액션은 해당 단계 구현 시 추가 ──
+  | "ai_diagnose"    // E1 불능 진단 (draftId 대상, 표시 전용, 키 미설정 시 enabled:false)
+  | "ai_formalize";  // E2 선호 정식화 (aiText → slot_ban 제안, 저장은 UI 확인 후 slot_ban_save로만)
 
 export interface ManageTimetableRequest {
   action: ManageAction;
@@ -440,6 +441,8 @@ export interface ManageTimetableRequest {
   draftOp?: BaseRevisionOp; // draft_op 적용 연산 1건
   // Phase 9c-F NEIS 매핑 (phase9c_f_spec §4) — neis_precheck 대상은 termId/draftId 재사용
   neisMap?: Partial<NeisMapRegistry>; // neis_map_save 본문 (전체 교체)
+  // Phase 9c-E AI 보조 (phase9c_e_spec §3) — ai_formalize 자연어 문장 (실명 포함 가능, 서버가 가명화)
+  aiText?: string;
 }
 
 export interface ManageTimetableResponse {
