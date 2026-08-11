@@ -5,7 +5,7 @@ import { formatSlotWithDate, getDayDateLabel, getWeekRangeLabel } from "@/lib/ti
 import MiniPreviewGrid, { DAYS } from "./MiniPreviewGrid";
 
 export interface ShareCardData {
-  variant?: "occupant" | "counterpart";
+  variant?: "counterpart";
   requesterName: string;
   sourceWeekId: string;
   targetWeekId?: string;
@@ -76,7 +76,6 @@ export interface ConsolidatedShareData {
 /**
  * 사전 양해 요청 공유 카드 DOM (offscreen 렌더링 — display:none 금지, position:absolute; left:-9999px 사용)
  * 공유 카드 v2: 수신자(상대 교사) 관점으로 문구 및 일정 전면 반전 + 공용 MiniPreviewGrid 수록
- * (consent_swap_opening_spec §3-2: candidate.coordination 조율 당사자 변형 수록)
  */
 export function OffscreenShareCard({
   cardRef,
@@ -103,10 +102,8 @@ export function OffscreenShareCard({
 
   const isCrossWeek = !!(data.targetWeekId && data.targetWeekId !== data.sourceWeekId);
 
-  // 조율 당사자 변형 (consent_swap_opening_spec §3-2d U2: variant prop으로 분기 구분)
   const coordination = data.candidate.coordination;
   const hasConflicts = !!(coordination && coordination.conflicts && coordination.conflicts.length > 0);
-  const isOccupantVariant = data.variant ? data.variant === "occupant" : hasConflicts;
   const primaryConflict = hasConflicts ? coordination!.conflicts[0] : null;
   const roomName = primaryConflict?.roomName || "특별실";
   const occupants = primaryConflict?.occupants || [];
@@ -125,56 +122,24 @@ export function OffscreenShareCard({
       >
         <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
           <div className="text-[10px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
-          <div className="text-lg font-black mt-0.5 tracking-tight">
-            {isOccupantVariant ? "🤝 장소 양해 요청" : "수업교환 양해 요청"}
-          </div>
+          <div className="text-lg font-black mt-0.5 tracking-tight">수업교환 양해 요청</div>
         </div>
 
-        {isOccupantVariant ? (
-          /* 조율 당사자 변형 카드 (spec §3-2) */
-          <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-3.5 space-y-1.5 text-xs">
-            <div className="font-extrabold text-amber-950 text-sm">
-              안녕하세요, {occupantTitle}! 👋
-            </div>
-            <div className="text-amber-900 leading-relaxed text-xs">
-              <span className="font-bold text-indigo-900">{data.requesterName} 교사</span>입니다.<br />
-              교체하면 <b>{conflictSlotStr}</b>에 <b>{roomName}</b> 사용이 겹칩니다 ─ 사용 중: <b>{occupantTitle}</b>
-            </div>
+        {/* 기존 수업교환 양해 카드 */}
+        <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3.5 space-y-1 text-xs">
+          <div className="font-extrabold text-indigo-950 text-sm">
+            안녕하세요, {counterpartTitle}! 👋
           </div>
-        ) : (
-          /* 기존 수업교환 양해 카드 */
-          <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3.5 space-y-1 text-xs">
-            <div className="font-extrabold text-indigo-950 text-sm">
-              안녕하세요, {counterpartTitle}! 👋
-            </div>
             <div className="text-gray-700 leading-relaxed text-xs">
               <span className="font-bold text-indigo-900">{data.requesterName} 교사</span>입니다.<br />
               아래 일정으로 수업 교체가 가능할까요? 😊
             </div>
           </div>
-        )}
 
-        {isOccupantVariant ? (
-          /* 조율 당사자 상세 내용 */
-          <div className="border border-amber-200 rounded-xl p-3.5 space-y-2.5 text-xs bg-amber-50/30">
-            <div className="font-bold text-amber-950 border-b border-amber-200 pb-1.5 flex items-center justify-between">
-              <span>🤝 특별실 양해 요청 상세 (선생님 기준)</span>
-              <span className="text-[10px] bg-amber-100 text-amber-900 font-extrabold px-2 py-0.5 rounded-full border border-amber-300">
-                특별실 겹침
-              </span>
-            </div>
-            <div className="space-y-1.5 pt-0.5 text-gray-800">
-              <div>• <b>특별실:</b> <span className="font-bold text-amber-950">{roomName}</span></div>
-              <div>• <b>요청 교시:</b> <span className="font-bold text-indigo-900">{conflictSlotStr}</span></div>
-              <div>• <b>선생님 수업:</b> {occupants.map((o) => `${o.teacherName} 선생님 (${o.grade}-${o.classNum}반 ${o.subjectName})`).join(", ")}</div>
-              <div>• <b>신청자 수업:</b> {data.requesterName} 교사 ({data.source.grade}-{data.source.classNum}반 {data.source.subjectName})</div>
-            </div>
-          </div>
-        ) : (
-          /* 기존 수업교환 상세 내용 */
-          <div className="border border-gray-200 rounded-xl p-3.5 space-y-2.5 text-xs bg-gray-50/40">
-            <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5 flex items-center justify-between">
-              <span>🔄 수업교환 상세 일정 (선생님 기준)</span>
+        {/* 수업교환 상세 내용 */}
+        <div className="border border-gray-200 rounded-xl p-3.5 space-y-2.5 text-xs bg-gray-50/40">
+          <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5 flex items-center justify-between">
+            <span>🔄 수업교환 상세 일정 (선생님 기준)</span>
               {data.targetWeekId && data.targetWeekId !== data.sourceWeekId && (
                 <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full border border-indigo-200">
                   ↔ {data.targetWeekId} 주 교차 주
@@ -233,7 +198,6 @@ export function OffscreenShareCard({
               </div>
             </div>
           </div>
-        )}
 
         {/* 상대 시간표 미리보기 미니 그리드 (공용 MiniPreviewGrid 컴포넌트 사용) */}
         <MiniPreviewGrid

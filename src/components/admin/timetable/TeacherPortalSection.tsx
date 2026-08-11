@@ -580,7 +580,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     }
   };
 
-  const handleCopyDraftShareImage = async (draft: SwapDraft, variant: "occupant" | "counterpart" = "counterpart") => {
+  const handleCopyDraftShareImage = async (draft: SwapDraft) => {
     try {
       const isCrossWeek = !!(draft.targetWeekId && draft.targetWeekId !== draft.sourceWeekId);
       const effTargetWeekId = draft.targetWeekId || draft.sourceWeekId;
@@ -607,7 +607,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
       const currentUserName = user?.displayName || teacherProfile?.name || userEmail.split("@")[0] || "교사";
       setDraftShareData({
-        variant,
+        variant: "counterpart",
         requesterName: currentUserName,
         sourceWeekId: draft.sourceWeekId,
         targetWeekId: isCrossWeek ? effTargetWeekId : undefined,
@@ -1040,8 +1040,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     }
   };
 
-  const handleCopyShareImage = (data: ShareCardData, variant?: "occupant" | "counterpart") => {
-    setShareCardData({ ...data, variant: variant || data.variant });
+  const handleCopyShareImage = (data: ShareCardData) => {
+    setShareCardData({ ...data, variant: "counterpart" });
     setTimeout(() => {
       copyShareImageElement(shareCardRef.current);
     }, 100);
@@ -1272,6 +1272,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                         <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
                           <td className="py-2 px-1 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50 text-xs align-middle w-14">{period}</td>
                           {DAYS.map((d) => {
+                            const dayMaxPeriods = week.dayPeriodCounts?.find((dp) => dp.day === d.num)?.periods ?? periodsPerDay;
+                            const isOutPeriod = period > dayMaxPeriods;
+
                             const matched = week.cells.filter((c) => c.day === d.num && c.period === period);
                             const hasLesson = matched.length > 0;
                             const isSelected = selectedCell?.weekId === week.weekId && selectedCell?.day === d.num && selectedCell?.period === period;
@@ -1281,22 +1284,23 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                               (s) => s.day === d.num && s.period === period
                             );
 
-                            // §14-2 v2.1: 내 공강 칸(!hasLesson)이고 소스 셀이 선택되었을 때 인라인 맞교환 후보 매칭
-                            const candidate = !hasLesson && selectedCell
+                            // §14-2 v2.1: 내 공강 칸(!hasLesson)이고 소스 셀이 선택되었을 때 인라인 맞교환 후보 매칭 (미편성 교시는 제외)
+                            const candidate = !hasLesson && !isOutPeriod && selectedCell
                               ? weekCandidates.find((c) => c.targetDay === d.num && c.targetPeriod === period)
                               : null;
 
-                            const isChainTargetSlot = !hasLesson && selectedCell && chainTarget?.weekId === week.weekId && chainTarget?.day === d.num && chainTarget?.period === period;
+                            const isChainTargetSlot = !hasLesson && !isOutPeriod && selectedCell && chainTarget?.weekId === week.weekId && chainTarget?.day === d.num && chainTarget?.period === period;
 
                             return (
                               <td
                                 key={d.num}
                                 className={`p-1 border-r border-gray-100 text-center align-middle h-16 transition-all ${
-                                  isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""
+                                  isOutPeriod ? "bg-gray-100/50" : isSelected ? "ring-2 ring-inset ring-indigo-500 bg-indigo-50" : ""
                                 } ${hasLesson && !isSelected ? "hover:bg-indigo-50/60 cursor-pointer" : ""} ${
-                                  !hasLesson && selectedCell && isChainMode && !isCommonActivitySlot ? "hover:bg-purple-100/90 cursor-pointer border-2 border-dashed border-purple-400 bg-purple-50/40" : ""
+                                  !hasLesson && !isOutPeriod && selectedCell && isChainMode && !isCommonActivitySlot ? "hover:bg-purple-100/90 cursor-pointer border-2 border-dashed border-purple-400 bg-purple-50/40" : ""
                                 } ${isChainTargetSlot ? "ring-2 ring-purple-600 bg-purple-100" : ""}`}
                                 onClick={() => {
+                                  if (isOutPeriod) return;
                                   if (hasLesson) {
                                     handleCellClick(matched[0], week.weekId);
                                   } else if (selectedCell && isChainMode) {
@@ -1309,7 +1313,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                   }
                                 }}
                               >
-                                {hasLesson ? (
+                                {isOutPeriod ? (
+                                  <div className="text-gray-300 text-xs font-semibold font-mono text-center select-none">-</div>
+                                ) : hasLesson ? (
                                   matched.map((cell, ci) => {
                                     const changed = (cell as any).changed;
                                     const changeId: string = changed?.changeId || "";
@@ -1650,7 +1656,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                             <div className="text-[11px] font-bold text-amber-950">상대 교사 감점 사유:</div>
                             <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-900 font-medium">
                               {counterpartPenalties.map((pd, pIdx) => (
-                                <li key={pIdx}>{pd.text}</li>
+                                <li key={pIdx}>{pd.text} ({pd.points}점)</li>
                               ))}
                             </ul>
                           </div>
@@ -1782,138 +1788,48 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       </button>
                     </div>
 
-                    {applyingCandidate.coordination ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!selectedCell || !applyingCandidate) return;
-                            const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
-                            handleCopyShareImage({
-                              variant: "counterpart",
-                              requesterName: currentUserName,
-                              sourceWeekId: selectedCell.weekId,
-                              targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
-                              source: {
-                                grade: selectedCell.grade,
-                                classNum: selectedCell.classNum,
-                                day: selectedCell.day,
-                                period: selectedCell.period,
-                                subjectName: selectedCell.subjectName,
-                              },
-                              candidate: {
-                                targetDay: applyingCandidate.targetDay,
-                                targetPeriod: applyingCandidate.targetPeriod,
-                                counterpartEmail: applyingCandidate.counterpartEmail,
-                                counterpartName: applyingCandidate.counterpartName,
-                                counterpartSubjectName: applyingCandidate.counterpartSubjectName,
-                                coordination: applyingCandidate.coordination,
-                              },
-                              previewCells,
-                              counterpartSourceCells,
-                              counterpartTargetCells,
-                              sourceWeekObj,
-                              targetWeekObj,
-                              periodsPerDay,
-                            }, "counterpart");
-                          }}
-                          disabled={
-                            previewLoading ||
-                            (isCrossWeek ? !counterpartSourceCells || !counterpartTargetCells : !previewCells)
-                          }
-                          className="py-2 bg-sky-50 hover:bg-sky-100 border border-sky-200 disabled:opacity-50 text-sky-900 font-bold rounded-xl text-[11px] transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <span>📋</span>
-                          <span>상대 교사용 카드</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!selectedCell || !applyingCandidate) return;
-                            const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
-                            handleCopyShareImage({
-                              variant: "occupant",
-                              requesterName: currentUserName,
-                              sourceWeekId: selectedCell.weekId,
-                              targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
-                              source: {
-                                grade: selectedCell.grade,
-                                classNum: selectedCell.classNum,
-                                day: selectedCell.day,
-                                period: selectedCell.period,
-                                subjectName: selectedCell.subjectName,
-                              },
-                              candidate: {
-                                targetDay: applyingCandidate.targetDay,
-                                targetPeriod: applyingCandidate.targetPeriod,
-                                counterpartEmail: applyingCandidate.counterpartEmail,
-                                counterpartName: applyingCandidate.counterpartName,
-                                counterpartSubjectName: applyingCandidate.counterpartSubjectName,
-                                coordination: applyingCandidate.coordination,
-                              },
-                              previewCells,
-                              counterpartSourceCells,
-                              counterpartTargetCells,
-                              sourceWeekObj,
-                              targetWeekObj,
-                              periodsPerDay,
-                            }, "occupant");
-                          }}
-                          disabled={
-                            previewLoading ||
-                            (isCrossWeek ? !counterpartSourceCells || !counterpartTargetCells : !previewCells)
-                          }
-                          className="py-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 disabled:opacity-50 text-amber-950 font-bold rounded-xl text-[11px] transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <span>🤝</span>
-                          <span>조율 당사자용 카드</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!selectedCell || !applyingCandidate) return;
-                          const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
-                          handleCopyShareImage({
-                            variant: "counterpart",
-                            requesterName: currentUserName,
-                            sourceWeekId: selectedCell.weekId,
-                            targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
-                            source: {
-                              grade: selectedCell.grade,
-                              classNum: selectedCell.classNum,
-                              day: selectedCell.day,
-                              period: selectedCell.period,
-                              subjectName: selectedCell.subjectName,
-                            },
-                            candidate: {
-                              targetDay: applyingCandidate.targetDay,
-                              targetPeriod: applyingCandidate.targetPeriod,
-                              counterpartEmail: applyingCandidate.counterpartEmail,
-                              counterpartName: applyingCandidate.counterpartName,
-                              counterpartSubjectName: applyingCandidate.counterpartSubjectName,
-                              coordination: applyingCandidate.coordination,
-                            },
-                            previewCells,
-                            counterpartSourceCells,
-                            counterpartTargetCells,
-                            sourceWeekObj,
-                            targetWeekObj,
-                            periodsPerDay,
-                          }, "counterpart");
-                        }}
-                        disabled={
-                          previewLoading ||
-                          (isCrossWeek ? !counterpartSourceCells || !counterpartTargetCells : !previewCells)
-                        }
-                        className="w-full py-2 bg-sky-50 hover:bg-sky-100 border border-sky-200 disabled:opacity-50 text-sky-800 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <span>📋</span>
-                        <span>{previewLoading ? "시간표 로딩 중…" : "사전 양해 카드 이미지 복사"}</span>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!selectedCell || !applyingCandidate) return;
+                        const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
+                        handleCopyShareImage({
+                          variant: "counterpart",
+                          requesterName: currentUserName,
+                          sourceWeekId: selectedCell.weekId,
+                          targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
+                          source: {
+                            grade: selectedCell.grade,
+                            classNum: selectedCell.classNum,
+                            day: selectedCell.day,
+                            period: selectedCell.period,
+                            subjectName: selectedCell.subjectName,
+                          },
+                          candidate: {
+                            targetDay: applyingCandidate.targetDay,
+                            targetPeriod: applyingCandidate.targetPeriod,
+                            counterpartEmail: applyingCandidate.counterpartEmail,
+                            counterpartName: applyingCandidate.counterpartName,
+                            counterpartSubjectName: applyingCandidate.counterpartSubjectName,
+                            coordination: applyingCandidate.coordination,
+                          },
+                          previewCells,
+                          counterpartSourceCells,
+                          counterpartTargetCells,
+                          sourceWeekObj,
+                          targetWeekObj,
+                          periodsPerDay,
+                        });
+                      }}
+                      disabled={
+                        previewLoading ||
+                        (isCrossWeek ? !counterpartSourceCells || !counterpartTargetCells : !previewCells)
+                      }
+                      className="w-full py-2 bg-sky-50 hover:bg-sky-100 border border-sky-200 disabled:opacity-50 text-sky-800 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <span>📋</span>
+                      <span>{previewLoading ? "시간표 로딩 중…" : "사전 양해 카드 이미지 복사"}</span>
+                    </button>
                   </div>
 
                   <button
@@ -2414,33 +2330,13 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       {submittingDraftId === draft.id ? "신청 중..." : "이 안으로 신청"}
                     </button>
 
-                    {/* §3-2d U2: 조율 필요 초안은 상대 교사/조율 당사자용 복사 버튼 2개 노출 */}
-                    {isCoordination ? (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => handleCopyDraftShareImage(draft, "counterpart")}
-                          className="py-1.5 px-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold rounded-lg text-[11px] border border-indigo-200 transition-colors cursor-pointer"
-                        >
-                          📋 상대 교사용
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyDraftShareImage(draft, "occupant")}
-                          className="py-1.5 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold rounded-lg text-[11px] border border-amber-300 transition-colors cursor-pointer"
-                        >
-                          🤝 조율 당사자용
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleCopyDraftShareImage(draft, "counterpart")}
-                        className="py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs border border-indigo-200 transition-colors shrink-0 cursor-pointer"
-                      >
-                        📋 양해 이미지 복사
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleCopyDraftShareImage(draft)}
+                      className="py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs border border-indigo-200 transition-colors shrink-0 cursor-pointer"
+                    >
+                      📋 양해 이미지 복사
+                    </button>
 
                     <button
                       type="button"

@@ -522,40 +522,41 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
             </div>
           </form>
 
-          {/* 저장 전 미리보기 카드 (스펙 A-4) */}
-          <div className="bg-white rounded-xl shadow-sm border border-purple-200 p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-purple-100 pb-3">
-              <div>
-                <h4 className="text-sm font-bold text-purple-950 flex items-center gap-2">
-                  <span>🔍 지정 수업 미리보기 검증 (스펙 A-4)</span>
-                </h4>
-                <p className="text-xs text-purple-700 mt-0.5">
-                  현재 작성 중인 기준에 따라 교체 차단되는 실제 시간표 셀을 미리 확인합니다.
-                </p>
-              </div>
+          {/* 저장 전 미리보기 카드 */}
+          {(editingGroupId !== null || label.trim() !== "" || subjectNames.length > 0) && (
+            <div className="bg-white rounded-xl shadow-sm border border-purple-200 p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-purple-100 pb-3">
+                <div>
+                  <h4 className="text-sm font-bold text-purple-950 flex items-center gap-2">
+                    <span>🔍 지정 수업 미리보기 검증</span>
+                  </h4>
+                  <p className="text-xs text-purple-700 mt-0.5">
+                    현재 작성 중인 기준에 따라 교체 차단되는 실제 시간표 셀을 미리 확인합니다.
+                  </p>
+                </div>
 
-              {/* 반 선택 버튼 */}
-              <div className="flex items-center gap-1 bg-purple-50 p-1 rounded-lg">
-                <span className="text-[11px] font-bold text-purple-800 px-1.5">미리보기 반:</span>
-                {classNums.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => {
-                      setPreviewClassNum(c);
-                      fetchPreviewClassGrid(grade, c);
-                    }}
-                    className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${
-                      previewClassNum === c
-                        ? "bg-purple-600 text-white shadow-xs"
-                        : "text-purple-700 hover:bg-purple-100"
-                    }`}
-                  >
-                    {c}반
-                  </button>
-                ))}
+                {/* 반 선택 버튼 */}
+                <div className="flex items-center gap-1 bg-purple-50 p-1 rounded-lg">
+                  <span className="text-[11px] font-bold text-purple-800 px-1.5">미리보기 반:</span>
+                  {classNums.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => {
+                        setPreviewClassNum(c);
+                        fetchPreviewClassGrid(grade, c);
+                      }}
+                      className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${
+                        previewClassNum === c
+                          ? "bg-purple-600 text-white shadow-xs"
+                          : "text-purple-700 hover:bg-purple-100"
+                      }`}
+                    >
+                      {c}반
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
             {loadingPreview ? (
               <div className="py-8 text-center text-xs text-gray-500 font-semibold">
@@ -648,6 +649,7 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* 우측: 등록된 이동수업 그룹 목록 (lg:col-span-5) */}

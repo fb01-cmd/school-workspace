@@ -53,6 +53,14 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const [recentTeachers, setRecentTeachers] = useState<Array<{ email: string; name: string }>>([]);
 
   const [teacherWeekCellsMap, setTeacherWeekCellsMap] = useState<Record<string, TeacherTimetableCell[]>>({});
+  const [projectedWeeks, setProjectedWeeks] = useState<Array<{
+    weekId: string;
+    startDate: string;
+    cells: TeacherTimetableCell[];
+    dayPeriodCounts?: Array<{ day: number; periods: number }>;
+  }>>([]);
+  const [hasMoreProjectedWeeks, setHasMoreProjectedWeeks] = useState(false);
+  const [extraWeeks, setExtraWeeks] = useState(0);
   const [loadingTimetable, setLoadingTimetable] = useState(false);
   const [timetableError, setTimetableError] = useState<string | null>(null);
 
@@ -192,7 +200,12 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
   // §14-4: 그리드는 "담긴 상태의 예상 시간표" — 담기 누적분을 가상 적용한 direct_projected로 로드한다.
   // cart 인자를 명시하는 이유: setCartItems 직후에는 cartItems 바인딩이 구값이라 갱신분을 못 싣는다.
-  const fetchTeacherTimetablesForAllWeeks = async (email: string, targetWeeks: TimetableWeek[] = weeks, cart: CartItem[] = cartItems) => {
+  const fetchTeacherTimetablesForAllWeeks = async (
+    email: string,
+    targetWeeks: TimetableWeek[] = weeks,
+    cart: CartItem[] = cartItems,
+    currentExtraWeeks: number = extraWeeks
+  ) => {
     if (!email || targetWeeks.length === 0) return;
     setLoadingTimetable(true);
     setTimetableError(null);
@@ -200,17 +213,38 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "direct_projected", teacherEmail: email, pendingItems: toPendingPayload(cart) }),
+        body: JSON.stringify({
+          action: "direct_projected",
+          teacherEmail: email,
+          pendingItems: toPendingPayload(cart),
+          extraWeeks: currentExtraWeeks,
+        }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        const rawWeeks: Array<{
+          weekId: string;
+          startDate: string;
+          cells: TeacherTimetableCell[];
+          dayPeriodCounts?: Array<{ day: number; periods: number }>;
+        }> = data.weeks || [];
         const newMap: Record<string, TeacherTimetableCell[]> = {};
-        (data.weeks || []).forEach((w: { weekId: string; cells: TeacherTimetableCell[] }) => { newMap[w.weekId] = w.cells || []; });
+        rawWeeks.forEach((w) => { newMap[w.weekId] = w.cells || []; });
         setTeacherWeekCellsMap(newMap);
+        setProjectedWeeks(rawWeeks);
+        setHasMoreProjectedWeeks(Boolean(data.hasMore));
       } else {
         setTimetableError(data.error || "시간표를 불러올 수 없습니다.");
       }
     } catch (err: any) { setTimetableError(`네트워크 오류: ${err.message}`); } finally { setLoadingTimetable(false); }
+  };
+
+  const handleLoadMoreWeeks = () => {
+    const nextExtra = extraWeeks + 4;
+    setExtraWeeks(nextExtra);
+    if (selectedTeacherEmail) {
+      fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, cartItems, nextExtra);
+    }
   };
 
   const handleSelectTeacher = (email: string, name?: string) => {
@@ -825,7 +859,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
             {timetableError && <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-xs text-red-800 text-center font-bold">{timetableError}</div>}
 
-            {weeks.map((w) => {
+            {projectedWeeks.map((pw) => {
+              const w = weeks.find((item) => item.id === pw.weekId) || { id: pw.weekId, startDate: pw.startDate, note: "" };
               const isSourceWeek = selectedSlot?.weekId === w.id;
               const isRecentlyUpdated = recentlyUpdatedWeeks.includes(w.id);
               const weekCandidateGroup = swapCandidateWeeks.find((gw) => gw.weekId === w.id);
@@ -856,15 +891,20 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                             <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
                               <td className="py-3 px-2 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50">{period}교시</td>
                               {DAYS.map((d) => {
+                                const dayMaxPeriods = pw.dayPeriodCounts?.find((dp) => dp.day === d.num)?.periods ?? 7;
+                                const isOutPeriod = period > dayMaxPeriods;
+
                                 const matchedCells = getCellForSlotInWeek(w.id, d.num, period);
                                 const hasLesson = matchedCells.length > 0;
                                 // 담김(이동됨) 마커는 본인 수업의 순 이동 출발지에만 — 경유지·제3 교사 수업 슬롯 제외
                                 const cartMatch = myCartNetMoves.find((m) => m.from.weekId === w.id && m.from.day === d.num && m.from.period === period);
                                 // 맞교환 모드에서만 후보 하이라이트 — 보강 탭 전환 시 맞교환 제안이 그리드에 잔존하던 혼선 방지 (2026-08-07)
-                                const inlineCand = activeCandidateType === "swap" && !hasLesson && selectedSlot ? candidateListInWeek.find((cand) => cand.targetDay === d.num && cand.targetPeriod === period) : null;
+                                const inlineCand = activeCandidateType === "swap" && !hasLesson && !isOutPeriod && selectedSlot ? candidateListInWeek.find((cand) => cand.targetDay === d.num && cand.targetPeriod === period) : null;
                                 return (
-                                  <td key={d.num} className={`p-1 border-r border-gray-100 text-center align-top transition-all ${hasLesson ? "bg-indigo-50/30" : inlineCand ? (inlineCand.coordination ? "bg-red-50/70" : "bg-emerald-50/50") : ""}`}>
-                                    {hasLesson ? (
+                                  <td key={d.num} className={`p-1 border-r border-gray-100 text-center align-top transition-all ${isOutPeriod ? "bg-gray-100/50" : hasLesson ? "bg-indigo-50/30" : inlineCand ? (inlineCand.coordination ? "bg-red-50/70" : "bg-emerald-50/50") : ""}`}>
+                                    {isOutPeriod ? (
+                                      <div className="text-gray-300 text-xs font-semibold font-mono text-center py-2 select-none">-</div>
+                                    ) : hasLesson ? (
                                       <div className="space-y-1">
                                         {matchedCells.map((cell, cIdx) => {
                                           // 담기 가상 반영으로 옮겨온 셀 — 실제 시간표가 아니므로 원 수업으로 선택(클릭) 불가
@@ -967,6 +1007,19 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                 </div>
               );
             })}
+
+            {hasMoreProjectedWeeks && (
+              <div className="text-center pt-2 pb-4">
+                <button
+                  type="button"
+                  onClick={handleLoadMoreWeeks}
+                  disabled={loadingTimetable}
+                  className="px-6 py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-extrabold rounded-xl text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  ➕ 이후 주 더 보기
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="lg:col-span-4 space-y-6 sticky top-4">
@@ -1082,8 +1135,15 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                             <div className="text-[11px] space-y-0.5 pt-1 border-t border-indigo-100">
                               <div className="font-extrabold text-amber-900">⚠️ 감점 {selectedCandidate.score}점 — 사유</div>
                               <ul className="list-disc list-inside text-amber-800 space-y-0.5">
-                                {(selectedCandidate.penalties || []).map((p: string, i: number) => (<li key={i}>{p}</li>))}
-                                {(selectedCandidate.penalties?.length ?? 0) === 0 && <li>사유 정보 없음</li>}
+                                {selectedCandidate.penaltyDetails && selectedCandidate.penaltyDetails.length > 0
+                                  ? selectedCandidate.penaltyDetails.map((pd: any, i: number) => (
+                                      <li key={i}>{pd.text} ({pd.points}점)</li>
+                                    ))
+                                  : (selectedCandidate.penalties || []).map((p: string, i: number) => (
+                                      <li key={i}>{p}</li>
+                                    ))}
+                                {(!selectedCandidate.penaltyDetails || selectedCandidate.penaltyDetails.length === 0) &&
+                                  (selectedCandidate.penalties?.length ?? 0) === 0 && <li>사유 정보 없음</li>}
                               </ul>
                             </div>
                           ) : (

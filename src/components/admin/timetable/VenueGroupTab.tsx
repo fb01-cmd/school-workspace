@@ -599,40 +599,41 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
             </div>
           </form>
 
-          {/* 저장 전 미리보기 카드 (스펙 §F) */}
-          <div className="bg-white rounded-xl shadow-sm border border-emerald-200 p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-emerald-100 pb-3">
-              <div>
-                <h4 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
-                  <span>🔍 특별실 점유 미리보기 대조</span>
-                </h4>
-                <p className="text-xs text-emerald-700 mt-0.5">
-                  현재 작성 중인 기준에 따라 특별실이 점유되는 수업 위치를 확인합니다.
-                </p>
-              </div>
+          {/* 저장 전 미리보기 카드 */}
+          {(editingGroupId !== null || roomName.trim() !== "" || subjectNames.length > 0) && (
+            <div className="bg-white rounded-xl shadow-sm border border-emerald-200 p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-emerald-100 pb-3">
+                <div>
+                  <h4 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
+                    <span>🔍 특별실 점유 미리보기 대조</span>
+                  </h4>
+                  <p className="text-xs text-emerald-700 mt-0.5">
+                    현재 작성 중인 기준에 따라 특별실이 점유되는 수업 위치를 확인합니다.
+                  </p>
+                </div>
 
-              {/* 반 선택 버튼 */}
-              <div className="flex items-center gap-1 bg-emerald-50 p-1 rounded-lg">
-                <span className="text-[11px] font-bold text-emerald-800 px-1.5">미리보기 반:</span>
-                {classNums.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => {
-                      setPreviewClassNum(c);
-                      fetchPreviewClassGrid(grade, c);
-                    }}
-                    className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${
-                      previewClassNum === c
-                        ? "bg-emerald-600 text-white shadow-xs"
-                        : "text-emerald-700 hover:bg-emerald-100"
-                    }`}
-                  >
-                    {c}반
-                  </button>
-                ))}
+                {/* 반 선택 버튼 */}
+                <div className="flex items-center gap-1 bg-emerald-50 p-1 rounded-lg">
+                  <span className="text-[11px] font-bold text-emerald-800 px-1.5">미리보기 반:</span>
+                  {classNums.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => {
+                        setPreviewClassNum(c);
+                        fetchPreviewClassGrid(grade, c);
+                      }}
+                      className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${
+                        previewClassNum === c
+                          ? "bg-emerald-600 text-white shadow-xs"
+                          : "text-emerald-700 hover:bg-emerald-100"
+                      }`}
+                    >
+                      {c}반
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
             {loadingPreview ? (
               <div className="py-8 text-center text-xs text-gray-500 font-semibold">
@@ -724,6 +725,7 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* 우측: 등록된 특별실 배정 목록 (lg:col-span-5) */}
