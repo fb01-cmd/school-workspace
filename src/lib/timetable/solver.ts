@@ -831,3 +831,80 @@ export function solveTimetable(input: SolverInput): SolverResult {
     },
   };
 }
+
+// ── 시드 포트폴리오 (Phase C-2) ───────────────────────────────
+//
+// 실측(2026-08-11): 시드별 소프트 38~47점 편차 — 고정 시드 목록을 전부 돌려 최적 해를 뽑는다.
+// 시드별 결정론이 그대로 유지되므로 포트폴리오 전체도 결정론 (같은 입력·같은 목록 = 같은 출력).
+
+export const DEFAULT_SEED_PORTFOLIO = [1, 2, 3, 5, 7, 11, 13, 42];
+
+export interface PortfolioRanking {
+  seed: number;
+  soft: number; // 내부 추정치 (검사기 점수와 일치 실측 — 공식 판정은 validateTimetable)
+  unplacedHours: number;
+}
+
+export interface PortfolioResult {
+  best: SolverResult & { seed: number };
+  /** 미배정 시간 → 소프트 → 시드 순 오름차순 */
+  ranking: PortfolioRanking[];
+}
+
+/** 선발 기준: ① 미배정 시간 최소 ② 소프트 추정 최소 ③ 목록 앞 시드 (전 단계 결정론) */
+export function solveTimetablePortfolio(
+  input: Omit<SolverInput, "seed"> & { seeds?: number[] }
+): PortfolioResult {
+  const seeds = input.seeds?.length ? input.seeds : DEFAULT_SEED_PORTFOLIO;
+  let best: (SolverResult & { seed: number }) | null = null;
+  let bestUnplaced = Infinity;
+  const ranking: PortfolioRanking[] = [];
+  seeds.forEach((seed, i) => {
+    const r = solveTimetable({
+      ...input,
+      seed,
+      onProgress: input.onProgress
+        ? (phase, done, total) =>
+            input.onProgress!(`시드 ${seed} (${i + 1}/${seeds.length}) ${phase}`, done, total)
+        : undefined,
+    });
+    const unplacedHours = r.unplaced.reduce((s, u) => s + u.remaining, 0);
+    ranking.push({ seed, soft: r.stats.softScoreEstimate, unplacedHours });
+    if (
+      !best ||
+      unplacedHours < bestUnplaced ||
+      (unplacedHours === bestUnplaced &&
+        r.stats.softScoreEstimate < best.stats.softScoreEstimate)
+    ) {
+      best = { ...r, seed };
+      bestUnplaced = unplacedHours;
+    }
+  });
+  ranking.sort((a, b) => a.unplacedHours - b.unplacedHours || a.soft - b.soft || a.seed - b.seed);
+  return { best: best!, ranking };
+}
+
+// ── Web Worker 메시지 프로토콜 (solver.worker.ts ↔ solverClient.ts 공용) ──
+//
+// 타입만 여기 둔다 — 워커 파일을 클라이언트가 직접 import하면 self 핸들러가 SSR에서 터진다.
+
+export interface SolverWorkerRequest {
+  grids: ClassGrid[]; // 현행(참조) 그리드 — 워커 안에서 섹션 컴파일
+  model: TimetableConstraintModel;
+  seeds?: number[]; // 기본 DEFAULT_SEED_PORTFOLIO
+  localSearchIterations?: number;
+}
+
+export type SolverWorkerMessage =
+  | { type: "progress"; phase: string; done: number; total: number }
+  | {
+      type: "done";
+      seed: number;
+      grids: ClassGrid[];
+      unplaced: SolverResult["unplaced"];
+      stats: SolverResult["stats"];
+      ranking: PortfolioRanking[];
+      /** 검사기 관문 리포트 — 워커 안에서 validateTimetable까지 마치고 동봉 (§0-1 철칙) */
+      report: import("./types").TimetableAuditReport;
+    }
+  | { type: "error"; message: string };

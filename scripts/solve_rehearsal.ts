@@ -23,11 +23,16 @@ import {
   deriveHoursFromGrids,
   validateTimetable,
 } from "../src/lib/timetable/validate";
-import { compileSectionsFromGrids, solveTimetable } from "../src/lib/timetable/solver";
+import {
+  compileSectionsFromGrids,
+  solveTimetable,
+  solveTimetablePortfolio,
+} from "../src/lib/timetable/solver";
 import { TimetableConstraintModel } from "../src/lib/timetable/types";
 
 const DOMAIN = "hmh.or.kr";
-const SEED = Number(process.argv[2]) || 42;
+/** 시드 인자를 주면 단일 시드, 없으면 포트폴리오(기본 8시드 best-of) */
+const SEED_ARG = process.argv[2] ? Number(process.argv[2]) : null;
 
 function hashOf(obj: unknown): string {
   const s = JSON.stringify(obj);
@@ -81,19 +86,29 @@ async function main() {
   );
 
   const t0 = Date.now();
-  const result = solveTimetable({
+  const base = {
     sections,
     gradeDayPeriods: model.gradeDayPeriods!,
     lunchAfterPeriod: model.lunchAfterPeriod,
-    seed: SEED,
-    onProgress: (phase, done, total) => {
-      if (done === 0 || done === total)
-        console.log(`  [${phase}] ${done}/${total}`);
-    },
-  });
+  };
+  let result;
+  let seedUsed: number;
+  if (SEED_ARG !== null) {
+    result = solveTimetable({ ...base, seed: SEED_ARG });
+    seedUsed = SEED_ARG;
+  } else {
+    const portfolio = solveTimetablePortfolio(base);
+    result = portfolio.best;
+    seedUsed = portfolio.best.seed;
+    console.log(
+      `시드 포트폴리오: ${portfolio.ranking
+        .map((r) => `${r.seed}=${r.soft}점${r.unplacedHours ? `(미배정 ${r.unplacedHours})` : ""}`)
+        .join(" ")} → 선발 시드 ${seedUsed}`
+    );
+  }
   const elapsed = Date.now() - t0;
   console.log(
-    `솔버 완료 (${(elapsed / 1000).toFixed(1)}s, seed=${SEED}): 그리디 ${result.stats.placedGreedy} + ejection ${result.stats.placedByEjection} / ${result.stats.occurrencesTotal}회차, 국소 탐색 수용 ${result.stats.localSearchAccepted}건`
+    `솔버 완료 (${(elapsed / 1000).toFixed(1)}s, seed=${seedUsed}): 그리디 ${result.stats.placedGreedy} + ejection ${result.stats.placedByEjection} / ${result.stats.occurrencesTotal}회차, 국소 탐색 수용 ${result.stats.localSearchAccepted}건`
   );
   if (result.unplaced.length) {
     console.log(`\n⚠️ 미배정 ${result.unplaced.length}건 (수동 조정 대상):`);
@@ -125,12 +140,12 @@ async function main() {
     `코드별: ${Object.entries(report.soft.byCode).map(([c, n]) => `${c}=${n}`).join(" ") || "없음"}`
   );
 
-  // ── 결정론 확인: 같은 시드 재실행 = 동일 출력 ──
+  // ── 결정론 확인: 선발 시드 재실행 = 동일 출력 (시드별 결정론 ⇒ 포트폴리오 결정론) ──
   const rerun = solveTimetable({
     sections: compileSectionsFromGrids(grids, model),
     gradeDayPeriods: model.gradeDayPeriods!,
     lunchAfterPeriod: model.lunchAfterPeriod,
-    seed: SEED,
+    seed: seedUsed,
   });
   const same = hashOf(result.grids) === hashOf(rerun.grids);
   console.log(`결정론: 같은 시드 재실행 ${same ? "✅ 동일 출력" : "❌ 불일치"}`);
