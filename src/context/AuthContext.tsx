@@ -44,6 +44,7 @@ export interface SchoolSettings {
   schedule?: SchedulePeriod[];
   departments?: string[];
   positions?: string[];
+  blockedOuPaths?: string[];
 }
 
 export interface OrgUnit {
@@ -129,6 +130,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     schedule: sData.schedule,
                     departments: sData.departments,
                     positions: sData.positions,
+                    // 이 필드가 빠져있어 blockedOuPaths가 Firestore에 저장돼 있어도 화면엔 항상
+                    // 빈 목록으로 보이던 실제 원인 (2026-08-11) — 하이드레이션 effect 자체는 정상이었음
+                    blockedOuPaths: sData.blockedOuPaths || [],
                   });
                 } else {
                   setSchoolSettings({

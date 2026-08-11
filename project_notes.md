@@ -3742,3 +3742,13 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 ### 재개 문구
 - push 승인: *"푸시하자."*
+
+## [2026-08-11] 차단 OU 칩 미표시 진짜 원인 발견·수정 ✅ (Claude — 배포·데이터 모두 정상인데 안 뜨던 이유)
+
+- **오진단 정정**: 앞선 55ff417(로드 경합 수정)·49ff809(dirty 가드)는 둘 다 유효한 개선이었지만 **이 증상의 진짜 원인이 아니었음**. 사용자가 앱 재시작+강력 새로고침까지 했는데도 안 뜬다고 재신고 → Vercel CLI로 배포 상태(최신 커밋 정상 Ready) + Firestore 데이터(무사) 재확인까지 정상인데도 재현 → 한 단계 더 위, `AuthContext.tsx`의 `onSnapshot(settingsRef, ...)` 핸들러를 열어보니 **`setSchoolSettings({...})`가 필드를 화이트리스트 방식으로 재구성하면서 `blockedOuPaths`를 아예 빠뜨리고 있었음**. Firestore엔 값이 있어도 `schoolSettings.blockedOuPaths`는 컴포넌트에 도달하기 전에 항상 `undefined` — OUConfiguration의 하이드레이션이 몇 번을 재실행돼도 소용없는 구조였음.
+- **수정**: `SchoolSettings` 인터페이스에 `blockedOuPaths?: string[]` 타입 추가 + `setSchoolSettings` 객체 구성에 `blockedOuPaths: sData.blockedOuPaths || []` 추가(schedule·departments·positions 옆, 동일 계열 실수). tsc 0 / build ✅.
+- **교훈**: 화면이 값을 못 읽을 때는 소비하는 컴포넌트(OUConfiguration)만 보지 말고 **데이터가 흘러오는 전체 경로**(AuthContext의 onSnapshot 재구성 지점)까지 거슬러 올라가 확인할 것 — 특히 `(x as any).field`처럼 타입 캐스트가 있는 필드는 타입 시스템이 누락을 못 잡아준다는 신호.
+- **크롬 북마크 변경 이력 로드 실패(사용자 신고, 별건)**: 코드 확인 결과 탭 전환은 순수 클라이언트 상태 변경(fetch만, 페이지 이동 없음)이라 오늘 변경사항과 무관 — "This page couldn't load"는 브라우저 레벨 네트워크 오류 화면이라 일시적 연결 문제로 추정. 재현되면 콘솔/네트워크 탭 확인 필요.
+
+### 재개 문구
+- push 승인: *"푸시하자."*
