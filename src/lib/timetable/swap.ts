@@ -30,6 +30,20 @@ import {
 /** 후보 탐색 옵션 (consent_swap_opening_spec §2-2) — 기본 꺼짐 = 기존 출력 불변 (체인 탐색 보존) */
 export interface SwapEngineOptions {
   includeCoordination?: boolean; // 특별실(§F) 충돌 후보를 버리지 않고 조율 필요 표시로 살린다
+  /**
+   * 신청자 측 감점 사유를 1인칭("내 …") 대신 실명("○○○ 선생님 …")으로 쓴다.
+   * 직권 배정처럼 **보는 사람과 신청자가 다른** 화면용 (§3-2d 수집 21 — 일과계 화면에
+   * 대상 교사 감점이 "내 요일 시수 쏠림"으로 표기되던 오지칭). 이름은 소스 수업의
+   * 교사 항목에서 해석하므로 호출부가 별도로 실어 나르지 않는다.
+   */
+  thirdPerson?: boolean;
+}
+
+/** 신청자 측 감점 문구의 주어 — 기본 1인칭, 직권 화면은 소스 수업 교사 실명 */
+function requesterLabel(lesson: WeeklyLesson, opts?: SwapEngineOptions): string {
+  if (!opts?.thirdPerson) return "내";
+  const name = (lesson.teachers || [])[0]?.name?.trim();
+  return name ? `${name} 선생님` : "대상 교사";
 }
 
 const norm = (e: string) => (e || "").trim().toLowerCase();
@@ -297,6 +311,7 @@ export function findSwapCandidates(
   if (!src.ok) return { candidates: [], error: src.error };
   const grid = src.grid!;
   const myLesson = src.lesson!;
+  const myLabel = requesterLabel(myLesson, opts);
   const idx = buildSlotIndex(grids);
   const classKey = `${grid.grade}-${grid.classNum}`;
   const ctx: PenaltyCtx = { idx, settings, week };
@@ -361,7 +376,7 @@ export function findSwapCandidates(
       const dup2 = classDuplicatePenalty(grid, source.day, l2.subjectName, [source.period, ...(source.day === d2 ? [p2] : [])]);
       if (dup2) details.push({ scope: "class", text: dup2.message, points: dup2.points });
       details.push(
-        ...teacherDayPenalties(ctx, me, "내", d2, p2, source.day === d2 ? source.period : null)
+        ...teacherDayPenalties(ctx, me, myLabel, d2, p2, source.day === d2 ? source.period : null)
           .map((p) => ({ scope: "mine" as const, text: p.message, points: p.points })),
         ...teacherDayPenalties(ctx, b.email, `${b.name} 선생님`, source.day, source.period,
           d2 === source.day ? p2 : null)
@@ -424,6 +439,7 @@ export function findCrossSwapCandidates(
   const src = resolveSourceLesson(sourceGrids, requesterEmail, source);
   if (!src.ok) return { candidates: [], error: src.error };
   const myLesson = src.lesson!;
+  const myLabel = requesterLabel(myLesson, opts);
   const idxSrc = buildSlotIndex(sourceGrids);
   const idxTgt = buildSlotIndex(targetGrids);
   const me = norm(requesterEmail);
@@ -497,7 +513,7 @@ export function findCrossSwapCandidates(
       const dupSrc = classDuplicatePenalty(src.grid!, source.day, l2.subjectName, [source.period]);
       if (dupSrc) details.push({ scope: "class", text: `${srcLabel}: ${dupSrc.message}`, points: dupSrc.points });
       details.push(
-        ...teacherDayPenalties(ctxTgt, me, "내", d2, p2, null)
+        ...teacherDayPenalties(ctxTgt, me, myLabel, d2, p2, null)
           .map((p) => ({ scope: "mine" as const, text: `${tgtLabel}: ${p.message}`, points: p.points })),
         ...teacherDayPenalties(ctxSrc, b.email, `${b.name} 선생님`, source.day, source.period, null)
           .map((p) => ({ scope: "counterpart" as const, text: `${srcLabel}: ${p.message}`, points: p.points }))

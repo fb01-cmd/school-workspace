@@ -2680,6 +2680,8 @@ export async function computeCandidatesAllWeeks(
     includeDrafts?: boolean;
     // §14-4 직권 담기 누적분 — DB에 없는 화면 세션 상태라 호출부가 전량 명시 전달
     extraItems?: DirectPendingOverlayItem[];
+    // 직권 화면처럼 보는 사람 ≠ 신청자일 때 감점 주어를 실명으로 (§3-2d 수집 21)
+    thirdPerson?: boolean;
   }
 ): Promise<{
   sourceSubjectName: string;
@@ -2693,6 +2695,8 @@ export async function computeCandidatesAllWeeks(
   if (!sourceWeek) throw new Error(`등록되지 않은 주(${sourceWeekId})입니다.`);
   const term = await loadTimetableTerm(domain, sourceWeek.termId);
   if (!term) throw new Error(`학기(${sourceWeek.termId})를 찾을 수 없습니다.`);
+
+  const engineOpts = { includeCoordination: true, thirdPerson: !!whatIf?.thirdPerson };
 
   const allWeeks = await listWeeks(domain, term.id);
   allWeeks.sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -2773,26 +2777,26 @@ export async function computeCandidatesAllWeeks(
   const weeks: Array<{ weekId: string; startDate: string; swapCandidates: SwapCandidate[] }> = [];
   for (const week of allWeeks) {
     if (week.id === sourceWeekId) {
-      const res = findSwapCandidates(srcGrids, sourceWeek, settings, requesterEmail, fullSource, COORD_ON);
+      const res = findSwapCandidates(srcGrids, sourceWeek, settings, requesterEmail, fullSource, engineOpts);
       // 소스 레벨 오류는 위 resolveSourceLesson에서 이미 걸렀으므로 여기 error는 후보 0건으로 취급
       let cands = res.candidates || [];
       const baseSrc = baseSynthByWeek?.get(sourceWeekId);
       if (baseSrc && baseSrc !== srcGrids) {
-        const baseRes = findSwapCandidates(baseSrc, sourceWeek, settings, requesterEmail, fullSource, COORD_ON);
+        const baseRes = findSwapCandidates(baseSrc, sourceWeek, settings, requesterEmail, fullSource, engineOpts);
         cands = markConditional(cands, baseRes.error ? [] : baseRes.candidates || []);
       }
       weeks.push({ weekId: week.id, startDate: week.startDate, swapCandidates: cands });
     } else {
       const tgtGrids = synthByWeek.get(week.id)!;
       const res = findCrossSwapCandidates(
-        srcGrids, sourceWeek, tgtGrids, week, settings, requesterEmail, fullSource, COORD_ON
+        srcGrids, sourceWeek, tgtGrids, week, settings, requesterEmail, fullSource, engineOpts
       );
       let cands = res.candidates || [];
       const baseSrc = baseSynthByWeek?.get(sourceWeekId);
       const baseTgt = baseSynthByWeek?.get(week.id);
       if (baseSrc && baseTgt && (baseSrc !== srcGrids || baseTgt !== tgtGrids)) {
         const baseRes = findCrossSwapCandidates(
-          baseSrc, sourceWeek, baseTgt, week, settings, requesterEmail, fullSource, COORD_ON
+          baseSrc, sourceWeek, baseTgt, week, settings, requesterEmail, fullSource, engineOpts
         );
         cands = markConditional(cands, baseRes.error ? [] : baseRes.candidates || []);
       }

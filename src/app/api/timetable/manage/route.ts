@@ -443,7 +443,8 @@ export async function POST(req: NextRequest) {
           String(body.teacherEmail).trim().toLowerCase(),
           body.weekId,
           { grade, classNum, day, period, subjectName: "" },
-          pendingItems?.length ? { extraItems: pendingItems } : undefined
+          // 일과계 화면은 보는 사람 ≠ 대상 교사 — 감점 주어를 실명으로 (수집 21)
+          { thirdPerson: true, ...(pendingItems?.length ? { extraItems: pendingItems } : {}) }
         );
         if (result.error) {
           return NextResponse.json({ error: result.error }, { status: 400 });
