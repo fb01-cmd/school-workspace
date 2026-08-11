@@ -3063,3 +3063,18 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 
 ### 재개 문구
 - Phase A: *"project_notes.md 마지막 체크포인트 읽어줘. 9c Phase A(검사기) 구현하자."*
+
+## [2026-08-11] 9c Phase A 검사기 구현 완료 — 2026-2 실측 하드 0 통과 ✅ (`b4d30e9`)
+
+- **구현**(스펙 §2-3·§3): 제약 등록부 타입 4종 신규(TeacherSlotBan·FixedBlock·ConsecutiveRule·CoTeachingRule) + SimulGroup/VenueGroup에 `consecutive` 필드(연속 소유 규칙) + 순수 검사기 [`validate.ts`](./src/lib/timetable/validate.ts) `validateTimetable(grids, model)` — 하드 H1~H11·소프트 S1~S6(swap.ts 감점 가중치 그대로 계승, S7 순배는 스펙 §11대로 보류). 역산 헬퍼 `deriveHoursFromGrids`·`deriveGradeDayPeriods` 동봉(Phase B 최소형).
+- **실측**(§3-3, `scripts/validate_current_timetable.ts` 읽기 전용): 30학급·1,020수업·실교사 60 — **하드 위반 0**(조치 대상 0 + 등록부 미비 추정 0), **소프트 기준선 39점**(S3 점심 28 · S5 3과목 9 · S1 쏠림 1 · S4 중복 1; S2 연속3·S6 오후는 0 = 컴시간 산출물 품질). 이 39점이 이후 솔버가 이길 목표치.
+- **위음성 검증**: `scripts/validate_selftest.ts` — Firestore 무의존 합성 데이터로 H1~H11·S1~S6 발화/면제 32케이스 전부 통과(하드 0이 검출 능력 부재가 아님을 증명). 검사기 수정 시 이 스크립트부터 통과시킬 것.
+- **판정 설계 주의점**: ① H2는 동일 과목 다학급 동시 배정을 `registryGap`(합반 의심 — 일괄 배정 등재 후보)으로 분리, §3-4 "문제점만 검색" 접힘 대상 ② 이동금지(move)는 정적 검사 비대상(솔버 단계 제약) ③ 이번 실측의 시수표·요일별 교시수는 그리드 역산값 = 자기 일관 검사 — H1·H4·H11 실질 검증력은 신학기 독립 입력부터 ④ 가상 교사(이메일 없음)는 교사 단위 하드·소프트 전부 제외.
+- **빌드 주의**: 이 기기(Crostini)에서 `npm run build`가 기본 힙으로 OOM — `NODE_OPTIONS="--max-old-space-size=4096" npm run build`로 통과. tsc ✅ / build ✅.
+- **다음**: Phase B 잔여(작성본 저장 모델 결정 — 스펙 §11) → 9월 질문지(특별교사 금지·연속수업·NEIS 샘플) → Phase C 솔버. 등록부 UI 3종(특별교사·연속·복수교사)은 Antigravity 몫(스펙 §10).
+- 미push: `b4d30e9` + 이 문서 — push=배포이므로 사용자 승인 후.
+
+### 재개 문구
+- push 승인: *"푸시하자."*
+- 솔버 선행 착수: *"project_notes.md 마지막 체크포인트 읽어줘. 9c Phase C(솔버 코어) 시작하자."*
+- 등록부 UI 인계(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. 9c 등록부 UI 3종(특별교사 금지·연속수업·복수교사) 만들어줘. 타입은 types.ts의 TeacherSlotBan·ConsecutiveRule·CoTeachingRule, UI 문법은 기존 동시수업 등록부 탭 복제."*
