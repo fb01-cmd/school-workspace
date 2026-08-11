@@ -3290,3 +3290,20 @@ PWA 건 유실을 계기로 병렬 에이전트 7팀이 전 세션 트랜스크�
 ### 재개 문구
 - 재수정(Antigravity): *"project_notes.md 마지막 체크포인트 읽어줘. Phase D-2 리뷰 F1·F2(+밴드 matcher) 수정해줘 — 스펙 v1.1 §7 기준."*
 - 최종 검수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. F1·F2 재수정 최종 검수해줘."*
+
+## [2026-08-11] Antigravity → Claude/사용자 (Phase D-2 리뷰 F1·F2 및 밴드 matcher 수정 완료 핸드오버)
+
+- **변경 파일**:
+  - `src/lib/timetable/types.ts`: `TimetableDraft`에 `hoursSnapshot?: HoursRequirement[]` 추가.
+  - `src/lib/timetable/server.ts`:
+    - F1: 중복 `cloneClassGrids`/`applyRevisionOps` 정의 제거 후 `utils.ts`에서 import 및 re-export 처리.
+    - F2: `createDraft` 시 현행 기초시간표 역산 `hoursSnapshot` DB 저장, `getDraft`·`applyDraftOp`·`undoDraftOp`·`redoDraftOp`·`listDrafts` 시 `hoursSnapshot ?? deriveHoursFromGrids(baseGrids)` 폴백 사용 및 `getDraft` 응답에 `hours` 필드 동봉.
+  - `src/components/admin/timetable/DraftAutoTab.tsx`:
+    - F2: `getDraft`에서 받은 `hours` / `hoursSnapshot`을 `validateTimetable` 모델에 전달하여 시수 충돌 기준 통일.
+    - 밴드 matcher: `openDraft.model.simulGroups` 기반 `buildSimulMatcher` 동적 렌더링/판정 적용. 소스 셀 A, 목적지 B, 미배정 배정 타겟 이동 차단 및 🔒 {simulLabel} 뱃지 정상 노출.
+  - `project_notes.md`: 본 핸드오버 기록.
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) / `npm run build` ✅ (Next.js 16 프로덕션 빌드 성공)
+
+### 재개 문구
+- 최종 검수(Claude): *"project_notes.md 마지막 체크포인트 읽어줘. F1·F2 재수정 최종 검수해줘."*
+- push 승인: *"푸시하자."*

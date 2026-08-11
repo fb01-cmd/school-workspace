@@ -1114,6 +1114,7 @@ export interface TimetableDraft {
   opCursor: number; // 현재 그리드 = base + ops[0..opCursor)
   unplaced: TimetableDraftUnplaced[];
   lastReport?: TimetableDraftLastReport;
+  hoursSnapshot?: HoursRequirement[];
   createdBy?: string;
   createdAt?: number;
   updatedBy?: string;

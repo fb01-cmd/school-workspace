@@ -12,7 +12,7 @@
  *  - 고정 밴드 셀(동시수업 simul) 수동 이동 차단 🔒
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   TimetableDraft,
   TimetableConstraintModel,
@@ -22,10 +22,12 @@ import {
   HardViolation,
   TimetableDraftUnplaced,
   TimetableCell,
+  TimetableLesson,
 } from "@/lib/timetable/types";
 import { solveTimetableInWorker, SolverDone, SolverRun } from "@/lib/timetable/solverClient";
 import { deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "@/lib/timetable/validate";
 import { applyRevisionOps, cloneClassGrids } from "@/lib/timetable/utils";
+import { buildSimulMatcher } from "@/lib/timetable/simul";
 
 interface DraftAutoTabProps {
   activeTermId?: string | null;
@@ -122,6 +124,18 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
   } | null>(null);
   const [savingOp, setSavingOp] = useState(false);
   const [opApiError, setOpApiError] = useState<string | null>(null);
+
+  // ── 동시수업 밴드 판정 matcher (솔버 산출 그리드 스탬프 부재 방어) ──
+  const simulMatcher = useMemo(
+    () => (openDraft?.model?.simulGroups ? buildSimulMatcher(openDraft.model.simulGroups) : () => null),
+    [openDraft?.model?.simulGroups]
+  );
+
+  const getSimulLabel = (grade: number, classNum: number, day: number, period: number, lesson?: TimetableLesson | null) => {
+    if (!lesson) return null;
+    if (lesson.simul) return lesson.simul;
+    return simulMatcher(grade, classNum, day, period, lesson.subjectName);
+  };
 
   // 작업기록 모달 상태
   const [showOpsHistory, setShowOpsHistory] = useState(false);
@@ -291,7 +305,11 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
       const model: TimetableConstraintModel = modelData.model;
 
       const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
-      const hours = deriveHoursFromGrids(baseGrids);
+      const hours = (getData.hours && getData.hours.length > 0)
+        ? getData.hours
+        : (meta.hoursSnapshot && meta.hoursSnapshot.length > 0)
+        ? meta.hoursSnapshot
+        : deriveHoursFromGrids(baseGrids);
       const fullModel = { ...model, gradeDayPeriods, hours };
 
       const report = validateTimetable(currentGrids, fullModel);
@@ -425,6 +443,11 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
 
     // Case 1: 미배정 항목 배정 모드인 경우
     if (selectedUnplaced) {
+      const targetSimulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
+      if (targetSimulLabel) {
+        alert(`🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다. (스펙 §5)`);
+        return;
+      }
       // 미배정 항목을 이 셀에 배정 (edit_cell op)
       // label 형태: "2-3반 통합과학 김○○"
       const desc = `${viewGrade}학년 ${viewClass}반 ${DAYS[day - 1]}${period}교시에 [${selectedUnplaced.label}] 배정`;
@@ -454,6 +477,12 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
         return;
       }
 
+      const targetSimulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
+      if (targetSimulLabel) {
+        alert(`🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다. (스펙 §5)`);
+        return;
+      }
+
       const cellA = grid?.cells?.find((c) => c.day === selectedSlotA.day && c.period === selectedSlotA.period);
       const lessonA = cellA?.lessons?.[0];
 
@@ -480,8 +509,9 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     }
 
     // 고정 밴드 셀(동시수업 simul) 방어 🔒
-    if (lesson.simul) {
-      alert(`🔒 동시수업(분반 이동수업 그룹 '${lesson.simul}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다. (스펙 §5)`);
+    const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
+    if (simulLabel) {
+      alert(`🔒 동시수업(분반 이동수업 그룹 '${simulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다. (스펙 §5)`);
       return;
     }
 
@@ -729,7 +759,8 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
 
                           const isSelectedA = selectedSlotA?.day === day && selectedSlotA?.period === period;
                           const isCandidateB = !!selectedSlotA && !isSelectedA;
-                          const isBandLocked = !!lesson?.simul;
+                          const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
+                          const isBandLocked = !!simulLabel;
 
                           // 하드 위반 셀 체크 (현재 그리드 기준)
                           const hasHardError = report.hard.some(
@@ -760,9 +791,9 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
                                   <div className="text-[10px] text-gray-500 truncate leading-tight">
                                     {lesson.teachers?.map((t) => t.name).join(", ")}
                                   </div>
-                                  {lesson.simul && (
+                                  {simulLabel && (
                                     <div className="text-[9px] text-purple-700 font-extrabold mt-0.5">
-                                      🔒 {lesson.simul}
+                                      🔒 {simulLabel}
                                     </div>
                                   )}
                                   {isCandidateB && (

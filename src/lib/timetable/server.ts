@@ -11,6 +11,8 @@ import { bumpTimetableCacheVersion } from "./cacheVersion";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
 import { deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "./validate";
+import { applyRevisionOps, cloneClassGrids } from "./utils";
+export { applyRevisionOps, cloneClassGrids };
 import {
   ClassCellIssue,
   ClassGrid,
@@ -2092,67 +2094,7 @@ export function validateRevisionOps(
   return { ok: true, ops };
 }
 
-function cloneClassGrids(grids: ClassGrid[]): ClassGrid[] {
-  return grids.map((g) => ({
-    grade: g.grade,
-    classNum: g.classNum,
-    cells: (g.cells || []).map((c) => ({
-      day: c.day,
-      period: c.period,
-      lessons: (c.lessons || []).map((l) => ({
-        ...l,
-        teachers: (l.teachers || []).map((t) => ({ ...t })),
-      })),
-    })),
-  }));
-}
 
-const DAY_KO = ["", "월", "화", "수", "목", "금"];
-
-/**
- * 개정 연산을 기초 그리드에 순서대로 적용 (제자리 수정). 적용 불능 op는 건너뛰고
- * 경고로 수집한다 — 주간 합성 integrityWarnings와 같은 원칙 (spec §E-2).
- */
-export function applyRevisionOps(grids: ClassGrid[], ops: BaseRevisionOp[]): string[] {
-  const warnings: string[] = [];
-  const findGrid = (grade: number, classNum: number) =>
-    grids.find((g) => g.grade === grade && g.classNum === classNum);
-  const getOrCreateCell = (grid: ClassGrid, day: number, period: number) => {
-    let cell = grid.cells.find((c) => c.day === day && c.period === period);
-    if (!cell) {
-      cell = { day, period, lessons: [] };
-      grid.cells.push(cell);
-    }
-    return cell;
-  };
-  for (const op of ops) {
-    const grid = findGrid(op.grade, op.classNum);
-    if (!grid) {
-      warnings.push(`${op.grade}-${op.classNum}반 시간표가 없어 편집 1건을 건너뜀`);
-      continue;
-    }
-    if (op.type === "swap") {
-      const cellA = getOrCreateCell(grid, op.a.day, op.a.period);
-      const cellB = getOrCreateCell(grid, op.b.day, op.b.period);
-      if (cellA.lessons.length === 0 && cellB.lessons.length === 0) {
-        warnings.push(
-          `${op.grade}-${op.classNum}반 ${DAY_KO[op.a.day]}${op.a.period}·${DAY_KO[op.b.day]}${op.b.period}교시 모두 빈 교시라 맞바꿈을 건너뜀`
-        );
-        continue;
-      }
-      const tmp = cellA.lessons;
-      cellA.lessons = cellB.lessons;
-      cellB.lessons = tmp;
-    } else {
-      const cell = getOrCreateCell(grid, op.day, op.period);
-      cell.lessons = op.lessons.map((l) => ({
-        ...l,
-        teachers: (l.teachers || []).map((t) => ({ ...t })),
-      }));
-    }
-  }
-  return warnings;
-}
 
 /**
  * 주차별 기초 그리드 — 기초 + (effectiveFrom ≤ 주 시작일)인 적용 개정판들을 순서 적용.
@@ -5208,6 +5150,7 @@ export async function listDrafts(domain: string): Promise<import("./types").Time
       opCursor: typeof d.opCursor === "number" ? d.opCursor : 0,
       unplaced: Array.isArray(d.unplaced) ? d.unplaced : [],
       lastReport: d.lastReport || undefined,
+      hoursSnapshot: Array.isArray(d.hoursSnapshot) ? d.hoursSnapshot : undefined,
       createdBy: d.createdBy,
       createdAt: toMillis(d.createdAt) ?? undefined,
       updatedBy: d.updatedBy,
@@ -5237,6 +5180,14 @@ export async function createDraft(
     );
   }
 
+  // spec v1.1 §7: hoursSnapshot = sourceTermId 현행 학기 기초 그리드에서 역산한 시수표
+  const sourceBaseGrids = (grids && grids.length > 0)
+    ? await loadAllClassGrids(domain, sourceTermId)
+    : baseGrids;
+  const hoursSnapshot = sourceBaseGrids.length > 0
+    ? deriveHoursFromGrids(sourceBaseGrids)
+    : deriveHoursFromGrids(baseGrids);
+
   const now = Date.now();
   const draftRef = timetableDraftsColRef(domain).doc();
   const draftId = draftRef.id;
@@ -5249,6 +5200,7 @@ export async function createDraft(
     opCursor: 0,
     unplaced,
     ...(lastReport ? { lastReport } : {}),
+    hoursSnapshot,
     createdBy,
     createdAt: now,
     updatedBy: createdBy,
@@ -5274,11 +5226,13 @@ export async function getDraft(
   meta: import("./types").TimetableDraft;
   baseGrids: ClassGrid[];
   currentGrids: ClassGrid[];
+  hours: import("./types").HoursRequirement[];
 }> {
   const draftRef = timetableDraftsColRef(domain).doc(draftId);
   const snap = await draftRef.get();
   if (!snap.exists) throw new Error("초안을 찾을 수 없습니다.");
   const d = snap.data()!;
+  const hoursSnapshot = Array.isArray(d.hoursSnapshot) ? d.hoursSnapshot : undefined;
   const meta: import("./types").TimetableDraft = {
     id: draftId,
     label: d.label || "무제 초안",
@@ -5288,6 +5242,7 @@ export async function getDraft(
     opCursor: typeof d.opCursor === "number" ? d.opCursor : 0,
     unplaced: Array.isArray(d.unplaced) ? d.unplaced : [],
     lastReport: d.lastReport || undefined,
+    hoursSnapshot,
     createdBy: d.createdBy,
     createdAt: toMillis(d.createdAt) ?? undefined,
     updatedBy: d.updatedBy,
@@ -5305,7 +5260,11 @@ export async function getDraft(
     applyRevisionOps(currentGrids, meta.ops.slice(0, meta.opCursor));
   }
 
-  return { meta, baseGrids, currentGrids };
+  const hours = (hoursSnapshot && hoursSnapshot.length > 0)
+    ? hoursSnapshot
+    : deriveHoursFromGrids(baseGrids);
+
+  return { meta, baseGrids, currentGrids, hours };
 }
 
 /** 초안 삭제 — 메타 + classGrids 서브컬렉션 일괄 삭제 */
@@ -5354,7 +5313,9 @@ export async function applyDraftOp(
     ]);
 
   const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
-  const hours = deriveHoursFromGrids(baseGrids);
+  const hours = (meta.hoursSnapshot && meta.hoursSnapshot.length > 0)
+    ? meta.hoursSnapshot
+    : deriveHoursFromGrids(baseGrids);
   const model: import("./types").TimetableConstraintModel = {
     lunchAfterPeriod: settings.lunchAfterPeriod || 4,
     periodsPerDay: settings.periodsPerDay || 7,
@@ -5460,7 +5421,9 @@ export async function undoDraftOp(
     ]);
 
   const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
-  const hours = deriveHoursFromGrids(baseGrids);
+  const hours = (meta.hoursSnapshot && meta.hoursSnapshot.length > 0)
+    ? meta.hoursSnapshot
+    : deriveHoursFromGrids(baseGrids);
   const model: import("./types").TimetableConstraintModel = {
     lunchAfterPeriod: settings.lunchAfterPeriod || 4,
     periodsPerDay: settings.periodsPerDay || 7,
@@ -5533,7 +5496,9 @@ export async function redoDraftOp(
     ]);
 
   const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
-  const hours = deriveHoursFromGrids(baseGrids);
+  const hours = (meta.hoursSnapshot && meta.hoursSnapshot.length > 0)
+    ? meta.hoursSnapshot
+    : deriveHoursFromGrids(baseGrids);
   const model: import("./types").TimetableConstraintModel = {
     lunchAfterPeriod: settings.lunchAfterPeriod || 4,
     periodsPerDay: settings.periodsPerDay || 7,
