@@ -68,6 +68,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 1. **새 외부 서비스 키·연동을 만들 때는 이 계정으로 발급한다** (예: Gemini API 키). 개인 계정·타 계정으로 발급해 자격증명을 분산시키지 않는다.
 2. **이 계정을 삭제·정지·OU 이동 대상에 포함시키지 않는다** — 생애주기 자동화(일괄 삭제·전출 크론 등)를 설계할 때 이 계정이 휩쓸리지 않는지 반드시 확인한다.
 3. 역할 구분: `admin@` = Workspace 도메인 관리·DWD 사칭용, `hmnotice@` = 알림 발신 전용, **`fb01@` = 개발·배포 인프라 소유**.
+4. **보호 계정 3종 (2026-08-11 사용자 확정)**: `fb01@`·`hmnotice@`·`admin@`는 플랫폼의 어떤 정지·일시정지·삭제 경로에도 포함되면 안 된다. 사용자가 fb01@·hmnotice@를 GWS 최고관리자로 승격했으나(콘솔 측 방어), **플랫폼은 Admin SDK(DWD)로 동작하므로 그 승격이 내부 안전장치가 아니다** — 파괴적 조치 기능을 새로 만들거나 수정할 때 이 3계정 예외 처리를 반드시 확인한다. 플랫폼 수준 하드 차단 기능은 로드맵 §2 "보호 계정 가드" 항목으로 착수 대기.
 <!-- END:infrastructure-account-rules -->
 
 <!-- BEGIN:notification-sender-rules -->
