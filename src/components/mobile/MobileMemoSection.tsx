@@ -54,7 +54,7 @@ export default function MobileMemoSection() {
       collection(db, "memos", domain, "items"),
       where("recipientEmails", "array-contains", myEmail),
       orderBy("createdAt", "desc"),
-      limit(20)
+      limit(50) // 스펙 §3 — 20으로 줄이면 안 읽은 쪽지가 창 밖으로 밀려 목록에서 사라진다
     );
     const unsub = onSnapshot(q, (snap) => {
       const list: MemoItem[] = snap.docs.map((d) => ({
@@ -70,7 +70,12 @@ export default function MobileMemoSection() {
       });
       setMemos(list);
       setLoading(false);
-    }, () => setLoading(false));
+    }, (err) => {
+      // 조용히 삼키면 색인 미생성·권한 거부가 "쪽지 없음"과 구별되지 않고,
+      // 복합 색인 생성 링크가 담긴 에러도 사라진다(스펙 §8 운영 액션).
+      console.error("[memo] 쪽지 목록 구독 실패", err);
+      setLoading(false);
+    });
     return () => unsub();
   }, [myEmail, domain]);
 

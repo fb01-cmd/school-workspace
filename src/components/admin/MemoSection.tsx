@@ -657,7 +657,7 @@ function ComposeModal({ myEmail, domain, onClose, onSent }: ComposeModalProps) {
                 {chips.length}명에게 쪽지를 보냅니다.
               </p>
               <p className="text-xs text-slate-500">
-                그룹을 선택한 경우 실제 발송 인원은 서버에서 확정됩니다.
+                그룹을 고르면 실제로 받는 인원은 이보다 많습니다. 확정 인원은 보낸쪽지함에서 확인할 수 있습니다.
               </p>
               <div className="flex gap-3 justify-center">
                 <button
@@ -692,14 +692,28 @@ export default function MemoSection() {
   const [tab, setTab] = useState<Tab>("inbox");
   const [inboxMemos, setInboxMemos] = useState<MemoItem[]>([]);
   const [sentMemos, setSentMemos] = useState<MemoItem[]>([]);
-  const [selectedMemo, setSelectedMemo] = useState<MemoItem | null>(null);
+  /**
+   * 선택한 쪽지는 **id만** 들고 있는다. 문서 사본을 state에 담으면 클릭 시점에 얼어붙어,
+   * 수신자가 읽어도 열려 있는 "수신자 읽음 현황" 표가 갱신되지 않는다 — 스펙 §8의 완료
+   * 기준("A의 보낸쪽지함에 B 읽음이 실시간 표시")이 바로 이 화면이므로 반드시 파생값이어야 한다.
+   */
+  const [selectedMemoId, setSelectedMemoId] = useState<string | null>(null);
   const [showCompose, setShowCompose] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // 받은/보낸쪽지함은 각자 구독이므로 로딩도 분리한다 — 하나로 합치면 한쪽 구독의 결과가
+  // 다른 쪽 목록을 "쪽지 없음"으로 먼저 그려버린다.
+  const [inboxLoading, setInboxLoading] = useState(true);
+  const [sentLoading, setSentLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  /** 선택 쪽지 — 항상 살아 있는 목록에서 id로 파생한다(사본 금지, 위 주석 참조) */
+  const selectedMemo =
+    (tab === "inbox" ? inboxMemos : sentMemos).find((m) => m.id === selectedMemoId) || null;
+  const loading = tab === "inbox" ? inboxLoading : sentLoading;
 
   // ── 받은쪽지함 구독 (§3: recipientEmails array-contains)
   useEffect(() => {
     if (!myEmail || !domain) return;
-    setLoading(true);
+    setInboxLoading(true);
     const q = query(
       collection(db, "memos", domain, "items"),
       where("recipientEmails", "array-contains", myEmail),
@@ -710,14 +724,22 @@ export default function MemoSection() {
       setInboxMemos(
         snap.docs.map((d) => ({ id: d.id, ...(d.data() as MemoDoc) }))
       );
-      setLoading(false);
-    }, () => setLoading(false));
+      setInboxLoading(false);
+      setLoadError(null);
+    }, (err) => {
+      // 조용히 삼키면 색인 미생성·권한 거부가 "쪽지 없음"과 구별되지 않는다.
+      // 복합 색인 생성 링크도 이 에러에만 들어 있으므로 콘솔에 반드시 남긴다(스펙 §8 운영 액션).
+      console.error("[memo] 받은쪽지함 구독 실패", err);
+      setInboxLoading(false);
+      setLoadError("쪽지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    });
     return () => unsub();
   }, [myEmail, domain]);
 
   // ── 보낸쪽지함 구독 (§3: senderEmail ==)
   useEffect(() => {
     if (!myEmail || !domain) return;
+    setSentLoading(true);
     const q = query(
       collection(db, "memos", domain, "items"),
       where("senderEmail", "==", myEmail),
@@ -728,6 +750,12 @@ export default function MemoSection() {
       setSentMemos(
         snap.docs.map((d) => ({ id: d.id, ...(d.data() as MemoDoc) }))
       );
+      setSentLoading(false);
+      setLoadError(null);
+    }, (err) => {
+      console.error("[memo] 보낸쪽지함 구독 실패", err);
+      setSentLoading(false);
+      setLoadError("쪽지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     });
     return () => unsub();
   }, [myEmail, domain]);
@@ -735,7 +763,7 @@ export default function MemoSection() {
   // ── 쪽지 클릭 → read API 호출
   const handleSelectMemo = useCallback(
     async (memo: MemoItem) => {
-      setSelectedMemo(memo);
+      setSelectedMemoId(memo.id);
       if (tab === "inbox" && !memo.reads?.[myEmail]) {
         try {
           await fetch("/api/memo", {
@@ -760,7 +788,7 @@ export default function MemoSection() {
       <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white">
         <div className="flex gap-1">
           <button
-            onClick={() => { setTab("inbox"); setSelectedMemo(null); }}
+            onClick={() => { setTab("inbox"); setSelectedMemoId(null); }}
             className={`relative flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
               tab === "inbox" ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"
             }`}
@@ -775,7 +803,7 @@ export default function MemoSection() {
             )}
           </button>
           <button
-            onClick={() => { setTab("sent"); setSelectedMemo(null); }}
+            onClick={() => { setTab("sent"); setSelectedMemoId(null); }}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
               tab === "sent" ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"
             }`}
@@ -804,6 +832,12 @@ export default function MemoSection() {
                 <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" />
                 <span>불러오는 중…</span>
               </div>
+            </div>
+          ) : loadError ? (
+            /* 실패를 "쪽지 없음"으로 보여주면 원인을 볼 수 없다 — 빈 상태와 구분해 표시한다 */
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-2 px-6 text-center">
+              <span className="text-2xl">⚠️</span>
+              <span className="text-sm">{loadError}</span>
             </div>
           ) : currentList.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-2">
@@ -844,7 +878,7 @@ export default function MemoSection() {
             <MemoDetailPanel
               memo={selectedMemo}
               tab={tab}
-              onClose={() => setSelectedMemo(null)}
+              onClose={() => setSelectedMemoId(null)}
             />
           </div>
         )}
@@ -856,7 +890,7 @@ export default function MemoSection() {
           myEmail={myEmail}
           domain={domain}
           onClose={() => setShowCompose(false)}
-          onSent={() => setTab("sent")}
+          onSent={() => { setTab("sent"); setSelectedMemoId(null); }}
         />
       )}
     </div>
