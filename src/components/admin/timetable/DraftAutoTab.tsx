@@ -26,7 +26,13 @@ import {
 } from "@/lib/timetable/types";
 import type { AiDiagnoseResult, AiExplainResult, AiCritiqueResult } from "@/lib/timetable/ai";
 import { solveTimetableInWorker, SolverDone, SolverRun } from "@/lib/timetable/solverClient";
-import { deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "@/lib/timetable/validate";
+import {
+  checkPlaceholderOp,
+  deriveGradeDayPeriods,
+  deriveHoursFromGrids,
+  findPlaceholderLesson,
+  validateTimetable,
+} from "@/lib/timetable/validate";
 import { applyRevisionOps, cloneClassGrids } from "@/lib/timetable/utils";
 import { buildSimulMatcher } from "@/lib/timetable/simul";
 
@@ -535,7 +541,16 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
   // ── 셀 이동 / 맞교환 what-if 미리보기 ──
   const analyzeOpImpact = (op: BaseRevisionOp, desc: string) => {
     if (!openDraft) return;
-    const { baseGrids, meta, model, report: oldReport } = openDraft;
+    const { baseGrids, meta, model, report: oldReport, currentGrids } = openDraft;
+
+    // 자리표시(창체·SLAT) 셀 보호 — 모든 편집이 이 함수를 거치므로 여기가 클라이언트 단일 관문.
+    // 검사기는 이 종류를 잡을 수 없어(가상 교사는 교사 중복 대상 아님) 연산 자체를 막는다.
+    const placeholderBlock = checkPlaceholderOp(currentGrids, op);
+    if (placeholderBlock) {
+      alert(`🔒 ${placeholderBlock}`);
+      setSelectedSlotA(null);
+      return;
+    }
 
     const testOps = [...meta.ops.slice(0, meta.opCursor), op];
     const testGrids = cloneClassGrids(baseGrids);
@@ -643,6 +658,15 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
     if (simulLabel) {
       alert(`🔒 동시수업(분반 이동수업 그룹 '${simulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`);
+      return;
+    }
+
+    // 자리표시(창체·SLAT) 셀 방어 🔒 — 목적지 클릭까지 기다리지 않고 선택 시점에 알린다
+    const placeholder = findPlaceholderLesson(currentGrids, viewGrade, viewClass, day, period);
+    if (placeholder) {
+      alert(
+        `🔒 '${placeholder.subjectName}'은 담당 선생님이 지정되지 않은 수업이라 학교 전체가 같은 시간에 묶여 있습니다. 한 학급만 옮기거나 맞바꿀 수 없습니다.`
+      );
       return;
     }
 

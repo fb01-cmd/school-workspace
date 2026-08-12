@@ -10,7 +10,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { bumpTimetableCacheVersion } from "./cacheVersion";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
-import { deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "./validate";
+import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "./validate";
 import { applyRevisionOps, cloneClassGrids } from "./utils";
 export { applyRevisionOps, cloneClassGrids };
 import { buildNeisPrecheckReport, emptyNeisMapRegistry } from "./neis";
@@ -5367,6 +5367,11 @@ export async function applyDraftOp(
     applyRevisionOps(oldGrids, truncatedOps);
   }
   const oldReport = validateTimetable(oldGrids, model);
+
+  // 자리표시(창체·SLAT) 셀 보호 — 검사기가 잡을 수 없는 종류라 연산 접수 단계에서 막는다.
+  // 클라이언트에도 같은 관문이 있으나 여기가 최종 관문이다 (우회 방지).
+  const placeholderBlock = checkPlaceholderOp(oldGrids, op);
+  if (placeholderBlock) throw new DraftOpConflictError(placeholderBlock);
 
   const newOps = [...truncatedOps, op];
   const newGrids = cloneClassGrids(baseGrids);

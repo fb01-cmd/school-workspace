@@ -17,6 +17,7 @@
 import { buildSimulMatcher } from "./simul";
 import { buildVenueMatcher } from "./venue";
 import {
+  BaseRevisionOp,
   ClassGrid,
   ConsecutiveRule,
   FixedBlock,
@@ -47,9 +48,50 @@ export function teacherKeyOf(t: { email?: string; name?: string }): string {
 }
 
 /** 수업의 담당 교사가 전원 가상(이메일 없음)인가 — 창체·SLAT 자리표시 수업 판별 */
-function isAllVirtual(lesson: TimetableLesson): boolean {
+export function isAllVirtual(lesson: TimetableLesson): boolean {
   const ts = lesson.teachers || [];
   return ts.length === 0 || ts.every((t) => !norm(t.email));
+}
+
+/**
+ * 해당 셀에 자리표시(전원 가상 교사) 수업이 있으면 그 수업을 돌려준다 — 편집 경로 전용 판정.
+ * 판정 기준은 위 isAllVirtual과 동일하므로 검사기·솔버·AI 층과 규약이 갈라지지 않는다.
+ */
+export function findPlaceholderLesson(
+  grids: ClassGrid[],
+  grade: number,
+  classNum: number,
+  day: number,
+  period: number
+): TimetableLesson | null {
+  const grid = grids.find((g) => g.grade === grade && g.classNum === classNum);
+  const cell = grid?.cells?.find((c) => c.day === day && c.period === period);
+  for (const l of cell?.lessons || []) if (isAllVirtual(l)) return l;
+  return null;
+}
+
+/**
+ * 편집 연산(이동·맞교환·셀 덮어쓰기)이 자리표시 수업을 건드리는지 검사한다.
+ *
+ * 창체·SLAT는 담당 교사가 지정되지 않은 밴드로 학교 전체가 같은 교시에 묶여 움직이므로
+ * 한 학급만 옮기면 학교 전체 편성이 어긋난다. 그런데 가상 교사는 H2(교사 중복) 대상이 아니고
+ * 등록부(동시수업·일괄배정)에 올라 있지 않으면 H6·H7도 걸리지 않아 검사기가 잡아줄 수 없다 —
+ * 그래서 "그리드 상태"가 아니라 "연산"을 막는 이 관문이 필요하다 (2026-08-12 실사용 발견).
+ *
+ * 과거 연산 재생(applyRevisionOps)에는 절대 걸지 않는다 — 이미 저장된 초안이 재생 불가가 되면 안 된다.
+ * 연산이 새로 만들어지거나 접수되는 지점에서만 호출한다.
+ *
+ * @returns 막아야 하면 사람이 읽는 사유, 통과면 null
+ */
+export function checkPlaceholderOp(grids: ClassGrid[], op: BaseRevisionOp): string | null {
+  const slots =
+    op.type === "swap" ? [op.a, op.b] : [{ day: op.day, period: op.period }];
+  for (const s of slots) {
+    const hit = findPlaceholderLesson(grids, op.grade, op.classNum, s.day, s.period);
+    if (!hit) continue;
+    return `${op.grade}학년 ${op.classNum}반 ${DAY_LABEL[s.day]}요일 ${s.period}교시는 '${hit.subjectName}' 자리입니다. 담당 선생님이 지정되지 않은 수업(창체·SLAT 등)은 학교 전체가 같은 시간에 묶여 있어 한 학급만 옮기거나 맞바꿀 수 없습니다.`;
+  }
+  return null;
 }
 
 // ── 역산 헬퍼 (phase9c_spec §2-1ⓐ·§2-2 — Phase B의 최소형) ────
