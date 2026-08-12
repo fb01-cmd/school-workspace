@@ -866,8 +866,12 @@ export default function AdminPage() {
 
           {/* Dynamic Content Panel */}
           {activeMenu === "memo" ? (
-            /* 쪽지는 패딩/max-width 없이 꽉 채움 (목록+상세 2열 레이아웃) */
+            /* 쪽지는 패딩/max-width 없이 꽉 채움 (목록+상세 2열 레이아웃).
+               ClassroomCleanupBanner는 모든 메뉴에서 노출되어야 하므로(결정 #5) 여기도 포함. */
             <main className="flex-1 overflow-hidden flex flex-col">
+              <div className="px-4 pt-3 pb-0">
+                <ClassroomCleanupBanner onNavigate={() => setActiveMenu("classroom_cleanup")} />
+              </div>
               <MemoSection />
             </main>
           ) : (
