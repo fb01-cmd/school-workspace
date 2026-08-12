@@ -123,11 +123,14 @@ service cloud.firestore {
     // "워크스페이스 관리자인가"로 덮어쓴다 — 일반 교사는 20명 중 0명이 true였고 앞으로도
     // true가 될 수 없어, 쪽지가 수퍼어드민끼리만 쓰이는 기능이 돼 있었다.
     // 실제 "학교 구성원" 판정의 단일 원본은 교직원 조직도(teacher_profiles/{email})다.
-    // 인프라·테스트 계정(fb01 등)은 조직도에 없으므로 자연히 빠진다 — 사용자 확정 기준.
+    // **소속(departments)이 실제로 있어야 통과한다** — 문서만 있고 소속이 빈 계정(관리자·테스트
+    // 계정 등)은 조직도에 이름만 올라 있을 뿐 부서 구성원이 아니다(2026-08-13 사용자 확정).
+    // 인프라 계정(fb01 등)은 문서 자체가 없어 앞 조건에서 이미 빠진다.
     match /memos/{domain}/items/{memoId} {
       allow read: if isSchool()
         && myUserDoc().role in ['teacher', 'super_admin']
         && exists(/databases/$(database)/documents/teacher_profiles/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/teacher_profiles/$(request.auth.token.email)).data.departments.size() > 0
         && (request.auth.token.email == resource.data.senderEmail
             || request.auth.token.email in resource.data.recipientEmails);
       allow write: if false;

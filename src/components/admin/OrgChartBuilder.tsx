@@ -7,14 +7,8 @@ import { collection, onSnapshot, query, doc, getDoc, setDoc, serverTimestamp } f
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import ManualProfileEditor from "@/components/admin/ManualProfileEditor";
+import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
 
-const DEFAULT_DEPARTMENTS = [
-  "교장", "교감", "교목", "교무기획부", "교육연구부", "학생생활자치부",
-  "교육과정부", "과학정보융합부", "건학인성부", "창의적체험활동부", "학력향상부",
-  "진학지원부", "학생건강부", "1학년", "2학년", "3학년",
-  "국어", "수학", "사회", "과학", "외국어", "생활교양", "예술", "체육",
-  "진로상담", "행정실", "급식실", "휴직 및 퇴직 교사",
-];
 
 interface Props {
   /** 외부(트리 뷰 ✏️ 등)에서 세부 편집을 요청할 이메일 — 빌더가 자기 모달로 연다 (모달 소유자는 빌더 하나) */

@@ -40,9 +40,10 @@ export async function POST(req: NextRequest) {
     // users.isApproved를 쓰지 않는다: 그 값은 로그인마다 "워크스페이스 관리자인가"로
     // 덮어써져 일반 교사는 영원히 false다(2026-08-13 실측, 20명 중 true 0명).
     const profSnap = await adminDb.collection("teacher_profiles").doc(email).get();
-    if (!profSnap.exists) {
+    const depts = profSnap.exists ? profSnap.data()?.departments : null;
+    if (!Array.isArray(depts) || depts.length === 0) {
       return NextResponse.json(
-        { error: "교직원 조직도에 등록된 계정만 쪽지를 사용할 수 있습니다. 소속 정보를 등록해 주세요." },
+        { error: "교직원 조직도에 소속이 등록된 계정만 쪽지를 사용할 수 있습니다. 소속 정보를 등록해 주세요." },
         { status: 403 }
       );
     }

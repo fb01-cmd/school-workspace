@@ -5,14 +5,8 @@ import { useAuth } from "@/context/AuthContext";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { getClientCache } from "@/lib/cache/clientCache";
+import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
 
-const DEFAULT_DEPARTMENTS = [
-  "교장", "교감", "교목", "교무기획부", "교육연구부", "학생생활자치부",
-  "교육과정부", "과학정보융합부", "건학인성부", "창의적체험활동부", "학력향상부",
-  "진학지원부", "학생건강부", "1학년", "2학년", "3학년",
-  "국어", "수학", "사회", "과학", "외국어", "생활교양", "예술", "체육",
-  "진로상담", "행정실", "급식실", "휴직 및 퇴직 교사",
-];
 
 // 계원 제거
 const DEFAULT_POSITIONS = ["교장", "교감", "교목", "부장", "교사", "영양사", "행정실장", "주무관", "조리사"];

@@ -694,7 +694,7 @@ export default function MemoSection() {
    * 영원히 false다(2026-08-13 실측, 교사 20명 중 true 0명 — 쪽지가 수퍼어드민 전용이 돼 있었다).
    * 미등록 계정은 직독이 거부되고 발신도 403이므로, 실패를 띄우는 대신 쿼리를 걸지 않고 안내한다.
    */
-  const notEligible = !!userData && !teacherProfile;
+  const notEligible = !!userData && !(teacherProfile?.departments?.length);
 
   const [tab, setTab] = useState<Tab>("inbox");
   const [inboxMemos, setInboxMemos] = useState<MemoItem[]>([]);

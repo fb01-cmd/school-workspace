@@ -43,7 +43,7 @@ export default function MobileMemoSection() {
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "";
   // 자격 = 교직원 조직도 등록(teacher_profiles) — 규칙·API와 같은 기준. 미등록은 직독이 거부된다.
-  const notEligible = !!userData && !teacherProfile;
+  const notEligible = !!userData && !(teacherProfile?.departments?.length);
 
   const [memos, setMemos] = useState<MemoItem[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
