@@ -3938,15 +3938,26 @@ tsc 0 / build ✅.
 
 ## 3. 다음 작업 (우선순위 순)
 
-1. **F-2 UI** — Antigravity, [`docs/timetable_fix_assist_spec.md`](./docs/timetable_fix_assist_spec.md) §2-5. 엔진은 완료됐고 화면만 남았다. `findFixCandidates`를 동기로 부르면 되고(§2-6), **"해결안 없음" 문구가 39건 중 30건이 타는 다수 경로**이므로 대충 만들면 안 된다. 적용은 기존 `analyzeOpImpact` + 연쇄 영향 모달 경로 그대로.
-2. **쪽지 §4 화면 구현** — Antigravity. 이후 Claude 표적 리뷰(Sonnet 5).
-3. **중간점검(midterm review)** — 로드맵 §2에 5축 골격. ① 미결 전수 수거는 Antigravity, 트리아지부터 Claude(Opus 5). 8월 내 권장. **④에 "규약 미적용 지점 전수" 항목 추가할 것** — 암묵 규약(값의 *부재*로 의미 표현) 유실이 8월에만 2회(AI 층 `8d7f963`, 편집 경로 `a66ce6b`). **표적 리뷰 항목으로 스펙 §8(편집 관문의 하드 판정이 동일 키 위반의 건수 증가를 못 잡음)도 함께.**
-4. (경미) `project_notes.md` **544KB — 회전 임계(150KB) 초과.** 8월 전반 엔트리를 `archive/project_notes_2026-08.md`로 이관 권장(AGENTS ④-1). 새 세션이 맥락을 못 잡는 문제와 직결.
+1. ~~**F-2 UI**~~ ✅ 완료 (`89690bd`, Antigravity)
+2. **Claude 표적 리뷰** — F-1·F-2 합류 후. Sonnet 5.
+3. **쪽지 §4 화면 구현** — Antigravity. 이후 Claude 표적 리뷰(Sonnet 5).
+4. **중간점검(midterm review)** — 로드맵 §2에 5축 골격. ① 미결 전수 수거는 Antigravity, 트리아지부터 Claude(Opus 5). 8월 내 권장. **④에 "규약 미적용 지점 전수" 항목 추가할 것** — 암묵 규약(값의 *부재*로 의미 표현) 유실이 8월에만 2회(AI 층 `8d7f963`, 편집 경로 `a66ce6b`). **표적 리뷰 항목으로 스펙 §8(편집 관문의 하드 판정이 동일 키 위반의 건수 증가를 못 잡음)도 함께.**
+5. (경미) `project_notes.md` **544KB — 회전 임계(150KB) 초과.** 8월 전반 엔트리를 `archive/project_notes_2026-08.md`로 이관 권장(AGENTS ④-1). 새 세션이 맥락을 못 잡는 문제와 직결.
 
 ## 4. 재개 문구 (복사용)
 
 - 푸시: *"푸시하자."*
-- F-2 UI(**Antigravity**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. docs/timetable_fix_assist_spec.md §2-5대로 해결안 결과 카드 UI를 구현해줘. 엔진은 src/lib/timetable/fixFinder.ts에 완성돼 있으니 findFixCandidates를 동기로 부르고, 미리보기·적용은 기존 analyzeOpImpact와 연쇄 영향 모달을 그대로 쓸 것. '해결안 없음'이 다수 경로다."*
+- 표적 리뷰(**Claude — Sonnet 5**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. F-1·F-2 합류 코드(DraftAutoTab.tsx의 F-1 하드/소프트 패널 + F-2 결과 카드) 표적 리뷰해줘."*
 - 쪽지 화면(**Antigravity**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. docs/memo_spec.md §4 대로 쪽지 화면(관리자 포털 'memo' 메뉴 + /m 열람 섹션) 구현해줘."*
 - 중간점검 수거(**Antigravity**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. 로드맵 §2 중간점검의 ① 미결 전수 수거 — 로드맵·project_notes·docs에서 '대기/후속/잔여/별건' 항목을 전부 긁어 목록만 만들어줘. 판단은 하지 말 것."*
 - 노트 회전(**Claude — Haiku 4.5**): *"project_notes.md 맨 끝 체크포인트 읽고, 8월 전반 엔트리를 archive/project_notes_2026-08.md로 무손실 이관해줘. 체크포인트 블록은 맨 끝에 그대로 남길 것."*
+
+---
+
+## [2026-08-12] Antigravity → Claude/사용자 (F-2 UI 구현 완료)
+
+- 커밋: `89690bd` — `src/components/admin/timetable/DraftAutoTab.tsx`
+- 검증: tsc 0건 ✅ / build ✅
+- 내용: §2-5 해결안 결과 카드 UI 구현. 소프트 감점 항목별 [해결안 찾기] → findFixCandidates 동기 → 결과 인라인 표시 → [미리보기] → analyzeOpImpact 기존 경로. 해결안 없음 문구 code별 구조적 원인 설명.
+- **주의**: 체크포인트의 "F-1·F-2까지 푸시 완료"는 F-2 UI(이번 작업)가 포함되지 않은 상태였음. 이번 커밋은 아직 푸시 안 됨.
+- 다음: Claude 표적 리뷰(F-1+F-2 합류) → 통과 후 푸시.
