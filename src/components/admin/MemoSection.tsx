@@ -465,12 +465,17 @@ function MemoDetailPanel({
 }) {
   // §12-2 회수 상태
   const [recalling, setRecalling] = useState(false);
+  const [showRecallConfirm, setShowRecallConfirm] = useState(false);
   const [recallResult, setRecallResult] = useState<RecallResult | null>(null);
 
-  // memo가 바뀌면(다른 쪽지 선택) 결과 초기화
-  useEffect(() => { setRecallResult(null); }, [memo.id]);
+  // memo가 바뀌면(다른 쪽지 선택) 결과 및 확인 상태 초기화
+  useEffect(() => {
+    setRecallResult(null);
+    setShowRecallConfirm(false);
+  }, [memo.id]);
 
   const handleRecall = async () => {
+    setShowRecallConfirm(false);
     setRecalling(true);
     setRecallResult(null);
     try {
@@ -501,7 +506,7 @@ function MemoDetailPanel({
   const canRecall = isMine && unreadCount > 0 && !recalling;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
       {/* 헤더 */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
         <h3 className="text-base font-bold text-slate-900 flex-1 mr-3 leading-snug">
@@ -512,7 +517,7 @@ function MemoDetailPanel({
           {isMine && unreadCount > 0 && (
             <button
               type="button"
-              onClick={handleRecall}
+              onClick={() => setShowRecallConfirm(true)}
               disabled={!canRecall}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors disabled:opacity-40"
               aria-label="쪽지 회수"
@@ -535,6 +540,43 @@ function MemoDetailPanel({
         </div>
       </div>
 
+      {/* 회수 확인 팝업/모달 (개정 ① 반영) */}
+      {showRecallConfirm && (
+        <div className="absolute inset-0 z-20 bg-black/30 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-xl p-5 max-w-sm w-full space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-rose-100 text-rose-600 rounded-full flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">쪽지를 회수하시겠습니까?</h4>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  안 읽은 <strong className="text-rose-600 font-semibold">{unreadCount}명</strong>에게서 회수합니다. 이미 읽은 분 것은 회수되지 않고 휴대전화 알림도 취소되지 않습니다.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowRecallConfirm(false)}
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleRecall}
+                className="px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors shadow-sm"
+              >
+                회수
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 메타 */}
       <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 text-xs text-slate-500 space-y-1">
         {tab === "inbox" ? (
@@ -552,7 +594,7 @@ function MemoDetailPanel({
 
       {/* 본문 */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        {/* §12-2 회수 결과 안내 */}
+        {/* §12-2 회수 결과 안내 (개정 ② 반영: 결과 카드 내 주의 문구 동반) */}
         {recallResult && (
           <div
             className={`rounded-lg px-4 py-3 text-sm border ${
@@ -563,14 +605,20 @@ function MemoDetailPanel({
           >
             {recallResult.type === "success" ? (
               recallResult.recalledCount === 0 ? (
-                <p>이미 모두 읽어 회수할 쪽지가 없습니다.</p>
+                <div>
+                  <p className="font-semibold">이미 모두 읽어 회수할 쪽지가 없습니다.</p>
+                  <p className="mt-1 text-xs opacity-80">이미 읽은 분의 쪽지는 회수되지 않으며 휴대전화 알림은 취소할 수 없습니다.</p>
+                </div>
               ) : (
-                <>
+                <div>
                   <p className="font-semibold">아직 읽지 않은 {recallResult.recalledCount}명의 쪽지를 회수했습니다.</p>
                   {recallResult.remainingCount > 0 && (
                     <p className="mt-1 text-xs opacity-80">이미 읽은 {recallResult.remainingCount}명의 쪽지는 회수되지 않았습니다.</p>
                   )}
-                </>
+                  <p className="mt-2 text-xs opacity-80 pt-1.5 border-t border-rose-200/60">
+                    이미 읽은 분의 쪽지는 회수되지 않으며 휴대전화 알림은 취소할 수 없습니다.
+                  </p>
+                </div>
               )
             ) : (
               <p>{recallResult.message}</p>
