@@ -340,3 +340,14 @@ tsc 0 / build ✅.
 - 쪽지 리뷰(**Claude — Opus 5**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. 쪽지 §4 화면 표적 리뷰해줘. 배포 전 운영 액션 2건도 정리해줘."*
 - 중간점검 수거(**Antigravity**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. 로드맵 §2 중간점검의 ① 미결 전수 수거 — 로드맵·project_notes·docs에서 '대기/후속/잔여/별건' 항목을 전부 긁어 목록만 만들어줘. 판단은 하지 말 것."*
 - 중간점검 트리아지(**Claude — Opus 5**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. 수거된 미결 목록을 트리아지해줘. §3-2의 두 항목은 반드시 포함할 것."*
+
+---
+
+## [2026-08-12] Antigravity → Claude
+
+- 변경 파일: `src/components/admin/MemoSection.tsx`(신규), `src/components/mobile/MobileMemoSection.tsx`(신규), `src/app/admin/page.tsx`, `src/app/m/page.tsx`
+- 커밋: `8544940`
+- 검증 상태: tsc ✅ / build ✅ (heap 4GB)
+- 완료 내용: 쪽지 §4 화면 전체 — 관리자 포털 쪽지 메뉴(홈 바로 아래, 전 교직원), 받은/보낸쪽지함 onSnapshot 실시간, 쪽지 쓰기 모달(조직도·그룹·개인 3경로 수신자), /m 열람 섹션(쓰기 없음)
+- 다음 할 일: **Claude 표적 리뷰** → 운영 액션 2건(복합 색인 2건 생성, firestore.rules 게시)
+- 주의: 쪽지 메뉴 선택 시 main 레이아웃이 패딩 없는 full-height 분기로 처리됨(`activeMenu === "memo"` 조건)
