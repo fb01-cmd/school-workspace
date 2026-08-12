@@ -5621,13 +5621,16 @@ export async function computeAiDiagnosis(
     return { clean: true };
   }
 
-  // 가명 사전 원천 = 그리드 전체 교사 (위반·미배정 문장의 실명이 전부 이 집합에서 나옴)
+  // 가명 사전 원천 = 그리드의 **실교사** (위반·미배정 문장의 실명이 전부 이 집합에서 나옴).
+  // 가상 교사(이메일 없음 — 창체·SLAT)는 사람이 아니라 가명화 대상이 아니고, 사전에 넣으면
+  // AI가 활동명을 사람 가명으로 받아 교사로 착각한다 (2026-08-12 실사용 신고와 동일 계열).
   const teachers: import("./ai").AiTeacherRef[] = [];
   const seen = new Set<string>();
   for (const grid of currentGrids) {
     for (const cell of grid.cells) {
       for (const lesson of cell.lessons) {
         for (const t of lesson.teachers || []) {
+          if (!(t.email || "").trim()) continue; // 가상 교사 — 실명이 아니므로 치환 불요
           const key = `${(t.email || "").toLowerCase()}|${t.name || ""}`;
           if (seen.has(key)) continue;
           seen.add(key);
@@ -5707,13 +5710,17 @@ async function buildAiGridSummary(
   const { model } = await loadDraftConstraintModel(domain, meta, baseGrids);
   const report = validateTimetable(currentGrids, model);
 
-  // 가명 사전 원천 + 교사별 주간 부하 — 그리드 한 번 순회로 함께 수집
+  // 가명 사전 원천 + 교사별 주간 부하 — 그리드 한 번 순회로 함께 수집.
+  // **가상 교사(이메일 없음 — 창체·SLAT 자리표시)는 제외한다**: 검사기·솔버·교환 엔진이 이미
+  // 같은 규약으로 제외하는데 여기만 포함시켜, AI가 "창체 선생님"을 실존 교사로 착각하고
+  // 전 학급 합산 시수(예: 주 60시간)를 근거로 엉뚱한 진단·제안을 내놓았다 (2026-08-12 실사용 신고).
   const teachers: import("./ai").AiTeacherRef[] = [];
   const loadByKey = new Map<string, import("./ai").AiTeacherLoad>();
   for (const grid of currentGrids) {
     for (const cell of grid.cells) {
       for (const lesson of cell.lessons) {
         for (const t of lesson.teachers || []) {
+          if (!(t.email || "").trim()) continue; // 가상 교사 — 사람이 아니므로 부하·가명 대상 아님
           const key = `${(t.email || "").toLowerCase()}|${t.name || ""}`;
           let load = loadByKey.get(key);
           if (!load) {
