@@ -4,6 +4,7 @@ import { adminDb, verifyAuthAccess } from "@/lib/firebase/admin";
 import {
   MEMO_MAX_RECIPIENTS,
   MemoDoc,
+  computeRecall,
   expandGroupEmails,
   isValidEmailFormat,
   resolveRecipients,
@@ -15,7 +16,7 @@ import { notifyMemo } from "@/lib/push/webpush";
 import { FieldPath } from "firebase-admin/firestore";
 import { NextRequest, NextResponse, after } from "next/server";
 
-type MemoAction = "send" | "read";
+type MemoAction = "send" | "read" | "recall";
 
 const memoItemsColRef = (domain: string) =>
   adminDb.collection("memos").doc(domain).collection("items");
@@ -188,6 +189,45 @@ export async function POST(req: NextRequest) {
           await ref.update(new FieldPath("reads", email), Date.now());
         }
         return NextResponse.json({ success: true, action });
+      }
+
+      case "recall": {
+        // 회수 (§12-2) — 이미 읽은 사람 것은 두고, 아직 안 읽은 사람 것만 거둔다.
+        const memoId = typeof body.memoId === "string" ? body.memoId.trim() : "";
+        if (!memoId || memoId.length > 128 || memoId.includes("/")) {
+          return NextResponse.json({ error: "쪽지 정보가 유효하지 않습니다." }, { status: 400 });
+        }
+        const ref = memoItemsColRef(domain).doc(memoId);
+
+        // **트랜잭션 필수** — 대상을 계산한 뒤 쓰기까지 사이에 누군가 열면, 읽었는데도 목록에서
+        // 사라진 사람이 생겨 수신확인 이력이 왜곡된다. 트랜잭션이면 그 경합에서 재시도되어
+        // 항상 최신 reads 기준으로 자른다.
+        const outcome = await adminDb.runTransaction(async (tx) => {
+          const snap = await tx.get(ref);
+          if (!snap.exists) return { fail: { error: "쪽지를 찾을 수 없습니다.", status: 404 } };
+          const memo = snap.data() as MemoDoc;
+          if (memo.senderEmail !== email) {
+            return { fail: { error: "보낸 사람만 쪽지를 회수할 수 있습니다.", status: 403 } };
+          }
+          const { keep, recalled } = computeRecall(memo);
+          // 전원이 이미 읽었으면 거둘 것이 없다 — 실패가 아니라 0건 성공으로 알린다.
+          // (여기서 쓰기를 하면 회수한 적 없는 쪽지에 recalledAt이 찍혀 이력이 거짓이 된다.)
+          if (recalled.length === 0) return { recalledCount: 0, remainingCount: keep.length };
+          tx.update(ref, {
+            recipientEmails: keep,
+            recipientCount: keep.length,
+            recalledAt: Date.now(),
+            // 누계로 쌓는다 — 덮어쓰면 앞선 회수 이력이 사라진다
+            recalledCount: (memo.recalledCount || 0) + recalled.length,
+          });
+          return { recalledCount: recalled.length, remainingCount: keep.length };
+        });
+
+        if ("fail" in outcome && outcome.fail) {
+          return NextResponse.json({ error: outcome.fail.error }, { status: outcome.fail.status });
+        }
+        // 푸시는 되돌릴 수 없다(잠금화면에 발신자·제목이 이미 남았다) — 화면이 안내한다(§12-2).
+        return NextResponse.json({ success: true, action, ...outcome });
       }
 
       default:

@@ -27,6 +27,10 @@ export interface MemoDoc {
   reads: Record<string, number>;
   createdAt: number;
   expireAt: number;
+  /** 마지막 회수 시각(ms) — 회수한 적 없으면 없음 (§12-2) */
+  recalledAt?: number;
+  /** 지금까지 회수된 인원 누계 — 보낸 이력이 왜곡되지 않게 남긴다 (§12-2) */
+  recalledCount?: number;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -207,3 +211,36 @@ export function resolveRetentionDays(raw: unknown): number {
   if (!Number.isFinite(n) || n < 1 || n > 3650) return MEMO_DEFAULT_RETENTION_DAYS;
   return n;
 }
+
+// ── 회수 (§12-2) ──────────────────────────────────────────────────────────────
+
+export interface RecallResult {
+  /** 회수 후에도 남는 수신자 = **이미 읽은 사람** */
+  keep: string[];
+  /** 회수되는 수신자 = 아직 읽지 않은 사람 */
+  recalled: string[];
+}
+
+/**
+ * 회수 대상 계산 — "이미 읽은 사람 것은 두고 안 읽은 사람 것만" (§12-2).
+ *
+ * `recipientEmails`에서 미열람자만 빼면 그들은 firestore.rules상 그 문서를 읽을 수 없게 되어
+ * 목록에서 사라지고, 열람자는 그대로 남는다. **`reads`는 건드리지 않는다** — 수신확인 이력이
+ * 보존되어야 하고, 남는 사람이 곧 읽은 사람이므로 reads와 recipientEmails가 저절로 정합된다.
+ *
+ * 순수 함수다. 실제 적용은 트랜잭션 안에서 해야 한다 — 계산과 쓰기 사이에 누가 읽으면
+ * "읽었는데 목록에서 사라진 사람"이 생겨 이력이 왜곡된다.
+ */
+export function computeRecall(
+  memo: Pick<MemoDoc, "recipientEmails" | "reads">
+): RecallResult {
+  const reads = memo.reads || {};
+  const keep: string[] = [];
+  const recalled: string[] = [];
+  for (const e of memo.recipientEmails || []) {
+    if (reads[e]) keep.push(e);
+    else recalled.push(e);
+  }
+  return { keep, recalled };
+}
+

@@ -5,6 +5,7 @@
  */
 import {
   MEMO_DEFAULT_RETENTION_DAYS,
+  computeRecall,
   expandGroupEmails,
   resolveRecipients,
   resolveRetentionDays,
@@ -108,6 +109,37 @@ async function main() {
     expect("0 이하 → 기본", resolveRetentionDays(0) === MEMO_DEFAULT_RETENTION_DAYS);
     expect("과대값 → 기본", resolveRetentionDays(99999) === MEMO_DEFAULT_RETENTION_DAYS);
     expect("문자열 → 기본", resolveRetentionDays("365" as any) === MEMO_DEFAULT_RETENTION_DAYS);
+  }
+
+  console.log("\n── 회수 (§12-2) ──");
+  {
+    const base = { recipientEmails: ["a@x.kr", "b@x.kr", "c@x.kr"] };
+
+    // 일부만 읽은 경우 — 읽은 사람은 남고 안 읽은 사람만 거둬진다
+    const r1 = computeRecall({ ...base, reads: { "a@x.kr": 1, "c@x.kr": 2 } });
+    expect("읽은 사람만 남는다", JSON.stringify(r1.keep) === JSON.stringify(["a@x.kr", "c@x.kr"]));
+    expect("안 읽은 사람만 회수된다", JSON.stringify(r1.recalled) === JSON.stringify(["b@x.kr"]));
+
+    // 아무도 안 읽은 경우 — 전원 회수, 수신자 0명
+    const r2 = computeRecall({ ...base, reads: {} });
+    expect("아무도 안 읽었으면 전원 회수", r2.recalled.length === 3 && r2.keep.length === 0);
+
+    // 전원이 읽은 경우 — 거둘 것이 없다 (서버는 0건 성공으로 응답)
+    const r3 = computeRecall({ ...base, reads: { "a@x.kr": 1, "b@x.kr": 1, "c@x.kr": 1 } });
+    expect("전원 읽었으면 회수 대상 0", r3.recalled.length === 0 && r3.keep.length === 3);
+
+    // 회수 후 재회수 — 남은 사람은 모두 읽은 사람이므로 다시 거둘 것이 없다(멱등)
+    const r4 = computeRecall({ recipientEmails: r1.keep, reads: { "a@x.kr": 1, "c@x.kr": 2 } });
+    expect("재회수는 0건(멱등)", r4.recalled.length === 0 && r4.keep.length === 2);
+
+    // reads는 건드리지 않으므로 남은 수신자와 읽음 기록이 저절로 정합
+    expect("남는 수신자 = 읽음 기록 보유자", r1.keep.every((e) => ["a@x.kr", "c@x.kr"].includes(e)));
+
+    // 수신자 0명 / reads 누락 방어
+    const r5 = computeRecall({ recipientEmails: [], reads: {} });
+    expect("수신자 0명이면 양쪽 다 빈 배열", r5.keep.length === 0 && r5.recalled.length === 0);
+    const r6 = computeRecall({ recipientEmails: ["a@x.kr"] } as any);
+    expect("reads 필드가 없어도 죽지 않는다", r6.recalled.length === 1);
   }
 
   console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);
