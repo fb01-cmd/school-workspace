@@ -10,7 +10,8 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { bumpTimetableCacheVersion } from "./cacheVersion";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
-import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, validateTimetable } from "./validate";
+import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardViolationKey, validateTimetable } from "./validate";
+import { SOFT_CODE_LABELS } from "./labels";
 import { applyRevisionOps, cloneClassGrids } from "./utils";
 export { applyRevisionOps, cloneClassGrids };
 import { buildNeisPrecheckReport, emptyNeisMapRegistry } from "./neis";
@@ -2191,6 +2192,14 @@ export async function saveRevisionDraft(
   }
   // 편집 기준판 = 최신 적용 기초 (모든 applied 개정 반영)
   const latestBase = await loadBaseGridsForWeek(domain, termId, "9999-12-31");
+
+  // 자리표시(창체·SLAT) 셀 보호 — 개정 연산에 자리표시 셀 차단 체크
+  const checkGrids = cloneClassGrids(latestBase);
+  for (const op of ops) {
+    const placeholderBlock = checkPlaceholderOp(checkGrids, op);
+    if (placeholderBlock) throw new Error(placeholderBlock);
+    applyRevisionOps(checkGrids, [op]);
+  }
 
   // edit_cell 교사 이메일 자동 해석 — 화면에서 이름만 입력한 경우 기초 그리드의 유일
   // 동명 교사 이메일을 보충한다. 이메일 없는 교사는 엔진이 가상 교사로 취급해 그 수업이
@@ -5378,14 +5387,9 @@ export async function applyDraftOp(
   applyRevisionOps(newGrids, newOps);
   const newReport = validateTimetable(newGrids, model);
 
-  const oldHardKeys = new Set(
-    oldReport.hard.map(
-      (h) => `${h.code}:${h.grade ?? 0}:${h.classNum ?? 0}:${h.day ?? 0}:${h.period ?? 0}:${h.teacherEmail || ""}`
-    )
-  );
-  const newHards = newReport.hard.filter(
-    (h) => !oldHardKeys.has(`${h.code}:${h.grade ?? 0}:${h.classNum ?? 0}:${h.day ?? 0}:${h.period ?? 0}:${h.teacherEmail || ""}`)
-  );
+  // 판정 키는 validate.ts의 hardViolationKey 단일 소재지 — 클라 관문·해결안 탐색기와 공유한다
+  const oldHardKeys = new Set(oldReport.hard.map(hardViolationKey));
+  const newHards = newReport.hard.filter((h) => !oldHardKeys.has(hardViolationKey(h)));
 
   if (newHards.length > 0) {
     const firstErr = newHards[0];
@@ -5741,7 +5745,6 @@ async function buildAiGridSummary(
   }
 
   const term = await loadTimetableTerm(domain, meta.sourceTermId);
-  const { SOFT_CODE_LABELS } = await import("./ai");
   return {
     termLabel: term?.name || meta.sourceTermId,
     draftLabel: meta.label,

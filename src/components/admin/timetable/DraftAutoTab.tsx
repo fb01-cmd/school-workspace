@@ -31,10 +31,12 @@ import {
   deriveGradeDayPeriods,
   deriveHoursFromGrids,
   findPlaceholderLesson,
+  hardViolationKey,
   validateTimetable,
 } from "@/lib/timetable/validate";
 import { applyRevisionOps, cloneClassGrids } from "@/lib/timetable/utils";
 import { buildSimulMatcher } from "@/lib/timetable/simul";
+import { HARD_CODE_LABELS, SOFT_CODE_LABELS } from "@/lib/timetable/labels";
 
 interface DraftAutoTabProps {
   activeTermId?: string | null;
@@ -110,6 +112,10 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
   const [viewGrade, setViewGrade] = useState(1);
   const [viewClass, setViewClass] = useState(1);
   const [selectedTeacherEmail, setSelectedTeacherEmail] = useState<string | null>(null);
+
+  // F-1 위반·감점 상세 패널 접힘/펼침 상태
+  const [showHardDetails, setShowHardDetails] = useState(false);
+  const [showSoftDetails, setShowSoftDetails] = useState(false);
 
   // 선택 셀 A 상태 (이동 소스)
   const [selectedSlotA, setSelectedSlotA] = useState<{
@@ -557,14 +563,9 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     applyRevisionOps(testGrids, testOps);
     const testReport = validateTimetable(testGrids, model);
 
-    const oldHardKeys = new Set(
-      oldReport.hard.map(
-        (h) => `${h.code}:${h.grade ?? 0}:${h.classNum ?? 0}:${h.day ?? 0}:${h.period ?? 0}:${h.teacherEmail || ""}`
-      )
-    );
-    const newHards = testReport.hard.filter(
-      (h) => !oldHardKeys.has(`${h.code}:${h.grade ?? 0}:${h.classNum ?? 0}:${h.day ?? 0}:${h.period ?? 0}:${h.teacherEmail || ""}`)
-    );
+    // 판정 키는 validate.ts의 hardViolationKey 단일 소재지 — 서버 관문(applyDraftOp)과 같은 규약
+    const oldHardKeys = new Set(oldReport.hard.map(hardViolationKey));
+    const newHards = testReport.hard.filter((h) => !oldHardKeys.has(hardViolationKey(h)));
 
     const deltaScore = testReport.soft.total - oldReport.soft.total;
 
@@ -770,14 +771,22 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
 
           <div className="flex items-center gap-3 flex-wrap">
             {/* 배지 */}
-            <span
-              className={`text-[11px] px-2.5 py-0.5 rounded-full border font-extrabold ${hardBadgeColor(report.hard.length)}`}
+            <button
+              onClick={() => setShowHardDetails((o) => !o)}
+              className={`text-[11px] px-2.5 py-0.5 rounded-full border font-extrabold cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1 ${hardBadgeColor(report.hard.length)}`}
+              title="클릭하여 하드 위반 상세를 확인하거나 접습니다"
             >
-              하드 위반 {report.hard.length}건
-            </span>
-            <span className="text-[11px] px-2.5 py-0.5 rounded-full border font-extrabold bg-amber-100 text-amber-900 border-amber-300">
-              소프트 {report.soft.total}점
-            </span>
+              <span>하드 위반 {report.hard.length}건</span>
+              <span className="text-[10px]">{showHardDetails ? "▲" : "▼"}</span>
+            </button>
+            <button
+              onClick={() => setShowSoftDetails((o) => !o)}
+              className="text-[11px] px-2.5 py-0.5 rounded-full border font-extrabold bg-amber-100 text-amber-900 border-amber-300 cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1"
+              title="클릭하여 소프트 감점 상세를 확인하거나 접습니다"
+            >
+              <span>소프트 {report.soft.total}점</span>
+              <span className="text-[10px]">{showSoftDetails ? "▲" : "▼"}</span>
+            </button>
 
             {/* AI 원인 진단 버튼 — 하드 > 0 이고 키 설정 시에만 노출 (E-1b) */}
             {report.hard.length > 0 && aiEnabled !== false && (
@@ -891,6 +900,195 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-800 font-semibold flex items-start gap-2">
             <span>⚠️</span>
             <span>{aiDiagError || aiExplainError || aiCritiqueError}</span>
+          </div>
+        )}
+
+        {/* F-1 하드 위반 상세 패널 (E-1b AI 진단 카드와 동일 접이식 디자인) */}
+        {showHardDetails && openDraft && (
+          <div className="rounded-xl border border-red-200 bg-red-50/60 overflow-hidden">
+            <div className="px-5 py-3 flex items-center justify-between bg-red-100/70 border-b border-red-200">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🔴</span>
+                <span className="text-xs font-bold text-red-950">하드 위반 상세 (총 {report.hard.length}건)</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-200 text-red-900 font-bold border border-red-300">
+                  완성본을 위해 해결이 권장되는 위반 항목입니다
+                </span>
+              </div>
+              <button
+                onClick={() => setShowHardDetails(false)}
+                className="text-red-700 hover:text-red-950 text-xs font-bold"
+              >
+                ▲ 접기
+              </button>
+            </div>
+            <div className="p-5 space-y-4 text-xs">
+              {report.hard.length === 0 ? (
+                <div className="bg-white rounded-lg p-4 text-emerald-800 font-bold border border-emerald-200 flex items-center gap-2">
+                  <span>✅</span>
+                  <span>하드 위반이 없습니다.</span>
+                </div>
+              ) : (
+                (() => {
+                  const grouped: Record<string, HardViolation[]> = {};
+                  for (const h of report.hard) {
+                    if (!grouped[h.code]) grouped[h.code] = [];
+                    grouped[h.code].push(h);
+                  }
+                  return Object.entries(grouped).map(([code, items]) => {
+                    const label = HARD_CODE_LABELS[code] || code;
+                    const regularItems = items.filter((it) => !it.registryGap);
+                    const gapItems = items.filter((it) => it.registryGap);
+
+                    const renderItem = (item: HardViolation, idx: number) => {
+                      const coordLabel = [
+                        item.grade && item.classNum ? `${item.grade}-${item.classNum}반` : "",
+                        item.day ? `${DAYS[item.day - 1]}요일` : "",
+                        item.period ? `${item.period}교시` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ");
+
+                      return (
+                        <div
+                          key={idx}
+                          className="bg-white rounded-lg border border-red-100 p-3 flex flex-wrap items-start justify-between gap-2 shadow-2xs"
+                        >
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <p className="font-medium text-gray-900 leading-snug">{item.text}</p>
+                            {item.hint && (
+                              <p className="text-[11px] text-gray-500 font-normal">💡 {item.hint}</p>
+                            )}
+                          </div>
+                          {coordLabel && (
+                            <button
+                              onClick={() => {
+                                if (item.grade) setViewGrade(item.grade);
+                                if (item.classNum) setViewClass(item.classNum);
+                              }}
+                              className="shrink-0 px-2 py-1 rounded bg-red-100 hover:bg-red-200 text-red-900 font-bold text-[11px] border border-red-300 transition-colors flex items-center gap-1"
+                              title="해당 위치로 이동"
+                            >
+                              <span>📍</span>
+                              <span>{coordLabel}</span>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    };
+
+                    return (
+                      <div key={code} className="space-y-2">
+                        <div className="flex items-center gap-2 border-b border-red-200 pb-1">
+                          <span className="font-extrabold text-red-900 text-xs">{code} ({label})</span>
+                          <span className="text-[10px] font-extrabold px-2 py-0.2 rounded-full bg-red-200 text-red-900">
+                            {items.length}건
+                          </span>
+                        </div>
+                        {regularItems.map(renderItem)}
+
+                        {gapItems.length > 0 && (
+                          <details className="mt-2 text-xs group">
+                            <summary className="cursor-pointer text-[11px] font-bold text-gray-600 hover:text-gray-900 py-1 flex items-center gap-1.5 select-none">
+                              <span>📋</span>
+                              <span>등록부 미비로 추정 ({gapItems.length}건)</span>
+                              <span className="text-[10px] text-gray-400 group-open:rotate-180 transition-transform">▼</span>
+                            </summary>
+                            <div className="mt-2 space-y-2 pl-3 border-l-2 border-amber-300">
+                              {gapItems.map(renderItem)}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    );
+                  });
+                })()
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* F-1 소프트 감점 상세 패널 */}
+        {showSoftDetails && openDraft && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 overflow-hidden">
+            <div className="px-5 py-3 flex items-center justify-between bg-amber-100/70 border-b border-amber-200">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🟡</span>
+                <span className="text-xs font-bold text-amber-950">소프트 감점 상세 (총 {report.soft.total}점)</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold border border-amber-300">
+                  시간표의 가독성 및 균형 감점 현황입니다
+                </span>
+              </div>
+              <button
+                onClick={() => setShowSoftDetails(false)}
+                className="text-amber-700 hover:text-amber-950 text-xs font-bold"
+              >
+                ▲ 접기
+              </button>
+            </div>
+            <div className="p-5 space-y-4 text-xs">
+              {report.soft.details.length === 0 ? (
+                <div className="bg-white rounded-lg p-4 text-emerald-800 font-bold border border-emerald-200 flex items-center gap-2">
+                  <span>✨</span>
+                  <span>감점 항목이 없습니다.</span>
+                </div>
+              ) : (
+                (() => {
+                  const grouped: Record<string, typeof report.soft.details> = {};
+                  for (const d of report.soft.details) {
+                    if (!grouped[d.code]) grouped[d.code] = [];
+                    grouped[d.code].push(d);
+                  }
+
+                  return Object.entries(grouped).map(([code, items]) => {
+                    const label = SOFT_CODE_LABELS[code] || code;
+                    const codeScore = (report.soft.byCode as Record<string, number>)[code] || items.reduce((acc, it) => acc + it.points, 0);
+                    const sortedItems = [...items].sort((a, b) => b.points - a.points);
+
+                    return (
+                      <div key={code} className="space-y-2">
+                        <div className="flex items-center justify-between border-b border-amber-200 pb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-amber-950 text-xs">{code} ({label})</span>
+                            <span className="text-[10px] font-extrabold px-2 py-0.2 rounded-full bg-amber-200 text-amber-900">
+                              {sortedItems.length}건
+                            </span>
+                          </div>
+                          <span className="font-extrabold text-amber-800 text-xs">소계 -{codeScore}점</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {sortedItems.map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="bg-white rounded-lg border border-amber-100 p-3 flex items-center justify-between gap-3 shadow-2xs"
+                            >
+                              <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-amber-900 shrink-0">[{item.label}]</span>
+                                {item.day && (
+                                  <span className="text-[11px] px-1.5 py-0.2 rounded bg-gray-100 text-gray-700 font-semibold shrink-0">
+                                    {DAYS[item.day - 1]}요일
+                                  </span>
+                                )}
+                                <span className="text-gray-800">{item.text}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="font-extrabold text-amber-800 text-xs">−{item.points}점</span>
+                                <button
+                                  onClick={() => alert("해결안 탐색기 엔진(F-2)이 곧 제공될 예정입니다.")}
+                                  className="px-2.5 py-1 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-[11px] border border-amber-300 transition-colors flex items-center gap-1"
+                                >
+                                  <span>🔍</span>
+                                  <span>해결안 찾기</span>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()
+              )}
+            </div>
           </div>
         )}
 
@@ -1126,10 +1324,20 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
                           const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
                           const isBandLocked = !!simulLabel;
 
-                          // 하드 위반 셀 체크 (현재 그리드 기준)
-                          const hasHardError = report.hard.some(
-                            (h) => h.grade === viewGrade && h.classNum === viewClass && h.day === day && h.period === period
-                          );
+                          // 하드 위반 셀 체크 (현재 그리드 기준, 좌표가 존재하는 항목만 대조하여 H8·H9 사각지대 해소)
+                          const hasHardError = report.hard.some((h) => {
+                            const hasAnyCoord =
+                              h.grade !== undefined ||
+                              h.classNum !== undefined ||
+                              h.day !== undefined ||
+                              h.period !== undefined;
+                            if (!hasAnyCoord) return false;
+                            if (h.grade !== undefined && h.grade !== viewGrade) return false;
+                            if (h.classNum !== undefined && h.classNum !== viewClass) return false;
+                            if (h.day !== undefined && h.day !== day) return false;
+                            if (h.period !== undefined && h.period !== period) return false;
+                            return true;
+                          });
 
                           return (
                             <td

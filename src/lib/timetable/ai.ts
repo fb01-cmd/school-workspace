@@ -457,18 +457,8 @@ export async function runFormalize(
   };
 }
 
-// ── E3 결과 설명 · E4 정성 비평 (spec §3) — 공용 그리드 요약 ──
-
-/** 감점 코드 → 눈높이 라벨 (프롬프트·요약 표시용) — types.ts SoftPenaltyCode 주석과 동기 유지 */
-export const SOFT_CODE_LABELS: Record<string, string> = {
-  S1: "요일 시수 쏠림",
-  S2: "연속 3교시 이상",
-  S3: "점심 전후 연속 수업",
-  S4: "같은 반 같은 날 동일 과목 중복",
-  S5: "교사 하루 3과목 이상",
-  S6: "오전/오후 불균형",
-  S7: "순배",
-};
+import { SOFT_CODE_LABELS } from "./labels";
+export { SOFT_CODE_LABELS };
 
 export interface AiTeacherLoad {
   /** 실명 — 프롬프트 조립 시 mask로 가명화 */
