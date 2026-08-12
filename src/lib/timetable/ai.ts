@@ -211,7 +211,9 @@ async function callGemini(prompt: string, apiKey: string): Promise<string> {
       }),
     });
     if (res.status === 429) {
-      throw new AiCallError("AI 사용량이 많아 잠시 후 다시 시도해 주세요.", 429);
+      // 무료 등급은 분당 호출 수 상한이 있다 — 짧은 시간에 여러 기능을 연달아 쓰면 걸리고
+      // 1분 안에 저절로 풀린다. "잠시 후"는 얼마나 기다릴지 몰라 답답하므로 시간을 명시한다.
+      throw new AiCallError("AI 사용량이 순간적으로 몰렸습니다. 약 1분 뒤 다시 시도해 주세요.", 429);
     }
     if (!res.ok) {
       throw new AiCallError(`AI 호출에 실패했습니다 (${res.status}).`, 502);

@@ -436,11 +436,20 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     }
   };
 
+  // 세 AI 기능이 에러 배너 하나를 공유하는데 각자 자기 오류만 지우면, 한 기능에서 난 오류가
+  // 다른 기능이 성공한 뒤에도 배너에 남아 "경고가 계속 뜬다"로 보인다 (2026-08-12 실사용 신고).
+  // 어떤 AI 동작이든 시작할 때 세 오류를 함께 지운다.
+  const clearAiErrors = () => {
+    setAiDiagError(null);
+    setAiExplainError(null);
+    setAiCritiqueError(null);
+  };
+
   // ── AI 불능 진단 호출 (E-1b) ──
   const handleAiDiagnose = async () => {
     if (!openDraft) return;
     setAiDiagnosing(true);
-    setAiDiagError(null);
+    clearAiErrors();
     setAiDiagnosis(null);
     setAiCardOpen(false);
     try {
@@ -469,7 +478,7 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
   const handleAiExplain = async () => {
     if (!openDraft) return;
     setAiExplaining(true);
-    setAiExplainError(null);
+    clearAiErrors();
     setAiExplain(null);
     setAiExplainCardOpen(false);
     try {
@@ -498,7 +507,7 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
   const handleAiCritique = async () => {
     if (!openDraft) return;
     setAiCritiquing(true);
-    setAiCritiqueError(null);
+    clearAiErrors();
     setAiCritique(null);
     setAiCritiqueCardOpen(false);
     try {
