@@ -685,17 +685,16 @@ function ComposeModal({ myEmail, domain, onClose, onSent }: ComposeModalProps) {
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 
 export default function MemoSection() {
-  const { user, userData } = useAuth();
+  const { user, userData, teacherProfile } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "";
   /**
-   * 쪽지는 **승인된 교직원만** 쓸 수 있다(스펙 §2·§10-2, firestore.rules도 isApproved를 직접 검사).
-   * 승인 대기 계정은 직독이 거부되고 발신도 403이 된다 — 그때 "불러오지 못했습니다"만 띄우면
-   * 원인을 알 수 없으므로, 아예 쿼리를 걸지 않고 사유를 안내한다.
-   * (쪽지는 이 저장소에서 isApproved를 실제로 집행하는 첫 기능이다 — 다른 화면은 승인 여부를
-   *  보지 않으므로, 승인 대기 계정이 여기서만 막히는 것이 정상 동작이다.)
+   * 쪽지 자격 = **교직원 조직도 등록 여부**(teacher_profiles/{email}) — 규칙·API와 같은 기준.
+   * users.isApproved는 쓰지 않는다: 로그인마다 "워크스페이스 관리자인가"로 덮어써져 일반 교사는
+   * 영원히 false다(2026-08-13 실측, 교사 20명 중 true 0명 — 쪽지가 수퍼어드민 전용이 돼 있었다).
+   * 미등록 계정은 직독이 거부되고 발신도 403이므로, 실패를 띄우는 대신 쿼리를 걸지 않고 안내한다.
    */
-  const notApproved = !!userData && userData.isApproved !== true;
+  const notEligible = !!userData && !teacherProfile;
 
   const [tab, setTab] = useState<Tab>("inbox");
   const [inboxMemos, setInboxMemos] = useState<MemoItem[]>([]);
@@ -720,7 +719,7 @@ export default function MemoSection() {
 
   // ── 받은쪽지함 구독 (§3: recipientEmails array-contains)
   useEffect(() => {
-    if (!myEmail || !domain || notApproved) { setInboxLoading(false); return; }
+    if (!myEmail || !domain || notEligible) { setInboxLoading(false); return; }
     setInboxLoading(true);
     const q = query(
       collection(db, "memos", domain, "items"),
@@ -735,18 +734,17 @@ export default function MemoSection() {
       setInboxLoading(false);
       setLoadError(null);
     }, (err) => {
-      // 조용히 삼키면 색인 미생성·권한 거부가 "쪽지 없음"과 구별되지 않는다.
-      // 복합 색인 생성 링크도 이 에러에만 들어 있으므로 콘솔에 반드시 남긴다(스펙 §8 운영 액션).
+      // 조용히 삼키면 권한 거부가 "쪽지 없음"과 구별되지 않는다 — 원인 추적이 막힌다.
       console.error("[memo] 받은쪽지함 구독 실패", err);
       setInboxLoading(false);
       setLoadError("쪽지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     });
     return () => unsub();
-  }, [myEmail, domain, notApproved]);
+  }, [myEmail, domain, notEligible]);
 
   // ── 보낸쪽지함 구독 (§3: senderEmail ==)
   useEffect(() => {
-    if (!myEmail || !domain || notApproved) { setSentLoading(false); return; }
+    if (!myEmail || !domain || notEligible) { setSentLoading(false); return; }
     setSentLoading(true);
     const q = query(
       collection(db, "memos", domain, "items"),
@@ -766,7 +764,7 @@ export default function MemoSection() {
       setLoadError("쪽지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     });
     return () => unsub();
-  }, [myEmail, domain, notApproved]);
+  }, [myEmail, domain, notEligible]);
 
   // ── 쪽지 클릭 → read API 호출
   const handleSelectMemo = useCallback(
@@ -790,20 +788,20 @@ export default function MemoSection() {
   const currentList = tab === "inbox" ? inboxMemos : sentMemos;
   const unreadCount = inboxMemos.filter((m) => !m.reads?.[myEmail]).length;
 
-  // 승인 대기 계정 — 목록도 발신도 막히므로 실패를 보여주는 대신 사유를 안내한다
-  if (notApproved) {
+  // 조직도 미등록 계정 — 목록도 발신도 막히므로 실패 대신 사유와 다음 행동을 안내한다
+  if (notEligible) {
     return (
       <div className="h-full flex items-center justify-center p-8">
         <div className="max-w-md text-center space-y-3">
           <span className="text-4xl">🔒</span>
           <h3 className="text-lg font-bold text-slate-800">아직 쪽지를 사용할 수 없습니다</h3>
           <p className="text-sm text-slate-600 leading-relaxed">
-            선생님 계정이 <strong>승인 대기</strong> 상태입니다. 쪽지는 승인이 끝난 교직원끼리만
-            주고받을 수 있습니다.
+            쪽지는 <strong>교직원 조직도에 등록된 분</strong>끼리 주고받습니다. 선생님 계정은 아직
+            조직도에 소속 정보가 없습니다.
           </p>
           <p className="text-xs text-slate-500 leading-relaxed">
-            학교 업무 담당 선생님이 <strong>프로필 승인</strong>을 처리하면 바로 이용할 수 있습니다.
-            승인 뒤에는 이 화면을 새로 고침해 주세요.
+            왼쪽 아래 <strong>「정보 수정 신청」</strong>으로 소속을 등록하고 담당 선생님의 확인을
+            받으면 바로 이용할 수 있습니다.
           </p>
         </div>
       </div>

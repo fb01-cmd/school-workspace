@@ -116,12 +116,18 @@ service cloud.firestore {
     }
 
     // ── memos/{domain}/items — 쪽지 (docs/memo_spec.md §3) ─────
-    // 읽기: 승인된 교직원 중 발신자·수신자 본인만. 쓰기: 서버 API 전용.
-    // isApproved를 여기서 직접 검사한다 — 전역 isTeacher()의 승인 미검사(별건 §8)와 독립.
+    // 읽기: **교직원 조직도에 등록된** 교직원 중 발신자·수신자 본인만. 쓰기: 서버 API 전용.
+    //
+    // 자격 기준이 teacher_profiles 존재인 이유 (2026-08-13 실측으로 정정):
+    // 처음엔 users.isApproved == true 를 썼는데, 이 필드는 로그인할 때마다 sync-user가
+    // "워크스페이스 관리자인가"로 덮어쓴다 — 일반 교사는 20명 중 0명이 true였고 앞으로도
+    // true가 될 수 없어, 쪽지가 수퍼어드민끼리만 쓰이는 기능이 돼 있었다.
+    // 실제 "학교 구성원" 판정의 단일 원본은 교직원 조직도(teacher_profiles/{email})다.
+    // 인프라·테스트 계정(fb01 등)은 조직도에 없으므로 자연히 빠진다 — 사용자 확정 기준.
     match /memos/{domain}/items/{memoId} {
       allow read: if isSchool()
         && myUserDoc().role in ['teacher', 'super_admin']
-        && myUserDoc().isApproved == true
+        && exists(/databases/$(database)/documents/teacher_profiles/$(request.auth.token.email))
         && (request.auth.token.email == resource.data.senderEmail
             || request.auth.token.email in resource.data.recipientEmails);
       allow write: if false;

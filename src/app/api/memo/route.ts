@@ -36,11 +36,13 @@ export async function POST(req: NextRequest) {
     if (!userData || !["teacher", "super_admin"].includes(userData.role)) {
       return NextResponse.json({ error: "쪽지 기능 사용 권한이 없습니다." }, { status: 403 });
     }
-    // 승인 대기는 "권한 없음"과 구별해 사유를 알려준다 — 같은 문구로 뭉치면 관리자도 원인을
-    // 알 수 없다(2026-08-12 실사용: 승인 대기 교사 계정이 이 문구만 보고 원인을 못 찾음).
-    if (userData.isApproved !== true) {
+    // 자격 = 교직원 조직도 등록 (firestore.rules와 같은 기준 — 단일 원본).
+    // users.isApproved를 쓰지 않는다: 그 값은 로그인마다 "워크스페이스 관리자인가"로
+    // 덮어써져 일반 교사는 영원히 false다(2026-08-13 실측, 20명 중 true 0명).
+    const profSnap = await adminDb.collection("teacher_profiles").doc(email).get();
+    if (!profSnap.exists) {
       return NextResponse.json(
-        { error: "계정이 승인 대기 상태입니다. 프로필 승인이 끝나면 쪽지를 이용할 수 있습니다." },
+        { error: "교직원 조직도에 등록된 계정만 쪽지를 사용할 수 있습니다. 소속 정보를 등록해 주세요." },
         { status: 403 }
       );
     }
