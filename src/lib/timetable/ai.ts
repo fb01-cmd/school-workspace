@@ -11,10 +11,18 @@
  * 순수 부분(가명화·프롬프트 조립·파싱)은 네트워크 무의존 — scripts/ai_selftest.ts가 회귀 검증.
  */
 
-// 실측 2026-08-11: 신규 발급 키에는 구모델(gemini-2.5-flash)이 404 — "no longer available to
-// new users". 롤링 별칭을 써서 모델 퇴역에 따른 재수정을 구조적으로 회피한다. 문제가 생기면
-// models 목록 API로 재실측 후 이 상수만 갱신.
-export const GEMINI_MODEL = "gemini-flash-latest";
+// 실측 2026-08-11: 신규 발급 키에는 구모델(gemini-2.5-flash / -lite)이 404 — "no longer
+// available to new users" (2026-08-12 재확인, 여전히 404).
+//
+// 실측 2026-08-12 — 롤링 별칭(gemini-flash-latest) 철회: 별칭은 항상 **최신** 모델을 가리키는데
+// 최신 모델일수록 무료 등급 일일 한도가 작다. 당시 별칭이 가리키던 gemini-3.6-flash는
+// `GenerateRequestsPerDayPerProjectPerModel-FreeTier` = **하루 20회**로, 실사용 몇 번에 소진돼
+// AI 기능 전체가 하루 종일 막혔다(실사고). 한도는 **모델별로 따로** 잡히므로 한 세대 이전
+// 모델로 고정해 여유를 확보한다. 별칭을 다시 쓰면 같은 사고가 재발한다.
+//
+// 한도가 다시 빠듯해지면 대안(같은 키로 사용 가능 실측): gemini-3.5-flash-lite,
+// gemini-flash-lite-latest. 실제 잔여량은 https://ai.dev/rate-limit 에서 확인.
+export const GEMINI_MODEL = "gemini-3.5-flash";
 
 const GEMINI_ENDPOINT = (model: string, key: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
