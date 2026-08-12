@@ -195,11 +195,19 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     setAiCritique(null);
     setAiCritiqueError(null);
     setAiCritiqueCardOpen(false);
-    // F-2 상태도 초안이 바뀌면 초기화
+  }, [openDraftId]);
+
+  // 해결안 결과는 **그리드가 바뀌는 순간 무효**다 — 카드에 적힌 "39점 → 38점"은 계산 당시
+  // 그리드 기준이고, 적용·실행취소·다시실행 뒤에는 배지 점수와 어긋난다. 남은 후보들도 이전
+  // 상태에서 채점된 것이라 [미리보기]가 카드와 다른 값을 낼 수 있다(스펙 §6 — 엔진과 화면이
+  // 다른 값을 말하면 신뢰가 무너진다). AI 결과와 달리 초안 내 조정에서도 유지하지 않는 이유다.
+  // report 참조는 draft_op·undo·redo·초안 전환 때마다 새 객체로 갈리므로 이 하나로 전부 덮인다.
+  const openDraftReport = openDraft?.report;
+  useEffect(() => {
     setActiveFindDetail(null);
     setFixCandidates(null);
     setFindingFix(false);
-  }, [openDraftId]);
+  }, [openDraftReport]);
 
   // ── 목록 로드 ──
   const fetchDrafts = async () => {
@@ -565,11 +573,12 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
    */
   const handleFindFix = (detail: TermPenaltyDetail) => {
     if (!openDraft) return;
-    // 같은 항목 토글
-    if (activeFindDetail &&
-        activeFindDetail.code === detail.code &&
-        activeFindDetail.key === detail.key &&
-        activeFindDetail.day === detail.day) {
+    // 같은 항목 토글 — **객체 동일성**으로 판정한다. code+key+day는 유일하지 않다:
+    // S2는 한 교사·한 요일에 연속 블록이 둘이면 2건(검사기 validate.ts 연속 블록 루프),
+    // S4는 한 학급·한 요일에 중복 과목이 둘이면 2건이 나온다. 세 필드로 비교하면 둘째 항목의
+    // 버튼이 첫째의 '닫기'로 동작해 **그 감점은 영영 탐색되지 않는다.**
+    // 목록은 report.soft.details의 원본 참조를 그대로 렌더링하므로 참조 비교가 정확하다.
+    if (activeFindDetail === detail) {
       setActiveFindDetail(null);
       setFixCandidates(null);
       return;
@@ -1105,10 +1114,8 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
                         </div>
                         <div className="space-y-1.5">
                           {sortedItems.map((item, idx) => {
-                            const isActive =
-                              activeFindDetail?.code === item.code &&
-                              activeFindDetail?.key === item.key &&
-                              activeFindDetail?.day === item.day;
+                            // 객체 동일성 — code+key+day는 S2·S4에서 중복될 수 있다(handleFindFix 주석)
+                            const isActive = activeFindDetail === item;
                             return (
                               <div key={idx}>
                                 {/* 항목 행 */}

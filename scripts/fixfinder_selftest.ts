@@ -139,11 +139,13 @@ async function main() {
         `${c.deltaScore} vs ${c.newSoftTotal - c.oldSoftTotal}`
       );
       check(c.deltaScore < 0, `${c.desc}: 개선이 아닌 안이 반환됨`, `델타 ${c.deltaScore}`);
-      const stillThere = rep.soft.details.some((d) => detailKey(d) === detailKey(target));
+      // 해소 판정은 건수 비교 — detailKey는 S2·S4에서 중복될 수 있다
+      const cnt = (ds: TermPenaltyDetail[]) => ds.filter((d) => detailKey(d) === detailKey(target)).length;
+      const resolved = cnt(rep.soft.details) < cnt(report.soft.details);
       check(
-        c.resolvesTarget === !stillThere,
+        c.resolvesTarget === resolved,
         `${c.desc}: resolvesTarget 오기재`,
-        `엔진 ${c.resolvesTarget} vs 실제 ${!stillThere}`
+        `엔진 ${c.resolvesTarget} vs 실제 ${resolved}`
       );
 
       console.log(

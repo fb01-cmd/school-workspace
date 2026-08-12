@@ -322,6 +322,15 @@ function* searchGenerator(
   const oldDetails = new Map<string, TermPenaltyDetail>();
   for (const d of oldReport.soft.details) oldDetails.set(detailKey(d), d);
   const targetKey = detailKey(target);
+  // 지목 항목의 "해소" 판정은 **건수 비교**로 한다. detailKey(code|scope|key|day)는 유일하지
+  // 않기 때문이다 — S2는 한 교사·한 요일에 연속 블록이 둘이면 2건, S4는 한 학급·한 요일에
+  // 중복 과목이 둘이면 2건이 나온다. "남아 있는가"로 보면 형제 항목 때문에 해소를 놓친다.
+  const countByKey = (details: TermPenaltyDetail[]) => {
+    let n = 0;
+    for (const d of details) if (detailKey(d) === targetKey) n++;
+    return n;
+  };
+  const oldTargetCount = countByKey(oldReport.soft.details);
 
   // ── 후보 생성 ──
   const gdp = model.gradeDayPeriods || deriveGradeDayPeriods(currentGrids);
@@ -406,7 +415,7 @@ function* searchGenerator(
           oldSoftTotal,
           newSoftTotal: rep.soft.total,
           deltaScore,
-          resolvesTarget: !newDetails.has(targetKey),
+          resolvesTarget: countByKey(rep.soft.details) < oldTargetCount,
           sideEffects,
         });
       }
