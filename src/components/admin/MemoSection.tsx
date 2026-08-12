@@ -688,6 +688,14 @@ export default function MemoSection() {
   const { user, userData } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "";
+  /**
+   * 쪽지는 **승인된 교직원만** 쓸 수 있다(스펙 §2·§10-2, firestore.rules도 isApproved를 직접 검사).
+   * 승인 대기 계정은 직독이 거부되고 발신도 403이 된다 — 그때 "불러오지 못했습니다"만 띄우면
+   * 원인을 알 수 없으므로, 아예 쿼리를 걸지 않고 사유를 안내한다.
+   * (쪽지는 이 저장소에서 isApproved를 실제로 집행하는 첫 기능이다 — 다른 화면은 승인 여부를
+   *  보지 않으므로, 승인 대기 계정이 여기서만 막히는 것이 정상 동작이다.)
+   */
+  const notApproved = !!userData && userData.isApproved !== true;
 
   const [tab, setTab] = useState<Tab>("inbox");
   const [inboxMemos, setInboxMemos] = useState<MemoItem[]>([]);
@@ -712,7 +720,7 @@ export default function MemoSection() {
 
   // ── 받은쪽지함 구독 (§3: recipientEmails array-contains)
   useEffect(() => {
-    if (!myEmail || !domain) return;
+    if (!myEmail || !domain || notApproved) { setInboxLoading(false); return; }
     setInboxLoading(true);
     const q = query(
       collection(db, "memos", domain, "items"),
@@ -734,11 +742,11 @@ export default function MemoSection() {
       setLoadError("쪽지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     });
     return () => unsub();
-  }, [myEmail, domain]);
+  }, [myEmail, domain, notApproved]);
 
   // ── 보낸쪽지함 구독 (§3: senderEmail ==)
   useEffect(() => {
-    if (!myEmail || !domain) return;
+    if (!myEmail || !domain || notApproved) { setSentLoading(false); return; }
     setSentLoading(true);
     const q = query(
       collection(db, "memos", domain, "items"),
@@ -758,7 +766,7 @@ export default function MemoSection() {
       setLoadError("쪽지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     });
     return () => unsub();
-  }, [myEmail, domain]);
+  }, [myEmail, domain, notApproved]);
 
   // ── 쪽지 클릭 → read API 호출
   const handleSelectMemo = useCallback(
@@ -781,6 +789,26 @@ export default function MemoSection() {
 
   const currentList = tab === "inbox" ? inboxMemos : sentMemos;
   const unreadCount = inboxMemos.filter((m) => !m.reads?.[myEmail]).length;
+
+  // 승인 대기 계정 — 목록도 발신도 막히므로 실패를 보여주는 대신 사유를 안내한다
+  if (notApproved) {
+    return (
+      <div className="h-full flex items-center justify-center p-8">
+        <div className="max-w-md text-center space-y-3">
+          <span className="text-4xl">🔒</span>
+          <h3 className="text-lg font-bold text-slate-800">아직 쪽지를 사용할 수 없습니다</h3>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            선생님 계정이 <strong>승인 대기</strong> 상태입니다. 쪽지는 승인이 끝난 교직원끼리만
+            주고받을 수 있습니다.
+          </p>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            학교 업무 담당 선생님이 <strong>프로필 승인</strong>을 처리하면 바로 이용할 수 있습니다.
+            승인 뒤에는 이 화면을 새로 고침해 주세요.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">

@@ -42,13 +42,15 @@ export default function MobileMemoSection() {
   const { user, userData } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "";
+  // 승인 대기 계정은 직독이 거부된다(스펙 §2·firestore.rules) — 실패를 띄우는 대신 사유를 안내
+  const notApproved = !!userData && userData.isApproved !== true;
 
   const [memos, setMemos] = useState<MemoItem[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!myEmail || !domain) return;
+    if (!myEmail || !domain || notApproved) { setLoading(false); return; }
     setLoading(true);
     const q = query(
       collection(db, "memos", domain, "items"),
@@ -77,7 +79,7 @@ export default function MobileMemoSection() {
       setLoading(false);
     });
     return () => unsub();
-  }, [myEmail, domain]);
+  }, [myEmail, domain, notApproved]);
 
   const handleExpand = useCallback(
     async (memo: MemoItem) => {
@@ -100,6 +102,24 @@ export default function MobileMemoSection() {
   );
 
   const unreadCount = memos.filter((m) => !m.reads?.[myEmail]).length;
+
+  // 승인 대기 계정 — 섹션을 조용히 비워두면 "쪽지가 없다"로 오해한다
+  if (notApproved) {
+    return (
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs px-4 py-4">
+        <div className="flex items-start gap-2.5">
+          <span className="text-base mt-0.5">🔒</span>
+          <div className="space-y-1">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">쪽지</h2>
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              계정이 <strong>승인 대기</strong> 상태라 아직 쪽지를 주고받을 수 없습니다.
+              학교 업무 담당 선생님이 프로필 승인을 처리하면 바로 이용할 수 있습니다.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">

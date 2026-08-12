@@ -33,12 +33,16 @@ export async function POST(req: NextRequest) {
     // 승인 대기 교사(role: teacher, isApproved: false)를 거르지 못하므로 문서를 직접 확인한다.
     const userSnap = await adminDb.collection("users").doc(auth.uid).get();
     const userData = userSnap.data();
-    if (
-      !userData ||
-      !["teacher", "super_admin"].includes(userData.role) ||
-      userData.isApproved !== true
-    ) {
+    if (!userData || !["teacher", "super_admin"].includes(userData.role)) {
       return NextResponse.json({ error: "쪽지 기능 사용 권한이 없습니다." }, { status: 403 });
+    }
+    // 승인 대기는 "권한 없음"과 구별해 사유를 알려준다 — 같은 문구로 뭉치면 관리자도 원인을
+    // 알 수 없다(2026-08-12 실사용: 승인 대기 교사 계정이 이 문구만 보고 원인을 못 찾음).
+    if (userData.isApproved !== true) {
+      return NextResponse.json(
+        { error: "계정이 승인 대기 상태입니다. 프로필 승인이 끝나면 쪽지를 이용할 수 있습니다." },
+        { status: 403 }
+      );
     }
 
     const body = await req.json().catch(() => ({} as any));
