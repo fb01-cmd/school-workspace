@@ -7,6 +7,7 @@ import { logOut } from "@/lib/firebase/auth";
 import PushNotificationManager from "@/components/common/PushNotificationManager";
 import MealCard from "@/components/common/MealCard";
 import TodayTimetableCard from "@/components/mobile/TodayTimetableCard";
+import MobileMemoSection from "@/components/mobile/MobileMemoSection";
 
 export default function MobileTeacherHome() {
   const { user, teacherProfile } = useAuth();
@@ -50,10 +51,13 @@ export default function MobileTeacherHome() {
           {/* 2. 알림 켜기 */}
           <PushNotificationManager />
 
-          {/* 3. 오늘·내일 내 시간표 */}
+          {/* 3. 쪽지 — 안읽은 쪽지 우선 목록 (spec §4-2, 쓰기 없음) */}
+          <MobileMemoSection />
+
+          {/* 4. 오늘·내일 내 시간표 */}
           <TodayTimetableCard />
 
-          {/* 4. 오늘 급식 */}
+          {/* 5. 오늘 급식 */}
           <MealCard />
 
           {/* 5. PC 화면 링크 */}

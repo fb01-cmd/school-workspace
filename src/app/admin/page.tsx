@@ -37,6 +37,7 @@ const TimetableCreationSection = dynamic(() => import("@/components/admin/timeta
 const TeacherPortalSection = dynamic(() => import("@/components/admin/timetable/TeacherPortalSection"), { loading: TabLoading });
 const PolicyAckStatusTab = dynamic(() => import("@/components/admin/PolicyAckStatusTab"), { loading: TabLoading });
 const PWAInstallGuideTab = dynamic(() => import("@/components/admin/PWAInstallGuideTab"), { loading: TabLoading });
+const MemoSection = dynamic(() => import("@/components/admin/MemoSection"), { loading: TabLoading });
 import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt";
 import MealCard from "@/components/common/MealCard";
 import PushNotificationManager from "@/components/common/PushNotificationManager";
@@ -48,7 +49,7 @@ import { TimetableSettings } from "@/lib/timetable/types";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable_operation" | "timetable_creation" | "my_timetable" | "policy_ack" | "pwa_guide";
+type MenuType = "home" | "users" | "groups" | "settings" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable_operation" | "timetable_creation" | "my_timetable" | "policy_ack" | "pwa_guide" | "memo";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
@@ -166,6 +167,8 @@ export default function AdminPage() {
 
   const renderContent = () => {
     switch (activeMenu) {
+      case "memo":
+        return <MemoSection />;
       case "users":
         return <UserList />;
       case "profile_approvals":
@@ -421,6 +424,19 @@ export default function AdminPage() {
                     >
                       <span>🏠</span>
                       <span>홈 (대시보드)</span>
+                    </button>
+
+                    {/* 쪽지 — 홈 바로 아래, 전 교직원 (spec §4-1) */}
+                    <button
+                      onClick={() => setActiveMenu("memo")}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "memo"
+                          ? "bg-indigo-800 text-white font-bold shadow-sm"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>✉️</span>
+                      <span>쪽지</span>
                     </button>
 
                     {/* 내 시간표 (교사 최다 사용 메뉴 — 홈 바로 아래 이동) */}
@@ -835,6 +851,7 @@ export default function AdminPage() {
                 {activeMenu === "timetable_operation" && "시간표 운영 (학기 중)"}
                 {activeMenu === "timetable_creation" && "시간표 작성 & 학기 관리"}
                 {activeMenu === "my_timetable" && "내 시간표"}
+                {activeMenu === "memo" && "쪽지"}
               </h1>
             </div>
             <div className="flex items-center gap-3">
@@ -848,13 +865,20 @@ export default function AdminPage() {
           </header>
 
           {/* Dynamic Content Panel */}
-          <main className="flex-1 overflow-auto p-8">
-            <div className="max-w-6xl mx-auto space-y-4">
-              {/* 학기말 정리 알림 배너: 어느 메뉴에 있든(홈 포함) 항상 노출 — 클래스룸 메뉴에 직접 들어가야만 보이면 결정 #5의 "안 가본 사람도 알게 한다"는 목적이 무력화됨 */}
-              <ClassroomCleanupBanner onNavigate={() => setActiveMenu("classroom_cleanup")} />
-              {renderContent()}
-            </div>
-          </main>
+          {activeMenu === "memo" ? (
+            /* 쪽지는 패딩/max-width 없이 꽉 채움 (목록+상세 2열 레이아웃) */
+            <main className="flex-1 overflow-hidden flex flex-col">
+              <MemoSection />
+            </main>
+          ) : (
+            <main className="flex-1 overflow-auto p-8">
+              <div className="max-w-6xl mx-auto space-y-4">
+                {/* 학기말 정리 알림 배너: 어느 메뉴에 있든(홈 포함) 항상 노출 — 클래스룸 메뉴에 직접 들어가야만 보이면 결정 #5의 "안 가본 사람도 알게 한다"는 목적이 무력화됨 */}
+                <ClassroomCleanupBanner onNavigate={() => setActiveMenu("classroom_cleanup")} />
+                {renderContent()}
+              </div>
+            </main>
+          )}
         </div>
       </div>
     </RouteGuard>
