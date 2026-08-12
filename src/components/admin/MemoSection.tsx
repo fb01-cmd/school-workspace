@@ -401,6 +401,7 @@ function SentRow({
 }) {
   const readCount = Object.keys(memo.reads || {}).length;
   const total = memo.recipientCount || memo.recipientEmails?.length || 0;
+  const recalled = memo.recalledCount ?? 0;
   return (
     <button
       onClick={onClick}
@@ -418,8 +419,9 @@ function SentRow({
             {formatDate(memo.createdAt)}
           </span>
         </div>
-        <p className="text-xs text-slate-400 mt-0.5">
-          {memo.recipientSummary || `${total}명`} ·{" "}
+        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+          <span>{memo.recipientSummary || `${total}명`}</span>
+          <span>·</span>
           <span
             className={`font-semibold ${
               readCount === total && total > 0
@@ -429,6 +431,13 @@ function SentRow({
           >
             읽음 {readCount}/{total}
           </span>
+          {/* §12-2: 회수 이력 뱃지 */}
+          {recalled > 0 && (
+            <>
+              <span>·</span>
+              <span className="font-semibold text-rose-500">{recalled}명에게서 회수함</span>
+            </>
+          )}
         </p>
       </div>
     </button>
@@ -437,17 +446,60 @@ function SentRow({
 
 // ── 하위 컴포넌트: 상세 패널 ──────────────────────────────────────────────────
 
+type RecallResult =
+  | { type: "success"; recalledCount: number; remainingCount: number }
+  | { type: "error"; message: string };
+
 function MemoDetailPanel({
   memo,
   tab,
+  myEmail,
   profileMap,
   onClose,
 }: {
   memo: MemoItem;
   tab: Tab;
+  myEmail: string;
   profileMap: Map<string, TeacherProfile>;
   onClose: () => void;
 }) {
+  // §12-2 회수 상태
+  const [recalling, setRecalling] = useState(false);
+  const [recallResult, setRecallResult] = useState<RecallResult | null>(null);
+
+  // memo가 바뀌면(다른 쪽지 선택) 결과 초기화
+  useEffect(() => { setRecallResult(null); }, [memo.id]);
+
+  const handleRecall = async () => {
+    setRecalling(true);
+    setRecallResult(null);
+    try {
+      const res = await fetch("/api/memo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "recall", memoId: memo.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "회수 요청 실패");
+      setRecallResult({
+        type: "success",
+        recalledCount: data.recalledCount ?? 0,
+        remainingCount: data.remainingCount ?? 0,
+      });
+    } catch (e: any) {
+      setRecallResult({ type: "error", message: e.message || "회수 중 오류가 발생했습니다." });
+    } finally {
+      setRecalling(false);
+    }
+  };
+
+  // 내가 보낸 쪽지이고 아직 회수하지 않은 수신자가 있는지
+  const isMine = tab === "sent" && memo.senderEmail === myEmail;
+  const unreadCount = isMine
+    ? (memo.recipientEmails || []).filter((e) => !memo.reads?.[e]).length
+    : 0;
+  const canRecall = isMine && unreadCount > 0 && !recalling;
+
   return (
     <div className="flex flex-col h-full">
       {/* 헤더 */}
@@ -455,15 +507,32 @@ function MemoDetailPanel({
         <h3 className="text-base font-bold text-slate-900 flex-1 mr-3 leading-snug">
           {memo.title}
         </h3>
-        <button
-          onClick={onClose}
-          className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded"
-          aria-label="닫기"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* §12-2 회수 버튼 — 내가 보낸 쪽지, 안 읽은 수신자 있을 때만 표시 */}
+          {isMine && unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={handleRecall}
+              disabled={!canRecall}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors disabled:opacity-40"
+              aria-label="쪽지 회수"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+              {recalling ? "회수 중…" : `회수 (${unreadCount}명)`}
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded"
+            aria-label="닫기"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* 메타 */}
@@ -483,6 +552,39 @@ function MemoDetailPanel({
 
       {/* 본문 */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        {/* §12-2 회수 결과 안내 */}
+        {recallResult && (
+          <div
+            className={`rounded-lg px-4 py-3 text-sm border ${
+              recallResult.type === "success"
+                ? "bg-rose-50 border-rose-200 text-rose-700"
+                : "bg-red-50 border-red-200 text-red-700"
+            }`}
+          >
+            {recallResult.type === "success" ? (
+              recallResult.recalledCount === 0 ? (
+                <p>이미 모두 읽어 회수할 쪽지가 없습니다.</p>
+              ) : (
+                <>
+                  <p className="font-semibold">아직 읽지 않은 {recallResult.recalledCount}명의 쪽지를 회수했습니다.</p>
+                  {recallResult.remainingCount > 0 && (
+                    <p className="mt-1 text-xs opacity-80">이미 읽은 {recallResult.remainingCount}명의 쪽지는 회수되지 않았습니다.</p>
+                  )}
+                </>
+              )
+            ) : (
+              <p>{recallResult.message}</p>
+            )}
+          </div>
+        )}
+
+        {/* §12-2 회수 주의 안내 — 회수 버튼이 보이는 동안 항상 표시 */}
+        {isMine && unreadCount > 0 && !recallResult && (
+          <p className="text-xs text-slate-400 leading-relaxed">
+            이미 읽은 분의 쪽지는 회수되지 않습니다. 휴대전화 알림은 취소할 수 없습니다.
+          </p>
+        )}
+
         <pre className="whitespace-pre-wrap text-sm text-slate-800 font-sans leading-relaxed">
           {memo.body}
         </pre>
@@ -550,6 +652,8 @@ interface ComposeModalProps {
   domain: string;
   myDepts: string[];
   profileMap: Map<string, TeacherProfile>;
+  /** 버그2 수정: 조직도 로드 실패 메시지 — 에러/로딩/정상 3상태 구분 */
+  profileError: string | null;
   deptOrder: string[];
   onClose: () => void;
   onSent: () => void;
@@ -560,6 +664,7 @@ function ComposeModal({
   domain,
   myDepts,
   profileMap,
+  profileError,
   deptOrder,
   onClose,
   onSent,
@@ -818,17 +923,22 @@ function ComposeModal({
                       className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
                     >
                       {(() => {
-                        const allEmails = sections.flatMap((s) => s.members.map((m) => m.email));
-                        const allSelected = allEmails.length > 0 && allEmails.every((e) => selected.has(e));
+                        // 버그1 수정: flatMap은 중복 포함 — Set으로 dedupe해 실인원만 카운트
+                        const allEmailSet = new Set(sections.flatMap((s) => s.members.map((m) => m.email)));
+                        const count = allEmailSet.size;
+                        const allSelected = count > 0 && [...allEmailSet].every((e) => selected.has(e));
                         return allSelected
-                          ? `전체 해제 (${allEmails.length}명)`
-                          : `교직원 전체 선택 (${allEmails.length}명)`;
+                          ? `전체 해제 (${count}명)`
+                          : `교직원 전체 선택 (${count}명)`;
                       })()}
                     </button>
                   )}
                 </div>
                 <div className="border border-slate-200 rounded-lg max-h-56 overflow-y-auto p-2">
-                  {sections.length === 0 ? (
+                  {profileError ? (
+                    // 버그2 수정: 로드 실패를 트리 자리에 표시 (기존 영원한 스피너 대신)
+                    <p className="text-xs text-rose-500 text-center py-4">{profileError}</p>
+                  ) : sections.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-4">조직도 정보를 불러오는 중…</p>
                   ) : (
                     <DeptCheckboxTree
@@ -1029,16 +1139,17 @@ export default function MemoSection() {
   const [inboxLoading, setInboxLoading] = useState(true);
   const [sentLoading, setSentLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // 버그2 수정: 조직도 로드 실패를 loadError와 분리 — 구독의 setLoadError(null)에 덮이지 않도록
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   // teacher_profiles 맵 (이름 표시용)
-  // 결함 3 수정: 로드 실패 시 은폐하지 않고 loadError로 안내
   const [profileMap, setProfileMap] = useState<Map<string, TeacherProfile>>(new Map());
   useEffect(() => {
     loadProfileMap()
-      .then(setProfileMap)
+      .then((m) => { setProfileMap(m); setProfileError(null); })
       .catch((err) => {
         console.error("[memo] 조직도 로드 실패", err);
-        setLoadError("조직도 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+        setProfileError("조직도 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
       });
   }, []);
 
@@ -1230,6 +1341,7 @@ export default function MemoSection() {
             <MemoDetailPanel
               memo={selectedMemo}
               tab={tab}
+              myEmail={myEmail}
               profileMap={profileMap}
               onClose={() => setSelectedMemoId(null)}
             />
@@ -1244,6 +1356,7 @@ export default function MemoSection() {
           domain={domain}
           myDepts={teacherProfile?.departments ?? []}
           profileMap={profileMap}
+          profileError={profileError}
           deptOrder={deptOrder}
           onClose={() => setShowCompose(false)}
           onSent={() => { setTab("sent"); setSelectedMemoId(null); }}
