@@ -98,17 +98,21 @@ async function loadProfileMap(): Promise<Map<string, TeacherProfile>> {
   return map;
 }
 
-// recipientSummary: 부서 기준 vs 이름 기준
+// recipientSummary: 부서 기준 vs 이름 기준 (결함 4 수정)
 function buildSummary(chips: RecipientChip[]): string {
   if (chips.length === 0) return "";
   // 부서 헤더 선택이 하나라도 있으면 부서명 기준
   const deptChips = chips.filter((c) => c.source === "dept" && c.deptLabel);
   if (deptChips.length > 0) {
-    // 부서명 중복 제거
+    // 선택된 부서명 (중복 제거)
     const deptNames = [...new Set(deptChips.map((c) => c.deptLabel!))];
-    const first = deptNames[0];
-    const rest = chips.length - 1;
-    return rest > 0 ? `${first} 외 ${rest}명` : first;
+    const total = chips.length;
+    if (deptNames.length === 1) {
+      // 단일 부서 전체 선택: "2학년 10명" ("2학년 외 9명"으로 오독되는 문제 방지)
+      return `${deptNames[0]} ${total}명`;
+    }
+    // 복수 부서: "2학년 외 2개 부서 21명"
+    return `${deptNames[0]} 외 ${deptNames.length - 1}개 부서 ${total}명`;
   }
   // 개인만이면 이름 기준
   const first = chips[0].label;
@@ -579,12 +583,13 @@ function ComposeModal({
   const [error, setError] = useState("");
 
   // 부서별 구성원 목록 — deptOrder 순서대로, 소속 없는 계정 제외
+  // 결함 5 수정: resolveDisplayName 헬퍼 통일 (p.name || email.split("@")[0] 각자 쓰던 것 제거)
   const sections: DeptSection[] = deptOrder
     .map((dept) => {
       const members: DeptMember[] = [];
       profileMap.forEach((p, email) => {
         if (p.departments?.includes(dept)) {
-          members.push({ email, name: p.name || email.split("@")[0] });
+          members.push({ email, name: resolveDisplayName(email, profileMap) });
         }
       });
       members.sort((a, b) => a.name.localeCompare(b.name, "ko"));
@@ -593,43 +598,44 @@ function ComposeModal({
     .filter((s) => s.members.length > 0);
 
   // 트리 선택 → 칩 동기화
+  // 결함 1+2 수정: 칩을 Map<email, RecipientChip>으로 조립해 중복을 원천 차단.
+  // 부서 헤더 체크 시 동일 이메일이 여러 부서에서 들어와도 Map이 덮어쓰므로 150개→81개 문제 해소.
+  // 전체 선택(결함 2)은 아래 handleSelectAll이 이 함수를 호출해 자동으로 인원수가 맞는다.
   const handleTreeChange = useCallback((next: Set<string>) => {
     setSelected(next);
-    // 칩 재구성: 부서 단위 체크와 개별 체크 구분
-    const newChips: RecipientChip[] = [];
+    // Map<email, RecipientChip> — 이메일 키로 중복 제거
+    const chipMap = new Map<string, RecipientChip>();
 
-    // 부서 전체 선택된 것 먼저
+    // 부서 전체 선택된 것 먼저 — "dept" source로 삽입
     sections.forEach((sec) => {
       const deptEmails = sec.members.map((m) => m.email);
       const allIn = deptEmails.length > 0 && deptEmails.every((e) => next.has(e));
       if (allIn) {
-        // 이 부서를 "dept" source 칩 하나로 + 개인 칩들
         sec.members.forEach((m) => {
-          newChips.push({
+          chipMap.set(m.email, {
             type: "user",
             source: "dept",
             email: m.email,
-            label: m.name,
+            label: resolveDisplayName(m.email, profileMap),
             deptLabel: sec.dept,
           });
         });
       }
     });
 
-    // 부서 전체가 아닌 개인 선택
+    // 부서 전체가 아닌 개인 선택 — 이미 Map에 있으면 덮어쓰지 않음
     next.forEach((email) => {
-      if (newChips.some((c) => c.email === email)) return;
-      const profile = profileMap.get(email);
-      newChips.push({
+      if (chipMap.has(email)) return;
+      chipMap.set(email, {
         type: "user",
         source: "person",
         email,
-        label: profile?.name || email.split("@")[0],
+        label: resolveDisplayName(email, profileMap),
       });
     });
 
-    setChips(newChips);
-  }, [sections, profileMap, chips]);
+    setChips([...chipMap.values()]);
+  }, [sections, profileMap]);
 
   // 개인 검색 선택 → 칩 추가 (중복 방지)
   const handleUserSelect = useCallback((email: string, name?: string) => {
@@ -707,19 +713,21 @@ function ComposeModal({
   const canSend = recipientCount > 0 && title.trim() && body.trim() && !sending;
 
   // ── 검색 후보 목록 (teacher_profiles 기반 로컬 필터, 이름 매칭)
+  // 결함 5 수정: resolveDisplayName 헬퍼 통일
   const searchCandidates: LocalSearchCandidate[] = [];
   profileMap.forEach((p, email) => {
     if (p.departments && p.departments.length > 0) {
       searchCandidates.push({
         email,
-        name: p.name || email.split("@")[0],
+        name: resolveDisplayName(email, profileMap),
         dept: p.departments[0] ?? "",
       });
     }
   });
 
-  // ── 칩 렌더 공통 ──
-  const ChipList = ({ editable = true }: { editable?: boolean }) => (
+  // ── 칩 렌더 공통 — 렌더 중 정의 금지(react-compiler error 회피, 결함 낮음 수정)
+  // ChipList를 렌더 함수 밖 컴포넌트로 올리기엔 props가 많아, 여기서는 인라인 변수로만 선언
+  const chipListNode = (editable = true) => (
     chips.length > 0 ? (
       <div className="flex flex-wrap gap-1.5 mt-3">
         {chips.map((chip) => (
@@ -795,9 +803,30 @@ function ComposeModal({
                 />
               </div>
 
-              {/* 조직도 트리 */}
+              {/* 조직도 트리 — 결함 2 수정: 전체 선택 컨트롤 추가 */}
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">조직도에서 선택</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-sm font-semibold text-slate-700">조직도에서 선택</label>
+                  {sections.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allEmails = new Set(sections.flatMap((s) => s.members.map((m) => m.email)));
+                        const allSelected = allEmails.size > 0 && [...allEmails].every((e) => selected.has(e));
+                        handleTreeChange(allSelected ? new Set() : allEmails);
+                      }}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                    >
+                      {(() => {
+                        const allEmails = sections.flatMap((s) => s.members.map((m) => m.email));
+                        const allSelected = allEmails.length > 0 && allEmails.every((e) => selected.has(e));
+                        return allSelected
+                          ? `전체 해제 (${allEmails.length}명)`
+                          : `교직원 전체 선택 (${allEmails.length}명)`;
+                      })()}
+                    </button>
+                  )}
+                </div>
                 <div className="border border-slate-200 rounded-lg max-h-56 overflow-y-auto p-2">
                   {sections.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-4">조직도 정보를 불러오는 중…</p>
@@ -813,7 +842,7 @@ function ComposeModal({
               </div>
 
               {/* 선택된 수신자 칩 */}
-              <ChipList />
+              {chipListNode()}
             </div>
 
             {/* 단계 이동 푸터 */}
@@ -856,7 +885,7 @@ function ComposeModal({
                     ← 받는 사람 변경
                   </button>
                 </div>
-                <ChipList />
+                {chipListNode()}
                 {/* 추가 검색 */}
                 <div className="mt-2">
                   <LocalNameSearch
@@ -1002,9 +1031,15 @@ export default function MemoSection() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // teacher_profiles 맵 (이름 표시용)
+  // 결함 3 수정: 로드 실패 시 은폐하지 않고 loadError로 안내
   const [profileMap, setProfileMap] = useState<Map<string, TeacherProfile>>(new Map());
   useEffect(() => {
-    loadProfileMap().then(setProfileMap).catch(() => {});
+    loadProfileMap()
+      .then(setProfileMap)
+      .catch((err) => {
+        console.error("[memo] 조직도 로드 실패", err);
+        setLoadError("조직도 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+      });
   }, []);
 
   // 부서 순서: schoolSettings.departments → DEFAULT_DEPARTMENTS
