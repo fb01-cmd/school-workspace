@@ -16,7 +16,6 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
-import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
 import type { MemoDoc } from "@/lib/memo/logic";
 import type { TeacherProfile } from "@/context/AuthContext";
@@ -25,10 +24,10 @@ import type { TeacherProfile } from "@/context/AuthContext";
 
 type MemoItem = MemoDoc & { id: string };
 
-/** 칩의 출처: "person" = 개인 검색·개별 체크, "dept" = 부서 헤더 체크, "group" = 메일링 리스트 */
+/** 칩의 출처: "person" = 개인 검색·개별 체크, "dept" = 부서 헤더 체크 */
 interface RecipientChip {
-  type: "user" | "group";
-  source: "person" | "dept" | "group";
+  type: "user";
+  source: "person" | "dept";
   email: string;
   label: string;          // 이름만 (이메일 미포함)
   deptLabel?: string;     // source === "dept" 일 때 부서명 (summary용)
@@ -115,6 +114,90 @@ function buildSummary(chips: RecipientChip[]): string {
   const first = chips[0].label;
   const rest = chips.length - 1;
   return rest > 0 ? `${first} 외 ${rest}명` : first;
+}
+
+// ── 로컬 이름 검색 (§11-2 개정: teacher_profiles 명단만, 이름 매칭, 부서 부제) ───
+
+interface LocalSearchCandidate {
+  email: string;
+  name: string;
+  dept: string;   // 첫 번째 소속 부서 (부제 표시용)
+}
+
+interface LocalNameSearchProps {
+  value: string;
+  onChange: (v: string) => void;
+  candidates: LocalSearchCandidate[];
+  alreadySelected: Set<string>;
+  onSelect: (email: string) => void;
+  placeholder?: string;
+}
+
+function LocalNameSearch({
+  value,
+  onChange,
+  candidates,
+  alreadySelected,
+  onSelect,
+  placeholder = "이름으로 검색…",
+}: LocalNameSearchProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // 이름 매칭 (이메일·OU 경로 제외)
+  const q = value.trim();
+  const results = q.length >= 1
+    ? candidates.filter(
+        (c) =>
+          c.name.includes(q) && !alreadySelected.has(c.email)
+      ).slice(0, 10)
+    : [];
+
+  // 외부 클릭 시 닫기
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => { if (q) setOpen(true); }}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        autoComplete="off"
+      />
+      {open && results.length > 0 && (
+        <ul className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-50">
+          {results.map((c) => (
+            <li key={c.email}>
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onSelect(c.email);
+                  onChange("");
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-indigo-50 flex items-center justify-between gap-2"
+              >
+                <span className="text-sm font-medium text-slate-800">{c.name}</span>
+                {c.dept && (
+                  <span className="text-xs text-slate-400 flex-shrink-0">{c.dept}</span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 // ── 부서 기반 체크박스 트리 (§11-2) ─────────────────────────────────────────
@@ -484,11 +567,6 @@ function ComposeModal({
   const [chips, setChips] = useState<RecipientChip[]>([]);
   const [searchVal, setSearchVal] = useState("");
 
-  // 그룹 (부차 섹션)
-  const [groupOpen, setGroupOpen] = useState(false);
-  const [groupSearch, setGroupSearch] = useState("");
-  const [allGroups, setAllGroups] = useState<any[]>([]);
-
   // 작성 (step 2)
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -499,20 +577,6 @@ function ComposeModal({
 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-
-  // 그룹 목록 (캐시 우선)
-  useEffect(() => {
-    const cached = getClientCache("groups:all");
-    if (cached) { setAllGroups(cached as any[]); return; }
-    fetch("/api/workspace/groups", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "list", domain }),
-    })
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => { if (d?.groups) setAllGroups(d.groups); })
-      .catch(() => {});
-  }, [domain]);
 
   // 부서별 구성원 목록 — deptOrder 순서대로, 소속 없는 계정 제외
   const sections: DeptSection[] = deptOrder
@@ -564,9 +628,7 @@ function ComposeModal({
       });
     });
 
-    // 기존 group 칩은 유지
-    const existingGroups = chips.filter((c) => c.type === "group");
-    setChips([...newChips, ...existingGroups]);
+    setChips(newChips);
   }, [sections, profileMap, chips]);
 
   // 개인 검색 선택 → 칩 추가 (중복 방지)
@@ -602,21 +664,6 @@ function ComposeModal({
     });
   };
 
-  // 그룹 추가
-  const addGroupChip = (group: any) => {
-    const email = (group.email || "").toLowerCase();
-    const label = group.name || email;
-    setChips((prev) => {
-      if (prev.some((c) => c.email === email)) return prev;
-      return [...prev, { type: "group", source: "group", email, label }];
-    });
-  };
-
-  const filteredGroups = allGroups.filter((g) => {
-    const q = groupSearch.toLowerCase();
-    return !q || (g.email || "").toLowerCase().includes(q) || (g.name || "").toLowerCase().includes(q);
-  });
-
   // 링크 추가
   const handleAddLink = () => {
     if (!linkUrl.trim().startsWith("https://")) {
@@ -632,8 +679,7 @@ function ComposeModal({
   const handleSend = async () => {
     setError(""); setSending(true);
     try {
-      const userEmails = chips.filter((c) => c.type === "user").map((c) => c.email);
-      const groupEmails = chips.filter((c) => c.type === "group").map((c) => c.email);
+      const userEmails = chips.map((c) => c.email);
       const res = await fetch("/api/memo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -643,7 +689,7 @@ function ComposeModal({
           body,
           links,
           recipientSummary: buildSummary(chips),
-          recipients: { users: userEmails, groups: groupEmails },
+          recipients: { users: userEmails, groups: [] },
         }),
       });
       const data = await res.json();
@@ -660,6 +706,18 @@ function ComposeModal({
   const recipientCount = chips.length;
   const canSend = recipientCount > 0 && title.trim() && body.trim() && !sending;
 
+  // ── 검색 후보 목록 (teacher_profiles 기반 로컬 필터, 이름 매칭)
+  const searchCandidates: LocalSearchCandidate[] = [];
+  profileMap.forEach((p, email) => {
+    if (p.departments && p.departments.length > 0) {
+      searchCandidates.push({
+        email,
+        name: p.name || email.split("@")[0],
+        dept: p.departments[0] ?? "",
+      });
+    }
+  });
+
   // ── 칩 렌더 공통 ──
   const ChipList = ({ editable = true }: { editable?: boolean }) => (
     chips.length > 0 ? (
@@ -669,11 +727,6 @@ function ComposeModal({
             key={chip.email}
             className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full"
           >
-            {chip.type === "group" && (
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            )}
             <span className="max-w-[120px] truncate">{chip.label}</span>
             {editable && (
               <button
@@ -730,16 +783,15 @@ function ComposeModal({
         {step === 1 && (
           <>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {/* 이름 검색 */}
+              {/* 이름 검색 (teacher_profiles 로컬 필터, 이름 매칭, 부서 부제) */}
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">이름으로 검색</label>
-                <AutocompleteInput
+                <LocalNameSearch
                   value={searchVal}
                   onChange={setSearchVal}
-                  type="user"
-                  domain={domain}
+                  candidates={searchCandidates}
+                  alreadySelected={selected}
                   onSelect={handleUserSelect}
-                  placeholder="이름으로 검색…"
                 />
               </div>
 
@@ -758,44 +810,6 @@ function ComposeModal({
                     />
                   )}
                 </div>
-              </div>
-
-              {/* 메일링 리스트 (접힌 부차 섹션) */}
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setGroupOpen((v) => !v)}
-                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700"
-                >
-                  <span className="text-[10px]">{groupOpen ? "▼" : "▶"}</span>
-                  메일링 리스트로 보내기
-                </button>
-                {groupOpen && (
-                  <div className="mt-2 space-y-2">
-                    <input
-                      type="text"
-                      value={groupSearch}
-                      onChange={(e) => setGroupSearch(e.target.value)}
-                      placeholder="그룹 이름 검색…"
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <div className="border border-slate-200 rounded-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
-                      {filteredGroups.slice(0, 20).map((g) => (
-                        <button
-                          key={g.email}
-                          type="button"
-                          onClick={() => addGroupChip(g)}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex items-center justify-between"
-                        >
-                          <span className="font-medium text-slate-700">{g.name || g.email}</span>
-                        </button>
-                      ))}
-                      {filteredGroups.length === 0 && (
-                        <p className="text-xs text-slate-400 text-center py-4">일치하는 그룹 없음</p>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* 선택된 수신자 칩 */}
@@ -845,11 +859,11 @@ function ComposeModal({
                 <ChipList />
                 {/* 추가 검색 */}
                 <div className="mt-2">
-                  <AutocompleteInput
+                  <LocalNameSearch
                     value={addSearchVal}
                     onChange={setAddSearchVal}
-                    type="user"
-                    domain={domain}
+                    candidates={searchCandidates}
+                    alreadySelected={selected}
                     onSelect={handleAddUserSelect}
                     placeholder="이름으로 추가…"
                   />
