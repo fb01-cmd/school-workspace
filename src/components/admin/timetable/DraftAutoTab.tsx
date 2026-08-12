@@ -23,7 +23,9 @@ import {
   TimetableDraftUnplaced,
   TimetableCell,
   TimetableLesson,
+  TermPenaltyDetail,
 } from "@/lib/timetable/types";
+import { findFixCandidates, FixCandidate } from "@/lib/timetable/fixFinder";
 import type { AiDiagnoseResult, AiExplainResult, AiCritiqueResult } from "@/lib/timetable/ai";
 import { solveTimetableInWorker, SolverDone, SolverRun } from "@/lib/timetable/solverClient";
 import {
@@ -172,6 +174,14 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
   const [aiCritiqueError, setAiCritiqueError] = useState<string | null>(null);
   const [aiCritiqueCardOpen, setAiCritiqueCardOpen] = useState(false);
 
+  // ── F-2 해결안 탐색 상태 ──
+  /** 현재 [해결안 찾기]가 열려 있는 감점 항목 */
+  const [activeFindDetail, setActiveFindDetail] = useState<TermPenaltyDetail | null>(null);
+  /** findFixCandidates 결과 (동기) */
+  const [fixCandidates, setFixCandidates] = useState<FixCandidate[] | null>(null);
+  /** 탐색 중 여부 — 동기지만 state 전환 전 render를 위해 */
+  const [findingFix, setFindingFix] = useState(false);
+
   // 초안 전환·닫기 시 AI 상태 초기화 — 이전 초안의 결과가 다른 초안에 붙어 보이는 오귀속 방지.
   // 같은 초안 내 조정(draft_op·undo·redo)에는 유지 — 제안을 따라가며 적용하는 흐름 보존.
   const openDraftId = openDraft?.meta.id;
@@ -185,6 +195,10 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     setAiCritique(null);
     setAiCritiqueError(null);
     setAiCritiqueCardOpen(false);
+    // F-2 상태도 초안이 바뀌면 초기화
+    setActiveFindDetail(null);
+    setFixCandidates(null);
+    setFindingFix(false);
   }, [openDraftId]);
 
   // ── 목록 로드 ──
@@ -542,6 +556,40 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
     } finally {
       setAiCritiquing(false);
     }
+  };
+
+  // ── F-2 해결안 탐색 ──
+  /**
+   * 감점 항목 한 건을 지목해 findFixCandidates를 동기로 호출한다.
+   * 같은 항목을 다시 누르면 닫힘 토글. 결과는 항목 아래에 인라인으로 표시.
+   */
+  const handleFindFix = (detail: TermPenaltyDetail) => {
+    if (!openDraft) return;
+    // 같은 항목 토글
+    if (activeFindDetail &&
+        activeFindDetail.code === detail.code &&
+        activeFindDetail.key === detail.key &&
+        activeFindDetail.day === detail.day) {
+      setActiveFindDetail(null);
+      setFixCandidates(null);
+      return;
+    }
+    setActiveFindDetail(detail);
+    setFixCandidates(null);
+    setFindingFix(true);
+
+    // 동기 실행 — 실측 중앙 64ms·최대 173ms (§2-6)
+    const { baseGrids, meta, model, currentGrids } = openDraft;
+    const ops = meta.ops.slice(0, meta.opCursor);
+    const candidates = findFixCandidates({
+      baseGrids,
+      ops,
+      currentGrids,
+      model,
+      target: detail,
+    });
+    setFixCandidates(candidates);
+    setFindingFix(false);
   };
 
   // ── 셀 이동 / 맞교환 what-if 미리보기 ──
@@ -1056,32 +1104,128 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
                           <span className="font-extrabold text-amber-800 text-xs">소계 -{codeScore}점</span>
                         </div>
                         <div className="space-y-1.5">
-                          {sortedItems.map((item, idx) => (
-                            <div
-                              key={idx}
-                              className="bg-white rounded-lg border border-amber-100 p-3 flex items-center justify-between gap-3 shadow-2xs"
-                            >
-                              <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-amber-900 shrink-0">[{item.label}]</span>
-                                {item.day && (
-                                  <span className="text-[11px] px-1.5 py-0.2 rounded bg-gray-100 text-gray-700 font-semibold shrink-0">
-                                    {DAYS[item.day - 1]}요일
-                                  </span>
+                          {sortedItems.map((item, idx) => {
+                            const isActive =
+                              activeFindDetail?.code === item.code &&
+                              activeFindDetail?.key === item.key &&
+                              activeFindDetail?.day === item.day;
+                            return (
+                              <div key={idx}>
+                                {/* 항목 행 */}
+                                <div className="bg-white rounded-lg border border-amber-100 p-3 flex items-center justify-between gap-3 shadow-2xs">
+                                  <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-amber-900 shrink-0">[{item.label}]</span>
+                                    {item.day && (
+                                      <span className="text-[11px] px-1.5 py-0.2 rounded bg-gray-100 text-gray-700 font-semibold shrink-0">
+                                        {DAYS[item.day - 1]}요일
+                                      </span>
+                                    )}
+                                    <span className="text-gray-800">{item.text}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="font-extrabold text-amber-800 text-xs">−{item.points}점</span>
+                                    <button
+                                      onClick={() => handleFindFix(item)}
+                                      disabled={findingFix}
+                                      className={`px-2.5 py-1 rounded-md font-bold text-[11px] border transition-colors flex items-center gap-1 ${
+                                        isActive
+                                          ? "bg-amber-700 text-white border-amber-700"
+                                          : "bg-amber-100 hover:bg-amber-200 text-amber-950 border-amber-300"
+                                      } disabled:opacity-50`}
+                                    >
+                                      <span>🔍</span>
+                                      <span>{isActive ? "닫기" : "해결안 찾기"}</span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* F-2 결과 카드 — 항목 바로 아래 인라인 */}
+                                {isActive && (
+                                  <div className="mt-1.5 ml-3 border-l-2 border-amber-300 pl-3 space-y-1.5">
+                                    {findingFix ? (
+                                      <div className="py-3 flex items-center gap-2 text-xs text-amber-700 font-semibold">
+                                        <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-amber-500 border-t-transparent" />
+                                        <span>교환 후보를 검사하는 중...</span>
+                                      </div>
+                                    ) : fixCandidates === null ? null : fixCandidates.length === 0 ? (
+                                      /* ── 해결안 없음 — 다수 경로(30/39), 성의 있게 작성 ── */
+                                      <div className="bg-gray-50 rounded-lg border border-gray-200 p-3.5 text-xs space-y-2">
+                                        <div className="flex items-start gap-2">
+                                          <span className="text-base mt-0.5">🔒</span>
+                                          <div className="space-y-1">
+                                            <p className="font-bold text-gray-800">
+                                              지금 구조에서는 이 감점을 자동으로 줄이기 어렵습니다.
+                                            </p>
+                                            <p className="text-gray-600 leading-relaxed">
+                                              {item.code === "S1" || item.code === "S4" || item.code === "S6"
+                                                ? `이 수업을 다른 요일로 옮기려면 그 날의 빈 교시가 필요합니다. 같은 학급 안에서 비어 있는 자리는 대부분 창체·SLAT 자리표시 칸이라, 규칙상 옮길 수 없습니다. 학급 간 교환(현재 미지원)이나 학급 전체 편성 조정이 필요합니다.`
+                                                : item.code === "S2"
+                                                ? `이 교사의 연속 수업을 분산하려면 같은 요일 내 빈 교시가 필요합니다. 빈 자리가 있더라도 옮겼을 때 다른 조건(교사 중복·운영 교시 초과)이 새로 생기면 후보에서 제외됩니다.`
+                                                : item.code === "S3"
+                                                ? `점심시간 전후 교시를 분리하려면 점심 블록 양쪽에서 맞바꿀 교시가 있어야 합니다. 가능한 교환이 모두 다른 조건에 막혀 있습니다.`
+                                                : item.code === "S5"
+                                                ? `이 요일의 과목 밀집을 풀려면 해당 수업을 다른 요일로 이동할 수 있어야 합니다. 현재 구조에서는 같은 학급 내에 적합한 빈 자리가 없습니다.`
+                                                : `이 감점은 다른 조건(창체·SLAT 자리표시, 교사 중복, 운영 교시 초과 등)에 묶여 있어 단일 교환으로는 줄이기 어렵습니다.`
+                                              }
+                                            </p>
+                                            <p className="text-[11px] text-gray-400 pt-1">
+                                              💡 AI 도움말("개선 제안")에서 구조적 원인을 더 자세히 설명받을 수 있습니다.
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      /* ── 해결안 목록 ── */
+                                      fixCandidates.map((cand, ci) => (
+                                        <div
+                                          key={ci}
+                                          className="bg-white rounded-lg border border-amber-200 p-3 space-y-1.5 shadow-2xs"
+                                        >
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="flex items-start gap-2 min-w-0">
+                                              {/* 순위 배지 */}
+                                              <span className="shrink-0 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold flex items-center justify-center mt-0.5">
+                                                {ci + 1}
+                                              </span>
+                                              <div className="space-y-0.5 min-w-0">
+                                                <p className="font-semibold text-gray-900 text-xs leading-snug">{cand.desc}</p>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                  {/* 점수 개선 */}
+                                                  <span className="text-[11px] font-bold text-emerald-700">
+                                                    {cand.oldSoftTotal}점 → {cand.newSoftTotal}점&nbsp;&nbsp;{Math.abs(cand.deltaScore)}점 개선
+                                                  </span>
+                                                  {/* 지목 항목 해소 여부 */}
+                                                  {cand.resolvesTarget && (
+                                                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                                                      ✅ 이 감점 해소
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                {/* 부작용 */}
+                                                {cand.sideEffects.length > 0 && (
+                                                  <p className="text-[11px] text-amber-700 mt-0.5">
+                                                    ⚠️ 다른 감점 증가: {cand.sideEffects.join(" / ")}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            </div>
+                                            {/* 미리보기 버튼 — 기존 analyzeOpImpact 연결 */}
+                                            <button
+                                              onClick={() => analyzeOpImpact(cand.op, cand.desc)}
+                                              className="shrink-0 px-2.5 py-1 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-[11px] border border-blue-200 transition-colors flex items-center gap-1"
+                                            >
+                                              <span>👁</span>
+                                              <span>미리보기</span>
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
                                 )}
-                                <span className="text-gray-800">{item.text}</span>
                               </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="font-extrabold text-amber-800 text-xs">−{item.points}점</span>
-                                <button
-                                  onClick={() => alert("해결안 탐색기 엔진(F-2)이 곧 제공될 예정입니다.")}
-                                  className="px-2.5 py-1 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-[11px] border border-amber-300 transition-colors flex items-center gap-1"
-                                >
-                                  <span>🔍</span>
-                                  <span>해결안 찾기</span>
-                                </button>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     );
