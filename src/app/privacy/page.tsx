@@ -63,6 +63,12 @@ export default function PrivacyPolicyPage() {
                   <td className={tdClass}>학년도 경과 후 정리</td>
                 </tr>
                 <tr>
+                  <td className={tdHeadClass}>쪽지 내용(제목·본문·첨부 링크)과 주고받은 분·읽은 시각</td>
+                  <td className={tdClass}>교직원 간 업무 연락 및 수신 확인</td>
+                  <td className={tdClass}>보낸 분과 받는 분만. 받는 분에게는 함께 받은 분 목록과 각자의 읽은 시각이 보입니다</td>
+                  <td className={tdClass}>보낸 날부터 365일 보존 후 파기</td>
+                </tr>
+                <tr>
                   <td className={tdHeadClass}>시스템 사용 기록(감사 기록)</td>
                   <td className={tdClass}>시스템 운영 감사</td>
                   <td className={tdClass}>교직원 열람. 수정·삭제 불가</td>

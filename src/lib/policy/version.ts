@@ -2,5 +2,7 @@
  * Phase 11: 개인정보 처리 방침/고지 버전 관리 상수
  * 정책 문안이나 고지 내용 변경 시 이 버전을 올리면 전 사용자에게 전면 고지 화면이 재노출됩니다.
  */
-export const POLICY_VERSION = "2026-08.1";
-export const POLICY_EFFECTIVE_DATE = "2026년 8월 5일";
+// 2026-08.2 — 쪽지(교직원 간 업무 연락) 항목 추가. 인벤토리가 "쪽지 화면 공개 시점에"로
+// 예약해 둔 갱신이며, 화면 배포와 같은 커밋에서 올린다(고지 없이 항목이 늘어난 기간을 만들지 않는다).
+export const POLICY_VERSION = "2026-08.2";
+export const POLICY_EFFECTIVE_DATE = "2026년 8월 12일";
