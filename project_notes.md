@@ -466,3 +466,12 @@ tsc 0 / build ✅.
 - 쪽지 UI 잔여(**Antigravity**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. 2026-08-12 쪽지 표적 리뷰 엔트리의 '잔여 — Antigravity 몫' 항목을 처리해줘."*
 - 중간점검 수거(**Antigravity**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. 로드맵 §2 중간점검의 ① 미결 전수 수거 — 로드맵·project_notes·docs에서 '대기/후속/잔여/별건' 항목을 전부 긁어 목록만 만들어줘. 판단은 하지 말 것."*
 - 중간점검 트리아지(**Claude — Opus 5**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. 수거된 미결 목록을 트리아지해줘. §3-2의 두 항목은 반드시 포함할 것."*
+## [2026-08-13] Antigravity → Claude/사용자
+- 커밋: `76924be` — 쪽지 쓰기 §11-1·§11-2 개편 + 잔여 수정 6건
+- 변경 파일: `MemoSection.tsx` (전면 재작성), `src/app/admin/page.tsx` (배너 복원)
+- 검증: tsc ✅ / build ✅ (NODE_OPTIONS=--max-old-space-size=4096 필요)
+- 다음 할 일: **B 회수 서버부** (§12-2, Claude — Opus 5) + 실기기 수동 검증
+- 주의:
+  - 기존 "쪽지 UI 잔여" 재개 문구는 이 커밋으로 **흡수 완료** — 더 이상 유효하지 않음
+  - `teacher_profiles:all` 캐시 키 신규 사용 (TTL 5분). AuthContext 프리페치와 별개.
+  - OU 관련 코드(`OUCheckboxTree` import·`/api/workspace/ou` fetch) MemoSection에서 전부 제거됨
