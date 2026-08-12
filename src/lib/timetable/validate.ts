@@ -209,6 +209,50 @@ function consecutiveRuns(slots: Set<string>): number[] {
 const slotText = (day: number, period: number) => `${DAY_LABEL[day]}${period}`;
 const classText = (grade: number, classNum: number) => `${grade}-${classNum}반`;
 
+// ── 하드 위반 동일성 판정 (편집 관문·해결안 탐색기 공용) ────────
+
+/**
+ * 하드 위반 1건의 동일성 키 — "이 연산이 새 위반을 만들었는가"를 가리는 단일 소재지.
+ *
+ * 서버 관문(applyDraftOp)·클라이언트 관문(analyzeOpImpact)·해결안 탐색기(fixFinder)가
+ * 같은 문자열 규약을 써야 세 곳의 판정이 갈라지지 않는다. 원래 서버·클라에 같은 식이
+ * 복붙돼 있던 것을 여기로 모았다 (2026-08-12).
+ *
+ * 알려진 한계: 구성 필드가 6개뿐이라 `subjectName`이 빠지고, day/period가 없는 코드
+ * (H1·H4·H9)는 전부 `:0:0`으로 접힌다 — 같은 학급의 서로 다른 과목 위반이 한 키로
+ * 충돌할 수 있고, 같은 키 위반이 1건→3건으로 늘어도 "신규 0건"으로 보인다.
+ * 그래서 기계가 후보를 대량 생성하는 탐색기는 아래 diffNewHardViolations(건수 대조)를 쓴다.
+ */
+export function hardViolationKey(v: HardViolation): string {
+  return `${v.code}:${v.grade ?? 0}:${v.classNum ?? 0}:${v.day ?? 0}:${v.period ?? 0}:${v.teacherEmail || ""}`;
+}
+
+/**
+ * 연산 적용 전후를 비교해 "새로 생겼거나 늘어난" 하드 위반을 뽑는다.
+ *
+ * 키 집합 차집합만 쓰면 동일 키 위반의 건수 증가(1건→3건)를 놓치므로 **다중집합(건수)**으로
+ * 센다. 후보를 수백 건 만들어 극단값을 고르는 탐색기에서는 이 구멍이 그대로 "하드를 만드는
+ * 안이 통과되는" 결과가 되기 때문에 더 엄격한 쪽을 쓴다.
+ */
+export function diffNewHardViolations(
+  before: HardViolation[],
+  after: HardViolation[]
+): HardViolation[] {
+  const budget = new Map<string, number>();
+  for (const v of before) {
+    const k = hardViolationKey(v);
+    budget.set(k, (budget.get(k) || 0) + 1);
+  }
+  const out: HardViolation[] = [];
+  for (const v of after) {
+    const k = hardViolationKey(v);
+    const left = budget.get(k) || 0;
+    if (left > 0) budget.set(k, left - 1);
+    else out.push(v);
+  }
+  return out;
+}
+
 // ── 검사기 본체 ───────────────────────────────────────────────
 
 export function validateTimetable(
