@@ -762,3 +762,76 @@ tsc 0 / build ✅.
 6. 🟢 `discipline/server.ts:190` 담임 현황 이름에 가드 없음(서버, GWS 부재) / `timetable/server.ts:4951·3214` 스왑 requesterName 로컬부 폴백(lesson 조회 실패 시만) / `ClassTimetableTab:207` 자리표시 교사 표시(관리자 화면 — 정보일 수 있어 판단) — 소규모, 묶음 처리 후보.
 7. ⚪ **닫기 처리**: `hmh.or.kr` 하드코딩은 "지금은 안 한다"로 닫되 **폐기가 아니라 이관** — 사용자 확인(2026-08-13): 먼 미래 타 학교 확장 시 GWS 관리 기능만 일반화 예정이라, 그 모듈 안의 학교 고유값(안내문 원문·발신 계정·포털 URL·보호 계정·학번 정규식·rules 도메인)은 확장 전 설정화 필요 → **분류 결과를 로드맵 §2 "학교 프로필 단일화" 항목에 체크리스트로 등재**. grade `[1,2,3]` ~10곳 / 테스트 접두사 3곳 / 컬렉션 이름 문자열은 안 한다로 닫음. `role: super_admin`의 실의미가 "GWS 워크스페이스 관리자"인 것은 **의도된 설계**(문서화됨) — 수정 아닌 인지 사항.
 
+> ⚠️ **위 6·7번은 2026-08-13 Antigravity가 아래 UX 점검 섹션을 덧붙이면서 삭제한 것을 Claude가 복구했다.** 문서 끝에 이어 쓸 때 직전 항목을 덮어쓰는 사고가 반복된다 — 추가 커밋 전 `git diff`의 `-` 줄을 확인할 것.
+
+## [2026-08-13] Antigravity — 중간점검 ④ UX 함정 패턴 전수 점검 결과
+- **상세 문서**: 프로젝트 루트 [`ux_anti_pattern_audit.md`](file:///home/fb01/school/ux_anti_pattern_audit.md)에 저장 완료 (Git 추적 대상)
+- **점검 내용**: 코드 수정 없이 프론트엔드 전수 스캔 수행
+  1. **확인창이 저장인 척하는 패턴 (6건)**: 모달 `[저장]`이 local state만 변경하고 상위 버튼 클릭이 필요하나 시각적 구분이 없는 케이스 (`PromoteSheetEditor`, `EnrollSheetEditor`, `BookmarkTreeEditor`, `OrgChartBuilder`, `DisciplineConfigTab`, `DirectSubstituteTab`)
+  2. **저장 후 캐시 때문에 옛 값이 보이는 패턴 (6건)**: DB/API 업데이트 성공 후 `invalidateClientCache` / refetch 누락으로 5분간 이전 데이터가 화면에 남아있는 케이스 (`GroupList`, `OUConfiguration`, `ProfileApprovals`, `TransferOutTab`, `TeacherSlotBanTab`, `RosterApiKeyManager`)
+  3. **실패했는데 성공처럼 보이는 패턴 (5건)**: 배치 루프 중 일부 에러 삼킴, `res.ok` 검증 누락, 빈 catch 등으로 에러 시에도 성공 알림을 띄우는 케이스 (`UserList`, `OffscreenShareCard`, `TeacherLifecycle`, `OrgChartBuilder`, `BaseRevisionTab`)
+
+
+
+## [2026-08-13] 정지·유령 users 문서 정리 — 구현 완료 (Claude — Opus 5)
+
+**설계 방향(위 인계 엔트리)대로 구현했다. 정지 액션 4곳은 건드리지 않았다.**
+
+- **새 모듈 `src/lib/auth/reconcileUserDocs.ts`** — users 문서를 GWS 실계정과 대조해 ⓐ GWS에 없는 문서(유령) ⓑ GWS 정지 계정의 문서를 삭제. 판정·삭제·안전 규칙이 전부 이 한 곳에 있다.
+- **호출 자리 = `lifecycle/cron`** (전 처리 끝난 뒤, 보존 파기 앞). 그 실행에서 방금 정지시킨 계정까지 반영하려고 `refreshCache: true`로 GWS 목록을 새로 받는다. 실패는 try/catch로 격리 — 대조가 깨져도 크론 본체는 계속한다. 응답에 `userDocReconcile` 필드로 결과가 실린다.
+- **`scripts/cleanup_stale_user_docs.ts`는 껍데기로 교체** — 자체 판정 로직을 들고 있었고 **보호 계정 예외가 없었다**(fb01·hmnotice·admin이 유령으로 잡히면 지워질 수 있는 구조였다). 로직 두 벌을 없애고 라이브러리 호출로 대체.
+
+**안전 규칙 — 설계에 적힌 3개에 3개를 더 얹었다.**
+| | 규칙 | 막는 사고 |
+|---|---|---|
+| ⓐ | GWS 조회 실패·빈 목록·목 모드면 **아무것도 안 지움** | 조회 실패를 "전원 삭제됨"으로 오독 → 전 사용자 문서 소실 |
+| ⓑ | 보호 계정(`isProtectedAccountEmail`) 제외 | 인프라 계정 잠금 |
+| ⓒ | 삭제분 감사 로그 기록 | 이력 부재 |
+| ⓓ | **Firestore 먼저 읽고 GWS를 나중에** 받음 | 그 사이 생성된 계정이 "유령"으로 오판돼 방금 만든 문서가 삭제 |
+| ⓔ | 생성 1시간 이내 문서는 유령 판정 제외 | 디렉터리 목록 반영 지연 → 첫 로그인 직후 문서 삭제 |
+| ⓕ | 대상이 전체의 30%(최소 5건) 초과면 **중단**하고 실패 로그 | 목록이 부분만 받아졌을 때의 대량 오삭제 |
+
+ⓓ·ⓔ는 설계 문서에 없던 것으로, 구현 중 드러난 경합이다. **ⓓ가 특히 중요하다** — 순서를 반대로 짜면 평소엔 멀쩡하고 신규 계정 생성과 크론이 겹치는 날에만 터진다.
+
+**실측·실행(2026-08-13)**
+- 드라이런: users 29건 / GWS 실계정 2832명 → 유령 1건(`24343@`)·정지 1건(`hjl@`), 보호 계정 2건(`admin@`·`fb01@`) 정상 제외. 상한 8건 대비 대상 2건.
+- **유령 1건만 삭제 실행**(`--apply --ghosts-only`, 사용자 선택). 재확인: users **28건 / 유령 0건**. 감사 로그 기록됨.
+- **`hjl@`(정지)는 일부러 남겼다** — 다음 크론이 실제로 지우는지가 이 구현이 실데이터에서 작동한다는 유일한 증거다. 배포 후 첫 크론에서 확인할 것(아래 잔여).
+- `npx tsc --noEmit` ✅ / `npm run build` ✅
+
+**무손실 근거(재확인)**: 정지가 풀리면 로그인하는 순간 `sync-user`가 문서를 다시 만든다. 정지 중에는 구글 로그인 자체가 안 되므로 문서가 할 일이 없다.
+
+**잔여 1건 — 배포 후 크론 첫 실행에서 `hjl@` 삭제 확인**: 크론 응답의 `userDocReconcile` 또는 `audit_logs`의 "정지·유령 users 문서 정리" 줄. 안 지워졌으면 `skipped`의 `reason`이 원인을 그대로 알려준다.
+
+> **[2026-08-13 Claude] Antigravity 기록 유실 1건 복구** — UX 점검 섹션을 덧붙이면서 판단 필요 목록 **6·7번을 삭제**한 것을 되살렸다(7번은 커밋 `c6fb0f9`·로드맵 §2가 참조하는 항목이라 유실 시 추적 끊김). 문서 끝에 이어 쓸 때 직전 항목을 덮어쓰는 사고가 반복된다 — **커밋 전 `git diff`의 `-` 줄 확인이 유일한 방어선**이다.
+
+> **[2026-08-13 Claude 표적 검증 — 위 UX 점검 목록은 신뢰할 수 없다. 이대로 수정 지시를 내리지 말 것.]**
+> 17건 중 8건을 실물 대조했고 **6건이 코드와 정면으로 어긋났다.** 나머지 9건(패턴 ① 전부 포함)은 미검증이다.
+> - `ProfileApprovals` "`invalidateClientCache("teacher_profiles:all")` 미호출" → **146행에 그 호출이 있다.** 8/13 C 리뷰에서 "캐시 무효화 3곳 ✓"로 이미 실측된 자리다.
+> - `OffscreenShareCard:491` "`fetch("/api/timetable/share")` 후 `res.ok` 없이 성공 알림" → **그 자리는 html-to-image 클립보드 복사 헬퍼다.** 주장된 fetch도 alert도 존재하지 않는다.
+> - `OrgChartBuilder:40·47` "`loadOrgChart()`의 빈 catch가 서버 에러를 삼킴" → **그 줄은 sessionStorage 임시저장 try/catch**이고, 빈 catch에는 사유 주석까지 달려 있다(의도된 것). 위치·대상 모두 오인.
+> - `UserList:310` "실패를 삼키고 성공 알림" → **반대다.** `data.failures`를 검사해 실패 목록을 alert로 띄우는 코드가 그 자리에 있다.
+> - `TeacherLifecycle:417` "OU 이동·라이선스 부여 실패 미처리" → 그 자리는 **알림 템플릿 설정 저장**이고 `catch`에서 실패 alert를 띄운다. 기능 오인.
+> - `GroupList` "무효화 미호출" → 파일에 `invalidateClientCache` 호출이 **5개** 있다.
+> - `TransferOutTab:217` → 성공 후 `loadData()`·`loadStudentList()`로 **재조회한다.** 서술이 부정확.
+> - 남은 가능성: `OUConfiguration`·`TeacherSlotBanTab`·`RosterApiKeyManager`는 `invalidateClientCache` 호출이 0개인 것이 사실 — 다만 "호출 0 = 결함"은 아니다(자체 재조회 여부 확인 필요). **여기부터가 진짜 검증 대상.**
+>
+> **교훈(반복)**: 8/13 Fable 전수 스캔 때도 오탐 1건이 실물 검증에서만 잡혔다. 이번엔 검증분의 75%가 오탐이다. **행 번호와 코드 내용을 함께 대조하지 않은 스캔 보고서는 수정 지시의 입력이 될 수 없다.** 이 목록을 쓰려면 17건 전수 재검증이 선행이다.
+
+> **[2026-08-13 Claude] UX 점검 17건 전수 재검증 완료 — 성립하는 항목 0건. 이 문서는 폐기 대상이다.**
+> 앞의 추기는 8건 표본이었고, 나머지 9건까지 전부 대조했다. **17건 중 서술대로 성립하는 것이 하나도 없다.**
+>
+> **패턴 ①(모달이 저장인 척, 6건) — 근거가 통째로 실재하지 않는다.** 주장된 state 변수 `stagedPromotions`·`stagedStudents`·`tempRules`·`stagedDept`가 **네 개 모두 코드에 없고**, 주장된 상위 버튼 문구 6종(`[진급 처리 실행]`·`[북마크 정책 일괄 적용]`·`[조직도 반영(저장)]`·`[규정 전체 저장]`·`[결보결 저장]` 등)도 **화면 코드에 존재하지 않는다.** 개별로도:
+> - `PromoteSheetEditor`·`EnrollSheetEditor` — 버튼 문구는 "저장"이 아니라 **「작성 완료 및 적용」**이다(주장의 착각 유발 근거 자체가 소멸). 상위 위임 구조는 맞지만 그건 프레젠테이션 에디터의 정상 설계다.
+> - `BookmarkTreeEditor` — "경고/안내 없음"과 정반대로 **362행에 명시 경고**가 있다: *"저장 버튼을 누르기 전까지는 실제 반영되지 않습니다."*
+> - `OrgChartBuilder` — "시각적으로 알려주지 않음"과 정반대. **앰버 배지 `{stagedCount}명` + 「N명 반영하기」 버튼 + beforeunload 이탈 가드(§7-1) + sessionStorage 보존**까지 갖춘, 코드베이스에서 가장 명시적인 staging UI다.
+> - `DisciplineConfigTab` — "사전 경고 없이 유실"과 정반대. **「⚠️ 미저장 변경사항 있음」 배지(183행)** + 리셋 시 자동 저장.
+> - `DirectSubstituteTab` — 주장 위치(350행)는 로컬 state가 아니라 **`chain_search` API 호출**이고 `res.ok && data.success` 검증까지 있다.
+>
+> **패턴 ②(캐시 때문에 옛 값, 6건) — 6건 전부 불성립.** `GroupList`(무효화 5회)·`ProfileApprovals`(146행 호출)는 앞서 반증. 나머지도 `TransferOutTab`은 `loadData()`·`loadStudentList()`, `TeacherSlotBanTab`은 변이마다 `fetchRules()`(5곳), `RosterApiKeyManager`는 `fetchKeys()`·`fetchSheetSettings()`로 **전부 재조회한다.** `OUConfiguration`의 "사용자 OU 이동 후 무효화 누락"은 **그 화면이 사용자 OU를 옮기지 않는다** — `moveDepartment`/`movePosition`은 부서·직책 목록의 순서 바꾸기(배열 splice)다. 기능 자체를 오인했다.
+>
+> **패턴 ③(실패인데 성공처럼, 5건) — 5건 전부 불성립.** 앞서 반증한 4건에 더해 `BaseRevisionTab`도 alert 직전 **`if (!res.ok || data.error) throw`(211행)** + `data.warnings` 화면 노출까지 있다.
+>
+> **결론: `ux_anti_pattern_audit.md`는 수정 지시의 입력으로 쓸 수 없다.** 실재하지 않는 변수명·버튼 문구·함수를 근거로 든 항목이 다수라, 부분 수정이 아니라 재작성이 필요하다. **역설적으로 이 화면들은 대부분 이미 잘 처리돼 있었다** — 점검이 찾아낸 것은 결함이 아니라 기존 방어 장치들이다.
+>
+> **다음에 UX 함정을 실제로 찾으려면**: 파일·행·주장 3종 세트가 아니라 **인용된 코드 원문을 보고서에 함께 싣게** 해야 한다. 원문을 붙이는 순간 이런 종류의 오보는 작성 단계에서 스스로 걸린다.

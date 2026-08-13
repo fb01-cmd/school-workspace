@@ -5,6 +5,7 @@ import { deleteAuthUserByEmail, adminDb } from "@/lib/firebase/admin";
 import { updateMasterRosterSheet } from "@/lib/google/sheets";
 import { purgeDisciplineDataForStudent } from "@/lib/discipline/server";
 import { mapConcurrent } from "@/lib/concurrency";
+import { reconcileUserDocsWithWorkspace, type ReconcileUserDocsResult } from "@/lib/auth/reconcileUserDocs";
 
 // Vercel 함수 실행 시간 한도 명시 (졸업 시즌 피크의 대량 알림·정지·삭제 대비).
 // 미설정 시 플랜 기본값(10초대)이 적용되어 도중에 잘리면 뒷순번 학생이 미처리된다.
@@ -662,6 +663,36 @@ export async function GET(req: NextRequest) {
 
     console.log(`[Cron] 자동 처리 완료 - 정지: ${results.suspended.length}명, 삭제: ${results.deleted.length}명, 오류: ${results.errors.length}건`);
 
+    // ─────────────────────────────────────────────────────────────
+    // [users 문서 ↔ GWS 실계정 대조 정리 — 정지·유령 문서 자가 치유]
+    // ─────────────────────────────────────────────────────────────
+    // "users 문서의 부재 = 차단"이 이 시스템의 규약인데, 정지(suspend)에는 그 규약을
+    // 지키는 장치가 없었다(삭제 경로에는 deleteFirestoreUserDocsByEmail이 물려 있다).
+    // 정지 액션 4곳에 삭제를 붙이지 않고 여기서 대조하는 이유는, **GWS 콘솔에서 직접
+    // 정지·삭제한 건 플랫폼이 알 수 없기 때문**이다 — 액션마다 붙여도 콘솔 경로는 샌다.
+    // 안전 규칙(조회 실패 시 무삭제·보호 계정 제외·감사 로그·읽기 순서·신규 유예·상한)은
+    // 전부 reconcileUserDocsWithWorkspace 안에 있다. 자세한 근거는 그 파일 주석 참조.
+    //
+    // 이 크론이 방금 정지시킨 계정까지 같은 실행에서 반영하려고 캐시를 새로 받는다.
+    let userDocReconcile: ReconcileUserDocsResult | { error: string };
+    try {
+      userDocReconcile = await reconcileUserDocsWithWorkspace({ refreshCache: true });
+      const r = userDocReconcile;
+      if (r.skipped) {
+        dbg(`[UserDocs] 대조 정리 생략: ${r.reason}`);
+      } else {
+        dbg(
+          `[UserDocs] 대조 정리 완료 — 정지 ${r.suspended.length}건, 유령 ${r.ghosts.length}건 삭제 ` +
+            `(users ${r.userDocCount}건 / GWS ${r.gwsUserCount}명)`
+        );
+      }
+    } catch (reconcileErr: any) {
+      // 필수: 대조 실패가 크론을 중단시키지 않게 격리 (앞 단계 결과는 이미 확정됐다)
+      console.error("[Cron] users 문서 대조 정리 실패:", reconcileErr.message);
+      dbg(`[UserDocs] ❌ 대조 정리 에러: ${reconcileErr.message}`);
+      userDocReconcile = { error: reconcileErr.message };
+    }
+
     // ── Phase 11 산출물 E: 보존 기한 경과 데이터 파기 (2026-08-05 확정: 서명 증빙 3년·감사 로그 5년) ──
     // mockToday와 무관하게 실제 시각 기준으로만 판정 — 테스트용 날짜 조작이 조기 파기를 유발하면 안 된다.
     const retentionNow = new Date();
@@ -713,6 +744,7 @@ export async function GET(req: NextRequest) {
       warned: results.warned,
       errors: results.errors,
       retention: purgeCounts,
+      userDocReconcile,
       debug: results.debug,
     });
   } catch (err: any) {
