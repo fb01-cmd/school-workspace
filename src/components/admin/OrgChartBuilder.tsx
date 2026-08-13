@@ -8,6 +8,7 @@ import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import ManualProfileEditor from "@/components/admin/ManualProfileEditor";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
+import { resolveDisplayName } from "@/lib/org/displayName";
 
 
 interface Props {
@@ -189,14 +190,13 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
     const cachedUser = gwsTeachers.find(
       (u) => (u.primaryEmail || u.email || "").toLowerCase() === cleanEmail
     );
+    let gwsName: string | undefined;
     if (cachedUser?.name) {
-      const fullName =
+      gwsName =
         cachedUser.name.fullName ||
-        (cachedUser.name.familyName ? `${cachedUser.name.familyName}${cachedUser.name.givenName || ""}` : null);
-      if (fullName) return fullName.trim();
+        (cachedUser.name.familyName ? `${cachedUser.name.familyName}${cachedUser.name.givenName || ""}` : undefined);
     }
-    if (profile?.name) return profile.name;
-    return cleanEmail.split("@")[0];
+    return resolveDisplayName(email, profile, gwsName).name;
   };
 
   // 교직원 명단 — 교직원 OU 매핑이 있으면 그 하위만(기기·졸업생 계정 유입 차단), 없으면 학생 OU 제외 폴백

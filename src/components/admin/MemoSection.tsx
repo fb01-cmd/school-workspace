@@ -17,6 +17,7 @@ import {
 import { db } from "@/lib/firebase/config";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
+import { resolveDisplayName } from "@/lib/org/displayName";
 import type { MemoDoc } from "@/lib/memo/logic";
 import type { TeacherProfile } from "@/context/AuthContext";
 
@@ -66,18 +67,40 @@ function formatFull(ms: number): string {
 }
 
 /**
+ * GWS 이름 캐시 가져오기 헬퍼
+ */
+function getGwsNameMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  const cached = getClientCache("users:all") as any[] | null;
+  if (Array.isArray(cached)) {
+    cached.forEach((u) => {
+      const email = (u.primaryEmail || u.email || "").toLowerCase();
+      if (!email) return;
+      const name =
+        u.name?.fullName ||
+        (u.name?.familyName ? `${u.name.familyName}${u.name.givenName || ""}` : null);
+      if (name && typeof name === "string" && name.trim()) {
+        map.set(email, name.trim());
+      }
+    });
+  }
+  return map;
+}
+
+/**
  * 이름 표기 단일 헬퍼 — 트리·검색·칩·읽음 현황표 전부 이 함수를 쓴다.
  * §11-5 동명이인 부제를 나중에 추가할 때 이 함수만 고치면 된다.
  */
-function resolveDisplayName(
+function resolveMemoDisplayName(
   email: string,
   profileMap: Map<string, TeacherProfile>
 ): string {
-  const p = profileMap.get(email.toLowerCase());
-  if (p?.name) return p.name;
-  // 이름이 없으면 이메일 로컬부 폴백 (조직도 밖 계정 안전망)
-  return email.split("@")[0] || email;
+  const cleanEmail = email.toLowerCase();
+  const p = profileMap.get(cleanEmail);
+  const gwsName = getGwsNameMap().get(cleanEmail);
+  return resolveDisplayName(email, p, gwsName).name;
 }
+
 
 /** teacher_profiles 전수를 clientCache에서 가져오거나 Firestore에서 1회 읽어온다 */
 async function loadProfileMap(): Promise<Map<string, TeacherProfile>> {
@@ -668,7 +691,7 @@ function MemoDetailPanel({
             <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
               {(memo.recipientEmails || []).map((email) => {
                 const readAt = memo.reads?.[email];
-                const displayName = resolveDisplayName(email, profileMap);
+                const displayName = resolveMemoDisplayName(email, profileMap);
                 return (
                   <div key={email} className="flex items-center justify-between px-4 py-2 text-sm">
                     <span className="text-slate-700 truncate mr-2">{displayName}</span>
@@ -742,7 +765,7 @@ function ComposeModal({
       const members: DeptMember[] = [];
       profileMap.forEach((p, email) => {
         if (p.departments?.includes(dept)) {
-          members.push({ email, name: resolveDisplayName(email, profileMap) });
+          members.push({ email, name: resolveMemoDisplayName(email, profileMap) });
         }
       });
       members.sort((a, b) => a.name.localeCompare(b.name, "ko"));
@@ -769,7 +792,7 @@ function ComposeModal({
             type: "user",
             source: "dept",
             email: m.email,
-            label: resolveDisplayName(m.email, profileMap),
+            label: resolveMemoDisplayName(m.email, profileMap),
             deptLabel: sec.dept,
           });
         });
@@ -783,7 +806,7 @@ function ComposeModal({
         type: "user",
         source: "person",
         email,
-        label: resolveDisplayName(email, profileMap),
+        label: resolveMemoDisplayName(email, profileMap),
       });
     });
 
@@ -793,7 +816,7 @@ function ComposeModal({
   // 개인 검색 선택 → 칩 추가 (중복 방지)
   const handleUserSelect = useCallback((email: string, name?: string) => {
     const lowerEmail = email.toLowerCase();
-    const displayName = resolveDisplayName(lowerEmail, profileMap);
+    const displayName = resolveMemoDisplayName(lowerEmail, profileMap);
     setChips((prev) => {
       if (prev.some((c) => c.email === lowerEmail)) return prev;
       return [...prev, { type: "user", source: "person", email: lowerEmail, label: displayName }];
@@ -805,7 +828,7 @@ function ComposeModal({
   // step2 검색 추가
   const handleAddUserSelect = useCallback((email: string) => {
     const lowerEmail = email.toLowerCase();
-    const displayName = resolveDisplayName(lowerEmail, profileMap);
+    const displayName = resolveMemoDisplayName(lowerEmail, profileMap);
     setChips((prev) => {
       if (prev.some((c) => c.email === lowerEmail)) return prev;
       return [...prev, { type: "user", source: "person", email: lowerEmail, label: displayName }];
@@ -872,7 +895,7 @@ function ComposeModal({
     if (p.departments && p.departments.length > 0) {
       searchCandidates.push({
         email,
-        name: resolveDisplayName(email, profileMap),
+        name: resolveMemoDisplayName(email, profileMap),
         dept: p.departments[0] ?? "",
       });
     }

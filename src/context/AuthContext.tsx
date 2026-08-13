@@ -17,6 +17,7 @@ export interface TeacherProfile {
   deptHeadMap?: Record<string, boolean>; // 부서별 부서장 여부 맵
   isHomeroom?: boolean;
   homeroom?: { grade: number; class: number };
+  extension?: string;
   updatedAt?: string;
 }
 

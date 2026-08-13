@@ -7,6 +7,7 @@ import { collection, onSnapshot, query } from "firebase/firestore";
 
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
+import { resolveDisplayName } from "@/lib/org/displayName";
 
 
 interface Props {
@@ -69,8 +70,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
   const getDisplayName = (t: TeacherProfile) => {
     const email = (t.email || "").toLowerCase();
     const gwsName = gwsNameMap.get(email);
-    if (gwsName) return gwsName;
-    return t.name || email.split("@")[0];
+    return resolveDisplayName(email, t, gwsName).name;
   };
 
   // 재직자 이메일 집합 (2026-08-07 조직도 잔존 결함 수정) — OrgChartBuilder.teacherUserList와
