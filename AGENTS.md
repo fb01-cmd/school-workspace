@@ -128,6 +128,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 1. 에이전트 전용 격리 공간(예: C:\Users\...\.gemini\antigravity-ide\brain)에만 마크다운 문서를 작성하여 격리시키지 않는다.
 2. 모든 기획, 계획, 진행 현황 문서는 프로젝트 루트에 파일(예: development_roadmap.md)로 작성하고 Git 추적 대상에 포함되게 한다. 이를 통해 기기 전환이나 대화 세션 만료 시에도 기획 맥락이 끊기지 않도록 방지한다.
+3. **로드맵 상태의 타 문서 복사 금지 (2026-08-13 신설)**: 로드맵 항목의 상태(미착수, 착수 대기, 미구현 등)를 `AGENTS.md`, 트리아지 문서, 일지 등에 텍스트로 복사해 적지 않는다. 복사본은 로드맵이 업데이트되어도 갱신되지 않아 유령 항목(stale status)을 만드는 직접적인 원인이 된다(`AGENTS.md:71`, 트리아지 §3-1 전례). 로드맵 항목의 상태를 언급할 때는 단일 원본인 `development_roadmap.md`의 해당 항목으로 링크만 둔다.
 <!-- END:git-based-roadmap-rules -->
 
 <!-- BEGIN:dual-agent-collaboration-rules -->
