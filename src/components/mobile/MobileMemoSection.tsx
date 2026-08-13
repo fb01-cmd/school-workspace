@@ -112,7 +112,8 @@ export default function MobileMemoSection() {
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">쪽지</h2>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
               쪽지는 교직원 조직도에 등록된 분끼리 주고받습니다. 아직 소속 정보가 없어
-              이용할 수 없습니다 — PC에서 「정보 수정 신청」으로 소속을 등록해 주세요.
+              이용할 수 없습니다 — PC에서 「내 정보 관리」로 소속을 등록해 주세요.
+
             </p>
           </div>
         </div>

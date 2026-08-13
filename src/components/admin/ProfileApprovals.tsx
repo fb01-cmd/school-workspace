@@ -115,7 +115,6 @@ export default function ProfileApprovals() {
     const diffs: string[] = [];
     if (fmtDepts(cur) !== fmtDepts(profile)) diffs.push(`부서 ${fmtDepts(cur)} → ${fmtDepts(profile)}`);
     if ((cur.position || "—") !== (profile.position || "—")) diffs.push(`직책 ${cur.position || "—"} → ${profile.position || "—"}`);
-    if ((cur.extension || "—") !== (profile.extension || "—")) diffs.push(`내선 ${cur.extension || "—"} → ${profile.extension || "—"}`);
     if (fmtHomeroom(cur) !== fmtHomeroom(profile)) diffs.push(`${fmtHomeroom(cur)} → ${fmtHomeroom(profile)}`);
     return diffs;
   };
@@ -125,6 +124,8 @@ export default function ProfileApprovals() {
     setProcessing(profile.email);
     try {
       // 1. Copy to teacher_profiles (approved)
+      // §11-7 되감기 방지: pending에는 내선이 없으므로, 기존 승인 프로필의 내선을 명시 보존 (merge: true 사용 금지)
+      const existingExt = approvedProfiles.get(profile.email.toLowerCase())?.extension || "";
       const profileRef = doc(db, "teacher_profiles", profile.email);
       await setDoc(profileRef, {
         email: profile.email,
@@ -132,7 +133,7 @@ export default function ProfileApprovals() {
         departments: profile.departments,
         noDept: profile.noDept || false,
         position: profile.position,
-        extension: profile.extension?.trim() || "",
+        extension: existingExt,
         isDeptHead: profile.isDeptHead || false,
         deptHeadMap: (profile as any).deptHeadMap || {},
         isHomeroom: profile.isHomeroom,
@@ -140,6 +141,7 @@ export default function ProfileApprovals() {
         updatedAt: serverTimestamp(),
         updatedBy: userData?.email || "profile_approval",
       });
+
       // 2. Invalidate cache
       invalidateClientCache("teacher_profiles:all");
 
@@ -322,17 +324,10 @@ export default function ProfileApprovals() {
                       </div>
 
                       <div>
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">직책 / 내선</p>
-                        <p className="text-gray-900 font-medium">
-                          {profile.position || "—"}
-                          {profile.extension && <span className="ml-2 text-slate-500 font-normal">({profile.extension})</span>}
-                        </p>
-                        {profile.extension && isMobileNumberPattern(profile.extension) && (
-                          <p className="text-xs text-amber-600 mt-1 font-semibold">
-                            ⚠️ 휴대전화 번호 형태입니다. 내선번호인지 확인 후 승인하세요.
-                          </p>
-                        )}
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">직책</p>
+                        <p className="text-gray-900 font-medium">{profile.position || "—"}</p>
                       </div>
+
 
 
                       <div>

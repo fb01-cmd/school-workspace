@@ -1336,9 +1336,10 @@ export default function MemoSection() {
             조직도에 소속 정보가 없습니다.
           </p>
           <p className="text-xs text-slate-500 leading-relaxed">
-            왼쪽 아래 <strong>「정보 수정 신청」</strong>으로 소속을 등록하고 담당 선생님의 확인을
+            왼쪽 아래 <strong>「내 정보 관리」</strong>로 소속을 등록하고 담당 선생님의 확인을
             받으면 바로 이용할 수 있습니다.
           </p>
+
         </div>
       </div>
     );

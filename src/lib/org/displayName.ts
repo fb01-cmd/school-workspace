@@ -7,9 +7,9 @@ export interface DisplayName {
 }
 
 /**
- * 이름 표기 단일 소재지 헬퍼 (스펙 §11-7 0단계)
+ * 이름 표기 단일 소재지 헬퍼 (스펙 §11-7)
  *
- * 우선순위: profile.name(이메일 로컬부와 다를 때만) > GWS 이름 > 이메일 로컬부
+ * 우선순위: GWS 이름 > profile.name(이메일 로컬부와 다를 때만) > 이메일 로컬부
  * 가드: profile.name이 이메일 로컬부와 같으면(trim·대소문자 무시) 굳어진 폴백으로 판단하여 이름 없음으로 취급.
  */
 export function resolveDisplayName(
@@ -23,13 +23,14 @@ export function resolveDisplayName(
   let chosenName = "";
   const rawProfileName = profile?.name?.trim() || "";
 
-  if (rawProfileName && rawProfileName.toLowerCase() !== localPart) {
-    chosenName = rawProfileName;
-  } else if (gwsName && gwsName.trim()) {
+  if (gwsName && gwsName.trim()) {
     chosenName = gwsName.trim();
+  } else if (rawProfileName && rawProfileName.toLowerCase() !== localPart) {
+    chosenName = rawProfileName;
   } else {
     chosenName = localPart;
   }
+
 
   return {
     name: chosenName,

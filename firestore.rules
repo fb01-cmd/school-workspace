@@ -73,7 +73,11 @@ service cloud.firestore {
     match /teacher_profiles/{email} {
       allow read: if isTeacher();
       allow write: if isSuperAdmin();
+      allow update: if isTeacher()
+        && request.auth.token.email == email
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['extension', 'updatedAt', 'updatedBy']);
     }
+
 
     // ── teacher_profiles_pending/{email} — 프로필 승인 대기 ────
     match /teacher_profiles_pending/{email} {

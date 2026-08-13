@@ -105,7 +105,8 @@ export default function MyProfileCard() {
           onClick={() => setModalOpen(true)}
           className="w-full text-center py-1.5 text-xs font-semibold rounded-lg bg-indigo-700/60 hover:bg-indigo-600/80 text-indigo-200 hover:text-white transition-colors"
         >
-          {hasProfile ? "✏️ 정보 수정 신청" : "📝 조직 정보 등록 신청"}
+          {hasProfile ? "✏️ 내 정보 관리" : "📝 내 정보 관리"}
+
         </button>
       </div>
 

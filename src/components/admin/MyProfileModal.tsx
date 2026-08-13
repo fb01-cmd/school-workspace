@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { getClientCache, invalidateClientCache } from "@/lib/cache/clientCache";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
@@ -19,6 +19,32 @@ interface Props {
 
 export default function MyProfileModal({ onClose }: Props) {
   const { userData, teacherProfile, schoolSettings } = useAuth();
+  const [extension, setExtension] = useState(teacherProfile?.extension || "");
+  const [extSaving, setExtSaving] = useState(false);
+
+  const handleSaveExtension = async () => {
+    if (!userData?.email || !teacherProfile) return;
+    const cleanExt = extension.trim();
+    if (cleanExt && isMobileNumberPattern(cleanExt)) {
+      const confirmSave = confirm("개인 휴대전화 번호로 보입니다. 그래도 저장할까요?");
+      if (!confirmSave) return;
+    }
+    setExtSaving(true);
+    try {
+      const profileRef = doc(db, "teacher_profiles", userData.email);
+      await updateDoc(profileRef, {
+        extension: cleanExt,
+        updatedAt: serverTimestamp(),
+        updatedBy: userData.email,
+      });
+      invalidateClientCache("teacher_profiles:all");
+      alert("내선번호가 저장되었습니다.");
+    } catch (err: any) {
+      alert(`저장 실패: ${err.message || "오류가 발생했습니다."}`);
+    } finally {
+      setExtSaving(false);
+    }
+  };
 
   const departments = schoolSettings?.departments || DEFAULT_DEPARTMENTS;
   // 직책 목록에서 계원 제거 (저장된 설정에도 혹시 있으면 필터)
@@ -37,7 +63,7 @@ export default function MyProfileModal({ onClose }: Props) {
     teacherProfile?.departments || []
   );
   const [position, setPosition] = useState(teacherProfile?.position || "");
-  const [extension, setExtension] = useState(teacherProfile?.extension || "");
+
   const [deptHeadMap, setDeptHeadMap] = useState<Record<string, boolean>>(
     (teacherProfile as any)?.deptHeadMap || {}
   );
@@ -114,7 +140,6 @@ export default function MyProfileModal({ onClose }: Props) {
         departments: noDept ? [] : selectedDepts,
         noDept,
         position,
-        extension: extension.trim(),
         isDeptHead: noDept ? false : isAnyDeptHead,
         deptHeadMap: noDept ? {} : deptHeadMap,
         isHomeroom,
@@ -127,7 +152,6 @@ export default function MyProfileModal({ onClose }: Props) {
       invalidateClientCache("teacher_profiles:all");
       setDone(true);
     } catch (err) {
-
       console.error("프로필 신청 저장 실패", err);
       alert("신청 중 오류가 발생했습니다. 다시 시도해 주세요.");
     } finally {
@@ -141,8 +165,9 @@ export default function MyProfileModal({ onClose }: Props) {
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
           <h2 className="text-lg font-bold text-gray-900">
-            {teacherProfile ? "✏️ 조직 정보 수정 신청" : "📝 조직 정보 등록 신청"}
+            {teacherProfile ? "✏️ 내 정보 관리" : "📝 내 정보 관리"}
           </h2>
+
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">✕</button>
         </div>
 
@@ -255,30 +280,51 @@ export default function MyProfileModal({ onClose }: Props) {
               </div>
             )}
 
-            {/* ── 내선번호 (선택) ── */}
+            {/* ── 내선번호 (즉시 저장) ── */}
             {!noDept && (
-              <div>
-                <label className="block text-sm font-semibold text-gray-800 mb-1">
+              <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl space-y-2">
+                <label className="block text-sm font-semibold text-gray-800">
                   내선번호 (선택)
                 </label>
-                <input
-                  type="text"
-                  maxLength={20}
-                  value={extension}
-                  onChange={(e) => setExtension(e.target.value)}
-                  placeholder="예: 1234, 교무실 1234"
-                  className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                {isMobileNumberPattern(extension) && (
-                  <p className="text-xs text-amber-600 mt-1 font-medium">
-                    ⚠️ 휴대전화 번호로 보입니다. 학교 내선번호만 입력해 주세요.
+
+                {!teacherProfile ? (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 p-2 rounded-lg font-medium">
+                    💡 조직 정보 승인 후 내선번호를 입력할 수 있습니다.
                   </p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        maxLength={20}
+                        value={extension}
+                        onChange={(e) => setExtension(e.target.value)}
+                        placeholder="예: 1234, 교무실 1234"
+                        className="flex-1 max-w-xs px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveExtension}
+                        disabled={extSaving}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 shrink-0"
+                      >
+                        {extSaving ? "저장 중…" : "내선 저장"}
+                      </button>
+                    </div>
+
+                    {isMobileNumberPattern(extension) && (
+                      <p className="text-xs text-amber-600 font-medium">
+                        ⚠️ 휴대전화 번호로 보입니다. 학교 내선번호만 입력해 주세요.
+                      </p>
+                    )}
+                    <p className="text-xs text-slate-500">
+                      내선번호는 승인 절차 없이 즉시 반영되며 전 교직원에게 보입니다. 개인 휴대전화 번호는 적지 마세요.
+                    </p>
+                  </>
                 )}
-                <p className="text-xs text-slate-500 mt-1">
-                  내선번호는 조직도와 쪽지 화면에서 전 교직원에게 보입니다. 개인 휴대전화 번호는 적지 마세요.
-                </p>
               </div>
             )}
+
 
 
             {/* ── 담임 여부 (해당사항 없을 시 미노출) ── */}
