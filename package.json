@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check:docs": "bash scripts/check_roadmap_status_drift.sh"
+    "check:docs": "bash scripts/check_roadmap_status_drift.sh",
+    "roadmap": "grep -E '^- [^ ] \\*\\*' development_roadmap.md"
   },
   "dependencies": {
     "firebase": "^12.16.0",

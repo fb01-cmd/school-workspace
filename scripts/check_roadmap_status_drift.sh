@@ -22,6 +22,22 @@ fi
 awk '
   { lines[NR] = $0 }
   END {
+    total_top = 0
+    missing_status = 0
+
+    for (i = 1; i <= NR; i++) {
+      if (lines[i] ~ /^\* /) {
+        total_top++
+        prev = (i > 1) ? lines[i-1] : ""
+        if (prev !~ /^- [^ ]+ \*\*/) {
+          missing_status++
+        }
+      }
+    }
+
+    percent = (total_top > 0) ? int(((total_top - missing_status) / total_top) * 100) : 0
+    print "상태 줄 없는 항목: " missing_status " / " total_top " (이행률 " percent "%)"
+
     count = 0
     for (i = 1; i <= NR; i++) {
       # 정정 주석 자신은 검사 대상이 아니다 (낡은 문구를 인용하므로 두 표기를 다 담는다)

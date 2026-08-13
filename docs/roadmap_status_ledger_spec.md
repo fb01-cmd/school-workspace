@@ -93,6 +93,8 @@
 > 1차 이행의 ✅ 근거 13건을 대조한 결과 **정확 6건 / 경로 오류 3건 / 실재하지 않음 4건**이었다(정확도 46%). 없는 파일: `src/app/api/students/route.ts`(실제로는 `workspace/users`), `GraduationAgreementTab.tsx`(실제로는 `lifecycle/GraduationConsentsTab.tsx`), `workspace/classroom/roster/route.ts`(실제로는 `workspace/classroom/route.ts`), `workspace/chrome/bookmarks/route.ts`(실제로는 `workspace/bookmarks/`). 경로 오류 3건은 전부 `archive/` 접두어 누락.
 > **그럴듯한 경로를 기억으로 지어내면 ❓보다 나쁘다.** ❓는 "모른다"는 정확한 정보지만, 지어낸 ✅는 **검증된 완료로 위장한 거짓**이고 다음 사람이 그걸 근거로 판단한다.
 > **집행**: 경로를 적기 전 `ls`/`find`로 **실제 존재를 확인**한다. 확인하지 못했으면 그 항목은 ✅가 아니라 ❓다. 예외 없다.
+>
+> **완화 (2026-08-13 2차 이행 후)**: 근거를 `파일:행`이 아니라 **파일 경로만** 적어도 된다. Phase 단위 항목에서 특정 행을 고르는 것은 자의적이고, 존재 확인이라는 목적은 경로만으로 달성된다. 2차 이행이 이 형태로 17건 전건 실재를 통과했다. 좁은 항목(버그 수정·개별 가드 등)에서는 종전대로 `파일:행` 또는 커밋 해시를 쓴다.
 
 ### 2-3. `AGENTS.md` ④-2 개정 (이행 완료 후 반영)
 
