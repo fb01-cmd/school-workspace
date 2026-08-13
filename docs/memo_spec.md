@@ -289,7 +289,11 @@ export function resolveDisplayName(
 
 - 이름 우선순위는 **`profile.name` > GWS 이름 > 이메일 로컬부**로 통일한다(조직도가 사람이 직접 고친 값이므로 GWS 자동 값보다 앞선다. 현재 세 벌 중 `MemoSection` 것이 맞다).
 - **`suffix` 자리를 지금 비워 둔 채로 만든다.** D 갈래(§11-5 동명이인)가 이 함수 하나만 고치면 끝나게 하는 것이 0단계의 절반이다.
-- 이 단계는 **동작이 하나도 바뀌지 않아야 한다.** 화면 비교로 확인한 뒤 커밋을 나눈다(1단계와 섞지 말 것 — 섞으면 회귀 원인을 못 가른다).
+- **⚠️ 이 통일은 조직도 두 화면에서 우선순위가 뒤집히는 변경이다** (2026-08-13 계획 검토에서 발견 — 원 스펙이 "동작이 안 바뀐다"고 쓴 것은 부정확했다). `OrgChartBuilder`·`OrgChartTree`는 지금 **GWS 이름이 `profile.name`보다 앞선다.** 두 값이 다른 사람이 있으면 조직도 표시 이름이 실제로 바뀐다.
+  → **착수 순서: 먼저 재 본다.** 89명에 대해 `teacher_profiles.name`과 GWS 디렉터리 이름이 **다른 사람이 몇 명인지 세어 보고하라**(읽기 전용, 기존 `users:all` 프리페치 재사용 — 새 API 호출 불요).
+  - **0명이면** 어느 쪽으로 통일하든 동작이 같으므로 그대로 진행한다.
+  - **1명 이상이면 멈추고 보고하라.** 조직도 표시가 조용히 바뀌는 것은 0단계가 감당할 범위가 아니다. 그때 판단은 Claude 몫.
+- 이 단계는 위 확인을 통과하면 **동작이 하나도 바뀌지 않아야 한다.** 화면 비교로 확인한 뒤 커밋을 나눈다(1단계와 섞지 말 것 — 섞으면 회귀 원인을 못 가른다).
 
 #### 1단계 — 필드 신설과 저장 경로
 
@@ -297,18 +301,20 @@ export function resolveDisplayName(
 
 **⚠️ 저장 경로 세 곳이 스프레드가 아니라 필드를 하나씩 나열해 쓴다. 빠뜨리면 조용히 사라진다.**
 
+> **경로 주의**: 아래 네 파일은 전부 **`src/components/admin/` 직속**이다. `src/components/admin/lifecycle/`은 실재하는 디렉터리지만 학생·교사 생애주기 탭들만 들어 있고 프로필 편집 파일은 **없다.** (2026-08-13 계획 검토에서 경로 오기 4건 발견 — 없는 경로로 착수하면 파일을 새로 만들어 버린다.)
+
 | 파일 | 함수·행 | 빠뜨리면 |
 |---|---|---|
-| `ManualProfileEditor.tsx` | `handleSubmit`의 `setDoc` **193–206** | 관리자가 입력해도 저장 안 됨 |
-| `MyProfileModal.tsx` | `handleSubmit`의 `setDoc` **109–123** | 본인 신청에 안 실림 |
-| `ProfileApprovals.tsx` | `handleApprove`의 `setDoc` **125–139** | **신청은 됐는데 승인해도 반영 안 됨** — 가장 찾기 어려운 형태 |
+| `src/components/admin/ManualProfileEditor.tsx` | `handleSubmit`의 `setDoc` **193–206** | 관리자가 입력해도 저장 안 됨 |
+| `src/components/admin/MyProfileModal.tsx` | `handleSubmit`의 `setDoc` **109–123** | 본인 신청에 안 실림 |
+| `src/components/admin/ProfileApprovals.tsx` | `handleApprove`의 `setDoc` **125–139** | **신청은 됐는데 승인해도 반영 안 됨** — 가장 찾기 어려운 형태 |
 
 `OrgChartBuilder.tsx`의 `handleCommitStaged`(454–539)는 draft를 스프레드로 쓰므로 자동으로 따라오지만, `getEffectiveProfile`의 **신규 프로필 기본값 리터럴(154–163)**에는 넣어 줘야 한다.
 
 부수: `ProfileApprovals.tsx:101` `diffAgainstApproved`에 내선 변경 줄 추가(승인자가 무엇이 바뀌는지 봐야 한다), `ManualProfileEditor.tsx:227` 감사 로그 details에 포함, `MyProfileCard.tsx:51–64`에 현재 내선 표시.
 
 **입력 검증 (개인정보 판단의 전제 조건 — 생략 불가):**
-- 최대 20자, 앞뒤 공백 제거, 빈 문자열은 저장하지 않음(`undefined`/필드 삭제).
+- 최대 20자, 앞뒤 공백 제거. ~~빈 문자열은 저장하지 않음(`undefined`/필드 삭제)~~ → **정정 (2026-08-13): 빈 값은 `""`로 저장한다.** 이 저장소는 `ignoreUndefinedProperties`를 켜지 않았으므로 **`setDoc`에 `undefined`를 넣으면 런타임 에러**로 저장 자체가 실패한다. 기존 관례도 선택 문자열은 `""`(`ManualProfileEditor.tsx:199` `position`), 선택 객체는 `?? null`(`:203` `homeroom`)이다. 표시 쪽은 truthy 검사로 빈 값을 거른다.
 - **휴대전화로 보이면 경고**: 숫자만 남겼을 때 9자리 이상이거나 `010`·`011`·`016`~`019`로 시작 → *"휴대전화 번호로 보입니다. 학교 내선번호만 입력해 주세요."* **차단이 아니라 경고**(§11-6이 형식을 강제하지 않기로 했다). **입력 화면 두 곳과 승인 화면(`ProfileApprovals`) 모두**에 띄운다 — `firestore.rules:81`에서 `teacher_profiles_pending`은 본인이 임의로 쓸 수 있으므로 실질 관문은 승인 시점이다.
 - 입력란 바로 아래 고지 한 줄(관리자·본인 양쪽): *"내선번호는 조직도와 쪽지 화면에서 전 교직원에게 보입니다. 개인 휴대전화 번호는 적지 마세요."*
 
@@ -330,6 +336,8 @@ export function resolveDisplayName(
 
 #### 3단계 — 캐시
 
+**`clientCache.ts`는 수정 대상이 아니다** — `invalidateClientCache`가 이미 36행에 있다. 호출만 추가한다(계획 검토에서 이 파일이 MODIFY 목록에 올라 있었다. 캐시 모듈은 소비자가 10곳 넘으므로 건드리지 말 것).
+
 `MemoSection.tsx:84–93`의 `teacher_profiles:all`은 **TTL 5분**이고 프로필 저장 시 무효화 훅이 없다. 등록 직후 쪽지 화면에서 안 보이면 "저장이 안 됐나" 하고 다시 입력하게 된다. → 위 저장 경로 세 곳 뒤에 `invalidateClientCache("teacher_profiles:all")`(`src/lib/cache/clientCache.ts:36`) 호출.
 
 `users:all`은 **GWS 디렉터리 데이터라 손댈 필요 없다**(`api/workspace/users/route.ts:218–231`의 6개 필드 프로젝션). 내선은 Firestore에만 있다. 다만 `AutocompleteInput.tsx`처럼 `users:all`만 보고 이름을 그리는 곳은 내선을 표시할 수 없다 — **이번 범위 밖으로 둔다**(계정 관리용 화면이라 내선이 필요 없다).
@@ -349,8 +357,10 @@ export function resolveDisplayName(
 - 내선번호로 검색해서 사람이 나온다.
 - 쪽지를 보낸 뒤 Firestore `memos` 문서의 `recipientSummary`·`senderName`에 **내선번호가 들어 있지 않다**.
 - 관리자가 내선을 고친 직후 쪽지 화면에서 **새로고침 없이** 반영된다(3단계).
-- 휴대전화 형식 입력 시 입력 화면과 승인 화면 **둘 다** 경고가 뜬다.
-- 4단계 문서 3종이 **같은 커밋**에 들어 있다.
+- 휴대전화 형식 입력 시 **입력 화면 두 곳(관리자·본인)과 승인 화면, 셋 다** 경고가 뜬다. 승인 화면을 따로 확인할 것 — pending은 본인이 임의로 쓸 수 있어 **거기가 실질 관문**이다.
+- 4단계 문서 3종이 **같은 커밋**에 들어 있고, `POLICY_VERSION` 문자열이 `2026-08.2` 그대로다.
+
+> **빌드 주의 (이 기기)**: `npm run build`는 기본 힙으로 OOM 난다. `NODE_OPTIONS="--max-old-space-size=4096" npm run build`로 돌릴 것.
 
 ---
 
