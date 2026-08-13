@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "check:docs": "bash scripts/check_roadmap_status_drift.sh",
-    "roadmap": "grep -E '^- [^ ] \\*\\*' development_roadmap.md"
+    "roadmap": "grep -E '^- [^ ] \\*\\*' development_roadmap.md",
+    "backup": "npx tsx --env-file=.env.local scripts/backup_firestore.ts",
+    "backup:verify": "npx tsx --env-file=.env.local scripts/restore_firestore.ts --all --verify"
   },
   "dependencies": {
     "firebase": "^12.16.0",

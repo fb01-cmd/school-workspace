@@ -13,6 +13,7 @@
 import { adminDb } from "../src/lib/firebase/admin";
 import { writeAuditLog } from "../src/lib/firebase/audit-server";
 import { getUser } from "../src/lib/google/workspace";
+import { snapshotBeforeDestruction } from "./lib/firestoreBackup";
 
 const DOMAIN = "hmh.or.kr";
 const OPERATOR = "playviolin@hmh.or.kr";
@@ -63,6 +64,15 @@ async function run() {
     console.log("\n(드라이런 — 대상 눈 대조 후 APPLY=1로 정리. 원본은 보관소로 이동되어 복원 가능)");
     return;
   }
+
+  // 위험 직전 스냅샷 (docs/backup_restore_spec.md §2-A) — 지우기 전에 원본을 보관한다.
+  // 아래 루프가 teacher_profiles를 보관소로 옮기긴 하지만 teacher_profiles_pending은
+  // 보관 없이 삭제한다. 스냅샷은 그 격차까지 함께 덮는다.
+  await snapshotBeforeDestruction(
+    adminDb,
+    ["teacher_profiles", "teacher_profiles_pending"],
+    "cleanup_departed_teacher_profiles"
+  );
 
   for (const r of removals) {
     await adminDb
