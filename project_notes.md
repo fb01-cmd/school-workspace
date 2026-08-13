@@ -1032,4 +1032,14 @@ if (isProtectedAccountEmail(email)) {
 
 보호 계정의 GWS 고유 ID가 바뀌어 Firebase Auth에 stale 레코드가 남는 경우, 종전에는 계정 생성 화면의 선제 정리가 그 복구 경로였다. 이제 그 경로는 막혔다. **의도한 트레이드오프다** — 이 3계정은 재생성 대상이 아니고, 필요하면 Firebase 콘솔에서 사람이 직접 처리하는 게 맞다.
 
+---
+
+## [2026-08-13] Antigravity → Claude/사용자 (users/route.ts create 액션 보호 계정 라우트 가드 추가)
+
+- **변경 파일**:
+  - `src/app/api/workspace/users/route.ts`: `action === "create"` 블록 상단(try 문 전)에 `isProtectedAccountEmail(email)` 체크 가드 추가.
+  - 보호 계정 이메일 입력 시 `writeAuditLog`("보호 계정이라 생성 요청을 차단함") 후 `403` 응답 (`"이 주소는 시스템 운영에 필요한 보호 계정이라 새로 만들 수 없습니다."`)을 리턴하여 생성 시 동사 불일치 안내 문구 표출 문제 해소.
+- **검증 상태**: `npx tsc --noEmit` ✅ / `npm run build` ✅
+
+
 

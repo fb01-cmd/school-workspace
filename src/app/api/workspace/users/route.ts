@@ -275,6 +275,21 @@ export async function POST(req: NextRequest) {
       if (!email || !firstName || !lastName || !orgUnitPath || !password) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
       }
+      if (isProtectedAccountEmail(email)) {
+        await writeAuditLog({
+          operatorEmail: adminEmail,
+          operatorName: adminName,
+          action: "계정 생성",
+          targetEmail: email,
+          details: "보호 계정이라 생성 요청을 차단함",
+          status: "failure",
+          error: "protected-account",
+        });
+        return NextResponse.json(
+          { error: "이 주소는 시스템 운영에 필요한 보호 계정이라 새로 만들 수 없습니다." },
+          { status: 403 }
+        );
+      }
       try {
         // 계정 생성 전, GWS 고유 ID 변경에 따른 Firebase Auth 로그인 충돌 방지를 위해 stale 계정 선제 정리
         await deleteAuthUserByEmail(email);
