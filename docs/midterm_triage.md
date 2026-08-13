@@ -145,6 +145,31 @@ Fable 몫인 **대량 정밀 전수 스캔**은 8월을 넘기면 못 한다. �
    > 등록 화면은 `src/components/admin/OUConfiguration.tsx` 739~771행에 이미 있다 — 조직단위 선택 + `추가` 버튼(중복 등록 시 `alert("이미 등록된 조직단위입니다.")`, 확인 후 `setBlockedOuPaths([...blockedOuPaths, path])`), 등록분은 `🛑 {path}` 칩으로 나열되고 칩마다 삭제 버튼이 붙는다(빈 상태 문구 `"등록된 차단 조직단위가 없습니다."`).
    > 즉 이 항목은 **`sync-user` 관문 + 등록 UI 양쪽이 모두 존재**하므로 §3의 "착수 대기" 목록에서 빠진다. 남은 것이 있다면 실데이터 E2E 확인뿐이다.
 2. **보호 계정 가드 3차** — `fb01@`·`hmnotice@`·`admin@` 서버 공통 가드. 1·2차는 완료(`2a03acd`·`5328cb7`)
+   > **[2026-08-13 실물 확인 — "3차"라는 미정의 잔여는 실체가 없었고, 대신 진짜 구멍이 하나 나왔다]**
+   > **(1) "3차"의 정의가 어디에도 없다.** 이 표현은 이 문서에만 있고(다른 문서 검색 0건), 1차 노트의 *"잔여 확인 지점 = OU 이동·비번 초기화"* 중 OU 이동은 2차가 처리했고 비번 변경은 2차가 **의도적 허용**으로 닫았다(`workspace.ts` 주석·로드맵 164행). 즉 **원래 정의된 잔여는 없다.**
+   > **(2) 그런데 삭제 원시함수가 두 개인데 가드는 한 쪽에만 있다.** 가드는 `workspace.ts`의 `deleteUser`(`:498` throw)·`updateUser`(`:536~`)에만 있다. 그러나 실제 삭제 경로는 전부 **`deleteAuthUserByEmail(email)`을 먼저 호출**하고 그 다음에 `deleteUser(email)`을 부른다. 앞 함수(`src/lib/firebase/admin.ts:54`)에는 **보호 계정 검사가 없고**, 내부에서 `deleteFirestoreUserDocsByEmail()`(`:25`, `users` 문서 배치 삭제)과 Firebase Auth 레코드 삭제를 수행한다.
+   > → 보호 계정이 이 경로에 닿으면 **users 문서·Auth 레코드는 이미 지워진 뒤 GWS 삭제만 throw로 막힌다.** 화면에는 "보호 계정은 삭제할 수 없습니다"가 뜨지만 절반은 이미 실행된 상태다. 로드맵 164행이 요구한 *"라우트별 분산 금지 — 새 경로가 생겨도 자동 보호되는 단일 소재지"*가 이 함수에는 적용되지 않았다.
+   >
+   > **호출부 8곳 전수 — 가드 2곳, 무가드 6곳**
+   >
+   > | 위치 | 가드 | 도달 조건 |
+   > |---|---|---|
+   > | `users/route.ts:417` (`delete`) | ✅ 라우트 403 (`:403`) | — |
+   > | `users/route.ts:462` (`bulk_delete`) | ✅ 사전 필터 (`:457-458`) | — |
+   > | **`users/route.ts:280` (`create` 선제 정리)** | ❌ | **관리자가 계정 생성 화면에 보호 계정 주소를 입력** — 생성은 중복으로 실패하지만 그 전에 이미 실행됨. 가장 현실적인 경로 |
+   > | `lifecycle/route.ts:582` (`execute_transfer_out_delete`) | ❌ | body의 `email`을 그대로 사용(super_admin 권한 필요) |
+   > | `lifecycle/route.ts:1048` (`execute_graduation_delete`) | ❌ | `graduation_tasks` 큐에 `SUSPENDED` 문서 |
+   > | `lifecycle/cron/route.ts:117` (전출 자동 삭제) | ❌ | `transfer_out_tasks` 큐 |
+   > | `lifecycle/cron/route.ts:473` (졸업 자동 삭제) | ❌ | `graduation_tasks` 큐 |
+   > | `lifecycle/cron/route.ts:637` (교사 전출 자동 삭제) | ❌ | `teacher_transfer_tasks` 큐 |
+   >
+   > (`lifecycle/cron/route.ts`는 `isProtectedAccountEmail`을 **import조차 하지 않는다** — 파일 상단 import 목록 확인.)
+   >
+   > **큐 3종 실측 = 등재 0건** (`scripts/inspect_protected_account_queues.ts`, 읽기 9회). 보호 계정 3종 × `transfer_out_tasks`·`graduation_tasks`·`teacher_transfer_tasks` 전부 문서 없음. 크론 3경로는 **지금은 도달 불가**다. 진입점 `register_teacher_transfer`도 가드돼 있다(`lifecycle/route.ts:1538`). 즉 이 구멍은 **잠재형**이지 현재 터져 있는 상태가 아니다.
+   >
+   > **피해 규모 — 🟡(자가치유되지만 0은 아니다)**: 재로그인하면 `sync-user`가 `users` 문서를 다시 만들고(`sync-user/route.ts:170~` `userRef.set`) Auth 레코드도 재발급되므로 **로그인 자체는 복구된다.** 알림 발신·DWD 사칭은 서비스 계정 키 기반이라 영향 없다. 다만 ① 세션이 끊기고 ② **uid가 바뀌면서 `users/{uid}`에 쌓인 개인 상태가 사라진다**(정책 동의 기록 `policy/ack/route.ts:30`, 시간표 개인 필드 `lib/timetable/server.ts:1152` 등).
+   >
+   > **판정**: §3의 "착수 대기" 3건 중 **이 항목만 실제 잔여가 남았다.** 단 원 기재("3차 = 서버 공통 가드")와는 다른 물건이다. **처방**: `deleteAuthUserByEmail`(`admin.ts:54`) 첫 줄에 `if (isProtectedAccountEmail(email)) throw new Error("보호 계정은 삭제할 수 없습니다 (시스템 운영 계정).")` 1줄을 넣어 `deleteUser`와 **같은 단일 소재지 원칙**으로 맞춘다. 호출부 6곳을 각각 고치는 것보다 낫다 — 새 삭제 경로가 생겨도 자동으로 보호되고, 이 항목이 원래 요구했던 것이 바로 그 구조다.
 3. **Phase 5.8 — restore의 `super_admin` 소유자 검증 우회**
    > **[2026-08-13 실물 확인 — 항목은 유효하나 위치·성격이 원 기재와 다르다]**
    > **위치 정정**: 이 항목은 `src/app/api/workspace/users/route.ts`의 `restore`(삭제 계정 복원, Phase 3.5)가 아니라 **Phase 5.8 클래스룸 정리의 원복**, 즉 `src/app/api/workspace/classroom/cleanup/route.ts` 331~347행이다. (users 라우트 쪽 `restore`는 782~824행이고, 89~108행 공통 가드에서 `TEACHER_ALLOWED_ACTIONS = ["list","search","reset_password"]`에 없으므로 **super_admin 전용**이다. 도메인 전체 계정 복원이라 "소유자" 개념 자체가 없어 별도 소유자 검증이 필요 없다 — **여기엔 갭이 없다.**)

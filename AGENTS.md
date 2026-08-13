@@ -69,6 +69,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 2. **이 계정을 삭제·정지·OU 이동 대상에 포함시키지 않는다** — 생애주기 자동화(일괄 삭제·전출 크론 등)를 설계할 때 이 계정이 휩쓸리지 않는지 반드시 확인한다.
 3. 역할 구분: `admin@` = Workspace 도메인 관리·DWD 사칭용, `hmnotice@` = 알림 발신 전용, **`fb01@` = 개발·배포 인프라 소유**.
 4. **보호 계정 3종 (2026-08-11 사용자 확정)**: `fb01@`·`hmnotice@`·`admin@`는 플랫폼의 어떤 정지·일시정지·삭제 경로에도 포함되면 안 된다. 사용자가 fb01@·hmnotice@를 GWS 최고관리자로 승격했으나(콘솔 측 방어), **플랫폼은 Admin SDK(DWD)로 동작하므로 그 승격이 내부 안전장치가 아니다** — 파괴적 조치 기능을 새로 만들거나 수정할 때 이 3계정 예외 처리를 반드시 확인한다. 플랫폼 수준 하드 차단 기능은 로드맵 §2 "보호 계정 가드" 항목으로 착수 대기.
+   > **[2026-08-13 정정 — "착수 대기"는 stale]** 하드 차단은 **1차(`2a03acd`)·2차(`5328cb7`)로 이미 구현돼 있다.** 단일 소재지는 `src/lib/google/workspace.ts`의 `deleteUser`·`updateUser`(정지·아이디 변경·OU 이동 차단). **단, 삭제 원시함수는 하나 더 있다** — `deleteAuthUserByEmail`(`src/lib/firebase/admin.ts:54`, `users` 문서 + Firebase Auth 삭제)에는 보호 계정 검사가 없고 모든 삭제 경로에서 `deleteUser`보다 먼저 실행된다. **파괴적 기능을 새로 만들 때는 이 두 함수를 모두 확인한다.** 전수·처방: [`docs/midterm_triage.md`](./docs/midterm_triage.md) §3-2.
 <!-- END:infrastructure-account-rules -->
 
 <!-- BEGIN:notification-sender-rules -->
