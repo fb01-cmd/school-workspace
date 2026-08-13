@@ -73,12 +73,23 @@
 
 - [ ] **구글 관리 콘솔 Domain-Wide Delegation (도메인 전체 위임) 등록**
   - 서비스 계정의 고유 **ClientID**가 구글 워크스페이스 관리 콘솔(`보안 > API 제어 > 도메인 전체 위임`)에 등록되어 있어야 합니다.
-  - 허용해야 할 OAuth 범위(Scopes):
-    - `https://www.googleapis.com/auth/admin.directory.user` (계정 생성/수정/삭제)
-    - `https://www.googleapis.com/auth/admin.directory.group` (그룹 가입/탈퇴/조회)
+  - 허용해야 할 OAuth 범위(Scopes) 전수 (코드 및 스크립트 실측 16종):
+    - `https://www.googleapis.com/auth/admin.directory.orgunit` (조직단위 OU 생성/수정/삭제/조회)
+    - `https://www.googleapis.com/auth/admin.directory.user` (계정 생성/수정/삭제/조회)
+    - `https://www.googleapis.com/auth/admin.directory.group` (그룹 생성/삭제/멤버십 관리)
+    - `https://www.googleapis.com/auth/apps.groups.settings` (구글 그룹스 공개범위 및 권한 설정)
     - `https://www.googleapis.com/auth/gmail.send` (알림 메일 대리 발송)
-    - `https://www.googleapis.com/auth/chat.spaces` 및 `https://www.googleapis.com/auth/chat.messages.create` (구글 챗 메시지 전송)
-    - `https://www.googleapis.com/auth/spreadsheets` (**[Phase 6a-2 신규]** 명렬표 마스터 시트 자동 갱신용 — Google Sheets API)
+    - `https://www.googleapis.com/auth/chat.spaces.create` (구글 챗 스페이스 생성)
+    - `https://www.googleapis.com/auth/chat.messages.create` (구글 챗 메시지 전송)
+    - `https://www.googleapis.com/auth/chat.memberships` (구글 챗 멤버십 관리)
+    - `https://www.googleapis.com/auth/classroom.courses` (구글 클래스룸 코스 관리)
+    - `https://www.googleapis.com/auth/classroom.rosters` (구글 클래스룸 수강생/교사 배정)
+    - `https://www.googleapis.com/auth/classroom.profile.emails` (클래스룸 사용자 이메일 프로필 조회)
+    - `https://www.googleapis.com/auth/calendar` (구글 캘린더 일괄 정리 및 학사일정 연동)
+    - `https://www.googleapis.com/auth/drive` (구글 드라이브 아카이빙, 폴더 생성 및 제출함 관리)
+    - `https://www.googleapis.com/auth/spreadsheets` (Google Sheets 명렬표 및 생활지도 시트 연동)
+    - `https://www.googleapis.com/auth/chrome.management.policy` (크롬 관리 북마크 정책 배정)
+    - `https://www.googleapis.com/auth/cloud-platform` (GCP / Firestore 보안 규칙 스크립트 자동 게시용)
 - [ ] **GCP Console API 및 서비스 라이브러리 활성화 (Google Sheets API)**
   - GCP Console (`console.cloud.google.com`)의 `[API 및 서비스] > [라이브러리]`에서 **`Google Sheets API`**를 찾아서 **`[사용(ENABLE)]`** 상태로 설정해야 합니다. (도메인 위임 스코프 등록과 항상 한 세트로 동시 작업 필요)
 - [ ] **Firebase Authentication Admin API 권한 부여**
