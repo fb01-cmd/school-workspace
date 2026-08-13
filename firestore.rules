@@ -73,11 +73,16 @@ service cloud.firestore {
     match /teacher_profiles/{email} {
       allow read: if isTeacher();
       allow write: if isSuperAdmin();
+      // 2026-08-13 §11-7 2계층: 비권한 필드(내선번호)만 본인 즉시 수정 허용.
+      // affectedKeys().hasOnly()가 소속·직책·담임·부서장을 구조적으로 봉쇄하므로
+      // 위 2026-07-25 잠금(권한 근거 필드는 승인 경로만)은 그대로다.
       allow update: if isTeacher()
-        && request.auth.token.email == email
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['extension', 'updatedAt', 'updatedBy']);
+        && isSelf(email)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['extension', 'updatedAt', 'updatedBy'])
+        && request.resource.data.extension is string
+        && request.resource.data.extension.size() <= 20
+        && request.resource.data.updatedBy == request.auth.token.email;
     }
-
 
     // ── teacher_profiles_pending/{email} — 프로필 승인 대기 ────
     match /teacher_profiles_pending/{email} {

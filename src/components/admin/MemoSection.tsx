@@ -68,10 +68,16 @@ function formatFull(ms: number): string {
 
 /**
  * GWS 이름 캐시 가져오기 헬퍼
+ * 목록·검색 루프에서 호출마다 전수 재구성하지 않도록, 캐시 원본 배열의
+ * 참조가 같은 동안은 만들어 둔 Map을 재사용한다(clientCache가 무효화·만료
+ * 전까지 같은 참조를 돌려주는 성질에 기댐).
  */
+let gwsNameMapMemo: { source: unknown; map: Map<string, string> } | null = null;
+
 function getGwsNameMap(): Map<string, string> {
-  const map = new Map<string, string>();
   const cached = getClientCache("users:all") as any[] | null;
+  if (gwsNameMapMemo && gwsNameMapMemo.source === cached) return gwsNameMapMemo.map;
+  const map = new Map<string, string>();
   if (Array.isArray(cached)) {
     cached.forEach((u) => {
       const email = (u.primaryEmail || u.email || "").toLowerCase();
@@ -84,6 +90,7 @@ function getGwsNameMap(): Map<string, string> {
       }
     });
   }
+  gwsNameMapMemo = { source: cached, map };
   return map;
 }
 
@@ -93,12 +100,11 @@ function getGwsNameMap(): Map<string, string> {
  */
 function resolveMemoDisplayName(
   email: string,
-  profileMap: Map<string, TeacherProfile>,
-  gwsNameMap?: Map<string, string>
+  profileMap: Map<string, TeacherProfile>
 ): string {
   const cleanEmail = email.toLowerCase();
   const p = profileMap.get(cleanEmail);
-  const gwsName = (gwsNameMap || getGwsNameMap()).get(cleanEmail);
+  const gwsName = getGwsNameMap().get(cleanEmail);
   return resolveDisplayName(email, p, gwsName).name;
 }
 
@@ -706,8 +712,7 @@ function MemoDetailPanel({
                 const readAt = memo.reads?.[email];
                 const cleanEmail = email.toLowerCase();
                 const p = profileMap.get(cleanEmail);
-                const gwsNameMap = getGwsNameMap();
-                const displayName = resolveMemoDisplayName(email, profileMap, gwsNameMap);
+                const displayName = resolveMemoDisplayName(email, profileMap);
                 return (
                   <div key={email} className="flex items-center justify-between px-4 py-2 text-sm">
                     <span className="text-slate-700 truncate mr-2 inline-flex items-center gap-1.5">
