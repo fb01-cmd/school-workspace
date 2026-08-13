@@ -6,11 +6,7 @@
       "schedule": "0 15 * * *"
     },
     {
-      "path": "/api/discipline/cron/bridge",
-      "schedule": "0 16 * * *"
-    },
-    {
-      "path": "/api/timetable/cron/neis-calendar",
+      "path": "/api/cron/daily-sync",
       "schedule": "0 18 * * *"
     }
   ]
