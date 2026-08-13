@@ -7,9 +7,8 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firest
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import { invalidateClientCache } from "@/lib/cache/clientCache";
 import { writeAuditLog } from "@/lib/firebase/audit";
-import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
-
-const DEFAULT_POSITIONS = ["교장", "교감", "교목", "부장", "교사", "영양사", "행정실장", "주무관", "조리사"];
+import { DEFAULT_DEPARTMENTS, DEFAULT_POSITIONS } from "@/lib/org/departments";
+import DeptPositionPicker from "@/components/admin/DeptPositionPicker";
 
 export function isMobileNumberPattern(val: string): boolean {
   const digits = val.replace(/\D/g, "");
@@ -324,99 +323,22 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
 
       {/* Form Fields */}
       <div className="space-y-6 max-w-2xl">
-        {/* 소속 부서 */}
-        <div>
-          <label className="block text-sm font-bold text-gray-800 mb-2">
-            2. 소속 부서 <span className="text-red-500">*</span>
-            <span className="text-xs font-normal text-gray-400 ml-1">(복수 선택 가능)</span>
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {/* 해당사항 없음 버튼 */}
-            <button
-              type="button"
-              onClick={handleNoDeptToggle}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                noDept
-                  ? "bg-gray-700 border-gray-700 text-white shadow-sm"
-                  : "bg-gray-50 border-gray-300 text-gray-500 hover:border-gray-500 hover:text-gray-700"
-              }`}
-            >
-              해당사항 없음
-            </button>
-
-            {departments.map((dept) => (
-              <button
-                key={dept}
-                type="button"
-                onClick={() => toggleDept(dept)}
-                disabled={noDept}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all disabled:opacity-40 ${
-                  !noDept && selectedDepts.includes(dept)
-                    ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
-                    : "bg-gray-50 border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
-                }`}
-              >
-                {dept}
-              </button>
-            ))}
-          </div>
-
-          {/* 부서별 부서장 지정 */}
-          {!noDept && selectedDepts.length > 0 && (
-            <div className="mt-3 space-y-2 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 max-w-md">
-              <p className="text-xs font-semibold text-indigo-800 mb-1.5">부서별 역할 지정</p>
-              <div className="space-y-1.5">
-                {selectedDepts.map((dept) => {
-                  const isHead = !!deptHeadMap[dept];
-                  return (
-                    <div key={dept} className="flex items-center justify-between bg-white px-3 py-1.5 rounded border border-indigo-100 text-xs">
-                      <span className="font-bold text-gray-800">{dept}</span>
-                      <label className="flex items-center gap-1.5 cursor-pointer select-none text-gray-600">
-                        <input
-                          type="checkbox"
-                          checked={isHead}
-                          onChange={(e) => {
-                            setDeptHeadMap((prev) => ({
-                              ...prev,
-                              [dept]: e.target.checked,
-                            }));
-                          }}
-                          className="w-3.5 h-3.5 rounded text-amber-500 focus:ring-amber-400"
-                        />
-                        <span>부서장(부장)</span>
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 직책 */}
-        {!noDept && (
-          <div>
-            <label className="block text-sm font-bold text-gray-800 mb-2">
-              3. 직책 <span className="text-red-500">*</span>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {positions.map((pos) => (
-                <button
-                  key={pos}
-                  type="button"
-                  onClick={() => setPosition(pos)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                    position === pos
-                      ? "bg-emerald-600 border-emerald-600 text-white shadow-sm"
-                      : "bg-gray-50 border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-600"
-                  }`}
-                >
-                  {pos}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        <DeptPositionPicker
+          departments={departments}
+          positions={positions}
+          noDept={noDept}
+          onNoDeptToggle={handleNoDeptToggle}
+          selectedDepts={selectedDepts}
+          onToggleDept={toggleDept}
+          deptHeadMap={deptHeadMap}
+          onDeptHeadChange={(dept, checked) =>
+            setDeptHeadMap((prev) => ({ ...prev, [dept]: checked }))
+          }
+          position={position}
+          onPositionChange={setPosition}
+          deptLabel="2. 소속 부서"
+          positionLabel="3. 직책"
+        />
 
         {/* 내선번호 (선택) */}
         {!noDept && (
