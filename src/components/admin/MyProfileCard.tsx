@@ -84,6 +84,13 @@ export default function MyProfileCard() {
                 {position}
               </p>
             )}
+            {teacherProfile?.extension && (
+              <p className="text-xs text-indigo-200">
+                <span className="text-indigo-400 font-semibold">내선 </span>
+                {teacherProfile.extension}
+              </p>
+            )}
+
             {homeroom && (
               <p className="text-xs text-amber-300 font-semibold">🏫 {homeroom}</p>
             )}

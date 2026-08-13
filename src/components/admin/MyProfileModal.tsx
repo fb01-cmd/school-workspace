@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
-import { getClientCache } from "@/lib/cache/clientCache";
+import { getClientCache, invalidateClientCache } from "@/lib/cache/clientCache";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
-
+import { isMobileNumberPattern } from "@/components/admin/ManualProfileEditor";
 
 // 계원 제거
 const DEFAULT_POSITIONS = ["교장", "교감", "교목", "부장", "교사", "영양사", "행정실장", "주무관", "조리사"];
@@ -37,6 +37,7 @@ export default function MyProfileModal({ onClose }: Props) {
     teacherProfile?.departments || []
   );
   const [position, setPosition] = useState(teacherProfile?.position || "");
+  const [extension, setExtension] = useState(teacherProfile?.extension || "");
   const [deptHeadMap, setDeptHeadMap] = useState<Record<string, boolean>>(
     (teacherProfile as any)?.deptHeadMap || {}
   );
@@ -75,6 +76,7 @@ export default function MyProfileModal({ onClose }: Props) {
     setSelectedDepts([]);
     setDeptHeadMap({});
     setPosition("");
+    setExtension("");
     setIsHomeroom(false);
   };
 
@@ -112,6 +114,7 @@ export default function MyProfileModal({ onClose }: Props) {
         departments: noDept ? [] : selectedDepts,
         noDept,
         position,
+        extension: extension.trim(),
         isDeptHead: noDept ? false : isAnyDeptHead,
         deptHeadMap: noDept ? {} : deptHeadMap,
         isHomeroom,
@@ -120,8 +123,11 @@ export default function MyProfileModal({ onClose }: Props) {
         requestedAt: serverTimestamp(),
         rejectedReason: "",
       });
+
+      invalidateClientCache("teacher_profiles:all");
       setDone(true);
     } catch (err) {
+
       console.error("프로필 신청 저장 실패", err);
       alert("신청 중 오류가 발생했습니다. 다시 시도해 주세요.");
     } finally {
@@ -248,6 +254,32 @@ export default function MyProfileModal({ onClose }: Props) {
                 </div>
               </div>
             )}
+
+            {/* ── 내선번호 (선택) ── */}
+            {!noDept && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-800 mb-1">
+                  내선번호 (선택)
+                </label>
+                <input
+                  type="text"
+                  maxLength={20}
+                  value={extension}
+                  onChange={(e) => setExtension(e.target.value)}
+                  placeholder="예: 1234, 교무실 1234"
+                  className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                {isMobileNumberPattern(extension) && (
+                  <p className="text-xs text-amber-600 mt-1 font-medium">
+                    ⚠️ 휴대전화 번호로 보입니다. 학교 내선번호만 입력해 주세요.
+                  </p>
+                )}
+                <p className="text-xs text-slate-500 mt-1">
+                  내선번호는 조직도와 쪽지 화면에서 전 교직원에게 보입니다. 개인 휴대전화 번호는 적지 마세요.
+                </p>
+              </div>
+            )}
+
 
             {/* ── 담임 여부 (해당사항 없을 시 미노출) ── */}
             {!noDept && (

@@ -5,11 +5,18 @@ import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
+import { invalidateClientCache } from "@/lib/cache/clientCache";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
 
-
 const DEFAULT_POSITIONS = ["교장", "교감", "교목", "부장", "교사", "영양사", "행정실장", "주무관", "조리사"];
+
+export function isMobileNumberPattern(val: string): boolean {
+  const digits = val.replace(/\D/g, "");
+  if (digits.length >= 9) return true;
+  if (/^(010|011|016|017|018|019)/.test(digits)) return true;
+  return false;
+}
 
 interface Props {
   initialEmail?: string;
@@ -36,6 +43,7 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
   const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
   const [deptHeadMap, setDeptHeadMap] = useState<Record<string, boolean>>({});
   const [position, setPosition] = useState("");
+  const [extension, setExtension] = useState("");
   const [isHomeroom, setIsHomeroom] = useState(false);
   const [homeroomGrade, setHomeroomGrade] = useState(1);
   const [homeroomClass, setHomeroomClass] = useState(1);
@@ -63,6 +71,7 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
         setSelectedDepts(data.departments || []);
         setDeptHeadMap(data.deptHeadMap || {});
         setPosition(data.position || "");
+        setExtension(data.extension || "");
         setIsHomeroom(data.isHomeroom === true);
         if (data.homeroom) {
           setHomeroomGrade(data.homeroom.grade || 1);
@@ -75,6 +84,7 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
         setSelectedDepts([]);
         setDeptHeadMap({});
         setPosition("교사");
+        setExtension("");
         setIsHomeroom(false);
         setHomeroomGrade(1);
         setHomeroomClass(1);
@@ -95,6 +105,7 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
         setSelectedDepts(initialProfile.departments || []);
         setDeptHeadMap(initialProfile.deptHeadMap || {});
         setPosition(initialProfile.position || "");
+        setExtension(initialProfile.extension || "");
         setIsHomeroom(initialProfile.isHomeroom === true);
         if (initialProfile.homeroom) {
           setHomeroomGrade(initialProfile.homeroom.grade || 1);
@@ -125,6 +136,7 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
     setSelectedDepts([]);
     setDeptHeadMap({});
     setPosition("");
+    setExtension("");
     setIsHomeroom(false);
     setHomeroomGrade(1);
     setHomeroomClass(1);
@@ -161,6 +173,7 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
     setSelectedDepts([]);
     setDeptHeadMap({});
     setPosition("");
+    setExtension("");
     setIsHomeroom(false);
   };
 
@@ -188,7 +201,7 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
     try {
       const isAnyDeptHead = Object.values(deptHeadMap).some(Boolean);
       const name = targetName.trim();
-
+      const cleanExtension = extension.trim();
 
       // 1. Save immediately approved profile to teacher_profiles
       const profileRef = doc(db, "teacher_profiles", targetEmail);
@@ -198,6 +211,7 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
         departments: noDept ? [] : selectedDepts,
         noDept,
         position: noDept ? "" : position,
+        extension: cleanExtension,
         isDeptHead: noDept ? false : isAnyDeptHead,
         deptHeadMap: noDept ? {} : deptHeadMap,
         isHomeroom: noDept ? false : isHomeroom,
@@ -206,7 +220,10 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
         updatedBy: userData?.email || "super_admin",
       });
 
-      // 2. Invalidate/approve any existing pending application
+      // 2. Invalidate cache
+      invalidateClientCache("teacher_profiles:all");
+
+      // 3. Invalidate/approve any existing pending application
       const pendingRef = doc(db, "teacher_profiles_pending", targetEmail);
       const pendingSnap = await getDoc(pendingRef);
       if (pendingSnap.exists()) {
@@ -218,14 +235,14 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
         });
       }
 
-      // 3. Write audit log
+      // 4. Write audit log
       if (userData?.email) {
         await writeAuditLog({
           operatorEmail: userData.email,
           operatorName: (userData as any).name || (userData as any).displayName || "",
           action: "TEACHER_PROFILE_MANUAL_ASSIGNMENT",
           targetEmail,
-          details: `어드민 수동 배치 완료: 부서(${noDept ? "없음" : selectedDepts.join(", ")}), 직책(${position || "-"})${isHomeroom ? `, 담임(${homeroomGrade}-${homeroomClass})` : ""}`,
+          details: `어드민 수동 배치 완료: 부서(${noDept ? "없음" : selectedDepts.join(", ")}), 직책(${position || "-"})${cleanExtension ? `, 내선(${cleanExtension})` : ""}${isHomeroom ? `, 담임(${homeroomGrade}-${homeroomClass})` : ""}`,
           status: "success",
         });
       }
@@ -400,6 +417,32 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
             </div>
           </div>
         )}
+
+        {/* 내선번호 (선택) */}
+        {!noDept && (
+          <div>
+            <label className="block text-sm font-bold text-gray-800 mb-1">
+              4. 내선번호 (선택)
+            </label>
+            <input
+              type="text"
+              maxLength={20}
+              value={extension}
+              onChange={(e) => setExtension(e.target.value)}
+              placeholder="예: 1234, 교무실 1234"
+              className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            {isMobileNumberPattern(extension) && (
+              <p className="text-xs text-amber-600 mt-1 font-medium">
+                ⚠️ 휴대전화 번호로 보입니다. 학교 내선번호만 입력해 주세요.
+              </p>
+            )}
+            <p className="text-xs text-slate-500 mt-1">
+              내선번호는 조직도와 쪽지 화면에서 전 교직원에게 보입니다. 개인 휴대전화 번호는 적지 마세요.
+            </p>
+          </div>
+        )}
+
 
         {/* 담임 여부 */}
         {!noDept && (
