@@ -32,11 +32,60 @@ const MAX_ENTRIES = 40;
 type Entry = { at: number; promise: Promise<unknown> };
 const store = new Map<string, Entry>();
 
+/**
+ * 인스턴스 계측 (docs/transition_day_rehearsal_spec.md §2-1)
+ *
+ * 이 store는 **모듈 스코프**라 서버리스 인스턴스마다 따로 존재한다. 그래서 캐시가
+ * 실제로 도는지는 "인스턴스가 얼마나 재사용되는가"에 전적으로 달려 있는데,
+ * 그 값이 프로덕션에서 측정된 적이 없다.
+ *
+ * 모듈 로드 시 한 번 생성되는 난수 id가 곧 인스턴스 신원이다 — 응답 헤더로 내보내면
+ * 밖에서 distinct 개수를 세어 **냉시작 비율 R**을 직접 잴 수 있다.
+ * 개인정보·비밀값이 없고 인증된 요청에만 나가므로 상시 켜 둔다(설정 없이 다시 잴 수 있어야 한다).
+ */
+const INSTANCE_ID = Math.random().toString(36).slice(2, 10);
+const stats = { hits: 0, misses: 0, startedAt: Date.now() };
+/**
+ * 직전 판정 표식 — 라우트가 읽고 지운다.
+ *
+ * ⚠️ **한계**: 모듈 스코프 변수라 **같은 인스턴스에서 동시 처리되는 요청끼리 섞일 수 있다.**
+ * 즉 `x-tt-cache`는 요청 1건짜리 확인(리허설 단계 0)에서만 신뢰할 수 있고,
+ * 동시 발사 구간에서는 참고값이다. **냉시작 비율 R은 이 값이 아니라
+ * `x-tt-instance`의 distinct 개수로 계산한다** — 그쪽은 동시성과 무관하게 정확하다.
+ * 누적 카운터(hits/misses)도 정확하다.
+ */
+let lastOutcome: "hit" | "miss" | "off" | null = null;
+
+export function getCacheStats() {
+  return {
+    instanceId: INSTANCE_ID,
+    hits: stats.hits,
+    misses: stats.misses,
+    size: store.size,
+    uptimeMs: Date.now() - stats.startedAt,
+  };
+}
+
+/** 이번 요청의 캐시 판정을 꺼내며 초기화한다. miss가 하나라도 있으면 miss로 본다. */
+export function takeRequestOutcome(): "hit" | "miss" | "off" | "none" {
+  const v = lastOutcome ?? "none";
+  lastOutcome = null;
+  return v;
+}
+
+function mark(outcome: "hit" | "miss" | "off") {
+  if (outcome === "hit") stats.hits++;
+  else if (outcome === "miss") stats.misses++;
+  // 한 요청에 memo가 여러 번 걸린다 — 하나라도 miss면 그 요청엔 콜드 채움이 일어난 것이다
+  if (lastOutcome === null || outcome === "miss") lastOutcome = outcome;
+}
+
 function memo<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  if (process.env.TIMETABLE_VIEW_CACHE === "off") return fn(); // 킬스위치
+  if (process.env.TIMETABLE_VIEW_CACHE === "off") { mark("off"); return fn(); } // 킬스위치
   const now = Date.now();
   const hit = store.get(key);
-  if (hit && now - hit.at < TTL_MS) return hit.promise as Promise<T>;
+  if (hit && now - hit.at < TTL_MS) { mark("hit"); return hit.promise as Promise<T>; }
+  mark("miss");
   const promise = fn();
   // 실패한 Promise가 TTL 동안 에러를 고정하지 않도록 즉시 제거
   promise.catch(() => {

@@ -12,8 +12,10 @@ import {
 import { buildSlotIndex, isBlockTeacher } from "@/lib/timetable/swap";
 import {
   getBaseGridsCached,
+  getCacheStats,
   getViewContextCached,
   getWeekGridsCached,
+  takeRequestOutcome,
 } from "@/lib/timetable/viewCache";
 import {
   ClassGrid,
@@ -38,7 +40,25 @@ function resolveTeacherName(grids: ClassGrid[], normEmail: string): string {
   return normEmail.split("@")[0];
 }
 
-export async function POST(req: NextRequest) {
+/**
+ * 계측 래퍼 (docs/transition_day_rehearsal_spec.md §2-1)
+ *
+ * 이 라우트의 인메모리 캐시는 서버리스 인스턴스마다 따로 존재한다. 실제로 캐시가
+ * 도는지는 인스턴스 재사용률에 달려 있는데 그 값이 프로덕션에서 측정된 적이 없다.
+ * 응답 헤더로 인스턴스 신원과 적중 판정을 내보내 밖에서 **냉시작 비율 R**을 잰다.
+ * 개인정보·비밀값이 없고 인증된 요청에만 나간다.
+ */
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  const res = await handleView(req);
+  const s = getCacheStats();
+  res.headers.set("x-tt-instance", s.instanceId);
+  res.headers.set("x-tt-cache", takeRequestOutcome());
+  res.headers.set("x-tt-hits", String(s.hits));
+  res.headers.set("x-tt-misses", String(s.misses));
+  return res;
+}
+
+async function handleView(req: NextRequest): Promise<NextResponse> {
   try {
     const auth = await verifyAuthAccess(req);
     if (!auth) {
