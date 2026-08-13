@@ -102,9 +102,8 @@ export default function MyProfileModal({ onClose }: Props) {
           }
         }
       }
-      if (!name) {
-        name = userData.email.split("@")[0];
-      }
+      name = (name || "").trim();
+
       const isAnyDeptHead = Object.values(deptHeadMap).some(Boolean);
       const pendingRef = doc(db, "teacher_profiles_pending", userData.email);
       await setDoc(pendingRef, {

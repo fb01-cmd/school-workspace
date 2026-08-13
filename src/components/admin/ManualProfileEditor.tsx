@@ -187,7 +187,8 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
 
     try {
       const isAnyDeptHead = Object.values(deptHeadMap).some(Boolean);
-      const name = targetName || targetEmail.split("@")[0];
+      const name = targetName.trim();
+
 
       // 1. Save immediately approved profile to teacher_profiles
       const profileRef = doc(db, "teacher_profiles", targetEmail);

@@ -152,16 +152,29 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
     const base = profileMap.get(cleanEmail);
     if (base) return base;
 
+    const cachedUser = gwsTeachers.find(
+      (u) => (u.primaryEmail || u.email || "").toLowerCase() === cleanEmail
+    );
+    let gwsName = "";
+    if (cachedUser?.name) {
+      const fn =
+        cachedUser.name.fullName ||
+        (cachedUser.name.familyName ? `${cachedUser.name.familyName}${cachedUser.name.givenName || ""}` : "");
+      if (fn) gwsName = fn.trim();
+    }
+
     return {
       email: cleanEmail,
-      name: cleanEmail.split("@")[0],
+      name: gwsName || "",
       departments: [],
       position: "",
+      extension: "",
       isDeptHead: false,
       deptHeadMap: {},
       isHomeroom: false,
       homeroom: undefined,
     };
+
   };
 
   // 스테이징 변경 존재 여부
