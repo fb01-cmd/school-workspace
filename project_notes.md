@@ -1003,3 +1003,33 @@ if (logDocData.teacherEmail && logDocData.teacherEmail !== teacherEmail) {   // 
   - `npm run build` ✅ (프로덕션 빌드 성공)
 
 
+## [2026-08-13] Claude 표적 리뷰 — `be35aba` 보호 계정 하드 가드 (Sonnet 5) · **통과, 🟡 문구 1건**
+
+가드는 의도한 자리에 정확히 들어갔고 회귀 없음. `npx tsc --noEmit` exit 0, `scripts/blocked_ou_selftest.ts` 전체 통과를 **독립 재실행으로 확인**했다.
+
+### 확인한 것
+
+1. **단일 소재지가 실제로 단일이다.** `deleteFirestoreUserDocsByEmail`(`admin.ts:26`)은 `export`돼 있어 우회 호출이 가능한 구조였는데, 전수 검색 결과 **직접 호출부는 `deleteAuthUserByEmail:59` 한 곳뿐**(나머지 3건은 전부 주석 언급). 따라서 `:56`의 가드 한 줄이 `users` 문서 삭제와 Auth 레코드 삭제를 **둘 다** 덮는다. 호출부 6곳을 따로 고치지 않은 판단이 맞았다.
+2. **예외가 일괄 처리를 깨지 않는다.** `bulk_delete`는 애초에 보호 계정을 사전 필터(`users/route.ts:457-458`)하므로 도달하지 않고, `execute_graduation_delete`(`lifecycle/route.ts:1042~`)는 `mapConcurrent` 콜백 **안쪽에 학생별 try/catch**가 있어 1명 실패가 나머지를 중단시키지 않는다. 크론 3경로도 각각 `try` 블록 안이다.
+3. **순환 참조 없음** — `blockedOu.ts`는 import가 0인 순수 함수 파일.
+4. **중복 가드가 아니다.** `reconcileUserDocs.ts:133`은 판정 단계에서 보호 계정을 건너뛰지만(`protectedSkipped`) 그건 유령 문서 정리 경로이고, 이번 가드는 삭제 실행 경로다. 서로 다른 층이라 둘 다 필요하다.
+
+### 🟡 1건 — 계정 생성 화면에서 **동사가 틀린** 안내가 뜬다
+
+`users/route.ts:280`의 `create` 선제 정리가 이제 throw하고, `:308` catch → `:318` `throw err` → 최상위 catch가 500으로 그대로 흘린다. 그래서 **관리자가 계정을 "만들려고" 했는데 화면에는 "보호 계정은 삭제할 수 없습니다"가 뜬다.**
+
+**피해는 없다** — 가드가 목적한 파괴(문서·Auth 삭제)는 정확히 막혔고, 이 주소는 이미 존재하므로 생성은 어차피 실패한다. 다만 안내문이 사용자가 한 행동과 어긋나서 "내가 뭘 지우려 했다는 거지?"가 된다.
+
+**처방**: `create` 블록 앞에 다른 액션들과 같은 형태의 라우트 가드를 하나 두고 전용 문구를 쓴다.
+```ts
+if (isProtectedAccountEmail(email)) {
+  return NextResponse.json({ error: "이 주소는 시스템 운영에 필요한 보호 계정이라 새로 만들 수 없습니다." }, { status: 403 });
+}
+```
+급하지 않다. `delete`(`:403`)·`bulk_delete`(`:457`)가 이미 같은 패턴이라 붙이기만 하면 된다.
+
+### 기록해 둘 부작용 1건 (의도된 것)
+
+보호 계정의 GWS 고유 ID가 바뀌어 Firebase Auth에 stale 레코드가 남는 경우, 종전에는 계정 생성 화면의 선제 정리가 그 복구 경로였다. 이제 그 경로는 막혔다. **의도한 트레이드오프다** — 이 3계정은 재생성 대상이 아니고, 필요하면 Firebase 콘솔에서 사람이 직접 처리하는 게 맞다.
+
+
