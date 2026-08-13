@@ -351,23 +351,23 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <span className="text-slate-400 text-xs">👤</span>
-                        {(() => {
-                          const gwsName = gwsNameMap.get((teacher.email || "").toLowerCase());
-                          const dn = resolveDisplayName(teacher.email, teacher, gwsName);
-                          return (
+                            {(() => {
+                              const gwsName = gwsNameMap.get((teacher.email || "").toLowerCase());
+                              const dn = resolveDisplayName(teacher.email, teacher, gwsName);
+                              return (
+                                <>
+                                  <span className="font-bold text-slate-800 text-sm">
+                                    {dn.name}
+                                  </span>
+                                  {dn.extension && (
+                                    <span className="text-xs text-slate-500 font-normal">
+                                      {dn.extension}
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
 
-                            <>
-                              <span className="font-bold text-slate-800 text-sm">
-                                {dn.name}
-                              </span>
-                              {dn.extension && (
-                                <span className="text-xs text-slate-500 font-normal">
-                                  {dn.extension}
-                                </span>
-                              )}
-                            </>
-                          );
-                        })()}
 
                             <span className="text-xs text-slate-400 font-mono truncate max-w-[180px]">
                               {teacher.email}

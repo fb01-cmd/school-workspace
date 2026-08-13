@@ -6,5 +6,5 @@
 // 예약해 둔 갱신이며, 화면 배포와 같은 커밋에서 올린다(고지 없이 항목이 늘어난 기간을 만들지 않는다).
 // 2026-08-13 — 교직원 내선번호(선택 등록) 항목 고지 추가. 자발 입력 선택 항목이라 POLICY_VERSION은 상향하지 않음.
 export const POLICY_VERSION = "2026-08.2";
-
 export const POLICY_EFFECTIVE_DATE = "2026년 8월 12일";
+

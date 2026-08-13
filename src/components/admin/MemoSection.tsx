@@ -93,13 +93,15 @@ function getGwsNameMap(): Map<string, string> {
  */
 function resolveMemoDisplayName(
   email: string,
-  profileMap: Map<string, TeacherProfile>
+  profileMap: Map<string, TeacherProfile>,
+  gwsNameMap?: Map<string, string>
 ): string {
   const cleanEmail = email.toLowerCase();
   const p = profileMap.get(cleanEmail);
-  const gwsName = getGwsNameMap().get(cleanEmail);
+  const gwsName = (gwsNameMap || getGwsNameMap()).get(cleanEmail);
   return resolveDisplayName(email, p, gwsName).name;
 }
+
 
 
 /** teacher_profiles 전수를 clientCache에서 가져오거나 Firestore에서 1회 읽어온다 */
@@ -702,10 +704,21 @@ function MemoDetailPanel({
             <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
               {(memo.recipientEmails || []).map((email) => {
                 const readAt = memo.reads?.[email];
-                const displayName = resolveMemoDisplayName(email, profileMap);
+                const cleanEmail = email.toLowerCase();
+                const p = profileMap.get(cleanEmail);
+                const gwsNameMap = getGwsNameMap();
+                const displayName = resolveMemoDisplayName(email, profileMap, gwsNameMap);
                 return (
                   <div key={email} className="flex items-center justify-between px-4 py-2 text-sm">
-                    <span className="text-slate-700 truncate mr-2">{displayName}</span>
+                    <span className="text-slate-700 truncate mr-2 inline-flex items-center gap-1.5">
+                      <span>{displayName}</span>
+                      {p?.extension && (
+                        <span className="text-xs text-slate-500 font-normal">
+                          {p.extension}
+                        </span>
+                      )}
+                    </span>
+
                     {readAt ? (
                       <span className="flex-shrink-0 flex items-center gap-1 text-emerald-600 text-xs font-medium">
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

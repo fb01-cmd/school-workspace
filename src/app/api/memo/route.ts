@@ -113,22 +113,39 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        // 발신자 표시 이름: teacher_profiles → GWS 디렉터리 → 이메일 로컬부 (스펙 §1)
+        // 발신자 표시 이름: GWS 디렉터리 → teacher_profiles(이메일 로컬부 오염 가드) → 이메일 로컬부
         let senderName = "";
-        try {
-          const profileSnap = await adminDb.collection("teacher_profiles").doc(email).get();
-          senderName = (profileSnap.data()?.name || "").trim();
-        } catch {
-          /* 이름 폴백으로 진행 */
+        const emailLocal = email.split("@")[0];
+
+        // 1. GWS 디렉터리 이름
+        const me = directory.find(
+          (u: any) => (u.primaryEmail || "").toLowerCase() === email
+        ) as any;
+        const gwsFullName =
+          me?.name?.fullName ||
+          (me?.name?.familyName ? `${me.name.familyName}${me.name.givenName || ""}` : "");
+        if (gwsFullName && gwsFullName.trim()) {
+          senderName = gwsFullName.trim();
         }
+
+        // 2. teacher_profiles (GWS 이름 없거나 빈 값일 때, 이메일 로컬부 오염 가드)
         if (!senderName) {
-          const me = directory.find(
-            (u: any) => (u.primaryEmail || "").toLowerCase() === email
-          ) as any;
-          senderName =
-            `${me?.name?.familyName || ""}${me?.name?.givenName || ""}`.trim() ||
-            email.split("@")[0];
+          try {
+            const profileSnap = await adminDb.collection("teacher_profiles").doc(email).get();
+            const pName = (profileSnap.data()?.name || "").trim();
+            if (pName && pName.toLowerCase() !== emailLocal.toLowerCase()) {
+              senderName = pName;
+            }
+          } catch {
+            /* 폴백 진행 */
+          }
         }
+
+        // 3. 이메일 로컬부 폴백
+        if (!senderName) {
+          senderName = emailLocal;
+        }
+
 
         // 보존 기한 — 발송 시 즉시 스탬프 (스펙 §6)
         const settingsSnap = await adminDb.collection("settings").doc(domain).get();
