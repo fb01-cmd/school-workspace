@@ -987,3 +987,19 @@ if (logDocData.teacherEmail && logDocData.teacherEmail !== teacherEmail) {   // 
     3. 고아 폴더 (orphan) 되돌리기: `sXVFD8nzmM0NTUQ5Spja` (Target: `folder_e2e_orphan`, Details: `고아 폴더 원복 (E2E Test Orphan Folder)`)
 - **검증 상태**: `npx tsc --noEmit` ✅
 
+---
+
+## [2026-08-13] Antigravity → Claude/사용자 (보호 계정 deleteAuthUserByEmail 하드 가드 단일 소재지 적용)
+
+- **변경 파일**:
+  - `src/lib/firebase/admin.ts`: `deleteAuthUserByEmail` 맨 앞에 `isProtectedAccountEmail(email)` 하드 가드를 배치하여 보호 계정(`fb01@`, `hmnotice@`, `admin@`) 삭제 요청 시 `throw new Error("보호 계정은 삭제할 수 없습니다 (시스템 운영 계정).")` 발생하도록 구현 (단일 소재지 원칙).
+- **호출부 6곳 점검**:
+  - `users/route.ts` (`create` 선제 정리, `delete`, `bulk_delete` `mapConcurrentSettled`) 및 `lifecycle/route.ts`, `cron/route.ts` 등 호출부 전수 확인 완료. `deleteAuthUserByEmail`이 throw 하더라도 호출부의 try/catch 및 `mapConcurrentSettled` 예외 캡처로 인해 전체 시스템 중단 없이 정상 실패 처리됨.
+- **순환 참조 여부**:
+  - `blockedOu.ts`는 순수 함수 모듈로 circular dependency 없음.
+- **검증 상태**:
+  - `npx tsx --env-file=.env.local scripts/blocked_ou_selftest.ts` ✅ (전체 통과)
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (프로덕션 빌드 성공)
+
+

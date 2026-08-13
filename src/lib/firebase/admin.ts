@@ -2,6 +2,7 @@ import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { NextRequest } from "next/server";
+import { isProtectedAccountEmail } from "@/lib/auth/blockedOu";
 
 // Initialize Firebase Admin SDK once
 if (!getApps().length) {
@@ -52,6 +53,9 @@ export const deleteFirestoreUserDocsByEmail = async (email: string): Promise<num
  * 개별/일괄/크론/전출 전 경로에서 유령 문서가 남지 않는다.
  */
 export const deleteAuthUserByEmail = async (email: string): Promise<boolean> => {
+  if (isProtectedAccountEmail(email)) {
+    throw new Error("보호 계정은 삭제할 수 없습니다 (시스템 운영 계정).");
+  }
   await deleteFirestoreUserDocsByEmail(email);
   try {
     const authAdmin = getAuth();
