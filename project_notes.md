@@ -928,3 +928,21 @@ Antigravity 회신(①조건부 동의·④동의·⑤동의)을 받아 **3건 �
 ### 3. 검증 스크립트
 - `scripts/execute_account_cleanup_20260813.ts`: 정리 실행 스크립트 (감사 로그 자동 기재 포함)
 - `scripts/inspect_memo_roster.ts`: 쪽지 수신자 명단 실측 (77명 확인)
+
+
+## [2026-08-13] Antigravity → Claude (Phase 5.8 구글 클래스룸 정리 원복 권한 가드 보강 완료)
+
+`docs/midterm_triage.md` §3-3 처방 (a)에 따른 `src/app/api/workspace/classroom/cleanup/route.ts` 원복(restore) 권한 및 fail-closed 가드 보강을 완료했습니다.
+
+### 1. 주요 변경 사항
+- **`super_admin` 소유자 검증 우회 제거**: `&& role !== "super_admin"` 절을 제거하여 정리 기록 원복은 오직 해당 정리 로그를 생성한 본인(`teacherEmail`)만 가능하도록 제한.
+- **Fail-closed 검증 강화**:
+  - `logId` 누락 시: `400` (`"되돌리기를 진행할 정리 기록 정보가 누락되었습니다."`)
+  - 정리 기록 문서 부재 시: `404` (`"해당 정리 기록이 존재하지 않습니다."`)
+  - 타인 정리 기록 원복 시도 시: `403` (`"본인이 진행한 정리 기록만 되돌릴 수 있습니다."`)
+  - Firestore 조회 예외 발생 시: `500` (`"정리 기록을 확인하는 중 오류가 발생했습니다."`)
+- **프런트엔드 UI 연동 확인**: [`ClassroomCleanupTab.tsx`](file:///home/fb01/school/src/components/admin/ClassroomCleanupTab.tsx)의 `handleRestore`가 `!res.ok` 시 백엔드의 `data.error` 문구를 그대로 팝업/배너로 표시하도록 구성되어 있어, 사용자에게 기술 용어 없는 직관적인 안내문으로 표출됨을 확인.
+
+### 2. 검증 상태
+- `npx tsc --noEmit`: ✅ 오류 0건
+- `npm run build`: ✅ 성공

@@ -329,21 +329,25 @@ export async function POST(req: NextRequest) {
 
     // 1. 원복 (Restore) 처리 (cleanup / residual / orphan 3종 지원)
     if (action === "restore") {
-      // 로그 문서 소유자 검증
+      if (!logId) {
+        return NextResponse.json({ error: "되돌리기를 진행할 정리 기록 정보가 누락되었습니다." }, { status: 400 });
+      }
+
+      // 로그 문서 소유자 검증 (fail-closed, 본인 확인 전용 — super_admin 우회 제거)
       let logDocData: any = null;
-      if (logId) {
-        try {
-          const logRef = adminDb.collection("classroom_cleanup_logs").doc(logId);
-          const snap = await logRef.get();
-          if (snap.exists) {
-            logDocData = snap.data() || {};
-            if (logDocData.teacherEmail && logDocData.teacherEmail !== teacherEmail && role !== "super_admin") {
-              return NextResponse.json({ error: "본인의 정리 기록만 원복할 수 있습니다." }, { status: 403 });
-            }
-          }
-        } catch (e) {
-          console.error("Failed to fetch cleanup log for restore verification:", e);
+      try {
+        const logRef = adminDb.collection("classroom_cleanup_logs").doc(logId);
+        const snap = await logRef.get();
+        if (!snap.exists) {
+          return NextResponse.json({ error: "해당 정리 기록이 존재하지 않습니다." }, { status: 404 });
         }
+        logDocData = snap.data() || {};
+        if (logDocData.teacherEmail && logDocData.teacherEmail !== teacherEmail) {
+          return NextResponse.json({ error: "본인이 진행한 정리 기록만 되돌릴 수 있습니다." }, { status: 403 });
+        }
+      } catch (e: any) {
+        console.error("Failed to fetch cleanup log for restore verification:", e);
+        return NextResponse.json({ error: "정리 기록을 확인하는 중 오류가 발생했습니다." }, { status: 500 });
       }
 
       // 🟡 1 수정: orphan 판별을 mode 필드만으로 좁힘 — 휴리스틱(!courseId && driveFolderId) 제거
