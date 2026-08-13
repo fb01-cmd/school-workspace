@@ -1567,6 +1567,23 @@ export default function UserSheetEditor({
         </table>
       </div>
 
+      {/* Server Error Summary Banner */}
+      {rows.some((r) => r.serverError) && (
+        <div className="bg-red-100 border border-red-300 rounded-md p-3 text-red-900 text-xs shadow-sm">
+          🚨 <strong>구글 워크스페이스 저장 실패 ({rows.filter((r) => r.serverError).length}건) — 아래 각 행의 사유를 확인하고 수정해 주세요:</strong>
+          <ul className="list-disc pl-5 mt-1 space-y-1">
+            {rows.map((r, originalIdx) => {
+              if (!r.serverError) return null;
+              return (
+                <li key={r.id || originalIdx}>
+                  <strong>{originalIdx + 1}행</strong> ({r.familyName}{r.givenName || "이름없음"} - {r.emailPrefix}@{domain}): {formatServerError(r.serverError)}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       {/* Row Error / Status info */}
       {rows.some((r) => r.error) && (
         <div className="bg-red-50 border border-red-200 rounded-md p-3 text-red-800 text-xs">
