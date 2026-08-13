@@ -23,20 +23,34 @@ awk '
   { lines[NR] = $0 }
   END {
     total_top = 0
+    work_top = 0
+    narrative_top = 0
     missing_status = 0
+    missing_count = 0
 
     for (i = 1; i <= NR; i++) {
       if (lines[i] ~ /^\* /) {
         total_top++
         prev = (i > 1) ? lines[i-1] : ""
+        if (prev ~ /<!-- 서술 -->/) {
+          narrative_top++
+          continue
+        }
+
+        work_top++
         if (prev !~ /^- [^ ]+ \*\*/) {
           missing_status++
+          if (missing_count == 0) {
+            print "⚠️ [상태 줄 누락] 최상위 작업 항목 중 상태 줄이 없는 항목이 있습니다:"
+          }
+          missing_count++
+          printf "  %d행: %.140s...\n", i, lines[i]
         }
       }
     }
 
-    percent = (total_top > 0) ? int(((total_top - missing_status) / total_top) * 100) : 0
-    print "상태 줄 없는 항목: " missing_status " / " total_top " (이행률 " percent "%)"
+    percent = (work_top > 0) ? int(((work_top - missing_status) / work_top) * 100) : 100
+    print "상태 줄 점검: 작업 항목 " (work_top - missing_status) " / " work_top " (이행률 " percent "% / 서술 문단 " narrative_top "개 제외)"
 
     count = 0
     for (i = 1; i <= NR; i++) {
@@ -57,12 +71,19 @@ awk '
         printf "  %d행: %.140s...\n", i, lines[i]
       }
     }
+
+    if (missing_status > 0) {
+      print "❌ 이행 미완료: 상태 줄이 누락된 작업 항목이 " missing_status "개 존재합니다."
+      exit 1
+    }
+
     if (count > 0) {
       print "총 " count "건. 원문을 열어 실제 상태를 확인하고, 그 줄 아래에 정정 주석을 덧붙이세요."
       print "(기존 줄은 지우지 않습니다 — AGENTS.md ④-2 append-only)"
       exit 1
     }
-    print "✅ 상태 표기 정합성 정상 — 모순 줄이 없거나 모두 정정 주석으로 해명됨."
+
+    print "✅ 상태 대장 이행 100% 완료 및 모순 정합성 정상."
     exit 0
   }
 ' "$TARGET"
