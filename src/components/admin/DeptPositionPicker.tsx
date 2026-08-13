@@ -52,7 +52,10 @@ export default function DeptPositionPicker({
   deptLabel = "소속 부서",
   positionLabel = "직책",
 }: Props) {
-  const available = departments.filter(d => !selectedDepts.includes(d));
+  // 고른 부서를 목록에서 **빼지 않는다**. 처음엔 뺐는데, 이미 고른 부서가 드롭다운에서
+  // 사라지는 걸 보고 사용자가 "이 부서가 통째로 없어진 건가?"로 읽었다(2026-08-13 실기기).
+  // 목록은 항상 전체를 보여 주고, 고른 것은 ✓ + 비활성으로 표시만 다르게 한다.
+  const allSelected = departments.length > 0 && departments.every(d => selectedDepts.includes(d));
 
   return (
     <>
@@ -75,20 +78,23 @@ export default function DeptPositionPicker({
 
         <select
           value=""
-          disabled={noDept || available.length === 0}
+          disabled={noDept}
           onChange={e => {
             if (e.target.value) onToggleDept(e.target.value);
           }}
           className={SELECT_CLASS}
         >
           <option value="">
-            {available.length === 0 ? "모든 부서를 선택했습니다" : "＋ 부서를 선택하세요"}
+            {allSelected ? "모든 부서를 선택했습니다" : "＋ 부서를 선택하세요"}
           </option>
-          {available.map(dept => (
-            <option key={dept} value={dept}>
-              {dept}
-            </option>
-          ))}
+          {departments.map(dept => {
+            const picked = selectedDepts.includes(dept);
+            return (
+              <option key={dept} value={dept} disabled={picked}>
+                {picked ? `✓ ${dept} (선택됨)` : dept}
+              </option>
+            );
+          })}
         </select>
 
         {/* 선택된 부서 목록 + 부서별 부서장 지정 */}
