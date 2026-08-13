@@ -73,21 +73,23 @@
 
 **firestore.rules 추가** (deny-by-default 예외 개방, 재검토 ①의 수신자·발신자 검사 요구 충족):
 
+> **[2026-08-13 정정] 아래 블록은 실배포 규칙과 동일하게 갱신했다.** 초안은 `isApproved == true`를 썼으나 §2의 정정과 같은 이유로 폐기됐고(그 필드는 "워크스페이스 관리자인가"였다), 자격 검사는 `teacher_profiles/{email}.departments.size() > 0`으로 바뀌어 2026-08-13 게시됐다(ruleset `871128f7…`). 이 문서를 복사해 규칙을 만들지 말 것 — 규칙의 단일 원본은 저장소 `firestore.rules`다.
+
 ```
 // ── memos/{domain}/items — 쪽지 (1단계) ─────────────────────
-// 읽기: 승인된 교직원 중 발신자·수신자 본인만. 쓰기: 서버 API 전용.
-// isApproved를 여기서 직접 검사한다 — 전역 isTeacher()의 승인 미검사(§8 별건)와 독립.
+// 읽기: 교직원 조직도에 소속이 등록된 교직원 중 발신자·수신자 본인만. 쓰기: 서버 API 전용.
 match /memos/{domain}/items/{memoId} {
   allow read: if isSchool()
     && myUserDoc().role in ['teacher', 'super_admin']
-    && myUserDoc().isApproved == true
+    && exists(/databases/$(database)/documents/teacher_profiles/$(request.auth.token.email))
+    && get(/databases/$(database)/documents/teacher_profiles/$(request.auth.token.email)).data.departments.size() > 0
     && (request.auth.token.email == resource.data.senderEmail
         || request.auth.token.email in resource.data.recipientEmails);
   allow write: if false;
 }
 ```
 
-- 학생·미승인 계정·비수신 교직원의 직독 불가. 목록 쿼리는 위 두 쿼리 형태만 규칙을 통과한다(array-contains 본인 / senderEmail 본인).
+- 학생·조직도 미등록 계정·비수신 교직원의 직독 불가. 목록 쿼리는 위 두 쿼리 형태만 규칙을 통과한다(array-contains 본인 / senderEmail 본인).
 
 ## §4 화면 (Antigravity 인계 스펙 — IA 명시, 임의 배치 금지)
 
