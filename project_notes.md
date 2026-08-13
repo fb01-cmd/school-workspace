@@ -579,12 +579,36 @@ tsc 0 / build ✅.
 > - **⚠️ 되감기 함정**: 기구현은 내선이 승인 경로에 실려 있어, pending에서 빼기만 하면 `handleApprove`의 merge 없는 `setDoc`이 **승인 순간 기존 내선번호를 삭제**한다. 기존 승인 프로필에서 명시 보존 필수, `{merge:true}` 금지(deptHeadMap 병합 사고). 상세 = §11-7 "2계층 저장" 절.
 > 표적 리뷰 후 수정 지시에 이 델타 전부를 묶을 것. 별칭(`displaySuffix`) 입력란은 여전히 D 갈래.
 
+> **[2026-08-13 Claude 표적 리뷰 결과 ✅] 기능은 §11-7 완료 조건을 대체로 충족. 단 핸드오버의 커밋 귀속이 틀렸고, 결함 3건 + 경미 2건.**
+> - **⚠️ 커밋 귀속 오기(기능 결함 아님, 이력 사고)**: 1단계 핵심 — 입력 UI 2곳(`ManualProfileEditor`·`MyProfileModal`), `ProfileApprovals.handleApprove` 저장·diff 줄·승인 경고, `MyProfileCard` 표시, 캐시 무효화 3곳, `isMobileNumberPattern` — 이 전부가 위 3커밋이 아니라 **`c6300a5`에 실려 있다.** 그 커밋은 "docs(memo): 표기 전수 감사"라는 문서 커밋(Co-Authored-By: Claude, 본문에 "코드로 고치지 않는다")인데 구현 코드 119줄이 섞여 커밋됐다. 결과: ① 명시된 3커밋만 diff 뜨면 승인 경로가 "누락"으로 보이고 ② **이 기능의 revert 단위는 3커밋이 아니라 4커밋(`5174998`·`02d09c8`·`c6300a5`·`27aa4db`)**이며 ③ 커밋 메시지와 내용이 불일치한다. 코드 stage 전 `git status` 확인을 수정 지시에 포함했다.
+> - **완료 조건 실측 통과분**: 저장 경로 3곳 + `getEffectiveProfile` 리터럴 `extension:""` ✓ / `recipientSummary`·`senderName`에 내선 비오염 ✓(칩 label은 이름만, 내선은 별도 필드·별도 span) / 0단계 가드(trim·대소문자 무시) ✓ / 캐시 무효화 3곳 ✓ / `POLICY_VERSION` 유지 + 문서 3종 동커밋 + 최종 수정일 표기 ✓ / `users:all`은 AuthContext가 전 교사에 프리페치하고 `list` 액션이 교사 허용이라 **쪽지 화면 가드가 일반 교사에게도 실작동** ✓ / `npx tsc --noEmit` 재실행 ✓.
+> - **결함 3건**: ① **읽음 현황만 내선 미표시**(`MemoSection` `MemoDetailPanel` 읽음 표, ~707행) — 스펙 2단계 표시 5곳 중 1곳 누락, 완료 조건 "네 화면 같은 형태" 미충족. ② **`personal_data_inventory.md` 컬렉션 표가 빈 줄로 두 동강**(`teacher_profiles` 행 직후) — 마크다운 표는 빈 줄에서 끊긴다. ③ **받은쪽지함 발신자명은 여전히 오염 경로** — `api/memo/route.ts`의 `senderName` 스탬프가 `profile.name`을 가드 없이 우선 사용, 오염 8명이 보내면 `sabian07` 형태가 쪽지 문서에 365일 박제된다(0단계는 클라이언트 표시만 고쳤다). GWS 우선 뒤집기 델타와 같은 자리라 묶어 수정.
+
+## [2026-08-13] Antigravity → Claude/사용자 (리뷰 결함 수정 + §11-7 델타 반영 완료 ✅)
+- 커밋 A (리뷰 결함 수정): `0e4b358`
+  - MemoDetailPanel 읽음 현황 내선 표시 추가 (`MemoSection.tsx`).
+  - `api/memo/route.ts` `senderName` 스탬프 우선순위 변경 (GWS → profile.name (오염 가드 적용) → 로컬부).
+  - `personal_data_inventory.md` 컬렉션 표 빈 줄 및 잡 빈 줄 정리.
+  - `resolveMemoDisplayName` 최적화 및 `OrgChartTree` 들여쓰기 정리.
+- 커밋 B (§11-7 델타 반영): `397be8c`
+  - `displayName.ts` 우선순위 뒤집기 (GWS 이름 > profile.name(가드) > 로컬부).
+  - 2계층 저장: `MyProfileModal` pending setDoc에서 extension 제거 + 내선 단독 즉시 저장 (`updateDoc`) + 휴대전화 저장 전 confirm + 미등록자 안내.
+  - `ProfileApprovals`되감기 방지: `handleApprove`에서 existingExtension 명시 보존 (merge:true 금지). 내선 diff/경고 제거.
+  - `firestore.rules` extension 자기 업데이트 규칙 추가 (게시는 하지 않음).
+  - 「정보 수정 신청」→「내 정보 관리」 4곳 문구 재명명.
+- 검증 상태: `npx tsc --noEmit` ✅ / `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅
+
+> - **경미 2건**: `resolveMemoDisplayName`이 호출마다 `users:all` 전체로 Map을 재구성(목록·검색 루프에서 O(n²)) / `OrgChartTree` 내선 표시 IIFE 들여쓰기 파손(동작 무관).
+> - 수정 지시(결함 + 델타 전부)는 아래 재개 문구에 등재.
+
 ## 4. 재개 문구 (복사용)
 
 > 모델은 **Fable 5 / Opus 5 둘 중 하나만** 적는다 (2026-08-12 사용자 정책).
 
 - 푸시: *"푸시하자."*
-- **C 구현 표적 리뷰 + 델타 지시**(**Claude — Opus 5**): *"내선번호 구현분(`5174998`·`02d09c8`·`27aa4db`)을 docs/memo_spec.md §11-7의 완료 조건으로 표적 리뷰해줘. 핸드오버 주장은 항목별 diff 대조로 검증할 것. 특히 저장 경로 3곳 필드 유실, recipientSummary·senderName 오염, 0단계 가드를 확인. 리뷰 후 Antigravity 수정 지시에 §11-7 개정 델타(2계층 저장 + GWS 이름 우선 뒤집기 + 「내 정보 관리」 재명명 + 승인 되감기 함정)를 묶어줘."*
+- ~~**C 구현 표적 리뷰 + 델타 지시**(**Claude — Opus 5**)~~ **✅ 완료(2026-08-13, 위 리뷰 결과 추기 참조)** → 다음은 아래 Antigravity 수정 지시.
+- **C 리뷰 결함 + §11-7 델타 일괄 수정**(**Antigravity**): 지시문 전문은 2026-08-13 Claude 리뷰 세션 답변에 있음(체크포인트 위 추기의 결함 3+2건 + 스펙 §11-7 개정본의 2계층 저장·GWS 우선·재명명 4곳·되감기 함정. `firestore.rules`는 저장소 파일만 수정하고 **게시 금지** — 게시는 Claude 운영 액션).
+- C 수정 착지 후 재리뷰(**Claude — Opus 5**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. 내선번호 수정분을 §11-7 완료 조건(특히 2계층 검증 4항목)으로 재리뷰해줘. 승인 직후 기존 내선 생존과 handleApprove의 merge 미사용을 diff로 확인할 것."*
 - 규칙 게시 — 2계층 저장 착지 후(**Claude — Opus 5**): *"teacher_profiles 필드 한정 자기 업데이트 규칙 게시해줘."* (8/12 절차 재사용: 게시 전 실배포 대조 → 게시 → 재조회 검증 → 롤백 ruleset 기록)
 - 운영 액션 실행(**Claude — Opus 5**): *"쪽지 운영 액션 ①② 실행해줘."* (③ 고지 갱신은 재고지 모달이 뜨므로 별도 지시)
 - 중간점검 수거(**Antigravity**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. 로드맵 §2 중간점검의 ① 미결 전수 수거 — 로드맵·project_notes·docs에서 '대기/후속/잔여/별건' 항목을 전부 긁어 목록만 만들어줘. 판단은 하지 말 것."*
