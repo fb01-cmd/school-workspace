@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { callAPI, Btn, ErrBox } from "./shared";
+import { invalidateClientCache } from "@/lib/cache/clientCache";
 
 export default function TransferInTab({ s, ud, ouPaths }: any) {
   const domain = s?.domain || ud?.domain || "";
@@ -283,20 +284,22 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
     setRunning(true);
     setErr("");
     try {
-      setResult(
-        await callAPI("enroll_students", {
-          students: [{
-            familyName: "",
-            givenName: form.fullName.trim(),
-            classNum: classNumInt,
-            studentNum: studentNumInt,
-            serialNum: nextSerial,
-            grade: parseInt(form.grade),
-          }],
-          admissionYear: cohortYearStr,  // 코호트 연도로 이메일 생성
-          grade1OUPath: gradeOU,         // 해당 학년 OU
-        }, ud)
-      );
+      const res = await callAPI("enroll_students", {
+        students: [{
+          familyName: "",
+          givenName: form.fullName.trim(),
+          classNum: classNumInt,
+          studentNum: studentNumInt,
+          serialNum: nextSerial,
+          grade: parseInt(form.grade),
+        }],
+        admissionYear: cohortYearStr,  // 코호트 연도로 이메일 생성
+        grade1OUPath: gradeOU,         // 해당 학년 OU
+      }, ud);
+      setResult(res);
+      if (res && (res.succeeded?.length || 0) > 0) {
+        invalidateClientCache("users:all");
+      }
     } catch (e: any) {
       setErr(e.message);
     } finally {

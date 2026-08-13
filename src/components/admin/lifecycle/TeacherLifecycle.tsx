@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
+import { invalidateClientCache } from "@/lib/cache/clientCache";
 
 // ─────────────────────────────────────────────────────
 // Types
@@ -129,6 +130,7 @@ function EnrollTeacherPanel({ domain, operatorEmail, operatorName }: { domain: s
       const data = await res.json();
       setResult(data);
       if (data.success) {
+        invalidateClientCache("users:all");
         setEnrolledEmail(fullEmail);
         setUsername("");
       }
@@ -354,6 +356,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
       });
       const data = await res.json();
       if (data.success) {
+        invalidateClientCache("users:all");
         alert("전출 취소 처리가 완료되었습니다.");
         loadQueue();
       } else {
@@ -446,6 +449,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
       const data = await res.json();
       setResult(data);
       if (data.success) {
+        invalidateClientCache("users:all");
         setTransferQuery("");
         setTransferEmail("");
         setTransferName("");
@@ -733,7 +737,12 @@ function OBTeacherPanel({ domain, operatorEmail, operatorName, settingsOBPath }:
       });
       const data = await res.json();
       setResult(data);
-      if (data.success) { setObQuery(""); setObEmail(""); setObName(""); }
+      if (data.success) {
+        invalidateClientCache("users:all");
+        setObQuery("");
+        setObEmail("");
+        setObName("");
+      }
     } catch (err: any) {
       setResult({ error: err.message });
     } finally {

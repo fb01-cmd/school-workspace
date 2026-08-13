@@ -5,6 +5,7 @@ import { parseEnrollmentCSV, getEnrollmentCSVTemplate } from "@/lib/csvParser";
 import type { EnrollmentRow } from "@/lib/csvParser";
 import { callAPI, Btn, ErrBox, CSVUploader } from "./shared";
 import EnrollSheetEditor from "./EnrollSheetEditor";
+import { invalidateClientCache } from "@/lib/cache/clientCache";
 
 export default function EnrollTab({ s, ud, onDone, onNext }: any) {
   const g1OU = s?.ouMapping?.students?.["1"] || "";
@@ -45,8 +46,11 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
     try {
       const response = await callAPI("enroll_students", { students, admissionYear: admYear, grade1OUPath: g1OU }, ud);
       setResult(response);
-      if (response && (response.succeeded?.length || 0) > 0 && onDone) {
-        onDone();
+      if (response && (response.succeeded?.length || 0) > 0) {
+        invalidateClientCache("users:all");
+        if ((!response.failed || response.failed.length === 0) && onDone) {
+          onDone();
+        }
       }
     } catch (e: any) {
       setErr(e.message);

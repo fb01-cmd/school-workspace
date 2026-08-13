@@ -10,6 +10,7 @@ import {
 import type { PromotionRow } from "@/lib/csvParser";
 import { callAPI, Btn, ErrBox, CSVUploader } from "./shared";
 import PromoteSheetEditor from "./PromoteSheetEditor";
+import { invalidateClientCache } from "@/lib/cache/clientCache";
 
 export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
   const [csvText, setCsvText] = useState("");
@@ -115,7 +116,10 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
         ud
       );
       setResult(response);
-      if (response && onDone) {
+      if (response && (response.succeeded?.length || 0) > 0) {
+        invalidateClientCache("users:all");
+      }
+      if (response && (response.succeeded?.length || 0) > 0 && (!response.failed || response.failed.length === 0) && onDone) {
         onDone();
       }
     } catch (e: any) {

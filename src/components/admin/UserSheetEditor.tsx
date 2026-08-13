@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import OUTreeSelector from "@/components/admin/OUTreeSelector";
 import { useAuth } from "@/context/AuthContext";
+import { invalidateClientCache } from "@/lib/cache/clientCache";
 
 interface GoogleUser {
   id: string;
@@ -30,6 +31,31 @@ interface SheetRow {
   changePasswordAtNextLogin: boolean;
   suspended: boolean;
   error?: string;
+  serverError?: string;
+}
+
+/**
+ * 저장 실패 사유를 눈높이 문구로 바꾼다.
+ *
+ * 원문(영문 API 메시지)을 화면 본문에 노출하지 않는다 — AGENTS.md ui-copy-rules 1번.
+ * 진단이 필요할 때를 위해 원문은 사라지지 않고 `title`(마우스를 올리면 보임)로 남긴다.
+ * 매칭되지 않는 원문을 그대로 반환하면 영문 오류가 그대로 화면에 뜨므로, 기본값도 한국어다.
+ */
+function formatServerError(reason: string): string {
+  if (!reason) return "구글 워크스페이스 저장 처리 중 오류가 발생했습니다.";
+  if (reason.includes("Entity already exists") || reason.includes("alreadyExists")) {
+    return "이미 등록되어 있는 아이디입니다. 다른 아이디로 바꿔 주세요.";
+  }
+  if (reason.includes("Invalid Input") || reason.includes("invalid")) {
+    return "입력한 값을 구글 워크스페이스가 받지 못했습니다. 아이디·이름에 쓸 수 없는 문자가 있는지 확인해 주세요.";
+  }
+  if (reason.includes("Permission denied") || reason.includes("403")) {
+    return "권한이 없어 처리하지 못했습니다. 관리자 권한 설정을 확인해 주세요.";
+  }
+  if (reason.includes("quota") || reason.includes("rateLimit") || reason.includes("429")) {
+    return "구글 쪽 처리 한도에 걸렸습니다. 잠시 뒤 실패한 행만 다시 저장해 주세요.";
+  }
+  return "저장하지 못했습니다. 잠시 뒤 다시 시도하고, 계속 실패하면 관리자에게 문의해 주세요.";
 }
 
 interface UserSheetEditorProps {
@@ -213,6 +239,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
   onRemoveRow,
 }: SheetRowProps) {
   const hasError = !!row.error;
+  const hasServerError = !!row.serverError;
 
   // Compute selection/fill border classes inline from stable value props.
   const isSelected = (c: number) =>
@@ -273,11 +300,12 @@ const SheetRowMemo = memo(function SheetRowMemo({
     selectionBounds !== null && index === selectionBounds.maxRow && c === selectionBounds.maxCol;
 
   return (
-    <tr
-      className={`hover:bg-slate-50/50 ${
-        row.isNew ? "bg-emerald-50/30" : row.isModified ? "bg-sky-50/30" : ""
-      } ${hasError ? "bg-red-50/20" : ""}`}
-    >
+    <>
+      <tr
+        className={`hover:bg-slate-50/50 ${
+          row.isNew ? "bg-emerald-50/30" : row.isModified ? "bg-sky-50/30" : ""
+        } ${hasServerError ? "bg-red-50/70 border-l-4 border-l-red-500" : hasError ? "bg-red-50/20" : ""}`}
+      >
       {/* No / Status Column */}
       <td className="px-2 py-1 text-center font-mono text-slate-400 select-none border-r border-slate-100">
         <div className="flex flex-col items-center gap-0.5">
@@ -507,7 +535,19 @@ const SheetRowMemo = memo(function SheetRowMemo({
         )}
       </td>
     </tr>
-  );
+    {row.serverError && (
+      <tr className="bg-red-50 border-b-2 border-red-200">
+        <td colSpan={9} className="px-4 py-2 text-xs text-red-700 bg-red-100/90 font-medium">
+          <div className="flex items-center gap-2">
+            <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[10px] font-bold">저장 실패</span>
+            {/* 본문은 눈높이 문구, 원문은 title로만 — 진단 정보는 남기되 화면에 영문을 띄우지 않는다 */}
+            <span title={row.serverError}>{formatServerError(row.serverError)}</span>
+          </div>
+        </td>
+      </tr>
+    )}
+  </>
+);
 });
 
 export default function UserSheetEditor({
@@ -624,6 +664,7 @@ export default function UserSheetEditor({
       const row = { ...next[index] };
       (row as any)[field] = value;
       row.isModified = !row.isNew;
+      row.serverError = undefined;
       validateRow(row);
       next[index] = row;
       return next;
@@ -1278,14 +1319,77 @@ export default function UserSheetEditor({
 
       const data = await res.json();
       if (res.ok) {
-        if (data.createFailures?.length > 0 || data.updateFailures?.length > 0) {
-          const createErrMsgs = (data.createFailures || []).map((f: any) => `[생성실패] ${f.email}: ${f.reason}`).join("\n");
-          const updateErrMsgs = (data.updateFailures || []).map((f: any) => `[수정실패] ${f.email}: ${f.reason}`).join("\n");
-          alert(`일부 저장 처리 실패:\n${createErrMsgs}\n${updateErrMsgs}`);
+        const createFailures = data.createFailures || [];
+        const updateFailures = data.updateFailures || [];
+        const hasFailures = createFailures.length > 0 || updateFailures.length > 0;
+
+        // 📌 [중요 매칭 및 갱신 순서]:
+        // createFailures의 email은 클라이언트가 보낸 새 이메일 (newEmail)
+        // updateFailures의 email은 기존 originalEmail (origEmail)
+        const createFailureMap = new Map<string, string>();
+        createFailures.forEach((f: any) => {
+          if (f.email) createFailureMap.set(f.email.toLowerCase(), f.reason || "생성 실패");
+        });
+
+        const updateFailureMap = new Map<string, string>();
+        updateFailures.forEach((f: any) => {
+          if (f.email) updateFailureMap.set(f.email.toLowerCase(), f.reason || "수정 실패");
+        });
+
+        // 성공건이 최소 1건이라도 있으면 브라우저 인메모리 사용자 목록 캐시 무효화
+        invalidateClientCache("users:all");
+
+        if (hasFailures) {
+          // 실패가 포함된 경우: 행별로 serverError를 매칭하고 모달(편집기)을 유지
+          setRows((prevRows) =>
+            prevRows.map((r) => {
+              if (r.isNew) {
+                const targetNewEmail = `${r.emailPrefix.trim()}@${domain}`.toLowerCase();
+                const reason = createFailureMap.get(targetNewEmail);
+                if (reason) {
+                  return { ...r, serverError: reason };
+                } else {
+                  // 생성 성공: isNew=false로 변경, originalEmail 갱신
+                  return {
+                    ...r,
+                    isNew: false,
+                    isModified: false,
+                    originalEmail: `${r.emailPrefix.trim()}@${domain}`,
+                    password: "",
+                    serverError: undefined,
+                  };
+                }
+              } else {
+                const origEmail = (r.originalEmail || "").toLowerCase();
+                const reason = updateFailureMap.get(origEmail);
+                if (reason) {
+                  return { ...r, serverError: reason };
+                } else {
+                  // 수정 성공: isModified=false, originalEmail을 새로 변경된 이메일로 갱신
+                  const newEmail = `${r.emailPrefix.trim()}@${domain}`;
+                  return {
+                    ...r,
+                    isModified: false,
+                    originalEmail: newEmail,
+                    password: "",
+                    serverError: undefined,
+                  };
+                }
+              }
+            })
+          );
+
+          alert(
+            `일부 계정 저장 처리 중 실패가 발생했습니다.\n\n` +
+            `- 성공 항목: 구글 워크스페이스에 정상 반영 완료\n` +
+            `- 실패 항목: 편집기 내 빨간색 라벨 및 실패 사유 표시\n\n` +
+            `편집기에 남아있는 실패 행의 사유를 확인하고 수정하신 후 다시 [변경사항 저장]을 눌러 주세요.`
+          );
         } else {
+          // 전건 성공 시: 성공 알림 후 편집기 닫기
           alert("모든 변경사항이 구글 워크스페이스에 실시간으로 성공 반영되었습니다!");
+          onSave();
         }
-        onSave();
       } else {
         throw new Error(data.error || "일괄 저장에 실패했습니다.");
       }
