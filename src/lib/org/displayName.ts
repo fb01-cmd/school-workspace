@@ -25,7 +25,7 @@ export function resolveDisplayName(
 
   if (gwsName && gwsName.trim()) {
     chosenName = gwsName.trim();
-  } else if (rawProfileName && rawProfileName.toLowerCase() !== localPart) {
+  } else if (rawProfileName && !isFrozenLocalPartName(rawProfileName, email)) {
     chosenName = rawProfileName;
   } else {
     chosenName = localPart;
@@ -37,4 +37,19 @@ export function resolveDisplayName(
     suffix: undefined,
     extension: profile?.extension,
   };
+}
+
+/**
+ * "굳어진 폴백" 가드 — 이름이 이메일 로컬부와 같으면(trim·대소문자 무시) 사람이 넣은 이름이
+ * 아니라 표시용 폴백이 데이터로 굳은 것으로 판단한다. 이 비교의 단일 소재지.
+ * 저장·프리필 경로에서 이 가드를 통과한 이름만 실명 취급할 것.
+ */
+export function isFrozenLocalPartName(
+  name: string | null | undefined,
+  email: string
+): boolean {
+  const cleanEmail = (email || "").trim().toLowerCase();
+  const localPart = cleanEmail.split("@")[0] || cleanEmail;
+  const n = (name || "").trim().toLowerCase();
+  return !!n && n === localPart;
 }

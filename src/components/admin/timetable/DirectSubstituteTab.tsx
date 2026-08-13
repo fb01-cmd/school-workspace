@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { resolveDisplayName, isFrozenLocalPartName } from "@/lib/org/displayName";
 import {
   SubstituteCandidate,
   SwapCandidate,
@@ -645,7 +646,15 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       }));
       // 양해를 구하는 주체는 화면을 조작 중인 일과계/어드민 본인 — 수업 당사자(선택 교사) 명의가 아니다 (2026-08-06 사용자 확정).
       // 교환 목록의 수업 소유자 표기는 선택 교사 이름으로 명시해 "제 수업"으로 오독되지 않게 한다.
-      const operatorName = teacherProfile?.name || user?.displayName || "일과 담당자";
+      // GWS 이름 우선 + 굳어진 로컬부 가드 (§11-7). 이 이름은 상대 교사에게 가는 공유 카드에
+      // "○○○입니다"로 찍히므로, 실명이 안 나오면 이메일 아이디 대신 직함 폴백을 쓴다.
+      const resolvedOperator = user?.email
+        ? resolveDisplayName(user.email, teacherProfile ?? undefined, user.displayName ?? undefined).name
+        : "";
+      const operatorName =
+        resolvedOperator && !isFrozenLocalPartName(resolvedOperator, user?.email || "")
+          ? resolvedOperator
+          : "일과 담당자";
       const shareData: ConsolidatedShareData = {
         requesterName: operatorName,
         senderLabel: operatorName, // 직책 없이 이름만 — "○○○입니다" (2026-08-06 사용자 확정: "일과계" 표기도 제외)

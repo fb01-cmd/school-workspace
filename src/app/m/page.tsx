@@ -8,6 +8,7 @@ import PushNotificationManager from "@/components/common/PushNotificationManager
 import MealCard from "@/components/common/MealCard";
 import TodayTimetableCard from "@/components/mobile/TodayTimetableCard";
 import MobileMemoSection from "@/components/mobile/MobileMemoSection";
+import { resolveDisplayName } from "@/lib/org/displayName";
 
 export default function MobileTeacherHome() {
   const { user, teacherProfile } = useAuth();
@@ -21,7 +22,10 @@ export default function MobileTeacherHome() {
     }
   };
 
-  const displayName = teacherProfile?.name || user?.displayName || user?.email?.split("@")[0] || "선생님";
+  // GWS 이름 우선 + 굳어진 로컬부 가드 (§11-7) — profile.name을 먼저 보면 오염 계정이 "sabian07님"으로 인사받는다
+  const displayName = user?.email
+    ? resolveDisplayName(user.email, teacherProfile ?? undefined, user.displayName ?? undefined).name
+    : "선생님";
 
   return (
     <RouteGuard allowedRoles={["teacher", "super_admin"]}>

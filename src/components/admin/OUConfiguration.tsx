@@ -10,6 +10,7 @@ import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import RosterApiKeyManager from "@/components/admin/RosterApiKeyManager";
 import { SchedulePeriod } from "@/context/AuthContext";
 import { DEFAULT_DEPARTMENTS, DEFAULT_POSITIONS } from "@/lib/org/departments";
+import { DEFAULT_TEACHER_GROUPS } from "@/lib/org/teacherGroups";
 
 interface OU {
   orgUnitId: string;
@@ -34,12 +35,7 @@ export default function OUConfiguration() {
   const [graduatesOU, setGraduatesOU] = useState<string>("");
   const [transferOutOU, setTransferOutOU] = useState<string>("");
   const [teachersOB, setTeachersOB] = useState<string>("");
-  const [autoJoinGroups, setAutoJoinGroups] = useState<string[]>([
-    "ts@hmh.or.kr",
-    "classroom_teachers@hmh.or.kr",
-    "hmhteacher@hmh.or.kr",
-    "hmh_teachers@hmh.or.kr",
-  ]);
+  const [autoJoinGroups, setAutoJoinGroups] = useState<string[]>([...DEFAULT_TEACHER_GROUPS]);
   const [newGroupInput, setNewGroupInput] = useState("");
   const [securityMap, setSecurityMap] = useState<Record<string, boolean>>({});
   const [blockedOuPaths, setBlockedOuPaths] = useState<string[]>([]);

@@ -24,6 +24,7 @@ import { deleteAuthUserByEmail, verifyAuthAccess, adminDb } from "@/lib/firebase
 import { isProtectedAccountEmail } from "@/lib/auth/blockedOu";
 import { FieldValue } from "firebase-admin/firestore";
 import { mapConcurrent, mapConcurrentSettled } from "@/lib/concurrency";
+import { DEFAULT_TEACHER_GROUPS } from "@/lib/org/teacherGroups";
 
 // Vercel 함수 실행 시간 한도 명시 — 신입생 일괄 생성·졸업생 일괄 정지/삭제 등
 // 수백 명 단위 작업이 플랜 기본값(10초대)에 잘리지 않도록.
@@ -1438,13 +1439,6 @@ export async function POST(req: NextRequest) {
     // ─────────────────────────────────────────
     // DYNAMIC TEACHER GROUPS HELPER
     // ─────────────────────────────────────────
-    const DEFAULT_TEACHER_GROUPS = [
-      "ts@hmh.or.kr",
-      "classroom_teachers@hmh.or.kr",
-      "hmhteacher@hmh.or.kr",
-      "hmh_teachers@hmh.or.kr",
-    ];
-
     const getTeacherGroups = async (): Promise<string[]> => {
       const classroomTeachersGroup = `classroom_teachers@${domain || "hmh.or.kr"}`;
       if (!domain) return DEFAULT_TEACHER_GROUPS;

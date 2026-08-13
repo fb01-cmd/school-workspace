@@ -6,6 +6,7 @@ import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { getClientCache, invalidateClientCache } from "@/lib/cache/clientCache";
 import { DEFAULT_DEPARTMENTS, DEFAULT_POSITIONS } from "@/lib/org/departments";
+import { isFrozenLocalPartName } from "@/lib/org/displayName";
 import { isMobileNumberPattern } from "@/components/admin/ManualProfileEditor";
 import DeptPositionPicker from "@/components/admin/DeptPositionPicker";
 
@@ -116,7 +117,10 @@ export default function MyProfileModal({ onClose }: Props) {
     setSaving(true);
     try {
       let name = (userData as any).name || (userData as any).displayName;
-      if (!name || name.includes("@")) {
+      // "@" 검사만으로는 이메일 로컬부가 그대로 굳은 이름(예: sabian07)을 못 거른다 —
+      // 그 이름이 pending에 실리면 승인 경로를 타고 다시 Firestore에 저장된다(02d09c8 구멍의 우회로).
+      if (!name || name.includes("@") || isFrozenLocalPartName(name, userData.email)) {
+        name = ""; // 오염값을 버린다 — GWS 캐시 미스면 ""로 저장(표시 폴백은 그릴 때만, 02d09c8 규약)
         const cachedUsers = getClientCache("users:all");
         if (Array.isArray(cachedUsers)) {
           const userEmail = userData.email.toLowerCase();

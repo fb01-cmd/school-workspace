@@ -8,6 +8,7 @@ import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import { invalidateClientCache } from "@/lib/cache/clientCache";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import { DEFAULT_DEPARTMENTS, DEFAULT_POSITIONS } from "@/lib/org/departments";
+import { isFrozenLocalPartName } from "@/lib/org/displayName";
 import DeptPositionPicker from "@/components/admin/DeptPositionPicker";
 
 export function isMobileNumberPattern(val: string): boolean {
@@ -65,7 +66,9 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const data = snap.data() as TeacherProfile;
-        setTargetName(gwsName || data.name || email.split("@")[0]);
+        // 프리필에 로컬부를 넣으면 [저장]만 눌러도 그대로 Firestore에 굳는다(02d09c8 구멍의 우회로) —
+        // 입력란은 실명이 없으면 비워 둔다(빈 이름 저장은 규약상 정상, 표시는 그릴 때 폴백).
+        setTargetName(gwsName || (isFrozenLocalPartName(data.name, email) ? "" : data.name || ""));
         setNoDept(data.noDept === true);
         setSelectedDepts(data.departments || []);
         setDeptHeadMap(data.deptHeadMap || {});
@@ -77,8 +80,8 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
           setHomeroomClass(data.homeroom.class || 1);
         }
       } else {
-        // Fallback default for new profile
-        setTargetName(gwsName || email.split("@")[0]);
+        // Fallback default for new profile — 로컬부 프리필 금지(위와 동일)
+        setTargetName(gwsName || "");
         setNoDept(false);
         setSelectedDepts([]);
         setDeptHeadMap({});
@@ -99,7 +102,7 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
     if (initialEmail) {
       setTargetEmail(initialEmail);
       if (initialProfile && initialProfile.email.toLowerCase() === initialEmail.toLowerCase()) {
-        setTargetName(initialProfile.name || initialEmail.split("@")[0]);
+        setTargetName(isFrozenLocalPartName(initialProfile.name, initialEmail) ? "" : initialProfile.name || "");
         setNoDept(initialProfile.noDept === true);
         setSelectedDepts(initialProfile.departments || []);
         setDeptHeadMap(initialProfile.deptHeadMap || {});
