@@ -149,6 +149,7 @@ interface LocalSearchCandidate {
   email: string;
   name: string;
   dept: string;   // 첫 번째 소속 부서 (부제 표시용)
+  extension?: string;
 }
 
 interface LocalNameSearchProps {
@@ -171,12 +172,13 @@ function LocalNameSearch({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // 이름 매칭 (이메일·OU 경로 제외)
+  // 이름 매칭 및 내선 매칭
   const q = value.trim();
   const results = q.length >= 1
     ? candidates.filter(
         (c) =>
-          c.name.includes(q) && !alreadySelected.has(c.email)
+          (c.name.includes(q) || (c.extension && c.extension.includes(q))) &&
+          !alreadySelected.has(c.email)
       ).slice(0, 10)
     : [];
 
@@ -214,7 +216,10 @@ function LocalNameSearch({
                 }}
                 className="w-full text-left px-3 py-2 hover:bg-indigo-50 flex items-center justify-between gap-2"
               >
-                <span className="text-sm font-medium text-slate-800">{c.name}</span>
+                <span className="text-sm font-medium text-slate-800">
+                  {c.name}
+                  {c.extension && <span className="ml-1.5 text-xs text-slate-400 font-normal">({c.extension})</span>}
+                </span>
                 {c.dept && (
                   <span className="text-xs text-slate-400 flex-shrink-0">{c.dept}</span>
                 )}
@@ -232,7 +237,9 @@ function LocalNameSearch({
 interface DeptMember {
   email: string;
   name: string;
+  extension?: string;
 }
+
 
 interface DeptSection {
   dept: string;
@@ -349,7 +356,11 @@ function DeptCheckboxTree({ sections, selected, onChange, myDepts }: DeptCheckbo
                       onChange={() => handlePersonToggle(m.email)}
                       className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
                     />
-                    <span className="text-sm text-slate-700">{m.name}</span>
+                    <span className="text-sm text-slate-700">
+                      {m.name}
+                      {m.extension && <span className="ml-1.5 text-xs text-slate-400 font-normal">({m.extension})</span>}
+                    </span>
+
                   </label>
                 ))}
               </div>
@@ -765,8 +776,9 @@ function ComposeModal({
       const members: DeptMember[] = [];
       profileMap.forEach((p, email) => {
         if (p.departments?.includes(dept)) {
-          members.push({ email, name: resolveMemoDisplayName(email, profileMap) });
+          members.push({ email, name: resolveMemoDisplayName(email, profileMap), extension: p.extension });
         }
+
       });
       members.sort((a, b) => a.name.localeCompare(b.name, "ko"));
       return { dept, members };
@@ -897,7 +909,9 @@ function ComposeModal({
         email,
         name: resolveMemoDisplayName(email, profileMap),
         dept: p.departments[0] ?? "",
+        extension: p.extension,
       });
+
     }
   });
 

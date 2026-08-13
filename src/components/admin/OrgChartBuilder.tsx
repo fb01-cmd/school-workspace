@@ -777,9 +777,15 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                               <span className="font-bold text-slate-900">
                                 {getDisplayName(email, teacher)}
                               </span>
+                              {teacher.extension && (
+                                <span className="text-xs text-slate-500 font-normal">
+                                  {teacher.extension}
+                                </span>
+                              )}
                               <span className="text-[11px] text-slate-400 font-mono">
                                 {email}
                               </span>
+
 
                               {/* 뱃지들 */}
                               {isHead && (
@@ -898,6 +904,12 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                           <span className="text-slate-400 text-xs">👤</span>
                         )}
                         <span className="font-bold">{getDisplayName(email, teacher)}</span>
+                        {teacher.extension && (
+                          <span className="text-xs text-slate-500 font-normal">
+                            {teacher.extension}
+                          </span>
+                        )}
+
                         <span className="text-[11px] text-slate-400 font-mono">{email}</span>
                         <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-300 text-[10px] font-extrabold rounded">
                           🚫 해당없음
@@ -1006,7 +1018,12 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-gray-900 truncate flex items-center gap-1">
                           <span>{realName}</span>
+                          {profile.extension && (
+                            <span className="text-slate-500 font-normal">({profile.extension})</span>
+                          )}
+
                           {staged && (
+
                             <span className="text-[10px] text-amber-700 bg-amber-100 font-extrabold px-1 rounded">
                               미반영
                             </span>

@@ -51,11 +51,12 @@ export default function PrivacyPolicyPage() {
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
                 <tr>
-                  <td className={tdHeadClass}>교직원 이메일·성명·담당 업무</td>
+                  <td className={tdHeadClass}>교직원 이메일·성명·담당 업무·내선번호(선택)</td>
                   <td className={tdClass}>로그인 인증·권한 구분, 교직원 조직도 관리</td>
                   <td className={tdClass}>교직원</td>
                   <td className={tdClass}>전출·퇴직 처리 시 삭제</td>
                 </tr>
+
                 <tr>
                   <td className={tdHeadClass}>시간표·수업 교환 신청 내역</td>
                   <td className={tdClass}>시간표 운영</td>
@@ -115,7 +116,8 @@ export default function PrivacyPolicyPage() {
             </table>
           </div>
           <ul className={`list-disc list-inside ${bodyTextClass} space-y-1 pt-1`}>
-            <li>주민등록번호, 전화번호, 주소, 학부모 정보는 수집·저장하지 않습니다.</li>
+            <li>주민등록번호, 개인 전화번호(휴대전화·자택 전화), 주소, 학부모 정보는 수집·저장하지 않습니다. (업무용 내선번호는 본인 또는 관리자가 직접 등록하는 선택 항목입니다.)</li>
+
             <li>
               구글 계정 내 메일·드라이브 등의 원본 데이터는 본 시스템이 아닌 학교–Google 간
               교육용 계약(Google Workspace for Education)에 따라 관리됩니다.
@@ -190,6 +192,8 @@ export default function PrivacyPolicyPage() {
             본 안내를 개정하고 로그인 시 재고지하며, 별도의 동의가 필요한 사항이 발생하는 경우
             그 시점에 동의 절차를 거칩니다.
           </p>
+          <p className="text-xs text-slate-400 mt-2">최종 수정일: 2026년 8월 13일 (내선번호 선택 등록 반영)</p>
+
         </div>
 
         {/* 7. 문의처 */}
