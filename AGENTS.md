@@ -547,4 +547,5 @@ Firebase 콘솔 → Firestore → **규칙** 탭 → 위 내용으로 교체 →
 
 4. **배포 전 필수 조치**:
    - Firestore 보안 규칙을 공개(`if true`)에서 인증 필수(`if request.auth != null`)로 반드시 변경한다. 상세는 아래 firestore-security-rules 섹션 참조.
+   - 문서를 건드린 커밋 전 `npm run check:docs`를 실행하여 `development_roadmap.md` 등의 상태 표기 모순(drift)을 사전 검사한다.
 <!-- END:deployment-checklist-rules -->
