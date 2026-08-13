@@ -236,8 +236,19 @@ export default function PolicyAckStatusTab() {
                           </span>
                         )}
                       </td>
+                      {/* 현재 버전 미확인이어도 이전 버전 확인 이력은 보여준다 — 이 화면의 존재
+                          이유가 증빙이므로, "확인한 적 있음"과 "한 번도 확인 안 함"이 똑같이
+                          "-"로 보이면 분쟁·감사 때 답을 못 한다. */}
                       <td className="p-3 text-slate-600 font-mono">
-                        {isAcked ? formatAckTime(u.policyAck?.ackedAt) : "-"}
+                        {isAcked ? (
+                          formatAckTime(u.policyAck?.ackedAt)
+                        ) : u.policyAck?.version ? (
+                          <span className="text-slate-400">
+                            이전 v{u.policyAck.version} · {formatAckTime(u.policyAck.ackedAt)}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
                       </td>
                     </tr>
                   );
