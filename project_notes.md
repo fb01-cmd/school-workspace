@@ -946,3 +946,31 @@ Antigravity 회신(①조건부 동의·④동의·⑤동의)을 받아 **3건 �
 ### 2. 검증 상태
 - `npx tsc --noEmit`: ✅ 오류 0건
 - `npm run build`: ✅ 성공
+
+
+## [2026-08-13] Claude 표적 리뷰 — `dcdb943` 원복 권한 가드 (Sonnet 5) · **통과, 🟡 1건**
+
+`docs/midterm_triage.md` §3-3 처방 (a) 적용분(`dcdb943`)을 리뷰했다. **의도한 갭 2개는 실제로 닫혔고 회귀는 없다.** `npx tsc --noEmit` 재실행 exit 0으로 독립 확인.
+
+### 확인 질문 2건 — 둘 다 통과
+
+1. **orphan/residual이 `logId` 없이 호출되는 정상 경로 = 없다.** 이 엔드포인트의 `action: "restore"` 호출자는 저장소 전체에 **하나**뿐이다(`ClassroomCleanupTab.tsx:346`, `handleRestore(log: CleanupLog)`). 인자 `log`는 이력 표 행(`:1140 onClick={() => handleRestore(log)}`)에서만 오고, 그 목록은 `?action=logs` 응답을 그대로 받는다 — 서버가 `logs = snap.docs.map(d => ({ id: d.id, ...d.data() }))`(`route.ts:57`)로 항상 `id`를 채운다. 타입도 `interface CleanupLog { id: string; … }`(`:23`)로 **필수**다. cleanup·residual·orphan 3종 로그가 전부 같은 표에 나오므로 모드별 예외 경로도 없다.
+2. **프런트는 항상 `logId`를 보낸다.** `body: JSON.stringify({ …, logId: log.id })`(`:355`). 위 1과 같은 근거로 `log.id`는 항상 값이 있다. → 새 400은 UI에서 도달 불가, 즉 **정상 사용자를 막지 않는다.**
+
+### 부수 이득 1건 (의도치 않았지만 진짜 구멍이 하나 닫혔다)
+
+기존 코드는 로그 문서가 없으면 `logDocData`가 `null`로 남아 `isResidual`이 `false`가 됐고, 그러면 residual 원복이 `else` 가지의 `restoreClassroomCourse()`로 빠졌다 — **보관 상태를 유지해야 할 코스를 ACTIVE로 되돌리는** 동작이다. 새 404가 이 경로를 차단한다. (발동 조건은 목록 조회와 클릭 사이의 문서 삭제라 희귀하지만, 잘못된 방향으로 실패하는 종류였다.)
+
+### 🟡 남은 fail-open 가지 1건 — 이번 수정의 취지에서 유일하게 빠진 곳
+
+```ts
+if (logDocData.teacherEmail && logDocData.teacherEmail !== teacherEmail) {   // route.ts:346
+```
+
+앞의 `logDocData.teacherEmail &&` 때문에 **`teacherEmail` 필드가 없는 문서는 소유자 검증을 통째로 건너뛴다.** 현재 로그 writer 3곳(`:455` orphan, `:559` cleanup, `:655` residual)이 모두 이 필드를 넣으므로 **실제로 그런 문서는 없고, 지금 당장의 위험은 없다.** 다만 fail-closed로 바꾸자는 게 이 커밋의 목적이었고, 이 한 가지가 그 반대로 남아 있다. 네 번째 writer가 생기면 조용히 열린다.
+
+**처방(1줄)**: `if (logDocData.teacherEmail !== teacherEmail)` — 필드가 없는 문서(`undefined !== email`)도 403으로 떨어진다. 급하지 않으니 다른 작업에 묶어서 처리해도 된다.
+
+### 이번 변경분이 아닌 관찰 1건 (기존 백로그와 동일)
+
+`route.ts:414`의 감사 로그가 캘린더·드라이브 원복 실패 여부와 무관하게 항상 `status: "success"`로 기록된다. `archive/project_notes_2026-08.md:165`의 "classroom cleanup 감사 로그 일괄 success(비긴급)"과 같은 건이며, 이번 커밋이 만든 문제가 아니다.
