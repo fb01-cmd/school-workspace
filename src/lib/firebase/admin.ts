@@ -78,10 +78,37 @@ export interface DecodedAuthAccess {
   role: "student" | "teacher" | "super_admin";
 }
 
+const VALID_ROLES = new Set<DecodedAuthAccess["role"]>(["student", "teacher", "super_admin"]);
+
 /**
  * HTTP Request 쿠키에서 토큰을 추출하여 유효성을 검증하고,
  * 유저의 UID 및 권한(Role) 정보를 반환합니다.
  * 미인증 접근 또는 변조된 토큰일 경우 null을 반환합니다.
+ *
+ * ── 권한은 추정하지 않는다 (2026-08-13 fail-open 폐기) ──────────────────
+ * 예전에는 users 문서가 없으면 이메일이 학번 형식인지만 보고 "student 아니면 teacher"로
+ * **추정**했고, 문서에 role이 없으면 "teacher"로 폴백했다. 그런데 이 시스템에서
+ * **users 문서의 부재는 곧 차단 그 자체**다:
+ *   - `sync-user`는 차단 OU 계정(공동교육 등)을 거부할 때 문서를 만들지 않고 잔재까지 지운다
+ *     ("차단 계정은 users 문서가 없어야 Firestore 규칙상 아무 권한도 갖지 않는다").
+ *   - `deleteFirestoreUserDocsByEmail`은 전출·졸업·삭제 경로에서 문서를 지운다.
+ * `firestore.rules`는 문서를 직접 읽으므로 이 설계대로 닫히는데, **이 함수만 반대로
+ * 열려 있었다** — 방금 문서를 지운 그 계정에게 API 층이 teacher를 내주고 있었다.
+ * ID 토큰은 삭제·차단 후에도 최대 1시간 유효하므로(`verifyIdToken`은 계정 삭제를 보지
+ * 않는다) 그동안 직접 호출이 통과한다.
+ *
+ * 그래서 문서가 없거나 role이 허용 목록 밖이면 **거부**한다.
+ *
+ * 첫 로그인이 깨지지 않는 이유(전환 전 실측): 클라이언트는 users 문서가 도착하기 전에는
+ * API를 부를 수 없다 — `RouteGuard`가 `userData`(users 스냅샷) 없이는 자식을 렌더하지
+ * 않고(전 인증 페이지 /admin·/m·/student-portal이 이걸 씀), `AuthContext`의 프리페치
+ * 4종도 `userSnap.exists()` 안에 있다. 문서를 만드는 것은 쿠키가 아니라 `sync-user`이고,
+ * 문서가 없으면 AuthContext가 자가 치유로 그것을 다시 호출한다.
+ * 실측(2026-08-13, `scripts/inspect_user_roles.ts`): users 29건 전부 유효한 role 보유,
+ * 이 전환으로 잠기는 기존 계정 0건.
+ *
+ * ⚠️ 문서·role이 없을 때 "일단 teacher"로 되돌리지 말 것. 그 폴백의 수혜자는 신규
+ * 사용자가 아니라 **방금 차단·삭제한 계정**이다.
  */
 export const verifyAuthAccess = async (req: NextRequest): Promise<DecodedAuthAccess | null> => {
   try {
@@ -96,18 +123,17 @@ export const verifyAuthAccess = async (req: NextRequest): Promise<DecodedAuthAcc
     // Firestore에서 유저 권한 조회 (Admin SDK 사용)
     const userSnap = await adminDb.collection("users").doc(uid).get();
     if (!userSnap.exists) {
-      // 동기화 딜레이 등으로 Firestore 문서가 아직 생성되지 않은 경우
-      // 이메일 주소 패턴 기반으로 임시 권한 판별 (학생 vs 교사)
-      const isStudent = /^\d{5}@hmh\.or\.kr$/.test(email);
-      return { uid, email, role: isStudent ? "student" : "teacher" };
+      console.warn(`[Auth Guard] users 문서 없음 → 거부: ${email} (uid ${uid})`);
+      return null;
     }
 
-    const userData = userSnap.data() || {};
-    return {
-      uid,
-      email,
-      role: userData.role || "teacher",
-    };
+    const role = (userSnap.data() || {}).role as DecodedAuthAccess["role"];
+    if (!VALID_ROLES.has(role)) {
+      console.warn(`[Auth Guard] role 없음/비정상 → 거부: ${email} (role=${JSON.stringify(role)})`);
+      return null;
+    }
+
+    return { uid, email, role };
   } catch (err: any) {
     console.error("[Auth Guard] 토큰 검증 실패:", err.message);
     return null;
