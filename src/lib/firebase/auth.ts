@@ -5,7 +5,9 @@ export interface UserData {
   email: string;
   domain: string;
   role: "student" | "teacher" | "super_admin";
-  isApproved: boolean;
+  // isApproved는 2026-08-13에 제거했다 — 이름은 "승인됐는가"인데 실제로는 "워크스페이스
+  // 관리자인가"였고 role과 100% 중복이었다. 타입에 남겨 두면 다시 관문으로 쓰인다.
+  // 권한 판정은 role 하나로 한다.
   isSecurityGroupJoined?: boolean;
   orgUnitPath?: string;
   createdAt?: any;

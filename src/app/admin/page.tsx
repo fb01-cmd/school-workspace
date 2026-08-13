@@ -149,7 +149,10 @@ export default function AdminPage() {
     router.push("/login");
   };
 
-  const hasAccess = userData?.role === "super_admin" || userData?.isApproved;
+  // hasAccess(= role super_admin || isApproved)는 2026-08-13에 제거했다. 선언만 되고 어디서도
+  // 읽히지 않는 죽은 변수였는데, isApproved가 학생 계정에도 true라(sync-user) 누군가 나중에
+  // 이걸 관문으로 배선하는 순간 학생이 관리자 화면에 들어오는 구조였다. 권한 판정의 단일
+  // 원본은 role(= GWS 관리자 여부)이다.
   const isSuperAdmin = userData?.role === "super_admin";
   const isTeacher = userData?.role === "teacher";
   const isStudent = userData?.role === "student";

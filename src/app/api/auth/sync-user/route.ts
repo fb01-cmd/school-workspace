@@ -116,7 +116,6 @@ export async function POST(req: NextRequest) {
         email,
         domain,
         role: "student",
-        isApproved: true,
         createdAt: snap.exists ? (snap.data()?.createdAt ?? FieldValue.serverTimestamp()) : FieldValue.serverTimestamp(),
         ...(tokenName ? { name: tokenName } : {}),
       });
@@ -155,10 +154,18 @@ export async function POST(req: NextRequest) {
     const isWorkspaceAdmin = profile.isAdmin;
     const role = isWorkspaceAdmin ? "super_admin" : "teacher";
 
+    // 권한 판정의 단일 원본은 role뿐이다 (2026-08-13, 사용자 결정 ⓐ).
+    // 예전엔 isApproved도 같이 썼는데, 이 필드는 이름과 달리 "워크스페이스 관리자인가"를
+    // 담고 있었다 — 일반 교사는 구조적으로 항상 false, 학생은 항상 true. 이름에 속아
+    // 쪽지 자격 판정에 쓴 적이 있고(수퍼어드민 전용이 돼 있었다) 관리자 승인 화면이
+    // 이 필드를 true로 올려도 다음 로그인에 여기서 되돌아갔다. role과 100% 중복이므로
+    // 남겨 두면 언젠가 또 관문으로 배선된다 → 쓰지 않고, 기존 문서에서도 지운다.
+    // status도 같이 지운다 — 유일한 기록자였던 승인 화면을 함께 삭제했다.
     if (snap.exists) {
       await userRef.update({
         role,
-        isApproved: isWorkspaceAdmin,
+        isApproved: FieldValue.delete(),
+        status: FieldValue.delete(),
         ...(tokenName ? { name: tokenName } : {}),
       });
     } else {
@@ -166,7 +173,6 @@ export async function POST(req: NextRequest) {
         email,
         domain,
         role,
-        isApproved: isWorkspaceAdmin,
         createdAt: FieldValue.serverTimestamp(),
         ...(tokenName ? { name: tokenName } : {}),
       });
