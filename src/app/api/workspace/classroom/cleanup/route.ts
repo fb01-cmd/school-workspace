@@ -342,7 +342,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "해당 정리 기록이 존재하지 않습니다." }, { status: 404 });
         }
         logDocData = snap.data() || {};
-        if (logDocData.teacherEmail && logDocData.teacherEmail !== teacherEmail) {
+        if (logDocData.teacherEmail !== teacherEmail) {
           return NextResponse.json({ error: "본인이 진행한 정리 기록만 되돌릴 수 있습니다." }, { status: 403 });
         }
       } catch (e: any) {

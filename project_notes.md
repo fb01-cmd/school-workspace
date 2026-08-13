@@ -974,3 +974,16 @@ if (logDocData.teacherEmail && logDocData.teacherEmail !== teacherEmail) {   // 
 ### 이번 변경분이 아닌 관찰 1건 (기존 백로그와 동일)
 
 `route.ts:414`의 감사 로그가 캘린더·드라이브 원복 실패 여부와 무관하게 항상 `status: "success"`로 기록된다. `archive/project_notes_2026-08.md:165`의 "classroom cleanup 감사 로그 일괄 success(비긴급)"과 같은 건이며, 이번 커밋이 만든 문제가 아니다.
+
+## [2026-08-13] Antigravity — 클래스룸 되돌리기 소유자 검증 fail-closed 처리 & E2E 검증 완료 ✅
+- **코드 수정**: `src/app/api/workspace/classroom/cleanup/route.ts` line 345
+  - `if (logDocData.teacherEmail && logDocData.teacherEmail !== teacherEmail)` 단락 평가 제거 → `if (logDocData.teacherEmail !== teacherEmail)` 변경.
+  - `teacherEmail` 필드가 없는 로그 문서도 403 Forbidden으로 차단되는 fail-closed 검증 적용 완료.
+- **E2E 및 실기기 검증**:
+  - `logId` 누락 시 `400` / 문서 부재 시 `404` / 소유자 누락·미일치 시 `403` 정상 차단 확인.
+  - 되돌리기 3종 모드 (일반 cleanup / residual / orphan) E2E 테스트 통과 및 Firestore `audit_logs` 컬렉션에 `CLASSROOM_CLEANUP_RESTORE` 실물 감사 로그 기록 확인 완료:
+    1. 일반 cleanup 되돌리기: `joAKjkdnyHPvPwvsvURB` (Target: `course_e2e_cleanup`, Details: `클래스룸 보관 해제 및 복원 (E2E Test Cleanup Course)`)
+    2. 잔여 정돈 (residual) 되돌리기: `YkLakaflAotfuAaqDQKW` (Target: `course_e2e_residual`, Details: `잔여 정돈 원복(보관 유지) (E2E Test Residual Course)`)
+    3. 고아 폴더 (orphan) 되돌리기: `sXVFD8nzmM0NTUQ5Spja` (Target: `folder_e2e_orphan`, Details: `고아 폴더 원복 (E2E Test Orphan Folder)`)
+- **검증 상태**: `npx tsc --noEmit` ✅
+
