@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { POLICY_VERSION } from "@/lib/policy/version";
 
 interface PolicyAckUser {
@@ -16,20 +16,10 @@ interface PolicyAckUser {
   };
 }
 
-interface PolicyAckHistoryItem {
-  id: string;
-  uid: string;
-  email: string;
-  role: string;
-  version: string;
-  ackedAt: string;
-}
-
 /**
  * ackedAt은 경로에 따라 세 형태로 도착한다 — ① 클라이언트 SDK Timestamp(.toDate 보유)
  * ② 서버(admin SDK) JSON 직렬화 {_seconds,_nanoseconds}(또는 {seconds,nanoseconds})
- * ③ ISO 문자열/숫자. ②를 그대로 렌더하면 React가 객체 자식으로 앱 전체를 죽인다(#31 — 2026-08-06 실서비스 장애).
- * 어떤 형태든 문자열로만 반환하는 단일 통로.
+ * ③ ISO 문자열/숫자. 어떤 형태든 문자열로만 반환하는 단일 통로.
  */
 const formatAckTime = (v: any): string => {
   if (!v) return "-";
@@ -53,11 +43,8 @@ export default function PolicyAckStatusTab() {
     pendingCount: number;
     pendingUsers: PolicyAckUser[];
     ackedUsers: PolicyAckUser[];
-    history: PolicyAckHistoryItem[];
   } | null>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<"pending" | "acked" | "history">("pending");
-  const [roleFilter, setRoleFilter] = useState<"all" | "teacher" | "student">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   const fetchData = async () => {
@@ -87,6 +74,23 @@ export default function PolicyAckStatusTab() {
     fetchData();
   }, []);
 
+  // 전체 유저 목록 합성 (확인자 + 미확인자)
+  const allUsers = useMemo(() => {
+    if (!data) return [];
+    return [...data.ackedUsers, ...data.pendingUsers];
+  }, [data]);
+
+  // 검색 결과
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return allUsers.filter((u) => {
+      const name = (u.name || "").toLowerCase();
+      const email = (u.email || "").toLowerCase();
+      return name.includes(q) || email.includes(q);
+    });
+  }, [allUsers, searchQuery]);
+
   if (loading) {
     return (
       <div className="py-20 text-center text-slate-500">
@@ -107,44 +111,20 @@ export default function PolicyAckStatusTab() {
     );
   }
 
-  // 필터링 적용 (미확인자 / 확인 완료자)
-  const filterUsers = (users: PolicyAckUser[]) => {
-    return users.filter((u) => {
-      // 역할 필터
-      if (roleFilter === "teacher" && u.role !== "teacher" && u.role !== "super_admin") return false;
-      if (roleFilter === "student" && u.role !== "student") return false;
-
-      // 검색어 필터
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        return (
-          u.name.toLowerCase().includes(q) ||
-          u.email.toLowerCase().includes(q) ||
-          (u.grade && `${u.grade}학년`.includes(q))
-        );
-      }
-
-      return true;
-    });
-  };
-
-  const filteredPending = filterUsers(data.pendingUsers);
-  const filteredAcked = filterUsers(data.ackedUsers);
-
   return (
     <div className="space-y-6 pb-10">
-      {/* 헤더 및 요약 정보 */}
+      {/* 헤더 */}
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2 mb-1">
             <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-full">
-              수퍼어드민 전용
+              관리자 전용
             </span>
             <span className="text-xs text-slate-400 font-mono">현재 버전: v{data.currentVersion}</span>
           </div>
           <h2 className="text-xl font-bold text-slate-900">🔒 개인정보 처리 안내 고지 현황</h2>
           <p className="text-xs text-slate-500 mt-1">
-            현재 버전(v{POLICY_VERSION}) 기준 개인정보 처리 안내 고지 확인 여부 및 미확인자 목록입니다.
+            현재 버전(v{POLICY_VERSION}) 기준 개인정보 처리 안내 고지 확인 수량 및 사용자별 확인 여부를 조회합니다.
           </p>
         </div>
 
@@ -156,7 +136,7 @@ export default function PolicyAckStatusTab() {
         </button>
       </div>
 
-      {/* 요약 카운터 카드리스트 */}
+      {/* 요약 카운터 카드 3개 */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
@@ -183,208 +163,97 @@ export default function PolicyAckStatusTab() {
         </div>
       </div>
 
-      {/* 서브 탭 & 필터 */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex border-b sm:border-b-0 space-x-2">
-            <button
-              onClick={() => setActiveSubTab("pending")}
-              className={`px-4 py-2 font-bold text-xs rounded-xl transition-all ${
-                activeSubTab === "pending"
-                  ? "bg-amber-500 text-white shadow-sm"
-                  : "bg-white text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              ⏳ 미확인자 ({data.pendingCount}명)
-            </button>
-
-            <button
-              onClick={() => setActiveSubTab("acked")}
-              className={`px-4 py-2 font-bold text-xs rounded-xl transition-all ${
-                activeSubTab === "acked"
-                  ? "bg-emerald-600 text-white shadow-sm"
-                  : "bg-white text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              ✅ 확인 완료자 ({data.ackedCount}명)
-            </button>
-
-            <button
-              onClick={() => setActiveSubTab("history")}
-              className={`px-4 py-2 font-bold text-xs rounded-xl transition-all ${
-                activeSubTab === "history"
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "bg-white text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              📜 이력 전체 ({data.history.length}건)
-            </button>
+      {/* 검색 조회 섹션 */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">🔍 개별 사용자 확인 여부 조회</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              이름 또는 이메일을 입력하여 특정 사용자의 고지 확인 상태와 시각을 조회하세요.
+            </p>
           </div>
-
-          {activeSubTab !== "history" && (
-            <div className="flex items-center gap-2">
-              <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value as any)}
-                className="p-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800"
-              >
-                <option value="all">전체 구분</option>
-                <option value="teacher">교직원</option>
-                <option value="student">학생</option>
-              </select>
-
-              <input
-                type="text"
-                placeholder="이름 또는 이메일 검색..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="p-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 w-44"
-              />
-            </div>
-          )}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="이름 또는 이메일 검색..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full sm:w-72 p-2.5 pl-9 border border-slate-300 rounded-xl text-xs bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+            />
+            <span className="absolute left-3 top-2.5 text-slate-400 text-xs">🔍</span>
+          </div>
         </div>
 
-        {/* 탭 1: 미확인자 목록 */}
-        {activeSubTab === "pending" && (
-          <div className="divide-y divide-slate-100">
-            {filteredPending.length === 0 ? (
-              <div className="p-12 text-center text-slate-400 text-xs">
-                현재 모든 사용자가 고지를 확인하였거나 조건에 맞는 미확인자가 없습니다.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="p-3">구분</th>
-                      <th className="p-3">이름</th>
-                      <th className="p-3">이메일</th>
-                      <th className="p-3">학급 정보</th>
-                      <th className="p-3">상태</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredPending.map((u) => (
-                      <tr key={u.uid} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+        {/* 검색 결과 표시 */}
+        {searchQuery.trim() === "" ? (
+          <div className="py-10 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+            조회할 교직원 또는 학생의 이름이나 이메일을 검색창에 입력해 주세요.
+          </div>
+        ) : searchResults.length === 0 ? (
+          <div className="py-10 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+            검색 결과가 없습니다. (입력한 &quot;{searchQuery}&quot;와(과) 일치하는 사용자가 없습니다.)
+          </div>
+        ) : (
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                <tr>
+                  <th className="p-3">구분</th>
+                  <th className="p-3">이름</th>
+                  <th className="p-3">이메일</th>
+                  <th className="p-3">확인 여부</th>
+                  <th className="p-3">확인 시각</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {searchResults.map((u) => {
+                  const isAcked = u.policyAck && u.policyAck.version === POLICY_VERSION;
+                  return (
+                    <tr key={u.uid} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="p-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                             u.role === "super_admin"
                               ? "bg-purple-100 text-purple-800"
                               : u.role === "teacher"
                               ? "bg-blue-100 text-blue-800"
                               : "bg-slate-100 text-slate-700"
-                          }`}>
-                            {u.role === "super_admin" ? "수퍼어드민" : u.role === "teacher" ? "교사" : "학생"}
+                          }`}
+                        >
+                          {u.role === "super_admin" ? "관리자" : u.role === "teacher" ? "교사" : "학생"}
+                        </span>
+                      </td>
+                      <td className="p-3 font-bold text-slate-900">{u.name}</td>
+                      <td className="p-3 font-mono text-slate-600">{u.email}</td>
+                      <td className="p-3">
+                        {isAcked ? (
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded inline-flex items-center gap-1">
+                            ✅ 확인 완료 (v{u.policyAck?.version})
                           </span>
-                        </td>
-                        <td className="p-3 font-bold text-slate-900">{u.name}</td>
-                        <td className="p-3 font-mono text-slate-600">{u.email}</td>
-                        <td className="p-3 text-slate-500">
-                          {u.grade && u.classNum ? `${u.grade}학년 ${u.classNum}반` : "-"}
-                        </td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded">
-                            미확인 (다음 로그인 시 고지 노출)
+                        ) : (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded inline-flex items-center gap-1">
+                            ⏳ 미확인
                           </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 탭 2: 확인 완료자 목록 */}
-        {activeSubTab === "acked" && (
-          <div className="divide-y divide-slate-100">
-            {filteredAcked.length === 0 ? (
-              <div className="p-12 text-center text-slate-400 text-xs">
-                확인 완료자 목록이 없습니다.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="p-3">구분</th>
-                      <th className="p-3">이름</th>
-                      <th className="p-3">이메일</th>
-                      <th className="p-3">확인 버전</th>
-                      <th className="p-3">확인 시각</th>
+                        )}
+                      </td>
+                      <td className="p-3 text-slate-600 font-mono">
+                        {isAcked ? formatAckTime(u.policyAck?.ackedAt) : "-"}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredAcked.map((u) => (
-                      <tr key={u.uid} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            u.role === "super_admin"
-                              ? "bg-purple-100 text-purple-800"
-                              : u.role === "teacher"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-slate-100 text-slate-700"
-                          }`}>
-                            {u.role === "super_admin" ? "수퍼어드민" : u.role === "teacher" ? "교사" : "학생"}
-                          </span>
-                        </td>
-                        <td className="p-3 font-bold text-slate-900">{u.name}</td>
-                        <td className="p-3 font-mono text-slate-600">{u.email}</td>
-                        <td className="p-3 font-mono font-bold text-emerald-600">v{u.policyAck?.version}</td>
-                        <td className="p-3 text-slate-500">
-                          {formatAckTime(u.policyAck?.ackedAt)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 
-        {/* 탭 3: 개정 고지 이력 전체 */}
-        {activeSubTab === "history" && (
-          <div className="p-6 space-y-4">
-            <p className="text-xs text-slate-500">
-              `policy_acks` 컬렉션에 서버가 기록한 개정 이력 원본 증빙 문서들입니다. (위조 방지 적용)
-            </p>
-
-            {data.history.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 text-xs border border-dashed rounded-xl">
-                기록된 고지 확인 이력이 없습니다.
-              </div>
-            ) : (
-              <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="p-3">문서 ID</th>
-                      <th className="p-3">사용자 계정</th>
-                      <th className="p-3">역할</th>
-                      <th className="p-3">고지 버전</th>
-                      <th className="p-3">확인 일시</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {data.history.map((h) => (
-                      <tr key={h.id} className="hover:bg-slate-50/80 transition-colors font-mono text-[11px]">
-                        <td className="p-3 text-slate-400 truncate max-w-[150px]">{h.id}</td>
-                        <td className="p-3 font-semibold text-slate-800">{h.email}</td>
-                        <td className="p-3 text-slate-600">{h.role}</td>
-                        <td className="p-3 font-bold text-indigo-600">v{h.version}</td>
-                        <td className="p-3 text-slate-500">
-                          {formatAckTime(h.ackedAt)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+        {/* 증빙 원본 안내 문구 */}
+        <div className="pt-2 text-[11px] text-slate-400 border-t border-slate-100 flex items-center gap-1.5">
+          <span>📜</span>
+          <span>
+            서버의 <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-600">policy_acks</code> 컬렉션에 사용자의 개정 고지 확인 이력 원본 증빙 문서가 이력별로 자동 보존됩니다.
+          </span>
+        </div>
       </div>
     </div>
   );
