@@ -185,50 +185,68 @@ export async function runDisciplineSheetBridge(
   const rawChecks: RawSheetCheck[] = [];
   let checkedRowsCount = 0;
 
+  // 읽기 호출 수 주의 (2026-08-13 실사고): 원래는 탭마다 values.get 2회(머리글+데이터)
+  // × 10반 × 3부 = **한 번 돌 때 60콜**이었는데, Sheets API의 분당 사용자별 읽기 한도가
+  // 정확히 60이라 벼랑 끝에 걸쳐 있었다 — 통합 크론 수동 실행에서 quota exceeded로 실증.
+  // 지금은 스프레드시트당 2콜(탭 목록 1 + batchGet 1) = **총 6콜**. 탭 부재 처리도
+  // "400 에러를 잡아 스킵"에서 "메타데이터로 실재 탭만 조회"로 바뀌어 정공법이 됐다.
   for (const [gradeStr, id] of Object.entries(DISCIPLINE_BRIDGE_SHEETS)) {
     const grade = Number(gradeStr);
-    for (let c = 1; c <= 10; c++) {
-      const tab = `${grade}-${c}`;
 
-      // 폭주 가드 1: 머리글 검증 (A1:J3)
-      let headRes;
-      try {
-        headRes = await sheetsApi.spreadsheets.values.get({
-          spreadsheetId: id,
-          range: `'${tab}'!A1:J3`,
-        });
-      } catch (err: any) {
-        const errMsg = String(err?.message || err || "");
-        const isNotFound =
-          err?.code === 400 ||
-          err?.status === 400 ||
-          errMsg.includes("Unable to parse range") ||
-          errMsg.includes("not found");
-        if (isNotFound) {
-          // 탭이 존재하지 않음 (예: 10반이 없는 학년)
-          continue;
-        }
-        const warnMsg = `[Sheet Read Error] 탭 '${tab}' 읽기 오류: ${errMsg}`;
-        console.warn(warnMsg);
-        warnings.push(warnMsg);
-        continue;
-      }
+    // 실재 탭 목록 조회 (1콜) — 10반이 없는 학년 등은 여기서 자연히 걸러진다
+    let existingTabs: string[];
+    try {
+      const meta = await sheetsApi.spreadsheets.get({
+        spreadsheetId: id,
+        fields: "sheets.properties.title",
+      });
+      const titles = new Set(
+        (meta.data.sheets || []).map((s) => s.properties?.title || "")
+      );
+      existingTabs = Array.from({ length: 10 }, (_, i) => `${grade}-${i + 1}`).filter((t) =>
+        titles.has(t)
+      );
+    } catch (err: any) {
+      const warnMsg = `[Sheet Read Error] ${grade}학년 시트 탭 목록 조회 오류: ${String(err?.message || err)}`;
+      console.warn(warnMsg);
+      warnings.push(warnMsg);
+      continue;
+    }
+    if (existingTabs.length === 0) continue;
 
-      if (!validateTabHeader(headRes.data.values || [])) {
+    // 전 탭 일괄 읽기 (1콜) — 탭마다 머리글(A1:J3)·데이터(A4:J80) 두 범위를 쌍으로 요청.
+    // valueRenderOption은 데이터 파싱(체크박스 boolean) 요건을 따르며, 머리글 검증은
+    // 텍스트 포함 검사라 렌더 옵션과 무관하다.
+    let valueRanges;
+    try {
+      const batch = await sheetsApi.spreadsheets.values.batchGet({
+        spreadsheetId: id,
+        ranges: existingTabs.flatMap((t) => [`'${t}'!A1:J3`, `'${t}'!A4:J80`]),
+        valueRenderOption: "UNFORMATTED_VALUE",
+      });
+      valueRanges = batch.data.valueRanges || [];
+    } catch (err: any) {
+      const warnMsg = `[Sheet Read Error] ${grade}학년 시트 일괄 읽기 오류: ${String(err?.message || err)}`;
+      console.warn(warnMsg);
+      warnings.push(warnMsg);
+      continue;
+    }
+
+    for (let ti = 0; ti < existingTabs.length; ti++) {
+      const tab = existingTabs[ti];
+      const c = Number(tab.split("-")[1]);
+      const headValues = valueRanges[ti * 2]?.values || [];
+      const dataValues = valueRanges[ti * 2 + 1]?.values || [];
+
+      // 폭주 가드 1: 머리글 검증
+      if (!validateTabHeader(headValues)) {
         const warnMsg = `[Header Validation Failed] 탭 '${tab}' 머리글 검증 실패. 해당 탭 스킵.`;
         console.warn(warnMsg);
         warnings.push(warnMsg);
         continue;
       }
 
-      // 데이터 행 읽기 (A4:J80)
-      const dataRes = await sheetsApi.spreadsheets.values.get({
-        spreadsheetId: id,
-        range: `'${tab}'!A4:J80`,
-        valueRenderOption: "UNFORMATTED_VALUE",
-      });
-
-      for (const row of dataRes.data.values || []) {
+      for (const row of dataValues) {
         const num = Number(row[0]);
         const name = String(row[1] ?? "").trim();
         if (!Number.isInteger(num) || num < 1 || !name) continue;
