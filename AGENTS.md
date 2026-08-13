@@ -70,6 +70,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 3. 역할 구분: `admin@` = Workspace 도메인 관리·DWD 사칭용, `hmnotice@` = 알림 발신 전용, **`fb01@` = 개발·배포 인프라 소유**.
 4. **보호 계정 3종 (2026-08-11 사용자 확정)**: `fb01@`·`hmnotice@`·`admin@`는 플랫폼의 어떤 정지·일시정지·삭제 경로에도 포함되면 안 된다. 사용자가 fb01@·hmnotice@를 GWS 최고관리자로 승격했으나(콘솔 측 방어), **플랫폼은 Admin SDK(DWD)로 동작하므로 그 승격이 내부 안전장치가 아니다** — 파괴적 조치 기능을 새로 만들거나 수정할 때 이 3계정 예외 처리를 반드시 확인한다. 플랫폼 수준 하드 차단 기능은 로드맵 §2 "보호 계정 가드" 항목으로 착수 대기.
    > **[2026-08-13 정정 — "착수 대기"는 stale]** 하드 차단은 **1차(`2a03acd`)·2차(`5328cb7`)로 이미 구현돼 있다.** 단일 소재지는 `src/lib/google/workspace.ts`의 `deleteUser`·`updateUser`(정지·아이디 변경·OU 이동 차단). **단, 삭제 원시함수는 하나 더 있다** — `deleteAuthUserByEmail`(`src/lib/firebase/admin.ts:54`, `users` 문서 + Firebase Auth 삭제)에는 보호 계정 검사가 없고 모든 삭제 경로에서 `deleteUser`보다 먼저 실행된다. **파괴적 기능을 새로 만들 때는 이 두 함수를 모두 확인한다.** 전수·처방: [`docs/midterm_triage.md`](./docs/midterm_triage.md) §3-2.
+   > **[2026-08-14 재정정 — 위 줄의 "보호 계정 검사가 없고"는 이제 stale]** `deleteAuthUserByEmail`에는 **가드가 들어갔다** (`be35aba`, `src/lib/firebase/admin.ts:55-57`). 같은 날 저녁에 닫혔는데 이 줄이 갱신되지 않았다. 유지되는 규칙은 앞 문장뿐이다 — **삭제 원시함수는 `workspace.ts`의 `deleteUser`와 `admin.ts`의 `deleteAuthUserByEmail` 둘이고, 파괴적 기능을 새로 만들 때 둘 다 확인한다.**
+   > *이 줄 자체가 표본이다*: 유령을 정정하려고 쓴 주석이 몇 시간 만에 유령이 됐다. 상태를 문장에 적으면 반드시 낡는다는 것이 §git-based-roadmap-rules 3번(상태 복사 금지)의 근거이고, 여기서도 같은 일이 일어났다.
 <!-- END:infrastructure-account-rules -->
 
 <!-- BEGIN:notification-sender-rules -->
