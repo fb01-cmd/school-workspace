@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 # .env* 는 ".env"로 시작하는 이름만 잡는다 — `vercel env pull prod.env` 같은
 # 산출물(prod.env·local.env)은 걸리지 않아 서비스 계정 개인키가 노출될 뻔했다 (2026-08-12)
 *.env

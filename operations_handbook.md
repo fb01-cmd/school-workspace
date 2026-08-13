@@ -88,6 +88,12 @@
      1. GCP Console (`console.cloud.google.com`)에서 해당 API(예: Google Calendar API, Google Drive API, Google Classroom API)가 **[사용(ENABLE)]** 상태인지 확인.
      2. Google Workspace Admin Console (`admin.google.com`) → [보안] → [API 제어] → [도메인 전체 위임]에 서비스 계정 이메일과 해당 OAuth Scope URL이 등록되어 있는지 확인.
 
+5. **"시간표 그리드/뷰 데이터가 이전 값으로 꼬이거나 즉시 갱신되지 않아요" (캐시 장애 대응)**
+   - **원인**: 시간표 그리드 조회 캐시(In-memory / Redis)의 만료 전 갱신 누락.
+   - **대응**:
+     1. 시간표 캐시 킬스위치 환경변수인 `TIMETABLE_VIEW_CACHE`를 `off`로 지정 (`TIMETABLE_VIEW_CACHE=off`).
+     2. 캐시가 즉시 우회되고 실시간 재계산 결과가 화면에 표시되는지 확인 후 원인 해결 후 다시 제거/원복.
+
 ## 6. 정기 운영 캘린더
 
 | 시기 | 할 일 |
