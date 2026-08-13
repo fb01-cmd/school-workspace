@@ -1,6 +1,7 @@
 # Project Notes
 
-- 🔒 현재 작업 중 파일: src/lib/org/displayName.ts, src/components/admin/OrgChartBuilder.tsx, src/components/admin/OrgChartTree.tsx, src/components/admin/MemoSection.tsx, src/components/admin/ManualProfileEditor.tsx, src/components/admin/MyProfileModal.tsx, src/components/admin/ProfileApprovals.tsx, src/components/admin/MyProfileCard.tsx, src/context/AuthContext.tsx, personal_data_inventory.md, src/app/privacy/page.tsx, src/lib/policy/version.ts
+- (현재 작업 중인 파일 없음)
+
 
 
 
@@ -559,16 +560,26 @@ tsc 0 / build ✅.
    - **스펙 §8** — 편집 관문(`applyDraftOp`·`analyzeOpImpact`)의 하드 판정이 동일 키 위반의 **건수 증가를 못 잡는다**. 엄격하게 바꾸면 실사용 편집이 새로 막힐 수 있어 별도 검증이 필요해 미뤄 둔 건.
 5. **v2 이월** — 해결안 탐색기의 **학급 간 교환**([`docs/timetable_fix_assist_spec.md`](./docs/timetable_fix_assist_spec.md) §7). 현재 v1은 같은 학급 안에서만 맞바꿔서 요일 쏠림(S1)을 구조적으로 못 푼다. 11월 리허설 전에 필요해지면 착수.
 
+## [2026-08-13] Antigravity → Claude/사용자 (내선번호 §11-7 구현 완료 ✅)
+- 변경 파일: `src/lib/org/displayName.ts`(신설), `OrgChartBuilder.tsx`, `OrgChartTree.tsx`, `MemoSection.tsx`, `ManualProfileEditor.tsx`, `MyProfileModal.tsx`, `ProfileApprovals.tsx`, `MyProfileCard.tsx`, `AuthContext.tsx`, `personal_data_inventory.md`, `src/app/privacy/page.tsx`, `src/lib/policy/version.ts`
+- 커밋:
+  - 0단계: `5174998` (`displayName.ts` 단일 소재지 추출 및 가드)
+  - 0-B단계: `02d09c8` (이메일 로컬부 폴백 저장 방지)
+  - 1~4단계: `27aa4db` (내선번호 저장/표시/승인/캐시 무효화 및 개인정보 문서 3종)
+- 검증 상태: `npx tsc --noEmit` ✅ / `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅
+- 주요 사항:
+  - `POLICY_VERSION`은 `2026-08.2`로 고정 보존됨 (변경 없음).
+  - 휴대전화 형태 입력 시 입력 화면(관리자·본인) 및 승인 화면 3곳 모두 경고 렌더링.
+  - 내선번호는 쪽지 DB 문서(`senderName`, `recipientSummary`)에 비정규화해 저장되지 않음.
+- 다음 할 일: **Claude 표적 리뷰** (`docs/memo_spec.md §11-7` 완료 조건 검증)
+
 ## 4. 재개 문구 (복사용)
 
 > 모델은 **Fable 5 / Opus 5 둘 중 하나만** 적는다 (2026-08-12 사용자 정책).
 
-> **다음 = C 내선번호 구현.** 쪽지 A·B는 실기기 확인까지 통과해 종결됐고, C의 개인정보 판단·인계 스펙(`docs/memo_spec.md` §11-7)도 확정됐다. **남은 것은 Antigravity 구현뿐이다.**
-> (A·B·§11-2·회수·C 판단 관련 재개 문구는 전부 소진됐으므로 지웠다.)
-
 - 푸시: *"푸시하자."*
-- **C 내선번호 구현**(**Antigravity**): *"docs/memo_spec.md §11-7 '내선번호 구현 인계 스펙'을 읽고 그대로 구현해줘. 0단계(displayName.ts 단일 소재지 추출)를 먼저 하고 별도 커밋으로 나눌 것 — 0단계는 동작이 하나도 바뀌면 안 된다. 4단계 개인정보 문서 3종은 반드시 같은 커밋에 넣어라. POLICY_VERSION 문자열은 절대 바꾸지 마라(바꾸면 전 교직원에게 모달이 뜬다)."*
 - **C 구현 후 표적 리뷰**(**Claude — Opus 5**): *"내선번호 구현분을 docs/memo_spec.md §11-7의 완료 조건으로 표적 리뷰해줘. 특히 저장 경로 3곳 필드 유실과 recipientSummary 오염을 확인할 것."*
 - 운영 액션 실행(**Claude — Opus 5**): *"쪽지 운영 액션 ①② 실행해줘."* (③ 고지 갱신은 재고지 모달이 뜨므로 별도 지시)
 - 중간점검 수거(**Antigravity**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. 로드맵 §2 중간점검의 ① 미결 전수 수거 — 로드맵·project_notes·docs에서 '대기/후속/잔여/별건' 항목을 전부 긁어 목록만 만들어줘. 판단은 하지 말 것."*
 - 중간점검 트리아지(**Claude — Opus 5**): *"project_notes.md 맨 끝 '세션 종합 체크포인트'만 읽어줘. 수거된 미결 목록을 트리아지해줘. §3-2의 두 항목은 반드시 포함할 것."*
+
