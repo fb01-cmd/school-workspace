@@ -693,10 +693,10 @@ export async function GET(req: NextRequest) {
       userDocReconcile = { error: reconcileErr.message };
     }
 
-    // ── Phase 11 산출물 E: 보존 기한 경과 데이터 파기 (2026-08-05 확정: 서명 증빙 3년·감사 로그 5년) ──
+    // ── Phase 11 산출물 E: 보존 기한 경과 데이터 파기 (2026-08-05 확정: 서명 증빙 3년·감사 로그 5년·쪽지 설정일) ──
     // mockToday와 무관하게 실제 시각 기준으로만 판정 — 테스트용 날짜 조작이 조기 파기를 유발하면 안 된다.
     const retentionNow = new Date();
-    const purgeCounts = { graduationConsents: 0, auditLogs: 0 };
+    const purgeCounts = { graduationConsents: 0, auditLogs: 0, memos: 0 };
     const purgeExpiredDocs = async (query: FirebaseFirestore.Query, label: string) => {
       let total = 0;
       // 회당 300건 × 최대 10회 — Vercel 실행 한도 내 안전. 잔여분은 다음날 크론이 이어서 파기.
@@ -721,14 +721,25 @@ export async function GET(req: NextRequest) {
         adminDb.collection("audit_logs").where("timestamp", "<=", auditCutoff),
         "감사 로그(5년 경과)"
       );
+      // expireAt 필드는 api/memo/route.ts:166에서 숫자(ms, timestamp)로 기록됨
+      let expiredMemosTotal = 0;
+      for (const domain of domains) {
+        const count = await purgeExpiredDocs(
+          adminDb.collection("memos").doc(domain).collection("items").where("expireAt", "<=", retentionNow.getTime()),
+          `만료 쪽지 (${domain})`
+        );
+        expiredMemosTotal += count;
+      }
+      purgeCounts.memos = expiredMemosTotal;
+
       // 파기 실행 사실만 기록(건수·기준일) — 파기된 내용 자체는 재기록하지 않는다.
-      if (purgeCounts.graduationConsents > 0 || purgeCounts.auditLogs > 0) {
+      if (purgeCounts.graduationConsents > 0 || purgeCounts.auditLogs > 0 || purgeCounts.memos > 0) {
         await writeAuditLog({
           operatorEmail: "system-cron",
           operatorName: "보존 기한 파기 크론",
           action: "보존 기한 경과 데이터 파기",
           targetEmail: "-",
-          details: `졸업 서명 증빙 ${purgeCounts.graduationConsents}건·감사 로그 ${purgeCounts.auditLogs}건 파기 (방침: 3년/5년)`,
+          details: `졸업 서명 증빙 ${purgeCounts.graduationConsents}건·감사 로그 ${purgeCounts.auditLogs}건·쪽지 ${purgeCounts.memos}건 파기 (방침: 3년/5년/설정일)`,
           status: "success",
         });
       }
