@@ -41,6 +41,7 @@ async function run() {
   console.log(`  제목   : ${name}`);
 
   const drive = getDriveClient(owner);
+  if (!drive) throw new Error("Drive 클라이언트를 만들지 못했다 — 서비스 계정 환경변수를 확인하라.");
   const res = await drive.files.create({
     requestBody: { name, mimeType: "application/vnd.google-apps.document" },
     media: { mimeType: "text/html", body: html },
