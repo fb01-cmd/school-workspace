@@ -22,6 +22,16 @@
 //
 // 한도가 다시 빠듯해지면 대안(같은 키로 사용 가능 실측): gemini-3.5-flash-lite,
 // gemini-flash-lite-latest. 실제 잔여량은 https://ai.dev/rate-limit 에서 확인.
+//
+// 실측 2026-08-14 — AI Studio rate-limit 화면(fb01@ 계정) 무료 등급 일일 요청(RPD):
+//   gemini-3.7-flash       20/일   ← 신규 출시. **지금과 동일하다. 갈아탈 이유 없음**
+//   gemini-3.5-flash       20/일   ← 현재 고정값
+//   gemini-3.6-flash       20/일   (화면상 초과 표시)
+//   gemini-2.5-flash       20/일
+//   gemini-3.5-flash-lite  500/일  ← **25배. 한도가 병목이 되면 여기로 간다**
+// 교훈 갱신: "한 세대 이전이라 여유가 있다"는 전제는 더 이상 성립하지 않는다 —
+// flash 계열은 세대와 무관하게 전부 20/일이다. 여유를 만드는 축은 **세대가 아니라 lite 계열**이다.
+// 11월 9c 리허설처럼 AI를 몰아 쓰는 일정 전에는 lite 전환을 먼저 검토할 것.
 export const GEMINI_MODEL = "gemini-3.5-flash";
 
 const GEMINI_ENDPOINT = (model: string, key: string) =>
