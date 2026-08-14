@@ -408,10 +408,29 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     }
 
     // 엑셀 데이터 -> HoursPlanRow 변환 (스펙 §0-1a-②': subjectName은 단축과목명 우선, 정식과목명은 neisName에 보존)
+    // 단축명 충돌(같은 단축명 ↔ 여러 정식명, 실물: 체육1·체육2 모두 "체Ⅰ")이면 그 단축명은
+    // 식별자로 못 쓴다 — 해당 과목만 정식명으로 식별 (같은 반·같은 교사 두 행이 합쳐지는 사고 방지)
+    const shortToFull = new Map<string, Set<string>>();
+    for (const pRow of excelResult.rows) {
+      const s = (pRow.subjectShort || "").trim();
+      const f = (pRow.subjectName || "").trim();
+      if (!s || !f) continue;
+      if (!shortToFull.has(s)) shortToFull.set(s, new Set());
+      shortToFull.get(s)!.add(f);
+    }
+    const collidingShorts = new Set(
+      [...shortToFull.entries()].filter(([, fulls]) => fulls.size > 1).map(([s]) => s)
+    );
+
     const newRows: HoursPlanRow[] = [];
     for (const pRow of excelResult.rows) {
       const email = teacherMappings[pRow.teacherName] || "";
-      const effectiveSubject = (pRow.subjectShort || pRow.subjectName || "").trim();
+      const shortTrim = (pRow.subjectShort || "").trim();
+      const effectiveSubject = (
+        (shortTrim && !collidingShorts.has(shortTrim) ? shortTrim : pRow.subjectName) ||
+        shortTrim ||
+        ""
+      ).trim();
       const shortName = (pRow.subjectShort || "").trim() || undefined;
       const neisName = (pRow.subjectName || "").trim() || undefined;
 
