@@ -216,6 +216,40 @@ export function parseHoursExcel(data: ArrayBuffer | Uint8Array): ParsedHoursResu
       // 순번이 없거나 정수가 아닌 경우 -> 합계행인지 확인 (스펙 §0-1a-① 규칙 5)
       const numSeq = parseInt(String(seqVal || ""), 10);
       if (isNaN(numSeq) || numSeq <= 0) {
+        // (a) 합계행으로 판정한 행에 정식과목명 또는 교사명이 있으면 error ("순번이 누락된 데이터 행")
+        if (subjectName || teacherName) {
+          issues.push({
+            severity: "error",
+            message: `${r + 1}행: 순번이 누락된 데이터 행입니다 (과목: '${subjectName || "미입력"}', 교사: '${teacherName || "미입력"}').`,
+          });
+        }
+
+        // (b) break 이후 남은 행을 스캔해서 비어 있지 않은 데이터 행이 있으면 error
+        for (let nextR = r + 1; nextR < rawData.length; nextR++) {
+          const nextRow = rawData[nextR] || [];
+          if (nextRow.length === 0 || nextRow.every((c) => c === null || c === undefined || String(c).trim() === "")) {
+            continue;
+          }
+          let nextSub = "";
+          let nextTea = "";
+          let nextSeqNum = 0;
+          for (let c = 0; c < nextRow.length; c++) {
+            const m = colMap.get(c);
+            if (!m) continue;
+            if (m.type === "meta") {
+              if (m.key === "subjectName") nextSub = String(nextRow[c] || "").trim();
+              if (m.key === "teacherName") nextTea = String(nextRow[c] || "").trim();
+              if (m.key === "seq") nextSeqNum = parseInt(String(nextRow[c] || ""), 10);
+            }
+          }
+          if (nextSub || nextTea || nextSeqNum > 0) {
+            issues.push({
+              severity: "error",
+              message: `합계행 이후 데이터 행 존재(${nextR + 1}행: 과목 '${nextSub || "미입력"}', 교사 '${nextTea || "미입력"}') — 순번 단절로 자료가 끊겼습니다.`,
+            });
+          }
+        }
+
         // 합계행으로 판정하고 데이터 행 파싱 종료
         sumRow = row;
         break;
