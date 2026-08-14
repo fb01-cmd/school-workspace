@@ -19,6 +19,15 @@
  *  - 학년별 요일별 교시수(gradeDayPeriods) → 정식 출처는 설정·입력 화면.
  *  - 교사 이름·과목 약칭(표시용) → 정식 출처는 계정 원장·term.subjects.
  *
+ * [2026-08-14 2차 — 9c-H §3 항목 5] 그리드 대역을 실제로 끊었다:
+ *  - 고정 슬롯: 그리드 추출(extractPlaceholderFixedBlocks) 대신 **코호트 등록부 전개**
+ *    (expandCohortFixedBlocks). 등록부 내용은 관리자 입력을 전사한 상수(TRANSCRIBED_COHORTS,
+ *    2026-08-14 실측: 전 학년 동일 — 수6·7 SLAT, 금5·6 창체). 그리드 추출은 전사가 실제와
+ *    같은지 대조하는 검증용으로만 남는다.
+ *  - 시수표: **업로드 실물 조건**(9c-H §0-1a-③ⓒ — 창체·SLAT 행 없음)을 재현. 파생 시수표에서
+ *    가상 행을 제거한 뒤, 등록부가 함의하는 행(impliedHoursFromFixedBlocks)으로 보강한다.
+ *    이 보강이 실서버 업로드 경로에서도 그대로 필요하다 (H1/H4 시수표 대조 전제).
+ *
  * 사용법: npx tsx --env-file=.env.local scripts/solve_blank.ts [seed] [--cache=경로]
  *   --cache: 지정 시 첫 실행에서 Firestore 입력을 JSON으로 저장하고 이후 재사용
  *            (읽기 할당량 절약 — 반복 실험용). 읽기 전용, Firestore 쓰기 0건.
@@ -38,9 +47,39 @@ import {
 } from "../src/lib/timetable/solver";
 import {
   ClassGrid,
+  CurriculumCohort,
   FixedBlock,
   TimetableConstraintModel,
 } from "../src/lib/timetable/types";
+import {
+  expandCohortFixedBlocks,
+  impliedHoursFromFixedBlocks,
+} from "../src/lib/timetable/cohort";
+
+/**
+ * 코호트 등록부 전사 — 관리자가 화면에서 입력하게 될 내용을 상수로 재현 (실험용).
+ * 2026-08-14 실측: 2026-2 전 학년·전 학급이 동일 슬롯(수6·7 SLAT, 금5·6 창체)이라
+ * 교육과정 1건으로 전 학년이 덮인다(입학 2024 이후 전부). 아래 전사가 그리드 실물과
+ * 일치하는지는 실행 시 extractPlaceholderFixedBlocks 대조로 검증한다.
+ */
+const TRANSCRIBED_COHORTS: CurriculumCohort[] = [
+  {
+    id: "adm2024",
+    label: "2026-2 현행 교육과정 (전사)",
+    startAdmissionYear: 2024,
+    fixedSlots: [
+      { displayName: "SLAT", day: 3, period: 6 },
+      { displayName: "SLAT", day: 3, period: 7 },
+      { displayName: "창체", day: 5, period: 5 },
+      { displayName: "창체", day: 5, period: 6 },
+    ],
+    active: true,
+    createdBy: "experiment",
+    updatedBy: "experiment",
+    updatedAt: 0,
+  },
+];
+const SCHOOL_YEAR = 2026;
 
 const DOMAIN = "hmh.or.kr";
 const args = process.argv.slice(2);
@@ -155,10 +194,47 @@ async function main() {
     `학기 ${inputs.termId} / 그리드 ${grids.length}학급 / 등록부: 동시 ${inputs.simulGroups?.length}·특별실 ${inputs.venueGroups?.length}·금지 ${inputs.teacherSlotBans?.length}·연속 ${inputs.consecutiveRules?.length}·복수 ${inputs.coTeaching?.length}`
   );
 
-  // ── 그리드에서 뽑는 것: 시수표 + 자리표시 고정 슬롯 + 요일별 교시수 + 표시용 이름들 ──
-  const hours = deriveHoursFromGrids(grids);
+  // ── 그리드에서 뽑는 것: 시수표 + 요일별 교시수 + 표시용 이름들 ──
+  const derivedHours = deriveHoursFromGrids(grids);
   const gradeDayPeriods = deriveGradeDayPeriods(grids);
-  const fixedBlocks = extractPlaceholderFixedBlocks(grids, inputs.termId);
+
+  // ── 고정 슬롯: 코호트 등록부 전개 (그리드 대역 아님 — 9c-H §3 항목 5) ──
+  const classList = grids
+    .map((g) => ({ grade: g.grade, classNum: g.classNum }))
+    .sort((a, b) => a.grade - b.grade || a.classNum - b.classNum);
+  const fixedBlocks = expandCohortFixedBlocks(
+    TRANSCRIBED_COHORTS,
+    SCHOOL_YEAR,
+    classList,
+    inputs.termId
+  );
+  // 전사 검증: 등록부 전개 결과가 그리드 실물의 자리표시 위치와 일치하는가
+  const gridBlocks = extractPlaceholderFixedBlocks(grids, inputs.termId);
+  const slotSig = (bs: FixedBlock[]) =>
+    bs
+      .flatMap((b) =>
+        b.entries.map((e) => `${b.day}-${b.period}|${e.grade}-${e.classNum}|${e.subjectName}`)
+      )
+      .sort()
+      .join("\n");
+  const transcriptionOk = slotSig(fixedBlocks) === slotSig(gridBlocks);
+  console.log(
+    `코호트 전사 대조: 등록부 전개 ${fixedBlocks.reduce((s, b) => s + b.entries.length, 0)}건 vs ` +
+      `그리드 실물 ${gridBlocks.reduce((s, b) => s + b.entries.length, 0)}건 → ${transcriptionOk ? "✅ 일치" : "❌ 불일치"}`
+  );
+  if (!transcriptionOk) {
+    console.log("전사가 실물과 다릅니다 — TRANSCRIBED_COHORTS를 실물에 맞게 고치세요.");
+    process.exit(1);
+  }
+
+  // ── 시수표: 업로드 실물 조건 재현 (창체·SLAT 행 제거) + 등록부 함의 행 보강 ──
+  const isVirtualRow = (tk: string) => !tk || tk.startsWith("name:");
+  const uploadHours = derivedHours.filter((h) => !isVirtualRow(h.teacherKey));
+  const impliedHours = impliedHoursFromFixedBlocks(fixedBlocks);
+  const hours = [...uploadHours, ...impliedHours];
+  console.log(
+    `시수표: 파생 ${derivedHours.length}행 → 업로드형 ${uploadHours.length}행(가상 ${derivedHours.length - uploadHours.length}행 제거) + 등록부 함의 ${impliedHours.length}행`
+  );
   const teacherNames: Record<string, string> = {};
   for (const g of grids)
     for (const c of g.cells || [])

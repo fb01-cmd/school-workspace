@@ -7,7 +7,7 @@
  * 컴파일러(compileSectionsFromHours)는 학년 축을 모른다 — 전개 결과(학급 단위 FixedBlock)만
  * 넘긴다. 그 경계를 지켜야 코호트 축 변경이 솔버로 번지지 않는다.
  */
-import { CohortFixedSlot, CurriculumCohort, FixedBlock } from "./types";
+import { CohortFixedSlot, CurriculumCohort, FixedBlock, HoursRequirement } from "./types";
 
 /** 특정 학년도의 특정 학년이 따르는 교육과정 — 적용 시작 입학년도가 그 이하인 것 중 가장 최근 것 */
 export function cohortForGrade(
@@ -93,6 +93,34 @@ export function expandCohortFixedBlocks(
       entries: b.entries,
       active: true,
     }));
+}
+
+/** 고정 슬롯이 함의하는 시수표 행 (9c-H §0-1a-③ⓒ) — 업로드 실물 시수표에는 창체·SLAT 행이
+ *  없으므로, 컴파일·검사(H1/H4 시수표 대조) 전에 이 행들을 시수표에 보태야 한다.
+ *  teacherKey는 가상 교사 규약 "name:이름" (validate.ts teacherKeyOf와 동일 규약). */
+export function impliedHoursFromFixedBlocks(blocks: FixedBlock[]): HoursRequirement[] {
+  const counts = new Map<string, HoursRequirement>();
+  for (const b of blocks) {
+    if (!b.active) continue;
+    for (const e of b.entries) {
+      const name = e.teacherName || e.subjectName;
+      const key = `${e.grade}-${e.classNum}|${e.subjectName}|${name}`;
+      const row = counts.get(key);
+      if (row) row.hours += 1;
+      else
+        counts.set(key, {
+          grade: e.grade,
+          classNum: e.classNum,
+          subjectName: e.subjectName,
+          teacherKey: `name:${name}`,
+          hours: 1,
+        });
+    }
+  }
+  return [...counts.values()].sort(
+    (a, b) =>
+      a.grade - b.grade || a.classNum - b.classNum || a.subjectName.localeCompare(b.subjectName)
+  );
 }
 
 /** 서버 검증 (9c-H §2-4) — 통과하면 null, 아니면 첫 번째 문제 문구 */

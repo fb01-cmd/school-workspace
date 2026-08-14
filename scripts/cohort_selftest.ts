@@ -11,6 +11,7 @@ import {
   cohortForGrade,
   expandCohortFixedBlocks,
   gradesForCohort,
+  impliedHoursFromFixedBlocks,
   validateCohortInput,
 } from "../src/lib/timetable/cohort";
 
@@ -122,6 +123,26 @@ console.log("④ 전개 — 학급 단위 FixedBlock");
   // 코호트 없는 학년은 조용히 비움 (fixed-missing은 컴파일러 몫)
   const none = expandCohortFixedBlocks([NEW], 2026, [{ grade: 3, classNum: 1 }]);
   check("코호트 없는 학년 → 블록 0", none.length === 0);
+}
+
+console.log("④-b 함의 시수 행 — 업로드 시수표(창체·SLAT 행 없음) 보강용");
+{
+  // 신 교육과정 1학년 1반: 창체 금5 + SLAT 수6·수7 → 창체 1시간·SLAT 2시간
+  const blocks = expandCohortFixedBlocks([NEW], 2026, [{ grade: 1, classNum: 1 }], "t1");
+  const implied = impliedHoursFromFixedBlocks(blocks);
+  check("행 수 2 (과목별 집계)", implied.length === 2, JSON.stringify(implied));
+  const changhe = implied.find((r) => r.subjectName === "창체");
+  const slat = implied.find((r) => r.subjectName === "SLAT");
+  check("창체 1시간", changhe?.hours === 1);
+  check("SLAT 2시간", slat?.hours === 2);
+  check(
+    "가상 교사 규약 name:이름",
+    implied.every((r) => r.teacherKey === `name:${r.subjectName}`)
+  );
+  check(
+    "비활성 블록 제외",
+    impliedHoursFromFixedBlocks(blocks.map((b) => ({ ...b, active: false }))).length === 0
+  );
 }
 
 console.log("⑤ 서버 검증");

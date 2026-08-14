@@ -362,6 +362,7 @@ export interface BlankCompileIssue {
   code:
     | "fixed-missing" // 자리표시 시수인데 고정 슬롯 등록부(fixedBlocks)에 없음 → H1로 드러난다
     | "fixed-mismatch" // 고정 슬롯 수 ≠ 시수
+    | "fixed-standalone" // 등록부 슬롯인데 시수표 행 없음 → 자리표시 합성 점유 (업로드 경로 정상, §0-1a-③ⓒ)
     | "simul-assumed" // 동시수업 그룹 몫을 시수표에서 역산 — 가정을 명시
     | "simul-unsolved" // 그룹 구성 도출 실패 — 전 행 일반 섹션 강등 (H7로 드러난다)
     | "venue-slot-limited" // 슬롯 제한 특별실 — 배분 미상, 전 시수 점유 보수 처리
@@ -637,11 +638,18 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
   // ── ② 고정 슬롯(fixedBlocks) 소비 — 자리표시(창체·SLAT)의 유일한 위치 출처 ──
   const fixedBlocks = (model.fixedBlocks || []).filter((b) => b.active);
   const fixedIndex = new Map<string, Array<{ day: number; period: number }>>();
+  /** key → 대표 entry (시수표 행 없이 슬롯만 있을 때 합성 섹션의 표시 정보) */
+  const fixedMeta = new Map<
+    string,
+    { grade: number; classNum: number; subjectName: string; teacherName?: string }
+  >();
+  const fixedConsumed = new Set<string>();
   for (const fb of fixedBlocks) {
     for (const e of fb.entries) {
       const key = `${e.grade}-${e.classNum}|${normSubject(e.subjectName)}`;
       if (!fixedIndex.has(key)) fixedIndex.set(key, []);
       fixedIndex.get(key)!.push({ day: fb.day, period: fb.period });
+      if (!fixedMeta.has(key)) fixedMeta.set(key, e);
     }
   }
   for (const slots of fixedIndex.values())
@@ -650,7 +658,9 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
   for (const r of rows) {
     if (r.consumed) continue;
     const ck = `${r.grade}-${r.classNum}`;
-    const slots = fixedIndex.get(`${ck}|${normSubject(r.subjectName)}`);
+    const fixedKey = `${ck}|${normSubject(r.subjectName)}`;
+    const slots = fixedIndex.get(fixedKey);
+    if (slots?.length) fixedConsumed.add(fixedKey);
     if (!slots?.length) {
       if (isVirtualKey(r.teacherKey)) {
         // 자리표시는 시수표에 위치 정보가 없다 — 등록부 없이는 배치 불능 (머리말 ①)
@@ -684,6 +694,47 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
       allowedSlots: null,
       bannedSlots: new Set(),
       fixedSlots: use,
+    });
+  }
+
+  // ── ②-b 시수표 행 없는 고정 슬롯 → 합성 점유 섹션 ──
+  //
+  // 업로드 경로의 실물 시수표(2026-2 실측, 9c-H §0-1a-③ⓒ)에는 창체·SLAT 행이 아예 없다 —
+  // 코호트 등록부의 슬롯이 시수표 행과 못 만나면 그냥 버려져 솔버가 그 칸에 수업을 넣는다.
+  // 행이 없어도 슬롯 자체를 자리표시 섹션으로 세워 점유시킨다 (파생 경로는 가상 행이
+  // 슬롯을 소비하므로 이 패스가 비어 기존 결과와 동일하다).
+  for (const [key, slots] of [...fixedIndex.entries()].sort()) {
+    if (fixedConsumed.has(key)) continue;
+    const e = fixedMeta.get(key)!;
+    const ck = `${e.grade}-${e.classNum}`;
+    const label = `${ck}반 ${e.subjectName}`;
+    issues.push({
+      code: "fixed-standalone",
+      text: `${label} — 고정 슬롯 ${slots.length}칸이 등록부에만 있고 시수표에는 해당 행이 없습니다. 자리표시로 점유시킵니다 (업로드 시수표에는 창체·SLAT 행이 없는 것이 정상입니다. 과목 표기가 어긋난 것이라면 등록부·시수표의 이름을 맞춰 주세요)`,
+    });
+    sections.push({
+      id: `bfixedonly:${key}`,
+      kind: "fixed",
+      label,
+      grade: e.grade,
+      classKeys: [ck],
+      teacherKeys: [],
+      lessonsByClass: {
+        [ck]: [
+          {
+            subjectName: e.subjectName,
+            subjectShort:
+              input.subjectShorts?.[normSubject(e.subjectName)] || e.subjectName,
+            teachers: [{ email: "", name: e.teacherName || e.subjectName }],
+          },
+        ],
+      },
+      occurrences: slots.length,
+      blockLens: slots.map(() => 1),
+      room: null,
+      allowedSlots: null,
+      bannedSlots: new Set(),
+      fixedSlots: slots,
     });
   }
 
