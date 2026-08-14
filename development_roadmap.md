@@ -105,6 +105,7 @@
 * **9b 스펙 확정 (2026-07-30 ✅)**: [`phase9b_spec.md`](./phase9b_spec.md) 작성 완료 (설명서 PDF 2종 정독 기반 — 컴시간 기능→범위 매핑, weeks/changes/requests 모델, 주간 합성, 교체 후보 엔진(맞교환·특별보강·감점 규칙), 신청→승인 워크플로, NEIS 목록·시수 집계, 구현 분업 6단계). **2026-07-30 당일 사용자 확인 4건(spec §12) 전부 확정되어 구현 진행됨** — 순서 1·2(합성·엔진·승인 서버)는 Claude 직접, 화면은 Antigravity.
 - 🔜 **Phase 9c. 자동 시간표 작성 (CSP 솔버)** — 브라우저 CSP 솔버 및 스펙 4종 확정 (11월 말 시한) · docs/phase9c_spec.md
 * **9c 자동 시간표 작성 (브라우저 CSP 솔버 — 스펙 확정 🔜, 11월 말 검증 시한)**: 컴시간 재계약 판단 전 11월 말 검증 시한이 걸린 최대 미결 작업. 결정론 솔버 코어(CSP) + AI 보조 결합. 스펙: [`docs/phase9c_spec.md`](./docs/phase9c_spec.md), 서브 스펙 3종([`phase9c_d_spec.md`](./docs/phase9c_d_spec.md), [`phase9c_e_spec.md`](./docs/phase9c_e_spec.md), [`phase9c_f_spec.md`](./docs/phase9c_f_spec.md)).
+  - **[2026-08-14 추가] 학기 전환 스펙 확정** — 사용자 지적("등록부는 현 학기용인데 신학기 것은 어디서?")으로 드러난 신학기 준비 통로 부재를 나이스형 모델(학기 데이터 분리 + 사전 작성·검증 + 전환)로 설계. 컴시간 매뉴얼(§3·§4 통째 사본)·나이스 실무(사용자 증언) 레퍼런스 대조 완료. 초안 학기 생성·학기 선택·등록부 승계 복사·시수 계획 소속·자동 작성 채택(draft_adopt)·전환 관문 6부. 임시 회귀는 안 만들기로 사용자 확정(생기부류 법정 기록 없음). 상세 = [`docs/term_transition_spec.md`](./docs/term_transition_spec.md).
 
 - ⏸ **(구) Phase 9 원안 (CSP·결강보강·캘린더)** — phase9_spec.md 및 9a/9b/9c 단계별 스펙으로 대체되어 보류
 #### (구) Phase 9 원안 — AI 기반 웹 시간표 및 교체수업 편성 시스템 (스펙으로 대체됨)
