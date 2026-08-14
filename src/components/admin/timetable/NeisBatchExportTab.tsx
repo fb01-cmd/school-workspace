@@ -145,9 +145,11 @@ export default function NeisBatchExportTab({ activeTermId }: NeisBatchExportTabP
     const carried = (registry?.subjects || []).filter((r) => !seedNames.has(r.platformName));
     const res = await api({
       action: "neis_map_save",
-      subjects: [...seedRows, ...carried],
-      confirmedTeachers: Array.from(checkedTeachers),
-      confirmedPairs: Array.from(checkedPairs),
+      neisMap: {
+        subjects: [...seedRows, ...carried],
+        confirmedTeachers: Array.from(checkedTeachers),
+        confirmedPairs: Array.from(checkedPairs),
+      },
     }).catch(() => ({}));
 
     if (res.success) {

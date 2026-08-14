@@ -1305,7 +1305,7 @@ export async function POST(req: NextRequest) {
       }
 
       case "neis_map_save": {
-        const { registry, error } = sanitizeNeisMapPayload(body.neisMap);
+        const { registry, error } = sanitizeNeisMapPayload(body.neisMap || body);
         if (error || !registry) {
           return NextResponse.json({ error: error || "등록부 본문이 올바르지 않습니다." }, { status: 400 });
         }
