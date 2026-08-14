@@ -5991,27 +5991,11 @@ export async function saveHoursPlan(
   const simulSnap = await simulGroupsColRef(domain).get();
   const validSimulGroupIds = new Set(simulSnap.docs.map((d) => d.id));
 
-  // 4. teacherEmail 실재 확인용: rows에 등장하는 고유 이메일만 직접 조회 (무료 할당량 절약)
-  const distinctEmails = Array.from(
-    new Set(
-      rows
-        .map((r) => (r.teacherEmail || "").trim().toLowerCase())
-        .filter((e) => e !== "")
-    )
-  );
-
-  const validUserEmails = new Set<string>();
-  if (distinctEmails.length > 0) {
-    const docRefs = distinctEmails.map((e) => adminDb.collection("users").doc(e));
-    const userDocs = await adminDb.getAll(...docRefs);
-    for (const doc of userDocs) {
-      if (doc.exists) {
-        validUserEmails.add(doc.id.toLowerCase());
-        const d = doc.data();
-        if (d?.email) validUserEmails.add(String(d.email).toLowerCase());
-      }
-    }
-  }
+  // 4. teacherEmail 검증 규약 — `users` 컬렉션 대조는 원천이 틀렸다: users/{uid} 문서는
+  //    첫 로그인에 생기므로 플랫폼 미접속 교사(실측: 현직 다수)가 전부 거부된다.
+  //    계정 실재는 UI 드롭다운(워크스페이스 디렉터리 목록)이 보장하고, 서버는 컴시간
+  //    가져오기(validateImportPayload 1-b)와 동일하게 형식·학번형 학생 계정만 차단한다.
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   const rowKeySet = new Set<string>();
 
@@ -6029,11 +6013,14 @@ export async function saveHoursPlan(
     if (!r.subjectName || !r.subjectName.trim()) {
       throw new Error(`[행 ${i + 1}] 과목명이 누락되었습니다.`);
     }
-    // 4. teacherEmail 실재 확인 (빈 문자열 = 가상 교사 허용)
+    // 4. teacherEmail 형식·학생 계정 차단 (빈 문자열 = 가상 교사 허용) — 위 규약 주석 참조
     const normEmail = (r.teacherEmail || "").trim().toLowerCase();
     if (normEmail !== "") {
-      if (!validUserEmails.has(normEmail)) {
-        throw new Error(`[행 ${i + 1}] 등록되지 않은 교사 계정입니다: ${r.teacherEmail} (${r.teacherName || r.subjectName})`);
+      if (!EMAIL_RE.test(normEmail)) {
+        throw new Error(`[행 ${i + 1}] 이메일 형식이 아닙니다: ${r.teacherEmail} (${r.teacherName || r.subjectName})`);
+      }
+      if (/^\d+@/.test(normEmail)) {
+        throw new Error(`[행 ${i + 1}] 학번형 계정입니다 — 동명이인 학생 오매핑 의심: ${r.teacherEmail} (${r.teacherName || r.subjectName})`);
       }
     }
     // 5. venueHours 0 <= venueHours <= hours
