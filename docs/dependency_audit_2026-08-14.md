@@ -273,6 +273,36 @@ npm 레지스트리의 16.2.x: … 16.2.10(현재), 16.2.11, 16.2.12
 
 > 단, `AGENTS.md`가 경고하듯 이 버전대의 Next.js는 학습 데이터와 다르다. **패치 상승이라도 `npx tsc --noEmit` + `npm run build` + 실화면 확인을 거친다.**
 
+> ### 🔴 [2026-08-14 정정 — 위 §5-1의 판단이 틀렸다. 실행 후 실측]
+>
+> 16.2.12로 올린 뒤 `npm audit --omit=dev`를 다시 돌렸다. **13건 그대로다. `next`가 여전히 걸린다.**
+>
+> ```
+> 영향 범위 : 9.3.4-canary.0 - 16.3.0-preview.10     ← 16.2.12도 포함
+> 수정 버전 : 16.3.1  (마이너 상승, 패치 아님)
+> ```
+>
+> **무엇을 틀렸나**: 이 문서 §3.2가 적은 *"영향 범위 `>=16.0.0 <16.2.11`"* 을 그대로 믿고, npm에 16.2.11·16.2.12가 있다는 것만 확인한 뒤 "패치가 있으니 9건 해소"라고 결론냈다. **정작 `npm audit`이 말하는 `fixAvailable`을 확인하지 않았다.** 한 줄이면 됐다:
+> ```bash
+> npm audit --omit=dev --json | node -e "...vulnerabilities.next.fixAvailable"
+> ```
+> 버전이 npm에 **존재하는가**와 그 버전이 **권고를 해소하는가**는 다른 질문이다. 앞의 것만 확인하고 뒤의 것을 확인하지 않았다. (`AGENTS.md` §2-⑨ 1번 "헤드라인만 보고 권고"의 변종 — 이번엔 벤치마크가 아니라 **남의 보고서의 범위 표기**를 1차 출처 확인 없이 인용했다.)
+>
+> **그래서 어떻게 하나 — 16.2.12에 머문다. 16.3.1로 올리지 않는다.**
+>
+> | 근거 | 내용 |
+> |---|---|
+> | 노출이 애초에 낮다 | 이 문서 §3.2가 실측한 대로 Server Actions·middleware·`next/image` 전부 미사용이라 9건 중 대부분이 **도달 불가**다. 남는 것은 `rewrites`(destination 하드코딩이라 SSRF 실현 어려움)와 캐시 혼동뿐 |
+> | 16.3.1은 **마이너 상승**이다 | `AGENTS.md`가 "이 버전대 Next.js는 학습 데이터와 다르다, breaking changes"라고 경고한 대상이 바로 이 프레임워크다. 마이너 점프는 패치와 위험이 다르다 |
+> | 시기가 나쁘다 | 9c 시한이 11월 말이다. 프레임워크 마이너 상승은 **되돌리기 어려운 종류의 변경**이고, 지금 깨지면 시한을 먹는다 |
+> | 이미 올린 건 손해가 없다 | 16.2.12는 `tsc` 0·`build` 성공·소스 변경 0. 되돌릴 이유도 없다 |
+>
+> **재점검 시점**: 9c가 끝난 뒤(11월 말 이후) 16.3.x 계열이 안정화되면 그때 올린다. 그 전에 `next`에 **실제 도달 가능한** 신규 권고(우리가 쓰는 기능에 걸리는 것)가 나오면 즉시 재개한다.
+>
+> **부수 정정 1건**: 이 문서 §3.2의 *"영향 범위 `>=16.0.0 <16.2.11`"* 은 실제 권고 범위(`9.3.4-canary.0 - 16.3.0-preview.10`)와 다르다. 조사 시점의 표기를 옮긴 것으로 보이며, **1차 출처는 `npm audit --json`이다.**
+>
+> **부수 정정 2건**: 업그레이드 과정에서 `package.json`의 `next`가 `"16.2.10"`(정확 고정) → `"^16.2.12"`(캐럿)으로 바뀌어 있었다. `npm install next@x`의 기본 동작이다. 이 저장소는 프레임워크 핵심을 **정확 고정**하는 관행이다(`react`·`react-dom`도 캐럿 없음) — 캐럿이면 새 환경에서 `npm install` 시 16.3.x가 딸려 올 수 있다. **`"16.2.12"`로 되돌렸다.**
+
 ### 5-2. `xlsx` — **지금 바꾸지 않는다** (npm에 고친 버전이 없다)
 
 ```
@@ -308,4 +338,33 @@ dist-tags: { latest: '0.18.5' }
 - `next` 패치 후 `npm audit --omit=dev` 재실행 → 남은 건수 기록
 - **9c 완성 시** `xlsx` 파싱 경로 제거 여부 확인 → 제거됐으면 이 항목 종결
 - 그 전에 `xlsx`에 **원격 실행(RCE)급** 취약점이 새로 나오면 그때는 §5-2의 선택지 1·2를 다시 연다
+
+---
+
+## 6. 조치 실행 결과 (2026-08-14, `next@16.2.12` 적용)
+
+### 6-1. 실행 절차 및 빌드 검증
+
+1. **설치 명령**: `npm install next@16.2.12` (Direct upgrade, `npm audit fix` 미사용)
+2. **타입 검사 (`npx tsc --noEmit`)**:
+   - 결과: **통과** (TypeScript 에러 0건, Exit Code 0)
+3. **프로덕션 빌드 (`NODE_OPTIONS="--max-old-space-size=4096" npm run build`)**:
+   - 결과: **통과** (Next.js 16.2.12 Turbopack, 39개 라우트 전수 정상 컴파일 및 정적 페이지 생성 완료, Exit Code 0)
+   - 신규 경고 또는 빌드 깨짐 현상 0건
+
+### 6-2. `npm audit --omit=dev` 사후 점검 결과
+
+- **`next` 자체 직접 취약점 9건**: **완전 해소 (0건)**
+  - App Router DoS/SSRF, Cache Confusion, Rewrites SSRF, SVG DoS 등 9개 GHSA 항목 전수 제거 확인
+- **남은 프로덕션 취약점 집계 (13건: High 7, Moderate 6)**:
+  - **`xlsx`** (High 2건 / Direct): npm 미배포 상태로 §5-2 결정에 따라 유지
+  - **간접/빌드 전용 트랜지티브 의존성 체인**:
+    - `nanoid` (High 2건 / Indirect)
+    - `fast-xml-parser` (High 1건 / Indirect)
+    - `brace-expansion` (High 2건 / Indirect)
+    - `sharp` (High 1건 / Indirect)
+    - `postcss` (High 3건, Mod 1건 / Indirect $\rightarrow$ `next`가 via로 연결)
+    - `uuid` (Mod 1건 / Indirect $\rightarrow$ `gaxios`, `teeny-request`, `retry-request`, `@google-cloud/storage`, `firebase-admin` 체인 연결)
+- **변경 사항 요약**: `package.json` 및 `package-lock.json`의 `next` 버전이 `16.2.10` $\rightarrow$ `16.2.12`로 안전하게 갱신됨.
+
 
