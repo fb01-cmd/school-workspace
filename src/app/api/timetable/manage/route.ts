@@ -71,6 +71,14 @@ import {
   computeAiFormalize,
   computeAiExplain,
   computeAiCritique,
+  listCurriculumCohorts,
+  saveCurriculumCohort,
+  deleteCurriculumCohort,
+  listHoursPlans,
+  getHoursPlan,
+  deriveHoursPlanFromGrids,
+  saveHoursPlan,
+  deleteHoursPlan,
 } from "@/lib/timetable/server";
 import { sanitizeNeisMapPayload } from "@/lib/timetable/neis";
 import { AiCallError, isAiEnabled } from "@/lib/timetable/ai";
@@ -1382,6 +1390,120 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
         const critiqueResult = await computeAiCritique(domain, body.draftId);
         return NextResponse.json({ success: true, action, enabled: true, result: critiqueResult });
+      }
+
+      // ── Phase 9c-H: 교육과정 코호트 등록부 ──
+      case "cohort_list": {
+        const cohorts = await listCurriculumCohorts(domain);
+        return NextResponse.json({ success: true, action, cohorts });
+      }
+
+      case "cohort_save": {
+        if (!body.cohort) {
+          return NextResponse.json({ error: "cohort 객체가 누락되었습니다." }, { status: 400 });
+        }
+        const cohort = await saveCurriculumCohort(domain, body.cohort, auth.email);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "save_curriculum_cohort",
+          details: `교육과정 등록부 저장 (${cohort.label})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, cohort });
+      }
+
+      case "cohort_delete": {
+        if (!body.cohortId) {
+          return NextResponse.json({ error: "cohortId가 필요합니다." }, { status: 400 });
+        }
+        await deleteCurriculumCohort(domain, body.cohortId);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "delete_curriculum_cohort",
+          details: `교육과정 등록부 삭제 (${body.cohortId})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, cohortId: body.cohortId });
+      }
+
+      // ── Phase 9c-H: 신학기 주당 수업 시간 계획 ──
+      case "hours_plan_derive": {
+        if (!body.sourceTermId) {
+          return NextResponse.json({ error: "sourceTermId가 필요합니다." }, { status: 400 });
+        }
+        const plan = await deriveHoursPlanFromGrids(
+          domain,
+          body.sourceTermId,
+          body.planLabel || "",
+          auth.email
+        );
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "derive_hours_plan",
+          details: `기초시간표(${body.sourceTermId})에서 주당 수업 시간 계획 생성 (${plan.label})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, plan });
+      }
+
+      case "hours_plan_list": {
+        const plans = await listHoursPlans(domain);
+        return NextResponse.json({ success: true, action, plans });
+      }
+
+      case "hours_plan_get": {
+        if (!body.planId) {
+          return NextResponse.json({ error: "planId가 필요합니다." }, { status: 400 });
+        }
+        const plan = await getHoursPlan(domain, body.planId);
+        if (!plan) {
+          return NextResponse.json({ error: "해당 계획을 찾을 수 없습니다." }, { status: 404 });
+        }
+        return NextResponse.json({ success: true, action, plan });
+      }
+
+      case "hours_plan_save": {
+        if (!Array.isArray(body.planRows)) {
+          return NextResponse.json({ error: "planRows 배열이 필요합니다." }, { status: 400 });
+        }
+        const plan = await saveHoursPlan(
+          domain,
+          body.planId,
+          {
+            label: body.planLabel,
+            sourceTermId: body.sourceTermId,
+            rows: body.planRows,
+            gradeDayPeriods: body.gradeDayPeriods || {},
+            status: body.planStatus,
+          },
+          auth.email
+        );
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "save_hours_plan",
+          details: `주당 수업 시간 계획 저장 (${plan.label}, 총 ${plan.rows.length}행)`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, plan });
+      }
+
+      case "hours_plan_delete": {
+        if (!body.planId) {
+          return NextResponse.json({ error: "planId가 필요합니다." }, { status: 400 });
+        }
+        await deleteHoursPlan(domain, body.planId);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "delete_hours_plan",
+          details: `주당 수업 시간 계획 삭제 (${body.planId})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, planId: body.planId });
       }
 
       default:

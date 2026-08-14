@@ -7,10 +7,12 @@
 import { adminDb, DecodedAuthAccess } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { randomUUID } from "crypto";
 import { bumpTimetableCacheVersion } from "./cacheVersion";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
 import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardViolationKey, validateTimetable } from "./validate";
+import { validateCohortInput } from "./cohort";
 import { SOFT_CODE_LABELS } from "./labels";
 import { applyRevisionOps, cloneClassGrids } from "./utils";
 export { applyRevisionOps, cloneClassGrids };
@@ -45,6 +47,10 @@ import {
   TimetableWeekDay,
   UnmatchedTeacherIssue,
   SCHEDULE_AFFECTING_TYPES,
+  CurriculumCohort,
+  HoursPlan,
+  HoursPlanRow,
+  HoursPlanSummary,
 } from "./types";
 
 // ── Firestore 경로 헬퍼 ────────────────────────────────────────
@@ -80,6 +86,12 @@ export const consecutiveRulesColRef = (domain: string) =>
 
 export const coTeachingRulesColRef = (domain: string) =>
   adminDb.collection("timetable_coteaching_rules").doc(domain).collection("rules");
+
+export const hoursPlansColRef = (domain: string) =>
+  adminDb.collection("timetable_hours_plans").doc(domain).collection("plans");
+
+export const curriculumCohortsColRef = (domain: string) =>
+  adminDb.collection("timetable_curriculum_cohorts").doc(domain).collection("cohorts");
 
 // ── 직렬화 헬퍼 ────────────────────────────────────────────────
 
@@ -5784,3 +5796,300 @@ export async function computeAiCritique(
   const { runCritique } = await import("./ai");
   return runCritique(input, (process.env.GEMINI_API_KEY || "").trim());
 }
+
+// ═════════════════════════════════════════════════════════════
+// Phase 9c-H: 신학기 편성 입력 2종 (phase9c_h_spec)
+// ═════════════════════════════════════════════════════════════
+
+// ── 교육과정 코호트 등록부 (phase9c_h_spec §2-2, §2-4) ─────────────
+
+export async function listCurriculumCohorts(domain: string): Promise<CurriculumCohort[]> {
+  const snap = await curriculumCohortsColRef(domain).get();
+  const list: CurriculumCohort[] = [];
+  snap.forEach((doc) => {
+    const d = doc.data() as any;
+    list.push({
+      id: doc.id,
+      label: d.label || "",
+      startAdmissionYear: d.startAdmissionYear || 2025,
+      fixedSlots: Array.isArray(d.fixedSlots) ? d.fixedSlots : [],
+      active: d.active !== false,
+      createdBy: d.createdBy || "",
+      updatedBy: d.updatedBy || "",
+      updatedAt: toMillis(d.updatedAt) || 0,
+    });
+  });
+  return list.sort((a, b) => b.startAdmissionYear - a.startAdmissionYear);
+}
+
+export async function saveCurriculumCohort(
+  domain: string,
+  cohort: Partial<CurriculumCohort>,
+  userEmail: string
+): Promise<CurriculumCohort> {
+  const validationError = validateCohortInput(cohort);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  const id = cohort.id?.trim() || randomUUID();
+  const docRef = curriculumCohortsColRef(domain).doc(id);
+  const now = Date.now();
+
+  const data: CurriculumCohort = {
+    id,
+    label: (cohort.label || "").trim(),
+    startAdmissionYear: Number(cohort.startAdmissionYear),
+    fixedSlots: (cohort.fixedSlots || []).map((s) => ({
+      displayName: (s.displayName || "창체").trim(),
+      day: Number(s.day),
+      period: Number(s.period),
+    })),
+    active: cohort.active !== false,
+    createdBy: cohort.createdBy || userEmail,
+    updatedBy: userEmail,
+    updatedAt: now,
+  };
+
+  await docRef.set(data);
+  return data;
+}
+
+export async function deleteCurriculumCohort(
+  domain: string,
+  cohortId: string
+): Promise<void> {
+  if (!cohortId) throw new Error("cohortId가 누락되었습니다.");
+  await curriculumCohortsColRef(domain).doc(cohortId).delete();
+}
+
+// ── 신학기 주당 수업 시간 계획 (phase9c_h_spec §1-2, §1-3) ────────
+
+export async function listHoursPlans(domain: string): Promise<HoursPlanSummary[]> {
+  const snap = await hoursPlansColRef(domain).get();
+  const list: HoursPlanSummary[] = [];
+  snap.forEach((doc) => {
+    const d = doc.data() as any;
+    list.push({
+      id: doc.id,
+      label: d.label || "",
+      sourceTermId: d.sourceTermId || "",
+      derivedAt: toMillis(d.derivedAt) || 0,
+      rowCount: Array.isArray(d.rows) ? d.rows.length : 0,
+      status: d.status === "ready" ? "ready" : "draft",
+      createdBy: d.createdBy || "",
+      updatedBy: d.updatedBy || "",
+      updatedAt: toMillis(d.updatedAt) || 0,
+    });
+  });
+  return list.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function getHoursPlan(
+  domain: string,
+  planId: string
+): Promise<HoursPlan | null> {
+  if (!planId) return null;
+  const doc = await hoursPlansColRef(domain).doc(planId).get();
+  if (!doc.exists) return null;
+  const d = doc.data() as any;
+  return {
+    id: doc.id,
+    label: d.label || "",
+    sourceTermId: d.sourceTermId || "",
+    derivedAt: toMillis(d.derivedAt) || 0,
+    rows: Array.isArray(d.rows) ? d.rows : [],
+    gradeDayPeriods: d.gradeDayPeriods || {},
+    status: d.status === "ready" ? "ready" : "draft",
+    createdBy: d.createdBy || "",
+    updatedBy: d.updatedBy || "",
+    updatedAt: toMillis(d.updatedAt) || 0,
+  };
+}
+
+export async function deriveHoursPlanFromGrids(
+  domain: string,
+  sourceTermId: string,
+  label: string,
+  userEmail: string
+): Promise<HoursPlan> {
+  const grids = await loadAllClassGrids(domain, sourceTermId);
+  if (!grids || grids.length === 0) {
+    throw new Error(`선택한 학기(${sourceTermId})에 등록된 기초시간표 학급 그리드가 없습니다.`);
+  }
+
+  // validate.ts의 기존 파생 함수 재사용
+  const hoursReqs = deriveHoursFromGrids(grids);
+  const gradeDayPeriods = deriveGradeDayPeriods(grids);
+
+  const rows: HoursPlanRow[] = hoursReqs.map((r) => {
+    let teacherEmail = "";
+    let teacherName = "";
+    if (r.teacherKey.startsWith("email:")) {
+      teacherEmail = r.teacherKey.slice(6);
+    } else if (r.teacherKey.startsWith("name:")) {
+      teacherName = r.teacherKey.slice(5);
+    } else {
+      teacherEmail = r.teacherKey;
+    }
+    return {
+      id: randomUUID(),
+      grade: r.grade,
+      classNum: r.classNum,
+      subjectName: r.subjectName,
+      teacherEmail,
+      teacherName,
+      hours: r.hours,
+    };
+  });
+
+  const planId = randomUUID();
+  const now = Date.now();
+  const plan: HoursPlan = {
+    id: planId,
+    label: label.trim() || `${sourceTermId} 파생 시수`,
+    sourceTermId,
+    derivedAt: now,
+    rows,
+    gradeDayPeriods,
+    status: "draft",
+    createdBy: userEmail,
+    updatedBy: userEmail,
+    updatedAt: now,
+  };
+
+  await hoursPlansColRef(domain).doc(planId).set(plan);
+  return plan;
+}
+
+export async function saveHoursPlan(
+  domain: string,
+  planId: string | undefined,
+  payload: {
+    label?: string;
+    sourceTermId?: string;
+    rows: HoursPlanRow[];
+    gradeDayPeriods: Record<number, Record<number, number>>;
+    status?: "draft" | "ready";
+  },
+  userEmail: string
+): Promise<HoursPlan> {
+  const rows = payload.rows || [];
+
+  // 1. rows 길이 상한 2000, 크기 900KB
+  if (!Array.isArray(rows)) {
+    throw new Error("rows 배열이 유효하지 않습니다.");
+  }
+  if (rows.length > 2000) {
+    throw new Error(`수업 행 수(${rows.length})가 최대 허용치(2000행)를 초과했습니다.`);
+  }
+  const serialized = JSON.stringify(payload);
+  const sizeBytes = Buffer.byteLength(serialized, "utf8");
+  if (sizeBytes > 900 * 1024) {
+    throw new Error(`저장 데이터 용량(${(sizeBytes / 1024).toFixed(1)}KB)이 최대 허용치(900KB)를 초과했습니다.`);
+  }
+
+  // 6. simulGroupId 유효성 검증을 위해 그룹 목록 로드
+  const simulSnap = await simulGroupsColRef(domain).get();
+  const validSimulGroupIds = new Set(simulSnap.docs.map((d) => d.id));
+
+  // 4. teacherEmail 실재 확인용 사용자 목록 로드
+  const usersSnap = await adminDb.collection("users").get();
+  const validUserEmails = new Set<string>();
+  usersSnap.forEach((u) => {
+    const data = u.data();
+    if (data.email) validUserEmails.add(String(data.email).toLowerCase());
+    if (u.id.includes("@")) validUserEmails.add(u.id.toLowerCase());
+  });
+
+  const rowKeySet = new Set<string>();
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    // 2. hours 1~40 정수
+    if (!Number.isInteger(r.hours) || r.hours < 1 || r.hours > 40) {
+      throw new Error(`[행 ${i + 1}] 시수는 1~40 사이의 정수여야 합니다 (현재: ${r.hours}).`);
+    }
+    // 3. grade, classNum 양의 정수
+    if (!Number.isInteger(r.grade) || r.grade < 1 || !Number.isInteger(r.classNum) || r.classNum < 1) {
+      throw new Error(`[행 ${i + 1}] 학년(${r.grade})과 반(${r.classNum})은 1 이상의 양의 정수여야 합니다.`);
+    }
+    // 과목명 확인
+    if (!r.subjectName || !r.subjectName.trim()) {
+      throw new Error(`[행 ${i + 1}] 과목명이 누락되었습니다.`);
+    }
+    // 4. teacherEmail 실재 확인 (빈 문자열 = 가상 교사 허용)
+    const normEmail = (r.teacherEmail || "").trim().toLowerCase();
+    if (normEmail !== "") {
+      if (!validUserEmails.has(normEmail)) {
+        throw new Error(`[행 ${i + 1}] 등록되지 않은 교사 계정입니다: ${r.teacherEmail} (${r.teacherName || r.subjectName})`);
+      }
+    }
+    // 5. venueHours 0 <= venueHours <= hours
+    if (r.venueHours !== null && r.venueHours !== undefined) {
+      if (!Number.isInteger(r.venueHours) || r.venueHours < 0 || r.venueHours > r.hours) {
+        throw new Error(`[행 ${i + 1}] 특별실 시간(${r.venueHours})은 0 이상, 주당 시수(${r.hours}) 이하여야 합니다.`);
+      }
+    }
+    // 6. simulGroupId 실재 확인
+    if (r.simulGroupId && !validSimulGroupIds.has(r.simulGroupId)) {
+      throw new Error(`[행 ${i + 1}] 존재하지 않는 동시수업 그룹 ID입니다: ${r.simulGroupId}`);
+    }
+    // 7. 중복 행 금지 (grade, classNum, subjectName, teacherEmail)
+    const rowKey = `${r.grade}|${r.classNum}|${r.subjectName.trim().toLowerCase()}|${normEmail}`;
+    if (rowKeySet.has(rowKey)) {
+      throw new Error(`[행 ${i + 1}] 중복된 수업 행이 존재합니다 (${r.grade}학년 ${r.classNum}반 ${r.subjectName} / ${r.teacherName || normEmail || "담당없음"}).`);
+    }
+    rowKeySet.add(rowKey);
+  }
+
+  const id = planId?.trim() || randomUUID();
+  const now = Date.now();
+
+  // 기존 문서 조회하여 createdBy 보존
+  let createdBy = userEmail;
+  let derivedAt = now;
+  if (planId) {
+    const existing = await hoursPlansColRef(domain).doc(planId).get();
+    if (existing.exists) {
+      const exData = existing.data() as any;
+      createdBy = exData.createdBy || userEmail;
+      derivedAt = toMillis(exData.derivedAt) || now;
+    }
+  }
+
+  const cleanRows: HoursPlanRow[] = rows.map((r) => ({
+    id: r.id?.trim() || randomUUID(),
+    grade: Number(r.grade),
+    classNum: Number(r.classNum),
+    subjectName: r.subjectName.trim(),
+    subjectShort: r.subjectShort ? r.subjectShort.trim() : undefined,
+    teacherEmail: (r.teacherEmail || "").trim(),
+    teacherName: (r.teacherName || "").trim(),
+    hours: Number(r.hours),
+    simulGroupId: r.simulGroupId ? r.simulGroupId.trim() : null,
+    venueHours: r.venueHours !== null && r.venueHours !== undefined ? Number(r.venueHours) : null,
+  }));
+
+  const plan: HoursPlan = {
+    id,
+    label: (payload.label || "신학기 주당 수업 시간 계획").trim(),
+    sourceTermId: payload.sourceTermId || "",
+    derivedAt,
+    rows: cleanRows,
+    gradeDayPeriods: payload.gradeDayPeriods || {},
+    status: payload.status === "ready" ? "ready" : "draft",
+    createdBy,
+    updatedBy: userEmail,
+    updatedAt: now,
+  };
+
+  await hoursPlansColRef(domain).doc(id).set(plan);
+  return plan;
+}
+
+export async function deleteHoursPlan(domain: string, planId: string): Promise<void> {
+  if (!planId) throw new Error("planId가 누락되었습니다.");
+  await hoursPlansColRef(domain).doc(planId).delete();
+}
+

@@ -384,7 +384,16 @@ export type ManageAction =
   | "ai_diagnose"    // E1 불능 진단 (draftId 대상, 표시 전용, 키 미설정 시 enabled:false)
   | "ai_formalize"   // E2 선호 정식화 (aiText → slot_ban 제안, 저장은 UI 확인 후 slot_ban_save로만)
   | "ai_explain"     // E3 결과 설명 (draftId 대상, 표시 전용)
-  | "ai_critique";   // E4 정성 비평 (draftId 대상, 표시 전용, v1은 셀 연동 없음)
+  | "ai_critique"    // E4 정성 비평 (draftId 대상, 표시 전용, v1은 셀 연동 없음)
+  // ── Phase 9c-H 신학기 편성 입력 2종 (phase9c_h_spec) ──
+  | "hours_plan_derive"
+  | "hours_plan_list"
+  | "hours_plan_get"
+  | "hours_plan_save"
+  | "hours_plan_delete"
+  | "cohort_list"
+  | "cohort_save"
+  | "cohort_delete";
 
 export interface ManageTimetableRequest {
   action: ManageAction;
@@ -445,6 +454,15 @@ export interface ManageTimetableRequest {
   neisMap?: Partial<NeisMapRegistry>; // neis_map_save 본문 (전체 교체)
   // Phase 9c-E AI 보조 (phase9c_e_spec §3) — ai_formalize 자연어 문장 (실명 포함 가능, 서버가 가명화)
   aiText?: string;
+  // Phase 9c-H 신학기 편성 입력 (phase9c_h_spec)
+  sourceTermId?: string;
+  planId?: string;
+  planLabel?: string;
+  planRows?: HoursPlanRow[];
+  gradeDayPeriods?: Record<number, Record<number, number>>;
+  planStatus?: "draft" | "ready";
+  cohort?: Partial<CurriculumCohort>;
+  cohortId?: string;
 }
 
 export interface ManageTimetableResponse {
@@ -455,6 +473,10 @@ export interface ManageTimetableResponse {
   validationReport?: TimetableValidationReport;
   terms?: TimetableTerm[];
   term?: TimetableTerm | null;
+  plans?: HoursPlanSummary[];
+  plan?: HoursPlan | null;
+  cohorts?: CurriculumCohort[];
+  cohort?: CurriculumCohort | null;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -966,6 +988,48 @@ export interface FixedBlock {
   createdAt?: number;
   updatedBy?: string;
   updatedAt?: number;
+}
+
+// ── Phase 9c-H: 신학기 시수 조정 계획 (phase9c_h_spec §1-2) ────
+
+export interface HoursPlan {
+  id: string;
+  label: string;              // "2027학년도 1학기 시수" — 사람이 붙임
+  sourceTermId?: string;      // 파생 원본 학기 (예: "2026-2", 엑셀 업로드 시 "upload")
+  derivedAt: number;          // 파생/업로드 시각 — 이후 원본이 바뀌어도 이 사본은 불변
+  rows: HoursPlanRow[];
+  gradeDayPeriods: Record<number, Record<number, number>>;  // 부족정보 #5
+  status: "draft" | "ready";  // ready = 솔버에 넘길 수 있음
+  createdBy: string;
+  updatedBy: string;
+  updatedAt: number;
+}
+
+export interface HoursPlanRow {
+  id: string;                 // 행 고유 id (편집 추적용)
+  grade: number;
+  classNum: number;
+  subjectName: string;
+  subjectShort?: string;      // 단축과목명 (선택)
+  teacherEmail: string;       // "" = 가상 교사(창체·SLAT) — 코호트 등록부가 위치를 준다
+  teacherName: string;        // 표시용 스냅샷. 판정은 email로만 한다
+  hours: number;              // 주당 시수
+  /** 부족정보 #2 — 이 행이 동시수업 그룹 몫인가 */
+  simulGroupId?: string | null;
+  /** 부족정보 #4 — 이 시수 중 특별실을 쓰는 시간 수. null = 전 시수(보수) */
+  venueHours?: number | null;
+}
+
+export interface HoursPlanSummary {
+  id: string;
+  label: string;
+  sourceTermId?: string;
+  derivedAt: number;
+  rowCount: number;
+  status: "draft" | "ready";
+  createdBy: string;
+  updatedBy: string;
+  updatedAt: number;
 }
 
 /** 교육과정 코호트 등록부 (9c-H §2) — 창체·SLAT 고정 슬롯의 축은 「학년」이 아니라 「교육과정」.
