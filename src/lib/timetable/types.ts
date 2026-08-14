@@ -1009,8 +1009,9 @@ export interface HoursPlanRow {
   id: string;                 // 행 고유 id (편집 추적용)
   grade: number;
   classNum: number;
-  subjectName: string;
-  subjectShort?: string;      // 단축과목명 (선택)
+  subjectName: string;        // 시스템 과목명 (단축과목명 우선, §0-1a-②')
+  subjectShort?: string;      // 단축과목명
+  neisName?: string;          // 정식과목명 (나이스 등재 과목명 원천, §0-1a-②')
   teacherEmail: string;       // "" = 가상 교사(창체·SLAT) — 코호트 등록부가 위치를 준다
   teacherName: string;        // 표시용 스냅샷. 판정은 email로만 한다
   hours: number;              // 주당 시수

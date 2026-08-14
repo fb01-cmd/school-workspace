@@ -350,6 +350,26 @@ export function parseHoursExcel(data: ArrayBuffer | Uint8Array): ParsedHoursResu
       }
     }
 
+    // 4. 단축과목명 충돌 검사 (스펙 §0-1a-②': 같은 단축명이 서로 다른 정식명에 걸리면 warning)
+    const shortToFullMap = new Map<string, Set<string>>();
+    for (const row of rows) {
+      if (row.subjectShort && row.subjectName) {
+        if (!shortToFullMap.has(row.subjectShort)) {
+          shortToFullMap.set(row.subjectShort, new Set());
+        }
+        shortToFullMap.get(row.subjectShort)!.add(row.subjectName);
+      }
+    }
+
+    for (const [short, fullSet] of shortToFullMap.entries()) {
+      if (fullSet.size > 1) {
+        issues.push({
+          severity: "warning",
+          message: `단축과목명 '${short}'가 서로 다른 정식과목명(${Array.from(fullSet).join(", ")})에 사용되었습니다. 과목 식별자 충돌에 주의하세요.`,
+        });
+      }
+    }
+
     const hasErrors = issues.some((i) => i.severity === "error");
 
     return {

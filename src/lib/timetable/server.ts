@@ -6062,6 +6062,7 @@ export async function saveHoursPlan(
     classNum: Number(r.classNum),
     subjectName: r.subjectName.trim(),
     subjectShort: r.subjectShort ? r.subjectShort.trim() : undefined,
+    neisName: r.neisName ? r.neisName.trim() : undefined,
     teacherEmail: (r.teacherEmail || "").trim(),
     teacherName: (r.teacherName || "").trim(),
     hours: Number(r.hours),

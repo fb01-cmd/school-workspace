@@ -407,17 +407,22 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
       if (!confirmContinue) return;
     }
 
-    // 엑셀 데이터 -> HoursPlanRow 변환
+    // 엑셀 데이터 -> HoursPlanRow 변환 (스펙 §0-1a-②': subjectName은 단축과목명 우선, 정식과목명은 neisName에 보존)
     const newRows: HoursPlanRow[] = [];
     for (const pRow of excelResult.rows) {
       const email = teacherMappings[pRow.teacherName] || "";
+      const effectiveSubject = (pRow.subjectShort || pRow.subjectName || "").trim();
+      const shortName = (pRow.subjectShort || "").trim() || undefined;
+      const neisName = (pRow.subjectName || "").trim() || undefined;
+
       for (const ch of pRow.classHours) {
         newRows.push({
           id: `${pRow.seq}-${ch.grade}-${ch.classNum}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           grade: ch.grade,
           classNum: ch.classNum,
-          subjectName: pRow.subjectName,
-          subjectShort: pRow.subjectShort,
+          subjectName: effectiveSubject,
+          subjectShort: shortName,
+          neisName: neisName,
           teacherEmail: email,
           teacherName: pRow.teacherName,
           hours: ch.hours,

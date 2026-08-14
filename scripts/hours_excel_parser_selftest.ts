@@ -207,6 +207,34 @@ console.log("\n⑥ 무결성 검사 2: 합계행 열합 불일치 케이스");
   );
 }
 
+console.log("\n⑦ 단축과목명 충돌 검사 (스펙 §0-1a-②': 같은 단축명이 서로 다른 정식명에 걸릴 때)");
+{
+  // 같은 단축명 "국어"가 정식명 "공통국어1"과 "심화국어"에 중복 사용된 경우
+  const collisionData: any[][] = [
+    ["교사별 시수표"],
+    ["순", "정식과목명", "단축과목명", "교사명", "1학년", "2학년", "계"],
+    [null, null, null, null, 1, 1, null],
+    [1, "공통국어1", "국어", "지상인", 3, 3, 6],
+    [2, "심화국어", "국어", "김지현", 2, 2, 4], // 단축명 "국어" 충돌!
+    [null, null, null, null, 5, 5, 10],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(collisionData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "교사별시수표");
+  const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+
+  const res = parseHoursExcel(buf);
+  check("파싱 자체는 성공 (warning)", res.success);
+  check(
+    "단축과목명 충돌 경고 생성 확인",
+    res.issues.some(
+      (i) =>
+        i.severity === "warning" &&
+        i.message.includes("단축과목명 '국어'가 서로 다른 정식과목명(공통국어1, 심화국어)에 사용되었습니다")
+    )
+  );
+}
+
 console.log("\n" + "=".repeat(50));
 console.log(`결과: ${pass}건 통과, ${fail}건 실패 (총 ${pass + fail}건)`);
 if (fail > 0) process.exit(1);
