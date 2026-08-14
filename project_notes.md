@@ -1061,3 +1061,17 @@ if (isProtectedAccountEmail(email)) {
 
 
 
+
+---
+
+## [2026-08-15 새벽] 체크포인트 — 학기 전환 리허설 완주, 다음은 9c 마지막 연결
+
+**이 세션(8/14~15, Claude Fable 5)에서 닫힌 것** — 상세는 각 문서·커밋에 있으므로 표제만:
+9c-H 입력 2종 전부(코호트 등록부 + 시수 계획, 실물 엑셀 업로드 실전 통과) · 컴시간 없는 백지 편성 증명(soft 38 < 현행 39) · 학기 전환 스펙+구현+**실전 리허설 7단계 완주**([`term_transition_spec.md`](docs/term_transition_spec.md) §9) · 학사일정 날짜 축 전환 · 상류 3파일 분석([`hours_source_files_analysis_2026-08-14.md`](docs/hours_source_files_analysis_2026-08-14.md)) · Firestore 백업 체계. 리허설 산출물(2027-1 초안 학기·채택 그리드·승계 등록부 29건)은 **연말 실준비 그릇으로 유지** — 지우지 말 것.
+
+**다음 작업 (우선순위순)**:
+1. **[Claude·Fable] 시수 계획 → 자동 작성 연결 스펙** — 9c 마지막 큰 조각. 사용자 승인됨("좋은데" 2026-08-15). 내용 = 자동 작성 탭에 "이 시수 계획으로 새로 짜기" 진입: 계획 rows + 코호트 전개(`expandCohortFixedBlocks`+`impliedHoursFromFixedBlocks`) + 작업 학기 등록부 → `compileSectionsFromHours` → 솔버 → 기존 초안 형태로 저장(채택 흐름 재사용). 엔진·화면·채택 전부 기존재라 얇은 스펙. 참조: solve_blank.ts가 정확한 조립 순서의 실증 코드.
+2. [Antigravity 큐 잔여] 채택 버튼을 초안 학기 선택 시에만 노출(경미) · A2 beforeunload · A3 OrgChartBuilder 하드코딩 · A5 쪽지 v1.1.
+3. [사용자] 3학년 이동수업 현황 수령(시수표 자동 생성 아이디어 선행) · 시수 계획 목록 정리(선택, [2027-1]만 남기기 권장) · B1 Max20 이후 결정(8/24까지).
+
+**이 세션에서 굳은 규약 (새 세션이 알아야 함)**: 시스템 과목명 = 단축명 계열(통사A·체육1, [`phase9c_h_spec.md`](docs/phase9c_h_spec.md) §0-1a-②′) · 학사일정은 학기 무관 날짜 원장(termId 동결) · 나이스 수집은 학기별 실패 격리(초안 0건 = 정상) · Antigravity는 Gemini 3.7 Flash로 실사용 검증됨(하루 실측, 8/24 분업 재점검 근거).
