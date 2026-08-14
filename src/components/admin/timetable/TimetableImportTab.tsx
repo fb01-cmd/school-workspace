@@ -21,6 +21,14 @@ interface TimetableImportTabProps {
   onRefreshData: () => void;
 }
 
+/**
+ * 컴시간 엑셀 가져오기(1~3단계) 화면 노출 여부 — 2026-08-14 사용자 결정으로 숨김.
+ * 신학기 편성이 자체 경로(9c-H: 시수표 업로드·자동 작성)로 확정되어 쓸 일이 없고,
+ * 일과계 실사용자에게 혼란을 준다. 코드를 지우지 않는 이유: 2단계 성명→이메일 매핑 UI를
+ * 9c-H 시수표 업로드가 재사용할 예정(phase9c_h_spec.md §0-1a). 복원은 true로.
+ */
+const SHOW_COMCIGAN_IMPORT = false;
+
 export default function TimetableImportTab({
   settings,
   terms,
@@ -30,7 +38,7 @@ export default function TimetableImportTab({
   const domain = userData?.domain || userData?.email?.split("@")[1] || "hmh.or.kr";
   const isSuperAdmin = userData?.role === "super_admin";
 
-  const [activeStep, setActiveStep] = useState<1 | 2 | 3 | 4>(1);
+  const [activeStep, setActiveStep] = useState<1 | 2 | 3 | 4>(SHOW_COMCIGAN_IMPORT ? 1 : 4);
 
   // 학기 기본 정보
   const [termId, setTermId] = useState("2026-2");
@@ -940,16 +948,16 @@ export default function TimetableImportTab({
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-500/20 text-indigo-200 border border-indigo-400/30">
                 일과계 전용 관리자
               </span>
-              <HelpTip title="시간표 가져오기 상세 안내" variant="dark">
-                <p>컴시간알리미에서 내보낸 전체시간표.xlsx 및 주간시간표.xlsx 파일을 직접 업로드하여 교사 매핑 및 검증 후 기초시간표 학기를 생성합니다.</p>
-                <p>초안(Draft) 상태로 먼저 저장한 후 무결성 검증을 거쳐 정식 학기로 활성화할 수 있습니다.</p>
+              <HelpTip title="학기 관리 상세 안내" variant="dark">
+                <p>등록된 학기 목록을 확인하고, 초안 학기를 정식 시간표로 활성화하거나 삭제할 수 있습니다.</p>
+                <p>시간표 담당 관리자와 열람 전용 참관자 지정도 이 화면에서 합니다.</p>
               </HelpTip>
             </div>
             <h2 className="text-xl font-bold text-white tracking-tight">
-              📦 2학기 기초시간표 가져오기 & 학기 관리
+              📦 학기 & 권한 관리
             </h2>
             <p className="text-sm text-indigo-200/80 mt-1 max-w-2xl">
-              컴시간 엑셀(.xlsx) 파일 업로드로 기초시간표 데이터를 간편하게 등록하고 검증합니다.
+              학기 활성화·보관과 시간표 관리자·참관자 지정을 관리합니다.
             </p>
           </div>
           <button
@@ -961,7 +969,8 @@ export default function TimetableImportTab({
         </div>
       </div>
 
-      {/* 워크플로우 4단계 스테퍼 (Stepper) */}
+      {/* 워크플로우 4단계 스테퍼 (Stepper) — 컴시간 가져오기 숨김 시 스테퍼 전체 비노출 (4단계만 남아 무의미) */}
+      {SHOW_COMCIGAN_IMPORT && (
       <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
         <div className="grid grid-cols-4 gap-2 text-center text-xs font-semibold">
           <button
@@ -1027,6 +1036,7 @@ export default function TimetableImportTab({
           </button>
         </div>
       </div>
+      )}
 
       {/* ── 1단계: 엑셀 분석 ──────────────────────────── */}
       {activeStep === 1 && (
@@ -1536,7 +1546,7 @@ export default function TimetableImportTab({
                   {terms.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
-                        등록된 학기가 없습니다. 1단계 가져오기를 진행하세요.
+                        등록된 학기가 없습니다.
                       </td>
                     </tr>
                   ) : (
