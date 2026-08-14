@@ -1610,6 +1610,11 @@ export async function runNeisCalendarSync(
   let totalDeleted = 0;
   let totalNeisEventsCount = 0;
   let weekSyncCalledAny = false;
+  // 학기별 실패 격리 (term_transition_spec §7-1 후속) — 한 학기의 실패·0건이 다른 학기
+  // 수집을 중단시키면 안 된다. 특히 신학기 초안(draft)은 나이스에 내년 일정이 아직 없어
+  // 0건이 정상이므로 실패로 세지도, 감사 로그를 남기지도 않는다 (매일 크론 소음 방지).
+  let succeededTerms = 0;
+  const failedActiveTerms: string[] = [];
 
   for (const term of targetTerms) {
     const termRange = getTermDateRange(term.id);
@@ -1641,7 +1646,8 @@ export async function runNeisCalendarSync(
         details: `나이스 학사일정 수집 실패 (${term.id}): ${err.message}. 안전을 위해 기존 데이터 삭제(prune)를 건너뜁니다.`,
         status: "failure",
       });
-      return { success: false, message: `나이스 API 호출 실패: ${err.message}` };
+      failedActiveTerms.push(term.id);
+      continue;
     }
 
     // Fail-Safe: INFO-200, RESULT 오류, 파싱 실패 등 체크
@@ -1649,19 +1655,27 @@ export async function runNeisCalendarSync(
       const resultCode = rawData?.RESULT?.CODE || rawData?.SchoolSchedule?.[0]?.head?.[1]?.RESULT?.CODE || "UNKNOWN";
       const resultMsg = rawData?.RESULT?.MESSAGE || rawData?.SchoolSchedule?.[0]?.head?.[1]?.RESULT?.MESSAGE || "데이터 없음 / 구조 상이";
       console.warn(`[runNeisCalendarSync] NEIS 수신 실패/0건 (${term.id}): [${resultCode}] ${resultMsg}`);
+      if (term.status === "draft") {
+        // 신학기 초안: 나이스에 아직 그 학기 일정이 없는 것이 정상 — 조용히 다음 학기로
+        continue;
+      }
       await writeAuditLog({
         operatorEmail: "system@cron",
         targetEmail: domain,
         action: "neis_calendar_sync_fail",
-        details: `나이스 학사일정 수신 0건 또는 오류 [${resultCode}]: ${resultMsg}. 안전을 위해 기존 데이터 삭제(prune)를 건너뜁니다.`,
+        details: `나이스 학사일정 수신 0건 또는 오류 [${resultCode}]: ${resultMsg} (${term.id}). 안전을 위해 기존 데이터 삭제(prune)를 건너뜁니다.`,
         status: "failure",
       });
-      return { success: false, message: `나이스 수신 실패/0건 [${resultCode}]: ${resultMsg}` };
+      failedActiveTerms.push(term.id);
+      continue;
     }
 
     const rows: any[] = rawData.SchoolSchedule[1].row;
     if (!Array.isArray(rows) || rows.length === 0) {
       console.warn(`[runNeisCalendarSync] NEIS row 배열이 비어있음 (${term.id})`);
+      if (term.status === "draft") {
+        continue;
+      }
       await writeAuditLog({
         operatorEmail: "system@cron",
         targetEmail: domain,
@@ -1669,7 +1683,8 @@ export async function runNeisCalendarSync(
         details: `나이스 학사일정 응답 0건 (${term.id}). 안전을 위해 기존 데이터 삭제(prune)를 건너뜁니다.`,
         status: "failure",
       });
-      return { success: false, message: `나이스 학사일정 응답 0건 (${term.id})` };
+      failedActiveTerms.push(term.id);
+      continue;
     }
 
     // 1일 단위 수집 및 스킵 필터링 (§3 매핑표)
@@ -1858,9 +1873,18 @@ export async function runNeisCalendarSync(
       await syncDerivedWeeksWithCalendar(domain, term.id);
       weekSyncCalledAny = true;
     }
+    succeededTerms++;
   }
 
-  // settings.lastNeisSyncAt 기록
+  // 전 학기 실패 시: lastNeisSyncAt 미갱신 (성공한 수집이 없다) — 학기별 실패 감사 로그는 위에서 기록됨
+  if (succeededTerms === 0) {
+    return {
+      success: false,
+      message: `나이스 학사일정 동기화 실패 — 성공한 학기가 없습니다 (실패: ${failedActiveTerms.join(", ") || "없음"})`,
+    };
+  }
+
+  // settings.lastNeisSyncAt 기록 (1개 학기 이상 성공)
   const syncTime = Date.now();
   await saveTimetableSettings(domain, { lastNeisSyncAt: syncTime });
 
@@ -1868,13 +1892,15 @@ export async function runNeisCalendarSync(
     operatorEmail: "system@cron",
     targetEmail: domain,
     action: "neis_calendar_sync",
-    details: `나이스 학사일정 동기화 완료: 추가 ${totalAdded}건, 수정 ${totalUpdated}건, 삭제 ${totalDeleted}건 (총 수집 ${totalNeisEventsCount}건, 주파생재동기화: ${weekSyncCalledAny ? "실행" : "스킵"})`,
+    details: `나이스 학사일정 동기화 완료: 추가 ${totalAdded}건, 수정 ${totalUpdated}건, 삭제 ${totalDeleted}건 (총 수집 ${totalNeisEventsCount}건, 주파생재동기화: ${weekSyncCalledAny ? "실행" : "스킵"})${failedActiveTerms.length ? ` / 실패 학기: ${failedActiveTerms.join(", ")}` : ""}`,
     status: "success",
   });
 
   return {
-    success: true,
-    message: `나이스 학사일정 동기화가 완료되었습니다.`,
+    success: failedActiveTerms.length === 0,
+    message: failedActiveTerms.length
+      ? `일부 학기 동기화 실패: ${failedActiveTerms.join(", ")}`
+      : `나이스 학사일정 동기화가 완료되었습니다.`,
     stats: {
       added: totalAdded,
       updated: totalUpdated,
