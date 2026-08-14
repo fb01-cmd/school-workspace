@@ -59,3 +59,7 @@ next-env.d.ts
 # 기본 위치는 저장소 밖(~/school-backups)이지만, 경로를 옮기더라도 걸리도록 방어선을 둔다.
 school-backups/
 *.jsonl
+
+# 나이스 업로드 원본 CSV — 교사 성명이 들어 있다 (docs/neis_csv_analysis_2026-08-14.md)
+# 저장소에 커밋하지 않는다. 분석 결과만 문서로 남긴다.
+/*.csv
