@@ -613,6 +613,32 @@ export function solveTimetable(input: SolverInput): SolverResult {
     if (placedGreedy % 50 === 0) progress("greedy", placedGreedy, totalToPlace);
   }
 
+  /**
+   * ejection 시도 저널 — 실패한 시도가 판을 바꿔 놓지 않게 하는 장치 (9c-G §3).
+   *
+   * 종전에는 실패 시 **자기가 뺀 걸림돌만** 되돌렸다. 그런데 재귀 호출이 성공하면
+   * 안쪽에서 또 다른 걸림돌을 옮겼을 수 있고, 그것들은 바깥 롤백 대상이 아니었다.
+   * 결과가 틀리지는 않았지만(점유 표는 항상 유효) **성과 없이 소프트 점수가 흔들리고
+   * 시드 재현성이 약해졌다** — 포트폴리오로 여러 시드를 비교하는 설계에서 비교의
+   * 전제가 깨진다.
+   *
+   * 해법: apply를 저널에 기록하고, 각 시도가 진입 시점의 길이(mark)를 잡아 실패 시
+   * 그 지점까지 역순으로 되돌린다. 중첩은 mark가 스택처럼 동작해 자연히 처리된다.
+   * 전체 판을 복사하지 않는다 — 되돌릴 것은 이번 시도가 실제로 건드린 몇 개뿐이다.
+   */
+  const ejectJournal: Array<{ occ: Occurrence; dir: 1 | -1 }> = [];
+  function japply(occ: Occurrence, dir: 1 | -1) {
+    apply(occ, dir);
+    ejectJournal.push({ occ, dir });
+  }
+  function rollbackTo(mark: number) {
+    for (let i = ejectJournal.length - 1; i >= mark; i--) {
+      const j = ejectJournal[i];
+      apply(j.occ, j.dir === 1 ? -1 : 1);
+    }
+    ejectJournal.length = mark;
+  }
+
   // ── ⑥ ejection chain (깊이 2): 막힌 occurrence를 위해 걸림돌을 옮긴다 ──
   const unplacedFinal: Pending[] = [];
   progress("ejection", 0, stuck.length);
@@ -622,10 +648,11 @@ export function solveTimetable(input: SolverInput): SolverResult {
   }
 
   function tryPlaceWithEjection(p: Pending, depth: number): boolean {
+    const mark = ejectJournal.length;
     const direct = candidateSlots(p.sectionIdx, p.len);
     if (direct.length) {
       const c = direct[Math.floor(rng() * direct.length)];
-      apply({ sectionIdx: p.sectionIdx, occIdx: p.occIdx, len: p.len, day: c.day, start: c.start }, 1);
+      japply({ sectionIdx: p.sectionIdx, occIdx: p.occIdx, len: p.len, day: c.day, start: c.start }, 1);
       return true;
     }
     if (depth <= 0) return false;
@@ -667,34 +694,34 @@ export function solveTimetable(input: SolverInput): SolverResult {
             occ.day === day && occ.start < start + p.len && start < occ.start + occ.len;
           if (overlaps) removedOccs.push(occ);
         }
-        for (const occ of removedOccs) apply(occ, -1);
+        // 이 후보 슬롯 시도의 시작점 — 실패하면 여기까지 되돌린다
+        const tryMark = ejectJournal.length;
+        for (const occ of removedOccs) japply(occ, -1);
         if (!feasible(p.sectionIdx, day, start, p.len)) {
-          for (const occ of removedOccs) apply(occ, 1); // 롤백 (다른 슬롯 겹침 등)
+          rollbackTo(tryMark); // 다른 슬롯 겹침 등
           continue;
         }
-        apply({ sectionIdx: p.sectionIdx, occIdx: p.occIdx, len: p.len, day, start }, 1);
-        // 걸림돌 재배치 (재귀 — 깊이 감소)
-        const failed: Occurrence[] = [];
+        japply({ sectionIdx: p.sectionIdx, occIdx: p.occIdx, len: p.len, day, start }, 1);
+        // 걸림돌 재배치 (재귀 — 깊이 감소). 안쪽 시도도 같은 저널을 쓰므로
+        // 여기서 tryMark까지 되돌리면 **재귀가 옮긴 것까지 전부** 원위치한다.
+        let allReplaced = true;
         for (const occ of removedOccs) {
           if (
             !tryPlaceWithEjection(
               { sectionIdx: occ.sectionIdx, occIdx: occ.occIdx, len: occ.len, tier: 0 },
               depth - 1
             )
-          )
-            failed.push(occ);
+          ) {
+            allReplaced = false;
+            break; // 하나라도 실패하면 이 후보 슬롯은 성립하지 않는다
+          }
         }
-        if (!failed.length) return true;
-        // 실패 → 전체 롤백
-        apply({ sectionIdx: p.sectionIdx, occIdx: p.occIdx, len: p.len, day, start }, -1);
-        for (const occ of removedOccs) {
-          const key = `${occ.sectionIdx}:${occ.occIdx}`;
-          const cur = placed.get(key);
-          if (cur) apply(cur, -1); // 재배치돼 있으면 회수
-          apply(occ, 1); // 원위치
-        }
+        if (allReplaced) return true;
+        rollbackTo(tryMark);
       }
     }
+    // 방어선 — 정상 경로면 이미 mark 상태다. 훗날 편집으로 되돌리기가 새면 여기서 막힌다.
+    rollbackTo(mark);
     return false;
   }
 
