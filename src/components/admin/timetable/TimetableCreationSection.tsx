@@ -11,6 +11,8 @@ import CoTeachingRuleTab from "./CoTeachingRuleTab";
 import DraftAutoTab from "./DraftAutoTab";
 import BaseRevisionTab from "./BaseRevisionTab";
 import NeisBatchExportTab from "./NeisBatchExportTab";
+import HoursPlanTab from "./HoursPlanTab";
+import CurriculumCohortTab from "./CurriculumCohortTab";
 
 export default function TimetableCreationSection() {
   const {
@@ -25,6 +27,8 @@ export default function TimetableCreationSection() {
   } = useTimetableSettings();
 
   const [activeTab, setActiveTab] = useState<
+    | "hours_plan"
+    | "cohort"
     | "import"
     | "simul"
     | "venue"
@@ -34,7 +38,7 @@ export default function TimetableCreationSection() {
     | "draft"
     | "revision"
     | "neis_batch_export"
-  >("draft");
+  >("hours_plan");
 
   if (loading) {
     return (
@@ -75,6 +79,28 @@ export default function TimetableCreationSection() {
     <div className="space-y-6">
       {/* 작성 네비게이션 탭 */}
       <div className="bg-white rounded-xl p-2 shadow-sm border border-gray-200 flex flex-wrap gap-2 text-xs font-bold">
+        <button
+          onClick={() => setActiveTab("hours_plan")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "hours_plan"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>📋 선생님별 주당 수업 시간</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("cohort")}
+          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "cohort"
+              ? "bg-blue-600 text-white shadow-sm"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <span>⏱️ 교육과정 고정 시간</span>
+        </button>
+
         <button
           onClick={() => setActiveTab("import")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
@@ -176,6 +202,14 @@ export default function TimetableCreationSection() {
       </div>
 
       {/* 탭 뷰 */}
+      {activeTab === "hours_plan" && (
+        <HoursPlanTab activeTermId={activeTermId} periodsPerDay={periodsPerDay} />
+      )}
+
+      {activeTab === "cohort" && (
+        <CurriculumCohortTab periodsPerDay={periodsPerDay} />
+      )}
+
       {activeTab === "import" && (
         <TimetableImportTab
           settings={settings}
