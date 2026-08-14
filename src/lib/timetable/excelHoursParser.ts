@@ -5,6 +5,10 @@
  * 1. 행 계 = 반별 셀 합
  * 2. 합계행 반별 열합 = 위 전체 행의 열합
  * 3. 전 셀 정수 검사 & 순번 연속성 검사
+ *
+ * 학년별 반 수 비대칭 지원 (§0-1a-③ⓐ):
+ * - 학년마다 반 수가 달라도 (예: 1학년 9반, 2학년 8반, 3학년 9반)
+ *   헤더 1행(학년)과 2행(반 번호)을 동적으로 순회하여 학급 목록을 구성합니다.
  */
 import * as XLSX from "xlsx";
 
@@ -129,7 +133,7 @@ export function parseHoursExcel(data: ArrayBuffer | Uint8Array): ParsedHoursResu
       }
 
       // 학년 헤더 감지 ("1학년", "1", "2학년", "3학년" 등)
-      const gradeMatch = val1.match(/([1-3])\s*학년/);
+      const gradeMatch = val1.match(/^([1-3])(\s*학년)?$/);
       if (gradeMatch) {
         currentGrade = parseInt(gradeMatch[1], 10);
       }
@@ -334,4 +338,207 @@ export function parseHoursExcel(data: ArrayBuffer | Uint8Array): ParsedHoursResu
       issues: [{ severity: "error", message: `엑셀 파싱 중 예외 발생: ${err.message || String(err)}` }],
     };
   }
+}
+
+// ═════════════════════════════════════════════════════════════
+// 자가 테스트 (Self-Test Suite) — 학년별 반 수 비대칭 포함
+// ═════════════════════════════════════════════════════════════
+
+/**
+ * 인메모리 XLSX 버퍼 생성 헬퍼
+ */
+export function createMockHoursExcel(options: {
+  classesByGrade: Record<number, number>; // e.g. { 1: 9, 2: 8, 3: 9 }
+  rows: Array<{
+    seq: number;
+    subjectName: string;
+    subjectShort: string;
+    teacherName: string;
+    hoursByClass: Record<string, number>; // key: `${grade}-${classNum}`
+  }>;
+  sumRow?: boolean;
+}): Uint8Array {
+  const grades = Object.keys(options.classesByGrade).map(Number).sort((a, b) => a - b);
+
+  // Row 0: 제목
+  const r0 = ["교사별 시수표"];
+
+  // Row 1 & Row 2 헤더
+  const r1: any[] = ["순", "정식과목명", "단축과목명", "교사명"];
+  const r2: any[] = [null, null, null, null];
+
+  for (const g of grades) {
+    const classCount = options.classesByGrade[g];
+    r1.push(`${g}학년`);
+    for (let i = 1; i < classCount; i++) r1.push(null);
+
+    for (let c = 1; c <= classCount; c++) {
+      r2.push(c);
+    }
+  }
+  r1.push("계");
+  r2.push(null);
+
+  const data: any[][] = [r0, r1, r2];
+
+  // 데이터 행
+  const colSums: number[] = new Array(r2.length).fill(0);
+  let totalGrand = 0;
+
+  for (const r of options.rows) {
+    const dataRow: any[] = [r.seq, r.subjectName, r.subjectShort, r.teacherName];
+    let rowSum = 0;
+
+    let colIdx = 4;
+    for (const g of grades) {
+      const classCount = options.classesByGrade[g];
+      for (let c = 1; c <= classCount; c++) {
+        const key = `${g}-${c}`;
+        const h = r.hoursByClass[key] || 0;
+        dataRow.push(h > 0 ? h : null);
+        colSums[colIdx] += h;
+        rowSum += h;
+        colIdx++;
+      }
+    }
+    dataRow.push(rowSum);
+    totalGrand += rowSum;
+    data.push(dataRow);
+  }
+
+  // 합계행
+  if (options.sumRow !== false) {
+    const sumDataRow: any[] = [null, null, null, null];
+    let colIdx = 4;
+    for (const g of grades) {
+      const classCount = options.classesByGrade[g];
+      for (let c = 1; c <= classCount; c++) {
+        sumDataRow.push(colSums[colIdx]);
+        colIdx++;
+      }
+    }
+    sumDataRow.push(totalGrand);
+    data.push(sumDataRow);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "교사별시수표");
+  return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+}
+
+/**
+ * 파서 자가 테스트 함수 (비대칭 학급 포함)
+ */
+export function runExcelHoursParserSelfTests(): {
+  total: number;
+  passed: number;
+  failed: number;
+  errors: string[];
+} {
+  const errors: string[] = [];
+  let passed = 0;
+  let total = 0;
+
+  const assert = (condition: boolean, desc: string) => {
+    total++;
+    if (condition) {
+      passed++;
+    } else {
+      errors.push(`Assertion failed: ${desc}`);
+    }
+  };
+
+  // 1. 대칭 학급 (10-10-10) 테스트
+  const buf10_10_10 = createMockHoursExcel({
+    classesByGrade: { 1: 10, 2: 10, 3: 10 },
+    rows: [
+      {
+        seq: 1,
+        subjectName: "국어",
+        subjectShort: "국어",
+        teacherName: "홍길동",
+        hoursByClass: { "1-1": 4, "1-2": 4, "1-3": 4 },
+      },
+    ],
+  });
+  const res10_10_10 = parseHoursExcel(buf10_10_10);
+  assert(res10_10_10.success, "대칭 10-10-10 파싱 성공");
+  assert(res10_10_10.classList.length === 30, "대칭 10-10-10 총 30개 학급 감지");
+  assert(res10_10_10.rows.length === 1 && res10_10_10.rows[0].totalHours === 12, "대칭 10-10-10 1행 12시수 일치");
+
+  // 2. 비대칭 학급 (1학년 9반, 2학년 8반, 3학년 9반 = 총 26개 반) 테스트 (컴시간 매뉴얼 §5-나 실물)
+  const bufAsym9_8_9 = createMockHoursExcel({
+    classesByGrade: { 1: 9, 2: 8, 3: 9 },
+    rows: [
+      {
+        seq: 1,
+        subjectName: "수학",
+        subjectShort: "수학",
+        teacherName: "이순신",
+        hoursByClass: { "1-9": 4, "2-8": 4, "3-9": 4 },
+      },
+      {
+        seq: 2,
+        subjectName: "영어",
+        subjectShort: "영어",
+        teacherName: "강감찬",
+        hoursByClass: { "1-1": 3, "2-1": 3, "3-1": 3 },
+      },
+    ],
+  });
+  const resAsym9_8_9 = parseHoursExcel(bufAsym9_8_9);
+  assert(resAsym9_8_9.success, "비대칭 9-8-9 파싱 성공");
+  assert(resAsym9_8_9.classList.length === 26, "비대칭 9-8-9 총 26개 학급(9+8+9) 감지");
+  assert(
+    resAsym9_8_9.classList.filter((c) => c.grade === 1).length === 9 &&
+      resAsym9_8_9.classList.filter((c) => c.grade === 2).length === 8 &&
+      resAsym9_8_9.classList.filter((c) => c.grade === 3).length === 9,
+    "비대칭 9-8-9 각 학년별 반 수 정확 매핑"
+  );
+  assert(resAsym9_8_9.grandTotal === 21, "비대칭 9-8-9 총 21시수 일치");
+
+  // 3. 극단적 비대칭 학급 (1학년 2반, 2학년 1반, 3학년 1반 = 총 4개 반) 테스트 (cohort_selftest ④와 동형)
+  const bufAsym2_1_1 = createMockHoursExcel({
+    classesByGrade: { 1: 2, 2: 1, 3: 1 },
+    rows: [
+      {
+        seq: 1,
+        subjectName: "과학",
+        subjectShort: "과학",
+        teacherName: "장영실",
+        hoursByClass: { "1-1": 3, "1-2": 3, "2-1": 3, "3-1": 3 },
+      },
+    ],
+  });
+  const resAsym2_1_1 = parseHoursExcel(bufAsym2_1_1);
+  assert(resAsym2_1_1.success, "극단적 비대칭 2-1-1 파싱 성공");
+  assert(resAsym2_1_1.classList.length === 4, "극단적 비대칭 2-1-1 총 4개 학급 감지");
+  assert(
+    resAsym2_1_1.classList.some((c) => c.grade === 1 && c.classNum === 2) &&
+      !resAsym2_1_1.classList.some((c) => c.grade === 2 && c.classNum === 2),
+    "1학년에만 2반이 있고 2학년에는 2반이 없음 확인"
+  );
+
+  // 4. 무결성 검사: 행 계 불일치 감지 테스트
+  // 임의로 엑셀 데이터 AOA 수정하여 계를 틀리게 만듦
+  const badRowData: any[][] = [
+    ["교사별 시수표"],
+    ["순", "정식과목명", "단축과목명", "교사명", "1학년", "2학년", "계"],
+    [null, null, null, null, 1, 1, null],
+    [1, "국어", "국어", "홍길동", 3, 3, 999], // 계가 6이어야 하는데 999
+    [null, null, null, null, 3, 3, 6],
+  ];
+  const wsBad = XLSX.utils.aoa_to_sheet(badRowData);
+  const wbBad = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wbBad, wsBad, "교사별시수표");
+  const bufBad = XLSX.write(wbBad, { type: "array", bookType: "xlsx" });
+  const resBad = parseHoursExcel(bufBad);
+  assert(!resBad.success, "행 계 불일치 시 success === false");
+  assert(
+    resBad.issues.some((i) => i.severity === "error" && i.message.includes("일치하지 않습니다")),
+    "행 계 불일치 에러 메시지 생성 확인"
+  );
+
+  return { total, passed, failed: total - passed, errors };
 }
