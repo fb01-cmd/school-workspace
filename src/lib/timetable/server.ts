@@ -1426,15 +1426,16 @@ export async function findCurrentWeek(domain: string, termId: string): Promise<T
 
 export async function loadCalendarEvents(
   domain: string,
-  termId: string
+  termId?: string
 ): Promise<TimetableCalendarEvent[]> {
-  const snap = await timetableCalendarColRef(domain).where("termId", "==", termId).get();
+  // term_transition_spec §7-1: 학사일정은 학기 종속이 아니라 날짜 축 전역 원장
+  const snap = await timetableCalendarColRef(domain).get();
   return snap.docs
     .map((d) => {
       const data = d.data() || {};
       return {
         id: d.id,
-        termId: data.termId || termId,
+        termId: data.termId || termId || "",
         type: data.type as CalendarEventType,
         startDate: data.startDate || "",
         endDate: data.endDate || data.startDate || "",
@@ -1457,8 +1458,8 @@ const CALENDAR_TYPES: CalendarEventType[] = ["행사", "휴업일", "재량휴�
 export function validateCalendarEventPayload(
   raw: any
 ): { ok: true; event: Omit<TimetableCalendarEvent, "id" | "createdBy" | "createdAt"> } | { ok: false; error: string } {
+  // term_transition_spec §7-1: termId는 하위 호환용 선택 필드
   const termId = typeof raw?.termId === "string" ? raw.termId.trim() : "";
-  if (!termId) return { ok: false, error: "학기가 지정되지 않았습니다." };
   const type = raw?.type as CalendarEventType;
   if (!CALENDAR_TYPES.includes(type))
     return { ok: false, error: "일정 종류는 행사·휴업일·재량휴업·단축수업·고사 중 하나여야 합니다." };
@@ -5109,17 +5110,13 @@ export async function getCalendarIcsInfo(domain: string, baseUrl?: string): Prom
  * ics 피드용 학사일정 이벤트 전수 조회 (보관된 학기 제외 전 학기 이벤트)
  */
 export async function loadAllCalendarEventsForICS(domain: string): Promise<TimetableCalendarEvent[]> {
-  const terms: TimetableTerm[] = await loadAllTerms(domain);
-  const activeTerms = terms.filter((t: TimetableTerm) => t.status !== "archived");
-  const activeTermIds = new Set(activeTerms.map((t: TimetableTerm) => t.id));
-
+  // term_transition_spec §7-1: ICS 피드는 학기 필터 없이 전체 학사일정을 날짜순으로 온전하게 내보냄
   const snap = await timetableCalendarColRef(domain).get();
   const events: TimetableCalendarEvent[] = [];
 
   snap.docs.forEach((d) => {
     const data = d.data() || {};
     const termId = data.termId || "";
-    if (activeTermIds.size > 0 && !activeTermIds.has(termId)) return;
 
     events.push({
       id: d.id,
@@ -5874,6 +5871,7 @@ export async function listHoursPlans(domain: string): Promise<HoursPlanSummary[]
       id: doc.id,
       label: d.label || "",
       sourceTermId: d.sourceTermId || "",
+      ...(d.targetTermId ? { targetTermId: d.targetTermId } : {}),
       derivedAt: toMillis(d.derivedAt) || 0,
       rowCount: Array.isArray(d.rows) ? d.rows.length : 0,
       status: d.status === "ready" ? "ready" : "draft",
@@ -5897,6 +5895,7 @@ export async function getHoursPlan(
     id: doc.id,
     label: d.label || "",
     sourceTermId: d.sourceTermId || "",
+    ...(d.targetTermId ? { targetTermId: d.targetTermId } : {}),
     derivedAt: toMillis(d.derivedAt) || 0,
     rows: Array.isArray(d.rows) ? d.rows : [],
     gradeDayPeriods: d.gradeDayPeriods || {},
@@ -5911,7 +5910,8 @@ export async function deriveHoursPlanFromGrids(
   domain: string,
   sourceTermId: string,
   label: string,
-  userEmail: string
+  userEmail: string,
+  targetTermId?: string
 ): Promise<HoursPlan> {
   const grids = await loadAllClassGrids(domain, sourceTermId);
   if (!grids || grids.length === 0) {
@@ -5947,6 +5947,7 @@ export async function deriveHoursPlanFromGrids(
     id: planId,
     label: label.trim() || `${sourceTermId} 파생 시수`,
     sourceTermId,
+    ...(targetTermId ? { targetTermId: targetTermId.trim() } : {}),
     derivedAt: now,
     rows,
     gradeDayPeriods,
@@ -5966,6 +5967,7 @@ export async function saveHoursPlan(
   payload: {
     label?: string;
     sourceTermId?: string;
+    targetTermId?: string;
     rows: HoursPlanRow[];
     gradeDayPeriods: Record<number, Record<number, number>>;
     status?: "draft" | "ready";
@@ -6076,6 +6078,7 @@ export async function saveHoursPlan(
     id,
     label: (payload.label || "신학기 주당 수업 시간 계획").trim(),
     sourceTermId: payload.sourceTermId || "",
+    ...(payload.targetTermId ? { targetTermId: payload.targetTermId.trim() } : {}),
     derivedAt,
     rows: cleanRows,
     gradeDayPeriods: payload.gradeDayPeriods || {},
@@ -6092,5 +6095,266 @@ export async function saveHoursPlan(
 export async function deleteHoursPlan(domain: string, planId: string): Promise<void> {
   if (!planId) throw new Error("planId가 누락되었습니다.");
   await hoursPlansColRef(domain).doc(planId).delete();
+}
+
+// ═════════════════════════════════════════════════════════════
+// 학기 전환 (term_transition_spec) 액션 3종
+// ═════════════════════════════════════════════════════════════
+
+/**
+ * 1. 신학기 초안 학기 생성 (term_create_draft, spec §1)
+ */
+export async function createDraftTerm(
+  domain: string,
+  newTermId: string,
+  newTermName: string,
+  userEmail: string
+): Promise<TimetableTerm> {
+  const normTermId = (newTermId || "").trim();
+  if (!/^\d{4}-[12]$/.test(normTermId)) {
+    throw new Error("학기 ID 형식이 올바르지 않습니다 (예: 2027-1).");
+  }
+
+  const existing = await timetableTermsColRef(domain).doc(normTermId).get();
+  if (existing.exists) {
+    throw new Error(`이미 존재하는 학기 ID입니다: ${normTermId}`);
+  }
+
+  const now = Date.now();
+  const termDoc: TimetableTerm = {
+    id: normTermId,
+    name: (newTermName || "").trim() || `${normTermId.split("-")[0]}학년도 ${normTermId.split("-")[1]}학기`,
+    status: "draft",
+    subjects: [],
+    importedAt: now,
+    importedBy: userEmail.toLowerCase(),
+    sourceNote: "신학기 초안 생성",
+  };
+
+  await timetableTermsColRef(domain).doc(normTermId).set(termDoc);
+  await bumpTimetableCacheVersion(domain);
+  return termDoc;
+}
+
+/**
+ * 2. 등록부 승계 복사 (registry_inherit, spec §3)
+ */
+export async function inheritRegistries(
+  domain: string,
+  fromTermId: string,
+  toTermId: string,
+  userEmail: string
+): Promise<Record<string, number>> {
+  if (!fromTermId || !toTermId) {
+    throw new Error("출발 학기와 대상 학기가 모두 지정되어야 합니다.");
+  }
+  if (fromTermId === toTermId) {
+    throw new Error("동일한 학기로는 승계 복사할 수 없습니다.");
+  }
+
+  // 규칙 1: toTermId는 draft 학기만 허용
+  const toTermDoc = await timetableTermsColRef(domain).doc(toTermId).get();
+  if (!toTermDoc.exists || toTermDoc.data()?.status !== "draft") {
+    throw new Error("등록부 승계는 초안(draft) 상태의 학기로만 가능합니다.");
+  }
+
+  // 규칙 2: 대상 학기에 등록부 5종이 1건이라도 있으면 거부
+  const [toSimul, toVenue, toSlotBan, toConsecutive, toCoTeaching] = await Promise.all([
+    simulGroupsColRef(domain).where("termId", "==", toTermId).limit(1).get(),
+    venueGroupsColRef(domain).where("termId", "==", toTermId).limit(1).get(),
+    teacherSlotBansColRef(domain).where("termId", "==", toTermId).limit(1).get(),
+    consecutiveRulesColRef(domain).where("termId", "==", toTermId).limit(1).get(),
+    coTeachingRulesColRef(domain).where("termId", "==", toTermId).limit(1).get(),
+  ]);
+
+  if (
+    !toSimul.empty ||
+    !toVenue.empty ||
+    !toSlotBan.empty ||
+    !toConsecutive.empty ||
+    !toCoTeaching.empty
+  ) {
+    throw new Error("대상 학기에 이미 등록부 데이터가 존재합니다. 전량 비운 후 다시 시도해주세요.");
+  }
+
+  // fromTermId 등록부 5종 로드
+  const [fromSimul, fromVenue, fromSlotBan, fromConsecutive, fromCoTeaching] = await Promise.all([
+    simulGroupsColRef(domain).where("termId", "==", fromTermId).get(),
+    venueGroupsColRef(domain).where("termId", "==", fromTermId).get(),
+    teacherSlotBansColRef(domain).where("termId", "==", fromTermId).get(),
+    consecutiveRulesColRef(domain).where("termId", "==", fromTermId).get(),
+    coTeachingRulesColRef(domain).where("termId", "==", fromTermId).get(),
+  ]);
+
+  const now = Date.now();
+  const batch = adminDb.batch();
+
+  // 1) 동시수업
+  fromSimul.docs.forEach((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
+    const data = doc.data();
+    const newRef = simulGroupsColRef(domain).doc(randomUUID());
+    batch.set(newRef, {
+      ...data,
+      id: newRef.id,
+      termId: toTermId,
+      inheritedFrom: fromTermId,
+      createdBy: userEmail,
+      createdAt: now,
+      updatedBy: userEmail,
+      updatedAt: now,
+    });
+  });
+
+  // 2) 특별실
+  fromVenue.docs.forEach((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
+    const data = doc.data();
+    const newRef = venueGroupsColRef(domain).doc(randomUUID());
+    batch.set(newRef, {
+      ...data,
+      id: newRef.id,
+      termId: toTermId,
+      inheritedFrom: fromTermId,
+      createdBy: userEmail,
+      createdAt: now,
+      updatedBy: userEmail,
+      updatedAt: now,
+    });
+  });
+
+  // 3) 특별교사 금지
+  fromSlotBan.docs.forEach((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
+    const data = doc.data();
+    const newRef = teacherSlotBansColRef(domain).doc(randomUUID());
+    batch.set(newRef, {
+      ...data,
+      id: newRef.id,
+      termId: toTermId,
+      inheritedFrom: fromTermId,
+      createdBy: userEmail,
+      createdAt: now,
+      updatedBy: userEmail,
+      updatedAt: now,
+    });
+  });
+
+  // 4) 연속수업
+  fromConsecutive.docs.forEach((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
+    const data = doc.data();
+    const newRef = consecutiveRulesColRef(domain).doc(randomUUID());
+    batch.set(newRef, {
+      ...data,
+      id: newRef.id,
+      termId: toTermId,
+      inheritedFrom: fromTermId,
+      createdBy: userEmail,
+      createdAt: now,
+      updatedBy: userEmail,
+      updatedAt: now,
+    });
+  });
+
+  // 5) 복수교사
+  fromCoTeaching.docs.forEach((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
+    const data = doc.data();
+    const newRef = coTeachingRulesColRef(domain).doc(randomUUID());
+    batch.set(newRef, {
+      ...data,
+      id: newRef.id,
+      termId: toTermId,
+      inheritedFrom: fromTermId,
+      createdBy: userEmail,
+      createdAt: now,
+      updatedBy: userEmail,
+      updatedAt: now,
+    });
+  });
+
+  await batch.commit();
+
+  return {
+    simulGroups: fromSimul.docs.length,
+    venueGroups: fromVenue.docs.length,
+    slotBans: fromSlotBan.docs.length,
+    consecutiveRules: fromConsecutive.docs.length,
+    coTeachingRules: fromCoTeaching.docs.length,
+  };
+}
+
+/**
+ * 3. 자동 작성 결과 채택 (draft_adopt, spec §5)
+ */
+export async function adoptDraftToTerm(
+  domain: string,
+  draftId: string,
+  termId: string,
+  userEmail: string
+): Promise<{ gridCount: number }> {
+  if (!draftId || !termId) {
+    throw new Error("draftId와 termId가 모두 지정되어야 합니다.");
+  }
+
+  // 가드 1: 활성 학기 채택 금지 (draft 학기만 허용)
+  const termDoc = await timetableTermsColRef(domain).doc(termId).get();
+  if (!termDoc.exists) {
+    throw new Error(`대상 학기(${termId})를 찾을 수 없습니다.`);
+  }
+  if (termDoc.data()?.status !== "draft") {
+    throw new Error("초안(draft) 상태의 학기에만 자동 작성 결과를 기초시간표로 채택할 수 있습니다. 활성 학기는 개정 경로를 이용해주세요.");
+  }
+
+  // draft 로드 및 최종 그리드 재생
+  const { meta, baseGrids } = await getDraft(domain, draftId);
+  const { model } = await loadDraftConstraintModel(domain, meta, baseGrids);
+
+  const currentGrids = cloneClassGrids(baseGrids);
+  const truncatedOps = meta.ops.slice(0, meta.opCursor !== undefined ? meta.opCursor : meta.ops.length);
+  if (truncatedOps.length > 0) {
+    applyRevisionOps(currentGrids, truncatedOps);
+  }
+
+  if (!currentGrids || currentGrids.length === 0) {
+    throw new Error("채택할 시간표 그리드 데이터가 없습니다.");
+  }
+
+  // 가드 2: 검사기 하드 제약 위반 검사
+  const validation = validateTimetable(currentGrids, model);
+  if (validation.hard.length > 0) {
+    throw new Error(
+      `시간표에 ${validation.hard.length}건의 하드 제약 위반이 있어 채택할 수 없습니다 (${validation.hard.slice(0, 3).map((v) => `[${v.code}] ${v.text}`).join(", ")}).`
+    );
+  }
+
+  // 그리드 전량 저장
+  await saveAllClassGrids(domain, termId, currentGrids);
+
+  // term.subjects 파생 갱신 (import_commit 대체)
+  const subjectMap = new Map<string, string>(); // name -> short
+  for (const grid of currentGrids) {
+    for (const cell of grid.cells || []) {
+      for (const lesson of cell.lessons || []) {
+        if (lesson.subjectName) {
+          const sName = lesson.subjectName.trim();
+          const sShort = (lesson.subjectShort || sName.slice(0, 2)).trim();
+          if (!subjectMap.has(sName)) {
+            subjectMap.set(sName, sShort);
+          }
+        }
+      }
+    }
+  }
+
+  const subjects = Array.from(subjectMap.entries()).map(([name, shortName]) => ({
+    name,
+    shortName,
+  }));
+
+  await timetableTermsColRef(domain).doc(termId).update({
+    subjects,
+    updatedBy: userEmail.toLowerCase(),
+    updatedAt: Date.now(),
+  });
+
+  await bumpTimetableCacheVersion(domain);
+  return { gridCount: currentGrids.length };
 }
 

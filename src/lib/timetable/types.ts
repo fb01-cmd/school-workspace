@@ -393,7 +393,11 @@ export type ManageAction =
   | "hours_plan_delete"
   | "cohort_list"
   | "cohort_save"
-  | "cohort_delete";
+  | "cohort_delete"
+  // ── 학기 전환 스펙 (term_transition_spec) ──
+  | "term_create_draft"
+  | "registry_inherit"
+  | "draft_adopt";
 
 export interface ManageTimetableRequest {
   action: ManageAction;
@@ -456,6 +460,7 @@ export interface ManageTimetableRequest {
   aiText?: string;
   // Phase 9c-H 신학기 편성 입력 (phase9c_h_spec)
   sourceTermId?: string;
+  targetTermId?: string;
   planId?: string;
   planLabel?: string;
   planRows?: HoursPlanRow[];
@@ -463,6 +468,11 @@ export interface ManageTimetableRequest {
   planStatus?: "draft" | "ready";
   cohort?: Partial<CurriculumCohort>;
   cohortId?: string;
+  // ── 학기 전환 스펙 (term_transition_spec) ──
+  newTermId?: string;
+  newTermName?: string;
+  fromTermId?: string;
+  toTermId?: string;
 }
 
 export interface ManageTimetableResponse {
@@ -477,6 +487,8 @@ export interface ManageTimetableResponse {
   plan?: HoursPlan | null;
   cohorts?: CurriculumCohort[];
   cohort?: CurriculumCohort | null;
+  inheritedCounts?: Record<string, number>; // registry_inherit 종별 복사 건수
+  adoptedGridCount?: number; // draft_adopt 반영된 그리드 학급 수
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -996,6 +1008,7 @@ export interface HoursPlan {
   id: string;
   label: string;              // "2027학년도 1학기 시수" — 사람이 붙임
   sourceTermId?: string;      // 파생 원본 학기 (예: "2026-2", 엑셀 업로드 시 "upload")
+  targetTermId?: string;      // 소속 대상 학기 (예: "2027-1", term_transition_spec §4)
   derivedAt: number;          // 파생/업로드 시각 — 이후 원본이 바뀌어도 이 사본은 불변
   rows: HoursPlanRow[];
   gradeDayPeriods: Record<number, Record<number, number>>;  // 부족정보 #5
@@ -1025,6 +1038,7 @@ export interface HoursPlanSummary {
   id: string;
   label: string;
   sourceTermId?: string;
+  targetTermId?: string;
   derivedAt: number;
   rowCount: number;
   status: "draft" | "ready";

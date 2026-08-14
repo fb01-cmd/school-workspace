@@ -56,7 +56,7 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
         fetch("/api/timetable/manage", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "calendar_list", termId: activeTermId }),
+          body: JSON.stringify({ action: "calendar_list" }),
         }),
         fetch("/api/timetable/manage", {
           method: "POST",

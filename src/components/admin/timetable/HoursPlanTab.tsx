@@ -324,6 +324,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         body: JSON.stringify({
           action: "hours_plan_derive",
           sourceTermId: deriveSourceTermId,
+          targetTermId: activeTermId,
           planLabel: label,
         }),
       });
@@ -510,6 +511,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
           planId: currentPlan.id.startsWith("plan-") ? undefined : currentPlan.id,
           planLabel: currentPlan.label,
           sourceTermId: currentPlan.sourceTermId,
+          targetTermId: currentPlan.targetTermId || activeTermId,
           planRows: currentPlan.rows,
           gradeDayPeriods: currentPlan.gradeDayPeriods,
           planStatus: currentPlan.status,
@@ -761,7 +763,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
               >
                 {plans.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.label} ({p.rowCount}행 · {p.status === "ready" ? "완료" : "작성 중"})
+                    {p.label} {p.targetTermId ? `[${p.targetTermId}]` : ""} ({p.rowCount}행 · {p.status === "ready" ? "완료" : "작성 중"})
                   </option>
                 ))}
               </select>

@@ -393,9 +393,46 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
       setViewGrade(1);
       setViewClass(1);
     } catch (err: any) {
-      setDraftError(err.message);
+      setDraftError(err.message || "다시 실행 중 오류가 발생했습니다.");
     } finally {
       setLoadingDraft(false);
+    }
+  };
+
+  // ── 초안 채택 (draft_adopt, spec §5) ──
+  const [adopting, setAdopting] = useState(false);
+  const handleAdoptDraft = async () => {
+    if (!openDraft || !activeTermId) return;
+    const { meta, report } = openDraft;
+    if (report.hard.length > 0) {
+      alert(`하드 제약 위반이 ${report.hard.length}건 남아 있어 기초시간표로 채택할 수 없습니다. 위반 사항을 먼저 해결해주세요.`);
+      return;
+    }
+
+    const confirmMsg = `현재 초안(${meta.label})을 '${activeTermId}' 학기의 정식 기초시간표로 채택하시겠습니까?\n\n※ 대상 학기의 기존 기초시간표 그리드가 이 초안의 결과로 전량 교체됩니다.`;
+    if (!confirm(confirmMsg)) return;
+
+    setAdopting(true);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "draft_adopt",
+          draftId: meta.id,
+          termId: activeTermId,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(`초안이 ${activeTermId} 학기의 기초시간표로 성공적으로 채택되었습니다 (총 ${data.adoptedGridCount || 0}개 학급).`);
+      } else {
+        alert(data.error || "채택에 실패했습니다.");
+      }
+    } catch (err: any) {
+      alert(`오류: ${err.message || String(err)}`);
+    } finally {
+      setAdopting(false);
     }
   };
 
@@ -942,6 +979,17 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
               className="px-3 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold rounded-lg text-xs border border-purple-200 transition-all"
             >
               📋 작업기록 ({meta.opCursor}/{meta.ops.length})
+            </button>
+
+            {/* 기초시간표로 채택 버튼 (spec §5) */}
+            <button
+              onClick={handleAdoptDraft}
+              disabled={adopting || loadingDraft || report.hard.length > 0}
+              className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-lg text-xs shadow-xs transition-all flex items-center gap-1.5"
+              title={report.hard.length > 0 ? "하드 위반이 남아 있어 채택할 수 없습니다" : "이 결과를 정식 기초시간표로 채택합니다"}
+            >
+              <span>📥</span>
+              <span>{adopting ? "채택 중..." : "기초시간표로 채택"}</span>
             </button>
           </div>
         </div>

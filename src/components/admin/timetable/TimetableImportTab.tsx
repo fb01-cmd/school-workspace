@@ -752,9 +752,52 @@ export default function TimetableImportTab({
     }
   };
 
-  // 7. 학기 활성화 / 삭제
+  // 7. 신학기 초안 생성 및 학기 활성화 / 삭제
+  const [newDraftTermId, setNewDraftTermId] = useState("");
+  const [newDraftTermName, setNewDraftTermName] = useState("");
+  const [creatingDraft, setCreatingDraft] = useState(false);
+
+  const handleCreateDraftTerm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const tId = newDraftTermId.trim();
+    if (!tId) {
+      alert("학기 ID(예: 2027-1)를 입력해주세요.");
+      return;
+    }
+    if (!/^\d{4}-[12]$/.test(tId)) {
+      alert("학기 ID 형식이 올바르지 않습니다. 'YYYY-1' 또는 'YYYY-2' 형식으로 입력해주세요 (예: 2027-1).");
+      return;
+    }
+    setCreatingDraft(true);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "term_create_draft",
+          newTermId: tId,
+          newTermName: newDraftTermName.trim() || `${tId.split("-")[0]}학년도 ${tId.split("-")[1]}학기`,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(`신학기 초안(${tId})이 생성되었습니다. 작업 대상 학기에서 선택하여 시간표 작성을 시작할 수 있습니다.`);
+        setNewDraftTermId("");
+        setNewDraftTermName("");
+        onRefreshData();
+      } else {
+        alert(data.error || "초안 학기 생성에 실패했습니다.");
+      }
+    } catch (err: any) {
+      alert(`오류: ${err.message || String(err)}`);
+    } finally {
+      setCreatingDraft(false);
+    }
+  };
+
   const handleActivateTerm = async (id: string, name: string) => {
-    if (!confirm(`'${name} (${id})' 학기를 정식 시간표로 활성화하시겠습니까? 기존 활성 학기는 보관(archived) 처리됩니다.`)) {
+    const confirmMsg = `'${name} (${id})' 학기를 정식 운영 시간표로 전환하시겠습니까?\n\n[전환 전 확인 사항]\n1. 기초시간표 학급별 수업 시간 편성 완료 여부\n2. 시간표 검사기 필수 조건(교사 동시 배정 등) 충족 여부\n\n※ 전환 즉시 전교생 및 교직원에게 이 학기의 시간표가 정식 운영 시간표로 표출되며, 기존 학기는 보관 상태로 전환됩니다.`;
+    if (!confirm(confirmMsg)) {
       return;
     }
 
@@ -767,10 +810,10 @@ export default function TimetableImportTab({
       const data = await res.json();
       if (res.ok && data.success) {
         invalidateClientCache("timetable:settings");
-        alert("학기가 성공적으로 활성화되었습니다.");
+        alert("학기가 성공적으로 전환되었습니다.");
         onRefreshData();
       } else {
-        alert(`활성화 실패: ${data.error}`);
+        alert(`전환 실패: ${data.error}`);
       }
     } catch (err: any) {
       alert(`오류: ${err.message}`);
@@ -1525,11 +1568,55 @@ export default function TimetableImportTab({
       {/* ── 4단계: 학기 관리 & 일과계 관리자 지정 ──────────────────── */}
       {activeStep === 4 && (
         <div className="space-y-6">
+          {/* 신학기 초안 만들기 카드 (spec §1) */}
+          <div className="bg-indigo-50/60 rounded-xl border border-indigo-100 p-6 space-y-3">
+            <h3 className="text-base font-bold text-indigo-950 flex items-center gap-2">
+              <span>✨</span>
+              <span>신학기 초안 만들기</span>
+            </h3>
+            <p className="text-xs text-indigo-900/80">
+              새 학기 시간표를 미리 준비하기 위한 빈 초안 학기를 생성합니다. 초안 작업 중에는 현재 운영 중인 시간표에 전혀 영향을 주지 않습니다.
+            </p>
+            <form onSubmit={handleCreateDraftTerm} className="flex flex-wrap items-end gap-3 pt-1">
+              <div>
+                <label className="block text-[11px] font-bold text-indigo-950 mb-1">
+                  학기 ID (필수)
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 2027-1"
+                  value={newDraftTermId}
+                  onChange={(e) => setNewDraftTermId(e.target.value)}
+                  className="px-3 py-2 bg-white border border-indigo-200 rounded-lg text-xs font-mono font-bold text-gray-900 w-32 focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-[11px] font-bold text-indigo-950 mb-1">
+                  학기 명칭 (선택)
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 2027학년도 1학기 (미입력 시 자동)"
+                  value={newDraftTermName}
+                  onChange={(e) => setNewDraftTermName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-lg text-xs font-medium text-gray-900 focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={creatingDraft || !newDraftTermId.trim()}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shadow-xs"
+              >
+                {creatingDraft ? "생성 중..." : "+ 신학기 초안 만들기"}
+              </button>
+            </form>
+          </div>
+
           {/* 학기 목록 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
             <h3 className="text-base font-bold text-gray-900">📋 시간표 학기 관리</h3>
             <p className="text-xs text-gray-500">
-              생성된 기초시간표 학기 목록입니다. 초안(Draft) 학기를 정식 활성(Active) 학기로 전환하세요.
+              생성된 기초시간표 학기 목록입니다. 초안 학기 작성이 완료되면 정식 운영 학기로 전환하세요.
             </p>
 
             <div className="border border-gray-200 rounded-lg overflow-hidden">

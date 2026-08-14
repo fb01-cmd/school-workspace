@@ -79,6 +79,9 @@ import {
   deriveHoursPlanFromGrids,
   saveHoursPlan,
   deleteHoursPlan,
+  createDraftTerm,
+  inheritRegistries,
+  adoptDraftToTerm,
 } from "@/lib/timetable/server";
 import { sanitizeNeisMapPayload } from "@/lib/timetable/neis";
 import { AiCallError, isAiEnabled } from "@/lib/timetable/ai";
@@ -856,15 +859,12 @@ export async function POST(req: NextRequest) {
       // ── 학사일정 (pre_opening_3features_spec §B) ──
 
       case "calendar_list": {
-        const termId = body.termId || settings.activeTermId;
-        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
-        const events = await loadCalendarEvents(domain, termId);
+        const events = await loadCalendarEvents(domain);
         return NextResponse.json({ success: true, action, events });
       }
 
       case "calendar_save": {
-        const termId = body.calendarEvent?.termId || body.termId || settings.activeTermId;
-        if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
+        const termId = body.calendarEvent?.termId || body.termId || settings.activeTermId || "";
         const v = validateCalendarEventPayload({ ...body.calendarEvent, termId });
         if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
         const isUpdate = !!body.calendarEventId;
@@ -1504,6 +1504,52 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
         return NextResponse.json({ success: true, action, planId: body.planId });
+      }
+
+      // ── 학기 전환 스펙 (term_transition_spec) ──
+      case "term_create_draft": {
+        if (!body.newTermId) {
+          return NextResponse.json({ error: "newTermId가 필요합니다." }, { status: 400 });
+        }
+        const term = await createDraftTerm(domain, body.newTermId, body.newTermName || "", auth.email);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "create_draft_term",
+          details: `신학기 초안 생성 (${term.id} - ${term.name})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, term });
+      }
+
+      case "registry_inherit": {
+        if (!body.fromTermId || !body.toTermId) {
+          return NextResponse.json({ error: "fromTermId와 toTermId가 모두 필요합니다." }, { status: 400 });
+        }
+        const inheritedCounts = await inheritRegistries(domain, body.fromTermId, body.toTermId, auth.email);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "inherit_registries",
+          details: `등록부 승계 복사 (${body.fromTermId} → ${body.toTermId})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, inheritedCounts });
+      }
+
+      case "draft_adopt": {
+        if (!body.draftId || !body.termId) {
+          return NextResponse.json({ error: "draftId와 termId가 모두 필요합니다." }, { status: 400 });
+        }
+        const result = await adoptDraftToTerm(domain, body.draftId, body.termId, auth.email);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "adopt_draft",
+          details: `자동 작성 결과 기초시간표 채택 (초안: ${body.draftId} → 학기: ${body.termId}, 총 ${result.gridCount}개 학급)`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, adoptedGridCount: result.gridCount });
       }
 
       default:
