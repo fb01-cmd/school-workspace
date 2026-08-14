@@ -1437,7 +1437,8 @@ export async function POST(req: NextRequest) {
           domain,
           body.sourceTermId,
           body.planLabel || "",
-          auth.email
+          auth.email,
+          body.targetTermId
         );
         await writeAuditLog({
           operatorEmail: auth.email,
@@ -1475,6 +1476,7 @@ export async function POST(req: NextRequest) {
           {
             label: body.planLabel,
             sourceTermId: body.sourceTermId,
+            targetTermId: body.targetTermId,
             rows: body.planRows,
             gradeDayPeriods: body.gradeDayPeriods || {},
             status: body.planStatus,
