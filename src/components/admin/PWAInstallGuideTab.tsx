@@ -170,7 +170,11 @@ export default function PWAInstallGuideTab() {
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center space-x-2">
-            <span>⚙️ PC/Android 화면 따라하기: 설치부터 자동 실행 설정까지</span>
+            {/* 2026-08-14: 제목에서 Android를 뺐다. 이 튜토리얼은 작업표시줄 고정·컴퓨터 켤 때
+                자동 실행을 다루는데 **안드로이드에 없는 개념**이다. 이 컴포넌트에는 안드로이드
+                감지 로직 자체가 없고(유일한 "Android" 문자열이 이 제목이었다), 안드로이드 사용자는
+                따라 할 수 없는 안내를 자기용이라고 읽게 돼 있었다. 사용자 지적. */}
+            <span>⚙️ 컴퓨터(윈도우) 화면 따라하기: 설치부터 자동 실행 설정까지</span>
           </h3>
           <a
             href={`${IORAD_TUTORIAL_URL}#trysteps-${isInstalled ? 6 : 1}`}
@@ -183,6 +187,11 @@ export default function PWAInstallGuideTab() {
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
           아래 화면에서 <strong>[다음]</strong>을 누르며 실제 화면 그대로 따라 하시면 됩니다. 설치 → 작업표시줄 고정 → 컴퓨터 켤 때 자동 실행 → 알림 켜기까지 한 번에 끝납니다.
+        </p>
+        <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+          <strong>안드로이드 휴대폰</strong>을 쓰시면 이 따라하기 대신 아래 방법으로 하시면 됩니다 — 크롬으로 접속 →
+          주소창 오른쪽 <strong>점 세 개(⋮)</strong> → <strong>&ldquo;앱 설치&rdquo;</strong>(또는 &ldquo;홈 화면에 추가&rdquo;) →
+          첫 화면의 <strong>&ldquo;알림 받기&rdquo;</strong>에서 <strong>허용</strong>. 휴대폰에는 작업표시줄·자동 실행이 없습니다.
         </p>
         <div className="rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm bg-white dark:bg-gray-800">
           <iframe
