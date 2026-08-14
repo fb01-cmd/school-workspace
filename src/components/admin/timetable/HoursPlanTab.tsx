@@ -203,11 +203,12 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         }
       }
 
-      // 3) 동시수업 그룹 목록
+      // 3) 동시수업 그룹 목록 — termId 미명시 시 서버가 활성 학기로 대체하므로,
+      // 초안 학기 편집 중에는 반드시 명시해야 한다 (term_transition_spec §2)
       const resSimul = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "simul_list" }),
+        body: JSON.stringify({ action: "simul_list", ...(activeTermId ? { termId: activeTermId } : {}) }),
       });
       if (resSimul.ok) {
         const dataSimul = await resSimul.json();
