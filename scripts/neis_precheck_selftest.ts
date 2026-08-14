@@ -9,6 +9,7 @@
 import { ClassGrid, NeisMapRegistry, TimetableLesson } from "../src/lib/timetable/types";
 import {
   buildNeisPrecheckReport,
+  buildNeisTimetableCsv,
   emptyNeisMapRegistry,
   neisPairKey,
   sanitizeNeisMapPayload,
@@ -144,7 +145,6 @@ console.log("── sanitize (neis_map_save 방어선) ──");
 // ── 기초시간표 CSV 내보내기 (2026-08-14 실물 회수로 형식 확정) ──
 console.log("── 기초시간표 CSV 형식 ──");
 {
-  const { buildNeisTimetableCsv } = require("../src/lib/timetable/neis");
   const g = {
     grade: 1, classNum: 1,
     cells: [
@@ -160,7 +160,7 @@ console.log("── 기초시간표 CSV 형식 ──");
   expect("헤더 = ,월,화,수,목,금,토,일", lines[0] === "﻿,월,화,수,목,금,토,일", JSON.stringify(lines[0]));
   expect("9교시까지 = 10줄", lines.length === 10, `${lines.length}줄`);
   expect("마지막 줄에 개행 없음", !r.csv.endsWith("\r\n"));
-  expect("전 행 8열 통일", lines.slice(1).every((l) => l.split(",").length === 8));
+  expect("전 행 8열 통일", lines.slice(1).every((l: string) => l.split(",").length === 8));
   expect("매핑된 과목은 나이스명으로", lines[1].includes('"인간과철학(가교사)"'), lines[1]);
   expect("창체(가상 교사)는 빈칸", !r.csv.includes("창체"));
   expect("미매핑 과목 보고", r.unmapped.includes("통합과학"), r.unmapped.join(","));
