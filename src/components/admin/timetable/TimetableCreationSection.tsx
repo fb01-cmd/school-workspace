@@ -109,7 +109,7 @@ export default function TimetableCreationSection() {
               : "text-gray-600 hover:bg-gray-100"
           }`}
         >
-          <span>⚙️ 가져오기 & 학기 관리</span>
+          <span>⚙️ 학기 & 권한 관리</span>
         </button>
 
         <button

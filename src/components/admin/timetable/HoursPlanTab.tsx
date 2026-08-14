@@ -252,13 +252,15 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
       const result = parseHoursExcel(buffer);
       setExcelResult(result);
 
-      // 교사 자동 매칭 시도 (이름 일치)
+      // 교사 자동 매칭 시도 (동명이인 판별)
       const initialMappings: Record<string, string> = {};
       for (const tName of result.distinctTeachers) {
-        const matched = teachers.find((t) => t.name === tName);
-        if (matched) {
-          initialMappings[tName] = matched.email;
+        const matches = teachers.filter((t) => t.name === tName);
+        if (matches.length === 1) {
+          // 1명 정확 일치 시 자동 매칭
+          initialMappings[tName] = matches[0].email;
         } else {
+          // 동명이인(2명 이상) 또는 미존재(0명) 시 직접 선택하도록 빈값 처리
           initialMappings[tName] = "";
         }
       }
@@ -274,6 +276,14 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
   // 엑셀 업로드 적용
   const handleApplyUpload = () => {
     if (!excelResult) return;
+
+    // 교육과정 고정 시간 등록부 확인
+    if (cohorts.length === 0) {
+      const confirmNoCohort = confirm(
+        "교육과정 고정 시간 등록부가 비어 있어 창체·SLAT 시간이 추가되지 않습니다.\n\n이대로 계속 진행하시겠습니까?"
+      );
+      if (!confirmNoCohort) return;
+    }
 
     // 미매칭 교사 확인
     const unmapped = excelResult.distinctTeachers.filter((tName) => !teacherMappings[tName]);
@@ -1007,7 +1017,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
           <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-gray-900">📥 엑셀 시수표 매칭 및 불러오기</h3>
+                <h3 className="text-base font-bold text-gray-900">📥 선생님별 주당 수업 시간 엑셀 불러오기</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
                   엑셀의 교사 성명을 시스템 계정과 1:1로 매칭합니다.
                 </p>
@@ -1061,12 +1071,14 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                       <tr>
                         <th className="px-3 py-2">엑셀 기재 교사명</th>
                         <th className="px-3 py-2">매칭할 시스템 계정</th>
-                        <th className="px-3 py-2 text-center w-24">상태</th>
+                        <th className="px-3 py-2 text-center w-36">상태</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {excelResult.distinctTeachers.map((tName) => {
                         const email = teacherMappings[tName] || "";
+                        const matchingCount = teachers.filter((t) => t.name === tName).length;
+                        const isAmbiguous = matchingCount > 1;
                         return (
                           <tr key={tName} className="hover:bg-gray-50">
                             <td className="px-3 py-2 font-bold text-gray-900">{tName}</td>
@@ -1090,6 +1102,10 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                               {email ? (
                                 <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-[11px]">
                                   매칭됨
+                                </span>
+                              ) : isAmbiguous ? (
+                                <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-bold text-[11px] whitespace-nowrap">
+                                  동명이인 — 직접 선택
                                 </span>
                               ) : (
                                 <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded font-bold text-[11px]">

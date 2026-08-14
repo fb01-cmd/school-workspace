@@ -5925,9 +5925,7 @@ export async function deriveHoursPlanFromGrids(
   const rows: HoursPlanRow[] = hoursReqs.map((r) => {
     let teacherEmail = "";
     let teacherName = "";
-    if (r.teacherKey.startsWith("email:")) {
-      teacherEmail = r.teacherKey.slice(6);
-    } else if (r.teacherKey.startsWith("name:")) {
+    if (r.teacherKey.startsWith("name:")) {
       teacherName = r.teacherKey.slice(5);
     } else {
       teacherEmail = r.teacherKey;
@@ -5993,14 +5991,27 @@ export async function saveHoursPlan(
   const simulSnap = await simulGroupsColRef(domain).get();
   const validSimulGroupIds = new Set(simulSnap.docs.map((d) => d.id));
 
-  // 4. teacherEmail 실재 확인용 사용자 목록 로드
-  const usersSnap = await adminDb.collection("users").get();
+  // 4. teacherEmail 실재 확인용: rows에 등장하는 고유 이메일만 직접 조회 (무료 할당량 절약)
+  const distinctEmails = Array.from(
+    new Set(
+      rows
+        .map((r) => (r.teacherEmail || "").trim().toLowerCase())
+        .filter((e) => e !== "")
+    )
+  );
+
   const validUserEmails = new Set<string>();
-  usersSnap.forEach((u) => {
-    const data = u.data();
-    if (data.email) validUserEmails.add(String(data.email).toLowerCase());
-    if (u.id.includes("@")) validUserEmails.add(u.id.toLowerCase());
-  });
+  if (distinctEmails.length > 0) {
+    const docRefs = distinctEmails.map((e) => adminDb.collection("users").doc(e));
+    const userDocs = await adminDb.getAll(...docRefs);
+    for (const doc of userDocs) {
+      if (doc.exists) {
+        validUserEmails.add(doc.id.toLowerCase());
+        const d = doc.data();
+        if (d?.email) validUserEmails.add(String(d.email).toLowerCase());
+      }
+    }
+  }
 
   const rowKeySet = new Set<string>();
 
