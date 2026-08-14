@@ -23,6 +23,109 @@ interface TeacherOption {
   name: string;
 }
 
+/**
+ * 교직원 검색 자동완성 입력 컴포넌트 (업로드 매칭 모달 및 인라인 편집용)
+ */
+function TeacherAutocompleteInput({
+  value,
+  teachers,
+  onSelect,
+  placeholder = "이름 또는 이메일 검색...",
+}: {
+  value: string;
+  teachers: TeacherOption[];
+  onSelect: (email: string) => void;
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const matchedTeacher = teachers.find((t) => t.email.toLowerCase() === (value || "").toLowerCase());
+  const displayText = matchedTeacher ? `${matchedTeacher.name} (${matchedTeacher.email})` : value;
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const suggestions = useMemo(() => {
+    const q = query.toLowerCase().trim();
+    if (!q) return teachers.slice(0, 10);
+    return teachers
+      .filter((t) => t.name.toLowerCase().includes(q) || t.email.toLowerCase().includes(q))
+      .slice(0, 15);
+  }, [query, teachers]);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <div className="flex items-center gap-1">
+        <input
+          type="text"
+          value={isOpen ? query : displayText}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (!isOpen) setIsOpen(true);
+          }}
+          onFocus={() => {
+            setQuery("");
+            setIsOpen(true);
+          }}
+          placeholder={placeholder}
+          className="w-full px-2.5 py-1 text-xs bg-white border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-medium text-gray-900"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => {
+              onSelect("");
+              setQuery("");
+              setIsOpen(false);
+            }}
+            className="text-gray-400 hover:text-red-500 font-bold px-1 text-xs"
+            title="매칭 해제"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto divide-y divide-gray-100">
+          {suggestions.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-gray-400">일치하는 교직원 없음</div>
+          ) : (
+            suggestions.map((t) => (
+              <button
+                key={t.email}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onSelect(t.email);
+                  setIsOpen(false);
+                }}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 flex items-center justify-between ${
+                  t.email.toLowerCase() === (value || "").toLowerCase()
+                    ? "bg-indigo-50 font-bold text-indigo-900"
+                    : "text-gray-800"
+                }`}
+              >
+                <span>{t.name}</span>
+                <span className="text-[11px] text-gray-400 font-mono">{t.email}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursPlanTabProps) {
   const { userData } = useAuth();
   const domain = userData?.domain || userData?.email?.split("@")[1] || "hmh.or.kr";
@@ -55,10 +158,13 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 필터 상태
-  const [filterGrade, setFilterGrade] = useState<number | "all">("all");
+  // 필터 상태 (기본값: 1학년 선택으로 초기 렌더 행 수 축소)
+  const [filterGrade, setFilterGrade] = useState<number | "all">(1);
   const [filterClassNum, setFilterClassNum] = useState<number | "all">("all");
   const [filterSearch, setFilterSearch] = useState<string>("");
+
+  // 편집 표의 인라인 교사 편집 활성 행 ID (화면 전체에 select 최대 1개만 마운트)
+  const [editingTeacherRowId, setEditingTeacherRowId] = useState<string | null>(null);
 
   // 1. 초기 데이터 로드 (계획 목록, 학기 목록, 교사 목록, 동시수업 그룹, 코호트 목록)
   useEffect(() => {
@@ -119,7 +225,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         setCohorts(dataCohorts.cohorts || []);
       }
 
-      // 5) 교사 목록 로드 (캐시 또는 워크스페이스 API)
+      // 5) 교직원 목록 로드 (교직원 OU 한정 + users:staff 캐시)
       await loadTeachers();
     } catch (err: any) {
       setError(`데이터를 불러오는 중 오류가 발생했습니다: ${err.message || String(err)}`);
@@ -128,9 +234,14 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     }
   };
 
+  // 교직원 계정 판정
+  const isStaffAccount = (u: any): boolean =>
+    String(u?.orgUnitPath || "").startsWith("/교직원");
+
   const loadTeachers = async () => {
     try {
-      const cached = getClientCache("users:all");
+      // 교직원 전용 캐시 키 분리
+      const cached = getClientCache("users:staff");
       if (cached && Array.isArray(cached)) {
         const teacherList: TeacherOption[] = cached
           .map((u: any) => {
@@ -140,7 +251,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
               name: name.trim() || (u.primaryEmail || "").split("@")[0],
             };
           })
-          .filter((t) => t.email && t.email.includes("@"));
+          .filter((t: TeacherOption) => t.email && t.email.includes("@"));
         setTeachers(teacherList.sort((a, b) => a.name.localeCompare(b.name, "ko")));
         return;
       }
@@ -148,13 +259,15 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
       const res = await fetch("/api/workspace/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list", orgUnitPaths: ["all"] }),
+        body: JSON.stringify({ action: "list", orgUnitPaths: ["/교직원"] }),
       });
       if (res.ok) {
         const data = await res.json();
         if (data.users && Array.isArray(data.users)) {
-          setClientCache("users:all", data.users);
-          const teacherList: TeacherOption[] = data.users
+          // /교직원 OU만 엄격 필터링 (학생/기기 배제)
+          const staffUsers = data.users.filter(isStaffAccount);
+          setClientCache("users:staff", staffUsers);
+          const teacherList: TeacherOption[] = staffUsers
             .map((u: any) => {
               const name = (u.name?.familyName || "") + (u.name?.givenName || "") || u.name?.fullName || "";
               return {
@@ -167,7 +280,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         }
       }
     } catch (err) {
-      console.error("교사 목록 로드 실패:", err);
+      console.error("교직원 목록 로드 실패:", err);
     }
   };
 
@@ -906,7 +1019,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                         )}
                       </td>
 
-                      {/* 선생님 드롭다운 */}
+                      {/* 선생님 드롭다운 (활성 행 1개만 select 마운트하여 DOM 폭발 방지) */}
                       <td className="px-3 py-2">
                         {isVirtual ? (
                           <div className="flex items-center gap-1.5">
@@ -917,11 +1030,16 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                               위치는 「교육과정 고정 시간」에서 정함
                             </span>
                           </div>
-                        ) : (
+                        ) : editingTeacherRowId === row.id ? (
                           <select
+                            autoFocus
                             value={row.teacherEmail}
-                            onChange={(e) => handleRowChange(row.id, "teacherEmail", e.target.value)}
-                            className="w-full px-2 py-1 bg-white border border-gray-300 rounded font-medium text-gray-900"
+                            onBlur={() => setEditingTeacherRowId(null)}
+                            onChange={(e) => {
+                              handleRowChange(row.id, "teacherEmail", e.target.value);
+                              setEditingTeacherRowId(null);
+                            }}
+                            className="w-full px-2 py-1 bg-white border-2 border-indigo-500 rounded font-medium text-gray-900 shadow-sm"
                           >
                             <option value="">(담당 없음)</option>
                             {teachers.map((t) => (
@@ -930,6 +1048,25 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                               </option>
                             ))}
                           </select>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setEditingTeacherRowId(row.id)}
+                            className={`w-full text-left px-2.5 py-1 rounded border text-xs font-medium transition-colors flex items-center justify-between group ${
+                              row.teacherEmail
+                                ? "bg-gray-50/80 border-gray-200 text-gray-900 hover:bg-indigo-50/50 hover:border-indigo-300"
+                                : "bg-red-50/50 border-red-200 text-red-600 hover:bg-red-100/50"
+                            }`}
+                          >
+                            <span className="truncate">
+                              {teachers.find((t) => t.email.toLowerCase() === (row.teacherEmail || "").toLowerCase())?.name ||
+                                row.teacherName ||
+                                (row.teacherEmail ? row.teacherEmail.split("@")[0] : "(선생님 선택)")}
+                            </span>
+                            <span className="text-[10px] text-gray-400 group-hover:text-indigo-600 ml-1">
+                              ✎
+                            </span>
+                          </button>
                         )}
                       </td>
 
@@ -1083,20 +1220,14 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                           <tr key={tName} className="hover:bg-gray-50">
                             <td className="px-3 py-2 font-bold text-gray-900">{tName}</td>
                             <td className="px-3 py-2">
-                              <select
+                              <TeacherAutocompleteInput
                                 value={email}
-                                onChange={(e) =>
-                                  setTeacherMappings({ ...teacherMappings, [tName]: e.target.value })
+                                teachers={teachers}
+                                onSelect={(selectedEmail) =>
+                                  setTeacherMappings({ ...teacherMappings, [tName]: selectedEmail })
                                 }
-                                className="w-full px-2 py-1 bg-white border border-gray-300 rounded text-gray-900"
-                              >
-                                <option value="">(미매칭 - 선택해주세요)</option>
-                                {teachers.map((t) => (
-                                  <option key={t.email} value={t.email}>
-                                    {t.name} ({t.email})
-                                  </option>
-                                ))}
-                              </select>
+                                placeholder="이름 또는 이메일 검색..."
+                              />
                             </td>
                             <td className="px-3 py-2 text-center">
                               {email ? (
