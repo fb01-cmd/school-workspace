@@ -6056,13 +6056,15 @@ export async function saveHoursPlan(
     }
   }
 
+  // undefined 값 키는 아예 넣지 않는다 — 이 프로젝트 Firestore는 ignoreUndefinedProperties
+  // 미설정이라 명시적 undefined가 set()에서 통째로 거부된다 (가상 교사 행의 단축·나이스명이 해당)
   const cleanRows: HoursPlanRow[] = rows.map((r) => ({
     id: r.id?.trim() || randomUUID(),
     grade: Number(r.grade),
     classNum: Number(r.classNum),
     subjectName: r.subjectName.trim(),
-    subjectShort: r.subjectShort ? r.subjectShort.trim() : undefined,
-    neisName: r.neisName ? r.neisName.trim() : undefined,
+    ...(r.subjectShort?.trim() ? { subjectShort: r.subjectShort.trim() } : {}),
+    ...(r.neisName?.trim() ? { neisName: r.neisName.trim() } : {}),
     teacherEmail: (r.teacherEmail || "").trim(),
     teacherName: (r.teacherName || "").trim(),
     hours: Number(r.hours),
