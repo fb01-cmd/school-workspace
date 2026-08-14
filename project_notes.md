@@ -1,6 +1,24 @@
 # Project Notes
 
-- (현재 작업 중인 파일 없음)
+## [2026-08-14] Antigravity → Claude/사용자 (학기 전환 스펙 §8-1~6 전체 구현 완료)
+- **변경 파일**:
+  - `src/lib/timetable/types.ts`: `term_create_draft`, `registry_inherit`, `draft_adopt` 액션 및 `targetTermId` 등 요청/응답 타입 추가
+  - `src/lib/timetable/server.ts`: `createDraftTerm`, `inheritRegistries`, `adoptDraftToTerm` 구현 및 `saveHoursPlan`/`deriveHoursPlanFromGrids`의 `targetTermId` 반영, 학사일정(`loadCalendarEvents`, `loadAllCalendarEventsForICS`, `validateCalendarEventPayload`) 날짜 축 전역 조회 전환
+  - `src/app/api/timetable/manage/route.ts`: 신규 액션 3종 핸들러 및 감사 로그 추가, 캘린더 날짜 축 전역 연동
+  - `src/components/admin/timetable/TimetableCreationSection.tsx`: `workingTermId` 상태 신설, 학기 선택기 드롭다운, 초안 작업 고정 배너, 운영 등록부 승계 가져오기 버튼, 하위 탭 `workingTermId` 전달
+  - `src/components/admin/timetable/TimetableImportTab.tsx`: 4단계에 신학기 초안 만들기 폼 신설, 학기 전환 확인 모달 관문 안내 문구 보강
+  - `src/components/admin/timetable/DraftAutoTab.tsx`: `draft_adopt` 버튼 및 채택 핸들러 구현 (하드 제약 위반 시 사전 차단)
+  - `src/components/admin/timetable/HoursPlanTab.tsx`: `targetTermId` 연동 및 계획 목록 소속 학기 배지 표시
+  - `src/components/admin/timetable/CalendarManageTab.tsx`: 날짜 축 전역 학사일정 조회 연동
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (39개 라우트 프로덕션 빌드 성공)
+  - `scripts/hours_excel_parser_selftest.ts` ✅ (22건 전수 통과)
+- **커밋**: `1a5f80a` (main 푸시 완료)
+- **Claude 표적 리뷰 대상**:
+  1. `adoptDraftToTerm` 가드 2개 (활성 학기 채택 거부, 하드 위반 시 거부)
+  2. `loadCalendarEvents` 및 ICS 피드의 날짜 축 전역 전환에 따른 주간 파생 회귀 여부
+
 
 
 
