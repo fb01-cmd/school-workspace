@@ -968,6 +968,29 @@ export interface FixedBlock {
   updatedAt?: number;
 }
 
+/** 교육과정 코호트 등록부 (9c-H §2) — 창체·SLAT 고정 슬롯의 축은 「학년」이 아니라 「교육과정」.
+ *  학년은 저장하지 않는다(3월 함정) — cohort.ts의 역산 함수가 유일한 파생 소재지. */
+export interface CurriculumCohort {
+  id: string;
+  /** "2022 개정 교육과정" — 사람이 붙임. 화면 문구는 「교육과정」·「○○년 입학생부터」만 사용 */
+  label: string;
+  /** 이 교육과정이 처음 적용된 입학년도. 예: 2025 */
+  startAdmissionYear: number;
+  fixedSlots: CohortFixedSlot[];
+  active: boolean;
+  createdBy: string;
+  updatedBy: string;
+  updatedAt: number;
+}
+
+/** 판정 키는 (day, period). displayName은 표시용이자 시수표 행 과목명과의 연결 고리 —
+ *  컴파일러가 fixedBlock entry의 subjectName으로 시수표 행을 찾으므로 "창체"·"SLAT" 표기가 일치해야 한다. */
+export interface CohortFixedSlot {
+  displayName: string; // "창체" / "SLAT"
+  day: number; // 1=월 … 5=금
+  period: number;
+}
+
 /** 연속수업 등록부 (매뉴얼 §6-라) — 콤마 표기 "2"·"2,2"·"3" = 연속 블록 길이 목록(잔여 시수는 단독 1교시).
  *  소유 규칙: 대상이 동시수업·특별실 그룹이면 이 등록부가 아니라 그 그룹의 consecutive 필드에 등재한다 (이중 등재 금지). */
 export interface ConsecutiveRule {
