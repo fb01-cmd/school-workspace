@@ -140,5 +140,33 @@ console.log("── sanitize (neis_map_save 방어선) ──");
   }).error);
 }
 
+
+// ── 기초시간표 CSV 내보내기 (2026-08-14 실물 회수로 형식 확정) ──
+console.log("── 기초시간표 CSV 형식 ──");
+{
+  const { buildNeisTimetableCsv } = require("../src/lib/timetable/neis");
+  const g = {
+    grade: 1, classNum: 1,
+    cells: [
+      { day: 1, period: 1, lessons: [lesson("철학", A)] },
+      { day: 5, period: 5, lessons: [lesson("창체", V)] },   // 가상 교사 → 빈칸이어야
+      { day: 2, period: 3, lessons: [lesson("통합과학", A, B)] }, // 복수 교사 → 첫 사람만
+    ],
+  };
+  const r = buildNeisTimetableCsv(g as any, (s: string) => (s === "철학" ? "인간과철학" : null));
+  const lines = r.csv.split("\r\n");
+
+  expect("BOM으로 시작", r.csv.charCodeAt(0) === 0xfeff);
+  expect("헤더 = ,월,화,수,목,금,토,일", lines[0] === "﻿,월,화,수,목,금,토,일", JSON.stringify(lines[0]));
+  expect("9교시까지 = 10줄", lines.length === 10, `${lines.length}줄`);
+  expect("마지막 줄에 개행 없음", !r.csv.endsWith("\r\n"));
+  expect("전 행 8열 통일", lines.slice(1).every((l) => l.split(",").length === 8));
+  expect("매핑된 과목은 나이스명으로", lines[1].includes('"인간과철학(가교사)"'), lines[1]);
+  expect("창체(가상 교사)는 빈칸", !r.csv.includes("창체"));
+  expect("미매핑 과목 보고", r.unmapped.includes("통합과학"), r.unmapped.join(","));
+  expect("복수 교사 보고", r.multiTeacher.length === 1, r.multiTeacher.join(","));
+  expect("복수 교사는 첫 사람만 기재", lines[3].includes("(가교사)") && !lines[3].includes("나교사"), lines[3]);
+}
+
 console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);
 process.exit(failed === 0 ? 0 : 1);

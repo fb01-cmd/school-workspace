@@ -273,3 +273,77 @@ export function buildNeisPrecheckReport(
     },
   };
 }
+
+// ── 기초시간표 CSV 내보내기 (phase9c_f_spec — 2026-08-14 실물 회수로 형식 확정) ──
+//
+// 컴시간이 나이스 업로드용으로 뽑아 주던 파일을 그대로 재현한다. 형식은 추측이 아니라
+// **실물 1건(1학년 1반)을 바이트 단위로 분석해 확정**했다:
+//   · UTF-8 + BOM(EF BB BF) — 없으면 나이스·엑셀에서 한글이 깨진다
+//   · 줄바꿈 CRLF, **마지막 줄에 개행 없음**
+//   · 헤더 `,월,화,수,목,금,토,일` — 따옴표 없음
+//   · 데이터 행 `교시,"과목(교사)",…` — 교시 번호만 따옴표 없고 나머지 셀은 항상 따옴표
+//   · 9교시까지 행이 있고, 토·일 열은 존재하되 값이 없다
+//   · 창체·SLAT처럼 담당 교사가 없는 수업은 **칸이 통째로 빈 문자열**(질의 5-2 + 실물 대조)
+//
+// 열 개수: 원본은 1~7교시 행이 7열, 8~9교시 행이 8열로 **들쭉날쭉하다**(후행 빈 칸 잘림).
+// 그대로 흉내 내지 않고 **전 행 8열로 통일**한다 — 원본 자체가 내부적으로 불일치하는데도
+// 나이스가 받아들였다는 것이 곧 "후행 빈 칸을 따지지 않는다"는 증거이고, 8열은 그 상위집합이다.
+// (이 판단이 틀렸다면 나이스가 거부할 것이고, 그때 원본의 불일치까지 복제하면 된다.)
+
+export interface NeisCsvResult {
+  csv: string;
+  /** 나이스 등재명이 없어 플랫폼 이름을 그대로 쓴 과목 — 정상 경로면 비어 있어야 한다(B1이 먼저 막는다) */
+  unmapped: string[];
+  /** 교사가 둘 이상인 수업 — 나이스 표기 규약이 미확정이라 첫 번째만 썼다 (질의 5-3 미회수) */
+  multiTeacher: string[];
+}
+
+const NEIS_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+const NEIS_PERIODS = 9;
+
+/**
+ * 한 학급의 기초시간표를 나이스 업로드용 CSV 문자열로 만든다. 순수 함수 — Firestore 무의존.
+ *
+ * @param grid       대상 학급 그리드
+ * @param neisNameOf 플랫폼 과목명 → 나이스 등재명. 없으면 null (호출부가 B1로 이미 막았어야 한다)
+ */
+export function buildNeisTimetableCsv(
+  grid: ClassGrid,
+  neisNameOf: (platformSubject: string) => string | null
+): NeisCsvResult {
+  const unmapped = new Set<string>();
+  const multiTeacher = new Set<string>();
+
+  // (day, period) → 칸 문자열
+  const cellText = new Map<string, string>();
+  for (const cell of grid.cells || []) {
+    for (const lesson of cell.lessons || []) {
+      const real = (lesson.teachers || []).filter((t) => (t.email || "").trim());
+      // 담당 교사가 없는 수업(창체·SLAT)은 나이스 파일에 나가지 않는다 — 칸을 비운다
+      if (real.length === 0) continue;
+      if (real.length > 1) multiTeacher.add(`${lesson.subjectName}(${real.map((t) => t.name).join("·")})`);
+
+      const platform = (lesson.subjectName || "").trim();
+      const mapped = neisNameOf(platform);
+      if (!mapped) unmapped.add(platform);
+      const subject = mapped || platform;
+      cellText.set(`${cell.day}-${cell.period}`, `${subject}(${real[0].name || ""})`);
+    }
+  }
+
+  const lines: string[] = [`,${NEIS_DAYS.join(",")}`];
+  for (let p = 1; p <= NEIS_PERIODS; p++) {
+    const cells = NEIS_DAYS.map((_, i) => {
+      const day = i + 1; // 월=1 … 일=7. 토·일(6·7)은 그리드에 없으므로 자연히 빈칸
+      return `"${cellText.get(`${day}-${p}`) || ""}"`;
+    });
+    lines.push(`${p},${cells.join(",")}`);
+  }
+
+  // BOM + CRLF + 마지막 줄 개행 없음 — 원본과 동일
+  return {
+    csv: "﻿" + lines.join("\r\n"),
+    unmapped: [...unmapped].sort(),
+    multiTeacher: [...multiTeacher].sort(),
+  };
+}
