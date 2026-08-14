@@ -147,7 +147,18 @@ export function buildNeisPrecheckReport(
         lessons++;
         const subjName = (lesson.subjectName || "").trim();
         const subjKey = normSubject(subjName);
-        if (subjKey) {
+
+        // 가상 교사만 있는 수업(창체·SLAT)은 **나이스 파일에 아예 나가지 않는다** —
+        // 2026-08-14 일과계 회신 5-2 + 실물 대조로 확정(해당 칸이 빈 문자열).
+        // 따라서 이 과목들은 "NEIS 등재명 미확정"이 아니라 **내보내기 대상이 아니다.**
+        // B1(미확정 차단)에 걸리면 창체·SLAT 때문에 내보내기가 영원히 막힌다.
+        // 교사 쪽은 이미 virtualAgg로 분리하고 있었으나(아래) 과목 쪽에 같은 분리가 없었다.
+        // 근거: docs/phase9c_questionnaire_result_2026-08-14.md §4-1
+        const teachersOf = lesson.teachers || [];
+        const allVirtual =
+          teachersOf.length > 0 && teachersOf.every((t) => teacherKeyOf(t).startsWith("name:"));
+
+        if (subjKey && !allVirtual) {
           const agg = subjectAgg.get(subjKey) || {
             platformName: subjName,
             lessonCount: 0,
@@ -208,7 +219,11 @@ export function buildNeisPrecheckReport(
       teacherKey: tk,
       teacherName: v.teacherName,
       lessonCount: v.lessonCount,
-      text: `${v.teacherName} — 계정 없는 이름의 수업 주 ${v.lessonCount}시간. 나이스 파일에서의 처리 방식은 샘플 확보 후 확정됩니다`,
+      // 2026-08-14 확정 — 샘플 파일 회수로 F-2 열린 질문이 닫혔다.
+      // 창체·SLAT는 나이스 파일에서 그 칸이 통째로 빈 문자열로 나간다(과목·교사 모두 빠짐).
+      // 질의 5-2 답변 + 1학년 1반 실물 35칸 대조로 교차 확인.
+      // 미정 사항이 아니라 정상 동작이므로 문구를 "확정 대기"에서 "이렇게 나갑니다"로 바꾼다.
+      text: `${v.teacherName} — 계정 없는 이름의 수업 주 ${v.lessonCount}시간. 나이스 파일에는 이 칸이 빈칸으로 나갑니다(정상)`,
     }))
     .sort((a, b) => b.lessonCount - a.lessonCount);
 

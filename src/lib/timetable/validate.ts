@@ -6,7 +6,9 @@
  *
  * 하드 H1~H11 = 컴시간 "중대한 문제(이동 실행 비활성)" 대응 — 하나라도 있으면 완성본이 아니다.
  * 소프트 S1~S6 = 기존 감점 엔진(swap.ts teacherDayPenalties·classDuplicatePenalty)의 학기 전체 일반화 —
- *   가중치·문구 규약을 그대로 계승한다 (S7 순배는 실효 검증 후, §3-2).
+ *   가중치·문구 규약을 그대로 계승한다.
+ *   S7(순배)은 미구현 — 만들 때 S6보다 낮은 가중치로 넣는다(2026-08-14 질의 4-2 확정,
+ *   docs/phase9c_questionnaire_result_2026-08-14.md §3). 서열 S6 > S7은 고정.
  *
  * 판정 원칙:
  *  - 가상 교사(이메일 없음)는 자리표시이므로 교사 단위 검사(H2·H5·소프트)에서 제외한다.
@@ -687,7 +689,18 @@ export function validateTimetable(
         const subjectCount = new Set(d.subjects).size;
         if (subjectCount >= 3)
           push("S5", `${td.label} ${DAY_LABEL[day]}요일 ${subjectCount}과목 수업`, subjectCount - 2);
-        // S6 '오후' (가중치 잠정 — phase9c_spec §11, 질문지 회수 후 확정): 오전 0시간·오후 3시간 이상 쏠림 — 1점
+        // S6 '오후': 오전 0시간·오후 3시간 이상 쏠림 — 1점
+        //
+        // ✅ 가중치 확정 (2026-08-14, 질의 4-1 회수 — phase9c_spec §11 미결정 2번 종결)
+        //   일과계 답: "웬만하면 피하지만 어쩔 수 없으면 둔다" → 중간. 하드가 아니다.
+        //   현행 1점(다른 소프트와 동급)을 유지한다. 답이 "중요하게 지킨다"였다면 올려야
+        //   했지만 양보 가능이라 올릴 근거가 없다.
+        //
+        // ⚠️ S7(같은 과목의 반별 교시 순배)은 아직 구현되지 않았다(이 파일 머리말 참조).
+        //   만들 때 반드시 S6보다 **낮은** 가중치로 넣는다 — 질의 4-2 답이
+        //   "가능하면 좋지만 필수는 아니다"로 S6보다 한 단계 더 약했다.
+        //   서열(S6 > S7)은 고정, 절대 수치는 11월 리허설에서 조정.
+        //   근거: docs/phase9c_questionnaire_result_2026-08-14.md §3
         const afternoon = [...d.periods].filter((p) => p > L).length;
         if (afternoon >= 3 && afternoon === d.periods.size)
           push("S6", `${td.label} ${DAY_LABEL[day]}요일 오후 쏠림 (오전 수업 없음, 오후 ${afternoon}시간)`, 1);

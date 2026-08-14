@@ -55,8 +55,13 @@ const grids = [
 console.log("── 빈 등록부 → B1 전과목·W 전건 발화 ──");
 {
   const r = buildNeisPrecheckReport(grids, emptyNeisMapRegistry());
-  expect("B1 = 4과목 (국어·수학·창체·통합과학)", r.blockers.unmappedSubjects.length === 4,
-    `실제 ${r.blockers.unmappedSubjects.length}`);
+  // 2026-08-14 개정: 창체는 B1 대상이 아니다. 가상 교사만 있는 수업은 나이스 파일에
+  // 아예 나가지 않으므로(질의 5-2 + 실물 대조) "등재명 미확정"이 될 수 없다.
+  // 종전 테스트는 창체를 포함해 4과목을 기대했고, 그 기대가 곧 결함이었다 —
+  // 창체 때문에 내보내기가 영원히 차단됐다.
+  expect("B1 = 3과목 (국어·수학·통합과학) — 창체 제외", r.blockers.unmappedSubjects.length === 3,
+    `실제 ${r.blockers.unmappedSubjects.length}: ${r.blockers.unmappedSubjects.map((s) => s.platformName).join(",")}`);
+  expect("B1에 창체 없음", !r.blockers.unmappedSubjects.some((s) => s.platformName === "창체"));
   expect("readyForExport = false", r.readyForExport === false);
   expect("W1 가상 교사 1건 (창체)", r.warnings.virtualLessons.length === 1 &&
     r.warnings.virtualLessons[0].teacherName === "창체");
@@ -81,7 +86,7 @@ console.log("── 과목 일부 매핑 → B1 차감·W3에 NEIS명 병기 ─
     confirmedPairs: [],
   };
   const r = buildNeisPrecheckReport(grids, registry);
-  expect("B1 = 2과목 (수학·창체)", r.blockers.unmappedSubjects.length === 2,
+  expect("B1 = 1과목 (수학) — 창체 제외", r.blockers.unmappedSubjects.length === 1,
     r.blockers.unmappedSubjects.map((s) => s.platformName).join(","));
   const pair = r.warnings.unconfirmedPairs.find((p) => p.platformName === "통합과학" && p.teacherKey === "a@x.kr");
   expect("W3 통합과학 pair에 neisName 병기", pair?.neisName === "통합과학(공통)");
@@ -100,8 +105,9 @@ console.log("── 전부 매핑·확인 → 차단 0·경고 0 (소거) ──
   expect("W2 = 0", r.warnings.unconfirmedTeachers.length === 0);
   expect("W3 = 0", r.warnings.unconfirmedPairs.length === 0);
   expect("W1은 확인 개념 없음 — 잔존", r.warnings.virtualLessons.length === 1);
-  expect("summary 확인 수 일치", r.summary.mappedSubjects === 4 &&
-    r.summary.confirmedTeachers === 2 && r.summary.confirmedPairs === 4);
+  expect("summary 확인 수 일치", r.summary.mappedSubjects === 3 &&
+    r.summary.confirmedTeachers === 2 && r.summary.confirmedPairs === 4,
+    `mapped=${r.summary.mappedSubjects} teachers=${r.summary.confirmedTeachers} pairs=${r.summary.confirmedPairs}`);
 }
 
 console.log("── pair key 규약 ──");
