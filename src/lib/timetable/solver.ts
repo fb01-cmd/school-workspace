@@ -20,6 +20,7 @@ import { buildSimulMatcher } from "./simul";
 import { buildVenueMatcher } from "./venue";
 import {
   ClassGrid,
+  HoursRequirement,
   TimetableConstraintModel,
   TimetableLesson,
 } from "./types";
@@ -94,8 +95,8 @@ export interface SolverResult {
 
 // ── 섹션 컴파일 (그리드 역산 — Phase B 역산기의 구조화판) ──────
 //
-// 현행 그리드 + 등록부 → 섹션 목록. 신학기(그리드 없는) 경로는 시수표+등록부 컴파일러를
-// Phase C-2에서 추가한다 (독립 시수표 입력 UI와 함께 — phase9c_spec §2-1ⓑ).
+// 현행 그리드 + 등록부 → 섹션 목록. 신학기(그리드 없는) 경로는 아래
+// compileSectionsFromHours (Phase C-2) — 시수표+등록부만으로 컴파일한다.
 
 export function compileSectionsFromGrids(
   grids: ClassGrid[],
@@ -342,6 +343,399 @@ function parseBlockLens(pattern: string | undefined, hours: number): number[] {
   if (!blocks.length || sum > hours) return Array.from({ length: hours }, () => 1);
   const singles = hours - sum;
   return [...blocks.sort((a, b) => b - a), ...Array.from({ length: singles }, () => 1)];
+}
+
+// ── 섹션 컴파일 (백지 편성 — Phase C-2: 시수표+등록부만, 그리드를 보지 않는다) ──
+//
+// 그리드가 주던 정보 중 시수표(HoursRequirement)에 없는 것과 그 출처 (phase9c_spec §2-1ⓑ):
+//  ① 자리표시(창체·SLAT) 수업의 고정 위치 — fixedBlocks 등록부가 원본 (§2-3②).
+//     장래 교육과정 코호트 등록부(질의 결과 §2-2)는 이 형태(학급 단위 entries)로 전개해
+//     넘긴다 — 컴파일러는 학년 축을 모른다 (학년 하드코딩 금지).
+//  ② 동시수업 그룹의 슬롯별 구성 — 같은 셀 동시 분반(통사A+통사B)인지 슬롯별 교대
+//     (월5=수탐A·금3=수탐B)인지 시수표만으로 구분 불능인 경우가 있다. 휴리스틱으로
+//     추정하고 반드시 issues에 가정을 남긴다.
+//  ③ 슬롯 제한형 특별실의 시수 배분 — 시수 중 몇 시간이 특별실인지 시수표는 모른다.
+//     전 시수 실 점유로 보수 처리(H8은 확실히 방지, 대신 과제약) + issues.
+//  ④ 교사 이름·과목 약칭 — 표시용. 계정 원장·term.subjects에서 주입(없어도 판정 무관).
+
+export interface BlankCompileIssue {
+  code:
+    | "fixed-missing" // 자리표시 시수인데 고정 슬롯 등록부(fixedBlocks)에 없음 → H1로 드러난다
+    | "fixed-mismatch" // 고정 슬롯 수 ≠ 시수
+    | "simul-assumed" // 동시수업 그룹 몫을 시수표에서 역산 — 가정을 명시
+    | "simul-unsolved" // 그룹 구성 도출 실패 — 전 행 일반 섹션 강등 (H7로 드러난다)
+    | "venue-slot-limited" // 슬롯 제한 특별실 — 배분 미상, 전 시수 점유 보수 처리
+    | "class-slot-mismatch"; // 학급 주간 슬롯 수요 ≠ 운영 교시수 (컴시간 §5-사 정합성)
+  text: string;
+}
+
+export interface BlankCompileInput {
+  hours: HoursRequirement[];
+  model: TimetableConstraintModel;
+  /** 학년별 요일별 운영 교시수 — 정합성 검사(§5-사)용. 백지에서는 설정·입력이 원본 */
+  gradeDayPeriods: Record<number, Record<number, number>>;
+  /** 표시 보강 (판정 무관): 이메일 → 이름 */
+  teacherNames?: Record<string, string>;
+  /** 표시 보강 (판정 무관): normSubject(과목명) → 약칭 */
+  subjectShorts?: Record<string, string>;
+}
+
+export interface BlankCompileResult {
+  sections: SolverSection[];
+  issues: BlankCompileIssue[];
+}
+
+export function compileSectionsFromHours(input: BlankCompileInput): BlankCompileResult {
+  const { hours, model, gradeDayPeriods: gdp } = input;
+  const issues: BlankCompileIssue[] = [];
+  const sections: SolverSection[] = [];
+
+  const isVirtualKey = (tk: string) => !tk || tk.startsWith("name:");
+  /** 시수표 행 → 출력 lesson 재구성. teacherKey가 그대로 왕복되어야 H1/H4 대조가 성립한다 */
+  const lessonOf = (row: HoursRequirement): TimetableLesson => {
+    const tk = row.teacherKey || "";
+    const teachers = tk.startsWith("name:")
+      ? [{ email: "", name: tk.slice(5) }]
+      : tk
+        ? [{ email: tk, name: input.teacherNames?.[tk] || tk }]
+        : [];
+    return {
+      subjectName: row.subjectName,
+      subjectShort: input.subjectShorts?.[normSubject(row.subjectName)] || row.subjectName,
+      teachers,
+    };
+  };
+
+  // 교사 assign-ban 색인 (compileSectionsFromGrids와 동일 규약)
+  const banByTeacher = new Map<string, Set<string>>();
+  for (const ban of (model.teacherSlotBans || []).filter(
+    (b) => b.active && b.kind === "assign"
+  )) {
+    const key = norm(ban.teacherEmail);
+    if (!banByTeacher.has(key)) banByTeacher.set(key, new Set());
+    for (const s of ban.slots) banByTeacher.get(key)!.add(`${s.day}-${s.period}`);
+  }
+  const bansFor = (teacherKeys: string[]): Set<string> => {
+    const out = new Set<string>();
+    for (const tk of teacherKeys)
+      for (const slot of banByTeacher.get(tk) || []) out.add(slot);
+    return out;
+  };
+
+  const venueGroups = (model.venueGroups || []).filter((g) => g.active);
+  /** 슬롯 무관 특별실 조회 — 배치 전이라 (요일,교시)가 없으므로 매처를 못 쓴다 */
+  const venueProbe = (
+    grade: number,
+    classNum: number,
+    subjectName: string
+  ): { roomName: string; restricted: boolean } | null => {
+    const subj = normSubject(subjectName);
+    for (const g of venueGroups) {
+      if (g.grade !== grade || !g.classNums.includes(classNum)) continue;
+      if (!g.subjectNames.some((s) => normSubject(s) === subj)) continue;
+      return { roomName: g.roomName, restricted: !!g.slots?.length };
+    }
+    return null;
+  };
+  /** 특별실 판정 + 슬롯 제한형 보수 처리 issue — 섹션 구성원 중 하나라도 걸리면 그 실 사용 */
+  const roomFor = (
+    members: Array<{ grade: number; classNum: number; subjectName: string }>,
+    label: string
+  ): string | null => {
+    for (const m of members) {
+      const v = venueProbe(m.grade, m.classNum, m.subjectName);
+      if (!v) continue;
+      if (v.restricted)
+        issues.push({
+          code: "venue-slot-limited",
+          text: `${label} — 특별실 "${v.roomName}"이 슬롯 제한형이라 시수 중 몇 시간이 특별실인지 시수표로는 알 수 없습니다. 전 시수를 실 점유로 보수 처리합니다 (겹침은 확실히 막히지만 실제보다 빡빡해집니다)`,
+        });
+      return v.roomName;
+    }
+    return null;
+  };
+
+  interface Row extends HoursRequirement {
+    consumed: boolean;
+  }
+  const rows: Row[] = hours.map((h) => ({ ...h, consumed: false }));
+  const rowId = (r: HoursRequirement) =>
+    `${r.grade}-${r.classNum}|${normSubject(r.subjectName)}|${r.teacherKey}`;
+
+  // ── ① 동시수업 그룹 소비 ──
+  //
+  // 실데이터 구조 (2026-2 전 그룹 실측): 학급마다 **자기 과목 하나(또는 교대 두 개)**를 갖고,
+  // 그룹의 전 학급이 같은 슬롯 집합에 동기화된다. 같은 셀에 여러 분반이 들어가는 구성은 없다.
+  //
+  // 시수표의 한계 (머리말 ②): 한 학급이 그룹 과목을 여러 개 가질 때(실측: 3-8 물Ⅱ3+화Ⅱ3)
+  // **어느 쪽이 그룹 몫인지 시수표는 모른다.** 그룹은 전 학급 동시 진행이라 열(occurrence)마다
+  // 교사가 겹칠 수 없다 — 이 제약으로 몫을 역산한다(소규모 백트래킹). 결과는 issues에 명시.
+  const simulGroups = (model.simulGroups || []).filter((g) => g.active);
+  for (const g of simulGroups) {
+    const subjSet = new Set(g.subjectNames.map(normSubject));
+    const byClass = new Map<string, Row[]>();
+    for (const r of rows) {
+      if (r.consumed || r.grade !== g.grade || !g.classNums.includes(r.classNum)) continue;
+      if (!subjSet.has(normSubject(r.subjectName))) continue;
+      r.consumed = true;
+      const ck = `${r.grade}-${r.classNum}`;
+      if (!byClass.has(ck)) byClass.set(ck, []);
+      byClass.get(ck)!.push(r);
+    }
+    if (!byClass.size) continue;
+    const classKeys = [...byClass.keys()].sort();
+    for (const list of byClass.values())
+      list.sort((a, b) => rowId(a).localeCompare(rowId(b)));
+
+    // 주당 그룹 교시수 h: 등록부 slots가 있으면 그 수, 없으면 학급별 합의 최소값
+    // (합이 h보다 큰 학급은 초과분이 그룹 밖 일반 수업 — 부분집합 선택으로 가른다)
+    const totals = classKeys.map((ck) =>
+      byClass.get(ck)!.reduce((s, r) => s + r.hours, 0)
+    );
+    const h = g.slots?.length ? g.slots.length : Math.min(...totals);
+    const allowedSlots = g.slots?.length
+      ? new Set(g.slots.map((s) => `${s.day}-${s.period}`))
+      : null;
+
+    // 열(occurrence) 배정: 학급마다 합=h인 행 부분집합을 골라, 행(시수 k)을 k개 열에 나눠
+    // 싣는다. 제약 — 각 열은 학급당 정확히 수업 1개, 열 안에서 교사 중복 없음.
+    interface BandCol {
+      lessons: Map<string, Row>; // ck → row
+      teachers: Set<string>;
+    }
+    const cols: BandCol[] = Array.from({ length: h }, () => ({
+      lessons: new Map(),
+      teachers: new Set(),
+    }));
+    const chosen = new Set<Row>();
+    const tryClass = (ci: number): boolean => {
+      if (ci === classKeys.length) return true;
+      const ck = classKeys[ci];
+      const list = byClass.get(ck)!;
+      for (let mask = 1; mask < 1 << list.length; mask++) {
+        let sum = 0;
+        const subset: Row[] = [];
+        for (let i = 0; i < list.length; i++)
+          if (mask & (1 << i)) {
+            sum += list[i].hours;
+            subset.push(list[i]);
+          }
+        if (sum !== h) continue;
+        subset.sort((a, b) => b.hours - a.hours || rowId(a).localeCompare(rowId(b)));
+        const fill = (ri: number): boolean => {
+          if (ri === subset.length) return tryClass(ci + 1);
+          const r = subset[ri];
+          const tk = isVirtualKey(r.teacherKey) ? null : r.teacherKey;
+          const free = cols
+            .map((_, idx) => idx)
+            .filter((idx) => !cols[idx].lessons.has(ck) && (!tk || !cols[idx].teachers.has(tk)));
+          const combo: number[] = [];
+          const chooseFrom = (start: number): boolean => {
+            if (combo.length === r.hours) {
+              for (const idx of combo) {
+                cols[idx].lessons.set(ck, r);
+                if (tk) cols[idx].teachers.add(tk);
+              }
+              if (fill(ri + 1)) return true;
+              for (const idx of combo) {
+                cols[idx].lessons.delete(ck);
+                if (tk) cols[idx].teachers.delete(tk);
+              }
+              return false;
+            }
+            for (let i = start; i < free.length; i++) {
+              combo.push(free[i]);
+              if (chooseFrom(i + 1)) return true;
+              combo.pop();
+            }
+            return false;
+          };
+          return chooseFrom(0);
+        };
+        if (fill(0)) {
+          for (const r of subset) chosen.add(r);
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (!tryClass(0)) {
+      // 도출 실패 — 전 행을 일반 섹션으로 강등해 실패를 검사기(H7·H2)로 드러낸다
+      issues.push({
+        code: "simul-unsolved",
+        text: `동시수업 "${g.label}" — 시수표에서 그룹 구성(주 ${h}교시, 열별 교사 중복 없음)을 도출하지 못했습니다. 전 행을 일반 배치로 강등합니다 (검사기 H7로 드러납니다). 시수표에 그룹 소속 표시가 필요한 사례입니다`,
+      });
+      for (const ck of classKeys) for (const r of byClass.get(ck)!) r.consumed = false;
+      continue;
+    }
+
+    // 가정 보고 — 무엇을 그룹 몫으로 골랐고 무엇이 잔여인지
+    const pickText = classKeys
+      .map((ck) => {
+        const picked = byClass.get(ck)!.filter((r) => chosen.has(r));
+        return `${ck}=${picked.map((r) => `${r.subjectName}(${r.hours})`).join("+")}`;
+      })
+      .join(", ");
+    const leftovers: Row[] = [];
+    for (const ck of classKeys)
+      for (const r of byClass.get(ck)!) if (!chosen.has(r)) leftovers.push(r);
+    issues.push({
+      code: "simul-assumed",
+      text: `동시수업 "${g.label}" — 시수표에 그룹 소속 표시가 없어 교사 겹침 회피로 몫을 역산: 주 ${h}교시, ${pickText}${
+        leftovers.length
+          ? ` / 그룹 밖 일반: ${leftovers.map((r) => `${r.grade}-${r.classNum} ${r.subjectName}(${r.hours})`).join(", ")}`
+          : ""
+      }${
+        leftovers.length && !g.slots?.length
+          ? " ⚠️ 등록부에 슬롯 지정이 없어 일반 배치가 그룹 판정에 걸릴 수 있습니다(H7 위험)"
+          : ""
+      }`,
+    });
+
+    // 열 구성 시그니처별로 섹션 병합 (그리드 역산 컴파일러와 동일 문법)
+    const bySignature = new Map<string, { colIdxs: number[]; col: BandCol }>();
+    cols.forEach((col, idx) => {
+      const sig = classKeys.map((ck) => `${ck}:${rowId(col.lessons.get(ck)!)}`).join("|");
+      if (!bySignature.has(sig)) bySignature.set(sig, { colIdxs: [], col });
+      bySignature.get(sig)!.colIdxs.push(idx);
+    });
+    let sigIdx = 0;
+    for (const { colIdxs, col } of [...bySignature.values()].sort((a, b) =>
+      a.colIdxs[0] - b.colIdxs[0]
+    )) {
+      const lessonsByClass: Record<string, TimetableLesson[]> = {};
+      const teacherKeys = new Set<string>();
+      const members: Array<{ grade: number; classNum: number; subjectName: string }> = [];
+      for (const ck of classKeys) {
+        const r = col.lessons.get(ck)!;
+        lessonsByClass[ck] = [lessonOf(r)];
+        if (!isVirtualKey(r.teacherKey)) teacherKeys.add(r.teacherKey);
+        members.push({ grade: r.grade, classNum: r.classNum, subjectName: r.subjectName });
+      }
+      const tk = [...teacherKeys].sort();
+      const blockLens = parseBlockLens(g.consecutive, colIdxs.length);
+      sections.push({
+        id: `bsimul:${g.label}#${sigIdx++}`,
+        kind: "simul",
+        label: `동시수업 "${g.label}"`,
+        grade: g.grade,
+        classKeys,
+        teacherKeys: tk,
+        lessonsByClass,
+        occurrences: blockLens.length,
+        blockLens,
+        room: roomFor(members, `동시수업 "${g.label}"`),
+        allowedSlots,
+        bannedSlots: bansFor(tk),
+      });
+    }
+    // 그룹 밖 잔여 행은 소비 해제 — 아래 일반 경로가 집는다
+    for (const r of leftovers) r.consumed = false;
+  }
+
+  // ── ② 고정 슬롯(fixedBlocks) 소비 — 자리표시(창체·SLAT)의 유일한 위치 출처 ──
+  const fixedBlocks = (model.fixedBlocks || []).filter((b) => b.active);
+  const fixedIndex = new Map<string, Array<{ day: number; period: number }>>();
+  for (const fb of fixedBlocks) {
+    for (const e of fb.entries) {
+      const key = `${e.grade}-${e.classNum}|${normSubject(e.subjectName)}`;
+      if (!fixedIndex.has(key)) fixedIndex.set(key, []);
+      fixedIndex.get(key)!.push({ day: fb.day, period: fb.period });
+    }
+  }
+  for (const slots of fixedIndex.values())
+    slots.sort((a, b) => a.day - b.day || a.period - b.period);
+
+  for (const r of rows) {
+    if (r.consumed) continue;
+    const ck = `${r.grade}-${r.classNum}`;
+    const slots = fixedIndex.get(`${ck}|${normSubject(r.subjectName)}`);
+    if (!slots?.length) {
+      if (isVirtualKey(r.teacherKey)) {
+        // 자리표시는 시수표에 위치 정보가 없다 — 등록부 없이는 배치 불능 (머리말 ①)
+        r.consumed = true;
+        issues.push({
+          code: "fixed-missing",
+          text: `${ck}반 ${r.subjectName} ${r.hours}시간 — 자리표시(담당 교사 없음) 수업인데 일괄 배정 등록부에 위치가 없습니다. 배치를 건너뜁니다 (검사기 H1로 드러납니다). 교육과정 코호트 고정 슬롯 등록부(질의 결과 §2-2)가 이 정보의 자리입니다`,
+        });
+      }
+      continue;
+    }
+    r.consumed = true;
+    const use = slots.slice(0, r.hours);
+    if (use.length !== r.hours)
+      issues.push({
+        code: "fixed-mismatch",
+        text: `${ck}반 ${r.subjectName} — 시수 ${r.hours}시간인데 일괄 배정 등록부 슬롯은 ${slots.length}개입니다. ${use.length}개만 고정 배치합니다`,
+      });
+    const tks = isVirtualKey(r.teacherKey) ? [] : [r.teacherKey];
+    sections.push({
+      id: `bfixed:${rowId(r)}`,
+      kind: "fixed",
+      label: `${ck}반 ${r.subjectName}`,
+      grade: r.grade,
+      classKeys: [ck],
+      teacherKeys: tks,
+      lessonsByClass: { [ck]: [lessonOf(r)] },
+      occurrences: use.length,
+      blockLens: use.map(() => 1),
+      room: null,
+      allowedSlots: null,
+      bannedSlots: new Set(),
+      fixedSlots: use,
+    });
+  }
+
+  // ── ③ 잔여 일반 섹션 ──
+  const consecutiveRules = (model.consecutiveRules || []).filter((c) => c.active);
+  for (const r of rows) {
+    if (r.consumed) continue;
+    r.consumed = true;
+    const ck = `${r.grade}-${r.classNum}`;
+    const label = `${ck}반 ${r.subjectName}`;
+    const rule = consecutiveRules.find(
+      (c) =>
+        c.grade === r.grade &&
+        c.classNums.includes(r.classNum) &&
+        normSubject(c.subjectName) === normSubject(r.subjectName) &&
+        (!c.teacherEmail || norm(c.teacherEmail) === r.teacherKey)
+    );
+    const tks = isVirtualKey(r.teacherKey) ? [] : [r.teacherKey];
+    const blockLens = parseBlockLens(rule?.pattern, r.hours);
+    sections.push({
+      id: `bplain:${rowId(r)}`,
+      kind: "plain",
+      label,
+      grade: r.grade,
+      classKeys: [ck],
+      teacherKeys: tks,
+      lessonsByClass: { [ck]: [lessonOf(r)] },
+      occurrences: blockLens.length,
+      blockLens,
+      room: roomFor([r], label),
+      allowedSlots: null,
+      bannedSlots: bansFor(tks),
+    });
+  }
+
+  // ── ④ 정합성 검사 (컴시간 §5-사: 학급 주간 슬롯 수요 = 운영 교시수) ──
+  const demand = new Map<string, number>();
+  for (const s of sections) {
+    const occ = s.blockLens.reduce((a, b) => a + b, 0);
+    for (const ck of s.classKeys) demand.set(ck, (demand.get(ck) || 0) + occ);
+  }
+  for (const [ck, d] of [...demand.entries()].sort()) {
+    const grade = Number(ck.split("-")[0]);
+    const cap = Object.values(gdp[grade] || {}).reduce((a, b) => a + b, 0);
+    if (d !== cap)
+      issues.push({
+        code: "class-slot-mismatch",
+        text: `${ck}반 — 주간 슬롯 수요 ${d} ≠ 운영 교시수 ${cap}. 시수 합이 틀렸거나 동시수업 구성 추정(위 simul-assumed)이 실제와 다릅니다`,
+      });
+  }
+
+  return { sections: sections.sort((a, b) => a.id.localeCompare(b.id)), issues };
 }
 
 // ── 소프트 추정 점수 (validate.ts S1~S6과 동일 가중 — 국소 탐색 내부용) ──
