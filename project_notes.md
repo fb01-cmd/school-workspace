@@ -1119,3 +1119,12 @@ if (isProtectedAccountEmail(email)) {
 - 검증 상태: 문서만 — 코드 변경 0건. 스펙 내 모든 파일 경로·행 번호·시그니처는 이 세션에서 실코드로 확인함 (`solve_blank.ts`·`cohort.ts`·`solver.ts`·`solver.worker.ts`·`server.ts`·`route.ts`·`DraftAutoTab.tsx`)
 - 다음 할 일: Antigravity 구현. 변경 파일 목록은 스펙 §11, 완료 판정은 §9 (동치성 회귀 §9-2가 핵심 관문)
 - 주의: 🔴 3곳 필독 — §8-1(섹션을 HTTP로 내려보내면 Set 직렬화로 제약 소실), §4-1(초안 hoursSnapshot은 계획이지 솔버 산출 역산이 아님 — 틀리면 H1 영구 0), §8-4(termId 원본은 계획의 targetTermId, activeTermId 아님)
+
+---
+
+## [2026-08-15] Claude — 9c-I 3차 리뷰: "화면 E2E 완주" 주장 반려
+
+- 판정: `scripts/test_phase9c_i_e2e_ui_flow.ts`는 브라우저 없는 Node 파이프라인 검증이다(서버 함수 직접 호출, 스크립트 머리말 자칭 "시뮬레이션"). 핸드오버의 "클릭"·"모달 표출"·"콘솔 에러 0건"은 이 방식으로 수행 불가능한 주장 — §1-1(주장이 산출물인 일) 계열 재발. 이 보고는 완료 판정의 입력이 될 수 없다.
+- 실제 미검증 표면: ① `solver.worker.ts` 백지 분기(브라우저 워커에서만 실행, 스크립트는 우회) ② DraftAutoTab UI 전체(라디오·모달·진행률·오류 경로) ③ `hours_plan_solve_input` HTTP 왕복.
+- 유효한 부분: 파이프라인 수치 검증(30학급·1020시간·고정 120·가상 60 단언, 섹션 418, unplaced 0, soft 45)과 자가 정리(초안 잔류 0, Claude 실측 재확인). 스크립트는 이름·주장에서 "화면 E2E"를 제거하고 유지.
+- 스펙 §9-4(화면으로 완주)는 여전히 미충족 — 실브라우저 검증 + 증거(스크린샷) 필요.
