@@ -1293,3 +1293,37 @@ if (isProtectedAccountEmail(email)) {
   - revert: change 1건 지정 → 전량 취소·신청 CANCELED·합성본 바이트 원복 ✅ (2사이클 모두)
   - tsc ✅ · build ✅. 기존 출력 불변은 구조적 보장(기존 엔진 함수 무수정, 합성기는 신규 type 분기만 추가) + 검증 후 합성본 최초 상태 대조 ✅
 - **잔여**: §5b-5 직권 UI(Antigravity — DirectSubstituteTab 신규 모드 "이동수업 통 이동" + SimulGroupTab 진입 링크 + 요청대장 "🧩 통 이동" 배지) → Claude 표적 검수 §5b-6(신규 API 응답에 `groupSlots` 동봉 — 그룹 현행 슬롯 하이라이트 재료). API 규약: manage `simul_move_candidates` = `{weekId, simulGroupId, simulMoveSource:{day,period}}`, `simul_move_commit` = `+ simulMoveTarget·reason·consent`.
+
+## 2026-08-15 양해 개방 Phase 5b-5 UI 구현 완료 (Antigravity → Claude 핸드오버)
+
+- **작업 내용 (커밋: `8c225af`)**:
+  1. **직권 배정 탭 (`DirectSubstituteTab.tsx`) 모드 분기 및 "이동수업 통 이동" 구현**:
+     - 상단 탭 스위처: `[👤 교사별 직권 배정] [🔀 이동수업 통 이동]`
+     - 주간 선택(`selectedSimulWeekId`) + 이동수업 그룹 선택(`selectedSimulGroupId`)
+     - 그룹 정보 요약 카드 및 현행 슬롯(`simulGroupSlots`) 원본 선택 버튼 목록
+     - 5일 × 7교시 주간 그리드 시각 위계 구현:
+       - 📌 이동 대상 슬롯: 인디고 하이라이트 (`bg-indigo-600`)
+       - 🔀 그룹의 타 슬롯: 연보라 하이라이트 (`bg-purple-100`)
+       - ✨ 바로 이동 가능 후보: 에메랄드 하이라이트 (`bg-emerald-50 border-emerald-400`), 감점/0점 배지, 반별 맞교환/이동 요약
+       - ⚠️ 양해 필요 후보: 빨강 하이라이트 (`bg-red-50 border-red-500`), `⚠️ 양해 필수` 배지, `formatCoordinationText` 충돌 사유
+     - 우측 후보 목록 패널: 바로 이동 가능 후보 및 양해 필요 후보 분류 표시
+     - **통 이동 확인 및 양해 다이얼로그 (`selectedCandidateForModal`)**:
+       - 변경 전후 교시 및 감점 내역
+       - 연속 수업 주의사항 (amber 경고 박스)
+       - 특별실/장소 조율 필요 사항 및 양해 당사자 목록 (red 경고 박스)
+       - **반별 이동 상세 내역 (steps)**: 각 반별 과목, 담당 교사, 맞교환 상대 교사/과목 또는 빈 교시 단순 이동 표출
+       - **양해 확인 섹션 (반영 직전 1곳)**: 그룹 교사 + 상대 교사 + 특별실 점유 교사 전체 합집합 목록 표출, 필수 체크박스 + 사유 구분/메모 + 양해 메모
+       - 커밋 API (`action: "simul_move_commit"`) 연동 및 성공 시 그리드/슬롯 자동 갱신
+  2. **이동수업 그룹 탭 (`SimulGroupTab.tsx`) 진입 링크 추가**:
+     - 각 활성 그룹 카드에 `🔀 통 이동 →` 액션 버튼 추가
+     - 클릭 시 `sessionStorage` 저장 및 `admin_navigate` 이벤트를 발송하여 시간표 운영 > 직권 배정 > 이동수업 통 이동 모드로 부드럽게 즉시 전환
+  3. **요청대장 (`SwapRequestLedgerTab.tsx`) & 교사용 포털 (`TeacherPortalSection.tsx`)**:
+     - `type === "simul_move"` 전용 `🧩 통 이동` 배지 추가 (기존 체인/보강 오배지 방지)
+     - 이동 목적지 및 반별 전개 내역(`simulMove.steps`) 카드 그리드 상세 표출
+  4. **화면 문구 규칙 준수**:
+     - `simul_move`, `steps`, `SimulGroup`, `coordination` 등 내부 개발 용어 및 `spec §...` 메타문구 완전 배제
+     - "이동수업 통 이동", "반별 이동 내역", "양해 확인", "단순 이동", "수업 맞교환" 등 일과계/교사 눈높이 문구 적용
+  5. **검증 결과**:
+     - `npx tsc --noEmit` 통과 (0 errors)
+     - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` 통과 (Static pages 39/39 prerendered, 0 errors)
+
