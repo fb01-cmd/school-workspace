@@ -792,12 +792,43 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     const email = teacherEmail.toLowerCase();
     const subItems = cartItems.filter((ci) => ci.type === "substitute" && ci.counterpartEmail?.toLowerCase() === email);
     const swapItemCount = cartItems.filter((ci) => ci.type !== "substitute").length;
-    const netMoves: NonNullable<ConsolidatedShareData["netMoves"]> = foldCartNetMoves(cartItems)
-      .map((m) => ({
-        ownerName: m.ownerName, isRecipient: m.ownerEmail === email,
-        grade: m.grade, classNum: m.classNum, subjectName: m.subjectName, from: m.from, to: m.to,
-      }))
-      .sort((x, y) => (y.isRecipient ? 1 : 0) - (x.isRecipient ? 1 : 0));
+    // §5c-9-3: 묶음 항목은 접기(foldCartNetMoves)가 반별 전개를 모른다 — steps에서 당사자별
+    // 이동을 직접 전개하고, 접기 입력에서는 제외한다(클릭 반 이동의 이중 계상 방지).
+    // 방향은 클릭 수업의 그룹 소속 여부로 판별(§5c-10 — 역방향이면 그룹이 후보 칸→클릭 칸).
+    const simulMoves: NonNullable<ConsolidatedShareData["netMoves"]> = [];
+    for (const ci of cartItems) {
+      const simul = ci.candidate?.coordination?.simul;
+      if (!simul || ci.candidate?.targetDay == null || ci.candidate?.targetPeriod == null) continue;
+      const isRev = !simul.steps.some(
+        (s: any) => s.classNum === ci.source.classNum && s.groupLesson?.subjectName === ci.source.subjectName
+      );
+      const clickSlot = { weekId: ci.weekId, day: ci.source.day, period: ci.source.period };
+      const candSlot = { weekId: ci.targetWeekId || ci.weekId, day: ci.candidate.targetDay, period: ci.candidate.targetPeriod };
+      const groupFrom = isRev ? candSlot : clickSlot; // 그룹 수업이 빠지는 곳
+      const groupTo = isRev ? clickSlot : candSlot; // 그룹 수업이 들어가는 곳
+      for (const s of simul.steps) {
+        if (s.groupLesson?.teacherEmail)
+          simulMoves.push({
+            ownerName: s.groupLesson.teacherName, isRecipient: s.groupLesson.teacherEmail.toLowerCase() === email,
+            grade: simul.grade, classNum: s.classNum, subjectName: s.groupLesson.subjectName,
+            from: groupFrom, to: groupTo,
+          });
+        if (s.counterpart?.teacherEmail)
+          simulMoves.push({
+            ownerName: s.counterpart.teacherName, isRecipient: s.counterpart.teacherEmail.toLowerCase() === email,
+            grade: simul.grade, classNum: s.classNum, subjectName: s.counterpart.subjectName,
+            from: groupTo, to: groupFrom, // 치워지는 상대는 그룹과 반대 방향
+          });
+      }
+    }
+    const netMoves: NonNullable<ConsolidatedShareData["netMoves"]> = [
+      ...foldCartNetMoves(cartItems.filter((ci) => !ci.candidate?.coordination?.simul))
+        .map((m) => ({
+          ownerName: m.ownerName, isRecipient: m.ownerEmail === email,
+          grade: m.grade, classNum: m.classNum, subjectName: m.subjectName, from: m.from, to: m.to,
+        })),
+      ...simulMoves,
+    ].sort((x, y) => (y.isRecipient ? 1 : 0) - (x.isRecipient ? 1 : 0));
     const recipientMoves = netMoves.filter((m) => m.isRecipient);
     const hasSimulParty = cartItems.some((ci) => {
       if (!ci.candidate?.coordination?.simul) return false;
