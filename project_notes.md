@@ -565,3 +565,11 @@
 - 효과: 후보 클릭 반복 시 주간 재료(기초판 30문서+changes×8주)·등록부·컨텍스트 재읽기 0 — 클릭당 240+ → 웜 기준 수 읽기(버전 1 + 오버레이 소량)
 - 주의: ① 승인·생성·커밋·validatePending은 fresh 불변 — advisory 함수를 그 경로에 쓰지 말 것 ② bump 전수 커버 실측 23지점, **원장 하드 삭제는 bump를 안 타므로** 검증·정리 스크립트는 수동 bump 필수(verify_read_diet [4] 패턴) ③ 킬스위치 = TIMETABLE_VIEW_CACHE=off (view와 공유)
 - 다음 할 일: push 승인 대기 → 배포 후 프로덕션 적중률은 기존 x-tt-instance 계측 재활용 가능(선택)
+
+## [2026-08-16 새벽] Claude(Fable) — 시수표 자동 생성 엔진 코어 완성 (경로 ⓓ: PDF+가명 AI 추출+검증 그물)
+
+- 변경 파일: src/lib/timetable/hoursAssignment.ts(신설 — pdfjs 레이아웃 추출·부서 분할·창체 결정론 파서·교차 검증기) · ai.ts E5(배정표 구조화 추출 — 가명 강제·재시도·출력 32k) · scripts/verify_hours_assignment.ts(신설) · deps: pdfjs-dist
+- 검증 상태: tsc ✅ / 셀프테스트 전 항목 ✅ — 부서 7 분할·**가명화 잔존 0(로스터 밖 인명 동적 흡수 포함)**·창체 30반+낡은 제목(2025-1) 검출·국어 128=128·수학 127=127(삼중 일치 재현)·주입 오류 즉시 검출
+- 확정 의미론 2건(실물 실측): 개인표 비고 = **교사 블록 총계**("10+5" 합성 표기) / 같은 반·과목 2교사 = **분담 실재** → shared-assignment는 notice로 강등
+- 다음 할 일: ① 나머지 5개 부서 추출 검증(오늘 quota 아껴 2개만 — flash 20회/일) ② 이동수업 xlsx 대조(검출 4) ③ HoursPlan 조립+이메일 매칭 ④ manage 라우트 액션 ⑤ UI(Antigravity)
+- 주의: 실명 PDF를 AI에 직접 보내는 변경 금지(ai.ts 헤더 규약) — 추출·가명화는 항상 서버 로컬 선행

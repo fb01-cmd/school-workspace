@@ -209,9 +209,9 @@ export class AiCallError extends Error {
   }
 }
 
-async function callGemini(prompt: string, apiKey: string): Promise<string> {
+async function callGemini(prompt: string, apiKey: string, timeoutMs = CALL_TIMEOUT_MS, maxOutputTokens = 8192): Promise<string> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(GEMINI_ENDPOINT(GEMINI_MODEL, apiKey), {
       method: "POST",
@@ -223,7 +223,7 @@ async function callGemini(prompt: string, apiKey: string): Promise<string> {
           temperature: 0.3,
           // 3.x flash는 사고(thinking) 토큰이 출력 예산을 잠식한다 (실측: 100으로는 JSON이 잘림,
           // thinkingBudget:0은 INVALID_ARGUMENT). 사고+본문을 넉넉히 담는 8192로.
-          maxOutputTokens: 8192,
+          maxOutputTokens,
           responseMimeType: "application/json",
         },
       }),
@@ -257,14 +257,18 @@ async function callGemini(prompt: string, apiKey: string): Promise<string> {
 async function callGeminiParsed<T>(
   prompt: string,
   apiKey: string,
-  parse: (raw: string) => T | null
+  parse: (raw: string) => T | null,
+  timeoutMs = CALL_TIMEOUT_MS,
+  maxOutputTokens = 8192
 ): Promise<T> {
-  let parsed = parse(await callGemini(prompt, apiKey));
+  let parsed = parse(await callGemini(prompt, apiKey, timeoutMs, maxOutputTokens));
   if (!parsed) {
     parsed = parse(
       await callGemini(
         `${prompt}\n\n(직전 응답이 JSON 형식이 아니었습니다. 다른 텍스트 없이 JSON 하나만 다시 출력하세요.)`,
-        apiKey
+        apiKey,
+        timeoutMs,
+        maxOutputTokens
       )
     );
   }
@@ -634,4 +638,160 @@ export async function runCritique(
   const prompt = buildCritiquePrompt(input, p);
   const parsed = await callGeminiParsed(prompt, apiKey, parseCritiqueResponse);
   return { suggestions: parsed.suggestions.map((s) => p.unmask(s)) };
+}
+
+// ── E5 배정표 구조화 추출 (hours_source_files_analysis §5ⓓ — 2026-08-16) ──
+//
+// 유일하게 AI가 필요한 입력 = 과목별 배정표(부서 쪽마다 표 구조·병합이 다르다).
+// 창체·이동수업은 결정론 파서(hoursAssignment.ts)가 처리한다.
+// 철칙: AI는 추출만 — 숫자의 진실성은 hoursAssignment.ts의 교차 검증이 판정한다.
+// 실명은 이 파일에 오기 전에 가명(T##)으로 바뀌어 있어야 한다 (runAssignmentExtract가 강제).
+
+export interface ExtractedHourCell {
+  grade: 1 | 2 | 3;
+  classNum: number;
+  hours: number;
+}
+
+export interface ExtractedAssignmentRow {
+  /** 개인표 행의 교사 (역치환 후 실명). 격자표 행은 빈 문자열 */
+  teacher: string;
+  subject: string;
+  cells: ExtractedHourCell[];
+  /** 비고 열의 총계 숫자 (없으면 null) — 검증 2a의 재료 */
+  noteTotal: number | null;
+}
+
+export interface ExtractedAssignmentDept {
+  dept: string;
+  headerLine: string;
+  gridRows: ExtractedAssignmentRow[]; // 상단 과목별 격자표
+  personalRows: ExtractedAssignmentRow[]; // 하단 개인 배정표
+}
+
+export function buildAssignmentExtractPrompt(maskedDeptText: string): string {
+  return [
+    "다음은 고등학교 '과목별 배정표' 한 부서 분량의 텍스트입니다 (고정폭 배치 근사).",
+    "구조: 상단에 [과목별 배정표] 격자(과목 × 반 시수), 하단에 [개인 배정표](교사 × 과목 × 반 시수).",
+    "",
+    "열 해석 규칙 (가장 중요):",
+    "- 과목명 오른쪽의 숫자 열은 세 묶음이며 각각 1학년·2학년·3학년입니다.",
+    "- 각 묶음은 반 1~10번입니다. '통합과정·인문·자연' 라벨은 무시하고 **열 위치**로 반 번호를 정하세요.",
+    "- 숫자가 있는 칸만 cells에 담고 빈 칸은 생략합니다.",
+    "- 맨 오른쪽 '비고' 열의 숫자는 noteTotal입니다 (없으면 null).",
+    "- 개인 배정표의 비고는 **교사 블록의 총계**이며 '10+5'처럼 합성 표기될 수 있습니다 — 합한 숫자(15)로 담고, 그 교사의 모든 행에 같은 값을 넣으세요.",
+    "- 교사 이름 줄에 과목이 함께 있는 경우(예: 'T07  창체  1 1 1 1 1')도 그 교사의 행입니다.",
+    "- 개인 배정표는 교사(T## 형식)가 여러 과목 행에 걸쳐 병합돼 있습니다 — 각 행을 해당 교사에게 연결하세요.",
+    "- 교사가 T## 형식이 아닌 행(격자표)은 teacher를 빈 문자열로 두세요.",
+    "- '창체' 행도 과목의 하나로 그대로 담습니다.",
+    "",
+    "JSON만 출력:",
+    "- cells는 [학년,반,시수] 삼중 배열입니다. 예: 1학년 3반 3시간 → [1,3,3]",
+    `{"gridRows":[{"teacher":"","subject":"과목명","cells":[[1,3,3],[1,4,3]],"noteTotal":30}],`,
+    ` "personalRows":[{"teacher":"T05","subject":"과목명","cells":[[2,1,4]],"noteTotal":15}]}`,
+    "",
+    "--- 텍스트 시작 ---",
+    maskedDeptText,
+    "--- 텍스트 끝 ---",
+  ].join("\n");
+}
+
+export function parseAssignmentResponse(
+  text: string
+): { gridRows: ExtractedAssignmentRow[]; personalRows: ExtractedAssignmentRow[] } | null {
+  try {
+    const raw = JSON.parse(text.replace(/^```json?\s*|```\s*$/g, ""));
+    const coerceRows = (arr: unknown): ExtractedAssignmentRow[] | null => {
+      if (!Array.isArray(arr)) return null;
+      const out: ExtractedAssignmentRow[] = [];
+      for (const r of arr) {
+        if (!r || typeof r !== "object") return null;
+        const row = r as Record<string, unknown>;
+        if (typeof row.subject !== "string" || !Array.isArray(row.cells)) return null;
+        const cells: ExtractedHourCell[] = [];
+        for (const c of row.cells) {
+          // 압축 배열 [학년,반,시수] 우선, 구형 객체 형태도 수용
+          const [g0, c0, h0] = Array.isArray(c)
+            ? c
+            : [(c as Record<string, unknown>).grade, (c as Record<string, unknown>).classNum, (c as Record<string, unknown>).hours];
+          const grade = Number(g0);
+          const classNum = Number(c0);
+          const hours = Number(h0);
+          if (![1, 2, 3].includes(grade) || !(classNum >= 1 && classNum <= 15) || !(hours > 0)) return null;
+          cells.push({ grade: grade as 1 | 2 | 3, classNum, hours });
+        }
+        out.push({
+          teacher: typeof row.teacher === "string" ? row.teacher.trim() : "",
+          subject: row.subject.trim(),
+          cells,
+          noteTotal: row.noteTotal == null ? null : Number(row.noteTotal),
+        });
+      }
+      return out;
+    };
+    const gridRows = coerceRows(raw.gridRows);
+    const personalRows = coerceRows(raw.personalRows);
+    if (!gridRows || !personalRows) return null;
+    return { gridRows, personalRows };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 부서 1개 추출 실행 — 가명화(강제) → 호출(재시도 포함) → 역치환.
+ * 반환 teacher는 실명. 로스터에 없는 가명이 오면 그대로 T##로 남는다(검증에서 드러남).
+ */
+export async function runAssignmentExtract(
+  dept: { dept: string; headerLine: string; text: string },
+  teachers: AiTeacherRef[],
+  apiKey: string
+): Promise<ExtractedAssignmentDept> {
+  // 로스터 밖 인명(전출자·미등록자) 방어: 1차 마스킹 후 명단 줄에 남은 2~4자 한글 토큰을
+  // 추가 가명으로 흡수한다. 명단 줄은 추출 대상이 아니라 AI가 이 이름을 알 필요가 없다 —
+  // 과잉 치환은 개인정보 방향으로 안전한 실패다 (buildPseudonymizer 주석과 같은 원칙).
+  const NON_NAME = /과목|배정|시간|학년|창체|비고|교사|합계|과정|인문|자연|통합|담당/;
+  const extra: AiTeacherRef[] = [];
+  {
+    const first = buildPseudonymizer(teachers).mask(dept.text);
+    const seen = new Set<string>();
+    for (const line of first.split("\n"))
+      if (/[가-힣]{2,4}\s*[,/]/.test(line))
+        for (const tok of line.match(/[가-힣]{2,4}/g) || [])
+          if (!NON_NAME.test(tok) && !seen.has(tok)) {
+            seen.add(tok);
+            extra.push({ name: tok, email: "" });
+          }
+  }
+  const p = buildPseudonymizer([...teachers, ...extra]);
+  const masked = p.mask(dept.text);
+  // 배치 작업이라 순간 혼잡(429·503)은 백오프 재시도로 흡수한다 — 대화형 기능(E1~E4)과 다른 점
+  let parsed: { gridRows: ExtractedAssignmentRow[]; personalRows: ExtractedAssignmentRow[] } | null = null;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      parsed = await callGeminiParsed(
+        buildAssignmentExtractPrompt(masked),
+        apiKey,
+        parseAssignmentResponse,
+        90_000, // 표 추출은 사고가 길다 — 업로드 배치 작업이라 길게
+        32_768 // 부서 하나 = 셀 수백 개 — 8192로는 JSON이 잘린다 (셀프테스트 실측)
+      );
+      break;
+    } catch (e) {
+      const transient = e instanceof AiCallError && (e.statusCode === 429 || e.statusCode === 502 || e.statusCode === 504);
+      if (!transient || attempt >= 2) throw e;
+      await new Promise((r) => setTimeout(r, attempt === 0 ? 5_000 : 20_000));
+    }
+  }
+  const unmaskRow = (r: ExtractedAssignmentRow): ExtractedAssignmentRow => ({
+    ...r,
+    teacher: r.teacher ? p.unmask(r.teacher) : "",
+    subject: r.subject, // 과목명에는 인명이 없다 — mask가 과잉 치환했을 수 있으므로 역치환은 안전 측
+  });
+  return {
+    dept: dept.dept,
+    headerLine: dept.headerLine,
+    gridRows: parsed.gridRows.map(unmaskRow),
+    personalRows: parsed.personalRows.map(unmaskRow),
+  };
 }
