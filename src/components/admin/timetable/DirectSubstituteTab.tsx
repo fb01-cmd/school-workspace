@@ -185,6 +185,17 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     fetchWeeks();
   }, [activeTermId]);
 
+  // 결보강 담기 이탈 경고 (UX 스캔 §6-6 / backlog A2)
+  useEffect(() => {
+    if (cartItems.length === 0) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [cartItems.length]);
+
   // sourceTeacherEmail/Name 필수 동봉 — §C 체인 단계는 선택 교사가 아닌 제3 교사의 수업일 수 있고,
   // 빠뜨리면 서버 오버레이가 선택 교사 소유로 간주해 합성기 무결성 검사에서 전 단계가 건너뛰어진다
   // (2026-08-08 실증: 담긴 체인이 예상 시간표에 반영되지 않고 원 수업이 그대로 남음)

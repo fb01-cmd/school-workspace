@@ -45,6 +45,7 @@ import { HARD_CODE_LABELS, SOFT_CODE_LABELS } from "@/lib/timetable/labels";
 interface DraftAutoTabProps {
   activeTermId?: string | null;
   periodsPerDay?: number;
+  isDraftTerm?: boolean;
 }
 
 const DAYS = ["월", "화", "수", "목", "금"];
@@ -89,7 +90,11 @@ function synthesizeTeacherGrid(
   return result;
 }
 
-export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftAutoTabProps) {
+export default function DraftAutoTab({
+  activeTermId,
+  periodsPerDay = 7,
+  isDraftTerm = false,
+}: DraftAutoTabProps) {
   // ── 목록 상태 ──
   const [drafts, setDrafts] = useState<TimetableDraft[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -1187,16 +1192,18 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
               📋 작업기록 ({meta.opCursor}/{meta.ops.length})
             </button>
 
-            {/* 기초시간표로 채택 버튼 (spec §5) */}
-            <button
-              onClick={handleAdoptDraft}
-              disabled={adopting || loadingDraft || report.hard.length > 0}
-              className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-lg text-xs shadow-xs transition-all flex items-center gap-1.5"
-              title={report.hard.length > 0 ? "하드 위반이 남아 있어 채택할 수 없습니다" : "이 결과를 정식 기초시간표로 채택합니다"}
-            >
-              <span>📥</span>
-              <span>{adopting ? "채택 중..." : "기초시간표로 채택"}</span>
-            </button>
+            {/* 기초시간표로 채택 버튼 (spec §5) — 초안 학기(status: draft)에서만 노출 */}
+            {isDraftTerm && (
+              <button
+                onClick={handleAdoptDraft}
+                disabled={adopting || loadingDraft || report.hard.length > 0}
+                className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-lg text-xs shadow-xs transition-all flex items-center gap-1.5"
+                title={report.hard.length > 0 ? "하드 위반이 남아 있어 채택할 수 없습니다" : "이 결과를 정식 기초시간표로 채택합니다"}
+              >
+                <span>📥</span>
+                <span>{adopting ? "채택 중..." : "기초시간표로 채택"}</span>
+              </button>
+            )}
           </div>
         </div>
 

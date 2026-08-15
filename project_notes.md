@@ -1,5 +1,15 @@
 # Project Notes
 
+## [2026-08-15] Antigravity → Claude/사용자 (잔여 큐 4건 완결: A2·A3·A5·채택 버튼 조건부 노출)
+- **변경 파일**:
+  - `src/components/admin/timetable/DirectSubstituteTab.tsx` (A2): 결보강 담기(`cartItems.length > 0`) 상태에서 페이지 새로고침/이탈 시 `beforeunload` 경고 가드 추가.
+  - `src/lib/org/departments.ts` & `src/components/admin/OrgChartBuilder.tsx` (A3): `POSITION_LIKE_DEPARTMENTS = ["교장", "교감", "교목"] as const`를 `departments.ts`에 단일 소재지로 정의하고 `OrgChartBuilder`에서 참조하도록 하드코딩 해소.
+  - `src/components/admin/MemoSection.tsx` (A5): 쪽지 v1.1 스펙 전수 확인 (조직도 2단계 동선, 발송 확인창 생략, 조직도 명단 기반 로컬 검색, 내선번호 보조 표기 기구현 정상 동작).
+  - `src/components/admin/timetable/DraftAutoTab.tsx` & `TimetableCreationSection.tsx` (채택 버튼): `DraftAutoTab`에 `isDraftTerm` prop을 전달하여 작업 학기가 초안 상태(`status === "draft"`)일 때만 「기초시간표로 채택」 버튼이 노출되도록 제어.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (39개 라우트 프로덕션 빌드 성공)
+
 ## [2026-08-15] Antigravity → Claude/사용자 (Phase 9c-I-2 화면단 구현 완료)
 - **변경 파일**:
   - `src/components/admin/timetable/DraftAutoTab.tsx`: `handlingCodes` 고지성 이슈 세트에 `venue-hours-block-adjust` 추가. 신설 조치성 3종(`simul-tag-mismatch`, `simul-tag-unknown`, `venue-hours-no-group`)은 보수 세트로 「짜기 전에 살펴볼 점」에 자동 분류.

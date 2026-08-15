@@ -21,3 +21,6 @@ export const DEFAULT_DEPARTMENTS = [
 export const DEFAULT_POSITIONS = [
   "교장", "교감", "교목", "부장", "교사", "영양사", "행정실장", "주무관", "조리사",
 ];
+
+/** 부서명이 곧 직책인 부서 목록 — **단일 소재지** (UX 스캔 §6-5 / backlog A3) */
+export const POSITION_LIKE_DEPARTMENTS = ["교장", "교감", "교목"] as const;

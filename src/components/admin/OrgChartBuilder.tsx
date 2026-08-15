@@ -7,7 +7,7 @@ import { collection, onSnapshot, query, doc, getDoc, setDoc, serverTimestamp } f
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import ManualProfileEditor from "@/components/admin/ManualProfileEditor";
-import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
+import { DEFAULT_DEPARTMENTS, POSITION_LIKE_DEPARTMENTS } from "@/lib/org/departments";
 import { resolveDisplayName } from "@/lib/org/displayName";
 
 
@@ -339,7 +339,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
     // 직책 자동 추론 (기존 직책이 있으면 보존)
     let positionVal = currentProf.position || "";
     if (!positionVal) {
-      if (["교장", "교감", "교목"].includes(deptName)) {
+      if ((POSITION_LIKE_DEPARTMENTS as readonly string[]).includes(deptName)) {
         positionVal = deptName;
       } else {
         positionVal = "교사";

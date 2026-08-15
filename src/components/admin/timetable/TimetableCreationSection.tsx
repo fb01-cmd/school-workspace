@@ -360,7 +360,11 @@ export default function TimetableCreationSection() {
       )}
 
       {activeTab === "draft" && (
-        <DraftAutoTab activeTermId={effectiveTermId} periodsPerDay={periodsPerDay} />
+        <DraftAutoTab
+          activeTermId={effectiveTermId}
+          periodsPerDay={periodsPerDay}
+          isDraftTerm={isWorkingDraft}
+        />
       )}
 
       {activeTab === "revision" && <BaseRevisionTab activeTermId={effectiveTermId} />}
