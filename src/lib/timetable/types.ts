@@ -1115,6 +1115,11 @@ export interface HoursRequirement {
   subjectName: string;
   teacherKey: string;
   hours: number;
+  /** 9c-I-2 힌트 — 동시수업 그룹 소속. 계획 행에서 전달, 없으면 컴파일러가 종전대로 추정.
+   *  검사기(validateTimetable)는 이 필드를 읽지 않는다 — 컴파일 전용. */
+  simulGroupId?: string | null;
+  /** 9c-I-2 힌트 — hours 중 특별실 점유 시수. 없으면 종전대로 전 시수 보수 처리. */
+  venueHours?: number | null;
 }
 
 /** 검사기 입력 제약 모델 (phase9c_spec §2) — 등록부가 아직 없는 항목은 생략 가능(해당 검사만 건너뜀) */

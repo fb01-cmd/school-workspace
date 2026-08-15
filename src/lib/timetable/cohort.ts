@@ -144,6 +144,9 @@ export function hoursFromPlanRows(
       subjectName: row.subjectName,
       teacherKey,
       hours: row.hours,
+      // 9c-I-2: 힌트 패스스루 — 컴파일러가 소속·특별실 추정 대신 쓴다 (phase9c_i2_spec §2)
+      simulGroupId: row.simulGroupId ?? null,
+      venueHours: row.venueHours ?? null,
     };
   };
 

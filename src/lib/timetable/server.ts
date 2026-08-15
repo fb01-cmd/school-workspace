@@ -11,7 +11,7 @@ import { randomUUID } from "crypto";
 import { bumpTimetableCacheVersion } from "./cacheVersion";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
-import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardViolationKey, normSubject, validateTimetable } from "./validate";
+import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardViolationKey, normSubject, teacherKeyOf, validateTimetable } from "./validate";
 import { cohortForGrade, expandCohortFixedBlocks, hoursFromPlanRows, validateCohortInput } from "./cohort";
 import { compileSectionsFromHours } from "./solver";
 import { SOFT_CODE_LABELS } from "./labels";
@@ -5981,6 +5981,33 @@ export async function deriveHoursPlanFromGrids(
     }
   }
 
+  // ── 9c-I-2 §3: 힌트 자동 채움 — 그리드 스탬프 실증(lesson.simul 라벨·lesson.room)을 계획에 옮긴다 ──
+  // 행 키는 deriveHoursFromGrids와 동일 규약(교사 단위)로 맞춘다. 참조 대상은 **대상 학기** 등록부.
+  const targetGroups = targetTermId?.trim()
+    ? await loadSimulGroups(domain, targetTermId.trim())
+    : [];
+  const simulLabelByKey = new Map<string, string>(); // 행 키 → 그리드 스탬프 라벨
+  const roomCountByKey = new Map<string, number>(); // 행 키 → 특별실 점유 placement 수
+  for (const g of grids) {
+    for (const cell of g.cells || []) {
+      for (const lesson of cell.lessons || []) {
+        const teachers = (lesson.teachers || []).length ? lesson.teachers : [{ email: "", name: "" }];
+        for (const t of teachers) {
+          const key = `${g.grade}-${g.classNum}|${normSubject(lesson.subjectName)}|${teacherKeyOf(t)}`;
+          if (lesson.simul && !simulLabelByKey.has(key)) simulLabelByKey.set(key, lesson.simul);
+          if ((lesson.room || "").trim()) roomCountByKey.set(key, (roomCountByKey.get(key) || 0) + 1);
+        }
+      }
+    }
+  }
+  /** 스탬프 라벨(원본 학기 그룹으로 찍힘) → 대상 학기 그룹 id — 승계 복사가 라벨을 보존하므로 라벨이 다리다 */
+  const simulIdFor = (grade: number, classNum: number, label2: string): string | null => {
+    const g = targetGroups.find(
+      (x) => x.active && x.label === label2 && x.grade === grade && x.classNums.includes(classNum)
+    );
+    return g?.id ?? null;
+  };
+
   const rows: HoursPlanRow[] = hoursReqs.map((r) => {
     let teacherEmail = "";
     let teacherName = "";
@@ -5990,6 +6017,12 @@ export async function deriveHoursPlanFromGrids(
       teacherEmail = r.teacherKey;
       teacherName = emailToName.get(teacherEmail.toLowerCase()) || "";
     }
+    const evidenceKey = `${r.grade}-${r.classNum}|${normSubject(r.subjectName)}|${r.teacherKey}`;
+    const simulLabel = simulLabelByKey.get(evidenceKey);
+    const simulGroupId = simulLabel ? simulIdFor(r.grade, r.classNum, simulLabel) : null;
+    const roomCount = roomCountByKey.get(evidenceKey) || 0;
+    // venueHours: 실증이 있고 시수 범위 안일 때만. 전량이면 전량 명시(컴파일 시 보수 처리 이슈가 사라진다)
+    const venueHours = roomCount > 0 && roomCount <= r.hours ? roomCount : null;
     return {
       id: randomUUID(),
       grade: r.grade,
@@ -5998,6 +6031,8 @@ export async function deriveHoursPlanFromGrids(
       teacherEmail,
       teacherName,
       hours: r.hours,
+      simulGroupId,
+      venueHours,
     };
   });
 

@@ -366,7 +366,12 @@ export interface BlankCompileIssue {
     | "simul-assumed" // 동시수업 그룹 몫을 시수표에서 역산 — 가정을 명시
     | "simul-unsolved" // 그룹 구성 도출 실패 — 전 행 일반 섹션 강등 (H7로 드러난다)
     | "venue-slot-limited" // 슬롯 제한 특별실 — 배분 미상, 전 시수 점유 보수 처리
-    | "class-slot-mismatch"; // 학급 주간 슬롯 수요 ≠ 운영 교시수 (컴시간 §5-사 정합성)
+    | "class-slot-mismatch" // 학급 주간 슬롯 수요 ≠ 운영 교시수 (컴시간 §5-사 정합성)
+    // 9c-I-2 (phase9c_i2_spec §4-3) — 계획 행 힌트 관련
+    | "simul-tag-mismatch" // 태그 행 합 ≠ 그룹 교시수 → 그 학급만 태그 무시하고 추정 폴백
+    | "simul-tag-unknown" // 태그가 가리키는 그룹이 이 학기 등록부에 없음 → 일반 취급
+    | "venue-hours-no-group" // venueHours가 있는데 특별실 등록부 미매치 → 힌트 무시
+    | "venue-hours-block-adjust"; // venueHours가 연속 블록 경계와 어긋나 올림 배분 (고지성)
   text: string;
 }
 
@@ -429,12 +434,12 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
     grade: number,
     classNum: number,
     subjectName: string
-  ): { roomName: string; restricted: boolean } | null => {
+  ): { roomName: string; restricted: boolean; slots: Array<{ day: number; period: number }> } | null => {
     const subj = normSubject(subjectName);
     for (const g of venueGroups) {
       if (g.grade !== grade || !g.classNums.includes(classNum)) continue;
       if (!g.subjectNames.some((s) => normSubject(s) === subj)) continue;
-      return { roomName: g.roomName, restricted: !!g.slots?.length };
+      return { roomName: g.roomName, restricted: !!g.slots?.length, slots: g.slots || [] };
     }
     return null;
   };
@@ -472,6 +477,19 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
   // **어느 쪽이 그룹 몫인지 시수표는 모른다.** 그룹은 전 학급 동시 진행이라 열(occurrence)마다
   // 교사가 겹칠 수 없다 — 이 제약으로 몫을 역산한다(소규모 백트래킹). 결과는 issues에 명시.
   const simulGroups = (model.simulGroups || []).filter((g) => g.active);
+
+  // 9c-I-2 §4-1: 존재하지 않는 그룹을 가리키는 태그 정리 — 그 행은 무태그로 강등
+  const activeGroupIds = new Set(simulGroups.map((g) => g.id));
+  for (const r of rows) {
+    if (r.simulGroupId && !activeGroupIds.has(r.simulGroupId)) {
+      issues.push({
+        code: "simul-tag-unknown",
+        text: `${r.grade}-${r.classNum}반 ${r.subjectName} — 계획의 동시수업 소속이 가리키는 그룹이 이 학기 등록부에 없습니다. 등록부 승계 여부를 확인해 주세요 (일반 수업으로 배치합니다)`,
+      });
+      r.simulGroupId = null;
+    }
+  }
+
   for (const g of simulGroups) {
     const subjSet = new Set(g.subjectNames.map(normSubject));
     const byClass = new Map<string, Row[]>();
@@ -498,6 +516,27 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
       ? new Set(g.slots.map((s) => `${s.day}-${s.period}`))
       : null;
 
+    // 9c-I-2 §4-1: 태그 학급은 부분집합 탐색 생략 — 태그 행 전부가 그 학급의 그룹 몫.
+    // 합 ≠ h면 그 학급만 태그를 무시하고 종전 추정으로 폴백한다 (그룹 전체를 죽이지 않는다).
+    const fixedSubsetByClass = new Map<string, Row[] | null>();
+    let allTagged = true;
+    for (const ck of classKeys) {
+      const tagged = byClass.get(ck)!.filter((r) => r.simulGroupId === g.id);
+      if (tagged.length) {
+        const sum = tagged.reduce((s, r) => s + r.hours, 0);
+        if (sum === h) {
+          fixedSubsetByClass.set(ck, tagged);
+          continue;
+        }
+        issues.push({
+          code: "simul-tag-mismatch",
+          text: `동시수업 "${g.label}" ${ck}반 — 계획에 소속 표시된 수업 합(주 ${sum}시간)이 그룹 교시수(주 ${h}교시)와 다릅니다. 표시를 무시하고 추정으로 진행합니다`,
+        });
+      }
+      fixedSubsetByClass.set(ck, null);
+      allTagged = false;
+    }
+
     // 열(occurrence) 배정: 학급마다 합=h인 행 부분집합을 골라, 행(시수 k)을 k개 열에 나눠
     // 싣는다. 제약 — 각 열은 학급당 정확히 수업 1개, 열 안에서 교사 중복 없음.
     interface BandCol {
@@ -513,15 +552,25 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
       if (ci === classKeys.length) return true;
       const ck = classKeys[ci];
       const list = byClass.get(ck)!;
-      for (let mask = 1; mask < 1 << list.length; mask++) {
-        let sum = 0;
-        const subset: Row[] = [];
-        for (let i = 0; i < list.length; i++)
-          if (mask & (1 << i)) {
-            sum += list[i].hours;
-            subset.push(list[i]);
-          }
-        if (sum !== h) continue;
+      // 9c-I-2: 태그로 확정된 학급은 그 부분집합 하나만 시도
+      const fixedSubset = fixedSubsetByClass.get(ck);
+      const candidates: Row[][] = [];
+      if (fixedSubset) {
+        candidates.push([...fixedSubset]);
+      } else {
+        for (let mask = 1; mask < 1 << list.length; mask++) {
+          let sum = 0;
+          const subset: Row[] = [];
+          for (let i = 0; i < list.length; i++)
+            if (mask & (1 << i)) {
+              sum += list[i].hours;
+              subset.push(list[i]);
+            }
+          if (sum !== h) continue;
+          candidates.push(subset);
+        }
+      }
+      for (const subset of candidates) {
         subset.sort((a, b) => b.hours - a.hours || rowId(a).localeCompare(rowId(b)));
         const fill = (ri: number): boolean => {
           if (ri === subset.length) return tryClass(ci + 1);
@@ -571,28 +620,33 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
       continue;
     }
 
-    // 가정 보고 — 무엇을 그룹 몫으로 골랐고 무엇이 잔여인지
-    const pickText = classKeys
-      .map((ck) => {
-        const picked = byClass.get(ck)!.filter((r) => chosen.has(r));
-        return `${ck}=${picked.map((r) => `${r.subjectName}(${r.hours})`).join("+")}`;
-      })
-      .join(", ");
+    // 가정 보고 — 무엇을 그룹 몫으로 골랐고 무엇이 잔여인지.
+    // 9c-I-2: 전 학급이 태그로 확정됐으면 추정이 없었으므로 이슈를 내지 않는다.
+    // 일부만 태그면 추정한(무태그) 학급만 언급한다 (phase9c_i2_spec §4-1).
     const leftovers: Row[] = [];
     for (const ck of classKeys)
       for (const r of byClass.get(ck)!) if (!chosen.has(r)) leftovers.push(r);
-    issues.push({
-      code: "simul-assumed",
-      text: `동시수업 "${g.label}" — 시수표에 그룹 소속 표시가 없어 교사 겹침 회피로 몫을 역산: 주 ${h}교시, ${pickText}${
-        leftovers.length
-          ? ` / 그룹 밖 일반: ${leftovers.map((r) => `${r.grade}-${r.classNum} ${r.subjectName}(${r.hours})`).join(", ")}`
-          : ""
-      }${
-        leftovers.length && !g.slots?.length
-          ? " ⚠️ 등록부에 슬롯 지정이 없어 일반 배치가 그룹 판정에 걸릴 수 있습니다(H7 위험)"
-          : ""
-      }`,
-    });
+    if (!allTagged) {
+      const untaggedKeys = classKeys.filter((ck) => !fixedSubsetByClass.get(ck));
+      const pickText = untaggedKeys
+        .map((ck) => {
+          const picked = byClass.get(ck)!.filter((r) => chosen.has(r));
+          return `${ck}=${picked.map((r) => `${r.subjectName}(${r.hours})`).join("+")}`;
+        })
+        .join(", ");
+      issues.push({
+        code: "simul-assumed",
+        text: `동시수업 "${g.label}" — 시수표에 그룹 소속 표시가 없어 교사 겹침 회피로 몫을 역산: 주 ${h}교시, ${pickText}${
+          leftovers.length
+            ? ` / 그룹 밖 일반: ${leftovers.map((r) => `${r.grade}-${r.classNum} ${r.subjectName}(${r.hours})`).join(", ")}`
+            : ""
+        }${
+          leftovers.length && !g.slots?.length
+            ? " ⚠️ 등록부에 슬롯 지정이 없어 일반 배치가 그룹 판정에 걸릴 수 있습니다(H7 위험)"
+            : ""
+        }`,
+      });
+    }
 
     // 열 구성 시그니처별로 섹션 병합 (그리드 역산 컴파일러와 동일 문법)
     const bySignature = new Map<string, { colIdxs: number[]; col: BandCol }>();
@@ -754,6 +808,64 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
     );
     const tks = isVirtualKey(r.teacherKey) ? [] : [r.teacherKey];
     const blockLens = parseBlockLens(rule?.pattern, r.hours);
+
+    // 9c-I-2 §4-2: venueHours 힌트 — 있으면 보수 처리(전 시수 실 점유·이슈) 대신 정밀 배분
+    const vh = r.venueHours ?? null;
+    const v = vh != null ? venueProbe(r.grade, r.classNum, r.subjectName) : null;
+    if (vh != null && vh > 0 && !v) {
+      issues.push({
+        code: "venue-hours-no-group",
+        text: `${label} — 계획에 특별실 ${vh}시간이 적혀 있지만 이 학기 특별실 등록부에 해당 항목이 없습니다. 특별실 없이 배치합니다`,
+      });
+    }
+    if (v && vh != null && vh > 0) {
+      // 큰 블록부터 실 몫으로 배분 (실측 통례: 연속 수업 = 특별실). 경계 어긋나면 올림 + 고지.
+      const venueLens: number[] = [];
+      const freeLens: number[] = [];
+      let acc = 0;
+      for (const len of blockLens) {
+        if (acc < vh) {
+          venueLens.push(len);
+          acc += len;
+        } else freeLens.push(len);
+      }
+      if (acc !== vh)
+        issues.push({
+          code: "venue-hours-block-adjust",
+          text: `${label} — 특별실 ${vh}시간이 연속수업 블록 경계와 어긋나 ${acc}시간을 실 배치로 배분합니다`,
+        });
+      sections.push({
+        id: `bplain-v:${rowId(r)}`,
+        kind: "plain",
+        label,
+        grade: r.grade,
+        classKeys: [ck],
+        teacherKeys: tks,
+        lessonsByClass: { [ck]: [lessonOf(r)] },
+        occurrences: venueLens.length,
+        blockLens: venueLens,
+        room: v.roomName,
+        allowedSlots: v.slots.length ? new Set(v.slots.map((s) => `${s.day}-${s.period}`)) : null,
+        bannedSlots: bansFor(tks),
+      });
+      if (freeLens.length)
+        sections.push({
+          id: `bplain-f:${rowId(r)}`,
+          kind: "plain",
+          label,
+          grade: r.grade,
+          classKeys: [ck],
+          teacherKeys: tks,
+          lessonsByClass: { [ck]: [lessonOf(r)] },
+          occurrences: freeLens.length,
+          blockLens: freeLens,
+          room: null,
+          allowedSlots: null,
+          bannedSlots: bansFor(tks),
+        });
+      continue;
+    }
+
     sections.push({
       id: `bplain:${rowId(r)}`,
       kind: "plain",
@@ -763,8 +875,9 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
       teacherKeys: tks,
       lessonsByClass: { [ck]: [lessonOf(r)] },
       occurrences: blockLens.length,
+      // vh === 0 은 명시적 "특별실 안 씀" — 실 점유도 이슈도 내지 않는다
       blockLens,
-      room: roomFor([r], label),
+      room: vh === 0 ? null : roomFor([r], label),
       allowedSlots: null,
       bannedSlots: bansFor(tks),
     });
