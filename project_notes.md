@@ -1475,4 +1475,16 @@ if (isProtectedAccountEmail(email)) {
   - `npx tsc --noEmit` 통과 (0 errors).
   - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` 통과.
 
+## [2026-08-15] Claude — Phase 3′ A·B·C 조치 재검수(`09957c7`): **최종 통과 — push 승인 요청**
+
+`dbb999e..09957c7` diff 실측. 핸드오버 주장 3건 전부 코드와 일치, 허위 기재 없음.
+
+- **A 해소** — `executeCreateBatchInTab`·`executeCreateBatchFromHeader` 양쪽에서 초안을 `simulDrafts`/`swapDrafts`로 분리, simul은 건별 `simul_move_create` + 성공 시 `draft_delete`, 일반은 기존 `create_batch` 그대로. 성공·거부 건수 합산 안내. **내가 짚지 못한 두 번째 일괄 경로(`executeCreateBatchFromHeader`)까지 함께 고쳤다** — 지시 범위보다 정확한 조치.
+  - 양해 게이트 무결 확인: 두 일괄 모달 버튼 모두 `disabled={!batchConsentConfirmed}`(2092·2707), 모달을 거치지 않는 경로(789·1121)는 `hasCoordination === false`에서만 도달 → `consent.confirmed: true` 무조건 전송 우회 없음.
+- **B 해소** — simul 후보 시 [담기] 버튼 미렌더 + 즉시 반영 버튼 전폭, `handleAddToCart` 진입 가드(눈높이 안내) 이중. 서버 방어(server.ts:3368)는 그대로 최종선.
+- **C 해소** — SimulGroupTab 헤더 "교체 불가 관리"→"그룹 관리", 안내문을 "맞교환 시 묶여 있는 모든 반이 함께 이동하는 조율 필요 후보(사전 양해 필수)로 안내되고 단독 교환·연쇄 이동·보강은 안전하게 차단"으로 갱신 — §5c-7 현실과 일치.
+- **실측**: `npx tsc --noEmit` 0 errors(HEAD 재실행). 개발 용어 노출 0 유지.
+- **상태**: origin/main = `2968cee`, 로컬 2 커밋 앞섬(`dbb999e`·`09957c7`) — **무단 push·배포 없음 확인**. 사용자 push 승인 대기.
+- **판정**: §5c-6 완료 판정 ①~⑤ 전건 충족. Phase 3′ UI 재배선 종결.
+
 
