@@ -323,12 +323,18 @@ function applyCrossSwap(
       subjectShort: inRef.subjectShort,
       teachers: [{ email: inRef.teacherEmail, name: inRef.teacherName }],
       ...(inRef.room ? { room: inRef.room } : {}),
+      // §5c-8: 묶음 라벨 계승 — 같은 주 이동은 수업 객체를 그대로 옮겨 라벨이 따라가는데,
+      // 교차 주만 수업을 재구성하므로 여기서 잃으면 옮겨진 뒤 묶음으로 인식되지 않는다.
+      ...(inRef.simul ? { simul: inRef.simul } : {}),
       ...(reversed
         ? {}
         : { changed: { changeId: ch.id, type: "cross_swap" as const, otherWeekId: s.otherWeekId } }),
     };
     cell!.lessons.push(replacement);
   }
+  // 수업이 떠나기만 한 슬롯은 빈 칸을 남기지 않는다 — applySwap·applyMove와 같은 정리
+  // (§5c-8 이전에는 양쪽에 수업이 있어 이 상황이 없었다)
+  if (cell) removeEmptyCell(grid, cell);
   return true;
 }
 

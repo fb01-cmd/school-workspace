@@ -670,6 +670,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             body: JSON.stringify({
               action: "simul_move_create",
               weekId: d.sourceWeekId,
+              targetWeekId: d.targetWeekId, // 다른 주로 담아 둔 초안 (없으면 같은 주)
               source: {
                 grade: d.source.grade,
                 classNum: d.source.classNum,
@@ -807,6 +808,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         ? {
             action: "simul_move_create",
             weekId: draft.sourceWeekId,
+            targetWeekId: draft.targetWeekId, // 다른 주로 담아 둔 초안 (없으면 같은 주)
             source: draft.source,
             simulMoveTarget: {
               day: draft.candidate.targetDay,
@@ -1013,6 +1015,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             body: JSON.stringify({
               action: "simul_move_create",
               weekId: d.sourceWeekId,
+              targetWeekId: d.targetWeekId, // 다른 주로 담아 둔 초안 (없으면 같은 주)
               source: {
                 grade: d.source.grade,
                 classNum: d.source.classNum,
@@ -1141,6 +1144,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         ? {
             action: "simul_move_create",
             weekId: selectedCell.weekId,
+            // 다른 주로 옮기는 후보는 후보 자체가 목적지 주를 들고 있다
+            targetWeekId: swapC.targetWeekId || (isCrossWeek ? effectiveTargetWeekId : undefined),
             source: {
               grade: selectedCell.grade,
               classNum: selectedCell.classNum,

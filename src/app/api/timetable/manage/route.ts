@@ -613,6 +613,7 @@ export async function POST(req: NextRequest) {
         }
         const { request, changes } = await commitSimulGroupMove(domain, auth.email, {
           weekId: body.weekId,
+          targetWeekId: body.targetWeekId, // §5c-8 다른 주로 옮기는 직권 반영 (없으면 같은 주)
           groupId: body.simulGroupId,
           source: { day: src.day, period: src.period },
           target: { day: tgt.day, period: tgt.period },
@@ -624,7 +625,7 @@ export async function POST(req: NextRequest) {
           operatorEmail: auth.email,
           targetEmail: request.requesterEmail,
           action: "simul_move_commit",
-          details: `이동수업 통 이동: ${sm.grade}학년 ${sm.classNums.join("·")}반 「${sm.label}」 (${sm.from.day},${sm.from.period})→(${sm.to.day},${sm.to.period}) — change ${changes.length}건, 양해 ${request.consent?.parties.length || 0}명`,
+          details: `이동수업 통 이동: ${sm.grade}학년 ${sm.classNums.join("·")}반 「${sm.label}」 (${sm.from.day},${sm.from.period})→${request.targetWeekId ? `[${request.targetWeekId}]` : ""}(${sm.to.day},${sm.to.period}) — change ${changes.length}건, 양해 ${request.consent?.parties.length || 0}명`,
           status: "success",
         });
         // 웹 푸시: 반별 change 전체를 한 번에 넘겨 수신자별 1건으로 집계 (응답 후 발송)

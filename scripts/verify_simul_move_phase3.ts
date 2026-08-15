@@ -16,6 +16,9 @@
  *     중복 차단 → validatePending 진짜 재검증 → 승인(공용 조립부 원자 커밋) → revert 전량 원복
  * [8] 기존 출력 불변: 비묶음 소스에서 computeCandidates(분기 신설 후) ≡ 엔진 직접 호출(분기 이전
  *     경로) 바이트 동등 + simul 혼입 0건 + 체인 탐색 스모크 — §5c-6 완료 판정 ⑤
+ * [9] §5c-8 교차 주 사이클: 같은 주 후보 바이트 동등(회귀 0) → 다른 주 후보 노출(computeCandidates
+ *     targetWeekId) → 신청(targetWeekId 저장) → validatePending 두 주 재검증 → 승인(주별 문서 쌍
+ *     cross_swap·exchangeId 짝·주 분포) → 두 주 합성 실반영 → revert 전량 → 두 주 최초 상태 원복
  *
  * 읽기 예산: 합성 ~12회 + 커밋·승인 경로 ≈ 600 reads 추산 (전수조사 아님).
  * 실행: npx tsx --env-file=.env.local scripts/verify_simul_move_phase3.ts
@@ -39,7 +42,11 @@ import {
 } from "../src/lib/timetable/server";
 import { bumpTimetableCacheVersion } from "../src/lib/timetable/cacheVersion";
 import { synthesizeWeeklyGrids } from "../src/lib/timetable/weekly";
-import { findSimulGroupMoveCandidates, findSwapCandidates } from "../src/lib/timetable/swap";
+import {
+  findCrossSimulGroupMoveCandidates,
+  findSimulGroupMoveCandidates,
+  findSwapCandidates,
+} from "../src/lib/timetable/swap";
 import {
   SimulGroup,
   SimulGroupMoveCandidate,
@@ -470,9 +477,278 @@ async function main() {
     return failed;
   };
 
+  // ── [9] §5c-8 교차 주 통 이동 — 후보 → 신청 → 승인(주별 문서 쌍) → 두 주 원복 ──
+  // 목적지 주 컨텍스트: 같은 학기의 다음 주 1개
+  const tWeekRaw = weeks.find((w) => w.id !== week.id && w.termId === termId);
+  const crossCtx = tWeekRaw
+    ? await (async () => {
+        const { grids: tGrids0, week: tWeekObj } = await synthWeek(termId, tWeekRaw.id);
+        return { tWeekRaw, tGrids0, tWeekObj, tSig0: gridSig(tGrids0) };
+      })()
+    : null;
+
+  const runCrossCycle = async (tag: string, pick: Pick): Promise<boolean> => {
+    const { tWeekRaw, tGrids0, tWeekObj, tSig0 } = crossCtx!;
+
+    // 9-1. 같은 주 출력 불변 — 교차 주 배선 후에도 같은 주 엔진 출력이 바이트 동등해야 한다 (§5c-8 판정 ②)
+    let sameWeekEqual = true;
+    for (const group of groups) {
+      const slots = new Set<string>();
+      for (const cn of group.classNums) {
+        const grid = grids0.find((g) => g.grade === group.grade && g.classNum === cn);
+        for (const cell of grid?.cells || [])
+          if (cell.lessons.some((l) => l.simul === group.label)) slots.add(`${cell.day}-${cell.period}`);
+      }
+      for (const key of slots) {
+        const [day, period] = key.split("-").map(Number);
+        const a = findSimulGroupMoveCandidates(grids0, weekObj, settings, group, { day, period });
+        const b = findCrossSimulGroupMoveCandidates(
+          grids0, weekObj, grids0, weekObj, settings, group, { day, period }
+        );
+        // 같은 주를 교차 주 함수에 넘기면 명시 거부여야 한다(같은 주 후보를 잘못 돌려주지 않도록)
+        if (!b.error || a.error) sameWeekEqual = false;
+      }
+    }
+    console.log(`[9-1${tag}] 같은 주 인자 거부 ${sameWeekEqual ? "✅" : "❌"}`);
+
+    // 신청자 해석 — 그룹 수업 담당 실교사 1인 (교사가 자기 수업을 클릭하는 시점 재현)
+    const { group, source } = pick;
+    let teacherEmail = "", teacherClass = 0;
+    for (const cn of group.classNums) {
+      const grid = grids0.find((g) => g.grade === group.grade && g.classNum === cn);
+      const cell = grid?.cells.find((c) => c.day === source.day && c.period === source.period);
+      for (const l of cell?.lessons || []) {
+        if (l.simul !== group.label) continue;
+        const t = (l.teachers || [])[0];
+        if (t?.email?.trim()) { teacherEmail = t.email.trim().toLowerCase(); teacherClass = cn; break; }
+      }
+      if (teacherEmail) break;
+    }
+    if (!teacherEmail) { console.error("[9] 그룹 담당 실교사 미검출 ❌"); return true; }
+    const src = { grade: group.grade, classNum: teacherClass, day: source.day, period: source.period };
+    const target = { day: pick.cand.targetDay, period: pick.cand.targetPeriod };
+    console.log(
+      `[9] 교차 주 — 「${group.label}」 ${group.grade}-${teacherClass} ${DAYS[source.day]}${source.period} → ${tWeekRaw.id} ${DAYS[target.day]}${target.period} (신청자 ${teacherEmail}, 반별 ${pick.cand.steps.length}건)`
+    );
+
+    // 9-2. 후보 노출 — computeCandidates(targetWeekId)가 엔진과 같은 목록을 돌려주는가
+    const computed = await computeCandidates(
+      D, teacherEmail, week.id, { ...src, subjectName: "" }, tWeekRaw.id
+    );
+    const engineRes = findCrossSimulGroupMoveCandidates(
+      grids0, weekObj, tGrids0, tWeekObj, settings, group, source
+    );
+    const countOk = computed.swapCandidates.length === engineRes.candidates.length;
+    const carriesWeek = computed.swapCandidates.every((c) => c.targetWeekId === tWeekRaw.id);
+    console.log(
+      `[9-2${tag}] 다른 주 후보 노출 ${countOk && carriesWeek ? "✅" : "❌"} — ${computed.swapCandidates.length}건 (엔진 ${engineRes.candidates.length}건) · 후보가 목적지 주 보유 ${carriesWeek ? "✅" : "❌"}`
+    );
+    let failed = !countOk || !carriesWeek;
+
+    // 9-3. 신청 — targetWeekId 저장 + steps 서버 재계산값
+    const req = await createSimulMoveRequest(D, teacherEmail, {
+      weekId: week.id, targetWeekId: tWeekRaw.id, source: src, target,
+      reason: { type: "기타", note: "검증 스크립트 (즉시 정리)" }, consent: { confirmed: true, note: "검증용" },
+    }, { skipManagerNotify: true });
+    const cleanupDocs: Array<{ col: "req" | "chg"; id: string }> = [{ col: "req", id: req.id }];
+    try {
+      const engineMatch = engineRes.candidates.find(
+        (c) => c.targetDay === target.day && c.targetPeriod === target.period
+      )!;
+      const stepsOk = JSON.stringify(req.simulMove?.steps) === JSON.stringify(engineMatch.steps);
+      const weekOk = req.targetWeekId === tWeekRaw.id && req.status === "PENDING";
+      console.log(`[9-3${tag}] 신청 ${weekOk && stepsOk ? "✅" : "❌"} — PENDING·목적지 주 저장 ${weekOk ? "✅" : "❌"} · steps 서버값 ${stepsOk ? "✅" : "❌"}`);
+      if (!weekOk || !stepsOk) failed = true;
+
+      // 9-4. 사전 검증 — 두 주 재합성 후 교차 주 엔진
+      const validation = await validatePendingSwapRequests(D, [req]);
+      const vOk = validation[req.id]?.ok === true;
+      console.log(`[9-4${tag}] validatePending 두 주 재검증 ${vOk ? "✅" : `❌ (${validation[req.id]?.reason})`}`);
+      if (!vOk) failed = true;
+
+      // 9-5. 승인 — 반별 step 1건 = 주별 문서 쌍(cross_swap, 같은 exchangeId)
+      const { request: approved, changes } = await approveSwapRequest(D, MANAGER, req.id, { skipNotify: true });
+      changes.forEach((c) => cleanupDocs.push({ col: "chg", id: c.id }));
+      const steps = req.simulMove!.steps;
+      const allCross = changes.every((c) => c.type === "cross_swap" && !!c.crossSwap);
+      const countPair = changes.length === steps.length * 2;
+      const exIds = new Map<string, TimetableChange[]>();
+      for (const c of changes) {
+        const k = c.crossSwap?.exchangeId || "";
+        exIds.set(k, [...(exIds.get(k) || []), c]);
+      }
+      const pairedOk =
+        exIds.size === steps.length &&
+        [...exIds.values()].every(
+          (pair) =>
+            pair.length === 2 &&
+            pair.some((c) => c.weekId === week.id) &&
+            pair.some((c) => c.weekId === tWeekRaw.id)
+        );
+      // 빈 교시로 가는 반은 한쪽만 있는 이동 — 소스 주 in=null / 목적지 주 out=null
+      const moveSteps = steps.filter((s) => s.kind === "move").length;
+      const nullSideOk =
+        changes.filter((c) => c.weekId === week.id && c.crossSwap!.in === null).length === moveSteps &&
+        changes.filter((c) => c.weekId === tWeekRaw.id && c.crossSwap!.out === null).length === moveSteps;
+      const linked = changes.every((c) => c.requestId === req.id);
+      const aOk = approved.status === "APPROVED";
+      console.log(
+        `[9-5${tag}] 승인 ${aOk && allCross && countPair && pairedOk && nullSideOk && linked ? "✅" : "❌"} — change ${changes.length}건(반별 ${steps.length}×2 ${countPair ? "✅" : "❌"}) · 전건 주별 문서 ${allCross ? "✅" : "❌"} · 짝·주 분포 ${pairedOk ? "✅" : "❌"} · 한쪽만 있는 이동 ${moveSteps}건 표현 ${nullSideOk ? "✅" : "❌"} · requestId 연결 ${linked ? "✅" : "❌"}`
+      );
+      if (!aOk || !allCross || !countPair || !pairedOk || !nullSideOk || !linked) failed = true;
+
+      // 9-6. 두 주 합성 실반영 — 소스 주에서 사라지고 목적지 주에 나타나야 한다
+      const { grids: srcAfter } = await synthWeek(termId, week.id);
+      const { grids: tgtAfter } = await synthWeek(termId, tWeekRaw.id);
+      let movedOk = true;
+      for (const step of steps) {
+        const sGrid = srcAfter.find((g) => g.grade === group.grade && g.classNum === step.classNum)!;
+        const tGrid = tgtAfter.find((g) => g.grade === group.grade && g.classNum === step.classNum)!;
+        const gone = !sGrid.cells
+          .find((c) => c.day === source.day && c.period === source.period)
+          ?.lessons.some((l) => l.simul === group.label && l.subjectName === step.groupLesson.subjectName);
+        const landed = !!tGrid.cells
+          .find((c) => c.day === target.day && c.period === target.period)
+          ?.lessons.some((l) => l.simul === group.label && l.subjectName === step.groupLesson.subjectName);
+        // 맞교환 반은 상대 수업이 소스 주로 넘어와 있어야 한다
+        const cpBack =
+          step.kind !== "swap" ||
+          !!sGrid.cells
+            .find((c) => c.day === source.day && c.period === source.period)
+            ?.lessons.some((l) => l.subjectName === step.counterpart!.subjectName);
+        if (!gone || !landed || !cpBack) movedOk = false;
+      }
+      console.log(`[9-6${tag}] 두 주 합성 실반영 ${movedOk ? "✅" : "❌"}`);
+      if (!movedOk) failed = true;
+
+      // 9-7. revert — change 1건 지정 → requestId 묶음 전량 취소 → 두 주 모두 원복
+      await revertTimetableChange(D, MANAGER, changes[0].id, { skipNotify: true });
+      const changeIds = changes.map((c) => c.id);
+      let revertCount = 0;
+      for (let i = 0; i < changeIds.length; i += 10) {
+        const snap = await timetableChangesColRef(D).where("revertOf", "in", changeIds.slice(i, i + 10)).get();
+        snap.docs.forEach((d) => cleanupDocs.push({ col: "chg", id: d.id }));
+        revertCount += snap.size;
+      }
+      const reqAfter = (await swapRequestsColRef(D).doc(req.id).get()).data() as SwapRequest;
+      const { grids: srcRev } = await synthWeek(termId, week.id);
+      const { grids: tgtRev } = await synthWeek(termId, tWeekRaw.id);
+      const restored = gridSig(srcRev) === sig0 && gridSig(tgtRev) === tSig0;
+      console.log(
+        `[9-7${tag}] revert — 전량 취소 ${revertCount === changes.length ? "✅" : "❌"} (${revertCount}/${changes.length}) · 신청 상태 ${reqAfter.status} · 두 주 합성 원복 ${restored ? "✅" : "❌"}`
+      );
+      if (revertCount !== changes.length || reqAfter.status !== "CANCELED" || !restored) failed = true;
+    } finally {
+      for (const d of cleanupDocs) {
+        await (d.col === "req" ? swapRequestsColRef(D).doc(d.id) : timetableChangesColRef(D).doc(d.id)).delete();
+      }
+      const { grids: srcFin } = await synthWeek(termId, week.id);
+      const { grids: tgtFin } = await synthWeek(termId, tWeekRaw.id);
+      console.log(
+        `[9-8${tag}] 정리 완료 — 문서 ${cleanupDocs.length}건 삭제, 두 주 최초 상태 대조 ${gridSig(srcFin) === sig0 && gridSig(tgtFin) === tSig0 ? "✅" : "❌"}`
+      );
+    }
+    return failed;
+  };
+
+  // 9-0. 교차 주 후보 전수 — swap 반 포함 / move 반 포함을 각각 골라 두 문서 모양을 모두 커밋한다
+  //      (한쪽만 있는 이동 = out·in 한쪽이 빈 문서 / 맞교환 반 = 양쪽 다 있는 문서)
+  let crossPickSwap: Pick | null = null, crossPickMove: Pick | null = null;
+  let crossTotal = 0, multiLessonBlocked = 0;
+  if (crossCtx) {
+    for (const group of groups) {
+      const slots = new Set<string>();
+      for (const cn of group.classNums) {
+        const grid = grids0.find((g) => g.grade === group.grade && g.classNum === cn);
+        for (const cell of grid?.cells || [])
+          if (cell.lessons.some((l) => l.simul === group.label)) slots.add(`${cell.day}-${cell.period}`);
+      }
+      for (const key of slots) {
+        const [day, period] = key.split("-").map(Number);
+        const res = findCrossSimulGroupMoveCandidates(
+          grids0, weekObj, crossCtx.tGrids0, crossCtx.tWeekObj, settings, group, { day, period }
+        );
+        if (res.error) { if (res.error.includes("두 개 이상")) multiLessonBlocked++; continue; }
+        for (const cand of res.candidates) {
+          crossTotal++;
+          const kinds = new Set(cand.steps.map((s) => s.kind));
+          const p: Pick = { group, source: { day, period }, cand };
+          if (kinds.has("swap") && !crossPickSwap) crossPickSwap = p;
+          if (kinds.has("move") && !crossPickMove) crossPickMove = p;
+        }
+      }
+    }
+    console.log(
+      `[9-0] 교차 주 후보 ${crossTotal}건 (${week.id} → ${crossCtx.tWeekRaw.id}) · 분반 병기로 제외된 소스 ${multiLessonBlocked}건 · 맞교환 반 포함 ${crossPickSwap ? "있음" : "없음"} · 빈 교시 반 포함 ${crossPickMove ? "있음" : "없음"}`
+    );
+  } else {
+    console.log("[9] 같은 학기의 다른 주가 없어 교차 주 사이클 미실행 (미검증)");
+  }
+
+  // [9-9] 직권 보조 경로도 교차 주로 — 즉시 반영(APPROVED) → 두 주 반영 → revert → 원복
+  const runCrossDirectCycle = async (pick: Pick): Promise<boolean> => {
+    const { tWeekRaw, tSig0 } = crossCtx!;
+    const target = { day: pick.cand.targetDay, period: pick.cand.targetPeriod };
+    const { request, changes } = await commitSimulGroupMove(D, MANAGER, {
+      weekId: week.id, targetWeekId: tWeekRaw.id, groupId: pick.group.id!,
+      source: pick.source, target,
+      reason: { type: "기타", note: "검증 스크립트 (즉시 정리)" }, consent: { confirmed: true, note: "검증용" },
+    }, { skipNotify: true });
+    const cleanupDocs: Array<{ col: "req" | "chg"; id: string }> = [{ col: "req", id: request.id }];
+    changes.forEach((c) => cleanupDocs.push({ col: "chg", id: c.id }));
+    let failed = false;
+    try {
+      const shapeOk =
+        request.status === "APPROVED" && request.direct === true &&
+        request.targetWeekId === tWeekRaw.id &&
+        changes.length === pick.cand.steps.length * 2 &&
+        changes.every((c) => c.type === "cross_swap" && !!c.crossSwap);
+      const { grids: srcAfter } = await synthWeek(termId, week.id);
+      const { grids: tgtAfter } = await synthWeek(termId, tWeekRaw.id);
+      const applied = gridSig(srcAfter) !== sig0 && gridSig(tgtAfter) !== tSig0;
+      console.log(
+        `[9-9] 직권 교차 주 즉시 반영 ${shapeOk && applied ? "✅" : "❌"} — 상태·목적지 주·문서 모양 ${shapeOk ? "✅" : "❌"} (change ${changes.length}건) · 두 주 합성 변화 ${applied ? "✅" : "❌"}`
+      );
+      if (!shapeOk || !applied) failed = true;
+
+      await revertTimetableChange(D, MANAGER, changes[0].id, { skipNotify: true });
+      const changeIds = changes.map((c) => c.id);
+      let revertCount = 0;
+      for (let i = 0; i < changeIds.length; i += 10) {
+        const snap = await timetableChangesColRef(D).where("revertOf", "in", changeIds.slice(i, i + 10)).get();
+        snap.docs.forEach((d) => cleanupDocs.push({ col: "chg", id: d.id }));
+        revertCount += snap.size;
+      }
+      const { grids: srcRev } = await synthWeek(termId, week.id);
+      const { grids: tgtRev } = await synthWeek(termId, tWeekRaw.id);
+      const restored = gridSig(srcRev) === sig0 && gridSig(tgtRev) === tSig0;
+      console.log(`      revert 전량 ${revertCount === changes.length ? "✅" : "❌"} (${revertCount}/${changes.length}) · 두 주 원복 ${restored ? "✅" : "❌"}`);
+      if (revertCount !== changes.length || !restored) failed = true;
+    } finally {
+      for (const d of cleanupDocs)
+        await (d.col === "req" ? swapRequestsColRef(D).doc(d.id) : timetableChangesColRef(D).doc(d.id)).delete();
+      const { grids: srcFin } = await synthWeek(termId, week.id);
+      const { grids: tgtFin } = await synthWeek(termId, tWeekRaw.id);
+      console.log(
+        `      정리 완료 — 문서 ${cleanupDocs.length}건 삭제, 두 주 최초 상태 대조 ${gridSig(srcFin) === sig0 && gridSig(tgtFin) === tSig0 ? "✅" : "❌"}`
+      );
+    }
+    return failed;
+  };
+
   let failed = await runCycle("A", pickA);
   if (pickB) failed = (await runCycle("B", pickB)) || failed;
   failed = (await runTeacherCycle(pickA)) || failed;
+  if (crossCtx) {
+    if (crossPickSwap) failed = (await runCrossCycle("S", crossPickSwap)) || failed;
+    else console.log("    ⚠️ 맞교환 반을 포함한 교차 주 후보 없음 — 해당 문서 모양 미검증");
+    if (crossPickMove && crossPickMove !== crossPickSwap)
+      failed = (await runCrossCycle("M", crossPickMove)) || failed;
+    else if (!crossPickMove) console.log("    ⚠️ 빈 교시 반을 포함한 교차 주 후보 없음 — 해당 문서 모양 미검증");
+    if (!crossPickSwap && !crossPickMove) console.log("[9] 교차 주 후보 0건 — 사이클 미실행 (미검증)");
+    const directPick = crossPickSwap || crossPickMove;
+    if (directPick) failed = (await runCrossDirectCycle(directPick)) || failed;
+  }
   await bumpTimetableCacheVersion(D);
   if (failed) process.exit(1);
 }

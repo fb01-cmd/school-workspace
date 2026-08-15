@@ -848,6 +848,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           body: JSON.stringify({
             action: "simul_move_commit",
             weekId: sourceWeekId,
+            targetWeekId, // 다른 주로 옮기는 후보 (없으면 같은 주)
             simulGroupId: simul.groupId,
             simulMoveSource: { day: selectedSlot.day, period: selectedSlot.period },
             simulMoveTarget: { day: sc.targetDay, period: sc.targetPeriod },

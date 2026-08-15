@@ -1543,3 +1543,26 @@ if (isProtectedAccountEmail(email)) {
 - **UI는 아마 무변경**: 교사 화면은 이미 주별로 후보를 렌더하고, 교차 주 후보는 `targetWeekId`를 스스로 들고 나간다. 신청 payload에 `targetWeekId`를 실어 보내는지만 확인하면 된다(`TeacherPortalSection.handleSingleSubmit`의 `simul_move_create` 분기).
 - **되돌리기는 손댈 것이 없다** — `requestId` 묶음 전량 취소가 기구현이고 두 주 문서도 같은 `requestId`를 갖는다.
 - 오늘 만든 **`scripts/check_ui_removals.sh`와 `AGENTS.md ①-1`(재작성 금지)** 를 지켜라. 오늘 회귀 4건이 전면 재작성에서 나왔다.
+
+## [2026-08-15] Claude — §5c-8 교차 주 통 이동 **완결** (게이트 켬, 실데이터 사이클 통과)
+
+체크포인트의 「남은 것 1~7」 전건 이행. 커밋 1건(이 항목을 담고 있는 커밋 자신 — 제목 「§5c-8 교차 주 통 이동 완결」), origin push 승인 대기.
+
+- **1~5 서버부**: `assembleSimulMoveChanges`에 교차 주 분기(반별 step 1건 = `cross_swap` 주별 문서 쌍, 같은 `exchangeId`) · `createSimulMoveRequest`/`commitSimulGroupMove`가 `targetWeekId` 수용(두 주 재합성 후 교차 주 엔진으로 대조) · `approveSwapRequest` simul_move 분기가 트랜잭션 안에서 두 주 재검증 · `validatePendingSwapRequests` 교차 주 재검증. 라우트·교사 포털 4곳·직권 1곳에 `targetWeekId` 배선.
+- **6 검증**: `verify_simul_move_phase3.ts`에 [9] 신설 — 맞교환 반 포함(S)·빈 교시 반 포함(M) 두 문서 모양 + 직권(9-9)까지 신청→승인→두 주 반영→revert 전량 원복→하드 삭제→두 주 최초 상태 대조. **전건 통과(exit 0)**, 기존 [1]~[8] 회귀 0(같은 주 후보 95건 불변).
+- **7 게이트**: `CROSS_WEEK_SIMUL_MOVE_ENABLED = true`. 되돌릴 때도 이 상수 하나. `docs/ui_check_checklist.md`에 **F절**(다른 주로 옮기기, F-1~F-11) 추가.
+
+### 구현 중 실측으로 잡은 결함 2건 (둘 다 교차 주 적용 경로, 스펙에 없던 것)
+
+1. **묶음 라벨 유실** — `applyCrossSwap`은 수업을 **재구성**한다(같은 주 이동은 객체를 그대로 옮긴다). `simul` 스탬프가 참조에 없어 옮겨진 뒤 묶음으로 인식되지 않았다(다시 옮기기·뱃지 전부 불능). `CrossSwapLessonRef.simul` 신설로 계승. **첫 [9] 실행에서 9-6 실패로 검출** — 코드 리뷰로는 안 보였다.
+2. **빈 칸 잔류** — 수업이 떠나기만 한 슬롯에 `removeEmptyCell`이 없어 합성본에 빈 셀이 남아 되돌리기 후 최초 상태와 어긋났다(9-7 실패로 검출). `applySwap`·`applyMove`와 같은 정리 추가.
+
+### 스펙에 없던 제약 1건 (엔진에서 후보 단계 차단)
+
+- **한 반이 같은 교시에 그룹 수업 2개(분반 병기)인 경우 교차 주 제외.** 같은 주는 `move`가 빈자리 여부와 무관하게 밀어 넣지만, 교차 주 문서 쌍은 "들어가는 쪽은 빈 자리여야 한다"로 상태 불일치를 잡으므로 두 번째 수업이 조용히 빠진다. 화면엔 뜨는데 반영이 반쪽 나는 것이 최악이라 **후보 단계에서 차단**(같은 주는 분기 미실행 = 출력 불변). 실데이터 해당 소스 **0건**(9-0 실측)이라 현재 손해 없음.
+
+### 주의점
+
+- 교차 주 후보는 **후보 자체가 `targetWeekId`를 들고 다닌다**(`SwapCandidate.targetWeekId` 신설). 신청·직권 payload는 이 값을 그대로 돌려보낸다 — 새 진입점을 만들면 이것부터 확인.
+- 화면 확인은 **사용자 몫**(2026-08-15 분업). `docs/ui_check_checklist.md` **F절**이 그 목록이다. F-10(옮겨 간 주에서 🔀 딱지 유지)은 위 결함 1의 재발 감시 항목이니 빠뜨리지 말 것.
+- 되돌리기·요청대장·NEIS는 손대지 않았다(requestId 묶음 전량 취소가 두 주 문서를 그대로 포괄 — [9-7] 실측 확인).

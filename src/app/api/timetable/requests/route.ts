@@ -312,6 +312,7 @@ export async function POST(req: NextRequest) {
         try {
           const request = await createSimulMoveRequest(domain, auth.email, {
             weekId: body.weekId,
+            targetWeekId: body.targetWeekId, // §5c-8 다른 주로 옮기는 신청 (없으면 같은 주)
             source: { grade: src.grade, classNum: src.classNum, day: src.day, period: src.period },
             target: { day: tgt.day, period: tgt.period },
             reason: body.reason,
@@ -322,7 +323,7 @@ export async function POST(req: NextRequest) {
             operatorEmail: auth.email,
             targetEmail: auth.email,
             action: "create_simul_move_request",
-            details: `묶음 수업 이동 신청: ${sm.grade}학년 ${sm.classNums.join("·")}반 「${sm.label}」 (${sm.from.day},${sm.from.period})→(${sm.to.day},${sm.to.period}) · 양해 ${request.consent?.parties.length || 0}명 · 사유 ${request.reason.type}`,
+            details: `묶음 수업 이동 신청: ${sm.grade}학년 ${sm.classNums.join("·")}반 「${sm.label}」 (${sm.from.day},${sm.from.period})→${request.targetWeekId ? `[${request.targetWeekId}]` : ""}(${sm.to.day},${sm.to.period}) · 양해 ${request.consent?.parties.length || 0}명 · 사유 ${request.reason.type}`,
             status: "success",
           });
           return NextResponse.json({ success: true, action, request });
@@ -331,7 +332,8 @@ export async function POST(req: NextRequest) {
           if (
             msg.includes("양해") || msg.includes("유효하지") || msg.includes("본인의 수업만") ||
             msg.includes("대기 중인") || msg.includes("사유") || msg.includes("등록부") ||
-            msg.includes("움직이는 수업이 아닙니다") || msg.includes("등록되지 않은 주")
+            msg.includes("움직이는 수업이 아닙니다") || msg.includes("등록되지 않은 주") ||
+            msg.includes("다른 주로") || msg.includes("다른 학기")
           ) {
             return NextResponse.json({ error: msg }, { status: 400 });
           }

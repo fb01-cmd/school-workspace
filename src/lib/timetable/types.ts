@@ -556,6 +556,10 @@ export interface CrossSwapLessonRef {
   teacherEmail: string;
   teacherName: string;
   room?: string;
+  /** 여러 반이 함께 움직이는 수업의 묶음 라벨 (§5c-8). 다른 주로 옮겨도 묶음 표시가 살아 있어야
+   *  같은 주 이동(수업 객체를 그대로 옮긴다)과 결과가 같아진다 — 교차 주만 수업을 재구성하므로
+   *  이 필드로 명시 계승한다. 일반 교차 주 맞교환은 묶음 수업을 다루지 않아 항상 비어 있다. */
+  simul?: string;
 }
 
 /**
@@ -871,6 +875,7 @@ export interface PenaltyDetail {
 export interface SwapCandidate {
   targetDay: number;
   targetPeriod: number;
+  targetWeekId?: string; // 다른 주로 가는 후보 — 후보가 목적지 주를 직접 들고 다닌다 (교차 주 통 이동 §5c-8)
   counterpartEmail: string;
   counterpartName: string;
   counterpartSubjectName: string;

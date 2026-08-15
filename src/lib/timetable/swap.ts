@@ -739,6 +739,19 @@ function findSimulGroupMoveCandidatesImpl(
     classLessons.push({ classNum: cn, grid, gridTgt, lessons: groupLessons });
   }
 
+  // §5c-8 교차 주 제외: 한 반이 이 교시에 그룹 수업을 둘 이상 가진 경우(분반 병기).
+  // 같은 주는 반별 이동(move)이 빈자리 여부와 무관하게 밀어 넣으므로 두 수업이 함께 옮겨진다.
+  // 교차 주는 주별 문서 쌍으로 기술되고 "들어가는 쪽은 빈 자리여야 한다"는 규칙으로 상태 불일치를
+  // 잡는데(덮어쓰기 금지 — weekly.ts applyCrossSwap), 두 번째 수업이 그 규칙에 걸려 조용히 빠진다.
+  // 후보 단계에서 아예 내보내지 않는다 — 화면에는 뜨는데 반영이 반쪽 나는 것이 최악이다.
+  // 같은 주(crossWeek=false)에는 이 분기가 실행되지 않으므로 기존 출력 불변.
+  if (crossWeek && classLessons.some((cl) => cl.lessons.length > 1))
+    return {
+      candidates: [],
+      error:
+        "같은 반에 이 묶음 수업이 두 개 이상 있어 다른 주로는 옮길 수 없습니다. 같은 주 안에서는 옮길 수 있습니다.",
+    };
+
   // 그룹 담당 교사 전원 (실이메일만 — 판정·양해 당사자 재료)
   const groupTeachers = new Map<string, string>();
   for (const cl of classLessons)
