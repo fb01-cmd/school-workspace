@@ -570,8 +570,11 @@ export interface CrossSwapChange {
   classNum: number;
   day: number; // 이 문서 주(weekId)의 슬롯
   period: number;
-  out: CrossSwapLessonRef; // 이 슬롯에서 빠지는 수업
-  in: CrossSwapLessonRef; // 상대 주에서 넘어와 대신 들어오는 수업
+  /** 이 슬롯에서 빠지는 수업. null = 원래 빈 교시였다(상대 주에서 수업이 들어오기만 한다).
+   *  §5c-8 교차 주 통 이동에서 목적지 반이 빈 교시일 때 필요 — 한쪽만 있는 이동의 표현. */
+  out: CrossSwapLessonRef | null;
+  /** 상대 주에서 넘어와 들어오는 수업. null = 이 슬롯이 비워진다(수업이 상대 주로 떠난다). */
+  in: CrossSwapLessonRef | null;
 }
 
 export interface TimetableChange {

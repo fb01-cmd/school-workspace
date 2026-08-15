@@ -118,7 +118,7 @@ function changeLabel(ch: TimetableChange): string {
   }
   if (ch.type === "cross_swap" && ch.crossSwap) {
     const s = ch.crossSwap;
-    return `cross_swap ${s.grade}-${s.classNum} (${s.day},${s.period}) ${s.out.teacherName}→${s.in.teacherName} (상대 주 ${s.otherWeekId})`;
+    return `cross_swap ${s.grade}-${s.classNum} (${s.day},${s.period}) ${s.out?.teacherName || "빈 교시"}→${s.in?.teacherName || "빈 교시"} (상대 주 ${s.otherWeekId})`;
   }
   if (ch.type === "move" && ch.move) {
     const m = ch.move;
@@ -276,32 +276,59 @@ function applyCrossSwap(
     warnings.push(`[${ch.id}] 학급 ${s.grade}-${s.classNum} 그리드 없음 — 건너뜀 (${changeLabel(ch)})`);
     return false;
   }
-  const outRef: CrossSwapLessonRef = reversed ? s.in : s.out;
-  const inRef: CrossSwapLessonRef = reversed ? s.out : s.in;
-  const found = findLesson(grid, {
-    day: s.day,
-    period: s.period,
-    subjectName: outRef.subjectName,
-    teacherEmail: outRef.teacherEmail,
-    teacherName: outRef.teacherName,
-  });
-  if (!found) {
-    warnings.push(
-      `[${ch.id}] 대상 슬롯 상태 불일치 — 건너뜀 (${changeLabel(ch)}${reversed ? " 취소" : ""})`
-    );
+  // §5c-8: 한쪽만 있는 교차 주 이동 — out=null이면 이 슬롯은 원래 비어 있었고 수업이 들어오기만 하며,
+  // in=null이면 수업이 상대 주로 떠나 이 슬롯이 비워진다. 양쪽 null은 성립하지 않는 문서다.
+  const outRef: CrossSwapLessonRef | null = reversed ? s.in : s.out;
+  const inRef: CrossSwapLessonRef | null = reversed ? s.out : s.in;
+  if (!outRef && !inRef) {
+    warnings.push(`[${ch.id}] 양쪽 수업이 모두 비어 있는 교차 주 문서 — 건너뜀 (${changeLabel(ch)})`);
     return false;
   }
-  found.cell.lessons.splice(found.index, 1);
-  const replacement: WeeklyLesson = {
-    subjectName: inRef.subjectName,
-    subjectShort: inRef.subjectShort,
-    teachers: [{ email: inRef.teacherEmail, name: inRef.teacherName }],
-    ...(inRef.room ? { room: inRef.room } : {}),
-    ...(reversed
-      ? {}
-      : { changed: { changeId: ch.id, type: "cross_swap" as const, otherWeekId: s.otherWeekId } }),
-  };
-  found.cell.lessons.push(replacement);
+
+  let cell: WeeklyClassGrid["cells"][number] | undefined;
+  if (outRef) {
+    const found = findLesson(grid, {
+      day: s.day,
+      period: s.period,
+      subjectName: outRef.subjectName,
+      teacherEmail: outRef.teacherEmail,
+      teacherName: outRef.teacherName,
+    });
+    if (!found) {
+      warnings.push(
+        `[${ch.id}] 대상 슬롯 상태 불일치 — 건너뜀 (${changeLabel(ch)}${reversed ? " 취소" : ""})`
+      );
+      return false;
+    }
+    found.cell.lessons.splice(found.index, 1);
+    cell = found.cell;
+  } else {
+    // 들어오기만 하는 쪽: 빈 셀이어야 정상. 이미 수업이 있으면 상태 불일치로 건너뛴다(덮어쓰기 금지).
+    cell = grid.cells.find((c) => c.day === s.day && c.period === s.period);
+    if (!cell) {
+      cell = { day: s.day, period: s.period, lessons: [] };
+      grid.cells.push(cell);
+    }
+    if (cell.lessons.length > 0) {
+      warnings.push(
+        `[${ch.id}] 들어올 자리에 이미 수업이 있음 — 건너뜀 (${changeLabel(ch)}${reversed ? " 취소" : ""})`
+      );
+      return false;
+    }
+  }
+
+  if (inRef) {
+    const replacement: WeeklyLesson = {
+      subjectName: inRef.subjectName,
+      subjectShort: inRef.subjectShort,
+      teachers: [{ email: inRef.teacherEmail, name: inRef.teacherName }],
+      ...(inRef.room ? { room: inRef.room } : {}),
+      ...(reversed
+        ? {}
+        : { changed: { changeId: ch.id, type: "cross_swap" as const, otherWeekId: s.otherWeekId } }),
+    };
+    cell!.lessons.push(replacement);
+  }
   return true;
 }
 
@@ -455,23 +482,28 @@ export function flattenNeisChanges(
       const s = ch.crossSwap;
       const pair = (crossByExchange.get(s.exchangeId) || []).find((c) => c.id !== ch.id);
       const ps = pair?.crossSwap;
-      rows.push({
-        changeId: ch.id,
-        weekId: ch.weekId,
-        type: "cross_swap",
-        grade: s.grade,
-        classNum: s.classNum,
-        date: dateOf(ch.weekId, s.day),
-        day: s.day,
-        period: s.period,
-        teacherName: s.in.teacherName,
-        teacherEmail: s.in.teacherEmail,
-        subjectName: s.in.subjectName,
-        prevDate: ps ? dateOf(pair!.weekId, ps.day) : "",
-        prevDay: ps ? ps.day : s.day,
-        prevPeriod: ps ? ps.period : s.period,
-        note: `교차 주 맞교환 (${s.otherWeekId} 주와 교환)`,
-      });
+      // §5c-8: in이 없으면 이 주에서는 수업이 빠지기만 한다 — 이 주에 '진행되는' 수업이 없으므로 행을 내지 않는다
+      // (도착하는 쪽 문서가 1행을 낸다. 짝 문서의 out이 없으면 맞교환이 아니라 한쪽 이동이다.)
+      if (s.in)
+        rows.push({
+          changeId: ch.id,
+          weekId: ch.weekId,
+          type: "cross_swap",
+          grade: s.grade,
+          classNum: s.classNum,
+          date: dateOf(ch.weekId, s.day),
+          day: s.day,
+          period: s.period,
+          teacherName: s.in.teacherName,
+          teacherEmail: s.in.teacherEmail,
+          subjectName: s.in.subjectName,
+          prevDate: ps ? dateOf(pair!.weekId, ps.day) : "",
+          prevDay: ps ? ps.day : s.day,
+          prevPeriod: ps ? ps.period : s.period,
+          note: ps && !ps.out
+            ? `다른 주에서 옮겨온 수업 (${s.otherWeekId} 주에서 이동)`
+            : `교차 주 맞교환 (${s.otherWeekId} 주와 교환)`,
+        });
     } else if (ch.type === "move" && ch.move && filter.type !== "substitute") {
       // 통 이동의 빈 교시 반 — 상대 없는 이동 1행 (consent_swap_opening_spec §5b-6-1)
       const m = ch.move;

@@ -201,11 +201,14 @@ function describeChange(change: TimetableChange): ChangeAudience | null {
   }
   if (change.crossSwap) {
     const c = change.crossSwap;
+    // §5c-8: 한쪽이 없는 교차 주 이동 — 빠지기만 하거나 들어오기만 하는 표현
     return {
       line:
         `${revert}${dateLabel(change.weekId, c.day)} ${c.period}교시` +
-        ` ${c.out.subjectName} → ${c.in.subjectName} (${c.grade}-${c.classNum}반)`,
-      teacherEmails: [c.out.teacherEmail, c.in.teacherEmail],
+        ` ${c.out ? c.out.subjectName : "빈 교시"} → ${c.in ? c.in.subjectName : "빈 교시"} (${c.grade}-${c.classNum}반)`,
+      teacherEmails: [c.out?.teacherEmail, c.in?.teacherEmail].filter(
+        (e): e is string => !!e
+      ),
       classKey: { grade: c.grade, classNum: c.classNum },
     };
   }

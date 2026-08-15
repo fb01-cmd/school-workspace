@@ -125,8 +125,9 @@ async function run() {
       "otherWeekId 상호 참조"
     );
     assert(
-      docA.crossSwap!.out.teacherEmail === docB.crossSwap!.in.teacherEmail &&
-      docA.crossSwap!.in.teacherEmail === docB.crossSwap!.out.teacherEmail,
+      // 교차 주 '맞교환'은 양쪽 수업이 모두 있다 (한쪽만 있는 §5c-8 통 이동과 구별)
+      docA.crossSwap!.out?.teacherEmail === docB.crossSwap!.in?.teacherEmail &&
+      docA.crossSwap!.in?.teacherEmail === docB.crossSwap!.out?.teacherEmail,
       "out/in 수업이 거울상"
     );
 

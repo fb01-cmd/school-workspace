@@ -1228,6 +1228,7 @@ import {
 import {
   buildSlotIndex,
   findCrossSwapCandidates,
+  findCrossSimulGroupMoveCandidates,
   findSimulGroupMoveCandidates,
   findSubstituteCandidates,
   findSwapCandidates,
@@ -3012,13 +3013,31 @@ export async function computeCandidatesAllWeeks(
         assumedExtraCount: extraCount,
       };
     }
+    // §5c-8: 다른 주도 교차 주 엔진으로 채운다. 그룹은 위에서 이미 해석됐고 각 주 합성본도
+    // synthByWeek에 있으므로 추가 Firestore 읽기 0 (순수 함수 호출만 늘어난다).
     return {
       sourceSubjectName: simulBranch.sourceSubjectName,
-      weeks: allWeeks.map((w) => ({
-        weekId: w.id,
-        startDate: w.startDate,
-        swapCandidates: w.id === sourceWeekId ? simulBranch.swapCandidates : [],
-      })),
+      weeks: allWeeks.map((w) => {
+        if (w.id === sourceWeekId)
+          return { weekId: w.id, startDate: w.startDate, swapCandidates: simulBranch.swapCandidates };
+        const tGrids = synthByWeek.get(w.id);
+        if (!tGrids || !simulBranch.group || w.termId !== sourceWeek.termId)
+          return { weekId: w.id, startDate: w.startDate, swapCandidates: [] };
+        const crossRes = findCrossSimulGroupMoveCandidates(
+          srcGrids, sourceWeek, tGrids, w, settings, simulBranch.group,
+          { day: source.day, period: source.period }
+        );
+        return {
+          weekId: w.id,
+          startDate: w.startDate,
+          swapCandidates: crossRes.error
+            ? []
+            : mapSimulMoveCandidates(simulBranch.group, crossRes.candidates).map((c) => ({
+                ...c,
+                targetWeekId: w.id, // 교차 주 후보임을 후보 자체가 들고 다닌다 (신청 배선이 이것을 쓴다)
+              })),
+        };
+      }),
       assumedPendingCount: overlay?.pendingCount || 0,
       assumedDraftCount: overlay?.draftCount || 0,
       assumedExtraCount: extraCount,
@@ -3123,28 +3142,32 @@ export async function computeCandidates(
 
   // ── §5c-7: 소스가 묶음(simul) 수업이면 통 이동 후보로 분기 — 같은 후보 목록에 섞여 나간다.
   //    기존 함수(resolveSourceLesson·엔진)는 무수정, 분기는 이 호출부에서만 (§5c-7-3 = 회귀 0).
+  //    §5c-8: 목적지 주가 지정되면 교차 주 엔진으로 — 주 등록·학기 검사는 여기서 먼저 한다.
+  let simulTarget: { grids: WeeklyClassGrid[]; week: TimetableWeek } | undefined;
+  if (targetWeekId && targetWeekId !== weekId) {
+    const tw = await loadWeek(domain, targetWeekId);
+    if (!tw) throw new Error(`등록되지 않은 주(${targetWeekId})입니다. 일과계가 먼저 주를 등록해야 교환할 수 있습니다.`);
+    if (tw.termId !== week.termId) throw new Error("다른 학기의 주와는 교환할 수 없습니다.");
+    const { grids: tGrids } = await synthesizeWeek(domain, tw, overlay?.byWeek.get(targetWeekId));
+    simulTarget = { grids: tGrids, week: tw };
+  }
   const simulBranch = await trySimulMoveCandidatesBranch(
-    domain, week.termId, grids, week, settings, source, requesterEmail
+    domain, week.termId, grids, week, settings, source, requesterEmail, simulTarget
   );
   if (simulBranch) {
     if (simulBranch.error) {
       return {
         swapCandidates: [], substituteCandidates: [],
-        sourceSubjectName: simulBranch.sourceSubjectName, error: simulBranch.error,
-      };
-    }
-    if (targetWeekId && targetWeekId !== weekId) {
-      // 교차 주 통 이동은 v1 범위 제외 (§7)
-      return {
-        swapCandidates: [], substituteCandidates: [],
-        sourceSubjectName: simulBranch.sourceSubjectName, targetWeekId,
-        error: "여러 반이 함께 움직이는 수업은 다른 주와의 교차 교환을 지원하지 않습니다.",
+        sourceSubjectName: simulBranch.sourceSubjectName,
+        ...(targetWeekId ? { targetWeekId } : {}),
+        error: simulBranch.error,
       };
     }
     return {
       swapCandidates: simulBranch.swapCandidates,
       substituteCandidates: [], // 묶음 수업은 특별보강 대상이 아니다 (기존 하드 제외 유지)
       sourceSubjectName: simulBranch.sourceSubjectName,
+      ...(targetWeekId && targetWeekId !== weekId ? { targetWeekId } : {}),
       // 조건부(conditional) 태깅 없음 — what-if 오버레이는 simul_move를 표현하지 않으므로 기준이 없다
       ...(overlay
         ? { ...whatIfExtras, projectedDayLoads: countMyDayLoads(grids, requesterEmail) }
@@ -4595,8 +4618,9 @@ export async function revertTimetableChange(
       recipients.add(t.substitute.subTeacherEmail);
     }
     if (t.crossSwap) {
-      recipients.add(t.crossSwap.out.teacherEmail);
-      recipients.add(t.crossSwap.in.teacherEmail);
+      // §5c-8: 한쪽만 있는 교차 주 이동은 있는 쪽만 수신자
+      if (t.crossSwap.out) recipients.add(t.crossSwap.out.teacherEmail);
+      if (t.crossSwap.in) recipients.add(t.crossSwap.in.teacherEmail);
     }
     if (t.move) {
       recipients.add(t.move.teacherEmail);
@@ -4633,7 +4657,7 @@ export async function revertTimetableChange(
         );
       } else if (t.crossSwap) {
         detailLines.push(
-          `${t.crossSwap.grade}-${t.crossSwap.classNum} ${t.weekId} 주 ${dayNames[t.crossSwap.day]} ${t.crossSwap.period}교시 ${t.crossSwap.out.subjectName} → ${t.crossSwap.in.subjectName} (교차 주)`
+          `${t.crossSwap.grade}-${t.crossSwap.classNum} ${t.weekId} 주 ${dayNames[t.crossSwap.day]} ${t.crossSwap.period}교시 ${t.crossSwap.out?.subjectName || "빈 교시"} → ${t.crossSwap.in?.subjectName || "빈 교시"} (교차 주)`
         );
       } else if (t.move) {
         detailLines.push(
@@ -5313,7 +5337,9 @@ async function trySimulMoveCandidatesBranch(
   week: TimetableWeek,
   settings: TimetableSettings,
   source: { grade: number; classNum: number; day: number; period: number },
-  requesterEmail?: string
+  requesterEmail?: string,
+  /** §5c-8 교차 주: 주면 목적지 주 합성본 기준으로 후보를 계산한다 (없으면 같은 주) */
+  target?: { grids: WeeklyClassGrid[]; week: TimetableWeek }
 ): Promise<null | {
   swapCandidates: SwapCandidate[];
   sourceSubjectName: string;
@@ -5327,10 +5353,13 @@ async function trySimulMoveCandidatesBranch(
   const groups = await loadSimulGroups(domain, termId);
   const resolved = resolveSimulMoveSource(grids, groups, source, requesterEmail);
   if (!resolved.ok) return { swapCandidates: [], sourceSubjectName: "", error: resolved.error };
-  const res = findSimulGroupMoveCandidates(grids, week, settings, resolved.group, {
-    day: source.day,
-    period: source.period,
-  });
+  const srcSlot = { day: source.day, period: source.period };
+  const res =
+    target && target.week.id !== week.id
+      ? findCrossSimulGroupMoveCandidates(
+          grids, week, target.grids, target.week, settings, resolved.group, srcSlot
+        )
+      : findSimulGroupMoveCandidates(grids, week, settings, resolved.group, srcSlot);
   const sourceSubjectName =
     resolved.requesterLesson?.subjectName ||
     cell!.lessons.find((l) => l.simul === resolved.group.label)?.subjectName ||
