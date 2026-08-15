@@ -8,7 +8,8 @@ import { adminDb, DecodedAuthAccess } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
-import { bumpTimetableCacheVersion } from "./cacheVersion";
+import { bumpTimetableCacheVersion, getTimetableCacheVersion } from "./cacheVersion";
+import { createMemoStore } from "./memoCache";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
 import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardViolationKey, normSubject, teacherKeyOf, validateTimetable } from "./validate";
@@ -2366,6 +2367,73 @@ export async function synthesizeWeek(
   return synthesizeWeeklyGrids(baseGrids, week, all, settings);
 }
 
+// ── 읽기 다이어트 ① (2026-08-16): 후보(advisory) 경로 전용 버전 키 캐시 ──────
+//
+// 대상은 **표시용 후보 계산**뿐이다 — computeCandidates·computeCandidatesAllWeeks·
+// computeDirectCandidates(위임 경유)와 그 안의 묶음·역방향 분기 재료. 실측상 후보
+// 클릭 1회가 8개 주 × (기초판 30 + changes)를 매번 재읽어 240+ 읽기였다 (8/15 소진 사고).
+//
+// **신청 생성·승인·직권 커밋·validatePending은 계속 fresh 로더를 쓴다(최종선 불변).**
+// 후보가 최대 TTL만큼 낡아도 안전한 이유: 생성·승인이 서버 재계산으로 대조해 낡은
+// 후보를 "더 이상 유효하지 않습니다"로 거부한다 — 기존 경합 UX와 같은 경로다.
+// 무효화: 키에 캐시 버전 포함(viewCache와 같은 계약). 시간표를 바꾸는 쓰기 전수가
+// bump함은 2026-08-16 전수 확인(23개 지점, directCommit은 approve 위임으로 커버).
+// 킬스위치도 view와 공유: TIMETABLE_VIEW_CACHE=off 면 전부 fresh.
+const advisoryStore = createMemoStore({
+  ttlMs: 10 * 60 * 1000, // viewCache와 동일 안전망 — 정상 신선도는 버전 키가 보장
+  maxEntries: 64,
+  killSwitchEnv: "TIMETABLE_VIEW_CACHE",
+});
+
+/** 후보 경로 공통 재료. 버전 읽기(요청당 1회)는 무효화 정확성의 원천이므로 캐시하지 않는다. */
+async function advisoryContext(
+  domain: string,
+  termId: string
+): Promise<{ version: number; settings: TimetableSettings; term: TimetableTerm | null; weeks: TimetableWeek[] }> {
+  const version = await getTimetableCacheVersion(domain);
+  const ctx = await advisoryStore.memo(`ctx:${domain}:${version}:${termId}`, async () => {
+    const [settings, term, weeks] = await Promise.all([
+      loadTimetableSettings(domain),
+      loadTimetableTerm(domain, termId),
+      listWeeks(domain, termId),
+    ]);
+    return { settings, term, weeks };
+  });
+  return { version, ...ctx };
+}
+
+/** 주간 원재료(기초판+changes). 합성본이 아니라 재료를 캐시한다 — what-if 오버레이가
+ *  사용자·클릭마다 달라 합성본 캐시는 적중이 없고, 합성 자체는 CPU뿐이라 싸다. */
+function advisoryWeekMaterials(domain: string, version: number, week: TimetableWeek) {
+  return advisoryStore.memo(`mat:${domain}:${version}:${week.termId}:${week.id}`, async () => {
+    const [baseGrids, changes] = await Promise.all([
+      loadBaseGridsForWeek(domain, week.termId, week.startDate),
+      loadWeekChanges(domain, week.id),
+    ]);
+    return { baseGrids, changes };
+  });
+}
+
+function advisorySimulGroups(domain: string, version: number, termId: string): Promise<SimulGroup[]> {
+  return advisoryStore.memo(`simulg:${domain}:${version}:${termId}`, () =>
+    loadSimulGroups(domain, termId)
+  );
+}
+
+/** advisory 합성 — 캐시 재료 + 인메모리 합성. synthesizeWeeklyGrids가 입력을 deepCopy
+ *  하므로(weekly.ts) 캐시 재료를 여러 요청이 공유해도 안전하다. */
+async function synthesizeWeekAdvisory(
+  domain: string,
+  version: number,
+  week: TimetableWeek,
+  settings: TimetableSettings,
+  extraChanges?: TimetableChange[]
+): Promise<WeeklySynthesisResult> {
+  const { baseGrids, changes } = await advisoryWeekMaterials(domain, version, week);
+  const all = extraChanges?.length ? [...changes, ...extraChanges] : changes;
+  return synthesizeWeeklyGrids(baseGrids, week, all, settings);
+}
+
 /** 학기 과목·그리드에서 전체 교사 수집 (view 라우트 free 액션과 동일 규칙) */
 export function collectTermTeachers(term: TimetableTerm, grids: WeeklyClassGrid[]): TimetableTeacher[] {
   const teacherMap = new Map<string, TimetableTeacher>();
@@ -3039,12 +3107,13 @@ export async function computeCandidatesAllWeeks(
 }> {
   const sourceWeek = await loadWeek(domain, sourceWeekId);
   if (!sourceWeek) throw new Error(`등록되지 않은 주(${sourceWeekId})입니다.`);
-  const term = await loadTimetableTerm(domain, sourceWeek.termId);
+  // 읽기 다이어트 ①: 표시용 후보 경로 — 컨텍스트·주간 재료를 버전 키 캐시에서 (승인·생성은 fresh 불변)
+  const { version, settings: dietSettings, term, weeks: dietWeeks } = await advisoryContext(domain, sourceWeek.termId);
   if (!term) throw new Error(`학기(${sourceWeek.termId})를 찾을 수 없습니다.`);
 
   const engineOpts = { includeCoordination: true, thirdPerson: !!whatIf?.thirdPerson };
 
-  const allWeeks = await listWeeks(domain, term.id);
+  const allWeeks = [...dietWeeks]; // 캐시 공유 배열 — 정렬 전 복사(소비 측 무변형 계약)
   allWeeks.sort((a, b) => a.startDate.localeCompare(b.startDate));
 
   const wantWhatIf = !!(whatIf?.includeMyPending || whatIf?.includeDrafts);
@@ -3065,17 +3134,15 @@ export async function computeCandidatesAllWeeks(
     ...(extraByWeek.get(weekId) || []),
   ];
 
-  // 설정 1회, 기초는 개정판 주차별 해석 (spec §E), 주별 합성 (computeMyProjectedWeeks와 동일 패턴)
-  const [baseByWeek, settings] = await Promise.all([
-    loadBaseGridsByWeek(domain, term.id, allWeeks.map((w) => w.startDate)),
-    loadTimetableSettings(domain),
-  ]);
-  // 주별 changes 병렬 조회 (computeMyProjectedWeeks와 동일 이유)
-  const changesByWeek = new Map(
+  // 주별 원재료(기초판+changes)는 버전 키 캐시에서 — 클릭 반복 시 Firestore 읽기 0 (읽기 다이어트 ①)
+  const settings = dietSettings;
+  const matByWeek = new Map(
     await Promise.all(
-      allWeeks.map(async (w) => [w.id, await loadWeekChanges(domain, w.id)] as const)
+      allWeeks.map(async (w) => [w.id, await advisoryWeekMaterials(domain, version, w)] as const)
     )
   );
+  const baseByWeek = new Map(allWeeks.map((w) => [w.startDate, matByWeek.get(w.id)!.baseGrids] as const));
+  const changesByWeek = new Map(allWeeks.map((w) => [w.id, matByWeek.get(w.id)!.changes] as const));
   const synthByWeek = new Map<string, WeeklyClassGrid[]>();
   for (const week of allWeeks) {
     const changes = changesByWeek.get(week.id) || [];
@@ -3107,7 +3174,8 @@ export async function computeCandidatesAllWeeks(
   //    (교차 주 통 이동은 v1 범위 제외 §7 — 그리드 인라인 렌더 호환을 위해 주 목록은 유지).
   //    조건부 태깅 없음: what-if 오버레이는 simul_move를 표현하지 않으므로 기준이 없다.
   const simulBranch = await trySimulMoveCandidatesBranch(
-    domain, term.id, srcGrids, sourceWeek, settings, source, requesterEmail
+    domain, term.id, srcGrids, sourceWeek, settings, source, requesterEmail, undefined,
+    () => advisorySimulGroups(domain, version, term.id)
   );
   if (simulBranch) {
     if (simulBranch.error) {
@@ -3167,7 +3235,7 @@ export async function computeCandidatesAllWeeks(
   };
 
   // §5c-10: 역방향 묶음 후보 재료 — 학기 등록부 1회 로드 (그룹이 없으면 전 주 공히 0건)
-  const reverseGroups = await loadSimulGroups(domain, term.id);
+  const reverseGroups = await advisorySimulGroups(domain, version, term.id);
 
   const weeks: Array<{ weekId: string; startDate: string; swapCandidates: SwapCandidate[] }> = [];
   for (const week of allWeeks) {
@@ -3244,9 +3312,9 @@ export async function computeCandidates(
 }> {
   const week = await loadWeek(domain, weekId);
   if (!week) throw new Error(`등록되지 않은 주(${weekId})입니다.`);
-  const term = await loadTimetableTerm(domain, week.termId);
+  // 읽기 다이어트 ①: 표시용 후보 경로 — 컨텍스트·주간 재료를 버전 키 캐시에서 (승인·생성은 fresh 불변)
+  const { version, settings, term } = await advisoryContext(domain, week.termId);
   if (!term) throw new Error(`학기(${week.termId})를 찾을 수 없습니다.`);
-  const settings = await loadTimetableSettings(domain);
 
   // §14-1: 본인 PENDING 신청(+선택 초안)을 가상 change로 겹쳐 누적 기준으로 계산
   const wantWhatIf = !!(whatIf?.includeMyPending || whatIf?.includeDrafts);
@@ -3258,7 +3326,7 @@ export async function computeCandidates(
     ? { assumedPendingCount: overlay.pendingCount, assumedDraftCount: overlay.draftCount }
     : {};
 
-  const { grids } = await synthesizeWeek(domain, week, overlay?.byWeek.get(weekId));
+  const { grids } = await synthesizeWeekAdvisory(domain, version, week, settings, overlay?.byWeek.get(weekId));
 
   // ── §5c-7: 소스가 묶음(simul) 수업이면 통 이동 후보로 분기 — 같은 후보 목록에 섞여 나간다.
   //    기존 함수(resolveSourceLesson·엔진)는 무수정, 분기는 이 호출부에서만 (§5c-7-3 = 회귀 0).
@@ -3268,11 +3336,12 @@ export async function computeCandidates(
     const tw = await loadWeek(domain, targetWeekId);
     if (!tw) throw new Error(`등록되지 않은 주(${targetWeekId})입니다. 일과계가 먼저 주를 등록해야 교환할 수 있습니다.`);
     if (tw.termId !== week.termId) throw new Error("다른 학기의 주와는 교환할 수 없습니다.");
-    const { grids: tGrids } = await synthesizeWeek(domain, tw, overlay?.byWeek.get(targetWeekId));
+    const { grids: tGrids } = await synthesizeWeekAdvisory(domain, version, tw, settings, overlay?.byWeek.get(targetWeekId));
     simulTarget = { grids: tGrids, week: tw };
   }
   const simulBranch = await trySimulMoveCandidatesBranch(
-    domain, week.termId, grids, week, settings, source, requesterEmail, simulTarget
+    domain, week.termId, grids, week, settings, source, requesterEmail, simulTarget,
+    () => advisorySimulGroups(domain, version, week.termId)
   );
   if (simulBranch) {
     if (simulBranch.error) {
@@ -3322,8 +3391,8 @@ export async function computeCandidates(
       if (targetWeekId && targetWeekId !== weekId) {
         const targetWeekForBase = await loadWeek(domain, targetWeekId);
         if (targetWeekForBase && targetWeekForBase.termId === week.termId) {
-          const { grids: baseGrids } = await synthesizeWeek(domain, week);
-          const { grids: baseTargetGrids } = await synthesizeWeek(domain, targetWeekForBase);
+          const { grids: baseGrids } = await synthesizeWeekAdvisory(domain, version, week, settings);
+          const { grids: baseTargetGrids } = await synthesizeWeekAdvisory(domain, version, targetWeekForBase, settings);
           const baseCrossRes = findCrossSwapCandidates(
             baseGrids, week, baseTargetGrids, targetWeekForBase, settings, requesterEmail, fullSource, COORD_ON
           );
@@ -3336,7 +3405,7 @@ export async function computeCandidates(
           }
         }
       } else {
-        const { grids: baseGrids } = await synthesizeWeek(domain, week);
+        const { grids: baseGrids } = await synthesizeWeekAdvisory(domain, version, week, settings);
         const baseSwapRes = findSwapCandidates(baseGrids, week, settings, requesterEmail, fullSource, COORD_ON);
         if (!baseSwapRes.error) {
           baseKeySet = new Set(
@@ -3357,8 +3426,8 @@ export async function computeCandidates(
     if (!targetWeek) throw new Error(`등록되지 않은 주(${targetWeekId})입니다. 일과계가 먼저 주를 등록해야 교환할 수 있습니다.`);
     if (targetWeek.termId !== week.termId)
       throw new Error("다른 학기의 주와는 교환할 수 없습니다.");
-    const { grids: targetGrids } = await synthesizeWeek(
-      domain, targetWeek, overlay?.byWeek.get(targetWeekId)
+    const { grids: targetGrids } = await synthesizeWeekAdvisory(
+      domain, version, targetWeek, settings, overlay?.byWeek.get(targetWeekId)
     );
     const crossRes = findCrossSwapCandidates(
       grids, week, targetGrids, targetWeek, settings, requesterEmail, fullSource, COORD_ON
@@ -3383,7 +3452,7 @@ export async function computeCandidates(
 
     // §5c-10: 역방향 묶음 후보 — 목적지 주에 앉은 묶음 자리로 내 수업을 옮기는 안.
     // conditional 태깅 뒤에 덧붙인다(v1: 역방향은 조건부 기준 비교 제외 — 스펙 §5c-10-2).
-    const groupsCross = await loadSimulGroups(domain, week.termId);
+    const groupsCross = await advisorySimulGroups(domain, version, week.termId);
     finalCandidates = [
       ...finalCandidates,
       ...findReverseSimulCandidates(
@@ -3424,7 +3493,7 @@ export async function computeCandidates(
   }
 
   // §5c-10: 역방향 묶음 후보 — 같은 주의 묶음 자리로 내 수업을 옮기는 안 (conditional 비교 제외)
-  const groupsSame = await loadSimulGroups(domain, week.termId);
+  const groupsSame = await advisorySimulGroups(domain, version, week.termId);
   finalCandidates = [
     ...finalCandidates,
     ...findReverseSimulCandidates(
@@ -4907,7 +4976,9 @@ export async function computeDirectCandidates(
 ) {
   const week = await loadWeek(domain, weekId);
   if (!week) throw new Error(`등록되지 않은 주(${weekId})입니다.`);
-  const { grids } = await synthesizeWeek(domain, week);
+  // 읽기 다이어트 ①: 직권 후보 조회도 표시용 — 스탬프 판정·묶음 분기 합성을 캐시 재료로
+  const { version, settings: dietSettings } = await advisoryContext(domain, week.termId);
+  const { grids } = await synthesizeWeekAdvisory(domain, version, week, dietSettings);
 
   // ── §5c-7-6: 직권도 같은 방식 — 수업 클릭 → 묶음이면 통 이동 조율 후보로 분기.
   //    resolveDirectSource는 무수정(simul 차단이 단건 직권·보강의 방어) — 분기는 이 호출부에서.
@@ -4916,17 +4987,18 @@ export async function computeDirectCandidates(
     .find((g) => g.grade === source.grade && g.classNum === source.classNum)
     ?.cells.find((c) => c.day === source.day && c.period === source.period);
   if ((cell?.lessons || []).some((l) => l.simul)) {
-    const settings = await loadTimetableSettings(domain);
+    const settings = dietSettings;
     // §5c-8: 게이트가 켜져 있으면 직권도 다른 주로 옮길 수 있다 — 목적지 주를 합성해 넘긴다.
     let simulTarget: { grids: WeeklyClassGrid[]; week: TimetableWeek } | undefined;
     if (CROSS_WEEK_SIMUL_MOVE_ENABLED && targetWeekId && targetWeekId !== weekId) {
       const tw = await loadWeek(domain, targetWeekId);
       if (!tw) return { error: `등록되지 않은 주(${targetWeekId})입니다.` };
       if (tw.termId !== week.termId) return { error: "다른 학기의 주와는 교환할 수 없습니다." };
-      simulTarget = { grids: (await synthesizeWeek(domain, tw)).grids, week: tw };
+      simulTarget = { grids: (await synthesizeWeekAdvisory(domain, version, tw, dietSettings)).grids, week: tw };
     }
     const branch = await trySimulMoveCandidatesBranch(
-      domain, week.termId, grids, week, settings, source, undefined, simulTarget
+      domain, week.termId, grids, week, settings, source, undefined, simulTarget,
+      () => advisorySimulGroups(domain, version, week.termId)
     );
     if (branch) {
       if (branch.error) return { error: branch.error };
@@ -5540,7 +5612,9 @@ async function trySimulMoveCandidatesBranch(
   source: { grade: number; classNum: number; day: number; period: number },
   requesterEmail?: string,
   /** §5c-8 교차 주: 주면 목적지 주 합성본 기준으로 후보를 계산한다 (없으면 같은 주) */
-  target?: { grids: WeeklyClassGrid[]; week: TimetableWeek }
+  target?: { grids: WeeklyClassGrid[]; week: TimetableWeek },
+  /** 읽기 다이어트 ①: 후보 경로가 캐시된 등록부를 주입 — 없으면 종전대로 fresh */
+  groupsLoader?: () => Promise<SimulGroup[]>
 ): Promise<null | {
   swapCandidates: SwapCandidate[];
   sourceSubjectName: string;
@@ -5551,7 +5625,7 @@ async function trySimulMoveCandidatesBranch(
     .find((g) => g.grade === source.grade && g.classNum === source.classNum)
     ?.cells.find((c) => c.day === source.day && c.period === source.period);
   if (!(cell?.lessons || []).some((l) => l.simul)) return null;
-  const groups = await loadSimulGroups(domain, termId);
+  const groups = await (groupsLoader ? groupsLoader() : loadSimulGroups(domain, termId));
   const resolved = resolveSimulMoveSource(grids, groups, source, requesterEmail);
   if (!resolved.ok) return { swapCandidates: [], sourceSubjectName: "", error: resolved.error };
   const srcSlot = { day: source.day, period: source.period };

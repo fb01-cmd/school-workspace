@@ -557,3 +557,11 @@
 - **문구 원칙 신설**: "N건 중 M건이 양해 필요" 대조 화법 전수 제거 — 나머지 교환은 양해 없이 해도 된다는 뜻으로 읽힘(사용자). AGENTS 화면 문구 규칙 4로 등재.
 - H-4는 반영 버튼 금지로 교정(반영·되돌리기 = 실교사 전원 챗 알림). 잔상 안내 띠 아이디어는 사용자 판단으로 철회.
 - 잔여: 없음 — §5c-8~10 + §5c-9 재료 전 구간이 화면 확인까지 종결. 다음 = 쪽지 첨부 서버부(#3, 스펙 승인 대기)·읽기 다이어트(#4)·B1(8/24).
+
+## [2026-08-16] Claude(Fable) — 읽기 다이어트 ① 구현: 후보 경로 advisory 캐시
+
+- 변경 파일: src/lib/timetable/memoCache.ts(신설 — viewCache memo 본체 추출) · viewCache.ts(코어 교체, 동작·계측 보존) · server.ts(advisoryContext·WeekMaterials·SimulGroups·synthesizeWeekAdvisory + computeCandidates/AllWeeks/Direct 배선, trySimulMoveCandidatesBranch에 groupsLoader 주입) · scripts/verify_read_diet.ts(신설)
+- 검증 상태: tsc ✅ / build ✅ / verify_read_diet [1]~[4] ✅ (off≡콜드≡웜 바이트 동등 41KB·커밋 직후 무효화 반영·revert 원상·정리) / verify_simul_move_phase3 전체 재실행 실패 0 ✅
+- 효과: 후보 클릭 반복 시 주간 재료(기초판 30문서+changes×8주)·등록부·컨텍스트 재읽기 0 — 클릭당 240+ → 웜 기준 수 읽기(버전 1 + 오버레이 소량)
+- 주의: ① 승인·생성·커밋·validatePending은 fresh 불변 — advisory 함수를 그 경로에 쓰지 말 것 ② bump 전수 커버 실측 23지점, **원장 하드 삭제는 bump를 안 타므로** 검증·정리 스크립트는 수동 bump 필수(verify_read_diet [4] 패턴) ③ 킬스위치 = TIMETABLE_VIEW_CACHE=off (view와 공유)
+- 다음 할 일: push 승인 대기 → 배포 후 프로덕션 적중률은 기존 x-tt-instance 계측 재활용 가능(선택)

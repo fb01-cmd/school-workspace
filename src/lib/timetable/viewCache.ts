@@ -4,7 +4,9 @@
  * - 키에 항상 캐시 버전(cacheVersion.ts)이 들어간다. 쓰기마다 버전이 올라
  *   옛 항목은 자연 격리되므로, 쓰기 직전에 시작된 채움이 낡은 값을 저장해도
  *   새 요청에는 닿지 않는다 (경합 창 없음).
- * - view 라우트 전용. manage·requests·후보/체인 엔진·승인 검증은 fresh 로더 유지.
+ * - view 라우트 전용. manage·requests의 **표시용 후보 조회**는 server.ts의 advisory 캐시
+ *   (같은 코어·같은 버전 계약 — 읽기 다이어트 ①, 2026-08-16)를 쓰고, **신청 생성·승인·
+ *   직권 커밋·재검증은 계속 fresh 로더**를 유지한다(최종선 불변).
  * - 캐시 값은 역할 무관 원본이다 — 학생 sanitize 등 역할별 가공은 라우트에서.
  *   소비 측은 캐시된 객체를 변형하지 않는다 (spec §3-3-4).
  */
@@ -19,6 +21,7 @@ import {
   listWeeks,
 } from "./server";
 import { synthesizeWeeklyGrids } from "./weekly";
+import { createMemoStore } from "./memoCache";
 import {
   ClassGrid,
   TimetableSettings,
@@ -28,9 +31,6 @@ import {
 
 const TTL_MS = 10 * 60 * 1000; // 안전망 — 정상 신선도는 버전 키가 보장 (spec §3-2)
 const MAX_ENTRIES = 40;
-
-type Entry = { at: number; promise: Promise<unknown> };
-const store = new Map<string, Entry>();
 
 /**
  * 인스턴스 계측 (docs/transition_day_rehearsal_spec.md §2-1)
@@ -61,7 +61,7 @@ export function getCacheStats() {
     instanceId: INSTANCE_ID,
     hits: stats.hits,
     misses: stats.misses,
-    size: store.size,
+    size: core.size(),
     uptimeMs: Date.now() - stats.startedAt,
   };
 }
@@ -80,26 +80,14 @@ function mark(outcome: "hit" | "miss" | "off") {
   if (lastOutcome === null || outcome === "miss") lastOutcome = outcome;
 }
 
-function memo<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  if (process.env.TIMETABLE_VIEW_CACHE === "off") { mark("off"); return fn(); } // 킬스위치
-  const now = Date.now();
-  const hit = store.get(key);
-  if (hit && now - hit.at < TTL_MS) { mark("hit"); return hit.promise as Promise<T>; }
-  mark("miss");
-  const promise = fn();
-  // 실패한 Promise가 TTL 동안 에러를 고정하지 않도록 즉시 제거
-  promise.catch(() => {
-    if (store.get(key)?.promise === promise) store.delete(key);
-  });
-  store.set(key, { at: now, promise });
-  if (store.size > MAX_ENTRIES) {
-    for (const k of store.keys()) {
-      if (store.size <= MAX_ENTRIES) break;
-      store.delete(k);
-    }
-  }
-  return promise;
-}
+// 본체는 memoCache.ts 공용 코어 (읽기 다이어트 ① — 후보 경로와 로직 공유, 저장소는 분리)
+const core = createMemoStore({
+  ttlMs: TTL_MS,
+  maxEntries: MAX_ENTRIES,
+  killSwitchEnv: "TIMETABLE_VIEW_CACHE",
+  onOutcome: mark,
+});
+const memo = <T,>(key: string, fn: () => Promise<T>): Promise<T> => core.memo(key, fn);
 
 export interface ViewContext {
   settings: TimetableSettings;
