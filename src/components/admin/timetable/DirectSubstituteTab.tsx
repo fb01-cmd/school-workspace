@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { resolveDisplayName, isFrozenLocalPartName } from "@/lib/org/displayName";
 import {
@@ -13,7 +13,15 @@ import {
   DirectPendingOverlayItem,
   DirectCommitBatchItemResult,
 } from "@/lib/timetable/types";
-import { DAY_LABEL, formatSlotWithDate, formatCoordinationText, formatCandidateSlotLabel, getCoordinationOccupants } from "@/lib/timetable/utils";
+import {
+  DAY_LABEL,
+  formatSlotWithDate,
+  formatCoordinationText,
+  formatCandidateSlotLabel,
+  getCoordinationOccupants,
+  getCoordinationParties,
+  CoordinationParty,
+} from "@/lib/timetable/utils";
 
 import MiniPreviewGrid from "./MiniPreviewGrid";
 import CoordinationNoticeBlock from "./CoordinationNoticeBlock";
@@ -83,6 +91,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const [sourceLessonInfo, setSourceLessonInfo] = useState<{
     subjectName: string;
     teacherName?: string;
+    simul?: string;
   } | null>(null);
 
   const [swapCandidateWeeks, setSwapCandidateWeeks] = useState<WeekCandidateGroup[]>([]);
@@ -90,6 +99,32 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const [activeCandidateType, setActiveCandidateType] = useState<"swap" | "substitute">("swap");
 
   const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null);
+  const [selectedPartyEmail, setSelectedPartyEmail] = useState<string>("");
+
+  const candidateParties = useMemo<CoordinationParty[]>(() => {
+    if (!selectedCandidate?.coordination?.simul) return [];
+    return getCoordinationParties(selectedCandidate.coordination);
+  }, [selectedCandidate]);
+
+  const currentParty = useMemo(() => {
+    if (!candidateParties.length) return null;
+    return (
+      candidateParties.find((p) => p.email.toLowerCase() === selectedPartyEmail.toLowerCase()) ||
+      candidateParties[0]
+    );
+  }, [candidateParties, selectedPartyEmail]);
+
+  useEffect(() => {
+    if (selectedCandidate?.coordination?.simul) {
+      const parties = getCoordinationParties(selectedCandidate.coordination);
+      const sel = (selectedTeacherEmail || "").trim().toLowerCase();
+      const selectable = parties.filter((p) => p.email.toLowerCase() !== sel);
+      const target = selectable[0] || parties[0];
+      setSelectedPartyEmail(target?.email || "");
+    } else {
+      setSelectedPartyEmail(selectedCandidate?.counterpartEmail || "");
+    }
+  }, [selectedCandidate, selectedTeacherEmail]);
 
   const [previewCells, setPreviewCells] = useState<TeacherTimetableCell[] | null>(null);
   const [counterpartSourceCells, setCounterpartSourceCells] = useState<TeacherTimetableCell[] | null>(null);
@@ -304,9 +339,18 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     } catch (err: any) { setCandidateError(`네트워크 오류: ${err.message}`); } finally { setLoadingCandidates(false); }
   };
 
-  const fetchPreviewForCandidate = async (cand: any, srcSlot: typeof selectedSlot) => {
-    if (!cand || !srcSlot || !cand.counterpartEmail) { setPreviewCells(null); setCounterpartSourceCells(null); setCounterpartTargetCells(null); return; }
-    const email = cand.counterpartEmail;
+  const fetchPreviewForCandidate = async (
+    cand: any,
+    srcSlot: typeof selectedSlot,
+    partyEmail?: string
+  ) => {
+    const email = partyEmail || cand?.counterpartEmail;
+    if (!cand || !srcSlot || !email) {
+      setPreviewCells(null);
+      setCounterpartSourceCells(null);
+      setCounterpartTargetCells(null);
+      return;
+    }
     const srcWeekId = srcSlot.weekId;
     const tgtWeekId = cand.targetWeekId || srcWeekId;
     const isCross = srcWeekId !== tgtWeekId;
@@ -315,19 +359,54 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       const fetchCellsForWeek = async (wId: string) => {
         const cacheKey = `${email}_${wId}`;
         if (previewCacheRef.current.has(cacheKey)) return previewCacheRef.current.get(cacheKey)!;
-        const res = await fetch("/api/timetable/view", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "teacher", teacherEmail: email, weekId: wId }) });
-        if (res.ok) { const data = await res.json(); const cells: TeacherTimetableCell[] = data.data?.cells || []; previewCacheRef.current.set(cacheKey, cells); return cells; }
+        const res = await fetch("/api/timetable/view", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "teacher", teacherEmail: email, weekId: wId }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const cells: TeacherTimetableCell[] = data.data?.cells || [];
+          previewCacheRef.current.set(cacheKey, cells);
+          return cells;
+        }
         return [];
       };
-      if (!isCross) { const cells = await fetchCellsForWeek(tgtWeekId); setPreviewCells(cells); setCounterpartSourceCells(null); setCounterpartTargetCells(null); }
-      else { const [srcCells, tgtCells] = await Promise.all([fetchCellsForWeek(srcWeekId), fetchCellsForWeek(tgtWeekId)]); setPreviewCells(null); setCounterpartSourceCells(srcCells); setCounterpartTargetCells(tgtCells); }
-    } catch {} finally { setPreviewLoading(false); }
+      if (!isCross) {
+        const cells = await fetchCellsForWeek(tgtWeekId);
+        setPreviewCells(cells);
+        setCounterpartSourceCells(null);
+        setCounterpartTargetCells(null);
+      } else {
+        const [srcCells, tgtCells] = await Promise.all([
+          fetchCellsForWeek(srcWeekId),
+          fetchCellsForWeek(tgtWeekId),
+        ]);
+        setPreviewCells(null);
+        setCounterpartSourceCells(srcCells);
+        setCounterpartTargetCells(tgtCells);
+      }
+    } catch {} finally {
+      setPreviewLoading(false);
+    }
   };
 
   const handleSelectCandidate = (cand: any, wId: string, startDate?: string) => {
     const candidateObj = { ...cand, targetWeekId: wId, targetWeekStartDate: startDate };
-    setSelectedCandidate(candidateObj); setActiveCandidateType("swap"); setSubmitError(null);
-    if (selectedSlot) fetchPreviewForCandidate(candidateObj, selectedSlot);
+    setSelectedCandidate(candidateObj);
+    setActiveCandidateType("swap");
+    setSubmitError(null);
+
+    let targetPartyEmail = cand.counterpartEmail;
+    if (cand.coordination?.simul) {
+      const parties = getCoordinationParties(cand.coordination);
+      const sel = (selectedTeacherEmail || "").trim().toLowerCase();
+      const selectable = parties.filter((p) => p.email.toLowerCase() !== sel);
+      targetPartyEmail = selectable[0]?.email || parties[0]?.email || cand.counterpartEmail;
+    }
+    setSelectedPartyEmail(targetPartyEmail || "");
+
+    if (selectedSlot) fetchPreviewForCandidate(candidateObj, selectedSlot, targetPartyEmail);
   };
 
   // 징검다리 체인 탐색 실행
@@ -459,6 +538,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setSourceLessonInfo({
       subjectName: cell.subjectName,
       teacherName: selectedTeacherName,
+      simul: cell.simul,
     });
     // 체인 원본 수업으로 자동 지정 — 수업을 고른 뒤 빈 교시를 누르면 그 수업을 가져오는 것이 기본 동선.
     // (이 지정이 빠지면 빈 교시 클릭 시 원본을 다시 고르라는 목록이 뜬다)
@@ -477,11 +557,6 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
   const handleAddToCart = () => {
     if (!selectedCandidate || !selectedSlot || !sourceLessonInfo) return;
-
-    if (activeCandidateType === "swap" && (selectedCandidate as any)?.coordination?.simul) {
-      setSubmitError("동시수업 묶음 이동 후보는 여러 반이 함께 변경되므로 [담기]를 거치지 않고 [단건 즉시 반영]으로 처리해야 합니다.");
-      return;
-    }
 
     const sourceWeekId = selectedSlot.weekId;
     const targetWeekId = activeCandidateType === "swap" ? (selectedCandidate as any)?.targetWeekId : undefined;
@@ -692,12 +767,23 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       map.set(m.ownerEmail, cur);
     }
     for (const ci of cartItems) {
-      if (ci.type !== "substitute" || !ci.counterpartEmail) continue;
-      const email = ci.counterpartEmail.toLowerCase();
-      if (email === sel) continue;
-      const cur = map.get(email) || { name: ci.counterpartName || email.split("@")[0], count: 0 };
-      cur.count += 1;
-      map.set(email, cur);
+      if (ci.type === "substitute" && ci.counterpartEmail) {
+        const email = ci.counterpartEmail.toLowerCase();
+        if (email === sel) continue;
+        const cur = map.get(email) || { name: ci.counterpartName || email.split("@")[0], count: 0 };
+        cur.count += 1;
+        map.set(email, cur);
+      }
+      if (ci.candidate?.coordination?.simul) {
+        const parties = getCoordinationParties(ci.candidate.coordination);
+        for (const p of parties) {
+          const email = p.email.toLowerCase();
+          if (email === sel) continue;
+          const cur = map.get(email) || { name: p.name, count: 0 };
+          cur.count += 1;
+          map.set(email, cur);
+        }
+      }
     }
     return Array.from(map, ([email, v]) => ({ email, ...v }));
   })();
@@ -713,7 +799,13 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       }))
       .sort((x, y) => (y.isRecipient ? 1 : 0) - (x.isRecipient ? 1 : 0));
     const recipientMoves = netMoves.filter((m) => m.isRecipient);
-    if (recipientMoves.length === 0 && subItems.length === 0) return;
+    const hasSimulParty = cartItems.some((ci) => {
+      if (!ci.candidate?.coordination?.simul) return false;
+      return getCoordinationParties(ci.candidate.coordination).some(
+        (p) => p.email.toLowerCase() === email
+      );
+    });
+    if (recipientMoves.length === 0 && subItems.length === 0 && !hasSimulParty) return;
     setGeneratingShareFor(teacherEmail);
     try {
       const counterpartName =
@@ -757,6 +849,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         senderLabel: operatorName,
         ownerLabel: selectedTeacherName ? `${selectedTeacherName} 선생님의` : "해당",
         counterpartName,
+        counterpartEmail: email,
         items: subItems.map((ci) => ({ id: ci.id, type: ci.type, sourceWeekId: ci.weekId, targetWeekId: ci.targetWeekId, source: ci.source, candidate: ci.candidate })),
         netMoves,
         swapStepCount: swapItemCount,
@@ -1200,7 +1293,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                           </div>
 
                           {selectedCandidate.coordination && (
-                            <CoordinationNoticeBlock coordination={selectedCandidate.coordination} />
+                            <CoordinationNoticeBlock
+                              coordination={selectedCandidate.coordination}
+                              isReverse={!sourceLessonInfo?.simul && !!selectedCandidate.coordination.simul}
+                            />
                           )}
                         </div>
                       )}
@@ -1229,39 +1325,68 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                             <span>🔍 상대 시간표 미리보기</span>
                             {previewLoading && <span className="text-[10px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
                           </div>
+                          {candidateParties.length > 1 && (
+                            <div className="flex items-center gap-1.5 p-1.5 bg-gray-50 border border-gray-200 rounded-lg">
+                              <label className="text-[11px] font-bold text-gray-600 shrink-0">당사자:</label>
+                              <select
+                                value={selectedPartyEmail}
+                                onChange={(e) => {
+                                  const partyEmail = e.target.value;
+                                  setSelectedPartyEmail(partyEmail);
+                                  if (selectedSlot) {
+                                    fetchPreviewForCandidate(selectedCandidate, selectedSlot, partyEmail);
+                                  }
+                                }}
+                                className="w-full text-xs font-semibold bg-white border border-gray-300 rounded px-2 py-1 focus:ring-1 focus:ring-indigo-500"
+                              >
+                                {candidateParties.map((p) => (
+                                  <option key={p.email} value={p.email}>
+                                    {p.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
                           <MiniPreviewGrid
                             isCrossWeek={isCrossWeek}
                             sourceWeekId={selectedSlot.weekId}
                             targetWeekId={targetWeekId}
                             sourceWeekObj={sourceWeekObj}
                             targetWeekObj={targetWeekObj}
-                            selectedCell={{ grade: selectedSlot.grade, classNum: selectedSlot.classNum, day: selectedSlot.day, period: selectedSlot.period, subjectName: sourceLessonInfo.subjectName }}
+                            selectedCell={{
+                              grade: selectedSlot.grade,
+                              classNum: selectedSlot.classNum,
+                              day: selectedSlot.day,
+                              period: selectedSlot.period,
+                              subjectName: sourceLessonInfo.subjectName,
+                              simul: sourceLessonInfo.simul,
+                            }}
                             applyingCandidate={selectedCandidate}
                             periodsPerDay={7}
                             previewCells={previewCells}
                             counterpartSourceCells={counterpartSourceCells}
                             counterpartTargetCells={counterpartTargetCells}
-                            counterpartTitle={`${selectedCandidate.counterpartName || "상대"} 선생님`}
+                            counterpartTitle={`${currentParty?.name || selectedCandidate.counterpartName || "상대"} 선생님`}
+                            partyRole={currentParty?.role}
+                            reverse={!sourceLessonInfo?.simul && !!selectedCandidate.coordination?.simul}
                           />
                         </div>
                       )}
 
                       <div className="space-y-2 pt-2 border-t border-gray-100">
                         <div className="flex gap-2">
-                          {!selectedCandidate?.coordination?.simul && (
-                            <button
-                              type="button"
-                              onClick={handleAddToCart}
-                              className="flex-1 py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
-                            >
-                              🛒 [담기]에 모으기
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={handleAddToCart}
+                            className="flex-1 py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
+                          >
+                            🛒 [담기]에 모으기
+                          </button>
                           <button
                             type="button"
                             onClick={handleDirectCommitSingle}
                             disabled={submitting}
-                            className={`${selectedCandidate?.coordination?.simul ? "w-full" : "flex-1"} py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50`}
+                            className="flex-1 py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
                           >
                             {submitting ? "반영 중..." : "⚡ 단건 즉시 반영"}
                           </button>
@@ -1552,7 +1677,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                   <div className="text-[11px] font-bold text-gray-900">
                     항목 #{iIdx + 1}: {item.source.grade}-{item.source.classNum}반 {item.source.subjectName} ➔ {item.counterpartName}
                   </div>
-                  <CoordinationNoticeBlock coordination={item.candidate.coordination} />
+                  <CoordinationNoticeBlock
+                    coordination={item.candidate.coordination}
+                    isReverse={!sourceLessonInfo?.simul && !!item.candidate.coordination?.simul}
+                  />
                 </div>
               ))}
             </div>
@@ -1613,7 +1741,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
               </span>
             </div>
             
-            <CoordinationNoticeBlock coordination={pendingCoordinationSelect.candidate.coordination} />
+            <CoordinationNoticeBlock
+              coordination={pendingCoordinationSelect.candidate.coordination}
+              isReverse={!sourceLessonInfo?.simul && !!pendingCoordinationSelect.candidate.coordination?.simul}
+            />
 
             <p className="text-xs font-bold text-gray-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
               💡 이 교환은 당사자 양해 없이는 반영할 수 없습니다. 그래도 검토하시겠습니까?
@@ -1651,7 +1782,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
               <span>직권 즉시 반영 전 양해 확인</span>
             </div>
 
-            <CoordinationNoticeBlock coordination={selectedCandidate.coordination} />
+            <CoordinationNoticeBlock
+              coordination={selectedCandidate.coordination}
+              isReverse={!sourceLessonInfo?.simul && !!selectedCandidate.coordination?.simul}
+            />
 
             <div className="space-y-2 pt-1 border-t border-gray-100">
               <label className="flex items-start gap-2 cursor-pointer bg-red-50/60 p-2.5 rounded-lg border border-red-200">

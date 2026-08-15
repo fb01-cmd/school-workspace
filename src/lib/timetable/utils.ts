@@ -216,4 +216,85 @@ export function getCoordinationAllParties(coordination?: CandidateCoordination):
   return Array.from(people.values()).map((p) => `${p.name} 선생님(${p.roles.join("·")})`);
 }
 
+export interface CoordinationParty {
+  email: string;
+  name: string;
+  label: string;
+  role: "group_teacher" | "counterpart" | "venue_occupant";
+  roleType: "group_teacher" | "counterpart" | "venue_occupant";
+}
+
+/** 조율 필요 후보의 당사자 구조화 목록 추출 (미리보기 드롭다운 및 개별 양해 카드용, §5c-9-2·§5c-9-3) */
+export function getCoordinationParties(coordination?: CandidateCoordination): CoordinationParty[] {
+  if (!coordination) return [];
+  const map = new Map<
+    string,
+    { name: string; roles: string[]; roleType: "group_teacher" | "counterpart" | "venue_occupant" }
+  >();
+
+  const add = (
+    email: string | undefined,
+    name: string | undefined,
+    role: string,
+    roleType: "group_teacher" | "counterpart" | "venue_occupant"
+  ) => {
+    if (!name) return;
+    const key = (email || "").trim().toLowerCase() || `name:${name}`;
+    const entry = map.get(key) || { name, roles: [], roleType };
+    if (!entry.roles.includes(role)) entry.roles.push(role);
+    if (roleType === "group_teacher") {
+      entry.roleType = "group_teacher";
+    } else if (roleType === "counterpart" && entry.roleType !== "group_teacher") {
+      entry.roleType = "counterpart";
+    }
+    map.set(key, entry);
+  };
+
+  if (coordination.simul?.steps) {
+    for (const step of coordination.simul.steps) {
+      if (step.groupLesson?.teacherName) {
+        add(
+          step.groupLesson.teacherEmail,
+          step.groupLesson.teacherName,
+          `${step.classNum}반 ${step.groupLesson.subjectName}`,
+          "group_teacher"
+        );
+      }
+      if (step.counterpart?.teacherName) {
+        add(
+          step.counterpart.teacherEmail,
+          step.counterpart.teacherName,
+          `${step.classNum}반 ${step.counterpart.subjectName}`,
+          "counterpart"
+        );
+      }
+    }
+  }
+
+  if (coordination.conflicts) {
+    for (const c of coordination.conflicts) {
+      for (const o of c.occupants) {
+        add(
+          o.teacherEmail,
+          o.teacherName,
+          "장소 겹침",
+          "venue_occupant"
+        );
+      }
+    }
+  }
+
+  return Array.from(map.entries()).map(([email, item]) => {
+    const rawEmail = email.startsWith("name:") ? "" : email;
+    return {
+      email: rawEmail,
+      name: item.name,
+      label: `${item.name} 선생님 (${item.roles.join(" · ")})`,
+      role: item.roleType,
+      roleType: item.roleType,
+    };
+  });
+}
+
+
 

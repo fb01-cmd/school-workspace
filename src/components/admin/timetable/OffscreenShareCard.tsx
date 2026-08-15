@@ -45,6 +45,7 @@ export interface ConsolidatedShareData {
   /** §14-4: 교환 목록에서 수업 소유자 표기 — 없으면 "제"(교사 본인 발신). 직권 카드는 "○○○ 선생님의" */
   ownerLabel?: string;
   counterpartName: string;
+  counterpartEmail?: string;
   /** 교환(swap·cross_swap) 항목의 순 효과 접기 결과. 있으면 교환 목록을 이걸로 그린다 —
    *  체인은 다리(leg)별 나열 시 경유 슬롯이 들어옴·빠짐으로 이중 계상되고 제3 교사 수업의
    *  소유자가 ownerLabel로 오표기되므로, 최종 결과 기준으로만 보여준다 (2026-08-08 실증).
@@ -161,41 +162,86 @@ export function OffscreenShareCard({
             )}
 
             <div className="space-y-2 pt-0.5">
-              {/* 1행: 상대 교사의 수업 이동 */}
-              <div className="flex items-start justify-between bg-amber-50/90 border border-amber-200 rounded-lg p-2.5">
-                <div>
-                  <div className="text-[11px] font-extrabold text-amber-800">
-                    선생님의 수업 (이동)
-                  </div>
-                  <div className="font-bold text-gray-900 text-sm mt-0.5">
-                    선생님의 {counterpartLessonName}
-                  </div>
-                  <div className="text-amber-900 font-bold text-xs mt-0.5">
-                    {targetSlotStr} → {sourceSlotStr}로 이동
-                  </div>
-                </div>
-                <span className="text-amber-800 font-extrabold text-[11px] bg-amber-100 border border-amber-300 px-2 py-1 rounded shrink-0">
-                  선생님 수업
-                </span>
-              </div>
+              {coordination?.simul ? (
+                (() => {
+                  const simul = coordination.simul;
+                  const cpStep = simul.steps.find(
+                    (s) => s.counterpart && (s.counterpart.teacherName === data.candidate.counterpartName || (data.candidate.counterpartEmail && s.counterpart.teacherEmail?.toLowerCase() === data.candidate.counterpartEmail.toLowerCase()))
+                  );
+                  const gtStep = simul.steps.find(
+                    (s) => s.groupLesson && (s.groupLesson.teacherName === data.candidate.counterpartName || (data.candidate.counterpartEmail && s.groupLesson.teacherEmail?.toLowerCase() === data.candidate.counterpartEmail.toLowerCase()))
+                  );
+                  // §5c-10 방향: 클릭한 수업(source)이 그룹 소속이면 정방향(그룹이 source→target),
+                  // 아니면 역방향(그룹이 target→source). 치워지는 상대는 그룹과 반대 방향으로 움직인다.
+                  const isRev = !simul.steps.some(
+                    (s) => s.classNum === data.source.classNum && s.groupLesson.subjectName === data.source.subjectName
+                  );
+                  const groupFromStr = isRev ? targetSlotStr : sourceSlotStr;
+                  const groupToStr = isRev ? sourceSlotStr : targetSlotStr;
 
-              {/* 2행: 신청자 교사의 수업 이동 */}
-              <div className="flex items-start justify-between bg-emerald-50/90 border border-emerald-200 rounded-lg p-2.5">
-                <div>
-                  <div className="text-[11px] font-extrabold text-emerald-800">
-                    제 수업 (이동)
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between bg-amber-50/90 border border-amber-200 rounded-lg p-2.5">
+                        <div>
+                          <div className="text-[11px] font-extrabold text-amber-800">
+                            선생님의 수업 (이동)
+                          </div>
+                          <div className="font-bold text-gray-900 text-sm mt-0.5">
+                            선생님의 {cpStep ? `${simul.grade}-${cpStep.classNum}반 ${cpStep.counterpart?.subjectName}` : gtStep ? `${simul.grade}-${gtStep.classNum}반 ${gtStep.groupLesson?.subjectName}` : `${data.source.grade}-${data.source.classNum}반 ${data.candidate.counterpartSubjectName || "수업"}`}
+                          </div>
+                          <div className="text-amber-900 font-bold text-xs mt-0.5">
+                            {cpStep ? `${groupToStr} → ${groupFromStr}로 이동` : `${groupFromStr} → ${groupToStr}로 이동`}
+                          </div>
+                        </div>
+                        <span className="text-amber-800 font-extrabold text-[11px] bg-amber-100 border border-amber-300 px-2 py-1 rounded shrink-0">
+                          선생님 수업
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-purple-900 font-semibold bg-purple-50/70 border border-purple-200 rounded-lg p-2">
+                        🧩 이 교체는 {simul.grade}학년 {simul.classNums.join("·")}반 {simul.steps.length}개 반이 함께 움직입니다.
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : (
+                <>
+                  {/* 1행: 상대 교사의 수업 이동 */}
+                  <div className="flex items-start justify-between bg-amber-50/90 border border-amber-200 rounded-lg p-2.5">
+                    <div>
+                      <div className="text-[11px] font-extrabold text-amber-800">
+                        선생님의 수업 (이동)
+                      </div>
+                      <div className="font-bold text-gray-900 text-sm mt-0.5">
+                        선생님의 {counterpartLessonName}
+                      </div>
+                      <div className="text-amber-900 font-bold text-xs mt-0.5">
+                        {targetSlotStr} → {sourceSlotStr}로 이동
+                      </div>
+                    </div>
+                    <span className="text-amber-800 font-extrabold text-[11px] bg-amber-100 border border-amber-300 px-2 py-1 rounded shrink-0">
+                      선생님 수업
+                    </span>
                   </div>
-                  <div className="font-bold text-gray-900 text-sm mt-0.5">
-                    제 {data.source.grade}-{data.source.classNum}반 {data.source.subjectName}
+
+                  {/* 2행: 신청자 교사의 수업 이동 */}
+                  <div className="flex items-start justify-between bg-emerald-50/90 border border-emerald-200 rounded-lg p-2.5">
+                    <div>
+                      <div className="text-[11px] font-extrabold text-emerald-800">
+                        제 수업 (이동)
+                      </div>
+                      <div className="font-bold text-gray-900 text-sm mt-0.5">
+                        제 {data.source.grade}-{data.source.classNum}반 {data.source.subjectName}
+                      </div>
+                      <div className="text-emerald-900 font-bold text-xs mt-0.5">
+                        {sourceSlotStr} → {targetSlotStr}로 이동
+                      </div>
+                    </div>
+                    <span className="text-emerald-800 font-extrabold text-[11px] bg-emerald-100 border border-emerald-300 px-2 py-1 rounded shrink-0">
+                      제 수업
+                    </span>
                   </div>
-                  <div className="text-emerald-900 font-bold text-xs mt-0.5">
-                    {sourceSlotStr} → {targetSlotStr}로 이동
-                  </div>
-                </div>
-                <span className="text-emerald-800 font-extrabold text-[11px] bg-emerald-100 border border-emerald-300 px-2 py-1 rounded shrink-0">
-                  제 수업
-                </span>
-              </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -428,6 +474,37 @@ export function OffscreenConsolidatedCard({
                       {data.ownerLabel || "해당"} 수업을 대신 맡아주시는 일정입니다
                     </div>
                   </div>
+                ) : d.candidate?.coordination?.simul ? (
+                  (() => {
+                    const simul = d.candidate.coordination.simul;
+                    const cpStep = simul.steps?.find(
+                      (s: any) => s.counterpart && (s.counterpart.teacherName === data.counterpartName || (data.counterpartEmail && s.counterpart.teacherEmail?.toLowerCase() === data.counterpartEmail.toLowerCase()))
+                    );
+                    const gtStep = simul.steps?.find(
+                      (s: any) => s.groupLesson && (s.groupLesson.teacherName === data.counterpartName || (data.counterpartEmail && s.groupLesson.teacherEmail?.toLowerCase() === data.counterpartEmail.toLowerCase()))
+                    );
+                    // §5c-10 방향: 클릭한 수업이 그룹 소속이면 정방향(그룹이 src→tgt), 아니면 역방향
+                    const isRev = !simul.steps?.some(
+                      (s: any) => s.classNum === d.source.classNum && s.groupLesson?.subjectName === d.source.subjectName
+                    );
+                    const groupFromStr = isRev ? tgtSlot : srcSlot;
+                    const groupToStr = isRev ? srcSlot : tgtSlot;
+                    return (
+                      <div className="space-y-1">
+                        <div className="font-bold text-amber-900">
+                          선생님의 {cpStep ? `${simul.grade}-${cpStep.classNum}반 ${cpStep.counterpart?.subjectName}` : gtStep ? `${simul.grade}-${gtStep.classNum}반 ${gtStep.groupLesson?.subjectName}` : `${d.source.grade}-${d.source.classNum}반 ${d.candidate?.counterpartSubjectName || "수업"}`} : {cpStep ? `${groupToStr} → ${groupFromStr}` : `${groupFromStr} → ${groupToStr}`}
+                        </div>
+                        <div className="text-[11px] text-purple-900 font-semibold bg-purple-50/70 border border-purple-200 rounded p-1.5">
+                          🧩 이 교체는 {simul.grade}학년 {simul.classNums.join("·")}반 {simul.steps.length}개 반이 함께 움직입니다.
+                        </div>
+                        {d.candidate?.coordination?.conflicts && d.candidate.coordination.conflicts.length > 0 && (
+                          <div className="text-[10px] text-amber-900 bg-amber-50 border border-amber-300 rounded p-1 font-bold">
+                            ⚠️ 교체하면 {formatSlotWithDate(d.candidate.coordination.conflicts[0].slot.weekId, d.candidate.coordination.conflicts[0].slot.day, d.candidate.coordination.conflicts[0].slot.period)} {d.candidate.coordination.conflicts[0].roomName} 사용이 겹칩니다 (사용 중: {d.candidate.coordination.conflicts[0].occupants.map((o: any) => `${o.teacherName} 선생님`).join(", ")})
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
                 ) : (
                   <div className="space-y-0.5">
                     <div className="font-bold text-amber-900">

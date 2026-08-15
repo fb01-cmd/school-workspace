@@ -44,6 +44,7 @@ import {
   formatCoordinationText,
   formatCandidateSlotLabel,
   getCoordinationOccupants,
+  getCoordinationParties,
 } from "@/lib/timetable/utils";
 
 import PaginationControls from "./PaginationControls";
@@ -195,10 +196,32 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
   const [chainReasonNote, setChainReasonNote] = useState("");
   const [submittingChain, setSubmittingChain] = useState(false);
 
+  // 묶음 이동 후보 당사자 선택 상태 (§5c-9-2)
+  const [selectedPartyEmail, setSelectedPartyEmail] = useState<string>("");
+
+  const candidateParties = useMemo(() => {
+    if (!applyingCandidate?.coordination?.simul) return [];
+    return getCoordinationParties(applyingCandidate.coordination);
+  }, [applyingCandidate]);
+
+  const currentParty = useMemo(() => {
+    if (!candidateParties.length) return null;
+    return candidateParties.find((p) => p.email.toLowerCase() === selectedPartyEmail.toLowerCase()) || candidateParties[0];
+  }, [candidateParties, selectedPartyEmail]);
+
   useEffect(() => {
     setConsentConfirmed(false);
     setConsentNote("");
-  }, [applyingCandidate]);
+    if (applyingCandidate?.coordination?.simul) {
+      const parties = getCoordinationParties(applyingCandidate.coordination);
+      const myEmail = (userEmail || "").trim().toLowerCase();
+      const selectable = parties.filter((p) => p.email.toLowerCase() !== myEmail);
+      const target = selectable[0] || parties[0];
+      setSelectedPartyEmail(target?.email || "");
+    } else {
+      setSelectedPartyEmail(applyingCandidate?.counterpartEmail || "");
+    }
+  }, [applyingCandidate, userEmail]);
 
   const handleExecuteChainSearch = async (tgtWeekId: string, day: number, period: number) => {
     if (!selectedCell) return;
@@ -860,18 +883,32 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     }
   };
 
-  // 상대 교사별 초안 묶음 (융합 양해 카드 단위)
+  // 상대 교사별 초안 묶음 (융합 양해 카드 단위) — 묶음 이동 당사자 전원 반영 (§5c-9-3)
   const draftGroups = useMemo(() => {
     const m = new Map<string, { name: string; drafts: SwapDraft[] }>();
     for (const d of myDrafts) {
-      const email = (d.candidate?.counterpartEmail || "").toLowerCase();
-      if (!email) continue;
-      const g = m.get(email) || { name: d.candidate?.counterpartName || email.split("@")[0], drafts: [] };
-      g.drafts.push(d);
-      m.set(email, g);
+      if (d.candidate?.coordination?.simul) {
+        const parties = getCoordinationParties(d.candidate.coordination);
+        const myEmail = (userEmail || "").trim().toLowerCase();
+        for (const p of parties) {
+          if (p.email.toLowerCase() === myEmail) continue;
+          const email = p.email.toLowerCase();
+          const g = m.get(email) || { name: p.name, drafts: [] };
+          if (!g.drafts.some((existing) => existing.id === d.id)) {
+            g.drafts.push(d);
+          }
+          m.set(email, g);
+        }
+      } else {
+        const email = (d.candidate?.counterpartEmail || "").toLowerCase();
+        if (!email) continue;
+        const g = m.get(email) || { name: d.candidate?.counterpartName || email.split("@")[0], drafts: [] };
+        g.drafts.push(d);
+        m.set(email, g);
+      }
     }
     return m;
-  }, [myDrafts]);
+  }, [myDrafts, userEmail]);
 
   // §13-1b: 같은 상대에게 가는 초안 전부를 한 장의 양해 이미지로 융합 복사
   const handleCopyConsolidatedShare = async (email: string) => {
@@ -895,21 +932,50 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
           const markers: ConsolidatedShareData["weekBlocks"][number]["markers"] = [];
           for (const d of group.drafts) {
             const outWeek = d.targetWeekId || d.sourceWeekId;
-            if (outWeek === wid && d.candidate?.targetDay != null && d.candidate?.targetPeriod != null) {
-              markers.push({
-                day: d.candidate.targetDay,
-                period: d.candidate.targetPeriod,
-                kind: "out",
-                label: `${d.source.grade}-${d.source.classNum}`,
-              });
-            }
-            if (d.sourceWeekId === wid) {
-              markers.push({
-                day: d.source.day,
-                period: d.source.period,
-                kind: "in",
-                label: `${d.source.grade}-${d.source.classNum}`,
-              });
+            if (d.candidate?.coordination?.simul && d.candidate?.targetDay != null && d.candidate?.targetPeriod != null) {
+              const simul = d.candidate.coordination.simul;
+              const parties = getCoordinationParties(d.candidate.coordination);
+              const thisParty = parties.find((p) => p.email.toLowerCase() === email.toLowerCase());
+              // §5c-10: 방향 판별 — 신청자(초안 주인)가 그룹 담당이면 정방향(클릭 칸 = 그룹 출발지),
+              // 아니면 역방향(클릭 칸 = 그룹 도착지). canonical(그룹 출발→도착)로 정규화해 마커를 찍는다.
+              const myEmail = (userEmail || "").trim().toLowerCase();
+              const isRev = !simul.steps.some(
+                (s) => (s.groupLesson.teacherEmail || "").trim().toLowerCase() === myEmail
+              );
+              const clickSlot = { week: d.sourceWeekId, day: d.source.day, period: d.source.period };
+              const candSlot = { week: outWeek, day: d.candidate.targetDay, period: d.candidate.targetPeriod };
+              const groupFrom = isRev ? candSlot : clickSlot; // 그룹 수업이 빠지는 곳
+              const groupTo = isRev ? clickSlot : candSlot; // 그룹 수업이 들어가는 곳
+              const label = `${d.source.grade}-${d.source.classNum}`;
+              if (thisParty?.role === "counterpart") {
+                // 치워지는 상대: 자기 수업이 그룹 도착지에서 빠져 그룹 출발지로 간다
+                if (groupTo.week === wid) markers.push({ day: groupTo.day, period: groupTo.period, kind: "out", label });
+                if (groupFrom.week === wid) markers.push({ day: groupFrom.day, period: groupFrom.period, kind: "in", label });
+              } else if (thisParty?.role === "venue_occupant") {
+                // 장소만 겹침: 그룹 도착지에서 특별실 사용이 겹친다 (수업은 안 움직임)
+                if (groupTo.week === wid) markers.push({ day: groupTo.day, period: groupTo.period, kind: "out", label: "장소 겹침" });
+              } else {
+                // 그룹 담당: 자기 수업이 그룹과 함께 출발지에서 도착지로 간다
+                if (groupFrom.week === wid) markers.push({ day: groupFrom.day, period: groupFrom.period, kind: "out", label });
+                if (groupTo.week === wid) markers.push({ day: groupTo.day, period: groupTo.period, kind: "in", label });
+              }
+            } else {
+              if (outWeek === wid && d.candidate?.targetDay != null && d.candidate?.targetPeriod != null) {
+                markers.push({
+                  day: d.candidate.targetDay,
+                  period: d.candidate.targetPeriod,
+                  kind: "out",
+                  label: `${d.source.grade}-${d.source.classNum}`,
+                });
+              }
+              if (d.sourceWeekId === wid) {
+                markers.push({
+                  day: d.source.day,
+                  period: d.source.period,
+                  kind: "in",
+                  label: `${d.source.grade}-${d.source.classNum}`,
+                });
+              }
             }
           }
           return {
@@ -925,6 +991,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       setConsolidatedData({
         requesterName: user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사",
         counterpartName: group.name,
+        counterpartEmail: email,
         items: group.drafts,
         weekBlocks,
         periodsPerDay,
@@ -1220,7 +1287,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     }, 100);
   };
 
-  // 후보 선택 시 상대 교사 시간표 미리보기 로드
+  // 후보 선택 시 상대 교사 시간표 미리보기 로드 (묶음 이동 시 선택된 당사자 시간표 조회 §5c-9-2)
   useEffect(() => {
     if (!applyingCandidate) {
       setPreviewCells(null);
@@ -1229,8 +1296,15 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       setPreviewError(null);
       return;
     }
-    const counterpartEmail = applyingCandidate.counterpartEmail;
-    if (!counterpartEmail) return;
+    const counterpartEmail = applyingCandidate.coordination?.simul
+      ? (selectedPartyEmail || applyingCandidate.counterpartEmail)
+      : applyingCandidate.counterpartEmail;
+    if (!counterpartEmail) {
+      setPreviewCells([]);
+      setCounterpartSourceCells([]);
+      setCounterpartTargetCells([]);
+      return;
+    }
 
     const fetchTeacherWeek = (wId: string) => fetchTeacherWeekCells(counterpartEmail, wId);
 
@@ -1254,7 +1328,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         .catch((e: any) => setPreviewError(e?.message || "상대 시간표를 불러올 수 없습니다."))
         .finally(() => setPreviewLoading(false));
     }
-  }, [applyingCandidate, effectiveTargetWeekId, selectedWeekId, isCrossWeek, fetchTeacherWeekCells]);
+  }, [applyingCandidate, selectedPartyEmail, effectiveTargetWeekId, selectedWeekId, isCrossWeek, fetchTeacherWeekCells]);
 
   return (
     <div className="space-y-4">
@@ -1857,7 +1931,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
                   {applyingCandidate.coordination && (
                     <div className="space-y-2">
-                      <CoordinationNoticeBlock coordination={applyingCandidate.coordination} />
+                      <CoordinationNoticeBlock
+                        coordination={applyingCandidate.coordination}
+                        isReverse={!selectedCell?.simul && !!applyingCandidate.coordination?.simul}
+                      />
                       <div className="bg-red-50/60 border border-red-200 rounded-xl p-3 space-y-2">
                         <label className="flex items-start gap-2 cursor-pointer bg-white p-2 rounded-lg border border-red-300 shadow-2xs">
                           <input
@@ -1882,12 +1959,32 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     </div>
                   )}
 
-                  <div className="text-xs font-bold text-gray-800 flex items-center justify-between">
-                    <span>
-                      🔍 {applyingCandidate.counterpartName} 교사 시간표 미리보기
-                    </span>
-                    {previewLoading && <span className="text-[10px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
-                  </div>
+                  {candidateParties.length > 0 ? (
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-gray-700 flex items-center justify-between">
+                        <span>👥 시간표를 확인할 당사자 선택</span>
+                        {previewLoading && <span className="text-[10px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
+                      </label>
+                      <select
+                        value={currentParty?.email || ""}
+                        onChange={(e) => setSelectedPartyEmail(e.target.value)}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+                      >
+                        {candidateParties.map((p) => (
+                          <option key={p.email} value={p.email}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="text-xs font-bold text-gray-800 flex items-center justify-between">
+                      <span>
+                        🔍 {applyingCandidate.counterpartName} 교사 시간표 미리보기
+                      </span>
+                      {previewLoading && <span className="text-[10px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
+                    </div>
+                  )}
 
                   {previewError && <div className="text-[11px] text-red-600 bg-red-50 p-2 rounded">{previewError}</div>}
 
@@ -1903,7 +2000,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     previewCells={previewCells}
                     counterpartSourceCells={counterpartSourceCells}
                     counterpartTargetCells={counterpartTargetCells}
-                    counterpartTitle={`${applyingCandidate.counterpartName || "상대"} 선생님`}
+                    counterpartTitle={currentParty ? `${currentParty.name} 선생님` : `${applyingCandidate.counterpartName || "상대"} 선생님`}
+                    partyRole={currentParty?.role}
+                    reverse={!selectedCell?.simul && !!applyingCandidate.coordination?.simul}
                   />
 
                   {/* 사유 선택 */}
@@ -2118,7 +2217,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               </span>
             </div>
 
-            <CoordinationNoticeBlock coordination={pendingCoordinationSave.candidate.coordination} />
+            <CoordinationNoticeBlock
+              coordination={pendingCoordinationSave.candidate.coordination}
+              isReverse={!selectedCell?.simul && !!pendingCoordinationSave.candidate.coordination.simul}
+            />
 
             <p className="text-xs font-bold text-gray-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
               💡 이 교환은 당사자 양해 없이는 반영할 수 없습니다. 그래도 검토하시겠습니까?
@@ -2575,7 +2677,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
             {confirmingDraft.candidate?.coordination && (
               <div className="space-y-2">
-                <CoordinationNoticeBlock coordination={confirmingDraft.candidate.coordination} />
+                <CoordinationNoticeBlock
+                  coordination={confirmingDraft.candidate.coordination}
+                  isReverse={!confirmingDraft.candidate.coordination.simul?.steps?.some((s) => s.classNum === confirmingDraft.source.classNum) && !!confirmingDraft.candidate.coordination.simul}
+                />
                 <div className="bg-red-50/60 border border-red-200 rounded-xl p-3 space-y-2 text-xs">
                   <label className="flex items-start gap-2 cursor-pointer bg-white p-2.5 rounded-lg border border-red-200">
                     <input
@@ -2673,7 +2778,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     <div className="text-[11px] font-bold text-gray-900">
                       항목 #{dIdx + 1}: {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} ➔ {d.candidate.counterpartName}
                     </div>
-                    <CoordinationNoticeBlock coordination={d.candidate.coordination} />
+                    <CoordinationNoticeBlock
+                      coordination={d.candidate.coordination}
+                      isReverse={!d.candidate.coordination?.simul?.steps?.some((s) => s.classNum === d.source.classNum) && !!d.candidate.coordination?.simul}
+                    />
                   </div>
                 ))}
 

@@ -7,11 +7,13 @@ import { formatCoordinationText, getCoordinationAllParties } from "@/lib/timetab
 interface CoordinationNoticeBlockProps {
   coordination?: CandidateCoordination;
   showParties?: boolean;
+  isReverse?: boolean;
 }
 
 export default function CoordinationNoticeBlock({
   coordination,
   showParties = true,
+  isReverse = false,
 }: CoordinationNoticeBlockProps) {
   if (!coordination) return null;
   const isSimul = !!coordination.simul;
@@ -39,7 +41,9 @@ export default function CoordinationNoticeBlock({
       {isSimul && coordination.simul && (
         <div className="space-y-1.5 pt-0.5">
           <div className="font-extrabold text-red-900 leading-snug">
-            선생님 수업도 함께 옮겨집니다. 묶여 있는 모든 반의 수업이 같은 시간으로 함께 이동합니다.
+            {isReverse
+              ? "그 자리에는 여러 반이 함께 듣는 수업이 있습니다. 그 수업 전체가 선생님 자리로 오고, 선생님 수업이 그 교시로 갑니다."
+              : "선생님 수업도 함께 옮겨집니다. 묶여 있는 모든 반의 수업이 같은 시간으로 함께 이동합니다."}
           </div>
           <div className="text-[11px] bg-white border border-red-200 rounded-lg p-2 space-y-1 font-sans">
             <div className="font-bold text-[10px] text-purple-950 flex items-center gap-1">
