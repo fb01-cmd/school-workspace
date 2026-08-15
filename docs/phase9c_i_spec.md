@@ -126,6 +126,7 @@ return { hours: [...planHours, ...implied],
 ### 3-3. 표시용 두 사전 (판정 무관)
 
 - `teacherNames`: 계획 행에서 `teacherEmail → teacherName` (빈 이메일 행 제외). 그리드가 필요 없다.
+  > **[2026-08-15 정정 — 가정 오류]** 이 줄은 "계획 행에 이름이 들어 있다"를 전제했는데, 파생 경로(`deriveHoursPlanFromGrids`)는 실교사 행의 `teacherName`을 **빈 값**으로 저장한다. 결과 = 사전이 비어 초안 편집기에 교사가 이메일로 표시됨(2026-08-15 사용자 실검증에서 발견). 처방: 파생 시 그리드 lessons에서 이름을 채워 계획에 저장하고, 기존 계획은 재파생으로 교체한다.
 - `subjectShorts`: ① 계획 행의 `subjectShort`가 있으면 그것 ② 없으면 `loadTimetableTerm(domain, plan.sourceTermId).subjects`에서 `normSubject(name) → shortName` 및 `normSubject(shortName) → shortName` 양쪽 등재(`solve_blank.ts:244-251`과 동일).
   `normSubject` = `(s) => s.normalize("NFC").replace(/\s+/g,"").trim().toLowerCase()` — **이미 여러 곳에 복제돼 있으니 이번에 `src/lib/timetable/validate.ts`의 것을 export해 재사용한다**(새로 세 번째 사본을 만들지 않는다).
 
