@@ -172,15 +172,20 @@ async function main() {
     const direct = findSwapCandidates(
       grids0, weekObj, settings, s.email, { ...s.src, subjectName: s.subject }, { includeCoordination: true }
     );
-    const equal =
-      JSON.stringify(viaServer.swapCandidates) === JSON.stringify(direct.candidates) &&
+    // §5c-10 이후 불변식: 기존 엔진 후보는 **그대로 접두사**, 그 뒤에 덧붙는 것은 전부
+    // 역방향 묶음(coordination.simul) 후보뿐이다. (종전의 "simul 혼입 없음"은 §5c-10이
+    // 의도적으로 폐기 — 일반 소스에도 묶음 자리 후보가 나오는 것이 이제 사양이다.)
+    const served = viaServer.swapCandidates || [];
+    const prefixEqual =
+      JSON.stringify(served.slice(0, direct.candidates.length)) === JSON.stringify(direct.candidates) &&
       (viaServer.error || "") === (direct.error || "");
-    const noSimul = (viaServer.swapCandidates || []).every((c) => !c.coordination?.simul);
+    const appended = served.slice(direct.candidates.length);
+    const appendedAllReverse = appended.every((c) => !!c.coordination?.simul);
     console.log(
-      `[8-${i + 1}] 비묶음 출력 불변 ${equal && noSimul ? "✅" : "❌"} — ${s.src.grade}-${s.src.classNum} ${DAYS[s.src.day]}${s.src.period} (${s.subject}): ` +
-      `맞교환 ${viaServer.swapCandidates.length}건 · 보강 ${viaServer.substituteCandidates.length}건${viaServer.error ? ` · 사유 "${viaServer.error}"` : ""} · simul 혼입 없음 ${noSimul ? "✅" : "❌"}`
+      `[8-${i + 1}] 비묶음 출력 불변 ${prefixEqual && appendedAllReverse ? "✅" : "❌"} — ${s.src.grade}-${s.src.classNum} ${DAYS[s.src.day]}${s.src.period} (${s.subject}): ` +
+      `기존 후보 접두사 동등 ${prefixEqual ? "✅" : "❌"} · 덧붙음 ${appended.length}건 전부 역방향 묶음 ${appendedAllReverse ? "✅" : "❌"} · 보강 ${viaServer.substituteCandidates.length}건${viaServer.error ? ` · 사유 "${viaServer.error}"` : ""}`
     );
-    if (!equal || !noSimul) regFailed = true;
+    if (!prefixEqual || !appendedAllReverse) regFailed = true;
   }
   // 체인 탐색 스모크 — computeChainSearch는 무수정이므로 예외 없이 구조가 돌아오는지만 확인
   if (regressionSources.length > 0) {
@@ -828,9 +833,131 @@ async function main() {
     return failed;
   };
 
+  // ── [11] §5c-10 역방향 — 밀려나는 상대 교사 시점에서 같은 이동이 보이고·신청되고·같은 원장이 되는가 ──
+  const runReverseCycle = async (): Promise<boolean> => {
+    // 정방향 후보 중 swap step(치워지는 상대 실교사)이 있는 것을 고른다 — 그 상대가 역방향 신청자 R
+    const fwd = findSimulGroupMoveCandidates(grids0, weekObj, settings, pickA.group, pickA.source);
+    const fwdCand = fwd.candidates.find((c) =>
+      c.steps.some((s) => s.kind === "swap" && s.counterpart?.teacherEmail)
+    );
+    const rStep = fwdCand?.steps.find((s) => s.kind === "swap" && s.counterpart?.teacherEmail);
+    if (!fwdCand || !rStep) { console.log("[11] 상대 실교사가 있는 정방향 후보 0건 — 미실행 (미검증)"); return false; }
+    const group = pickA.group;
+    const s1 = pickA.source; // 그룹 슬롯 (canonical from)
+    const t = { day: fwdCand.targetDay, period: fwdCand.targetPeriod }; // R의 슬롯 (canonical to)
+    const R = rStep.counterpart!.teacherEmail;
+    const rSrc = { grade: group.grade, classNum: rStep.classNum, day: t.day, period: t.period };
+    console.log(
+      `[11] 역방향 — R=${R} (${group.grade}-${rStep.classNum} ${DAYS[t.day]}${t.period} ${rStep.counterpart!.subjectName}) → 그룹 「${group.label}」 ${DAYS[s1.day]}${s1.period} 자리로`
+    );
+
+    // 11-1. 노출 — R이 자기 일반 수업을 클릭하면 그룹 자리가 조율 필요 후보로 나온다
+    const rComputed = await computeCandidates(D, R, week.id, { ...rSrc, subjectName: "" });
+    const rev = rComputed.swapCandidates.find(
+      (c) => c.targetDay === s1.day && c.targetPeriod === s1.period && c.coordination?.simul?.groupId === group.id
+    );
+    const stepsMatch = !!rev && JSON.stringify(rev.coordination!.simul!.steps) === JSON.stringify(fwdCand.steps);
+    console.log(
+      `[11-1] 역방향 노출 ${rev && stepsMatch ? "✅" : "❌"} — 후보 존재 ${rev ? "✅" : "❌"} · steps 정방향과 동일 ${stepsMatch ? "✅" : "❌"}`
+    );
+    if (!rev || !stepsMatch) return true;
+
+    // 11-2. 자격 방어 — 소스 수업 소유자가 아니면 거부 (§5c-10-4 ④)
+    try {
+      await createSimulMoveRequest(D, MANAGER, {
+        weekId: week.id, source: rSrc, target: s1,
+        reason: { type: "기타", note: "검증" }, consent: { confirmed: true },
+      }, { skipManagerNotify: true });
+      console.error("[11-2] 실패 ❌ — 무자격 역방향 신청이 통과됨"); return true;
+    } catch (e: any) {
+      if (e.message.includes("본인")) console.log("[11-2] 무자격 신청 거부 ✅");
+      else { console.error(`[11-2] 예상 밖 사유 ❌: ${e.message}`); return true; }
+    }
+
+    // 11-3. 역방향 신청 → canonical 저장 (정방향과 같은 원장 모양 — §5c-10-1-2)
+    const req = await createSimulMoveRequest(D, R, {
+      weekId: week.id, source: rSrc, target: s1,
+      reason: { type: "기타", note: "검증 스크립트 (즉시 정리)" }, consent: { confirmed: true, note: "검증용" },
+    }, { skipManagerNotify: true });
+    const cleanupDocs: Array<{ col: "req" | "chg"; id: string }> = [{ col: "req", id: req.id }];
+    let failedRev = false;
+    try {
+      const sm = req.simulMove!;
+      const canonOk =
+        sm.from.day === s1.day && sm.from.period === s1.period &&
+        sm.to.day === t.day && sm.to.period === t.period &&
+        req.weekId === week.id && !req.targetWeekId &&
+        JSON.stringify(sm.steps) === JSON.stringify(fwdCand.steps);
+      const partiesExcludeR = !(req.consent?.parties || []).some((p) => p.email === R);
+      const dispOk = req.candidate.targetDay === s1.day && req.candidate.targetPeriod === s1.period;
+      console.log(
+        `[11-3] 역방향 신청 ${canonOk && partiesExcludeR && dispOk ? "✅" : "❌"} — canonical(from=그룹 슬롯) ${canonOk ? "✅" : "❌"} · parties 신청자 제외 ${partiesExcludeR ? "✅" : "❌"} · 표시 목적지=클릭 자리 ${dispOk ? "✅" : "❌"}`
+      );
+      if (!canonOk || !partiesExcludeR || !dispOk) failedRev = true;
+
+      // 11-4. 대칭성 — 같은 이동의 정방향 신청이 중복으로 잡힌다 (두 방향 = 한 연산의 증명)
+      const gTeacher = fwdCand.steps.map((s) => s.groupLesson.teacherEmail).find(Boolean)!;
+      try {
+        await createSimulMoveRequest(D, gTeacher, {
+          weekId: week.id,
+          source: { grade: group.grade, classNum: fwdCand.steps[0].classNum, day: s1.day, period: s1.period },
+          target: t, reason: { type: "기타", note: "검증" }, consent: { confirmed: true },
+        }, { skipManagerNotify: true });
+        console.error("[11-4] 실패 ❌ — 같은 이동의 정방향 신청이 중복 통과됨"); failedRev = true;
+      } catch (e: any) {
+        if (e.message.includes("대기 중인 이동 신청")) console.log("[11-4] 방향 대칭 중복 차단 ✅ (정방향 시점에서 걸림)");
+        else { console.error(`[11-4] 예상 밖 사유 ❌: ${e.message}`); failedRev = true; }
+      }
+
+      // 11-5. 재검증·승인·실반영·revert — 기존 canonical 경로 그대로 도는가
+      const validation = await validatePendingSwapRequests(D, [req]);
+      const vOk = validation[req.id]?.ok === true;
+      const { request: approved, changes } = await approveSwapRequest(D, MANAGER, req.id, { skipNotify: true });
+      changes.forEach((c) => cleanupDocs.push({ col: "chg", id: c.id }));
+      const { grids: gridsAfter } = await synthWeek(termId, week.id);
+      let movedOk = true;
+      for (const step of sm.steps) {
+        const grid = gridsAfter.find((g) => g.grade === group.grade && g.classNum === step.classNum)!;
+        const toCell = grid.cells.find((c) => c.day === t.day && c.period === t.period);
+        if (!toCell?.lessons.some((l) => l.simul === group.label && l.subjectName === step.groupLesson.subjectName))
+          movedOk = false;
+      }
+      // R의 수업이 그룹 자리(s1)로 왔는가 — 역방향 신청자가 원한 바로 그것
+      const rGrid = gridsAfter.find((g) => g.grade === group.grade && g.classNum === rStep.classNum)!;
+      const rMoved = !!rGrid.cells
+        .find((c) => c.day === s1.day && c.period === s1.period)
+        ?.lessons.some((l) => l.subjectName === rStep.counterpart!.subjectName);
+      console.log(
+        `[11-5] 승인 사이클 ${vOk && approved.status === "APPROVED" && movedOk && rMoved ? "✅" : "❌"} — validate ${vOk ? "✅" : "❌"} · 승인 ${approved.status} · 그룹 전 반 이동 ${movedOk ? "✅" : "❌"} · R 수업이 그룹 자리로 ${rMoved ? "✅" : "❌"}`
+      );
+      if (!vOk || approved.status !== "APPROVED" || !movedOk || !rMoved) failedRev = true;
+
+      await revertTimetableChange(D, MANAGER, changes[0].id, { skipNotify: true });
+      const changeIds = changes.map((c) => c.id);
+      let revertCount = 0;
+      for (let i = 0; i < changeIds.length; i += 10) {
+        const snap = await timetableChangesColRef(D).where("revertOf", "in", changeIds.slice(i, i + 10)).get();
+        snap.docs.forEach((d) => cleanupDocs.push({ col: "chg", id: d.id }));
+        revertCount += snap.size;
+      }
+      const { grids: gridsReverted } = await synthWeek(termId, week.id);
+      const restored = gridSig(gridsReverted) === sig0;
+      console.log(`[11-6] revert — 전량 취소 ${revertCount === changes.length ? "✅" : "❌"} (${revertCount}/${changes.length}) · 합성 원복 ${restored ? "✅" : "❌"}`);
+      if (revertCount !== changes.length || !restored) failedRev = true;
+    } finally {
+      for (const d of cleanupDocs) {
+        await (d.col === "req" ? swapRequestsColRef(D).doc(d.id) : timetableChangesColRef(D).doc(d.id)).delete();
+      }
+      const { grids: gridsFinal } = await synthWeek(termId, week.id);
+      console.log(`[11-7] 정리 완료 — 문서 ${cleanupDocs.length}건 삭제, 합성본 최초 상태 대조 ${gridSig(gridsFinal) === sig0 ? "✅" : "❌"}`);
+    }
+    return failedRev;
+  };
+
   let failed = await runCycle("A", pickA);
   if (pickB) failed = (await runCycle("B", pickB)) || failed;
   failed = (await runDraftOverlayCheck(pickA)) || failed;
+  failed = (await runReverseCycle()) || failed;
   failed = (await runTeacherCycle(pickA)) || failed;
   if (crossCtx) {
     if (crossPickSwap) failed = (await runCrossCycle("S", crossPickSwap)) || failed;

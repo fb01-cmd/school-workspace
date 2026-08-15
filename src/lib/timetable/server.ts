@@ -3166,6 +3166,9 @@ export async function computeCandidatesAllWeeks(
     return cands.map((c) => (baseKeys.has(keyOf(c)) ? c : { ...c, conditional: true }));
   };
 
+  // §5c-10: 역방향 묶음 후보 재료 — 학기 등록부 1회 로드 (그룹이 없으면 전 주 공히 0건)
+  const reverseGroups = await loadSimulGroups(domain, term.id);
+
   const weeks: Array<{ weekId: string; startDate: string; swapCandidates: SwapCandidate[] }> = [];
   for (const week of allWeeks) {
     if (week.id === sourceWeekId) {
@@ -3177,6 +3180,12 @@ export async function computeCandidatesAllWeeks(
         const baseRes = findSwapCandidates(baseSrc, sourceWeek, settings, requesterEmail, fullSource, engineOpts);
         cands = markConditional(cands, baseRes.error ? [] : baseRes.candidates || []);
       }
+      cands = [
+        ...cands,
+        ...findReverseSimulCandidates(
+          reverseGroups, srcGrids, sourceWeek, srcGrids, sourceWeek, settings, fullSource, requesterEmail
+        ),
+      ];
       weeks.push({ weekId: week.id, startDate: week.startDate, swapCandidates: cands });
     } else {
       const tgtGrids = synthByWeek.get(week.id)!;
@@ -3192,6 +3201,13 @@ export async function computeCandidatesAllWeeks(
         );
         cands = markConditional(cands, baseRes.error ? [] : baseRes.candidates || []);
       }
+      // §5c-10 교차 주 역방향: 이 주에 앉은 묶음 자리로 — 후보가 자기 주를 들고 다닌다 (§5c-8 규약)
+      cands = [
+        ...cands,
+        ...findReverseSimulCandidates(
+          reverseGroups, srcGrids, sourceWeek, tgtGrids, week, settings, fullSource, requesterEmail
+        ).map((c) => ({ ...c, targetWeekId: week.id })),
+      ];
       weeks.push({ weekId: week.id, startDate: week.startDate, swapCandidates: cands });
     }
   }
@@ -3365,6 +3381,16 @@ export async function computeCandidates(
       });
     }
 
+    // §5c-10: 역방향 묶음 후보 — 목적지 주에 앉은 묶음 자리로 내 수업을 옮기는 안.
+    // conditional 태깅 뒤에 덧붙인다(v1: 역방향은 조건부 기준 비교 제외 — 스펙 §5c-10-2).
+    const groupsCross = await loadSimulGroups(domain, week.termId);
+    finalCandidates = [
+      ...finalCandidates,
+      ...findReverseSimulCandidates(
+        groupsCross, grids, week, targetGrids, targetWeek, settings, fullSource, requesterEmail
+      ).map((c) => ({ ...c, targetWeekId })),
+    ];
+
     return {
       swapCandidates: finalCandidates,
       substituteCandidates: [],
@@ -3396,6 +3422,15 @@ export async function computeCandidates(
       return c;
     });
   }
+
+  // §5c-10: 역방향 묶음 후보 — 같은 주의 묶음 자리로 내 수업을 옮기는 안 (conditional 비교 제외)
+  const groupsSame = await loadSimulGroups(domain, week.termId);
+  finalCandidates = [
+    ...finalCandidates,
+    ...findReverseSimulCandidates(
+      groupsSame, grids, week, grids, week, settings, fullSource, requesterEmail
+    ),
+  ];
 
   const allTeachers = collectTermTeachers(term, grids);
   const termChanges = await loadTermChanges(domain, week.termId);
@@ -5543,6 +5578,83 @@ async function trySimulMoveCandidatesBranch(
 }
 
 /**
+ * §5c-10 역방향 묶음 후보 — 일반 수업 (d1,p1)의 후보에 "묶음 G가 앉아 있는 (d2,p2)"를 더한다.
+ * 새 연산이 아니다: G를 (d2,p2)→(d1,p1)로 옮기는 **정방향 엔진을 그대로 호출**하고 결과에
+ * (d1,p1)이 있는지만 본다. swap.ts의 하드 제외(l2.simul continue)는 무수정 — 단건·체인·보강의
+ * 방어이므로 호출부인 여기서만 방향을 뒤집는다 (§5c-7-3과 같은 형태).
+ *
+ * requesterEmail 주어지면 자격 검증: 소스 반의 counterpart가 본인일 것(= 밀려나는 상대 교사).
+ * 직권(무지정)은 일과계 권한이라 자격 검증 없음. 반환 후보의 targetDay/Period = 그룹 슬롯.
+ */
+function findReverseSimulCandidates(
+  groups: SimulGroup[],
+  srcGrids: WeeklyClassGrid[], // 신청자 주 (수업이 밀려날/그룹이 도착할 주)
+  srcWeek: TimetableWeek,
+  groupGrids: WeeklyClassGrid[], // 후보 주 (그룹이 현재 앉아 있는 주 — 같은 주면 같은 객체)
+  groupWeek: TimetableWeek,
+  settings: TimetableSettings,
+  source: SwapSourceSlot,
+  requesterEmail?: string
+): SwapCandidate[] {
+  const crossWeek = srcWeek.id !== groupWeek.id;
+  if (crossWeek && !CROSS_WEEK_SIMUL_MOVE_ENABLED) return [];
+  const me = requesterEmail?.trim().toLowerCase();
+  const out: SwapCandidate[] = [];
+  for (const g of groups) {
+    if (!g.active || g.grade !== source.grade || !g.classNums.includes(source.classNum)) continue;
+    // 그룹의 현행 슬롯 — 후보 주 기준 (등록부가 아니라 합성본에서 실측: 이미 이동된 주 반영)
+    const slotSet = new Set<string>();
+    for (const cn of g.classNums) {
+      const grid = groupGrids.find((x) => x.grade === g.grade && x.classNum === cn);
+      for (const cell of grid?.cells || [])
+        if (cell.lessons.some((l) => l.simul === g.label)) slotSet.add(`${cell.day}-${cell.period}`);
+    }
+    for (const key of slotSet) {
+      const [d2, p2] = key.split("-").map(Number);
+      if (!crossWeek && d2 === source.day && p2 === source.period) continue; // 자기 자신
+      // 정방향: 그룹 (d2,p2)[후보 주] → (d1,p1)[신청자 주]
+      const res = crossWeek
+        ? findCrossSimulGroupMoveCandidates(
+            groupGrids, groupWeek, srcGrids, srcWeek, settings, g, { day: d2, period: p2 }
+          )
+        : findSimulGroupMoveCandidates(srcGrids, srcWeek, settings, g, { day: d2, period: p2 });
+      if (res.error) continue; // 등록부·시간표 불일치 등 — 역방향 노출만 조용히 접는다 (정방향 진입 시 안내됨)
+      const match = res.candidates.find(
+        (c) => c.targetDay === source.day && c.targetPeriod === source.period
+      );
+      if (!match) continue;
+      // 자격: 신청자는 소스 반에서 밀려나는 상대 교사여야 한다 (§5c-10-1-3)
+      if (me) {
+        const myStep = match.steps.find(
+          (s) => s.classNum === source.classNum && s.counterpart?.teacherEmail === me
+        );
+        if (!myStep) continue;
+      }
+      const counterpartSubjects = Array.from(
+        new Set(match.steps.filter((s) => s.counterpart).map((s) => s.counterpart!.subjectName))
+      );
+      out.push({
+        targetDay: d2,
+        targetPeriod: p2,
+        counterpartEmail: "", // 상대가 반마다 다르다 — mapSimulMoveCandidates와 같은 규약
+        counterpartName: g.label,
+        counterpartSubjectName: counterpartSubjects.join("·"),
+        score: match.score,
+        penalties: match.penalties,
+        penaltyDetails: match.penaltyDetails,
+        counterpartScore: match.penaltyDetails
+          .filter((p) => p.scope === "counterpart")
+          .reduce((sum, p) => sum + p.points, 0),
+        coordination: buildSimulCoordination(g, match),
+      });
+    }
+  }
+  // 목적지 슬롯 순 정렬 (엔진의 요일·교시 순회와 같은 안정 순서)
+  out.sort((a, b) => a.targetDay - b.targetDay || a.targetPeriod - b.targetPeriod);
+  return out;
+}
+
+/**
  * 통 이동 양해 당사자 도출 (§5b-3, 서버 재계산 후보 기준 — 클라이언트 값 불신):
  * 그룹 담당 교사 전원 ∪ 치워지는 상대 교사 전원 ∪ 특별실 조율 당사자 − 중복.
  */
@@ -5769,12 +5881,9 @@ export async function createSimulMoveRequest(
     loadSimulGroups(domain, week.termId),
   ]);
   const me = requesterEmail.trim().toLowerCase();
-  const resolved = resolveSimulMoveSource(grids, groups, params.source, me);
-  if (!resolved.ok) throw new Error(resolved.error);
-  const group = resolved.group;
 
-  // §5c-8 교차 주: 목적지 주를 따로 합성해 교차 주 엔진으로 대조한다. 게이트가 꺼져 있으면
-  // 후보 자체가 안 나오므로 여기도 명시 거부 (화면·서버 판정이 어긋나지 않도록).
+  // §5c-8 교차 주: 상대 주를 따로 합성한다. 게이트가 꺼져 있으면 후보 자체가 안 나오므로
+  // 여기도 명시 거부 (화면·서버 판정이 어긋나지 않도록).
   const crossWeekId =
     params.targetWeekId && params.targetWeekId !== params.weekId ? params.targetWeekId : undefined;
   let targetWeek: TimetableWeek | null = null;
@@ -5791,21 +5900,91 @@ export async function createSimulMoveRequest(
     targetGrids = (await synthesizeWeek(domain, targetWeek)).grids;
   }
 
-  // 서버 재계산 대조 — 클라이언트가 보낸 목적지는 신뢰하지 않는다 (create 재검증과 같은 정신)
-  const res = crossWeekId
-    ? findCrossSimulGroupMoveCandidates(
-        grids, week, targetGrids!, targetWeek!, settings, group,
-        { day: params.source.day, period: params.source.period }
-      )
-    : findSimulGroupMoveCandidates(grids, week, settings, group, {
-        day: params.source.day,
-        period: params.source.period,
-      });
-  if (res.error) throw new Error(res.error);
-  const match = res.candidates.find(
-    (c) => c.targetDay === params.target.day && c.targetPeriod === params.target.period
-  );
-  if (!match) throw new Error("선택한 이동안이 더 이상 유효하지 않습니다. 후보를 다시 조회해 주세요.");
+  // ── 방향 판별 (§5c-10): 소스 셀에 simul 스탬프가 있으면 정방향(그룹 담당 교사가 시작),
+  //    없으면 역방향(밀려나는 상대 교사가 자기 일반 수업을 묶음 자리로). 서버가 canonical
+  //    (그룹이 움직이는 방향)로 뒤집어 저장하므로 승인·재검증·revert는 방향을 모른다 (§5c-10-1-2). ──
+  const isForward = grids
+    .find((g) => g.grade === params.source.grade && g.classNum === params.source.classNum)
+    ?.cells.find((c) => c.day === params.source.day && c.period === params.source.period)
+    ?.lessons.some((l) => l.simul) ?? false;
+
+  let group: SimulGroup;
+  let match: SimulGroupMoveCandidate;
+  let mySubjectName: string;
+  let myLessonTeachers: Array<{ email: string; name: string }>;
+  let canonFrom: { day: number; period: number }; // 그룹의 현행 슬롯 (그룹 주)
+  let canonTo: { day: number; period: number }; // 그룹이 갈 슬롯 (목적지 주)
+  let canonWeekId: string; // 그룹 주 = request.weekId
+  let canonToWeekId: string | undefined; // 교차 주일 때 목적지 주 = request.targetWeekId
+
+  if (isForward) {
+    const resolved = resolveSimulMoveSource(grids, groups, params.source, me);
+    if (!resolved.ok) throw new Error(resolved.error);
+    group = resolved.group;
+    // 서버 재계산 대조 — 클라이언트가 보낸 목적지는 신뢰하지 않는다 (create 재검증과 같은 정신)
+    const res = crossWeekId
+      ? findCrossSimulGroupMoveCandidates(
+          grids, week, targetGrids!, targetWeek!, settings, group,
+          { day: params.source.day, period: params.source.period }
+        )
+      : findSimulGroupMoveCandidates(grids, week, settings, group, {
+          day: params.source.day,
+          period: params.source.period,
+        });
+    if (res.error) throw new Error(res.error);
+    const m = res.candidates.find(
+      (c) => c.targetDay === params.target.day && c.targetPeriod === params.target.period
+    );
+    if (!m) throw new Error("선택한 이동안이 더 이상 유효하지 않습니다. 후보를 다시 조회해 주세요.");
+    match = m;
+    mySubjectName = resolved.requesterLesson?.subjectName || group.label;
+    myLessonTeachers = resolved.requesterLesson?.teachers || [];
+    canonFrom = { day: params.source.day, period: params.source.period };
+    canonTo = { day: params.target.day, period: params.target.period };
+    canonWeekId = params.weekId;
+    canonToWeekId = crossWeekId;
+  } else {
+    // §5c-10-3 역방향: 본인 일반 수업(소스) 소유 검증 → 클릭한 자리(그룹 슬롯)에서 그룹 해석
+    const mine = resolveSourceLesson(grids, me, params.source);
+    if (!mine.ok) throw new Error(mine.error);
+    const groupGrids = crossWeekId ? targetGrids! : grids;
+    const resolvedG = resolveSimulMoveSource(groupGrids, groups, {
+      grade: params.source.grade,
+      classNum: params.source.classNum,
+      day: params.target.day,
+      period: params.target.period,
+    });
+    if (!resolvedG.ok)
+      throw new Error("선택한 자리의 이동수업 정보를 확인할 수 없습니다. 후보를 다시 조회해 주세요.");
+    group = resolvedG.group;
+    // canonical 엔진: 그룹 (클릭한 자리)[그룹 주] → (내 수업 자리)[신청자 주] — 정방향과 같은 연산
+    const res = crossWeekId
+      ? findCrossSimulGroupMoveCandidates(
+          targetGrids!, targetWeek!, grids, week, settings, group,
+          { day: params.target.day, period: params.target.period }
+        )
+      : findSimulGroupMoveCandidates(grids, week, settings, group, {
+          day: params.target.day,
+          period: params.target.period,
+        });
+    if (res.error) throw new Error(res.error);
+    const m = res.candidates.find(
+      (c) => c.targetDay === params.source.day && c.targetPeriod === params.source.period
+    );
+    if (!m) throw new Error("선택한 이동안이 더 이상 유효하지 않습니다. 후보를 다시 조회해 주세요.");
+    // 자격 (§5c-10-1-3): 신청자는 이 이동에서 밀려나는 상대 교사여야 한다
+    const myStep = m.steps.find(
+      (s) => s.classNum === params.source.classNum && s.counterpart?.teacherEmail === me
+    );
+    if (!myStep) throw new Error("본인 수업이 관련된 이동만 신청할 수 있습니다.");
+    match = m;
+    mySubjectName = mine.lesson!.subjectName;
+    myLessonTeachers = mine.lesson!.teachers || [];
+    canonFrom = { day: params.target.day, period: params.target.period };
+    canonTo = { day: params.source.day, period: params.source.period };
+    canonWeekId = crossWeekId || params.weekId;
+    canonToWeekId = crossWeekId ? params.weekId : undefined;
+  }
 
   // 양해 필수 — 묶음 이동은 상대 수업이 "함께 움직인다" (§5c-7-5: 특별실 장소 양보와 성격이 다름)
   if (params.consent?.confirmed !== true)
@@ -5822,9 +6001,10 @@ export async function createSimulMoveRequest(
     confirmedAt: Date.now(),
   };
 
-  // 그룹·슬롯 단위 중복 PENDING 차단 (§5c-2 — 신청자별 아님)
+  // 그룹·슬롯 단위 중복 PENDING 차단 (§5c-2 — 신청자별 아님). canonical 축이므로
+  // 정방향·역방향 어느 쪽에서 냈든 같은 이동은 하나로 잡힌다 (§5c-10-1-2의 부수 효과).
   const dupSnap = await swapRequestsColRef(domain)
-    .where("weekId", "==", params.weekId)
+    .where("weekId", "==", canonWeekId)
     .where("type", "==", "simul_move")
     .where("status", "==", "PENDING")
     .get();
@@ -5834,8 +6014,8 @@ export async function createSimulMoveRequest(
       (r) =>
         !!r.simulMove &&
         r.simulMove.groupId === group.id &&
-        r.simulMove.from.day === params.source.day &&
-        r.simulMove.from.period === params.source.period
+        r.simulMove.from.day === canonFrom.day &&
+        r.simulMove.from.period === canonFrom.period
     );
   if (dup)
     throw new Error(
@@ -5843,11 +6023,10 @@ export async function createSimulMoveRequest(
     );
 
   const requesterName =
-    (resolved.requesterLesson?.teachers || []).find(
-      (t) => (t.email || "").trim().toLowerCase() === me
-    )?.name || me.split("@")[0];
-  const from = { day: params.source.day, period: params.source.period };
-  const to = { day: params.target.day, period: params.target.period };
+    myLessonTeachers.find((t) => (t.email || "").trim().toLowerCase() === me)?.name ||
+    me.split("@")[0];
+  const from = canonFrom;
+  const to = canonTo;
   const simulMove: SimulMoveInfo = {
     groupId: group.id!,
     label: group.label,
@@ -5861,21 +6040,23 @@ export async function createSimulMoveRequest(
   const request: SwapRequest = {
     id: ref.id,
     termId: week.termId,
-    weekId: params.weekId,
+    weekId: canonWeekId, // 그룹 주 (canonical — 역방향 교차 주면 신청자가 클릭한 상대 주)
     type: "simul_move",
-    ...(crossWeekId ? { targetWeekId: crossWeekId } : {}),
+    ...(canonToWeekId ? { targetWeekId: canonToWeekId } : {}),
     requesterEmail: me,
     requesterName,
-    // source = 신청자가 클릭한 본인 수업 슬롯 (직권 커밋의 관리자 요약과 달리 실제 수업)
-    source: { ...params.source, subjectName: resolved.requesterLesson?.subjectName || group.label },
+    // source = 신청자가 클릭한 본인 수업 슬롯 (직권 커밋의 관리자 요약과 달리 실제 수업).
+    // 역방향 교차 주에서는 이 슬롯이 request.weekId가 아니라 targetWeekId 주에 속한다 — 표시 전용 (§5c-10-3)
+    source: { ...params.source, subjectName: mySubjectName },
     candidate: {
-      targetDay: to.day,
-      targetPeriod: to.period,
+      // 신청자가 클릭한 목적지 그대로 (정방향 = 그룹이 갈 자리, 역방향 = 그룹이 앉아 있는 자리)
+      targetDay: params.target.day,
+      targetPeriod: params.target.period,
       ...(crossWeekId ? { targetWeekId: crossWeekId } : {}),
       counterpartEmail: "",
       counterpartName: group.label,
       score: match.score,
-      penalties: match.steps.map((s) => simulMoveStepLine(s, from, to, group.grade, crossWeekId)),
+      penalties: match.steps.map((s) => simulMoveStepLine(s, from, to, group.grade, canonToWeekId)),
       coordination: buildSimulCoordination(group, match),
     },
     simulMove,
@@ -5891,7 +6072,7 @@ export async function createSimulMoveRequest(
   const summary =
     `📋 새 수업교환 신청 (🧩 묶음 이동)\n` +
     `신청자: ${requesterName} (${me})\n` +
-    `${group.grade}학년 ${group.classNums.join("·")}반 「${group.label}」 ${DAY_NAMES_KO[from.day]} ${from.period}교시 → ${crossWeekId ? `${crossWeekId} 주 ` : ""}${DAY_NAMES_KO[to.day]} ${to.period}교시 통 이동\n` +
+    `${group.grade}학년 ${group.classNums.join("·")}반 「${group.label}」 ${DAY_NAMES_KO[from.day]} ${from.period}교시 → ${canonToWeekId ? `${canonToWeekId} 주 ` : ""}${DAY_NAMES_KO[to.day]} ${to.period}교시 통 이동\n` +
     request.candidate.penalties.map((line) => `· ${line}`).join("\n") +
     `\n🤝 양해 확인됨: ${consent.parties.map((p) => p.name).join(", ")}${consent.note ? ` — ${consent.note}` : ""}\n` +
     `사유: ${reason.type}${reason.note ? ` — ${reason.note}` : ""}`;
@@ -5931,6 +6112,67 @@ export async function commitSimulGroupMove(
     batchId?: string;
   },
   options?: { skipNotify?: boolean } // 검증 스크립트 전용 — 라우트는 항상 알림
+): Promise<{ request: SwapRequest; changes: TimetableChange[] }> {
+  // §5c-10-3 역방향 수용 — 직권 화면이 "일반 수업 → 묶음 자리" 방향으로 클릭해도 payload를
+  // 바꾸지 않는다. 그룹이 source에 없고 target(상대 주 포함)에 앉아 있으면 canonical(그룹이
+  // 움직이는 방향)로 인자를 뒤집어 기존 경로에 넘긴다 — 내부 로직은 방향을 모른다.
+  const wk0 = await loadWeek(domain, params.weekId);
+  if (!wk0) throw new Error(`등록되지 않은 주(${params.weekId})입니다.`);
+  const grp0 = await loadActiveSimulGroupOrThrow(domain, wk0.termId, params.groupId);
+  const sits = (gs: WeeklyClassGrid[], slot: { day: number; period: number }) =>
+    grp0.classNums.some((cn) =>
+      gs
+        .find((g) => g.grade === grp0.grade && g.classNum === cn)
+        ?.cells.find((c) => c.day === slot.day && c.period === slot.period)
+        ?.lessons.some((l) => l.simul === grp0.label)
+    );
+  const { grids: grids0 } = await synthesizeWeek(domain, wk0);
+  if (!sits(grids0, params.source)) {
+    const crossId0 =
+      params.targetWeekId && params.targetWeekId !== params.weekId ? params.targetWeekId : undefined;
+    let groupGrids = grids0;
+    let groupWeekId = params.weekId;
+    if (crossId0) {
+      const tw0 = await loadWeek(domain, crossId0);
+      if (tw0 && tw0.termId === wk0.termId) {
+        groupGrids = (await synthesizeWeek(domain, tw0)).grids;
+        groupWeekId = crossId0;
+      }
+    }
+    if (sits(groupGrids, params.target)) {
+      return commitSimulGroupMoveCanonical(
+        domain,
+        managerEmail,
+        {
+          ...params,
+          weekId: groupWeekId,
+          targetWeekId: crossId0 ? params.weekId : undefined,
+          source: params.target,
+          target: params.source,
+        },
+        options
+      );
+    }
+    // 어느 쪽에도 그룹이 없다 — canonical 경로의 기존 오류 메시지로 떨어뜨린다 (등록부 어긋남 안내)
+  }
+  return commitSimulGroupMoveCanonical(domain, managerEmail, params, options);
+}
+
+/** commitSimulGroupMove의 canonical 본체 — source는 반드시 그룹의 현행 슬롯 (§5c-10 관문이 보장) */
+async function commitSimulGroupMoveCanonical(
+  domain: string,
+  managerEmail: string,
+  params: {
+    weekId: string;
+    targetWeekId?: string;
+    groupId: string;
+    source: { day: number; period: number };
+    target: { day: number; period: number };
+    reason?: SwapRequestReason;
+    consent?: SwapConsentInput;
+    batchId?: string;
+  },
+  options?: { skipNotify?: boolean }
 ): Promise<{ request: SwapRequest; changes: TimetableChange[] }> {
   const reason = validateReason(params.reason);
   if (params.consent?.confirmed !== true)
