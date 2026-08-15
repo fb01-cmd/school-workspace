@@ -1574,3 +1574,10 @@ if (isProtectedAccountEmail(email)) {
 실측(읽기 전용, 임시 스크립트 즉시 삭제): 스크린샷과 같은 자리(2학년 2반 화 7교시, 일화/김진만, 「2학년 제2외국어 밴드(2·3반)」)에서 직권 탭이 부르는 것과 **같은 함수**(`computeCandidatesAllWeeks`)를 로컬 HEAD로 실행 → **8개 주 전부 후보 산출**(같은 주 6건 + 다른 주 5~6건, 각 후보가 `targetWeekId` 보유). 즉 배포만 되면 F-2는 통과한다.
 
 부수 확인: 직권 탭의 전 주 후보는 `computeDirectCandidates`가 아니라 **`direct_candidates_all` → `computeCandidatesAllWeeks`** 경로다(교사 포털과 같은 함수). 오늘 `computeDirectCandidates`에 넣은 교차 주 분기는 **단일 주 직권 조회 전용** — 화면 경로가 아니므로 F절 결과에 영향 없다.
+
+## [2026-08-15] Claude — §5c-10 역방향 묶음 교체 구현 (`9bb251e`) + §5c-9-4 서버부 (`8541c07`)
+
+- 변경 파일: src/lib/timetable/server.ts · src/app/api/timetable/manage/route.ts · scripts/verify_simul_move_phase3.ts · docs(스펙 §5c-9·§5c-10, 체크리스트 F 교정+G 신설)
+- 검증 상태: tsc ✅ / build ✅ / verify_simul_move_phase3 전 항목 ✅ (실패 0, [10]·[11] 신설 포함) / 신고 자리(권성민 금1→화7) 실측 해소 ✅
+- 다음 할 일: **push 승인 대기** (로컬 5커밋 앞섬) → 배포 후 사용자 화면 확인 F·G절 → Antigravity에 §5c-9-2·3 UI(드롭다운·개별 카드·담기 버튼 복원) + §5c-10-2 역방향 문구
+- 주의: ① createSimulMoveRequest가 방향 판별 후 canonical로 뒤집어 저장 — 역방향 교차 주에서는 request.weekId가 신청자 주가 아니라 **그룹 주**다(그리드 배지 소비처가 weekId만 보면 배지 위치가 어긋날 수 있음 — v1 수용, §5c-10-3) ② commitSimulGroupMove는 이제 관문+본체(Canonical) 2층 — 새 호출부는 반드시 관문(export)을 쓸 것 ③ [8] 불변식이 "접두사 동등"으로 바뀜(§5c-10이 의도적으로 후보를 덧붙임)
