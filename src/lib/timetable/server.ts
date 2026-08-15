@@ -3021,7 +3021,7 @@ export async function computeCandidatesAllWeeks(
         if (w.id === sourceWeekId)
           return { weekId: w.id, startDate: w.startDate, swapCandidates: simulBranch.swapCandidates };
         const tGrids = synthByWeek.get(w.id);
-        if (!tGrids || !simulBranch.group || w.termId !== sourceWeek.termId)
+        if (!CROSS_WEEK_SIMUL_MOVE_ENABLED || !tGrids || !simulBranch.group || w.termId !== sourceWeek.termId)
           return { weekId: w.id, startDate: w.startDate, swapCandidates: [] };
         const crossRes = findCrossSimulGroupMoveCandidates(
           srcGrids, sourceWeek, tGrids, w, settings, simulBranch.group,
@@ -3144,7 +3144,7 @@ export async function computeCandidates(
   //    기존 함수(resolveSourceLesson·엔진)는 무수정, 분기는 이 호출부에서만 (§5c-7-3 = 회귀 0).
   //    §5c-8: 목적지 주가 지정되면 교차 주 엔진으로 — 주 등록·학기 검사는 여기서 먼저 한다.
   let simulTarget: { grids: WeeklyClassGrid[]; week: TimetableWeek } | undefined;
-  if (targetWeekId && targetWeekId !== weekId) {
+  if (CROSS_WEEK_SIMUL_MOVE_ENABLED && targetWeekId && targetWeekId !== weekId) {
     const tw = await loadWeek(domain, targetWeekId);
     if (!tw) throw new Error(`등록되지 않은 주(${targetWeekId})입니다. 일과계가 먼저 주를 등록해야 교환할 수 있습니다.`);
     if (tw.termId !== week.termId) throw new Error("다른 학기의 주와는 교환할 수 없습니다.");
@@ -3161,6 +3161,15 @@ export async function computeCandidates(
         sourceSubjectName: simulBranch.sourceSubjectName,
         ...(targetWeekId ? { targetWeekId } : {}),
         error: simulBranch.error,
+      };
+    }
+    // 게이트가 꺼져 있으면 다른 주 요청은 명시 거부한다 — 같은 주 후보를 교차 주 요청에
+    // 잘못 돌려주지 않도록(게이트를 켜면 위에서 simulTarget이 채워져 이 분기에 오지 않는다).
+    if (!CROSS_WEEK_SIMUL_MOVE_ENABLED && targetWeekId && targetWeekId !== weekId) {
+      return {
+        swapCandidates: [], substituteCandidates: [],
+        sourceSubjectName: simulBranch.sourceSubjectName, targetWeekId,
+        error: "여러 반이 함께 움직이는 수업은 아직 다른 주로 옮길 수 없습니다.",
       };
     }
     return {
@@ -5330,6 +5339,14 @@ function mapSimulMoveCandidates(group: SimulGroup, cands: SimulGroupMoveCandidat
  * computeCandidates 계열 **호출부**에서만 한다. 셀에 simul 스탬프가 없으면 null 반환
  * (기존 경로 그대로 = 회귀 0). 스탬프가 있을 때만 등록부를 추가 로드한다(읽기 예산 규율).
  */
+/**
+ * §5c-8 교차 주 통 이동 — **후보 노출 게이트.**
+ * 엔진·후보 배선·변경 모델은 완료됐으나 신청·승인·커밋 경로가 아직이다.
+ * true로 켜면 "화면에는 뜨는데 신청하면 실패하는" 상태가 되므로, 커밋 경로 완결 전까지 false.
+ * 켜는 곳은 이 상수 하나뿐이다(호출부 2곳이 이 값을 본다).
+ */
+export const CROSS_WEEK_SIMUL_MOVE_ENABLED = false;
+
 async function trySimulMoveCandidatesBranch(
   domain: string,
   termId: string,

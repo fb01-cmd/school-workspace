@@ -1513,3 +1513,33 @@ if (isProtectedAccountEmail(email)) {
 - **분업 갱신 (사용자 지시 2026-08-15)**: 실기기·실화면 확인은 **사용자가 직접** 한다. Antigravity는 못 해내고, Claude가 우회 하네스를 세우는 것도 비용이 과하다. Claude는 코드·서버·데이터로 확인 가능한 것만 실측하고, 화면 확인은 **사용자용 확인 지점 목록**으로 제시한다.
 
 
+
+## [2026-08-15] Claude — 🔖 체크포인트: §5c-8 교차 주 통 이동 (진행 중 — 커밋 경로 남음)
+
+> **다음 세션은 이 항목부터 읽으면 된다.** 작업은 게이트로 잠겨 있어 지금 배포해도 안전하다.
+
+### 왜 시작했나
+사용자 질문 *"묶음 이동 설마 같은 주에서만 되는 거 아니지??"* → 실측 결과 **맞았다.** §7의 「교차 주 통 이동 제외」는 사용자가 정한 것이 아니라 v1 축소 때의 가정이고, §5c 재설계에서 같은 목록의 「교사 개방」만 뒤집힌 채 남아 있었다. 사용자 지시로 **철회**하고 스펙 §5c-8을 신설했다.
+
+### 끝난 것 (커밋 3개, **푸시함**)
+1. **`9ea4998` 엔진 일반화** — `findSimulGroupMoveCandidates`는 **시그니처·동작 보존**(호출부 4곳 무수정), 본문을 `(srcGrids, srcWeek, tgtGrids, tgtWeek)` 내부 구현으로 옮기고 같은 주는 같은 객체를 두 번 넘긴다. 신규 export `findCrossSimulGroupMoveCandidates`.
+   - 실데이터 검증: **같은 주 출력 34/34 바이트 동등**(변경 전 엔진을 git에서 꺼내 직접 대조 — 회귀 0) · 교차 주 후보 82건 산출 · 같은 주/다른 학기 인자 거부 · 충돌 슬롯 주 표기 정확.
+2. **`57dce87` 후보 배선 + 변경 모델 확장**
+   - `trySimulMoveCandidatesBranch`에 목적지 주 인자, `computeCandidates`의 교차 주 거부를 엔진 호출로 교체, `computeCandidatesAllWeeks`가 다른 주도 채움(합성본이 이미 `synthByWeek`에 있어 **Firestore 읽기 증가 0**).
+   - **`CrossSwapChange.out/in`을 nullable로** — 실측상 교차 주 후보의 **41%(34/82)가 "목적지 반이 전부 빈 교시"**라 한쪽만 있는 이동의 표현이 필요했다(기존 `move`는 같은 주 안 from→to만 표현).
+   - 소비처는 **타입을 널 허용으로 바꿔 컴파일러가 전수 열거**하게 한 뒤 19곳 대응: `applyCrossSwap`(빠지기만/들어오기만, **도착 자리에 수업이 있으면 덮어쓰지 않고 건너뜀**) · `changeLabel` · NEIS 행(빠지는 쪽은 행 없음, 도착 쪽 1행) · 알림 수신자·본문 · 되돌리기 상세.
+3. **게이트** — `CROSS_WEEK_SIMUL_MOVE_ENABLED = false` (server.ts). 후보 노출 2곳이 이 값을 본다. 꺼져 있으면 다른 주 요청은 **명시 거부**(같은 주 후보를 교차 주 요청에 잘못 돌려주지 않도록). **켜는 곳은 이 상수 하나뿐.**
+
+### 남은 것 (다음 세션 착수 지점 — 전부 Claude 몫: 엔진·커밋 = 위험 지점)
+1. **`assembleSimulMoveChanges` 교차 주 분기** — 반별 step을 **주별 문서 쌍**으로. swap step = 소스 주 문서(out=그룹 수업, in=상대) + 목적지 주 문서(out=상대, in=그룹 수업). move step = 소스 주 문서(out=그룹 수업, **in=null**) + 목적지 주 문서(**out=null**, in=그룹 수업). 같은 `exchangeId`로 묶는다(교차 주 맞교환 `changeA/changeB` 규약 계승, `server.ts:4251` 참고).
+2. **`createSimulMoveRequest`** — `targetWeekId` 수용·저장, 재검증은 두 주 재합성 후 교차 주 엔진.
+3. **`approveSwapRequest` simul_move 분기** — 트랜잭션 안에서 두 주 재합성·재계산 대조(steps 서명·양해 당사자 확장 검사는 그대로).
+4. **`commitSimulGroupMove`**(직권) — 교차 주 인자.
+5. **`validatePendingSwapRequests`** — 교차 주 재검증.
+6. **검증 스크립트** — `verify_simul_move_phase3.ts`에 [9] 교차 주 사이클 추가(신청→승인→두 주 합성 반영 확인→revert 전량 원복→원장 하드 삭제→최초 상태 대조). 알림 억제 규약 유지.
+7. **게이트 해제** + `docs/ui_check_checklist.md`에 교차 주 확인 항목 추가(사용자 요청: 작업 끝나면 체크리스트 다시 뽑기).
+
+### 주의점 (다음 세션이 놓치기 쉬운 것)
+- **UI는 아마 무변경**: 교사 화면은 이미 주별로 후보를 렌더하고, 교차 주 후보는 `targetWeekId`를 스스로 들고 나간다. 신청 payload에 `targetWeekId`를 실어 보내는지만 확인하면 된다(`TeacherPortalSection.handleSingleSubmit`의 `simul_move_create` 분기).
+- **되돌리기는 손댈 것이 없다** — `requestId` 묶음 전량 취소가 기구현이고 두 주 문서도 같은 `requestId`를 갖는다.
+- 오늘 만든 **`scripts/check_ui_removals.sh`와 `AGENTS.md ①-1`(재작성 금지)** 를 지켜라. 오늘 회귀 4건이 전면 재작성에서 나왔다.
