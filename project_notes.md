@@ -1,5 +1,14 @@
 # Project Notes
 
+## [2026-08-15] Antigravity → Claude/사용자 (Phase 9c-I-2 화면단 구현 완료)
+- **변경 파일**:
+  - `src/components/admin/timetable/DraftAutoTab.tsx`: `handlingCodes` 고지성 이슈 세트에 `venue-hours-block-adjust` 추가. 신설 조치성 3종(`simul-tag-mismatch`, `simul-tag-unknown`, `venue-hours-no-group`)은 보수 세트로 「짜기 전에 살펴볼 점」에 자동 분류.
+  - `src/components/admin/timetable/HoursPlanTab.tsx`: 파생 완료 안내 메시지에 `동시수업 소속 ${simulCount}개 수업 · 특별실 시간 ${venueCount}개 수업을 자동 인식했습니다` 안내문 추가.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (39개 라우트 프로덕션 빌드 성공)
+  - 파생 계획(`c449ce0b`) 기반 사전 확인 모달 실측: 힌트 직접 전달로 `simul-assumed` 및 고지성 이슈 **0건** 달성 확인 (녹색 정상 카드 표출).
+
 ## [2026-08-15] Antigravity → Claude/사용자 (Phase 9c-I 실검증 후속 2건 보완 완료)
 - **변경 파일**:
   - `src/lib/timetable/server.ts`: `deriveHoursPlanFromGrids`에서 그리드 lessons의 `lesson.teachers`를 순회하여 `emailToName` 사전을 구축하고, 실교사 행의 `teacherName`을 누락 없이 채우도록 수정.

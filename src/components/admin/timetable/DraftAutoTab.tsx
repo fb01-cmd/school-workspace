@@ -2283,7 +2283,12 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
 
             {/* 이슈 목록 분리 렌더링 (로드맵 9c-I 2026-08-15 사용자 피드백) */}
             {(() => {
-              const handlingCodes = new Set(["simul-assumed", "venue-slot-limited", "fixed-standalone"]);
+              const handlingCodes = new Set([
+                "simul-assumed",
+                "venue-slot-limited",
+                "fixed-standalone",
+                "venue-hours-block-adjust",
+              ]);
               const handlingIssues = preflightData.issues.filter((i) => handlingCodes.has(i.code));
               const warningIssues = preflightData.issues.filter((i) => !handlingCodes.has(i.code));
 

@@ -335,8 +335,14 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         setSelectedPlanId(data.plan.id);
         setOriginalRowsSnapshot(JSON.stringify(data.plan.rows || []));
         setDeriveLabel("");
-        setSuccessMessage("선택한 학기에서 성공적으로 가져왔습니다.");
-        setTimeout(() => setSuccessMessage(null), 3000);
+        const simulCount = (data.plan.rows || []).filter((r: any) => r.simulGroupId).length;
+        const venueCount = (data.plan.rows || []).filter((r: any) => (r.venueHours || 0) > 0).length;
+        let hintNotice = "";
+        if (simulCount > 0 || venueCount > 0) {
+          hintNotice = ` (동시수업 소속 ${simulCount}개 수업 · 특별실 시간 ${venueCount}개 수업을 자동 인식했습니다)`;
+        }
+        setSuccessMessage(`선택한 학기에서 성공적으로 가져왔습니다.${hintNotice}`);
+        setTimeout(() => setSuccessMessage(null), 5000);
         // 계획 목록 갱신
         const resList = await fetch("/api/timetable/manage", {
           method: "POST",
