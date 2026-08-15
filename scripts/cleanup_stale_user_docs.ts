@@ -13,7 +13,9 @@
  * ⚠️ 예전 이 스크립트는 자체 판정 로직을 들고 있었고 **보호 계정 예외가 없었다.**
  *    로직을 두 벌 두면 한쪽만 고쳐지므로 라이브러리 호출로 대체했다.
  */
+import { adminDb } from "../src/lib/firebase/admin";
 import { reconcileUserDocsWithWorkspace } from "../src/lib/auth/reconcileUserDocs";
+import { snapshotBeforeDestruction } from "./lib/firestoreBackup";
 
 const APPLY = process.argv.includes("--apply");
 const GHOSTS_ONLY = process.argv.includes("--ghosts-only");
@@ -23,6 +25,16 @@ async function run() {
     `모드: ${APPLY ? "⚠️ 실제 삭제 (--apply)" : "드라이런 (변경 없음)"}` +
       `${GHOSTS_ONLY ? " / 범위: 유령만 (정지분은 크론 소관)" : ""}\n`
   );
+
+  // 위험 직전 스냅샷 (docs/backup_restore_spec.md §2-A) — --apply일 때만.
+  // 이 스크립트가 지우는 users 문서는 GWS에 원본이 없는 유령이거나 정지분이라
+  // 지우고 나면 되살릴 출처가 없다. 드라이런은 아무것도 바꾸지 않으므로 뜨지 않는다.
+  // 주의: 같은 로직이 매일 크론에서도 돌지만 그쪽은 서버리스라 로컬 아카이브를 쓸 수 없다 —
+  // 크론 경로의 보관은 별건(대장 「화면·크론에서 하는 삭제는 백업이 없다」).
+  if (APPLY) {
+    const snap = await snapshotBeforeDestruction(adminDb, ["users"], "cleanup_stale_user_docs");
+    console.log(`🗄  삭제 전 스냅샷 보관: ${snap.dir} (${snap.manifest.docCount}건)\n`);
+  }
 
   const r = await reconcileUserDocsWithWorkspace({
     dryRun: !APPLY,

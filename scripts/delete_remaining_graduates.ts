@@ -17,6 +17,7 @@ import { google } from "googleapis";
 import { adminDb, deleteAuthUserByEmail } from "../src/lib/firebase/admin";
 import { mapConcurrentSettled, retryOnRateLimit } from "../src/lib/concurrency";
 import { FieldValue } from "firebase-admin/firestore";
+import { snapshotBeforeDestruction } from "./lib/firestoreBackup";
 
 const DOMAIN = "hmh.or.kr";
 const APPLY = process.argv.includes("--apply");
@@ -58,6 +59,11 @@ async function run() {
     if (!APPLY && targets.length > 0) console.log("\n--apply를 붙이면 위 계정을 영구 삭제합니다.");
     return;
   }
+
+  // 위험 직전 스냅샷 (docs/backup_restore_spec.md §2-A) — GWS 계정까지 지우므로 되돌릴 출처가 없다.
+  // users 문서만 담는다(학생 계정의 플랫폼 측 원본). GWS 계정 자체의 백업은 이 도구의 범위 밖.
+  const snap = await snapshotBeforeDestruction(adminDb, ["users"], "delete_remaining_graduates");
+  console.log(`🗄  삭제 전 스냅샷 보관: ${snap.dir} (${snap.manifest.docCount}건)\n`);
 
   let done = 0;
   const results = await mapConcurrentSettled(targets, 2, async (email) => {
