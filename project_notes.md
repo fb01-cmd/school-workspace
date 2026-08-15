@@ -1352,3 +1352,16 @@ if (isProtectedAccountEmail(email)) {
 
 ### 남은 기존 결함 (이번 건 아님, 기록만)
 `flattenNeisChanges`의 `filter.type`은 5종 유니온을 받지만 `substitute`/`swap` 두 값만 해석 — `cross_swap`·`chain`·`simul_move`를 넘기면 필터가 조용히 무효화돼 전건 반환. 현행 UI는 `substitute`/미지정만 보내 증상 없음. API 직접 호출 시에만 노출.
+
+## [2026-08-15] Antigravity — U1~U5 수정 완료 (커밋: `0d9f01e`)
+- **U1 (선결) 소스 슬롯 실시간 조회 및 자동 선택**: `DirectSubstituteTab.tsx`에서 그룹/주 선택 시 `simul_move_candidates`를 소스 없이 먼저 호출해 서버가 반환하는 그 주 시간표 기준 `groupSlots`로 슬롯 목록을 채우고, 첫 교시를 자동 선택하여 후보 조회를 연속 실행하도록 수정.
+- **U2 사유 구분 드롭다운**: `types.ts`의 `SWAP_REASON_TYPES`를 map으로 렌더하여 서버 거부값(연가/행사) 제거 및 일치화.
+- **U3 요청대장 화살표/교시 중복 제거**: `SwapRequestLedgerTab.tsx`에서 `simul_move` 전용 렌더 블록으로 분리하여 `→` 및 원본 교시 중복 출력 제거.
+- **U4 학급 및 그룹 라벨 온전 표출**: `SwapRequestLedgerTab.tsx` 및 `TeacherPortalSection.tsx`에서 `simul_move` 시 `[학년 1·2·3반] 그룹명` 형태로 전체 반 번호 및 그룹 라벨 표출.
+- **U5 문구 및 렌더 정리**:
+  - ① `DirectSubstituteTab.tsx`: "…원자로 반영합니다" → "…한 번에 반영합니다"로 개발 용어 배제.
+  - ② `TodayTimetableCard.tsx` 및 `StudentTimetableCard.tsx`: `move` 변경 건의 라벨을 "교체"가 아닌 "이동"("수업 이동")으로 교체.
+  - ③ 반별 상세 목록 key: `key={`${step.classNum}-${idx}`}`로 유일성 보장.
+  - ④ 교사별 직권 배정 안내 문구에 "상대 선생님께 보낼 양해 이미지도 만들 수 있습니다" 문구 복원.
+- **검증**: `npx tsc --noEmit` 통과 (0 errors) · `npm run build` 통과 (39/39 prerendered, 0 errors).
+
