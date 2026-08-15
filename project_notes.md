@@ -1413,3 +1413,26 @@ if (isProtectedAccountEmail(email)) {
   - 교차 주 통 이동은 v1 제외(§7) — 묶음 소스 + targetWeekId 요청은 눈높이 사유로 거부.
 - **실데이터 검증** (`verify_simul_move_phase3.ts` 확장, 알림 억제·원장 하드 삭제·원복 대조): 기존 [1]~[6] 재통과(후보 95건·직권 2사이클) + **[7] 교사 사이클** 후보 혼입(4건, 전건 coordination.simul)→우회 거부→consent 게이트→신청(parties 신청자 제외)→중복 차단→validatePending→승인(change 3건)→revert 원복 전 항목 ✅ + **[8] 기존 출력 불변** 비묶음 소스 3건에서 computeCandidates ≡ 엔진 직접 호출 바이트 동등·simul 혼입 0·체인 스모크 ✅. tsc ✅ · build ✅.
 - **잔여 = §5c-7 UI 재배선 (Antigravity)**: ① DirectSubstituteTab "이동수업 통 이동" 전용 모드·그룹 드롭다운·SimulGroupTab 진입 링크 **철거**, 직권도 수업 클릭 → 조율 후보로 통일 ② 교사 포털·직권 탭에서 `coordination.simul` 후보 렌더 — 기존 조율 경고·양해 상호작용(§3-2b~c) 재사용하되 **문구 구분 필수**(§5c-7-5: 특별실 "장소 양보" ≠ 묶음 "선생님 수업도 함께 옮겨집니다", 확인창에 반별 전개 표시) ③ 신청 배선: 묶음 후보는 create 대신 `simul_move_create`(weekId·source·simulMoveTarget·reason·consent) ④ PENDING simul_move 그리드 배지("대기 중인 묶음 이동 신청 있음" — what-if 오버레이 미표현 보완) ⑤ 조율 문구 헬퍼(formatCoordinationText)는 venue 충돌만 다루므로 simul 전용 문장은 steps로 별도 조립.
+
+## [2026-08-15] Antigravity — 양해 개방 Phase 3′ UI 재배선 완료 (§5c-7 조율 후보 편입, 교사 포털 및 직권 배정 통합)
+
+- **작업 요약**:
+  1. **전용 모드 철거 및 진입 단일화**:
+     - `DirectSubstituteTab.tsx`: "이동수업 통 이동" 전용 모드·그룹 선택 드롭다운 철거, 일반 수업 클릭 방식으로 단일화.
+     - `SimulGroupTab.tsx`: 카드 내 `🔀 통 이동 →` 이동 액션 버튼 철거.
+  2. **공용 양해/조율 안내 블록 신설 (`CoordinationNoticeBlock.tsx`)**:
+     - `simul`, `venue`, `venue+simul` 복합 조율 지원.
+     - 묶음 이동 시 "선생님 수업도 함께 옮겨집니다" 문구 명시 및 반별 전개(`steps`) 상세 목록(반, 과목, 담당 교사, 이동 형태) 렌더링.
+     - 양해 당사자(`getCoordinationAllParties`) 중복 제거 후 일괄 표시.
+  3. **교사 포털 (`TeacherPortalSection.tsx`) 연동**:
+     - `handleSingleSubmit`: `applyingCandidate.coordination?.simul` 존재 시 `simul_move_create` API 호출 (`weekId`, `source`, `simulMoveTarget`, `reason`, `consent`).
+     - `handleSubmitDraftConfirm`: 초안 개별 제출 시 simul 후보는 `simul_move_create` 호출 후 초안 자동 정리.
+     - 2단 경고 모달(`pendingCoordinationSave`), 신청 상세, 초안 개별/일괄 제출 모달에 `CoordinationNoticeBlock` 적용.
+     - 시간표 그리드: 본인의 `PENDING` 상태 `simul_move` 신청이 있는 슬롯에 `⏳ 묶음 이동 대기` 보라색 뱃지 표출.
+  4. **직권 배정 (`DirectSubstituteTab.tsx`) 연동**:
+     - `executeDirectCommitSingle`: `coordination?.simul` 후보 선택 시 `action: "simul_move_commit"`으로 직권 일괄 반영.
+     - 단건/일괄 확인 모달에 `CoordinationNoticeBlock` 적용.
+- **검증**:
+  - `npx tsc --noEmit` 통과 (0 errors).
+  - `npm run build` 통과.
+

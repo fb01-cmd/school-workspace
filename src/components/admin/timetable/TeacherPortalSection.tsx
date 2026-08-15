@@ -47,6 +47,7 @@ import {
 
 import PaginationControls from "./PaginationControls";
 import MiniPreviewGrid from "./MiniPreviewGrid";
+import CoordinationNoticeBlock from "./CoordinationNoticeBlock";
 import {
   ShareCardData,
   ConsolidatedShareData,
@@ -174,6 +175,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
   // §3-2b v1.1: 조율 필요 후보 인라인 클릭 시 2단 경고 다이얼로그 상태
   const [pendingCoordinationSave, setPendingCoordinationSave] = useState<{ candidate: SwapCandidate; weekId: string } | null>(null);
+
+  // 본인의 대기 중인 묶음 이동(simul_move) 신청 목록 (그리드 배지용)
+  const [myPendingSimulMoves, setMyPendingSimulMoves] = useState<SwapRequest[]>([]);
 
   // §4-2 교사 체인 탐색 & 신청 관련 상태 (consent_swap_opening_spec §4-2·§4-3)
   const [isChainMode, setIsChainMode] = useState(false);
@@ -389,6 +393,20 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         const err = await res.json().catch(() => ({}));
         setError(err.error || "예상 시간표를 불러올 수 없습니다.");
       }
+
+      // 본인의 대기 중 묶음 이동 목록 조회 (그리드 뱃지용)
+      try {
+        const reqRes = await fetch("/api/timetable/requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "my_list" }),
+        });
+        if (reqRes.ok) {
+          const reqData = await reqRes.json();
+          const list: SwapRequest[] = reqData.requests || [];
+          setMyPendingSimulMoves(list.filter((r) => r.status === "PENDING" && r.type === "simul_move"));
+        }
+      } catch {}
     } catch (e: any) {
       setError(`네트워크 오류: ${e.message}`);
     } finally {
@@ -721,6 +739,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     if (!confirmingDraft) return;
     const draft = confirmingDraft;
     const isCoordination = !!draft.candidate?.coordination;
+    const isSimul = !!draft.candidate?.coordination?.simul;
     if (isCoordination && !draftConsentConfirmed) {
       alert("당사자 사전 양해 확인란을 체크해 주세요.");
       return;
@@ -729,26 +748,49 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     setSubmittingDraftId(draft.id);
     setSubmitResult(null);
     try {
+      const payload = isSimul
+        ? {
+            action: "simul_move_create",
+            weekId: draft.sourceWeekId,
+            source: draft.source,
+            simulMoveTarget: {
+              day: draft.candidate.targetDay,
+              period: draft.candidate.targetPeriod,
+            },
+            reason: draftReason,
+            consent: { confirmed: true, note: draftConsentNote.trim() || undefined },
+          }
+        : {
+            action: "create",
+            weekId: draft.sourceWeekId,
+            targetWeekId: draft.targetWeekId,
+            type: "swap",
+            source: draft.source,
+            candidate: draft.candidate,
+            reason: draftReason,
+            consent: isCoordination
+              ? { confirmed: true, note: draftConsentNote.trim() || undefined }
+              : undefined,
+          };
+
       const res = await fetch("/api/timetable/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create",
-          weekId: draft.sourceWeekId,
-          targetWeekId: draft.targetWeekId,
-          type: "swap",
-          source: draft.source,
-          candidate: draft.candidate,
-          reason: draftReason,
-          consent: isCoordination
-            ? { confirmed: true, note: draftConsentNote.trim() || undefined }
-            : undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
       if (res.ok && data.success) {
-        setSubmitResult("🚀 수업교환 신청이 성공적으로 제출되었습니다.");
+        if (isSimul) {
+          try {
+            await fetch("/api/timetable/requests", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "draft_delete", draftId: draft.id }),
+            });
+          } catch {}
+        }
+        setSubmitResult(isSimul ? "🚀 동시수업 묶음 이동 신청이 성공적으로 제출되었습니다." : "🚀 수업교환 신청이 성공적으로 제출되었습니다.");
         setConfirmingDraft(null);
         await Promise.all([refreshDrafts(), fetchMyProjected()]);
       } else {
@@ -990,41 +1032,64 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     setSubmitResult(null);
     try {
       const swapC = applyingCandidate;
-      const candidate = {
-        targetDay: swapC.targetDay,
-        targetPeriod: swapC.targetPeriod,
-        counterpartEmail: swapC.counterpartEmail,
-        counterpartName: swapC.counterpartName,
-        counterpartSubjectName: swapC.counterpartSubjectName,
-        score: swapC.score,
-        penalties: swapC.penalties,
-      };
+      const isSimul = !!swapC.coordination?.simul;
+
+      const requestPayload = isSimul
+        ? {
+            action: "simul_move_create",
+            weekId: selectedCell.weekId,
+            source: {
+              grade: selectedCell.grade,
+              classNum: selectedCell.classNum,
+              day: selectedCell.day,
+              period: selectedCell.period,
+            },
+            simulMoveTarget: {
+              day: swapC.targetDay,
+              period: swapC.targetPeriod,
+            },
+            reason,
+            consent: { confirmed: consentConfirmed, note: consentNote.trim() || undefined },
+          }
+        : {
+            action: "create",
+            weekId: selectedCell.weekId,
+            targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
+            type: "swap",
+            source: {
+              grade: selectedCell.grade,
+              classNum: selectedCell.classNum,
+              day: selectedCell.day,
+              period: selectedCell.period,
+              subjectName: selectedCell.subjectName,
+            },
+            candidate: {
+              targetDay: swapC.targetDay,
+              targetPeriod: swapC.targetPeriod,
+              counterpartEmail: swapC.counterpartEmail,
+              counterpartName: swapC.counterpartName,
+              counterpartSubjectName: swapC.counterpartSubjectName,
+              score: swapC.score,
+              penalties: swapC.penalties,
+            },
+            reason,
+            // 조율 필요 후보는 양해 확인 필수 — 서버가 coordination 재계산으로 판정·명단 도출
+            ...(swapC.coordination
+              ? { consent: { confirmed: consentConfirmed, note: consentNote.trim() || undefined } }
+              : {}),
+          };
 
       const res = await fetch("/api/timetable/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create",
-          weekId: selectedCell.weekId,
-          targetWeekId: isCrossWeek ? effectiveTargetWeekId : undefined,
-          type: "swap",
-          source: {
-            grade: selectedCell.grade,
-            classNum: selectedCell.classNum,
-            day: selectedCell.day,
-            period: selectedCell.period,
-            subjectName: selectedCell.subjectName,
-          },
-          candidate,
-          reason,
-          // 조율 필요 후보는 양해 확인 필수 — 서버가 coordination 재계산으로 판정·명단 도출
-          ...(swapC.coordination
-            ? { consent: { confirmed: consentConfirmed, note: consentNote.trim() || undefined } }
-            : {}),
-        }),
+        body: JSON.stringify(requestPayload),
       });
       if (res.ok) {
-        setSubmitResult("✅ 수업교환 신청이 완료되었습니다. 일과계에서 검토 후 처리됩니다.");
+        setSubmitResult(
+          isSimul
+            ? "✅ 동시수업 묶음 이동 신청이 완료되었습니다. 일과계에서 검토 후 처리됩니다."
+            : "✅ 수업교환 신청이 완료되었습니다. 일과계에서 검토 후 처리됩니다."
+        );
         await fetchMyProjected();
         setApplyingCandidate(null);
         setSelectedCell(null);
@@ -1308,7 +1373,6 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                       alert("학교 공통 활동 시간(SLAT·동아리 등)은 체인 목적지로 지정할 수 없습니다.");
                                       return;
                                     }
-                                    // §3-2d U6ⓐ: 체인 탐색은 토글 명시 진입 시에만 — 후보 없는 빈 칸 클릭의 암묵 진입 금지
                                     handleExecuteChainSearch(week.weekId, d.num, period);
                                   }
                                 }}
@@ -1365,8 +1429,20 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                         )}
 
                                         {isVirtualReq && (
-                                          <div className="text-[10px] font-extrabold text-amber-900 bg-amber-200 px-1 py-0.5 rounded mt-0.5">
-                                            ⏳ 검토 대기
+                                          <div className={`text-[10px] font-extrabold px-1 py-0.5 rounded mt-0.5 ${
+                                            myPendingSimulMoves.some((req) => req.weekId === week.weekId && req.source.day === d.num && req.source.period === period)
+                                              ? "bg-purple-200 text-purple-900"
+                                              : "bg-amber-200 text-amber-900"
+                                          }`}>
+                                            {myPendingSimulMoves.some((req) => req.weekId === week.weekId && req.source.day === d.num && req.source.period === period)
+                                              ? "⏳ 묶음 이동 대기"
+                                              : "⏳ 검토 대기"}
+                                          </div>
+                                        )}
+
+                                        {!isVirtualReq && !isVirtualDraft && myPendingSimulMoves.some((req) => req.weekId === week.weekId && req.source.day === d.num && req.source.period === period) && (
+                                          <div className="text-[10px] font-extrabold bg-purple-200 text-purple-900 px-1 py-0.5 rounded mt-0.5" title="대기 중인 묶음 이동 신청 있음">
+                                            ⏳ 묶음 이동 대기
                                           </div>
                                         )}
                                       </div>
@@ -1672,28 +1748,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   })()}
 
                   {applyingCandidate.coordination && (
-                    <div className="bg-red-50 border-2 border-red-500 rounded-xl p-3.5 space-y-2 text-xs">
-                      <div className="font-extrabold text-red-950 flex items-center justify-between">
-                        <span className="flex items-center gap-1">
-                          <span>⚠️</span>
-                          <span>양해 필요 후보 (장소 충돌)</span>
-                        </span>
-                        <span className="text-[10px] bg-red-200 text-red-950 border border-red-400 px-2 py-0.5 rounded font-black">
-                          ⚠️ 양해 필수
-                        </span>
-                      </div>
-                      <div className="text-red-900 text-xs leading-relaxed font-semibold">
-                        {formatCoordinationText(applyingCandidate.coordination)}
-                      </div>
-                      <div className="pt-2 border-t border-red-200 space-y-2">
-                        <div className="font-bold text-gray-800 text-[11px]">
-                          👥 양해 필요 당사자:{" "}
-                          <span className="text-red-900 font-extrabold">
-                            {getCoordinationOccupants(applyingCandidate.coordination)
-                              .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
-                              .join(", ")}
-                          </span>
-                        </div>
+                    <div className="space-y-2">
+                      <CoordinationNoticeBlock coordination={applyingCandidate.coordination} />
+                      <div className="bg-red-50/60 border border-red-200 rounded-xl p-3 space-y-2">
                         <label className="flex items-start gap-2 cursor-pointer bg-white p-2 rounded-lg border border-red-300 shadow-2xs">
                           <input
                             type="checkbox"
@@ -1702,7 +1759,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                             className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
                           />
                           <span className="text-xs font-bold text-gray-900">
-                            위 선생님들께 사전 양해를 받았습니다 (필수)
+                            위 선생님들께 사전 양해를 완료하였습니다 (필수)
                           </span>
                         </label>
                         <input
@@ -1710,7 +1767,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                           maxLength={200}
                           value={consentNote}
                           onChange={(e) => setConsentNote(e.target.value)}
-                          placeholder="양해 메모 (선택, 예: 체육관 합반으로 양해)"
+                          placeholder="양해 메모 (선택, 예: 시간표 조정 사전 합의)"
                           className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
                         />
                       </div>
@@ -1943,24 +2000,18 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       {/* §3-2b ②: 조율 필요 후보 인라인 클릭 시 2단 경고 다이얼로그 */}
       {pendingCoordinationSave && pendingCoordinationSave.candidate.coordination && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-md w-full p-6 space-y-4 animate-scale-up">
+          <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-lg w-full p-6 space-y-4 animate-scale-up max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-2 text-red-600 font-extrabold text-base border-b border-red-100 pb-3">
               <span className="text-xl">⚠️</span>
-              <span>당사자 양해 필요 (장소 조율)</span>
+              <span>
+                {pendingCoordinationSave.candidate.coordination.simul
+                  ? "당사자 양해 필요 (동시수업 묶음 이동)"
+                  : "당사자 양해 필요 (장소 조율)"}
+              </span>
             </div>
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs text-red-950">
-              <div className="font-bold leading-relaxed">
-                {formatCoordinationText(pendingCoordinationSave.candidate.coordination)}
-              </div>
-              <div className="pt-2 border-t border-red-200 text-gray-800">
-                <span className="font-bold">👥 양해 필요 당사자: </span>
-                <span className="font-extrabold text-red-900">
-                  {getCoordinationOccupants(pendingCoordinationSave.candidate.coordination)
-                    .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum}반 ${o.subjectName})`)
-                    .join(", ")}
-                </span>
-              </div>
-            </div>
+
+            <CoordinationNoticeBlock coordination={pendingCoordinationSave.candidate.coordination} />
+
             <p className="text-xs font-bold text-gray-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
               💡 이 교환은 당사자 양해 없이는 반영할 수 없습니다. 그래도 검토하시겠습니까?
             </p>
@@ -2415,29 +2466,28 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             </div>
 
             {confirmingDraft.candidate?.coordination && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 space-y-2 text-xs text-amber-950">
-                <div className="font-bold flex items-center justify-between">
-                  <span>🤝 특별실 양해 필요</span>
-                  <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.5 rounded">양해 필수</span>
-                </div>
-                <label className="flex items-start gap-2 cursor-pointer bg-white/80 p-2.5 rounded-lg border border-amber-200">
+              <div className="space-y-2">
+                <CoordinationNoticeBlock coordination={confirmingDraft.candidate.coordination} />
+                <div className="bg-red-50/60 border border-red-200 rounded-xl p-3 space-y-2 text-xs">
+                  <label className="flex items-start gap-2 cursor-pointer bg-white p-2.5 rounded-lg border border-red-200">
+                    <input
+                      type="checkbox"
+                      checked={draftConsentConfirmed}
+                      onChange={(e) => setDraftConsentConfirmed(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500 cursor-pointer"
+                    />
+                    <span className="text-xs font-bold text-red-950">
+                      위 선생님들께 사전 양해를 완료하였음을 확인합니다 (필수)
+                    </span>
+                  </label>
                   <input
-                    type="checkbox"
-                    checked={draftConsentConfirmed}
-                    onChange={(e) => setDraftConsentConfirmed(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500 cursor-pointer"
+                    type="text"
+                    value={draftConsentNote}
+                    onChange={(e) => setDraftConsentNote(e.target.value)}
+                    placeholder="사전 양해 메모 (선택, 예: 시간표 조정 사전 합의)"
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
                   />
-                  <span className="text-xs font-bold text-amber-950">
-                    특별실 실시간 사용 교사와 사전 양해를 완료했음을 확인합니다 (필수)
-                  </span>
-                </label>
-                <input
-                  type="text"
-                  value={draftConsentNote}
-                  onChange={(e) => setDraftConsentNote(e.target.value)}
-                  placeholder="사전 양해 메모 (선택, 예: 메신저 구두 승인)"
-                  className="w-full border border-amber-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-amber-500 bg-white"
-                />
+                </div>
               </div>
             )}
 
@@ -2488,10 +2538,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
       {/* 장바구니 일괄 제출 양해 확인 모달 */}
       {batchConfirmingDrafts && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-6 space-y-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-red-200 w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
-              <h4 className="text-sm font-bold text-indigo-950 flex items-center gap-2">
-                <span>🚀</span>
+              <h4 className="text-sm font-bold text-red-950 flex items-center gap-2">
+                <span className="text-red-600 font-extrabold text-base">⚠️</span>
                 <span>일괄 교환 신청 제출 사전 양해 확인</span>
               </h4>
               <button
@@ -2503,32 +2553,42 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               </button>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 space-y-2 text-xs text-amber-950">
-              <div className="font-bold flex items-center justify-between">
-                <span>🤝 특별실 양해 필요 항목 포함 ({batchConfirmingDrafts.filter((d) => !!d.candidate?.coordination).length}건)</span>
-                <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.5 rounded">양해 필수</span>
-              </div>
-              <p className="text-[11px] text-amber-900 leading-relaxed">
-                일괄 신청 대상 {batchConfirmingDrafts.length}건 중 일부 항목에 특별실 겹침 조율이 필요합니다.
+            <div className="space-y-3">
+              <p className="text-xs text-gray-700 font-semibold">
+                일괄 신청 대상 {batchConfirmingDrafts.length}건 중 <strong>{batchConfirmingDrafts.filter((d) => !!d.candidate?.coordination).length}건</strong>이 당사자 양해가 필요한 항목입니다.
               </p>
-              <label className="flex items-start gap-2 cursor-pointer bg-white/80 p-2.5 rounded-lg border border-amber-200">
+
+              {batchConfirmingDrafts
+                .filter((d) => !!d.candidate?.coordination)
+                .map((d, dIdx) => (
+                  <div key={d.id || dIdx} className="space-y-1">
+                    <div className="text-[11px] font-bold text-gray-900">
+                      항목 #{dIdx + 1}: {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} ➔ {d.candidate.counterpartName}
+                    </div>
+                    <CoordinationNoticeBlock coordination={d.candidate.coordination} />
+                  </div>
+                ))}
+
+              <div className="pt-2 border-t border-gray-100 space-y-2">
+                <label className="flex items-start gap-2 cursor-pointer bg-red-50/60 p-2.5 rounded-lg border border-red-200">
+                  <input
+                    type="checkbox"
+                    checked={batchConsentConfirmed}
+                    onChange={(e) => setBatchConsentConfirmed(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500 cursor-pointer"
+                  />
+                  <span className="text-xs font-bold text-red-950">
+                    위 양해 필요 항목들의 담당 선생님들께 사전 양해를 완료하였음을 확인합니다 (필수)
+                  </span>
+                </label>
                 <input
-                  type="checkbox"
-                  checked={batchConsentConfirmed}
-                  onChange={(e) => setBatchConsentConfirmed(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500 cursor-pointer"
+                  type="text"
+                  value={batchConsentNote}
+                  onChange={(e) => setBatchConsentNote(e.target.value)}
+                  placeholder="사전 양해 메모 (선택, 예: 시간표 조정 사전 합의)"
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
                 />
-                <span className="text-xs font-bold text-amber-950">
-                  특별실 실시간 사용 교사와 사전 양해를 완료했음을 확인합니다 (필수)
-                </span>
-              </label>
-              <input
-                type="text"
-                value={batchConsentNote}
-                onChange={(e) => setBatchConsentNote(e.target.value)}
-                placeholder="사전 양해 메모 (선택, 예: 해당 선생님들과 조율 완료)"
-                className="w-full border border-amber-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-amber-500 bg-white"
-              />
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">

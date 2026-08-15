@@ -260,18 +260,6 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
     active: true,
   };
 
-  // 통 이동 화면(직권 배정 탭)으로 바로 진입
-  const handleNavigateToSimulMove = (groupId: string) => {
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("direct_tab_simul_group_id", groupId);
-      window.dispatchEvent(
-        new CustomEvent("admin_navigate", {
-          detail: { menu: "timetable_operation", opTab: "direct", simulGroupId: groupId },
-        })
-      );
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* 카드 헤더 안내 */}
@@ -724,15 +712,6 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
                         </div>
 
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          {grp.id && grp.active !== false && (
-                            <button
-                              onClick={() => handleNavigateToSimulMove(grp.id!)}
-                              className="px-2.5 py-1 rounded bg-purple-100 hover:bg-purple-200 text-purple-950 text-xs font-extrabold transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
-                              title="이 그룹의 수업을 다른 교시로 통째로 이동합니다"
-                            >
-                              <span>🔀 통 이동 →</span>
-                            </button>
-                          )}
                           <button
                             onClick={() => handleEditClick(grp)}
                             className="px-2.5 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition-colors cursor-pointer"

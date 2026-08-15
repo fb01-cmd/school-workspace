@@ -169,3 +169,33 @@ export function getCoordinationOccupants(coordination?: CandidateCoordination): 
   return Array.from(map.values());
 }
 
+/** 조율 필요 후보의 모든 양해 대상 교사/점유자 목록 추출 (동시수업 + 특별실) */
+export function getCoordinationAllParties(coordination?: CandidateCoordination): string[] {
+  if (!coordination) return [];
+  const parties = new Set<string>();
+
+  if (coordination.simul?.steps) {
+    for (const step of coordination.simul.steps) {
+      if (step.groupLesson?.teacherName) {
+        parties.add(`${step.groupLesson.teacherName} 선생님(${step.classNum}반 ${step.groupLesson.subjectName})`);
+      }
+      if (step.counterpart?.teacherName) {
+        parties.add(`${step.counterpart.teacherName} 선생님(${step.counterpart.subjectName})`);
+      }
+    }
+  }
+
+  if (coordination.conflicts) {
+    for (const c of coordination.conflicts) {
+      for (const o of c.occupants) {
+        if (o.teacherName) {
+          parties.add(`${o.teacherName} 선생님(${o.grade}-${o.classNum}반 ${o.subjectName})`);
+        }
+      }
+    }
+  }
+
+  return Array.from(parties);
+}
+
+
