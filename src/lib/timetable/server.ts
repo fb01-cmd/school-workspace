@@ -2416,6 +2416,10 @@ interface VirtualSwapItem {
  * 적용되는 것을 보장하기 위함. 가상 문서는 절대 저장하지 않는다.
  */
 function buildVirtualChanges(item: VirtualSwapItem, weekId: string, appliedAt: number): TimetableChange[] {
+  // 통 이동은 반별 n건으로 전개되는 묶음이라 이 함수의 단건(swap/substitute) 표현으로 옮길 수 없다.
+  // 오늘은 도달 불가(생성 즉시 APPROVED라 PENDING 오버레이 대상이 아님)지만, 여기로 새면 조용히
+  // 대표 1개 반짜리 가짜 swap이 what-if 그리드에 그려진다 — 명시적으로 막는다.
+  if (item.type === "simul_move") return [];
   const common = {
     termId: item.termId,
     appliedBy: "__virtual__",
@@ -3239,6 +3243,10 @@ export async function createSwapRequest(
   options?: { skipManagerNotify?: boolean; direct?: boolean; batchId?: string }
 ): Promise<SwapRequest> {
   const reason = validateReason(params.reason);
+  // 통 이동·체인은 전용 생성 함수(commitSimulGroupMove·createChainSwapRequest)를 쓴다.
+  // 여기로 오면 아래 분기가 substitute로 처리해 "보강 교사가 공강이 아닙니다" 같은 엉뚱한 사유를 낸다.
+  if (params.type === "simul_move" || params.type === "chain")
+    throw new Error("이 신청 유형은 전용 경로로만 생성할 수 있습니다.");
   const week = await loadWeek(domain, params.weekId);
   if (!week) throw new Error(`등록되지 않은 주(${params.weekId})입니다.`);
 
@@ -4231,7 +4239,7 @@ export async function approveSwapRequest(
       r.candidate.counterpartEmail,
       ...(r.consent?.parties || []).map((p) => p.email),
     ])
-  );
+  ).filter(Boolean); // 빈 이메일 방어 — revert 경로의 recipients.delete("")와 같은 규약
   for (const to of approveRecipients) {
     try {
       await sendGoogleChat(to, msg);
@@ -4894,10 +4902,18 @@ async function loadActiveSimulGroupOrThrow(
   return group;
 }
 
-/** 통 이동 후보 조회 (§5b-4 simul_move_candidates) — UI 하이라이트·다이얼로그 재료 전부 동봉 */
+/**
+ * 통 이동 후보 조회 (§5b-4 simul_move_candidates) — UI 하이라이트·다이얼로그 재료 전부 동봉.
+ *
+ * `source` 생략 가능: 그룹의 **현행 슬롯 목록(groupSlots)만** 필요한 진입 시점용이다.
+ * 등록부 `SimulGroup.slots`는 "지정 시 그 교시만 대상, 미지정이면 과목명 일치 셀 전부"라는
+ * 선택 필드라 실데이터 11개 그룹 중 10개가 비어 있다 — 화면이 소스 슬롯을 등록부에서
+ * 얻으려 하면 그 10개는 고를 것이 없어 진행 자체가 막힌다(2026-08-15 검수 실측).
+ * 현행 슬롯의 단일 원본은 합성본이므로 서버가 소스 없이도 답할 수 있어야 한다.
+ */
 export async function computeSimulGroupMoveCandidates(
   domain: string,
-  params: { weekId: string; groupId: string; source: { day: number; period: number } }
+  params: { weekId: string; groupId: string; source?: { day: number; period: number } }
 ): Promise<{
   candidates: SimulGroupMoveCandidate[];
   group: { id: string; label: string; grade: number; classNums: number[] };
@@ -4922,10 +4938,13 @@ export async function computeSimulGroupMoveCandidates(
       }
   }
   groupSlots.sort((a, b) => a.day - b.day || a.period - b.period);
+  const groupInfo = { id: group.id!, label: group.label, grade: group.grade, classNums: group.classNums };
+  // 소스 미지정 = 슬롯 목록만 묻는 진입 조회 — 후보 계산 없음, 사유(error)도 없음
+  if (!params.source) return { candidates: [], group: groupInfo, groupSlots };
   const res = findSimulGroupMoveCandidates(grids, week, settings, group, params.source);
   return {
     candidates: res.candidates,
-    group: { id: group.id!, label: group.label, grade: group.grade, classNums: group.classNums },
+    group: groupInfo,
     groupSlots,
     ...(res.error ? { error: res.error } : {}),
   };

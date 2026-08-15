@@ -83,7 +83,11 @@ export default function NeisExportTab({ activeTermId }: NeisExportTabProps) {
       과목: r.subjectName,
       "변경전 교시": `${r.prevDate} (${DAY_LABEL[r.prevDay] || ""} ${r.prevPeriod}교시)`,
       "비고(특별보강 대체교사)": r.note || "",
-      구분: r.type === "cross_swap" ? "교차주맞교환" : r.type === "swap" ? "맞교환" : "특별보강",
+      구분:
+        r.type === "cross_swap" ? "교차주맞교환"
+        : r.type === "swap" ? "맞교환"
+        : r.type === "move" ? "통이동" // 이동수업 묶음이 빈 교시로 옮겨간 행 — 보강이 아니다
+        : "특별보강",
     }));
 
     const wb = XLSX.utils.book_new();
@@ -246,6 +250,10 @@ export default function NeisExportTab({ activeTermId }: NeisExportTabProps) {
                     ) : r.type === "swap" ? (
                       <span className="px-2 py-0.5 rounded text-[10px] bg-blue-50 text-blue-700 border border-blue-200">
                         맞교환
+                      </span>
+                    ) : r.type === "move" ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] bg-purple-50 text-purple-800 border border-purple-300">
+                        통이동
                       </span>
                     ) : (
                       <span className="px-2 py-0.5 rounded text-[10px] bg-orange-50 text-orange-700 border border-orange-200">

@@ -1327,3 +1327,28 @@ if (isProtectedAccountEmail(email)) {
      - `npx tsc --noEmit` 통과 (0 errors)
      - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` 통과 (Static pages 39/39 prerendered, 0 errors)
 
+
+## [2026-08-15] Claude — 양해 개방 Phase 3 표적 검수 (§5b-6): 조건부 통과 — 서버 3건 즉시 수정, UI 5건 안티그래비티 지시
+
+**판정: UI 기능은 현 상태로 실사용 불가 (활성 그룹 11개 중 10개에서 진행 자체가 막힘).** 아래 U1 수정 전까지 사용자 실검증 착수 금지. 나머지는 경미.
+
+### Claude가 즉시 고친 것 (서버·내 몫, 커밋 포함)
+1. **[중대] NEIS 제출 엑셀에서 통 이동 행이 "특별보강"으로 나감** — `NeisExportTab.tsx` 구분 열·화면 배지가 `cross_swap`/`swap` 아니면 전부 특별보강. move 행은 비고에 "이동수업 통 이동"이 찍히는데 구분은 "특별보강" → **모순 행이 나이스 실입력 대장으로 나가 실무사가 보강으로 입력할 위험**. `"통이동"` 분기 추가. §5b-6 1항이 flattenNeisChanges를 지목했는데 **생산자만 확장하고 유일 소비처를 놓친 내 누락**.
+2. **소스 슬롯 API 공백** — `computeSimulGroupMoveCandidates`의 `source`를 선택 항목으로 완화(생략 시 `groupSlots`만 반환, 사유 없음). 근본 원인은 U1과 동일(아래).
+3. **잠재 방어 3곳** — `buildVirtualChanges`(simul_move 조기 return), `createSwapRequest`(simul_move·chain 명시 거부 — 안 막으면 substitute 분기로 새어 "보강 교사가 공강이 아닙니다" 오사유), 승인 알림 수신자 `.filter(Boolean)`(counterpartEmail="" 방어). 셋 다 오늘은 도달 불가지만 명시 차단이 없던 유일한 계열.
+
+### Antigravity 몫 (UI)
+- **U1 [중대·선결] 소스 슬롯을 등록부 `SimulGroup.slots`에서 읽어 10/11 그룹이 막힘** — 이 필드는 "지정 시 그 교시만, 미지정이면 과목명 일치 셀 전부"인 **선택 필드**다(실측: 활성 11개 중 슬롯 지정 1개·미지정 10개). 미지정 그룹은 목록이 비고 → 후보 조회 API가 호출되지 않고 → 서버가 주는 `groupSlots`도 영영 안 옴 → 화면에 **"슬롯을 조회하는 중입니다..."가 영구 표시**(그리드는 소스가 있어야 렌더되므로 다른 진입로도 없음). 그룹 카드의 "통 이동 →" 진입 링크도 같은 막다른 길. 처방: 그룹·주 선택 시 **소스 없이** `simul_move_candidates`를 먼저 호출해 `groupSlots`를 받고 첫 슬롯 자동 선택(서버는 위 2번으로 이미 지원). 현행 슬롯의 단일 원본은 등록부가 아니라 **합성본**이다.
+- **U2 [중] 사유 구분 드롭다운에 서버가 거부하는 값 2개** — UI는 `연가`·`행사`를 주는데 서버 `SWAP_REASON_TYPES`는 `연수`·`학교행사`. 고르면 400("신청 사유를 선택해야 합니다"). `as SwapReasonType` 캐스트가 tsc를 무력화한 자리 — 하드코딩 말고 `SWAP_REASON_TYPES`를 map으로 렌더할 것.
+- **U3 [경] 요청대장 화살표·교시 중복** — `… 월2교시 → → 이동: 월2교시 → 화4교시`(SwapRequestLedgerTab 428행 `→` 직후 432~435행이 소스를 재출력).
+- **U4 [경] 요청대장·교사포털 첫 줄이 대표 1개 반·그룹라벨로 오독 유발** — `source.classNum`은 `classNums[0]`, `source.subjectName` 자리에 그룹 라벨(내가 만든 요약 스냅샷 형태 탓). simul_move일 때는 `simulMove.classNums`·`label`로 렌더할 것.
+- **U5 [경] 문구·렌더** — ① "…원자로 반영합니다"(1056행) = 개발 용어이자 동음이의(원자로), "한 번에 반영" 류로 교체 ② 모바일·학생 카드가 move를 "교체"로 표기(`TodayTimetableCard` 112행, `StudentTimetableCard` 178·194행) — "이동"이 맞음 ③ 반별 상세 `key={step.classNum}` 중복 키(한 반에 그룹 수업이 둘이면 swap+move로 2행) ④ 기존 안내 문구에서 "양해 이미지도 만들 수 있습니다" 구절이 개서 중 빠짐(기능은 살아 있음 — 문구만 복원).
+
+### 통과 확인된 것
+- **기존 직권 배정 회귀 0건** — 삭제 664줄 전수 대조(공백 무시 유일화 후 comm + 기존 렌더 블록 통째 diff): 후보 탐색·담기·일괄 반영·단건 양해 다이얼로그·조율 2단 경고·체인·교차 주·beforeunload·이후 주 더 보기 전부 현존. 실제 소실은 죽은 변수 1개와 위 U5-④ 문구뿐.
+- **`counterpartEmail=""` 파급 없음** — 알림 3경로(커밋·revert·웹푸시) 모두 이 필드를 안 읽거나 빈 값을 제거하고, UI는 simul_move 분기가 "상대" 표기보다 먼저 걸리며, 이 필드 기반 Firestore 쿼리는 0건.
+- **양해 게이트 정확** — 체크 없으면 반영 버튼 비활성 + 서버 400(이중 방어), 위치도 §3-2b-3대로 반영 직전 1곳.
+- **재검증**: 서버 수정 후 `verify_simul_move_phase3.ts` 2사이클 전 항목 재통과(원장 원복 포함) · tsc ✅ · build ✅.
+
+### 남은 기존 결함 (이번 건 아님, 기록만)
+`flattenNeisChanges`의 `filter.type`은 5종 유니온을 받지만 `substitute`/`swap` 두 값만 해석 — `cross_swap`·`chain`·`simul_move`를 넘기면 필터가 조용히 무효화돼 전건 반환. 현행 UI는 `substitute`/미지정만 보내 증상 없음. API 직접 호출 시에만 노출.

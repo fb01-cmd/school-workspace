@@ -581,16 +581,18 @@ export async function POST(req: NextRequest) {
         const src = body.simulMoveSource as any;
         const okSlot = (o: any) =>
           o && ["day", "period"].every((k) => Number.isInteger(o[k]) && o[k] > 0);
-        if (!body.weekId || !body.simulGroupId || !okSlot(src)) {
+        // simulMoveSource는 선택 — 생략하면 그룹의 현행 슬롯(groupSlots)만 반환(진입 조회).
+        // 값을 보냈는데 형식이 틀린 경우만 400 (조용한 무시 금지).
+        if (!body.weekId || !body.simulGroupId || (src !== undefined && !okSlot(src))) {
           return NextResponse.json(
-            { error: "weekId, simulGroupId, simulMoveSource(day·period)가 필요합니다." },
+            { error: "weekId, simulGroupId가 필요합니다 (simulMoveSource를 보낼 때는 day·period 형식)." },
             { status: 400 }
           );
         }
         const result = await computeSimulGroupMoveCandidates(domain, {
           weekId: body.weekId,
           groupId: body.simulGroupId,
-          source: { day: src.day, period: src.period },
+          ...(src ? { source: { day: src.day, period: src.period } } : {}),
         });
         return NextResponse.json({ success: true, action, ...result });
       }
