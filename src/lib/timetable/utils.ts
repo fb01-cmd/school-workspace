@@ -172,30 +172,34 @@ export function getCoordinationOccupants(coordination?: CandidateCoordination): 
 /** 조율 필요 후보의 모든 양해 대상 교사/점유자 목록 추출 (동시수업 + 특별실) */
 export function getCoordinationAllParties(coordination?: CandidateCoordination): string[] {
   if (!coordination) return [];
-  const parties = new Set<string>();
+  // 사람 단위로 묶는다 — 한 교사가 그룹 수업 담당이면서 동시에 치워지는 상대일 수 있어(실데이터 확인),
+  // 표시 문자열로 중복 제거하면 같은 사람이 두 번 세어져 양해 인원이 부풀려진다.
+  // 서버 도출(deriveSimulMoveParties)과 같은 축(이메일)으로 묶고, 역할은 한 줄에 합친다.
+  const people = new Map<string, { name: string; roles: string[] }>();
+  const add = (email: string | undefined, name: string | undefined, role: string) => {
+    if (!name) return;
+    const key = (email || "").trim().toLowerCase() || `name:${name}`;
+    const entry = people.get(key) || { name, roles: [] };
+    if (!entry.roles.includes(role)) entry.roles.push(role);
+    people.set(key, entry);
+  };
 
   if (coordination.simul?.steps) {
     for (const step of coordination.simul.steps) {
-      if (step.groupLesson?.teacherName) {
-        parties.add(`${step.groupLesson.teacherName} 선생님(${step.classNum}반 ${step.groupLesson.subjectName})`);
-      }
-      if (step.counterpart?.teacherName) {
-        parties.add(`${step.counterpart.teacherName} 선생님(${step.counterpart.subjectName})`);
-      }
+      add(step.groupLesson?.teacherEmail, step.groupLesson?.teacherName, `${step.classNum}반 ${step.groupLesson?.subjectName}`);
+      if (step.counterpart) add(step.counterpart.teacherEmail, step.counterpart.teacherName, step.counterpart.subjectName);
     }
   }
 
   if (coordination.conflicts) {
     for (const c of coordination.conflicts) {
       for (const o of c.occupants) {
-        if (o.teacherName) {
-          parties.add(`${o.teacherName} 선생님(${o.grade}-${o.classNum}반 ${o.subjectName})`);
-        }
+        add(o.teacherEmail, o.teacherName, `${o.grade}-${o.classNum}반 ${o.subjectName}`);
       }
     }
   }
 
-  return Array.from(parties);
+  return Array.from(people.values()).map((p) => `${p.name} 선생님(${p.roles.join("·")})`);
 }
 
 
