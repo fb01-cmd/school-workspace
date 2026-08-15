@@ -335,7 +335,8 @@ export type ManageAction =
   | "direct_commit_batch" // §14-4 직권 담기 일괄 반영 — direct_commit을 항목별 순차 실행 (부분 성공 허용)
   | "direct_projected" // §14-4 담기 가상 반영 그리드 — 대상 교사 전 주 시간표에 pendingItems 가상 적용 (my_projected의 직권 대응)
   | "chain_search" // §C 징검다리 체인 — 소스 수업이 목적지 슬롯에 도달하는 교환 수열 역방향 탐색 (pre_opening_3features_spec §C-2)
-  // ── 동시수업 묶음 통 이동 (consent_swap_opening_spec §5b-4) — 직권 전용, requests 라우트에는 열지 않는다 ──
+  // ── 동시수업 묶음 통 이동 (consent_swap_opening_spec §5b-4·§5c-3) — 직권 즉시 반영은 보조 경로
+  //    (주 경로는 requests의 candidates 혼입 + simul_move_create 신청·approve 승인, §5c-7) ──
   | "simul_move_candidates" // 그룹·소스 슬롯 → 이동 가능 후보 (steps·coordination·warnings·score 동봉)
   | "simul_move_commit"     // 재계산 대조 + consent 필수 + 반별 change 단일 트랜잭션 원자 커밋
   // ── Phase 9b 순서 5 운영 도구 (phase9b_spec §8) ──
@@ -618,7 +619,8 @@ export interface TimetableChange {
 
 export type SwapRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELED";
 // "chain" = 교사 징검다리 체인 신청 (consent_swap_opening_spec §4-3) — 승인 시 단계별 swap/cross_swap change로 전개
-// "simul_move" = 동시수업 묶음 통 이동 (§5b) — 직권 전용, 즉시 APPROVED + 반별 swap/move change 원자 커밋
+// "simul_move" = 동시수업 묶음 통 이동 (§5b·§5c) — 교사 신청(PENDING→승인)이 주 경로, 일과계 직권(즉시
+//   APPROVED)은 보조. 어느 경로든 반별 swap/move change 원자 커밋 + requestId 묶음 전량 revert.
 export type SwapRequestType = "swap" | "substitute" | "cross_swap" | "chain" | "simul_move";
 
 export const SWAP_REASON_TYPES = ["출장", "연수", "병가", "공가", "학교행사", "기타"] as const;
@@ -661,16 +663,32 @@ export interface CoordinationOccupant {
 }
 
 /**
- * 조율 필요 후보의 충돌 명세 (consent_swap_opening_spec §2-2).
- * 1차는 특별실(venue)만 — 다른 하드 제외의 조율 후보화는 실수요 신호 후.
+ * 조율 필요 후보의 묶음(동시수업) 이동 명세 (consent_swap_opening_spec §5c-7).
+ * 통 이동은 별도 기능이 아니라 조율 필요 후보의 종류 하나 — 실제 상대 목록의 원본은 steps다
+ * (후보의 counterpartName은 그룹 라벨 요약뿐, chain 전례). 화면은 steps로 렌더한다.
+ */
+export interface CoordinationSimulInfo {
+  groupId: string;
+  label: string; // SimulGroup 라벨 (사람용)
+  grade: number;
+  classNums: number[];
+  steps: SimulMoveStep[]; // 반별 전개 — 서버 계산값
+  warnings?: string[]; // 연속시수 경고 등 — 차단하지 않는다 (§5b-2)
+}
+
+/**
+ * 조율 필요 후보의 충돌 명세 (consent_swap_opening_spec §2-2·§5c-7).
+ * "venue" = 특별실 충돌(conflicts 1건 이상) / "simul" = 묶음 이동(simul 블록) /
+ * "venue+simul" = 둘 다. 소비처는 kind 등호 비교 대신 conflicts·simul 존재로 분기할 것.
  */
 export interface CandidateCoordination {
-  kind: "venue";
+  kind: "venue" | "simul" | "venue+simul";
   conflicts: Array<{
     roomName: string; // 겹치는 특별실 (예: "탁구장")
     slot: { weekId: string; day: number; period: number }; // 충돌이 나는 슬롯
     occupants: CoordinationOccupant[];
   }>;
+  simul?: CoordinationSimulInfo; // kind에 simul이 포함될 때만
 }
 
 /**
@@ -906,7 +924,8 @@ export type SwapRequestAction =
   | "draft_delete"
   | "draft_delete_all" // §3-2d S2: 본인 초안 전량 일괄 삭제 (U3 "초안 전체 비우기")
   | "chain_search" // 교사 체인 탐색 — 소스 본인 소유 검증 후 computeChainSearch (consent_swap_opening_spec §4-2)
-  | "chain_create"; // 체인 신청 생성 — 서버 재탐색 대조 + consent 필수 (§4-3)
+  | "chain_create" // 체인 신청 생성 — 서버 재탐색 대조 + consent 필수 (§4-3)
+  | "simul_move_create"; // 묶음 수업 통 이동 신청 — 소유 검증·재계산 대조·consent 필수, 그룹·슬롯 단위 중복 차단 (§5c-2)
 
 /** 장바구니 일괄 제출 항목 (phase9b_spec §14-2). 교차 주는 type:"swap"+targetWeekId — create와 동일 규약 */
 export interface SwapBatchCreateItem {
@@ -1001,6 +1020,8 @@ export interface SwapRequestApiRequest {
   chainTarget?: { weekId?: string; day: number; period: number };
   chainMaxDepth?: number; // 기본 2, 상한 3 (§C-2)
   chainSteps?: ChainStepItem[]; // chain_create: 화면에서 선택한 체인의 단계열 — 서버가 재탐색 대조 후 서버 값 스냅샷
+  // 묶음 수업 통 이동 신청 (simul_move_create — consent_swap_opening_spec §5c-2). 소스는 body.source 재사용
+  simulMoveTarget?: { day: number; period: number };
   // 임시저장 (draft_save / draft_delete)
   draftId?: string;
   draft?: {

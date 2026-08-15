@@ -396,17 +396,19 @@ export async function POST(req: NextRequest) {
         if (!body.requestId) {
           return NextResponse.json({ error: "requestId가 누락되었습니다." }, { status: 400 });
         }
-        const { request, change } = await approveSwapRequest(domain, auth.email, body.requestId);
+        const { request, change, changes } = await approveSwapRequest(domain, auth.email, body.requestId);
         await writeAuditLog({
           operatorEmail: auth.email,
           targetEmail: request.requesterEmail,
           action: "approve_swap_request",
-          details: `수업교환 승인: ${request.source.grade}-${request.source.classNum} ${request.source.day}요일 ${request.source.period}교시 (${request.type}) → change ${change.id}`,
+          details: `수업교환 승인: ${request.source.grade}-${request.source.classNum} ${request.source.day}요일 ${request.source.period}교시 (${request.type}) → change ${changes.map((c) => c.id).join(", ")}`,
           status: "success",
         });
-        // 웹 푸시: 당사자 교사 + 해당 반 학생 (응답 후 발송, docs/web_push_spec.md §5)
-        after(() => notifyTimetableChanges(domain, [change]));
-        return NextResponse.json({ success: true, action, request, change });
+        // 웹 푸시: 당사자 교사 + 해당 반 학생 (응답 후 발송, docs/web_push_spec.md §5).
+        // §5c: 체인·통 이동은 change가 여러 건 — 전량을 넘겨야 뒷 단계·다른 반 당사자도 푸시를 받는다
+        // (revert_change의 allReverts 전량 발송과 같은 이유. 종전 [change] 1건은 체인에서 누락이 있었다).
+        after(() => notifyTimetableChanges(domain, changes.length ? changes : [change]));
+        return NextResponse.json({ success: true, action, request, change, changes });
       }
 
       case "reject": {

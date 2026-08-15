@@ -7,6 +7,7 @@ import {
   computeChainSearch,
   computeMyProjectedWeeks,
   createChainSwapRequest,
+  createSimulMoveRequest,
   createSwapRequest,
   deleteAllSwapDrafts,
   deleteSwapDraft,
@@ -286,6 +287,51 @@ export async function POST(req: NextRequest) {
           if (
             msg.includes("양해") || msg.includes("유효하지") || msg.includes("본인의 수업만") ||
             msg.includes("대기 중인 신청") || msg.includes("사유") || msg.includes("단계")
+          ) {
+            return NextResponse.json({ error: msg }, { status: 400 });
+          }
+          throw e;
+        }
+      }
+
+      // ── 묶음 수업 통 이동 신청 (consent_swap_opening_spec §5c-2) ──
+      // 교사 신청 경로가 주 경로 — 후보는 기존 candidates/candidates_all에 조율 필요 후보로 섞여
+      // 나오고(§5c-7), 신청만 전용 액션이다 (반별 전개·그룹 단위 중복 차단이 일반 create와 다름).
+
+      case "simul_move_create": {
+        const src = body.source as any;
+        const tgt = body.simulMoveTarget as any;
+        const okSlot = (o: any, keys: string[]) =>
+          o && keys.every((k) => Number.isInteger(o[k]) && o[k] > 0);
+        if (!body.weekId || !okSlot(src, ["grade", "classNum", "day", "period"])) {
+          return NextResponse.json({ error: "weekId와 source(grade·classNum·day·period)가 필요합니다." }, { status: 400 });
+        }
+        if (!okSlot(tgt, ["day", "period"])) {
+          return NextResponse.json({ error: "simulMoveTarget(day·period)가 필요합니다." }, { status: 400 });
+        }
+        try {
+          const request = await createSimulMoveRequest(domain, auth.email, {
+            weekId: body.weekId,
+            source: { grade: src.grade, classNum: src.classNum, day: src.day, period: src.period },
+            target: { day: tgt.day, period: tgt.period },
+            reason: body.reason,
+            consent: body.consent,
+          });
+          const sm = request.simulMove!;
+          await writeAuditLog({
+            operatorEmail: auth.email,
+            targetEmail: auth.email,
+            action: "create_simul_move_request",
+            details: `묶음 수업 이동 신청: ${sm.grade}학년 ${sm.classNums.join("·")}반 「${sm.label}」 (${sm.from.day},${sm.from.period})→(${sm.to.day},${sm.to.period}) · 양해 ${request.consent?.parties.length || 0}명 · 사유 ${request.reason.type}`,
+            status: "success",
+          });
+          return NextResponse.json({ success: true, action, request });
+        } catch (e: any) {
+          const msg = e.message || "";
+          if (
+            msg.includes("양해") || msg.includes("유효하지") || msg.includes("본인의 수업만") ||
+            msg.includes("대기 중인") || msg.includes("사유") || msg.includes("등록부") ||
+            msg.includes("움직이는 수업이 아닙니다") || msg.includes("등록되지 않은 주")
           ) {
             return NextResponse.json({ error: msg }, { status: 400 });
           }

@@ -1238,6 +1238,7 @@ import { holidayNameOf } from "./holidays";
 import {
   BaseRevisionOp,
   CalendarEventType,
+  CandidateCoordination,
   ChainSearchChain,
   ChainStepItem,
   CrossSwapLessonRef,
@@ -1247,6 +1248,7 @@ import {
   ProjectedDayLoad,
   SimulGroupMoveCandidate,
   SimulMoveInfo,
+  SimulMoveStep,
   SubstituteCandidate,
   SwapCandidate,
   SwapCandidateSnapshot,
@@ -2531,6 +2533,10 @@ async function loadMyVirtualOverlay(
     for (const doc of snap.docs) {
       const r = doc.data() as SwapRequest;
       if (!touches(r.weekId, r.targetWeekId) || isExcluded(r.weekId, r.source)) continue;
+      // §5c-4: PENDING simul_move는 반별 n건 묶음이라 단건 오버레이로 표현 불가
+      // (buildVirtualChanges 조기 return) — 집계에 넣으면 "N건 반영" 숫자만 부풀린다.
+      // 그리드에는 UI가 "대기 중인 묶음 이동 신청 있음" 배지로 별도 안내한다.
+      if (r.type === "simul_move") continue;
       items.push({
         key: `req-${doc.id}`, termId: r.termId, weekId: r.weekId, targetWeekId: r.targetWeekId,
         type: r.type, requesterEmail: norm, requesterName: r.requesterName,
@@ -2991,6 +2997,34 @@ export async function computeCandidatesAllWeeks(
   }
 
   const srcGrids = synthByWeek.get(sourceWeekId)!;
+
+  // ── §5c-7: 묶음(simul) 소스 분기 — 소스 주에만 통 이동 후보, 다른 주는 빈 목록
+  //    (교차 주 통 이동은 v1 범위 제외 §7 — 그리드 인라인 렌더 호환을 위해 주 목록은 유지).
+  //    조건부 태깅 없음: what-if 오버레이는 simul_move를 표현하지 않으므로 기준이 없다.
+  const simulBranch = await trySimulMoveCandidatesBranch(
+    domain, term.id, srcGrids, sourceWeek, settings, source, requesterEmail
+  );
+  if (simulBranch) {
+    if (simulBranch.error) {
+      return {
+        sourceSubjectName: simulBranch.sourceSubjectName, weeks: [], error: simulBranch.error,
+        assumedPendingCount: overlay?.pendingCount || 0, assumedDraftCount: overlay?.draftCount || 0,
+        assumedExtraCount: extraCount,
+      };
+    }
+    return {
+      sourceSubjectName: simulBranch.sourceSubjectName,
+      weeks: allWeeks.map((w) => ({
+        weekId: w.id,
+        startDate: w.startDate,
+        swapCandidates: w.id === sourceWeekId ? simulBranch.swapCandidates : [],
+      })),
+      assumedPendingCount: overlay?.pendingCount || 0,
+      assumedDraftCount: overlay?.draftCount || 0,
+      assumedExtraCount: extraCount,
+    };
+  }
+
   const src = resolveSourceLesson(srcGrids, requesterEmail, source);
   if (!src.ok) {
     return {
@@ -3086,6 +3120,38 @@ export async function computeCandidates(
     : {};
 
   const { grids } = await synthesizeWeek(domain, week, overlay?.byWeek.get(weekId));
+
+  // ── §5c-7: 소스가 묶음(simul) 수업이면 통 이동 후보로 분기 — 같은 후보 목록에 섞여 나간다.
+  //    기존 함수(resolveSourceLesson·엔진)는 무수정, 분기는 이 호출부에서만 (§5c-7-3 = 회귀 0).
+  const simulBranch = await trySimulMoveCandidatesBranch(
+    domain, week.termId, grids, week, settings, source, requesterEmail
+  );
+  if (simulBranch) {
+    if (simulBranch.error) {
+      return {
+        swapCandidates: [], substituteCandidates: [],
+        sourceSubjectName: simulBranch.sourceSubjectName, error: simulBranch.error,
+      };
+    }
+    if (targetWeekId && targetWeekId !== weekId) {
+      // 교차 주 통 이동은 v1 범위 제외 (§7)
+      return {
+        swapCandidates: [], substituteCandidates: [],
+        sourceSubjectName: simulBranch.sourceSubjectName, targetWeekId,
+        error: "여러 반이 함께 움직이는 수업은 다른 주와의 교차 교환을 지원하지 않습니다.",
+      };
+    }
+    return {
+      swapCandidates: simulBranch.swapCandidates,
+      substituteCandidates: [], // 묶음 수업은 특별보강 대상이 아니다 (기존 하드 제외 유지)
+      sourceSubjectName: simulBranch.sourceSubjectName,
+      // 조건부(conditional) 태깅 없음 — what-if 오버레이는 simul_move를 표현하지 않으므로 기준이 없다
+      ...(overlay
+        ? { ...whatIfExtras, projectedDayLoads: countMyDayLoads(grids, requesterEmail) }
+        : {}),
+    };
+  }
+
   const src = resolveSourceLesson(grids, requesterEmail, source);
   if (!src.ok) {
     return { swapCandidates: [], substituteCandidates: [], sourceSubjectName: "", error: src.error };
@@ -3297,6 +3363,10 @@ export async function createSwapRequest(
       }
       throw new Error("선택한 후보가 더 이상 유효하지 않습니다. 후보를 다시 조회해 주세요.");
     }
+    // §5c-7: 묶음(simul) 소스의 통 이동 후보는 일반 후보 모양으로 섞여 나온다 — 일반 swap
+    // 신청으로는 받지 않는다 (API 우회 방어). 전용 경로 = simul_move_create·simul_move_commit.
+    if (match.coordination?.simul)
+      throw new Error("여러 반이 함께 움직이는 수업입니다. 묶음 이동 신청으로만 처리할 수 있습니다.");
     candidate = { ...match, ...(targetWeekId ? { targetWeekId } : {}) }; // 서버 계산값 스냅샷 (점수·감점 포함)
   } else {
     const match = computed.substituteCandidates.find(
@@ -3609,6 +3679,8 @@ export async function validatePendingSwapRequests(
       if (w && base) gridsByWeek.set(wid, synthesizeWeeklyGrids(base, w, changes, settings).grids);
     })
   );
+  // 통 이동(simul_move) 재검증용 등록부 — 학기당 1회만 로드 (PENDING simul_move가 있을 때만)
+  const simulGroupsByTerm = new Map<string, SimulGroup[]>();
 
   for (const r of pendings) {
     try {
@@ -3619,9 +3691,31 @@ export async function validatePendingSwapRequests(
         continue;
       }
       if (r.type === "simul_move") {
-        // 통 이동은 생성 즉시 APPROVED라 PENDING으로 나타나지 않는다 (§5b-6-2 확인용 방어 분기) —
-        // source가 관리자 명의 요약이라 resolveSourceLesson 검증이 성립하지 않으므로 먼저 건너뛴다.
-        out[r.id] = { ok: true };
+        // §5c-4: 교사 신청 경로가 생기며 PENDING simul_move가 실재한다 — §5b의 "도달 불가" 조기
+        // 통과를 **진짜 재검증**으로 교체. source는 요약이라 resolveSourceLesson이 성립하지 않으므로
+        // (simul 스탬프에 막힘) 승인 분기와 같은 방식으로 그룹 로드 → 엔진 재실행 → (from,to) 대조.
+        const sm = r.simulMove;
+        if (!sm) {
+          out[r.id] = { ok: false, reason: "묶음 이동 정보가 없는 신청입니다." };
+          continue;
+        }
+        if (!simulGroupsByTerm.has(r.termId))
+          simulGroupsByTerm.set(r.termId, await loadSimulGroups(domain, r.termId));
+        const group = (simulGroupsByTerm.get(r.termId) || []).find((g) => g.id === sm.groupId);
+        if (!group || !group.active) {
+          out[r.id] = { ok: false, reason: "이동수업 그룹이 등록부에서 삭제되거나 중지되어 승인할 수 없습니다." };
+          continue;
+        }
+        const res = findSimulGroupMoveCandidates(grids, week, settings, group, sm.from);
+        const still =
+          !res.error &&
+          res.candidates.some((c) => c.targetDay === sm.to.day && c.targetPeriod === sm.to.period);
+        out[r.id] = still
+          ? { ok: true }
+          : {
+              ok: false,
+              reason: res.error || "먼저 승인된 다른 변경으로 이 이동안이 더 이상 성립하지 않습니다.",
+            };
         continue;
       }
       const src = resolveSourceLesson(grids, r.requesterEmail, r.source);
@@ -3708,7 +3802,7 @@ export async function approveSwapRequest(
   managerEmail: string,
   requestId: string,
   options?: { skipNotify?: boolean } // 검증 스크립트 전용 — 라우트·직권 경로는 항상 알림
-): Promise<{ request: SwapRequest; change: TimetableChange }> {
+): Promise<{ request: SwapRequest; change: TimetableChange; changes: TimetableChange[] }> {
   // 기초 그리드·설정·주는 승인 중 변하지 않으므로 트랜잭션 밖에서 읽는다.
   const reqSnapPre = await swapRequestsColRef(domain).doc(requestId).get();
   if (!reqSnapPre.exists) throw new Error("신청을 찾을 수 없습니다.");
@@ -3739,6 +3833,17 @@ export async function approveSwapRequest(
     if (!w)
       throw new Error(`등록되지 않은 주(${wid})입니다. 체인 대상 주 등록이 삭제되어 승인할 수 없습니다.`);
     chainWeeks.set(wid, w);
+  }
+
+  // 통 이동(§5c-2): 그룹 등록부는 승인 중 불변 — 트랜잭션 밖에서 로드 (week·settings와 같은 이유)
+  let simulGroup: SimulGroup | null = null;
+  if (reqPre.type === "simul_move") {
+    if (!reqPre.simulMove) throw new Error("묶음 이동 정보가 없는 신청입니다.");
+    try {
+      simulGroup = await loadActiveSimulGroupOrThrow(domain, reqPre.termId, reqPre.simulMove.groupId);
+    } catch (e: any) {
+      throw new Error(`승인 불가 — ${e.message}`);
+    }
   }
 
   // 기초는 개정판 주차별 해석 (spec §E) — 교차 주·체인은 주별 기초판이 다를 수 있다
@@ -3778,6 +3883,74 @@ export async function approveSwapRequest(
 
     // 트랜잭션 내 재검증: 현재 오버레이 기준으로 후보가 여전히 성립하는가
     const { grids } = synthesizeWeeklyGrids(baseGrids, week, changes, settings);
+
+    // ── 통 이동 승인 (consent_swap_opening_spec §5c-2): 재합성 → 엔진 재실행 → (from,to) 대조 →
+    //    반별 change 원자 커밋 (조립부는 직권 커밋과 공용). resolveSourceLesson 앞에 두는 이유:
+    //    소스 셀이 simul 스탬프라 기존 소스 검증이 정의상 성립하지 않는다. ──
+    if (request.type === "simul_move") {
+      const sm = request.simulMove;
+      if (!sm) throw new Error("묶음 이동 정보가 없는 신청입니다.");
+      if (!request.consent?.confirmed)
+        throw new Error(
+          "승인 불가 — 묶음 이동은 관련 선생님 전원의 양해 기록이 필요합니다. 신청자의 재신청이 필요합니다."
+        );
+      const res = findSimulGroupMoveCandidates(grids, week, settings, simulGroup!, sm.from);
+      if (res.error) throw new Error(`승인 불가 — ${res.error}`);
+      const match = res.candidates.find(
+        (c) => c.targetDay === sm.to.day && c.targetPeriod === sm.to.period
+      );
+      if (!match)
+        throw new Error(
+          "승인 불가 — 다른 변경으로 이 이동안이 더 이상 성립하지 않습니다. 신청자의 재신청이 필요합니다."
+        );
+      // 반별 전개가 신청 시점과 달라졌으면 승인 불가 — 화면에 보여주고 양해받은 내용과 커밋이
+      // 어긋나면 안 된다 (chain의 단계 대조와 같은 정신)
+      if (simulStepsSignature(match.steps) !== simulStepsSignature(sm.steps))
+        throw new Error(
+          "승인 불가 — 다른 변경으로 반별 이동 내용이 신청 시점과 달라졌습니다. 신청자의 재신청이 필요합니다."
+        );
+      // 양해 당사자 확장 검사 — 재계산 당사자(특별실 점유 변화 포함)가 양해 명단 밖이면 승인 불가
+      const consented = new Set([
+        request.requesterEmail,
+        ...request.consent.parties.map((p) => p.email),
+      ]);
+      const derived = deriveSimulMoveParties(match);
+      for (const email of derived.keys())
+        if (!consented.has(email))
+          throw new Error(
+            "승인 불가 — 상황이 바뀌어 양해가 필요한 선생님이 늘었습니다. 신청자의 재신청이 필요합니다."
+          );
+
+      const now = Date.now();
+      const { changes: newChanges, refs } = assembleSimulMoveChanges(domain, {
+        termId: request.termId,
+        weekId: request.weekId,
+        requestId,
+        appliedBy: managerEmail.toLowerCase(),
+        now,
+        grade: sm.grade,
+        from: sm.from,
+        to: sm.to,
+        steps: match.steps, // 서버 재계산 값 — 위 서명 대조로 신청 시점과 동일함이 보장된 상태
+      });
+      newChanges.forEach((c, i) => tx.set(refs[i], c));
+      tx.update(reqRef, {
+        status: "APPROVED",
+        decidedBy: managerEmail.toLowerCase(),
+        decidedAt: now,
+        appliedChangeIds: newChanges.map((c) => c.id),
+      });
+      return {
+        request: {
+          ...request,
+          status: "APPROVED" as const,
+          appliedChangeIds: newChanges.map((c) => c.id),
+        },
+        change: newChanges[0],
+        changes: newChanges,
+      };
+    }
+
     const src = resolveSourceLesson(grids, request.requesterEmail, request.source);
     if (!src.ok) throw new Error(`승인 불가 — ${src.error} 신청자의 재신청이 필요합니다.`);
 
@@ -3993,6 +4166,7 @@ export async function approveSwapRequest(
       return {
         request: { ...request, status: "APPROVED" as const, appliedChangeIds: newChanges.map((c) => c.id) },
         change: newChanges[0],
+        changes: newChanges,
       };
     }
 
@@ -4092,6 +4266,7 @@ export async function approveSwapRequest(
       return {
         request: { ...request, status: "APPROVED" as const, appliedChangeIds: [refA.id, refB.id] },
         change: changeA,
+        changes: [changeA, changeB],
       };
     }
 
@@ -4187,7 +4362,11 @@ export async function approveSwapRequest(
       decidedAt: change.appliedAt,
       appliedChangeIds: [changeRef.id],
     });
-    return { request: { ...request, status: "APPROVED" as const, appliedChangeIds: [changeRef.id] }, change };
+    return {
+      request: { ...request, status: "APPROVED" as const, appliedChangeIds: [changeRef.id] },
+      change,
+      changes: [change],
+    };
   });
 
   // changes 커밋 완료 → view 캐시 무효화 (알림 실패와 무관하게 먼저)
@@ -4215,6 +4394,30 @@ export async function approveSwapRequest(
         await sendGoogleChat(to, chainMsg);
       } catch (e: any) {
         console.error(`[chain_approve] 알림 실패 (${to}):`, e.message);
+      }
+    }
+    return result;
+  }
+  // 통 이동 승인 (§5c-2): 수신자 = 신청자 + 양해 당사자 전원, 문구는 반별 전개 눈높이 (직권 커밋과 동일 골격)
+  if (r.type === "simul_move" && r.simulMove) {
+    const sm = r.simulMove;
+    const simulMsg =
+      `🧩 묶음 수업 이동 승인 완료\n` +
+      `${sm.grade}학년 ${sm.classNums.join("·")}반 ${dayNames[sm.from.day]} ${sm.from.period}교시 「${sm.label}」 수업이 ` +
+      `${dayNames[sm.to.day]} ${sm.to.period}교시로 통째로 이동합니다.\n` +
+      (r.candidate?.penalties || []).map((line) => `· ${line}`).join("\n") +
+      (r.consent
+        ? `\n🤝 양해 확인됨: ${r.consent.parties.map((p) => p.name).join(", ")}${r.consent.note ? ` — ${r.consent.note}` : ""}`
+        : "") +
+      `\n신청: ${r.requesterName} · 승인: ${managerEmail}`;
+    const simulRecipients = Array.from(
+      new Set([r.requesterEmail, ...(r.consent?.parties || []).map((p) => p.email)])
+    ).filter(Boolean);
+    for (const to of simulRecipients) {
+      try {
+        await sendGoogleChat(to, simulMsg);
+      } catch (e: any) {
+        console.error(`[simul_move_approve] 알림 실패 (${to}):`, e.message);
       }
     }
     return result;
@@ -4503,6 +4706,35 @@ export async function computeDirectCandidates(
   const week = await loadWeek(domain, weekId);
   if (!week) throw new Error(`등록되지 않은 주(${weekId})입니다.`);
   const { grids } = await synthesizeWeek(domain, week);
+
+  // ── §5c-7-6: 직권도 같은 방식 — 수업 클릭 → 묶음이면 통 이동 조율 후보로 분기.
+  //    resolveDirectSource는 무수정(simul 차단이 단건 직권·보강의 방어) — 분기는 이 호출부에서.
+  //    소유 검증 없음(일과계 권한) — 반영은 simul_move_commit(양해 필수)로만 간다.
+  const cell = grids
+    .find((g) => g.grade === source.grade && g.classNum === source.classNum)
+    ?.cells.find((c) => c.day === source.day && c.period === source.period);
+  if ((cell?.lessons || []).some((l) => l.simul)) {
+    const settings = await loadTimetableSettings(domain);
+    const branch = await trySimulMoveCandidatesBranch(domain, week.termId, grids, week, settings, source);
+    if (branch) {
+      if (branch.error) return { error: branch.error };
+      if (targetWeekId && targetWeekId !== weekId)
+        return { error: "여러 반이 함께 움직이는 수업은 다른 주와의 교차 교환을 지원하지 않습니다." };
+      const lesson = cell!.lessons.find((l) => l.simul);
+      const t = (lesson?.teachers || [])[0];
+      return {
+        swapCandidates: branch.swapCandidates,
+        substituteCandidates: [],
+        sourceSubjectName: branch.sourceSubjectName,
+        sourceTeacher: {
+          teacherEmail: (t?.email || "").trim().toLowerCase(),
+          teacherName: t?.name || "",
+          subjectName: branch.sourceSubjectName,
+        },
+      };
+    }
+  }
+
   const resolved = resolveDirectSource(grids, source);
   if (!resolved.ok) return { error: resolved.error };
   const computed = await computeCandidates(
@@ -4886,7 +5118,10 @@ export async function directCommit(
   }
 }
 
-// ── 동시수업 묶음 통 이동 (consent_swap_opening_spec §5b — 직권 전용) ──
+// ── 동시수업 묶음 통 이동 (consent_swap_opening_spec §5b·§5c) ──
+// §5c-7: 통 이동은 별도 기능이 아니라 「조율 필요 후보」의 종류 하나 — 교사는 자기 수업을
+// 클릭하고, 묶음이면 후보가 같은 목록에 조율 필요(⚠️ 양해 필수)로 섞여 나온다.
+// 교사 신청(PENDING→승인)이 주 경로, 일과계 직권(commitSimulGroupMove)은 보조 (§5c-0-3).
 
 const DAY_NAMES_KO = ["", "월", "화", "수", "목", "금"];
 
@@ -4965,7 +5200,396 @@ function simulMoveStepLine(
 }
 
 /**
- * 통 이동 원자 커밋 (§5b-3) — 트랜잭션 안에서 주간 재합성·엔진 재실행으로 요청 (from→to)를
+ * 통 이동 소스 해석기 (consent_swap_opening_spec §5c-1) — 클릭한 슬롯의 `lesson.simul` 라벨로
+ * **서버가 그룹을 특정**한다(사람이 그룹을 고르지 않는다). requesterEmail 지정 시 소유 검증:
+ * 그 교사가 이 슬롯의 그룹 수업 중 하나의 담당이어야 한다 — 어느 반 담당이든 시작 가능
+ * (실데이터: 2학년 제2외국어 밴드 = 2-2 일본어 / 2-3 중국어, 두 교사 모두 진입 가능).
+ * 기존 해석기(resolveDirectSource·resolveSourceLesson)는 무수정 — 호출부 분기 전용 (§5c-7-3).
+ */
+export function resolveSimulMoveSource(
+  grids: WeeklyClassGrid[],
+  groups: SimulGroup[],
+  source: { grade: number; classNum: number; day: number; period: number },
+  requesterEmail?: string
+): { ok: true; group: SimulGroup; requesterLesson?: WeeklyLesson } | { ok: false; error: string } {
+  const grid = grids.find((g) => g.grade === source.grade && g.classNum === source.classNum);
+  const cell = grid?.cells.find((c) => c.day === source.day && c.period === source.period);
+  const simulLessons = (cell?.lessons || []).filter((l) => l.simul);
+  if (simulLessons.length === 0)
+    return { ok: false, error: "이 교시는 여러 반이 함께 움직이는 수업이 아닙니다." };
+  const me = (requesterEmail || "").trim().toLowerCase();
+  const labels = Array.from(new Set(simulLessons.map((l) => l.simul!)));
+  // 라벨 특정 — 한 셀에 서로 다른 그룹 라벨이 병기된 경우(데이터 이상)는 신청자 담당 수업으로만 좁힌다
+  let label = labels[0];
+  if (labels.length > 1) {
+    const mine = me
+      ? simulLessons.find((l) => (l.teachers || []).some((t) => (t.email || "").trim().toLowerCase() === me))
+      : undefined;
+    if (mine?.simul) label = mine.simul;
+    else
+      return {
+        ok: false,
+        error: "이 교시에 서로 다른 묶음 수업이 함께 있어 자동으로 처리할 수 없습니다. 이동수업 등록부를 확인해 주세요.",
+      };
+  }
+  const matched = groups.filter((g) => g.active && g.grade === source.grade && g.label === label);
+  if (matched.length === 0)
+    return { ok: false, error: "이동수업 등록부에서 이 수업의 그룹을 찾을 수 없습니다. 등록부를 확인해 주세요." };
+  if (matched.length > 1)
+    return {
+      ok: false,
+      error: "같은 이름의 이동수업 그룹이 여러 개 등록돼 있어 자동으로 처리할 수 없습니다. 등록부를 확인해 주세요.",
+    };
+  const group = matched[0];
+  if (!me) return { ok: true, group };
+  // 소유 검증 — 슬롯 전 반의 그룹 수업 담당 중 하나여야 한다 (§5c-1)
+  let requesterLesson: WeeklyLesson | undefined;
+  for (const cn of group.classNums) {
+    const cGrid = grids.find((g) => g.grade === group.grade && g.classNum === cn);
+    const cCell = cGrid?.cells.find((c) => c.day === source.day && c.period === source.period);
+    for (const l of cCell?.lessons || []) {
+      if (l.simul !== group.label) continue;
+      if ((l.teachers || []).some((t) => (t.email || "").trim().toLowerCase() === me)) requesterLesson = l;
+    }
+  }
+  if (!requesterLesson) return { ok: false, error: "본인의 수업만 교환 신청할 수 있습니다." };
+  return { ok: true, group, requesterLesson };
+}
+
+/** 통 이동 후보의 coordination 조립 (§5c-7-1) — venue 충돌이 있으면 "venue+simul", 없으면 "simul" */
+function buildSimulCoordination(group: SimulGroup, c: SimulGroupMoveCandidate): CandidateCoordination {
+  const hasVenue = !!c.coordination && c.coordination.conflicts.length > 0;
+  return {
+    kind: hasVenue ? "venue+simul" : "simul",
+    conflicts: hasVenue ? c.coordination!.conflicts : [],
+    simul: {
+      groupId: group.id!,
+      label: group.label,
+      grade: group.grade,
+      classNums: [...group.classNums],
+      steps: c.steps,
+      ...(c.warnings?.length ? { warnings: [...c.warnings] } : {}),
+    },
+  };
+}
+
+/**
+ * 통 이동 후보 → 일반 후보 모양 매핑 (§5c-7-2). counterpartName은 그룹 라벨 요약(chain 전례) —
+ * 실제 상대는 반마다 다르므로 coordination.simul.steps가 원본이고 화면은 steps로 렌더한다.
+ * coordination은 항상 실린다(순수 빈 교시 이동도 그룹 교사 전원의 양해 필수 — §5b-3).
+ */
+function mapSimulMoveCandidates(group: SimulGroup, cands: SimulGroupMoveCandidate[]): SwapCandidate[] {
+  return cands.map((c) => {
+    const counterpartSubjects = Array.from(
+      new Set(c.steps.filter((s) => s.counterpart).map((s) => s.counterpart!.subjectName))
+    );
+    return {
+      targetDay: c.targetDay,
+      targetPeriod: c.targetPeriod,
+      counterpartEmail: "", // 상대가 반마다 다르다 — 단일 이메일 없음 (chain·직권 커밋과 같은 규약)
+      counterpartName: group.label,
+      counterpartSubjectName: counterpartSubjects.join("·"),
+      score: c.score,
+      penalties: c.penalties,
+      penaltyDetails: c.penaltyDetails,
+      counterpartScore: c.penaltyDetails
+        .filter((p) => p.scope === "counterpart")
+        .reduce((sum, p) => sum + p.points, 0),
+      coordination: buildSimulCoordination(group, c),
+    };
+  });
+}
+
+/**
+ * §5c-7-3 엔진 배선 — 소스 셀이 묶음(simul) 수업이면 통 이동 후보로 분기.
+ * `resolveSourceLesson`·`findSwapCandidates`는 무수정(단건 교체·체인·보강 의존) — 분기는
+ * computeCandidates 계열 **호출부**에서만 한다. 셀에 simul 스탬프가 없으면 null 반환
+ * (기존 경로 그대로 = 회귀 0). 스탬프가 있을 때만 등록부를 추가 로드한다(읽기 예산 규율).
+ */
+async function trySimulMoveCandidatesBranch(
+  domain: string,
+  termId: string,
+  grids: WeeklyClassGrid[],
+  week: TimetableWeek,
+  settings: TimetableSettings,
+  source: { grade: number; classNum: number; day: number; period: number },
+  requesterEmail?: string
+): Promise<null | {
+  swapCandidates: SwapCandidate[];
+  sourceSubjectName: string;
+  group?: SimulGroup;
+  error?: string;
+}> {
+  const cell = grids
+    .find((g) => g.grade === source.grade && g.classNum === source.classNum)
+    ?.cells.find((c) => c.day === source.day && c.period === source.period);
+  if (!(cell?.lessons || []).some((l) => l.simul)) return null;
+  const groups = await loadSimulGroups(domain, termId);
+  const resolved = resolveSimulMoveSource(grids, groups, source, requesterEmail);
+  if (!resolved.ok) return { swapCandidates: [], sourceSubjectName: "", error: resolved.error };
+  const res = findSimulGroupMoveCandidates(grids, week, settings, resolved.group, {
+    day: source.day,
+    period: source.period,
+  });
+  const sourceSubjectName =
+    resolved.requesterLesson?.subjectName ||
+    cell!.lessons.find((l) => l.simul === resolved.group.label)?.subjectName ||
+    resolved.group.label;
+  return {
+    swapCandidates: mapSimulMoveCandidates(resolved.group, res.candidates),
+    sourceSubjectName,
+    group: resolved.group,
+    ...(res.error ? { error: res.error } : {}),
+  };
+}
+
+/**
+ * 통 이동 양해 당사자 도출 (§5b-3, 서버 재계산 후보 기준 — 클라이언트 값 불신):
+ * 그룹 담당 교사 전원 ∪ 치워지는 상대 교사 전원 ∪ 특별실 조율 당사자 − 중복.
+ */
+function deriveSimulMoveParties(match: SimulGroupMoveCandidate): Map<string, string> {
+  const partyMap = new Map<string, string>();
+  for (const s of match.steps) {
+    if (s.groupLesson.teacherEmail && !partyMap.has(s.groupLesson.teacherEmail))
+      partyMap.set(s.groupLesson.teacherEmail, s.groupLesson.teacherName);
+    if (s.counterpart && !partyMap.has(s.counterpart.teacherEmail))
+      partyMap.set(s.counterpart.teacherEmail, s.counterpart.teacherName);
+  }
+  for (const conf of match.coordination?.conflicts || [])
+    for (const o of conf.occupants)
+      if (!partyMap.has(o.teacherEmail)) partyMap.set(o.teacherEmail, o.teacherName);
+  return partyMap;
+}
+
+/** 반별 전개의 동일성 서명 — 승인 시 신청 시점 steps와 재계산 steps 대조 (chainSignature와 같은 정신) */
+function simulStepsSignature(steps: SimulMoveStep[]): string {
+  return steps
+    .map(
+      (s) =>
+        `${s.classNum}:${s.kind}:${s.groupLesson.subjectName}:${s.groupLesson.teacherEmail}:` +
+        (s.counterpart ? `${s.counterpart.subjectName}:${s.counterpart.teacherEmail}` : "")
+    )
+    .join("|");
+}
+
+/**
+ * 통 이동 반별 change 조립 — 직권 커밋(commitSimulGroupMove)과 교사 신청 승인
+ * (approveSwapRequest simul_move 분기)이 **공유**한다 (§5c-2: 로직 두 벌 금지).
+ * swap 반은 swap change, 빈 교시 반은 move change — 전부 같은 requestId, appliedAt = now + i(순서 보존).
+ */
+function assembleSimulMoveChanges(
+  domain: string,
+  args: {
+    termId: string;
+    weekId: string;
+    requestId: string;
+    appliedBy: string;
+    now: number;
+    grade: number;
+    from: { day: number; period: number };
+    to: { day: number; period: number };
+    steps: SimulMoveStep[];
+  }
+): { changes: TimetableChange[]; refs: FirebaseFirestore.DocumentReference[] } {
+  const changes: TimetableChange[] = [];
+  const refs: FirebaseFirestore.DocumentReference[] = [];
+  args.steps.forEach((step, i) => {
+    const ref = timetableChangesColRef(domain).doc();
+    const common = {
+      id: ref.id,
+      termId: args.termId,
+      weekId: args.weekId,
+      requestId: args.requestId,
+      appliedBy: args.appliedBy,
+      appliedAt: args.now + i,
+    };
+    if (step.kind === "swap" && step.counterpart) {
+      changes.push({
+        ...common,
+        type: "swap",
+        swap: {
+          grade: args.grade,
+          classNum: step.classNum,
+          a: {
+            day: args.from.day,
+            period: args.from.period,
+            subjectName: step.groupLesson.subjectName,
+            teacherEmail: step.groupLesson.teacherEmail,
+            teacherName: step.groupLesson.teacherName,
+          },
+          b: {
+            day: args.to.day,
+            period: args.to.period,
+            subjectName: step.counterpart.subjectName,
+            teacherEmail: step.counterpart.teacherEmail,
+            teacherName: step.counterpart.teacherName,
+          },
+        },
+      });
+    } else {
+      changes.push({
+        ...common,
+        type: "move",
+        move: {
+          grade: args.grade,
+          classNum: step.classNum,
+          from: { day: args.from.day, period: args.from.period },
+          to: { day: args.to.day, period: args.to.period },
+          subjectName: step.groupLesson.subjectName,
+          teacherEmail: step.groupLesson.teacherEmail,
+          teacherName: step.groupLesson.teacherName,
+        },
+      });
+    }
+    refs.push(ref);
+  });
+  return { changes, refs };
+}
+
+/**
+ * 통 이동 교사 신청 (consent_swap_opening_spec §5c-2) — **교사 신청 경로가 주 경로다**
+ * (복잡하다고 일과계 직권 전용으로 두는 것은 책임 전가 — §5c-0-3 사용자 확정 원칙).
+ * createSwapRequest와 같은 정신: 서버 재계산 대조(후보 위조 차단)·steps 서버값 저장·
+ * consent 필수(parties 서버 도출, 신청자 본인 제외).
+ * 중복 차단은 신청자별이 아니라 **그룹·슬롯 단위** — 그룹은 여러 교사가 공유하므로
+ * 한 교사가 낸 신청을 모르고 다른 그룹 교사가 또 내는 것을 막는다 (§5c-2).
+ */
+export async function createSimulMoveRequest(
+  domain: string,
+  requesterEmail: string,
+  params: {
+    weekId: string;
+    source: { grade: number; classNum: number; day: number; period: number };
+    target: { day: number; period: number };
+    reason?: SwapRequestReason;
+    consent?: SwapConsentInput;
+  },
+  options?: { skipManagerNotify?: boolean } // 검증 스크립트 전용 — 라우트는 항상 알림
+): Promise<SwapRequest> {
+  const reason = validateReason(params.reason);
+  const week = await loadWeek(domain, params.weekId);
+  if (!week) throw new Error(`등록되지 않은 주(${params.weekId})입니다.`);
+  const [{ grids }, settings, groups] = await Promise.all([
+    synthesizeWeek(domain, week),
+    loadTimetableSettings(domain),
+    loadSimulGroups(domain, week.termId),
+  ]);
+  const me = requesterEmail.trim().toLowerCase();
+  const resolved = resolveSimulMoveSource(grids, groups, params.source, me);
+  if (!resolved.ok) throw new Error(resolved.error);
+  const group = resolved.group;
+
+  // 서버 재계산 대조 — 클라이언트가 보낸 목적지는 신뢰하지 않는다 (create 재검증과 같은 정신)
+  const res = findSimulGroupMoveCandidates(grids, week, settings, group, {
+    day: params.source.day,
+    period: params.source.period,
+  });
+  if (res.error) throw new Error(res.error);
+  const match = res.candidates.find(
+    (c) => c.targetDay === params.target.day && c.targetPeriod === params.target.period
+  );
+  if (!match) throw new Error("선택한 이동안이 더 이상 유효하지 않습니다. 후보를 다시 조회해 주세요.");
+
+  // 양해 필수 — 묶음 이동은 상대 수업이 "함께 움직인다" (§5c-7-5: 특별실 장소 양보와 성격이 다름)
+  if (params.consent?.confirmed !== true)
+    throw new Error(
+      "이 교체는 함께 옮겨지는 수업의 선생님들 양해가 필요합니다. 양해를 받은 뒤 확인란을 체크해 주세요."
+    );
+  const partyMap = deriveSimulMoveParties(match);
+  partyMap.delete(me); // 신청자 본인은 양해 대상이 아니다
+  const consentNote = (params.consent.note || "").trim().slice(0, 200);
+  const consent: SwapConsent = {
+    confirmed: true,
+    parties: [...partyMap.entries()].map(([email, name]) => ({ email, name })),
+    ...(consentNote ? { note: consentNote } : {}),
+    confirmedAt: Date.now(),
+  };
+
+  // 그룹·슬롯 단위 중복 PENDING 차단 (§5c-2 — 신청자별 아님)
+  const dupSnap = await swapRequestsColRef(domain)
+    .where("weekId", "==", params.weekId)
+    .where("type", "==", "simul_move")
+    .where("status", "==", "PENDING")
+    .get();
+  const dup = dupSnap.docs
+    .map((d) => d.data() as SwapRequest)
+    .find(
+      (r) =>
+        !!r.simulMove &&
+        r.simulMove.groupId === group.id &&
+        r.simulMove.from.day === params.source.day &&
+        r.simulMove.from.period === params.source.period
+    );
+  if (dup)
+    throw new Error(
+      `이 묶음 수업 시간에 대해 이미 대기 중인 이동 신청이 있습니다 (${dup.requesterName} 선생님).`
+    );
+
+  const requesterName =
+    (resolved.requesterLesson?.teachers || []).find(
+      (t) => (t.email || "").trim().toLowerCase() === me
+    )?.name || me.split("@")[0];
+  const from = { day: params.source.day, period: params.source.period };
+  const to = { day: params.target.day, period: params.target.period };
+  const simulMove: SimulMoveInfo = {
+    groupId: group.id!,
+    label: group.label,
+    grade: group.grade,
+    classNums: [...group.classNums],
+    from,
+    to,
+    steps: match.steps, // 서버 재계산 값 저장 — 클라이언트 값 불신 (§5b-3)
+  };
+  const ref = swapRequestsColRef(domain).doc();
+  const request: SwapRequest = {
+    id: ref.id,
+    termId: week.termId,
+    weekId: params.weekId,
+    type: "simul_move",
+    requesterEmail: me,
+    requesterName,
+    // source = 신청자가 클릭한 본인 수업 슬롯 (직권 커밋의 관리자 요약과 달리 실제 수업)
+    source: { ...params.source, subjectName: resolved.requesterLesson?.subjectName || group.label },
+    candidate: {
+      targetDay: to.day,
+      targetPeriod: to.period,
+      counterpartEmail: "",
+      counterpartName: group.label,
+      score: match.score,
+      penalties: match.steps.map((s) => simulMoveStepLine(s, from, to, group.grade)),
+      coordination: buildSimulCoordination(group, match),
+    },
+    simulMove,
+    reason,
+    status: "PENDING",
+    createdAt: Date.now(),
+    consent,
+  };
+  await ref.set(request);
+
+  // 일과계 알림 (기존 create와 동일 채널)
+  if (options?.skipManagerNotify) return request;
+  const summary =
+    `📋 새 수업교환 신청 (🧩 묶음 이동)\n` +
+    `신청자: ${requesterName} (${me})\n` +
+    `${group.grade}학년 ${group.classNums.join("·")}반 「${group.label}」 ${DAY_NAMES_KO[from.day]} ${from.period}교시 → ${DAY_NAMES_KO[to.day]} ${to.period}교시 통 이동\n` +
+    request.candidate.penalties.map((line) => `· ${line}`).join("\n") +
+    `\n🤝 양해 확인됨: ${consent.parties.map((p) => p.name).join(", ")}${consent.note ? ` — ${consent.note}` : ""}\n` +
+    `사유: ${reason.type}${reason.note ? ` — ${reason.note}` : ""}`;
+  for (const manager of settings.managerEmails) {
+    try {
+      await sendGoogleChat(manager, summary);
+    } catch (e: any) {
+      console.error(`[simul_move_create] 일과계 알림 실패 (${manager}):`, e.message);
+    }
+  }
+  return request;
+}
+
+/**
+ * 통 이동 원자 커밋 (§5b-3) — **일과계 직권 보조 경로** (§5c-3: 주 경로는 교사 신청 → 승인.
+ * 직권의 고유 몫은 보강 중심이고, 이 즉시 반영은 교사가 못 하는 예외 상황의 뒷문이다).
+ * 트랜잭션 안에서 주간 재합성·엔진 재실행으로 요청 (from→to)를
  * 대조한 뒤(후보 위조 차단), SwapRequest(type "simul_move", 즉시 APPROVED)와 반별 change
  * (swap 또는 move, 같은 requestId, appliedAt 순서 보존)를 **단일 트랜잭션으로 일괄 커밋**한다.
  * 부분 성공 금지 — 반별 분해는 표현 형식일 뿐 연산은 묶음 하나다.
@@ -5019,17 +5643,8 @@ export async function commitSimulGroupMove(
         "선택한 이동안이 더 이상 유효하지 않습니다. 이동 가능 교시를 다시 조회해 주세요."
       );
 
-    // parties 서버 도출 (§5b-3): 그룹 교사 ∪ 상대 교사 ∪ 특별실 조율 당사자
-    const partyMap = new Map<string, string>();
-    for (const s of match.steps) {
-      if (s.groupLesson.teacherEmail && !partyMap.has(s.groupLesson.teacherEmail))
-        partyMap.set(s.groupLesson.teacherEmail, s.groupLesson.teacherName);
-      if (s.counterpart && !partyMap.has(s.counterpart.teacherEmail))
-        partyMap.set(s.counterpart.teacherEmail, s.counterpart.teacherName);
-    }
-    for (const conf of match.coordination?.conflicts || [])
-      for (const o of conf.occupants)
-        if (!partyMap.has(o.teacherEmail)) partyMap.set(o.teacherEmail, o.teacherName);
+    // parties 서버 도출 (§5b-3): 그룹 교사 ∪ 상대 교사 ∪ 특별실 조율 당사자 — 직권은 전원이 당사자
+    const partyMap = deriveSimulMoveParties(match);
     const consentNote = (params.consent?.note || "").trim().slice(0, 200);
     const now = Date.now();
     const consent: SwapConsent = {
@@ -5049,59 +5664,18 @@ export async function commitSimulGroupMove(
       steps: match.steps, // 서버 재계산 값 저장 — 클라이언트 값 불신 (§5b-3)
     };
 
-    // 반별 change 조립 — swap 또는 move, 전부 같은 requestId, appliedAt = now + i (순서 보존)
+    // 반별 change 조립 — 교사 신청 승인 분기와 공용 (assembleSimulMoveChanges, §5c-2 로직 두 벌 금지)
     const reqRef = swapRequestsColRef(domain).doc();
-    const changes: TimetableChange[] = [];
-    const changeRefs: FirebaseFirestore.DocumentReference[] = [];
-    match.steps.forEach((step, i) => {
-      const ref = timetableChangesColRef(domain).doc();
-      const common = {
-        id: ref.id,
-        termId: week.termId,
-        weekId: params.weekId,
-        requestId: reqRef.id,
-        appliedBy: manager,
-        appliedAt: now + i,
-      };
-      if (step.kind === "swap" && step.counterpart) {
-        changes.push({
-          ...common,
-          type: "swap",
-          swap: {
-            grade: group.grade,
-            classNum: step.classNum,
-            a: {
-              day: params.source.day,
-              period: params.source.period,
-              subjectName: step.groupLesson.subjectName,
-              teacherEmail: step.groupLesson.teacherEmail,
-              teacherName: step.groupLesson.teacherName,
-            },
-            b: {
-              day: params.target.day,
-              period: params.target.period,
-              subjectName: step.counterpart.subjectName,
-              teacherEmail: step.counterpart.teacherEmail,
-              teacherName: step.counterpart.teacherName,
-            },
-          },
-        });
-      } else {
-        changes.push({
-          ...common,
-          type: "move",
-          move: {
-            grade: group.grade,
-            classNum: step.classNum,
-            from: { day: params.source.day, period: params.source.period },
-            to: { day: params.target.day, period: params.target.period },
-            subjectName: step.groupLesson.subjectName,
-            teacherEmail: step.groupLesson.teacherEmail,
-            teacherName: step.groupLesson.teacherName,
-          },
-        });
-      }
-      changeRefs.push(ref);
+    const { changes, refs: changeRefs } = assembleSimulMoveChanges(domain, {
+      termId: week.termId,
+      weekId: params.weekId,
+      requestId: reqRef.id,
+      appliedBy: manager,
+      now,
+      grade: group.grade,
+      from: { day: params.source.day, period: params.source.period },
+      to: { day: params.target.day, period: params.target.period },
+      steps: match.steps,
     });
 
     const request: SwapRequest = {
@@ -5126,7 +5700,8 @@ export async function commitSimulGroupMove(
         counterpartName: group.label,
         score: match.score,
         penalties: match.steps.map((s) => simulMoveStepLine(s, simulMove.from, simulMove.to, group.grade)),
-        ...(match.coordination ? { coordination: match.coordination } : {}),
+        // §5c-7-1: 교사 경로 후보와 같은 모양 — 항상 simul 포함 coordination (venue 충돌 시 "venue+simul")
+        coordination: buildSimulCoordination(group, match),
       },
       simulMove,
       reason,
