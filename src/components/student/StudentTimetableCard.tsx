@@ -175,8 +175,8 @@ export default function StudentTimetableCard() {
                                     title={
                                       isChanged
                                         ? origin
-                                          ? `${changedType === "substitute" ? "보강" : "수업 교체"} — ${DAY_LABEL[origin.day]}요일 ${origin.period}교시에서 이동`
-                                          : changedType === "substitute" ? "보강" : "수업 교체"
+                                          ? `${changedType === "substitute" ? "보강" : changedType === "move" ? "수업 이동" : "수업 교체"} — ${DAY_LABEL[origin.day]}요일 ${origin.period}교시에서 이동`
+                                          : changedType === "substitute" ? "보강" : changedType === "move" ? "수업 이동" : "수업 교체"
                                         : undefined
                                     }
                                     className={`py-3 px-1 rounded-lg border leading-snug ${
@@ -191,7 +191,7 @@ export default function StudentTimetableCard() {
                                     )}
                                     {isChanged && (
                                       <div className="text-[10px] font-extrabold text-sky-700 mt-1">
-                                        ▲ {changedType === "substitute" ? "보강" : "교체"}
+                                        ▲ {changedType === "substitute" ? "보강" : changedType === "move" ? "이동" : "교체"}
                                         {origin && ` · ${DAY_LABEL[origin.day]}${origin.period}`}
                                       </div>
                                     )}

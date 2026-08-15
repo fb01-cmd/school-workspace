@@ -419,30 +419,22 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
         {/* 2줄째: 교환 내용 한 줄 + 처리결과 인라인 + 반려/승인 버튼 */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-1.5 text-xs text-gray-700">
           <div className="flex items-center gap-1 flex-wrap font-medium">
-            <span className="font-bold text-gray-900">
-              {req.source.grade}-{req.source.classNum}반 {req.source.subjectName}
-            </span>
-            <span className="text-indigo-700 font-bold">
-              {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
-            </span>
-            <span className="text-gray-400 font-bold px-0.5">→</span>
             {req.type === "simul_move" ? (
-              <div className="w-full space-y-1.5 mt-1">
-                <div className="flex items-center gap-1 font-bold text-purple-900">
-                  <span>→ 이동:</span>
+              <div className="w-full space-y-1.5 mt-0.5">
+                <div className="flex items-center gap-1.5 font-bold text-purple-950 flex-wrap">
+                  <span>
+                    [{req.source.grade}학년 {req.simulMove?.classNums?.join("·") || req.source.classNum}반] {req.simulMove?.label || req.source.subjectName}
+                  </span>
                   <span className="text-indigo-800">
                     {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
                   </span>
                   <span className="text-gray-400 font-bold px-0.5">→</span>
-                  <span className="text-purple-800">
+                  <span className="text-purple-800 font-extrabold">
                     {formatSlotWithDate(
                       req.weekId,
                       req.candidate?.targetDay ?? req.simulMove?.to?.day ?? 0,
                       req.candidate?.targetPeriod ?? req.simulMove?.to?.period ?? 0
                     )}
-                  </span>
-                  <span className="text-gray-600 font-semibold ml-1">
-                    (그룹: {req.simulMove?.label || req.candidate?.counterpartName || "이동수업"})
                   </span>
                 </div>
                 {req.simulMove?.steps && req.simulMove.steps.length > 0 && (
@@ -453,7 +445,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-1">
                       {req.simulMove.steps.map((step, idx) => (
-                        <div key={idx} className="text-[10px] leading-tight text-purple-950 bg-white rounded p-1.5 border border-purple-200 flex items-center justify-between shadow-2xs">
+                        <div key={`${step.classNum}-${idx}`} className="text-[10px] leading-tight text-purple-950 bg-white rounded p-1.5 border border-purple-200 flex items-center justify-between shadow-2xs">
                           <span>
                             <strong>{step.classNum}반</strong>: {step.groupLesson.subjectName} ({step.groupLesson.teacherName})
                           </span>
@@ -468,7 +460,18 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                   </div>
                 )}
               </div>
-            ) : req.type === "chain" ? (
+            ) : (
+              <>
+                <span className="font-bold text-gray-900">
+                  {req.source.grade}-{req.source.classNum}반 {req.source.subjectName}
+                </span>
+                <span className="text-indigo-700 font-bold">
+                  {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
+                </span>
+                <span className="text-gray-400 font-bold px-0.5">→</span>
+              </>
+            )}
+            {req.type === "chain" ? (
               <div className="w-full space-y-1 mt-1">
                 <div className="flex items-center gap-1 font-bold text-purple-900">
                   <span>→ 목적지:</span>

@@ -2785,7 +2785,9 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
               {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
             </span>
             <span className="text-gray-600">
-              ({req.source.subjectName}, {req.source.grade}-{req.source.classNum}반)
+              {req.type === "simul_move"
+                ? `(${req.simulMove?.label || req.source.subjectName}, ${req.source.grade}학년 ${req.simulMove?.classNums?.join("·") || req.source.classNum}반)`
+                : `(${req.source.subjectName}, ${req.source.grade}-${req.source.classNum}반)`}
             </span>
 
             {req.type === "simul_move" && (
@@ -2859,7 +2861,7 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-1">
                   {req.simulMove.steps.map((step, idx) => (
-                    <div key={idx} className="text-[10px] leading-tight text-purple-950 bg-white rounded p-1.5 border border-purple-200 flex items-center justify-between shadow-2xs">
+                    <div key={`${step.classNum}-${idx}`} className="text-[10px] leading-tight text-purple-950 bg-white rounded p-1.5 border border-purple-200 flex items-center justify-between shadow-2xs">
                       <span>
                         <strong>{step.classNum}반</strong>: {step.groupLesson.subjectName} ({step.groupLesson.teacherName})
                       </span>

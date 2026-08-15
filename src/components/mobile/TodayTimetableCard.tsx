@@ -110,7 +110,7 @@ export default function TodayTimetableCard() {
         {dayCells.map((cell, idx) => {
           const isChanged = !!cell.changed;
           const changeType = cell.changed?.type;
-          const changeLabel = changeType === "substitute" ? "보강" : "교체";
+          const changeLabel = changeType === "substitute" ? "보강" : changeType === "move" ? "이동" : "교체";
           const isSimul = !!cell.simul;
           const subject = cell.subjectShort || cell.subjectName;
 

@@ -7,6 +7,7 @@ import {
   SubstituteCandidate,
   SwapCandidate,
   SwapReasonType,
+  SWAP_REASON_TYPES,
   TeacherTimetableCell,
   TimetableWeek,
   DirectPendingOverlayItem,
@@ -255,16 +256,18 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     return () => window.removeEventListener("admin_navigate", handleNav);
   }, []);
 
-  // 통 이동 후보 조회 (simul_move_candidates API)
+  // 통 이동 후보 및 현행 슬롯 조회 (simul_move_candidates API)
   const fetchSimulMoveCandidates = async (
     wId: string,
     gId: string,
-    source: { day: number; period: number }
+    source?: { day: number; period: number } | null
   ) => {
-    if (!wId || !gId || !source) return;
+    if (!wId || !gId) return;
     setLoadingSimulCandidates(true);
     setSimulCandidateError(null);
-    setSimulCandidates([]);
+    if (!source) {
+      setSimulCandidates([]);
+    }
     try {
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
@@ -273,17 +276,47 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           action: "simul_move_candidates",
           weekId: wId,
           simulGroupId: gId,
-          simulMoveSource: { day: source.day, period: source.period },
+          ...(source ? { simulMoveSource: { day: source.day, period: source.period } } : {}),
         }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setSimulCandidates(data.candidates || []);
-        if (Array.isArray(data.groupSlots)) {
-          setSimulGroupSlots(data.groupSlots);
-        }
-        if (data.error) {
-          setSimulCandidateError(data.error);
+        const slots: Array<{ day: number; period: number }> = Array.isArray(data.groupSlots) ? data.groupSlots : [];
+        setSimulGroupSlots(slots);
+
+        if (source) {
+          setSimulCandidates(data.candidates || []);
+          if (data.error) {
+            setSimulCandidateError(data.error);
+          }
+        } else {
+          // U1: 소스 없이 호출하여 그 주 시간표 기준 현행 교시(groupSlots)를 받은 경우
+          if (slots.length > 0) {
+            const firstSlot = slots[0];
+            setSelectedSimulSourceSlot(firstSlot);
+            // 첫 교시를 자동 선택하여 후보 조회 연속 실행
+            const candRes = await fetch("/api/timetable/manage", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "simul_move_candidates",
+                weekId: wId,
+                simulGroupId: gId,
+                simulMoveSource: { day: firstSlot.day, period: firstSlot.period },
+              }),
+            });
+            const candData = await candRes.json();
+            if (candRes.ok && candData.success) {
+              setSimulCandidates(candData.candidates || []);
+              if (candData.error) setSimulCandidateError(candData.error);
+            } else {
+              setSimulCandidateError(candData.error || "이동 가능한 후보 교시를 찾을 수 없습니다.");
+            }
+          } else {
+            setSelectedSimulSourceSlot(null);
+            setSimulCandidates([]);
+            setSimulCandidateError("해당 주간 시간표에서 이 이동수업 그룹의 수업 교시를 찾을 수 없습니다.");
+          }
         }
       } else {
         setSimulCandidateError(data.error || "이동 가능한 후보 교시를 찾을 수 없습니다.");
@@ -295,27 +328,15 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     }
   };
 
-  // 그룹 또는 주 변경 시 슬롯 및 후보 자동 연동
+  // 그룹 또는 주 변경 시 슬롯 및 후보 자동 연동 (U1)
   useEffect(() => {
-    if (!selectedSimulGroupId) {
+    if (!selectedSimulGroupId || !selectedSimulWeekId) {
       setSimulGroupSlots([]);
       setSelectedSimulSourceSlot(null);
       setSimulCandidates([]);
       return;
     }
-    const currentGroup = simulGroups.find((g) => g.id === selectedSimulGroupId);
-    const initialSlots = currentGroup?.slots || [];
-    setSimulGroupSlots(initialSlots);
-
-    // 슬롯이 있으면 첫 슬롯 자동 선택
-    if (initialSlots.length > 0 && selectedSimulWeekId) {
-      const firstSlot = initialSlots[0];
-      setSelectedSimulSourceSlot(firstSlot);
-      fetchSimulMoveCandidates(selectedSimulWeekId, selectedSimulGroupId, firstSlot);
-    } else {
-      setSelectedSimulSourceSlot(null);
-      setSimulCandidates([]);
-    }
+    fetchSimulMoveCandidates(selectedSimulWeekId, selectedSimulGroupId, null);
   }, [selectedSimulGroupId, selectedSimulWeekId]);
 
   const handleSelectSimulSourceSlot = (slot: { day: number; period: number }) => {
@@ -371,7 +392,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       );
       setSelectedCandidateForModal(null);
       setRecentlyUpdatedWeeks([selectedSimulWeekId]);
-      fetchSimulMoveCandidates(selectedSimulWeekId, selectedSimulGroupId, selectedSimulSourceSlot);
+      fetchSimulMoveCandidates(selectedSimulWeekId, selectedSimulGroupId, null);
       if (selectedTeacherEmail) {
         fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, cartItems);
       }
@@ -1052,8 +1073,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           </h2>
           <p className="text-xs text-gray-500 mt-1">
             {directMode === "teacher"
-              ? "교사를 선택하면 그 교사의 모든 주 시간표가 함께 표시됩니다. 수업을 고르고 후보를 선택해 여러 건을 [담기]로 모은 뒤 한 번에 반영할 수 있습니다."
-              : "동시수업(분반 이동수업) 그룹의 수업을 다른 요일·교시로 통째로 이동합니다. 묶인 모든 반의 이동 내역 및 상대 교사/장소 양해를 한 번에 확인하고 원자로 반영합니다."}
+              ? "교사를 선택하면 그 교사의 모든 주 시간표가 함께 표시됩니다. 수업을 고르고 후보를 선택해 여러 건을 [담기]로 모은 뒤 한 번에 반영할 수 있으며, 상대 선생님께 보낼 양해 이미지도 만들 수 있습니다."
+              : "동시수업(분반 이동수업) 그룹의 수업을 다른 요일·교시로 통째로 이동합니다. 묶인 모든 반의 이동 내역 및 상대 교사/장소 양해를 한 번에 확인하고 반영합니다."}
           </p>
         </div>
 
@@ -1589,9 +1610,9 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                     </div>
 
                     <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
-                      {selectedCandidateForModal.steps.map((step) => (
+                      {selectedCandidateForModal.steps.map((step, idx) => (
                         <div
-                          key={step.classNum}
+                          key={`${step.classNum}-${idx}`}
                           className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1"
                         >
                           <div className="flex items-center gap-2">
@@ -1658,12 +1679,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                           onChange={(e) => setSimulReasonType(e.target.value as SwapReasonType)}
                           className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
                         >
-                          <option value="기타">기타</option>
-                          <option value="출장">출장</option>
-                          <option value="연가">연가</option>
-                          <option value="공가">공가</option>
-                          <option value="병가">병가</option>
-                          <option value="행사">행사</option>
+                          {SWAP_REASON_TYPES.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div>
