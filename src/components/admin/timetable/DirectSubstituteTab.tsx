@@ -544,6 +544,17 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     setCounterpartTargetCells(null);
   };
 
+  // 담기 이탈 경고 (UX 스캔 §6-6 / backlog A2) — 담긴 항목이 있는 채로 페이지를 벗어나면 브라우저 확인
+  useEffect(() => {
+    if (cartItems.length === 0) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [cartItems.length]);
+
   const handleRemoveCartItem = (id: string) => {
     const updatedCart = cartItems.filter((item) => item.id !== id);
     setCartItems(updatedCart);
@@ -1197,7 +1208,15 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                         <div className="space-y-2">
                           <div className="text-xs font-bold text-gray-800">선택된 보강 후보:</div>
                           <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-xs space-y-1">
-                            <div className="font-bold text-indigo-950">{selectedCandidate.teacherName} 선생님</div>
+                            <div className="font-bold text-indigo-950 flex items-center gap-2">
+                              <span>{selectedCandidate.teacherName} 선생님</span>
+                              {(selectedCandidate as any).sameSubject && (
+                                <span className="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded font-extrabold">동일 과목</span>
+                              )}
+                              <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">
+                                보강 누계 {(selectedCandidate as any).substituteCount ?? 0}회
+                              </span>
+                            </div>
                             <div className="text-indigo-800 font-medium">{selectedCandidate.reason || "해당 교시 수업 없음 (보강 가능)"}</div>
                           </div>
                         </div>
@@ -1248,6 +1267,45 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                         </div>
                       </div>
                     </div>
+                  ) : activeCandidateType === "substitute" ? (
+                    /* 보강 후보는 그리드에 하이라이트되지 않는다(대체 교사 선택이지 자리 이동이 아니므로) — 목록에서 고른다.
+                       재배선(dbb999e)에서 이 목록이 통째로 빠져 보강 직권 배정 자체가 불가능했다. */
+                    substituteCandidates.length === 0 ? (
+                      <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-center text-xs text-gray-500">
+                        해당 시간에 공강인 보강 가능 교사가 없습니다.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-bold text-gray-700 flex items-center justify-between">
+                          <span>보강 가능 교사 목록 ({substituteCandidates.length}명)</span>
+                          <span className="text-[10px] text-gray-400 font-normal">누계 적은 순</span>
+                        </div>
+                        <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                          {substituteCandidates.map((cand) => (
+                            <button
+                              key={cand.teacherEmail}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCandidate(cand as any);
+                                setActiveCandidateType("substitute");
+                                setSubmitError(null);
+                              }}
+                              className="w-full p-2.5 bg-gray-50 hover:bg-indigo-50/80 border border-gray-200 hover:border-indigo-300 rounded-xl text-left transition-all flex items-center justify-between text-xs group cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900 group-hover:text-indigo-900">👤 {cand.teacherName}</span>
+                                {cand.sameSubject && (
+                                  <span className="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded font-extrabold">동일 과목</span>
+                                )}
+                              </div>
+                              <span className="text-[10px] bg-gray-200 group-hover:bg-indigo-100 text-gray-700 group-hover:text-indigo-800 font-bold px-2 py-0.5 rounded">
+                                누계 {cand.substituteCount ?? 0}회
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )
                   ) : (
                     <div className="py-6 text-center text-xs text-gray-400">
                       좌측 시간표에서 초록색 또는 빨간색 후보 슬롯을 클릭해 주세요.
