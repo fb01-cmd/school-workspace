@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTimetableSettings } from "./useTimetableSettings";
 import WeekManageTab from "./WeekManageTab";
 import SwapRequestLedgerTab from "./SwapRequestLedgerTab";
@@ -35,6 +35,16 @@ export default function TimetableOperationSection() {
     | "neis_export"
     | "hours"
   >("weeks");
+
+  useEffect(() => {
+    const handleNav = (e: any) => {
+      if (e.detail?.opTab) {
+        setActiveTab(e.detail.opTab);
+      }
+    };
+    window.addEventListener("admin_navigate", handleNav);
+    return () => window.removeEventListener("admin_navigate", handleNav);
+  }, []);
 
   if (loading) {
     return (

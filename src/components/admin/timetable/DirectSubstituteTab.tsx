@@ -11,7 +11,10 @@ import {
   TimetableWeek,
   DirectPendingOverlayItem,
   DirectCommitBatchItemResult,
+  SimulGroupMoveCandidate,
+  SimulMoveStep,
 } from "@/lib/timetable/types";
+import { SimulGroup } from "@/lib/timetable/simul";
 import { DAY_LABEL, formatSlotWithDate, formatCoordinationText, getCoordinationOccupants } from "@/lib/timetable/utils";
 
 import MiniPreviewGrid from "./MiniPreviewGrid";
@@ -126,6 +129,28 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // ── 직권 배정 모드 (교사별 직권 배정 | 이동수업 통 이동) ──
+  const [directMode, setDirectMode] = useState<"teacher" | "simul_move">("teacher");
+
+  // ── 이동수업 통 이동 상태 (consent_swap_opening_spec §5b) ──
+  const [simulGroups, setSimulGroups] = useState<SimulGroup[]>([]);
+  const [simulGroupsLoading, setSimulGroupsLoading] = useState(false);
+  const [selectedSimulGroupId, setSelectedSimulGroupId] = useState<string>("");
+  const [selectedSimulWeekId, setSelectedSimulWeekId] = useState<string>("");
+  const [simulGroupSlots, setSimulGroupSlots] = useState<Array<{ day: number; period: number }>>([]);
+  const [selectedSimulSourceSlot, setSelectedSimulSourceSlot] = useState<{ day: number; period: number } | null>(null);
+  const [simulCandidates, setSimulCandidates] = useState<SimulGroupMoveCandidate[]>([]);
+  const [loadingSimulCandidates, setLoadingSimulCandidates] = useState(false);
+  const [simulCandidateError, setSimulCandidateError] = useState<string | null>(null);
+
+  // 통 이동 확인 다이얼로그 (반별 전개 + 연속시수/특별실 경고 + 양해 확인)
+  const [selectedCandidateForModal, setSelectedCandidateForModal] = useState<SimulGroupMoveCandidate | null>(null);
+  const [simulConsentConfirmed, setSimulConsentConfirmed] = useState(false);
+  const [simulConsentNote, setSimulConsentNote] = useState("");
+  const [simulReasonType, setSimulReasonType] = useState<SwapReasonType>("기타");
+  const [simulReasonNote, setSimulReasonNote] = useState("이동수업 통 이동");
+  const [simulSubmitting, setSimulSubmitting] = useState(false);
+
   const getInitialWeekId = (weeksList: TimetableWeek[]): string => {
     if (!weeksList || weeksList.length === 0) return "";
     // KST 기준 오늘 — toISOString 단독은 UTC라 KST 00:00~08:59에 어제로 계산됨
@@ -175,15 +200,187 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         setWeeks(data.weeks);
         const initId = getInitialWeekId(data.weeks);
         setSelectedWeekId(initId);
+        if (!selectedSimulWeekId) setSelectedSimulWeekId(initId);
         if (selectedTeacherEmail) fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, data.weeks);
       }
     } catch {}
   };
 
+  const fetchSimulGroups = async () => {
+    setSimulGroupsLoading(true);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "simul_list", termId: activeTermId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && Array.isArray(data.groups)) {
+        const activeGroups = data.groups.filter((g: SimulGroup) => g.active !== false);
+        setSimulGroups(activeGroups);
+        if (activeGroups.length > 0 && !selectedSimulGroupId) {
+          const storedGroupId = typeof window !== "undefined" ? sessionStorage.getItem("direct_tab_simul_group_id") : null;
+          const targetId = storedGroupId && activeGroups.some((g: SimulGroup) => g.id === storedGroupId) ? storedGroupId : activeGroups[0].id || "";
+          setSelectedSimulGroupId(targetId);
+        }
+      }
+    } catch {} finally {
+      setSimulGroupsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchTeachers();
     fetchWeeks();
+    fetchSimulGroups();
   }, [activeTermId]);
+
+  // SimulGroupTab에서 진입 시 자동 모드 전환
+  useEffect(() => {
+    const checkNav = (targetGroupId?: string) => {
+      const gId = targetGroupId || (typeof window !== "undefined" ? sessionStorage.getItem("direct_tab_simul_group_id") : null);
+      if (gId) {
+        setDirectMode("simul_move");
+        setSelectedSimulGroupId(gId);
+        if (typeof window !== "undefined") sessionStorage.removeItem("direct_tab_simul_group_id");
+      }
+    };
+    checkNav();
+    const handleNav = (e: any) => {
+      if (e.detail?.simulGroupId) {
+        checkNav(e.detail.simulGroupId);
+      }
+    };
+    window.addEventListener("admin_navigate", handleNav);
+    return () => window.removeEventListener("admin_navigate", handleNav);
+  }, []);
+
+  // 통 이동 후보 조회 (simul_move_candidates API)
+  const fetchSimulMoveCandidates = async (
+    wId: string,
+    gId: string,
+    source: { day: number; period: number }
+  ) => {
+    if (!wId || !gId || !source) return;
+    setLoadingSimulCandidates(true);
+    setSimulCandidateError(null);
+    setSimulCandidates([]);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "simul_move_candidates",
+          weekId: wId,
+          simulGroupId: gId,
+          simulMoveSource: { day: source.day, period: source.period },
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSimulCandidates(data.candidates || []);
+        if (Array.isArray(data.groupSlots)) {
+          setSimulGroupSlots(data.groupSlots);
+        }
+        if (data.error) {
+          setSimulCandidateError(data.error);
+        }
+      } else {
+        setSimulCandidateError(data.error || "이동 가능한 후보 교시를 찾을 수 없습니다.");
+      }
+    } catch (err: any) {
+      setSimulCandidateError(`네트워크 오류: ${err.message}`);
+    } finally {
+      setLoadingSimulCandidates(false);
+    }
+  };
+
+  // 그룹 또는 주 변경 시 슬롯 및 후보 자동 연동
+  useEffect(() => {
+    if (!selectedSimulGroupId) {
+      setSimulGroupSlots([]);
+      setSelectedSimulSourceSlot(null);
+      setSimulCandidates([]);
+      return;
+    }
+    const currentGroup = simulGroups.find((g) => g.id === selectedSimulGroupId);
+    const initialSlots = currentGroup?.slots || [];
+    setSimulGroupSlots(initialSlots);
+
+    // 슬롯이 있으면 첫 슬롯 자동 선택
+    if (initialSlots.length > 0 && selectedSimulWeekId) {
+      const firstSlot = initialSlots[0];
+      setSelectedSimulSourceSlot(firstSlot);
+      fetchSimulMoveCandidates(selectedSimulWeekId, selectedSimulGroupId, firstSlot);
+    } else {
+      setSelectedSimulSourceSlot(null);
+      setSimulCandidates([]);
+    }
+  }, [selectedSimulGroupId, selectedSimulWeekId]);
+
+  const handleSelectSimulSourceSlot = (slot: { day: number; period: number }) => {
+    setSelectedSimulSourceSlot(slot);
+    if (selectedSimulWeekId && selectedSimulGroupId) {
+      fetchSimulMoveCandidates(selectedSimulWeekId, selectedSimulGroupId, slot);
+    }
+  };
+
+  const handleOpenSimulCandidateModal = (cand: SimulGroupMoveCandidate) => {
+    setSelectedCandidateForModal(cand);
+    setSimulConsentConfirmed(false);
+    setSimulConsentNote("");
+    setSimulReasonType("기타");
+    setSimulReasonNote("이동수업 통 이동");
+    setSubmitError(null);
+  };
+
+  const executeSimulMoveCommit = async () => {
+    if (!selectedCandidateForModal || !selectedSimulGroupId || !selectedSimulSourceSlot || !selectedSimulWeekId) return;
+    setSimulSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "simul_move_commit",
+          weekId: selectedSimulWeekId,
+          simulGroupId: selectedSimulGroupId,
+          simulMoveSource: { day: selectedSimulSourceSlot.day, period: selectedSimulSourceSlot.period },
+          simulMoveTarget: {
+            day: selectedCandidateForModal.targetDay,
+            period: selectedCandidateForModal.targetPeriod,
+          },
+          reason: {
+            type: simulReasonType,
+            note: simulReasonNote.trim() || undefined,
+          },
+          consent: {
+            confirmed: true,
+            note: simulConsentNote.trim() || undefined,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "이동수업 통 이동 반영에 실패했습니다.");
+      }
+      const grp = simulGroups.find((g) => g.id === selectedSimulGroupId);
+      setSuccessMsg(
+        `⚡ 이동수업 「${grp?.label || "이동수업"}」 통 이동 반영 완료! (${DAY_LABEL[selectedSimulSourceSlot.day]}요일 ${selectedSimulSourceSlot.period}교시 → ${DAY_LABEL[selectedCandidateForModal.targetDay]}요일 ${selectedCandidateForModal.targetPeriod}교시)`
+      );
+      setSelectedCandidateForModal(null);
+      setRecentlyUpdatedWeeks([selectedSimulWeekId]);
+      fetchSimulMoveCandidates(selectedSimulWeekId, selectedSimulGroupId, selectedSimulSourceSlot);
+      if (selectedTeacherEmail) {
+        fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, cartItems);
+      }
+    } catch (err: any) {
+      setSubmitError(err.message || "통 이동 반영 실패");
+    } finally {
+      setSimulSubmitting(false);
+    }
+  };
 
   // 결보강 담기 이탈 경고 (UX 스캔 §6-6 / backlog A2)
   useEffect(() => {
@@ -811,9 +1008,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     executeDirectCommitSingle();
   };
 
-
   const getCellForSlotInWeek = (wId: string, d: number, p: number) => { const cells = teacherWeekCellsMap[wId] || []; return cells.filter((c) => c.day === d && c.period === p); };
-  const totalSwapCount = swapCandidateWeeks.reduce((acc, w) => acc + (w.swapCandidates?.length || 0), 0);
   const DAYS = [{ num: 1, label: "월요일" }, { num: 2, label: "화요일" }, { num: 3, label: "수요일" }, { num: 4, label: "목요일" }, { num: 5, label: "금요일" }];
 
   const sourceWeekObj = weeks.find((w) => w.id === selectedSlot?.weekId);
@@ -821,17 +1016,77 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const targetWeekObj = weeks.find((w) => w.id === targetWeekId);
   const isCrossWeek = !!(targetWeekId && selectedSlot?.weekId && targetWeekId !== selectedSlot.weekId);
 
+  const currentSimulGroup = simulGroups.find((g) => g.id === selectedSimulGroupId);
+  const cleanSimulCandidates = simulCandidates.filter((c) => !c.coordination);
+  const coordinationSimulCandidates = simulCandidates.filter((c) => !!c.coordination);
+
+  const modalGroupTeachers = Array.from(
+    new Set(
+      (selectedCandidateForModal?.steps || [])
+        .map((s) => s.groupLesson?.teacherName)
+        .filter(Boolean)
+    )
+  );
+  const modalCounterpartTeachers = Array.from(
+    new Set(
+      (selectedCandidateForModal?.steps || [])
+        .map((s) => s.counterpart?.teacherName)
+        .filter(Boolean) as string[]
+    )
+  );
+  const modalOccupantTeachers = selectedCandidateForModal?.coordination
+    ? getCoordinationOccupants(selectedCandidateForModal.coordination).map((o) => o.teacherName)
+    : [];
+  const modalAllParties = Array.from(
+    new Set([...modalGroupTeachers, ...modalCounterpartTeachers, ...modalOccupantTeachers])
+  );
+
   return (
     <div className="space-y-6">
       <OffscreenConsolidatedShareCard cardRef={consolidatedCardRef} data={consolidatedShareData} />
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-          <span>⚡</span>
-          <span>일과계 직권 배정</span>
-        </h2>
-        <p className="text-xs text-gray-500 mt-1">
-          교사를 선택하면 그 교사의 모든 주 시간표가 함께 표시됩니다. 수업을 고르고 후보를 선택해 여러 건을 [담기]로 모은 뒤 한 번에 반영할 수 있으며, 상대 선생님께 보낼 양해 이미지도 만들 수 있습니다.
-        </p>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+            <span>⚡</span>
+            <span>일과계 직권 배정</span>
+          </h2>
+          <p className="text-xs text-gray-500 mt-1">
+            {directMode === "teacher"
+              ? "교사를 선택하면 그 교사의 모든 주 시간표가 함께 표시됩니다. 수업을 고르고 후보를 선택해 여러 건을 [담기]로 모은 뒤 한 번에 반영할 수 있습니다."
+              : "동시수업(분반 이동수업) 그룹의 수업을 다른 요일·교시로 통째로 이동합니다. 묶인 모든 반의 이동 내역 및 상대 교사/장소 양해를 한 번에 확인하고 원자로 반영합니다."}
+          </p>
+        </div>
+
+        {/* 모드 전환 탭 */}
+        <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={() => setDirectMode("teacher")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              directMode === "teacher"
+                ? "bg-indigo-600 text-white shadow-xs"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            <span>👤</span>
+            <span>교사별 직권 배정</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setDirectMode("simul_move")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              directMode === "simul_move"
+                ? "bg-purple-700 text-white shadow-xs ring-2 ring-purple-300"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            <span>🔀</span>
+            <span>이동수업 통 이동</span>
+            <span className="text-[10px] bg-purple-200 text-purple-950 px-1.5 py-0.2 rounded-full font-black">
+              묶음 이동
+            </span>
+          </button>
+        </div>
       </div>
 
       {successMsg && (
@@ -842,66 +1097,151 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       )}
       {submitError && <div className="bg-red-50 border border-red-200 text-red-900 p-4 rounded-xl text-xs font-bold">⚠️ {submitError}</div>}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
-        <div>
-          <label className="block text-xs font-bold text-gray-700 mb-1">👤 대상 교사 선택 (가나다순)</label>
-          <select value={selectedTeacherEmail} onChange={(e) => { const email = e.target.value; const found = teacherList.find((t) => t.email.toLowerCase() === email.toLowerCase()); handleSelectTeacher(email, found?.name); }} disabled={teacherListLoading} className="w-full px-3 py-2 border border-gray-300 rounded-lg font-semibold bg-white text-xs disabled:opacity-60">
-            <option value="">-- 교사를 선택해 주세요 --</option>
-            {teacherListLoading && <option value="">교사 목록 불러오는 중...</option>}
-            {!teacherListLoading && teacherList.map((t) => (<option key={t.email} value={t.email}>{t.name} ({t.email})</option>))}
-          </select>
-        </div>
-        {recentTeachers.length > 0 && (
-          <div className="flex items-center gap-2 pt-2 border-t border-gray-100 text-xs">
-            <span className="text-gray-500 font-bold shrink-0">최근 선택:</span>
-            <div className="flex flex-wrap gap-1.5">
-              {recentTeachers.map((t) => (
-                <button key={t.email} type="button" onClick={() => handleSelectTeacher(t.email, t.name)} className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${selectedTeacherEmail.toLowerCase() === t.email.toLowerCase() ? "bg-indigo-600 text-white font-bold shadow-xs" : "bg-gray-100 hover:bg-gray-200 text-gray-700"}`}>👤 {t.name}</button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {selectedTeacherEmail ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-8 space-y-6">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center justify-between">
+      {directMode === "simul_move" ? (
+        /* 🔀 이동수업 통 이동 화면 */
+        <div className="space-y-6">
+          {/* 상단 컨트롤: 주간 선택 + 이동수업 그룹 선택 + 그룹 정보 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <h3 className="text-sm font-bold text-indigo-950 flex items-center gap-2">
-                  <span>🗓️</span>
-                  <span>{selectedTeacherName} 교사의 등록 주별 시간표 ({weeks.length}개 주간)</span>
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">수업 칸을 클릭하면 그 수업이 옮겨 갈 수 있는 자리가 모든 주의 빈 칸 위에 바로 표시됩니다.</p>
+                <label className="block text-xs font-bold text-gray-700 mb-1">📅 대상 주간 선택</label>
+                <select
+                  value={selectedSimulWeekId}
+                  onChange={(e) => setSelectedSimulWeekId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg font-semibold bg-white text-xs"
+                >
+                  {weeks.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.startDate} 주간 {w.note ? `(${w.note})` : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
-              {loadingTimetable && <span className="text-xs text-indigo-600 font-semibold animate-pulse">시간표 로딩 중...</span>}
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">🔀 이동수업 그룹 선택</label>
+                <select
+                  value={selectedSimulGroupId}
+                  onChange={(e) => setSelectedSimulGroupId(e.target.value)}
+                  disabled={simulGroupsLoading}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg font-semibold bg-white text-xs disabled:opacity-60"
+                >
+                  {simulGroupsLoading && <option value="">이동수업 그룹 불러오는 중...</option>}
+                  {!simulGroupsLoading && simulGroups.length === 0 && (
+                    <option value="">등록된 활성 이동수업 그룹이 없습니다.</option>
+                  )}
+                  {!simulGroupsLoading &&
+                    simulGroups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        [{g.grade}학년] {g.label} ({g.classNums?.join("·")}반)
+                      </option>
+                    ))}
+                </select>
+              </div>
             </div>
 
-            {timetableError && <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-xs text-red-800 text-center font-bold">{timetableError}</div>}
-
-            {projectedWeeks.map((pw) => {
-              const w = weeks.find((item) => item.id === pw.weekId) || { id: pw.weekId, startDate: pw.startDate, note: "" };
-              const isSourceWeek = selectedSlot?.weekId === w.id;
-              const isRecentlyUpdated = recentlyUpdatedWeeks.includes(w.id);
-              const weekCandidateGroup = swapCandidateWeeks.find((gw) => gw.weekId === w.id);
-              const candidateListInWeek = weekCandidateGroup?.swapCandidates || [];
-              return (
-                <div key={w.id} ref={(el) => { weekGridRefs.current[w.id] = el; }} className={`bg-white rounded-xl shadow-sm border transition-all ${isSourceWeek ? "border-indigo-500 ring-2 ring-indigo-200" : isRecentlyUpdated ? "border-emerald-500 ring-2 ring-emerald-100" : "border-gray-200"} p-5 space-y-3`}>
-                  <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-extrabold text-xs bg-indigo-900 text-white px-2.5 py-1 rounded-md">📅 {w.startDate} 주간 {w.note ? `(${w.note})` : ""}</span>
-                      {isSourceWeek && <span className="text-[11px] font-bold bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded-full border border-indigo-200">📌 원 수업 소스 주간</span>}
-                      {isRecentlyUpdated && <span className="text-[11px] font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-300">✨ 배정 결과 반영됨</span>}
-                    </div>
-                    {/* 맞교환 모드에서만 — 보강 모드에 교환 배지가 남는 혼선 방지 (2026-08-08) */}
-                    {selectedSlot && activeCandidateType === "swap" && <span className="text-[11px] text-gray-500 font-semibold">맞교환 후보 {candidateListInWeek.length}건</span>}
+            {currentSimulGroup && (
+              <div className="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-200 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-purple-200 text-purple-900">
+                      {currentSimulGroup.grade}학년
+                    </span>
+                    <strong className="text-sm text-purple-950">{currentSimulGroup.label}</strong>
+                    <span className="text-xs text-purple-800 font-medium">
+                      (대상: {currentSimulGroup.classNums?.map((c) => `${c}반`).join(", ")})
+                    </span>
                   </div>
+                  <div className="text-xs text-purple-900 font-semibold">
+                    과목: {currentSimulGroup.subjectNames?.join(", ")}
+                  </div>
+                </div>
+
+                {/* 현재 등록 슬롯 */}
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="font-bold text-purple-950 shrink-0">📍 이동할 원본 교시 선택:</span>
+                  {simulGroupSlots.length > 0 ? (
+                    simulGroupSlots.map((slot, sIdx) => {
+                      const isSelected =
+                        selectedSimulSourceSlot?.day === slot.day &&
+                        selectedSimulSourceSlot?.period === slot.period;
+                      return (
+                        <button
+                          key={sIdx}
+                          type="button"
+                          onClick={() => handleSelectSimulSourceSlot(slot)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                            isSelected
+                              ? "bg-purple-800 text-white shadow-xs ring-2 ring-purple-300 scale-105"
+                              : "bg-white text-purple-900 border border-purple-200 hover:bg-purple-100"
+                          }`}
+                        >
+                          <span>{isSelected ? "📌" : "⏰"}</span>
+                          <span>
+                            {DAY_LABEL[slot.day]}요일 {slot.period}교시
+                          </span>
+                          {isSelected && (
+                            <span className="text-[10px] ml-0.5 bg-purple-950 px-1 py-0.2 rounded font-black">
+                              선택됨
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <span className="text-xs text-gray-500">
+                      이 주간의 시간표에서 슬롯을 조회하는 중입니다...
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 에러 메시지 표출 */}
+          {simulCandidateError && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-xl text-xs font-bold flex items-center gap-2">
+              <span>⚠️</span>
+              <span>{simulCandidateError}</span>
+            </div>
+          )}
+
+          {/* 그리드 & 후보 목록 */}
+          {currentSimulGroup && selectedSimulSourceSlot ? (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* 좌측 그리드 (lg:col-span-8) */}
+              <div className="lg:col-span-8 space-y-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-purple-950 flex items-center gap-2">
+                      <span>🗓️</span>
+                      <span>
+                        {selectedSimulWeekId} 주간 이동 가능 교시 배치도 (
+                        {DAY_LABEL[selectedSimulSourceSlot.day]}요일 {selectedSimulSourceSlot.period}교시 이동)
+                      </span>
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      초록색(이동 가능) 또는 빨간색(양해 필수) 셀을 클릭하면 반별 전개 내역을 확인하고 통 이동을 실행할 수 있습니다.
+                    </p>
+                  </div>
+                  {loadingSimulCandidates && (
+                    <span className="text-xs text-purple-600 font-semibold animate-pulse">
+                      후보 탐색 중...
+                    </span>
+                  )}
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
                   <div className="border border-gray-200 rounded-xl overflow-hidden shadow-2xs">
                     <table className="w-full border-collapse text-xs">
                       <thead>
-                        <tr className="bg-indigo-950 text-white font-bold">
-                          <th className="py-2.5 px-2 border-b border-r border-indigo-800 w-14 text-center">교시</th>
-                          {DAYS.map((d) => (<th key={d.num} className="py-2.5 px-2 border-b border-indigo-800 text-center">{d.label}</th>))}
+                        <tr className="bg-purple-950 text-white font-bold">
+                          <th className="py-2.5 px-2 border-b border-r border-purple-800 w-14 text-center">교시</th>
+                          {DAYS.map((d) => (
+                            <th key={d.num} className="py-2.5 px-2 border-b border-purple-800 text-center">
+                              {d.label}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 bg-white">
@@ -909,111 +1249,105 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                           const period = pIdx + 1;
                           return (
                             <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
-                              <td className="py-3 px-2 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50">{period}교시</td>
+                              <td className="py-3 px-2 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50">
+                                {period}교시
+                              </td>
                               {DAYS.map((d) => {
-                                const dayMaxPeriods = pw.dayPeriodCounts?.find((dp) => dp.day === d.num)?.periods ?? 7;
-                                const isOutPeriod = period > dayMaxPeriods;
+                                const isSource =
+                                  selectedSimulSourceSlot.day === d.num &&
+                                  selectedSimulSourceSlot.period === period;
+                                const isOtherGroupSlot =
+                                  !isSource &&
+                                  simulGroupSlots.some(
+                                    (s) => s.day === d.num && s.period === period
+                                  );
+                                const cand = simulCandidates.find(
+                                  (c) => c.targetDay === d.num && c.targetPeriod === period
+                                );
 
-                                const matchedCells = getCellForSlotInWeek(w.id, d.num, period);
-                                const hasLesson = matchedCells.length > 0;
-                                // 담김(이동됨) 마커는 본인 수업의 순 이동 출발지에만 — 경유지·제3 교사 수업 슬롯 제외
-                                const cartMatch = myCartNetMoves.find((m) => m.from.weekId === w.id && m.from.day === d.num && m.from.period === period);
-                                // 맞교환 모드에서만 후보 하이라이트 — 보강 탭 전환 시 맞교환 제안이 그리드에 잔존하던 혼선 방지 (2026-08-07)
-                                const inlineCand = activeCandidateType === "swap" && !hasLesson && !isOutPeriod && selectedSlot ? candidateListInWeek.find((cand) => cand.targetDay === d.num && cand.targetPeriod === period) : null;
                                 return (
-                                  <td key={d.num} className={`p-1 border-r border-gray-100 text-center align-top transition-all ${isOutPeriod ? "bg-gray-100/50" : hasLesson ? "bg-indigo-50/30" : inlineCand ? (inlineCand.coordination ? "bg-red-50/70" : "bg-emerald-50/50") : ""}`}>
-                                    {isOutPeriod ? (
-                                      <div className="text-gray-300 text-xs font-semibold font-mono text-center py-2 select-none">-</div>
-                                    ) : hasLesson ? (
-                                      <div className="space-y-1">
-                                        {matchedCells.map((cell, cIdx) => {
-                                          // 담기 가상 반영으로 옮겨온 셀 — 실제 시간표가 아니므로 원 수업으로 선택(클릭) 불가
-                                          const isVirtualMoved = Boolean(cell.changed?.changeId?.startsWith("virtual-direct"));
-                                          if (isVirtualMoved) {
-                                            return (
-                                              <div key={cIdx} title="담기 가상 반영 — 일괄 반영 전까지는 실제 시간표가 아닙니다" className="w-full p-1.5 rounded-lg text-left border bg-amber-100 border-amber-400 text-amber-950">
-                                                <div className="font-black text-xs text-amber-950">{cell.subjectShort || cell.subjectName}</div>
-                                                <div className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5 bg-amber-200 text-amber-900">{cell.grade}-{cell.classNum}반</div>
-                                                <div className="text-[9px] bg-amber-200 text-amber-900 font-extrabold px-1 rounded mt-0.5 inline-block">🛒 담김 이동</div>
-                                              </div>
-                                            );
-                                          }
-                                          const isSelected = selectedSlot?.weekId === w.id && selectedSlot?.grade === cell.grade && selectedSlot?.classNum === cell.classNum && selectedSlot?.day === cell.day && selectedSlot?.period === cell.period;
-                                          const subjName = cell.subjectShort || cell.subjectName || "";
-                                          // 판정 단일 통로: 서버가 교사 그리드 응답에 실어 보낸 동시수업 라벨 (cell.simul)
-                                          const simulCheck = { hit: !!cell.simul, groupLabel: cell.simul };
-
-                                          return (
-                                            <button key={cIdx} type="button" onClick={() => handleSlotClick(w.id, cell)} className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${isSelected ? "bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-300 scale-[1.02]" : simulCheck.hit ? "bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-950 shadow-2xs" : "bg-white hover:bg-indigo-100/60 border-indigo-200 hover:border-indigo-400 text-gray-900 shadow-2xs"}`}>
-                                              <div className={`font-black text-xs ${isSelected ? "text-white" : simulCheck.hit ? "text-purple-950 font-black" : "text-indigo-950"}`}>{subjName}</div>
-                                              <div className="flex items-center justify-between gap-1 flex-wrap mt-0.5">
-                                                <div className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold ${isSelected ? "bg-indigo-800 text-indigo-100" : simulCheck.hit ? "bg-purple-200 text-purple-900" : "bg-indigo-100 text-indigo-800"}`}>{cell.grade}-{cell.classNum}반</div>
-                                                {simulCheck.hit && (
-                                                  <span className="text-[9px] bg-purple-700 text-white font-extrabold px-1 rounded" title={simulCheck.groupLabel || "이동수업 그룹"}>🔀 이동수업</span>
-                                                )}
-                                              </div>
-                                            </button>
-                                          );
-                                        })}
+                                  <td
+                                    key={d.num}
+                                    className={`p-1.5 border-r border-gray-100 text-center align-top transition-all ${
+                                      isSource
+                                        ? "bg-purple-100/70"
+                                        : isOtherGroupSlot
+                                        ? "bg-purple-50/40"
+                                        : cand
+                                        ? cand.coordination
+                                          ? "bg-red-50/70"
+                                          : "bg-emerald-50/50"
+                                        : ""
+                                    }`}
+                                  >
+                                    {isSource ? (
+                                      <div className="w-full p-2 rounded-xl text-left bg-indigo-600 border-2 border-indigo-700 text-white shadow-md">
+                                        <div className="font-black text-xs">📌 이동 대상</div>
+                                        <div className="text-[10px] text-indigo-100 mt-0.5 truncate">
+                                          {currentSimulGroup.label}
+                                        </div>
+                                        <div className="text-[9px] bg-indigo-800 text-indigo-200 font-extrabold px-1 rounded mt-1 inline-block">
+                                          현재 위치
+                                        </div>
                                       </div>
-                                    ) : inlineCand ? (
+                                    ) : isOtherGroupSlot ? (
                                       <button
                                         type="button"
-                                        onClick={() => {
-                                          if (inlineCand.coordination) {
-                                            setPendingCoordinationSelect({ candidate: inlineCand, weekId: w.id, startDate: w.startDate });
-                                          } else {
-                                            handleSelectCandidate(inlineCand, w.id, w.startDate);
-                                          }
-                                        }}
-                                        className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${
-                                          activeCandidateType === "swap" && selectedCandidate?.targetWeekId === w.id && selectedCandidate?.targetDay === inlineCand.targetDay && selectedCandidate?.targetPeriod === inlineCand.targetPeriod && selectedCandidate?.counterpartEmail === inlineCand.counterpartEmail
-                                            ? "bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-300 scale-[1.02]"
-                                            : inlineCand.coordination
-                                              ? "bg-red-50 hover:bg-red-100/90 border-2 border-red-500 text-red-950 shadow-xs"
-                                              : "bg-emerald-50 hover:bg-emerald-100/90 border-emerald-300 hover:border-emerald-500 text-emerald-950 shadow-2xs"
+                                        onClick={() => handleSelectSimulSourceSlot({ day: d.num, period })}
+                                        className="w-full p-2 rounded-xl text-left bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-950 cursor-pointer transition-all shadow-2xs"
+                                        title="클릭 시 이 교시를 이동할 원본 수업으로 선택합니다"
+                                      >
+                                        <div className="font-extrabold text-[11px] text-purple-900">
+                                          🔀 현재 수업 슬롯
+                                        </div>
+                                        <div className="text-[9px] text-purple-600 font-semibold mt-0.5">
+                                          클릭하여 선택
+                                        </div>
+                                      </button>
+                                    ) : cand ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenSimulCandidateModal(cand)}
+                                        className={`w-full p-2 rounded-xl text-left cursor-pointer transition-all border ${
+                                          cand.coordination
+                                            ? "bg-red-50 hover:bg-red-100/90 border-2 border-red-500 text-red-950 shadow-xs"
+                                            : "bg-emerald-50 hover:bg-emerald-100/90 border-2 border-emerald-400 text-emerald-950 shadow-2xs"
                                         }`}
                                       >
                                         <div className="flex items-center justify-between gap-1">
                                           <span className="font-black text-[11px] truncate flex items-center gap-0.5">
-                                            {inlineCand.coordination && <span>⚠️</span>}
-                                            <span>{inlineCand.counterpartName}</span>
+                                            {cand.coordination && <span>⚠️</span>}
+                                            <span>이동 가능</span>
                                           </span>
-                                          <span className={`px-1 py-0.5 rounded text-[9px] font-extrabold shrink-0 ${
-                                            inlineCand.coordination
-                                              ? "bg-red-200 text-red-950 border border-red-400 font-black"
-                                              : inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0)
+                                          <span
+                                            className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold shrink-0 ${
+                                              cand.coordination
+                                                ? "bg-red-200 text-red-950 border border-red-400 font-black"
+                                                : cand.score > 0
                                                 ? "bg-amber-100 text-amber-900 border border-amber-300"
                                                 : "bg-emerald-200 text-emerald-900"
-                                          }`}>
-                                            {inlineCand.coordination
+                                            }`}
+                                          >
+                                            {cand.coordination
                                               ? "⚠️ 양해 필수"
-                                              : inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0)
-                                                ? `감점 ${inlineCand.score}`
-                                                : "0점"}
+                                              : cand.score > 0
+                                              ? `감점 ${cand.score}`
+                                              : "0점"}
                                           </span>
                                         </div>
-                                        <div className={`text-[10px] mt-0.5 font-bold truncate ${inlineCand.coordination ? "text-red-900" : "text-emerald-800"}`}>
-                                          {inlineCand.counterpartSubjectName}
+                                        <div
+                                          className={`text-[10px] mt-0.5 font-bold truncate ${
+                                            cand.coordination ? "text-red-900" : "text-emerald-800"
+                                          }`}
+                                        >
+                                          {cand.steps.filter((s) => s.kind === "swap").length}개 반 맞교환 ·{" "}
+                                          {cand.steps.filter((s) => s.kind === "move").length}개 반 이동
                                         </div>
                                       </button>
-                                    ) : cartMatch ? (
-                                      <div className="w-full p-1.5 rounded-lg border border-dashed border-amber-400 bg-amber-50/60 text-center">
-                                        <div className="text-[9px] font-extrabold text-amber-800">🛒 담김 (이동됨)</div>
-                                        <div className="text-[10px] font-bold text-amber-900 truncate">{cartMatch.subjectName || "수업"}</div>
-                                      </div>
                                     ) : (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleSlotClick(w.id, null, d.num, period)}
-                                        className="w-full h-full min-h-[3rem] p-1 rounded-lg border border-transparent hover:border-indigo-300 hover:bg-indigo-50/80 transition-all text-[11px] text-gray-400 hover:text-indigo-700 font-bold flex flex-col items-center justify-center gap-0.5 group cursor-pointer"
-                                        title="이 빈 자리로 다른 수업 가져오기 (연쇄 이동 탐색)"
-                                      >
-                                        <span>-</span>
-                                        <span className="hidden group-hover:inline text-[9px] bg-indigo-100 text-indigo-800 px-1 py-0.2 rounded font-extrabold">
-                                          🔗 가져오기
-                                        </span>
-                                      </button>
+                                      <div className="text-gray-300 text-xs font-semibold text-center py-3 select-none">
+                                        -
+                                      </div>
                                     )}
                                   </td>
                                 );
@@ -1025,584 +1359,1147 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                     </table>
                   </div>
                 </div>
-              );
-            })}
+              </div>
 
-            {hasMoreProjectedWeeks && (
-              <div className="text-center pt-2 pb-4">
-                <button
-                  type="button"
-                  onClick={handleLoadMoreWeeks}
-                  disabled={loadingTimetable}
-                  className="px-6 py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-extrabold rounded-xl text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  ➕ 이후 주 더 보기
-                </button>
+              {/* 우측 후보 목록 (lg:col-span-4) */}
+              <div className="lg:col-span-4 space-y-4 sticky top-4">
+                <div className="bg-white rounded-xl shadow-md border border-gray-200 p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                    <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>📋 이동 가능 후보 ({simulCandidates.length}건)</span>
+                    </h3>
+                  </div>
+
+                  {loadingSimulCandidates ? (
+                    <div className="py-8 text-center text-xs text-purple-600 font-semibold animate-pulse">
+                      이동 가능한 교시를 계산 중입니다...
+                    </div>
+                  ) : simulCandidates.length === 0 ? (
+                    <div className="p-6 bg-gray-50 border border-gray-200 rounded-xl text-center text-xs text-gray-500 space-y-1">
+                      <p className="font-bold text-gray-700">이동 가능한 교시가 없습니다.</p>
+                      <p className="text-[11px] text-gray-400">
+                        담당 교사들의 공강 및 상대 수업 이동 조건이 충족되는 시간이 없습니다.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 max-h-[calc(100vh-20rem)] overflow-y-auto pr-1">
+                      {cleanSimulCandidates.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-[11px] font-bold text-emerald-800 flex items-center justify-between">
+                            <span>✨ 바로 이동 가능 ({cleanSimulCandidates.length}건)</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {cleanSimulCandidates.map((cand, cIdx) => (
+                              <button
+                                key={cIdx}
+                                type="button"
+                                onClick={() => handleOpenSimulCandidateModal(cand)}
+                                className="w-full p-3 bg-emerald-50/60 hover:bg-emerald-100/80 border border-emerald-300 rounded-xl text-left transition-all space-y-1 cursor-pointer shadow-2xs group"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-extrabold text-xs text-emerald-950">
+                                    {DAY_LABEL[cand.targetDay]}요일 {cand.targetPeriod}교시
+                                  </span>
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                      cand.score > 0
+                                        ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                        : "bg-emerald-200 text-emerald-900"
+                                    }`}
+                                  >
+                                    {cand.score > 0 ? `감점 ${cand.score}점` : "0점 (최적)"}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-emerald-900 font-medium">
+                                  {cand.steps.filter((s) => s.kind === "swap").length}개 반 맞교환 ·{" "}
+                                  {cand.steps.filter((s) => s.kind === "move").length}개 반 단순 이동
+                                </div>
+                                {cand.warnings && cand.warnings.length > 0 && (
+                                  <div className="text-[10px] text-amber-800 font-semibold bg-amber-50 rounded p-1 border border-amber-200">
+                                    ⚠️ {cand.warnings[0]}
+                                  </div>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {coordinationSimulCandidates.length > 0 && (
+                        <div className="space-y-2 pt-2 border-t border-gray-100">
+                          <div className="text-[11px] font-bold text-red-800 flex items-center justify-between">
+                            <span>⚠️ 양해 필요 후보 ({coordinationSimulCandidates.length}건)</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {coordinationSimulCandidates.map((cand, cIdx) => (
+                              <button
+                                key={cIdx}
+                                type="button"
+                                onClick={() => handleOpenSimulCandidateModal(cand)}
+                                className="w-full p-3 bg-red-50/60 hover:bg-red-100/80 border border-red-300 rounded-xl text-left transition-all space-y-1 cursor-pointer shadow-2xs group"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-extrabold text-xs text-red-950 flex items-center gap-1">
+                                    <span>⚠️</span>
+                                    <span>
+                                      {DAY_LABEL[cand.targetDay]}요일 {cand.targetPeriod}교시
+                                    </span>
+                                  </span>
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-red-200 text-red-950 border border-red-400">
+                                    양해 필수
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-red-900 font-semibold leading-relaxed">
+                                  {formatCoordinationText(cand.coordination)}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500 space-y-2">
+              <span className="text-3xl">👈</span>
+              <p className="font-bold text-gray-800 text-sm">
+                이동수업 그룹 및 원본 교시를 선택해 주세요.
+              </p>
+              <p className="text-xs text-gray-400">
+                그룹과 원본 교시를 선택하면 이동 가능한 모든 시간대가 그리드에 하이라이트됩니다.
+              </p>
+            </div>
+          )}
+
+          {/* 🔀 통 이동 확인 및 사전 양해 다이얼로그 */}
+          {selectedCandidateForModal && currentSimulGroup && selectedSimulSourceSlot && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-2xl border border-purple-200 max-w-2xl w-full max-h-[90vh] flex flex-col p-6 space-y-4 animate-scale-up">
+                {/* 헤더 */}
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3 shrink-0">
+                  <div>
+                    <h4 className="text-base font-extrabold text-purple-950 flex items-center gap-2">
+                      <span>🔀</span>
+                      <span>이동수업 통 이동 확인 및 반영</span>
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      묶인 전 학급의 수업 이동 및 상대 교사/특별실 양해 사항을 최종 확인합니다.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCandidateForModal(null)}
+                    className="text-gray-400 hover:text-gray-600 text-lg font-black cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="overflow-y-auto space-y-4 pr-1 shrink">
+                  {/* 이동 요약 카드 */}
+                  <div className="bg-purple-50/80 border border-purple-200 rounded-xl p-4 space-y-2 text-xs">
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="text-purple-950 text-sm">
+                        [{currentSimulGroup.grade}학년] {currentSimulGroup.label}
+                      </span>
+                      <span className="px-2 py-0.5 rounded font-extrabold bg-purple-200 text-purple-900">
+                        {currentSimulGroup.classNums?.join("·")}반 ({currentSimulGroup.classNums?.length}개 반)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm font-black text-indigo-950 pt-1">
+                      <span className="bg-white px-2.5 py-1 rounded-lg border border-purple-200">
+                        {DAY_LABEL[selectedSimulSourceSlot.day]}요일 {selectedSimulSourceSlot.period}교시
+                      </span>
+                      <span>➔</span>
+                      <span className="bg-white px-2.5 py-1 rounded-lg border border-purple-200 text-purple-900">
+                        {DAY_LABEL[selectedCandidateForModal.targetDay]}요일 {selectedCandidateForModal.targetPeriod}교시
+                      </span>
+                    </div>
+
+                    {/* 감점 사유 */}
+                    {selectedCandidateForModal.score > 0 ? (
+                      <div className="pt-2 border-t border-purple-200 text-amber-900 space-y-0.5 font-semibold">
+                        <div>⚠️ 시간표 감점: {selectedCandidateForModal.score}점</div>
+                        <ul className="list-disc list-inside text-[11px] text-amber-800">
+                          {selectedCandidateForModal.penalties.map((p, i) => (
+                            <li key={i}>{p}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <div className="pt-1 text-emerald-800 font-bold text-[11px]">
+                        ✨ 시간표 감점 없음 (0점)
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 연속시수 등 주의사항 */}
+                  {selectedCandidateForModal.warnings && selectedCandidateForModal.warnings.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 space-y-1.5 text-xs text-amber-950">
+                      <div className="font-extrabold flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>주의 사항 (연속 수업 확인)</span>
+                      </div>
+                      <ul className="list-disc list-inside space-y-0.5 font-semibold text-amber-900">
+                        {selectedCandidateForModal.warnings.map((w, i) => (
+                          <li key={i}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* 특별실(장소) 조율 필요 사항 */}
+                  {selectedCandidateForModal.coordination && (
+                    <div className="bg-red-50 border-2 border-red-500 rounded-xl p-3.5 space-y-2 text-xs text-red-950">
+                      <div className="font-extrabold flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <span>⚠️</span>
+                          <span>특별실(장소) 조율 필요</span>
+                        </span>
+                        <span className="text-[10px] bg-red-200 text-red-950 border border-red-400 px-2 py-0.5 rounded font-black">
+                          ⚠️ 양해 필수
+                        </span>
+                      </div>
+                      <div className="font-semibold leading-relaxed">
+                        {formatCoordinationText(selectedCandidateForModal.coordination)}
+                      </div>
+                      <div className="pt-2 border-t border-red-200 text-gray-800">
+                        <span className="font-bold">👥 양해 필요 당사자: </span>
+                        <span className="font-extrabold text-red-900">
+                          {getCoordinationOccupants(selectedCandidateForModal.coordination)
+                            .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum}반 ${o.subjectName})`)
+                            .join(", ")}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 반별 이동 상세 내역 */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-extrabold text-gray-800 flex items-center justify-between">
+                      <span>반별 수업 이동 내역 ({selectedCandidateForModal.steps.length}개 반)</span>
+                      <span className="text-[11px] text-gray-500 font-normal">
+                        {selectedCandidateForModal.steps.filter((s) => s.kind === "swap").length}개 반 맞교환 ·{" "}
+                        {selectedCandidateForModal.steps.filter((s) => s.kind === "move").length}개 반 단순 이동
+                      </span>
+                    </div>
+
+                    <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                      {selectedCandidateForModal.steps.map((step) => (
+                        <div
+                          key={step.classNum}
+                          className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded text-[11px] font-extrabold bg-purple-100 text-purple-900 border border-purple-200">
+                              {step.classNum}반
+                            </span>
+                            <span className="font-bold text-gray-900">
+                              {step.groupLesson.subjectName}
+                            </span>
+                            <span className="text-gray-500 font-medium">
+                              ({step.groupLesson.teacherName})
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px]">
+                            {step.kind === "swap" && step.counterpart ? (
+                              <>
+                                <span className="text-indigo-600 font-extrabold">↔ 맞교환:</span>
+                                <span className="font-bold text-gray-900">
+                                  {step.counterpart.teacherName} 선생님
+                                </span>
+                                <span className="text-gray-600">
+                                  ({step.counterpart.subjectName})
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-emerald-700 font-bold">
+                                ➔ 빈 교시로 단순 이동 (상대 수업 없음)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 양해 확인 섹션 (1곳만, 반영 직전) */}
+                  <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-xl space-y-3">
+                    <div className="text-xs text-gray-800 font-bold">
+                      👥 양해 대상 선생님 ({modalAllParties.length}명):{" "}
+                      <span className="text-purple-950 font-extrabold">
+                        {modalAllParties.join(", ")}
+                      </span>
+                    </div>
+
+                    <label className="flex items-start gap-2 cursor-pointer bg-white p-3 rounded-xl border border-purple-300 shadow-2xs">
+                      <input
+                        type="checkbox"
+                        checked={simulConsentConfirmed}
+                        onChange={(e) => setSimulConsentConfirmed(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                      />
+                      <span className="text-xs font-bold text-gray-900 leading-snug">
+                        위 담당 선생님들 및 상대 선생님들께 사전 양해를 완료하였습니다 (필수)
+                      </span>
+                    </label>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                          사유 구분
+                        </label>
+                        <select
+                          value={simulReasonType}
+                          onChange={(e) => setSimulReasonType(e.target.value as SwapReasonType)}
+                          className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+                        >
+                          <option value="기타">기타</option>
+                          <option value="출장">출장</option>
+                          <option value="연가">연가</option>
+                          <option value="공가">공가</option>
+                          <option value="병가">병가</option>
+                          <option value="행사">행사</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                          사유 상세 메모
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={100}
+                          value={simulReasonNote}
+                          onChange={(e) => setSimulReasonNote(e.target.value)}
+                          placeholder="사유 메모 (선택)"
+                          className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <input
+                      type="text"
+                      maxLength={200}
+                      value={simulConsentNote}
+                      onChange={(e) => setSimulConsentNote(e.target.value)}
+                      placeholder="양해 메모 (선택, 예: 이동수업 시간표 조정 사전 합의)"
+                      className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+                    />
+                  </div>
+                </div>
+
+                {/* 다이얼로그 푸터 */}
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCandidateForModal(null)}
+                    className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={executeSimulMoveCommit}
+                    disabled={simulSubmitting || !simulConsentConfirmed}
+                    className="px-5 py-2.5 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>⚡</span>
+                    <span>{simulSubmitting ? "통 이동 반영 중..." : "양해 확인 및 통 이동 반영"}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* 기존 교사별 직권 배정 화면 */
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">👤 대상 교사 선택 (가나다순)</label>
+              <select value={selectedTeacherEmail} onChange={(e) => { const email = e.target.value; const found = teacherList.find((t) => t.email.toLowerCase() === email.toLowerCase()); handleSelectTeacher(email, found?.name); }} disabled={teacherListLoading} className="w-full px-3 py-2 border border-gray-300 rounded-lg font-semibold bg-white text-xs disabled:opacity-60">
+                <option value="">-- 교사를 선택해 주세요 --</option>
+                {teacherListLoading && <option value="">교사 목록 불러오는 중...</option>}
+                {!teacherListLoading && teacherList.map((t) => (<option key={t.email} value={t.email}>{t.name} ({t.email})</option>))}
+              </select>
+            </div>
+            {recentTeachers.length > 0 && (
+              <div className="flex items-center gap-2 pt-2 border-t border-gray-100 text-xs">
+                <span className="text-gray-500 font-bold shrink-0">최근 선택:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {recentTeachers.map((t) => (
+                    <button key={t.email} type="button" onClick={() => handleSelectTeacher(t.email, t.name)} className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${selectedTeacherEmail.toLowerCase() === t.email.toLowerCase() ? "bg-indigo-600 text-white font-bold shadow-xs" : "bg-gray-100 hover:bg-gray-200 text-gray-700"}`}>👤 {t.name}</button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
-          <div className="lg:col-span-4 space-y-6 sticky top-4">
-            {selectedSlot && sourceLessonInfo && (
-              <div className="bg-white rounded-xl shadow-md border border-gray-200 p-5 space-y-4">
-                <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                  <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5"><span>3️⃣ 후보 상세 및 미리보기</span></h3>
-                  <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg text-[11px] font-bold">
-                    <button type="button" onClick={() => { setActiveCandidateType("swap"); setSelectedCandidate(null); setPreviewCells(null); }} className={`px-2 py-1 rounded transition-all ${activeCandidateType === "swap" ? "bg-white text-indigo-700 shadow-2xs" : "text-gray-600 hover:text-gray-900"}`}>↔️ 맞교환</button>
-                    <button type="button" onClick={() => { setActiveCandidateType("substitute"); setSelectedCandidate(null); setPreviewCells(null); }} className={`px-2 py-1 rounded transition-all ${activeCandidateType === "substitute" ? "bg-white text-indigo-700 shadow-2xs" : "text-gray-600 hover:text-gray-900"}`}>👤 보강 ({substituteCandidates.length})</button>
+          {selectedTeacherEmail ? (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              <div className="lg:col-span-8 space-y-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-indigo-950 flex items-center gap-2">
+                      <span>🗓️</span>
+                      <span>{selectedTeacherName} 교사의 등록 주별 시간표 ({weeks.length}개 주간)</span>
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-0.5">수업 칸을 클릭하면 그 수업이 옮겨 갈 수 있는 자리가 모든 주의 빈 칸 위에 바로 표시됩니다.</p>
                   </div>
+                  {loadingTimetable && <span className="text-xs text-indigo-600 font-semibold animate-pulse">시간표 로딩 중...</span>}
                 </div>
-                {loadingCandidates && <div className="p-4 text-center text-xs text-indigo-600 font-semibold animate-pulse">🔍 맞교환/보강 후보 탐색 중...</div>}
 
-                {/* 👤 보강 모드일 때 보강 후보 목록 / 선택된 보강 후보 상세 */}
-                {activeCandidateType === "substitute" && !loadingCandidates && (
-                  <div className="space-y-3">
-                    {selectedCandidate ? (
-                      <div className="space-y-3 pt-1 animate-in fade-in duration-200">
-                        <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="font-extrabold text-xs text-indigo-950">👤 {selectedCandidate.teacherName} 선생님</span>
-                            <button type="button" onClick={() => setSelectedCandidate(null)} className="text-[10px] text-indigo-600 hover:underline font-bold">변경</button>
-                          </div>
-                          <div className="flex items-center gap-2 text-[11px]">
-                            <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">보강 누계: {selectedCandidate.substituteCount ?? 0}회</span>
-                            {selectedCandidate.sameSubject && (
-                              <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">동일 과목</span>
-                            )}
-                          </div>
+                {timetableError && <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-xs text-red-800 text-center font-bold">{timetableError}</div>}
+
+                {projectedWeeks.map((pw) => {
+                  const w = weeks.find((item) => item.id === pw.weekId) || { id: pw.weekId, startDate: pw.startDate, note: "" };
+                  const isSourceWeek = selectedSlot?.weekId === w.id;
+                  const isRecentlyUpdated = recentlyUpdatedWeeks.includes(w.id);
+                  const weekCandidateGroup = swapCandidateWeeks.find((gw) => gw.weekId === w.id);
+                  const candidateListInWeek = weekCandidateGroup?.swapCandidates || [];
+                  return (
+                    <div key={w.id} ref={(el) => { weekGridRefs.current[w.id] = el; }} className={`bg-white rounded-xl shadow-sm border transition-all ${isSourceWeek ? "border-indigo-500 ring-2 ring-indigo-200" : isRecentlyUpdated ? "border-emerald-500 ring-2 ring-emerald-100" : "border-gray-200"} p-5 space-y-3`}>
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-xs bg-indigo-900 text-white px-2.5 py-1 rounded-md">📅 {w.startDate} 주간 {w.note ? `(${w.note})` : ""}</span>
+                          {isSourceWeek && <span className="text-[11px] font-bold bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded-full border border-indigo-200">📌 원 수업 소스 주간</span>}
+                          {isRecentlyUpdated && <span className="text-[11px] font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-300">✨ 배정 결과 반영됨</span>}
                         </div>
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <button type="button" onClick={handleAddToCart} className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1"><span>🛒</span><span>담기</span></button>
-                          <button type="button" onClick={handleDirectCommitSingle} disabled={submitting} className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50"><span>⚡</span><span>즉시 1건 반영</span></button>
-                        </div>
+                        {/* 맞교환 모드에서만 — 보강 모드에 교환 배지가 남는 혼선 방지 (2026-08-08) */}
+                        {selectedSlot && activeCandidateType === "swap" && <span className="text-[11px] text-gray-500 font-semibold">맞교환 후보 {candidateListInWeek.length}건</span>}
                       </div>
-                    ) : substituteCandidates.length === 0 ? (
-                      <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-center text-xs text-gray-500">
-                        해당 시간에 공강인 보강 가능 교사가 없습니다.
+                      <div className="border border-gray-200 rounded-xl overflow-hidden shadow-2xs">
+                        <table className="w-full border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-indigo-950 text-white font-bold">
+                              <th className="py-2.5 px-2 border-b border-r border-indigo-800 w-14 text-center">교시</th>
+                              {DAYS.map((d) => (<th key={d.num} className="py-2.5 px-2 border-b border-indigo-800 text-center">{d.label}</th>))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200 bg-white">
+                            {Array.from({ length: 7 }).map((_, pIdx) => {
+                              const period = pIdx + 1;
+                              return (
+                                <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
+                                  <td className="py-3 px-2 border-r border-gray-200 text-center font-bold text-gray-500 bg-gray-50">{period}교시</td>
+                                  {DAYS.map((d) => {
+                                    const dayMaxPeriods = pw.dayPeriodCounts?.find((dp) => dp.day === d.num)?.periods ?? 7;
+                                    const isOutPeriod = period > dayMaxPeriods;
+
+                                    const matchedCells = getCellForSlotInWeek(w.id, d.num, period);
+                                    const hasLesson = matchedCells.length > 0;
+                                    // 담김(이동됨) 마커는 본인 수업의 순 이동 출발지에만 — 경유지·제3 교사 수업 슬롯 제외
+                                    const cartMatch = myCartNetMoves.find((m) => m.from.weekId === w.id && m.from.day === d.num && m.from.period === period);
+                                    // 맞교환 모드에서만 후보 하이라이트 — 보강 탭 전환 시 맞교환 제안이 그리드에 잔존하던 혼선 방지 (2026-08-07)
+                                    const inlineCand = activeCandidateType === "swap" && !hasLesson && !isOutPeriod && selectedSlot ? candidateListInWeek.find((cand) => cand.targetDay === d.num && cand.targetPeriod === period) : null;
+                                    return (
+                                      <td key={d.num} className={`p-1 border-r border-gray-100 text-center align-top transition-all ${isOutPeriod ? "bg-gray-100/50" : hasLesson ? "bg-indigo-50/30" : inlineCand ? (inlineCand.coordination ? "bg-red-50/70" : "bg-emerald-50/50") : ""}`}>
+                                        {isOutPeriod ? (
+                                          <div className="text-gray-300 text-xs font-semibold font-mono text-center py-2 select-none">-</div>
+                                        ) : hasLesson ? (
+                                          <div className="space-y-1">
+                                            {matchedCells.map((cell, cIdx) => {
+                                              // 담기 가상 반영으로 옮겨온 셀 — 실제 시간표가 아니므로 원 수업으로 선택(클릭) 불가
+                                              const isVirtualMoved = Boolean(cell.changed?.changeId?.startsWith("virtual-direct"));
+                                              if (isVirtualMoved) {
+                                                return (
+                                                  <div key={cIdx} title="담기 가상 반영 — 일괄 반영 전까지는 실제 시간표가 아닙니다" className="w-full p-1.5 rounded-lg text-left border bg-amber-100 border-amber-400 text-amber-950">
+                                                    <div className="font-black text-xs text-amber-950">{cell.subjectShort || cell.subjectName}</div>
+                                                    <div className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5 bg-amber-200 text-amber-900">{cell.grade}-{cell.classNum}반</div>
+                                                    <div className="text-[9px] bg-amber-200 text-amber-900 font-extrabold px-1 rounded mt-0.5 inline-block">🛒 담김 이동</div>
+                                                  </div>
+                                                );
+                                              }
+                                              const isSelected = selectedSlot?.weekId === w.id && selectedSlot?.grade === cell.grade && selectedSlot?.classNum === cell.classNum && selectedSlot?.day === cell.day && selectedSlot?.period === cell.period;
+                                              const subjName = cell.subjectShort || cell.subjectName || "";
+                                              // 판정 단일 통로: 서버가 교사 그리드 응답에 실어 보낸 동시수업 라벨 (cell.simul)
+                                              const simulCheck = { hit: !!cell.simul, groupLabel: cell.simul };
+
+                                              return (
+                                                <button key={cIdx} type="button" onClick={() => handleSlotClick(w.id, cell)} className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${isSelected ? "bg-indigo-600 text-white border-indigo-700 shadow-md ring-2 ring-indigo-300 scale-[1.02]" : simulCheck.hit ? "bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-950 shadow-2xs" : "bg-white hover:bg-indigo-100/60 border-indigo-200 hover:border-indigo-400 text-gray-900 shadow-2xs"}`}>
+                                                  <div className={`font-black text-xs ${isSelected ? "text-white" : simulCheck.hit ? "text-purple-950 font-black" : "text-indigo-950"}`}>{subjName}</div>
+                                                  <div className="flex items-center justify-between gap-1 flex-wrap mt-0.5">
+                                                    <div className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold ${isSelected ? "bg-indigo-800 text-indigo-100" : simulCheck.hit ? "bg-purple-200 text-purple-900" : "bg-indigo-100 text-indigo-800"}`}>{cell.grade}-{cell.classNum}반</div>
+                                                    {simulCheck.hit && (
+                                                      <span className="text-[9px] bg-purple-700 text-white font-extrabold px-1 rounded" title={simulCheck.groupLabel || "이동수업 그룹"}>🔀 이동수업</span>
+                                                    )}
+                                                  </div>
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        ) : inlineCand ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (inlineCand.coordination) {
+                                                setPendingCoordinationSelect({ candidate: inlineCand, weekId: w.id, startDate: w.startDate });
+                                              } else {
+                                                handleSelectCandidate(inlineCand, w.id, w.startDate);
+                                              }
+                                            }}
+                                            className={`w-full p-1.5 rounded-lg text-left transition-all cursor-pointer border ${
+                                              activeCandidateType === "swap" && selectedCandidate?.targetWeekId === w.id && selectedCandidate?.targetDay === inlineCand.targetDay && selectedCandidate?.targetPeriod === inlineCand.targetPeriod && selectedCandidate?.counterpartEmail === inlineCand.counterpartEmail
+                                                ? "bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-300 scale-[1.02]"
+                                                : inlineCand.coordination
+                                                  ? "bg-red-50 hover:bg-red-100/90 border-2 border-red-500 text-red-950 shadow-xs"
+                                                  : "bg-emerald-50 hover:bg-emerald-100/90 border-emerald-300 hover:border-emerald-500 text-emerald-950 shadow-2xs"
+                                            }`}
+                                          >
+                                            <div className="flex items-center justify-between gap-1">
+                                              <span className="font-black text-[11px] truncate flex items-center gap-0.5">
+                                                {inlineCand.coordination && <span>⚠️</span>}
+                                                <span>{inlineCand.counterpartName}</span>
+                                              </span>
+                                              <span className={`px-1 py-0.5 rounded text-[9px] font-extrabold shrink-0 ${
+                                                inlineCand.coordination
+                                                  ? "bg-red-200 text-red-950 border border-red-400 font-black"
+                                                  : inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0)
+                                                    ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                                    : "bg-emerald-200 text-emerald-900"
+                                              }`}>
+                                                {inlineCand.coordination
+                                                  ? "⚠️ 양해 필수"
+                                                  : inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0)
+                                                    ? `감점 ${inlineCand.score}`
+                                                    : "0점"}
+                                              </span>
+                                            </div>
+                                            <div className={`text-[10px] mt-0.5 font-bold truncate ${inlineCand.coordination ? "text-red-900" : "text-emerald-800"}`}>
+                                              {inlineCand.counterpartSubjectName}
+                                            </div>
+                                          </button>
+                                        ) : cartMatch ? (
+                                          <div className="w-full p-1.5 rounded-lg border border-dashed border-amber-400 bg-amber-50/60 text-center">
+                                            <div className="text-[9px] font-extrabold text-amber-800">🛒 담김 (이동됨)</div>
+                                            <div className="text-[10px] font-bold text-amber-900 truncate">{cartMatch.subjectName || "수업"}</div>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSlotClick(w.id, null, d.num, period)}
+                                            className="w-full h-full min-h-[3rem] p-1 rounded-lg border border-transparent hover:border-indigo-300 hover:bg-indigo-50/80 transition-all text-[11px] text-gray-400 hover:text-indigo-700 font-bold flex flex-col items-center justify-center gap-0.5 group cursor-pointer"
+                                            title="이 빈 자리로 다른 수업 가져오기 (연쇄 이동 탐색)"
+                                          >
+                                            <span>-</span>
+                                            <span className="hidden group-hover:inline text-[9px] bg-indigo-100 text-indigo-800 px-1 py-0.2 rounded font-extrabold">
+                                              🔗 가져오기
+                                            </span>
+                                          </button>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="text-[11px] font-bold text-gray-700 flex items-center justify-between">
-                          <span>보강 가능 교사 목록 ({substituteCandidates.length}명)</span>
-                          <span className="text-[10px] text-gray-400 font-normal">누계 적은 순</span>
-                        </div>
-                        <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                          {substituteCandidates.map((cand) => (
-                            <button
-                              key={cand.teacherEmail}
-                              type="button"
-                              onClick={() => {
-                                setSelectedCandidate(cand);
-                                setActiveCandidateType("substitute");
-                                setSubmitError(null);
-                              }}
-                              className="w-full p-2.5 bg-gray-50 hover:bg-indigo-50/80 border border-gray-200 hover:border-indigo-300 rounded-xl text-left transition-all flex items-center justify-between text-xs group cursor-pointer"
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-gray-900 group-hover:text-indigo-900">👤 {cand.teacherName}</span>
-                                {cand.sameSubject && (
-                                  <span className="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded font-extrabold">동일 과목</span>
+                    </div>
+                  );
+                })}
+
+                {hasMoreProjectedWeeks && (
+                  <div className="text-center pt-2 pb-4">
+                    <button
+                      type="button"
+                      onClick={handleLoadMoreWeeks}
+                      disabled={loadingTimetable}
+                      className="px-6 py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-extrabold rounded-xl text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      ➕ 이후 주 더 보기
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="lg:col-span-4 space-y-6 sticky top-4">
+                {selectedSlot && sourceLessonInfo && (
+                  <div className="bg-white rounded-xl shadow-md border border-gray-200 p-5 space-y-4">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                      <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5"><span>3️⃣ 후보 상세 및 미리보기</span></h3>
+                      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg text-[11px] font-bold">
+                        <button type="button" onClick={() => { setActiveCandidateType("swap"); setSelectedCandidate(null); setPreviewCells(null); }} className={`px-2 py-1 rounded transition-all ${activeCandidateType === "swap" ? "bg-white text-indigo-700 shadow-2xs" : "text-gray-600 hover:text-gray-900"}`}>↔️ 맞교환</button>
+                        <button type="button" onClick={() => { setActiveCandidateType("substitute"); setSelectedCandidate(null); setPreviewCells(null); }} className={`px-2 py-1 rounded transition-all ${activeCandidateType === "substitute" ? "bg-white text-indigo-700 shadow-2xs" : "text-gray-600 hover:text-gray-900"}`}>👤 보강 ({substituteCandidates.length})</button>
+                      </div>
+                    </div>
+                    {loadingCandidates && <div className="p-4 text-center text-xs text-indigo-600 font-semibold animate-pulse">🔍 맞교환/보강 후보 탐색 중...</div>}
+
+                    {/* 👤 보강 모드일 때 보강 후보 목록 / 선택된 보강 후보 상세 */}
+                    {activeCandidateType === "substitute" && !loadingCandidates && (
+                      <div className="space-y-3">
+                        {selectedCandidate ? (
+                          <div className="space-y-3 pt-1 animate-in fade-in duration-200">
+                            <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-extrabold text-xs text-indigo-950">👤 {selectedCandidate.teacherName} 선생님</span>
+                                <button type="button" onClick={() => setSelectedCandidate(null)} className="text-[10px] text-indigo-600 hover:underline font-bold">변경</button>
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px]">
+                                <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">보강 누계: {selectedCandidate.substituteCount ?? 0}회</span>
+                                {selectedCandidate.sameSubject && (
+                                  <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">동일 과목</span>
                                 )}
                               </div>
-                              <span className="text-[10px] bg-gray-200 group-hover:bg-indigo-100 text-gray-700 group-hover:text-indigo-800 font-bold px-2 py-0.5 rounded">
-                                누계 {cand.substituteCount}회
-                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                              <button type="button" onClick={handleAddToCart} className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1"><span>🛒</span><span>담기</span></button>
+                              <button type="button" onClick={handleDirectCommitSingle} disabled={submitting} className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50"><span>⚡</span><span>즉시 1건 반영</span></button>
+                            </div>
+                          </div>
+                        ) : substituteCandidates.length === 0 ? (
+                          <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-center text-xs text-gray-500">
+                            해당 시간에 공강인 보강 가능 교사가 없습니다.
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="text-[11px] font-bold text-gray-700 flex items-center justify-between">
+                              <span>보강 가능 교사 목록 ({substituteCandidates.length}명)</span>
+                              <span className="text-[10px] text-gray-400 font-normal">누계 적은 순</span>
+                            </div>
+                            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                              {substituteCandidates.map((cand) => (
+                                <button
+                                  key={cand.teacherEmail}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCandidate(cand);
+                                    setActiveCandidateType("substitute");
+                                    setSubmitError(null);
+                                  }}
+                                  className="w-full p-2.5 bg-gray-50 hover:bg-indigo-50/80 border border-gray-200 hover:border-indigo-300 rounded-xl text-left transition-all flex items-center justify-between text-xs group cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-gray-900 group-hover:text-indigo-900">👤 {cand.teacherName}</span>
+                                    {cand.sameSubject && (
+                                      <span className="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded font-extrabold">동일 과목</span>
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] bg-gray-200 group-hover:bg-indigo-100 text-gray-700 group-hover:text-indigo-800 font-bold px-2 py-0.5 rounded">
+                                    누계 {cand.substituteCount}회
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ↔️ 맞교환 모드일 때 */}
+                    {activeCandidateType === "swap" && !loadingCandidates && (
+                      <>
+                        {selectedCandidate ? (
+                          <div className="space-y-4 pt-1 animate-in fade-in duration-200">
+                            {selectedCandidate.coordination && (
+                              <div className="bg-red-50 border-2 border-red-500 rounded-xl p-3.5 space-y-2 text-xs">
+                                <div className="font-extrabold text-red-950 flex items-center justify-between">
+                                  <span className="flex items-center gap-1">
+                                    <span>⚠️</span>
+                                    <span>양해 필요 후보 (장소 충돌)</span>
+                                  </span>
+                                  <span className="text-[10px] bg-red-200 text-red-950 border border-red-400 px-2 py-0.5 rounded font-black">
+                                    ⚠️ 양해 필수
+                                  </span>
+                                </div>
+                                <div className="text-red-900 text-xs leading-relaxed font-semibold">
+                                  {formatCoordinationText(selectedCandidate.coordination)}
+                                </div>
+                                <div className="pt-2 border-t border-red-200">
+                                  <div className="font-bold text-gray-800 text-[11px]">
+                                    👥 양해 필요 당사자:{" "}
+                                    <span className="text-red-900 font-extrabold">
+                                      {getCoordinationOccupants(selectedCandidate.coordination)
+                                        .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
+                                        .join(", ")}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-extrabold text-xs text-indigo-950">🔄 {selectedCandidate.counterpartName} 교사 ({selectedCandidate.counterpartSubjectName})</span>
+                              </div>
+                              {(selectedCandidate.penalties?.length ?? 0) > 0 || selectedCandidate.score > 0 ? (
+                                <div className="text-[11px] space-y-0.5 pt-1 border-t border-indigo-100">
+                                  <div className="font-extrabold text-amber-900">⚠️ 감점 {selectedCandidate.score}점 — 사유</div>
+                                  <ul className="list-disc list-inside text-amber-800 space-y-0.5">
+                                    {selectedCandidate.penaltyDetails && selectedCandidate.penaltyDetails.length > 0
+                                      ? selectedCandidate.penaltyDetails.map((pd: any, i: number) => (
+                                          <li key={i}>{pd.text} ({pd.points}점)</li>
+                                        ))
+                                      : (selectedCandidate.penalties || []).map((p: string, i: number) => (
+                                          <li key={i}>{p}</li>
+                                        ))}
+                                    {(!selectedCandidate.penaltyDetails || selectedCandidate.penaltyDetails.length === 0) &&
+                                      (selectedCandidate.penalties?.length ?? 0) === 0 && <li>사유 정보 없음</li>}
+                                  </ul>
+                                </div>
+                              ) : (
+                                <div className="text-[11px] font-bold text-emerald-700 pt-1 border-t border-indigo-100">
+                                  {selectedCandidate.coordination
+                                    ? "시간표 감점 없음 · 특별실 겹침 조율 필요"
+                                    : "시간표 감점 없음 (0점)"}
+                                </div>
+                              )}
+                            </div>
+                            <div className="space-y-2">
+                              <div className="text-xs font-bold text-gray-700 flex items-center justify-between"><span>🗓️ 상대 교사 시간표 미리보기</span>{previewLoading && <span className="text-[10px] text-indigo-600 animate-pulse">로딩 중...</span>}</div>
+                              <MiniPreviewGrid isCrossWeek={isCrossWeek} sourceWeekId={selectedSlot.weekId} targetWeekId={targetWeekId} sourceWeekObj={sourceWeekObj} targetWeekObj={targetWeekObj} selectedCell={{ grade: selectedSlot.grade, classNum: selectedSlot.classNum, day: selectedSlot.day, period: selectedSlot.period, subjectName: sourceLessonInfo.subjectName }} applyingCandidate={{ targetDay: selectedCandidate.targetDay, targetPeriod: selectedCandidate.targetPeriod, counterpartName: selectedCandidate.counterpartName, counterpartSubjectName: selectedCandidate.counterpartSubjectName }} periodsPerDay={7} previewCells={previewCells} counterpartSourceCells={counterpartSourceCells} counterpartTargetCells={counterpartTargetCells} counterpartTitle={selectedCandidate.counterpartName} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 pt-2">
+                              <button type="button" onClick={handleAddToCart} className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"><span>🛒</span><span>담기</span></button>
+                              <button type="button" onClick={handleDirectCommitSingle} disabled={submitting} className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"><span>⚡</span><span>즉시 1건 반영</span></button>
+                            </div>
+                          </div>
+                        ) : (
+
+                          <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl text-center text-xs text-indigo-900">
+                            시간표 그리드에서 맞교환할 상대 셀(초록색 배지)을 클릭해 주세요.
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+                <div className="bg-white rounded-xl shadow-md border border-gray-200 p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                    <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5"><span>🛒 담기 목록 ({cartItems.length}건)</span></h3>
+                    {cartItems.length > 0 && <button type="button" onClick={handleClearCart} className="text-[10px] text-gray-400 hover:text-red-600 font-bold">전체 비우기</button>}
+                  </div>
+                  {cartItems.length === 0 ? <div className="p-6 text-center text-xs text-gray-400 bg-gray-50 rounded-xl space-y-1"><p className="font-bold text-gray-600">담긴 항목이 없습니다.</p></div> : (
+                    <div className="space-y-3">
+                      <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                        {cartItems.map((item, idx) => (
+                          <div key={item.id} className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1.5">
+                            <div className="flex items-center justify-between font-bold">
+                              <span className="text-indigo-900">#{idx + 1} {item.source.grade}-{item.source.classNum}반 {DAY_LABEL[item.source.day]}요일 {item.source.period}교시</span>
+                              <button type="button" onClick={() => handleRemoveFromCart(item.id)} className="text-gray-400 hover:text-red-600 text-xs">✕</button>
+                            </div>
+                            {item.sourceTeacherEmail && item.sourceTeacherEmail.toLowerCase() !== selectedTeacherEmail.toLowerCase() && (
+                              <div className="text-[10px] text-purple-800 font-bold">🔗 체인 단계 — {item.sourceTeacherName || item.sourceTeacherEmail} 선생님의 {item.source.subjectName} 이동</div>
+                            )}
+                            <div className="text-[11px] text-gray-700">➔ 상대: <strong className="text-gray-900">{item.counterpartName}</strong> ({item.counterpartSubjectName})</div>
+                            {item.lastError && <div className="text-[10px] text-red-700 font-bold bg-red-50 border border-red-200 rounded px-1.5 py-1">⚠️ 반영 실패: {item.lastError}</div>}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="pt-2 border-t border-gray-100 space-y-2">
+                        <div className="text-[11px] font-bold text-gray-700">📨 양해 구하기 (시간표가 바뀌는 선생님별 이미지 복사):</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {affectedTeachers.map((t) => (
+                            <button key={t.email} type="button" onClick={() => handleGenerateConsolidatedCard(t.email)} disabled={generatingShareFor === t.email} className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-[11px] rounded-lg disabled:opacity-60">
+                              {generatingShareFor === t.email ? "이미지 생성 중…" : `📸 ${t.name} 선생님 (${t.count}건)`}
                             </button>
                           ))}
                         </div>
                       </div>
-                    )}
-                  </div>
-                )}
-
-                {/* ↔️ 맞교환 모드일 때 */}
-                {activeCandidateType === "swap" && !loadingCandidates && (
-                  <>
-                    {selectedCandidate ? (
-                      <div className="space-y-4 pt-1 animate-in fade-in duration-200">
-                        {selectedCandidate.coordination && (
-                          <div className="bg-red-50 border-2 border-red-500 rounded-xl p-3.5 space-y-2 text-xs">
-                            <div className="font-extrabold text-red-950 flex items-center justify-between">
-                              <span className="flex items-center gap-1">
-                                <span>⚠️</span>
-                                <span>양해 필요 후보 (장소 충돌)</span>
-                              </span>
-                              <span className="text-[10px] bg-red-200 text-red-950 border border-red-400 px-2 py-0.5 rounded font-black">
-                                ⚠️ 양해 필수
-                              </span>
-                            </div>
-                            <div className="text-red-900 text-xs leading-relaxed font-semibold">
-                              {formatCoordinationText(selectedCandidate.coordination)}
-                            </div>
-                            <div className="pt-2 border-t border-red-200">
-                              <div className="font-bold text-gray-800 text-[11px]">
-                                👥 양해 필요 당사자:{" "}
-                                <span className="text-red-900 font-extrabold">
-                                  {getCoordinationOccupants(selectedCandidate.coordination)
-                                    .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
-                                    .join(", ")}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="font-extrabold text-xs text-indigo-950">🔄 {selectedCandidate.counterpartName} 교사 ({selectedCandidate.counterpartSubjectName})</span>
-                          </div>
-                          {(selectedCandidate.penalties?.length ?? 0) > 0 || selectedCandidate.score > 0 ? (
-                            <div className="text-[11px] space-y-0.5 pt-1 border-t border-indigo-100">
-                              <div className="font-extrabold text-amber-900">⚠️ 감점 {selectedCandidate.score}점 — 사유</div>
-                              <ul className="list-disc list-inside text-amber-800 space-y-0.5">
-                                {selectedCandidate.penaltyDetails && selectedCandidate.penaltyDetails.length > 0
-                                  ? selectedCandidate.penaltyDetails.map((pd: any, i: number) => (
-                                      <li key={i}>{pd.text} ({pd.points}점)</li>
-                                    ))
-                                  : (selectedCandidate.penalties || []).map((p: string, i: number) => (
-                                      <li key={i}>{p}</li>
-                                    ))}
-                                {(!selectedCandidate.penaltyDetails || selectedCandidate.penaltyDetails.length === 0) &&
-                                  (selectedCandidate.penalties?.length ?? 0) === 0 && <li>사유 정보 없음</li>}
-                              </ul>
-                            </div>
-                          ) : (
-                            <div className="text-[11px] font-bold text-emerald-700 pt-1 border-t border-indigo-100">
-                              {selectedCandidate.coordination
-                                ? "시간표 감점 없음 · 특별실 겹침 조율 필요"
-                                : "시간표 감점 없음 (0점)"}
-                            </div>
-                          )}
-                        </div>
-                        <div className="space-y-2">
-                          <div className="text-xs font-bold text-gray-700 flex items-center justify-between"><span>🗓️ 상대 교사 시간표 미리보기</span>{previewLoading && <span className="text-[10px] text-indigo-600 animate-pulse">로딩 중...</span>}</div>
-                          <MiniPreviewGrid isCrossWeek={isCrossWeek} sourceWeekId={selectedSlot.weekId} targetWeekId={targetWeekId} sourceWeekObj={sourceWeekObj} targetWeekObj={targetWeekObj} selectedCell={{ grade: selectedSlot.grade, classNum: selectedSlot.classNum, day: selectedSlot.day, period: selectedSlot.period, subjectName: sourceLessonInfo.subjectName }} applyingCandidate={{ targetDay: selectedCandidate.targetDay, targetPeriod: selectedCandidate.targetPeriod, counterpartName: selectedCandidate.counterpartName, counterpartSubjectName: selectedCandidate.counterpartSubjectName }} periodsPerDay={7} previewCells={previewCells} counterpartSourceCells={counterpartSourceCells} counterpartTargetCells={counterpartTargetCells} counterpartTitle={selectedCandidate.counterpartName} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 pt-2">
-                          <button type="button" onClick={handleAddToCart} className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"><span>🛒</span><span>담기</span></button>
-                          <button type="button" onClick={handleDirectCommitSingle} disabled={submitting} className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"><span>⚡</span><span>즉시 1건 반영</span></button>
-                        </div>
+                      <div className="pt-3 border-t border-gray-200 space-y-3">
+                        <button type="button" onClick={handleBatchCommit} disabled={submitting} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-md">일괄 승인 및 반영</button>
                       </div>
-                    ) : (
-
-                      <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl text-center text-xs text-indigo-900">
-                        시간표 그리드에서 맞교환할 상대 셀(초록색 배지)을 클릭해 주세요.
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-            <div className="bg-white rounded-xl shadow-md border border-gray-200 p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5"><span>🛒 담기 목록 ({cartItems.length}건)</span></h3>
-                {cartItems.length > 0 && <button type="button" onClick={handleClearCart} className="text-[10px] text-gray-400 hover:text-red-600 font-bold">전체 비우기</button>}
-              </div>
-              {cartItems.length === 0 ? <div className="p-6 text-center text-xs text-gray-400 bg-gray-50 rounded-xl space-y-1"><p className="font-bold text-gray-600">담긴 항목이 없습니다.</p></div> : (
-                <div className="space-y-3">
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {cartItems.map((item, idx) => (
-                      <div key={item.id} className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1.5">
-                        <div className="flex items-center justify-between font-bold">
-                          <span className="text-indigo-900">#{idx + 1} {item.source.grade}-{item.source.classNum}반 {DAY_LABEL[item.source.day]}요일 {item.source.period}교시</span>
-                          <button type="button" onClick={() => handleRemoveFromCart(item.id)} className="text-gray-400 hover:text-red-600 text-xs">✕</button>
-                        </div>
-                        {item.sourceTeacherEmail && item.sourceTeacherEmail.toLowerCase() !== selectedTeacherEmail.toLowerCase() && (
-                          <div className="text-[10px] text-purple-800 font-bold">🔗 체인 단계 — {item.sourceTeacherName || item.sourceTeacherEmail} 선생님의 {item.source.subjectName} 이동</div>
-                        )}
-                        <div className="text-[11px] text-gray-700">➔ 상대: <strong className="text-gray-900">{item.counterpartName}</strong> ({item.counterpartSubjectName})</div>
-                        {item.lastError && <div className="text-[10px] text-red-700 font-bold bg-red-50 border border-red-200 rounded px-1.5 py-1">⚠️ 반영 실패: {item.lastError}</div>}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="pt-2 border-t border-gray-100 space-y-2">
-                    <div className="text-[11px] font-bold text-gray-700">📨 양해 구하기 (시간표가 바뀌는 선생님별 이미지 복사):</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {affectedTeachers.map((t) => (
-                        <button key={t.email} type="button" onClick={() => handleGenerateConsolidatedCard(t.email)} disabled={generatingShareFor === t.email} className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold text-[11px] rounded-lg disabled:opacity-60">
-                          {generatingShareFor === t.email ? "이미지 생성 중…" : `📸 ${t.name} 선생님 (${t.count}건)`}
-                        </button>
-                      ))}
                     </div>
-                  </div>
-                  <div className="pt-3 border-t border-gray-200 space-y-3">
-                    <button type="button" onClick={handleBatchCommit} disabled={submitting} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-xs shadow-md">일괄 승인 및 반영</button>
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500 space-y-2">
-          <span className="text-3xl">👈</span>
-          <p className="font-bold text-gray-800 text-sm">위 드롭다운에서 직권 배정할 대상 교사를 선택해 주세요.</p>
-          <p className="text-xs text-gray-400">교사를 선택하면 그 교사의 모든 주 시간표가 표시됩니다.</p>
-        </div>
-      )}
-
-      {/* 🔗 징검다리 체인 탐색 모달 */}
-      {chainModalOpen && chainTargetSlot && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl border border-indigo-200 max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-5 animate-scale-up">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div>
-                <h3 className="text-base font-extrabold text-indigo-950 flex items-center gap-2">
-                  <span>🔗 징검다리 연쇄 이동 경로 탐색</span>
-                  <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-800">
-                    연쇄 이동 탐색
-                  </span>
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  목적지 공강 위치: <strong>{DAY_LABEL[chainTargetSlot.day]}요일 {chainTargetSlot.period}교시</strong>
-                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setChainModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-lg font-black"
-              >
-                ✕
-              </button>
             </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500 space-y-2">
+              <span className="text-3xl">👈</span>
+              <p className="font-bold text-gray-800 text-sm">위 드롭다운에서 직권 배정할 대상 교사를 선택해 주세요.</p>
+              <p className="text-xs text-gray-400">교사를 선택하면 그 교사의 모든 주 시간표가 표시됩니다.</p>
+            </div>
+          )}
 
-            {/* 원본 수업 선택 영역 */}
-            <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-4 space-y-3">
-              <label className="block text-xs font-extrabold text-indigo-950">
-                📍 목적지로 가져올 원본 수업 선택:
-              </label>
-              {chainSourceSlot ? (
-                <div className="flex items-center justify-between bg-white border border-indigo-200 p-3 rounded-lg text-xs">
+          {/* 🔗 징검다리 체인 탐색 모달 */}
+          {chainModalOpen && chainTargetSlot && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-xl border border-indigo-200 max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-5 animate-scale-up">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                   <div>
-                    <span className="font-bold text-indigo-900">
-                      {chainSourceSlot.grade}-{chainSourceSlot.classNum}반 {chainSourceSlot.subjectName}
-                    </span>{" "}
-                    <span className="text-gray-500">
-                      ({DAY_LABEL[chainSourceSlot.day]}요일 {chainSourceSlot.period}교시)
-                    </span>
+                    <h3 className="text-base font-extrabold text-indigo-950 flex items-center gap-2">
+                      <span>🔗 징검다리 연쇄 이동 경로 탐색</span>
+                      <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-indigo-100 text-indigo-800">
+                        연쇄 이동 탐색
+                      </span>
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      목적지 공강 위치: <strong>{DAY_LABEL[chainTargetSlot.day]}요일 {chainTargetSlot.period}교시</strong>
+                    </p>
                   </div>
-                  <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
-                    선택됨
-                  </span>
-                </div>
-              ) : (
-                /* 원본 미지정 — 모달이 그리드를 가리므로 여기서 직접 고른다 (묵은 원본 자동 사용 금지, 2026-08-07) */
-                <div className="space-y-1.5">
-                  <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
-                    이 자리로 옮겨올 수업을 아래에서 골라 주세요. (여러 반이 함께 듣는 이동수업은 제외)
-                  </div>
-                  <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
-                    {(teacherWeekCellsMap[chainTargetSlot.weekId] || [])
-                      .filter((c) => !c.simul && !c.changed?.changeId?.startsWith("virtual-direct"))
-                      .sort((a, b) => a.day - b.day || a.period - b.period)
-                      .map((c, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() =>
-                            setChainSourceSlot({
-                              weekId: chainTargetSlot.weekId,
-                              grade: c.grade,
-                              classNum: c.classNum,
-                              day: c.day,
-                              period: c.period,
-                              subjectName: c.subjectShort || c.subjectName || "수업",
-                              teacherEmail: selectedTeacherEmail,
-                              teacherName: selectedTeacherName,
-                            })
-                          }
-                          className="w-full flex items-center justify-between bg-white hover:bg-indigo-50 border border-indigo-100 hover:border-indigo-300 rounded-lg px-2.5 py-1.5 text-xs transition-colors"
-                        >
-                          <span className="font-bold text-indigo-950">
-                            {DAY_LABEL[c.day]}요일 {c.period}교시 · {c.grade}-{c.classNum}반 {c.subjectShort || c.subjectName}
-                          </span>
-                          <span className="text-[10px] text-indigo-500 font-bold">선택</span>
-                        </button>
-                      ))}
-                    {(teacherWeekCellsMap[chainTargetSlot.weekId] || []).filter((c) => !c.simul).length === 0 && (
-                      <div className="text-[11px] text-gray-500 text-center py-2">이 주에 옮길 수 있는 수업이 없습니다.</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => handleRunChainSearch(2)}
-                  disabled={!chainSourceSlot || chainSearchLoading}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors"
-                >
-                  {chainSearchLoading ? "경로 탐색 중..." : "🔍 연쇄 이동 탐색 (2단계)"}
-                </button>
-              </div>
-            </div>
-
-            {/* 탐색 결과 리스트 */}
-            {chainSearchLoading ? (
-              <div className="py-12 text-center text-xs text-indigo-600 font-bold space-y-2">
-                <div className="inline-block animate-spin rounded-full h-6 w-6 border-3 border-indigo-600 border-t-transparent" />
-                <p>목적지 도달 가능한 중간 교환 체인을 역방향 탐색 중입니다...</p>
-              </div>
-            ) : chainSearchError ? (
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-3">
-                <p className="font-bold">{chainSearchError}</p>
-                {chainMaxDepth < 3 && (
                   <button
                     type="button"
-                    onClick={() => handleRunChainSearch(3)}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shadow-xs"
+                    onClick={() => setChainModalOpen(false)}
+                    className="text-gray-400 hover:text-gray-600 text-lg font-black"
                   >
-                    🔄 3단계까지 넓혀 다시 탐색
+                    ✕
                   </button>
-                )}
-              </div>
-            ) : chainResults.length > 0 ? (
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-gray-700">
-                  도달 가능한 교환 체인 경로 ({chainResults.length}건 발견):
-                </h4>
-                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                  {chainResults.map((chain, idx) => (
-                    <div
-                      key={idx}
-                      className="p-4 bg-white border border-indigo-100 hover:border-indigo-300 rounded-xl shadow-xs space-y-3 transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-black px-2 py-0.5 rounded bg-indigo-950 text-white">
-                            체인 {idx + 1}
-                          </span>
-                          <span className="text-xs font-bold text-gray-600">
-                            총 {chain.steps.length}단계 교환
-                          </span>
-                        </div>
-                        <span className={`text-xs font-extrabold px-2 py-0.5 rounded ${
-                          chain.totalScore === 0 ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"
-                        }`}>
-                          {chain.totalScore === 0 ? "✨ 감점 0점 (최적)" : `⚠️ 감점 ${chain.totalScore}점`}
+                </div>
+
+                {/* 원본 수업 선택 영역 */}
+                <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-4 space-y-3">
+                  <label className="block text-xs font-extrabold text-indigo-950">
+                    📍 목적지로 가져올 원본 수업 선택:
+                  </label>
+                  {chainSourceSlot ? (
+                    <div className="flex items-center justify-between bg-white border border-indigo-200 p-3 rounded-lg text-xs">
+                      <div>
+                        <span className="font-bold text-indigo-900">
+                          {chainSourceSlot.grade}-{chainSourceSlot.classNum}반 {chainSourceSlot.subjectName}
+                        </span>{" "}
+                        <span className="text-gray-500">
+                          ({DAY_LABEL[chainSourceSlot.day]}요일 {chainSourceSlot.period}교시)
                         </span>
                       </div>
-
-                      <div className="text-xs text-gray-800 bg-slate-50 p-3 rounded-lg border border-slate-200/80 leading-relaxed font-medium">
-                        {chain.summary || chain.steps.map((s: any) => s.stepSummary).join(" ➔ ")}
-                      </div>
-
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => handleAddChainToCart(chain)}
-                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center gap-1"
-                        >
-                          <span>🛒</span>
-                          <span>이 체인 순서대로 담기 ({chain.steps.length}건)</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      )}
-
-      {/* ⚡ 직권 일괄 반영 사전 양해 확인 모달 (반려 4건 반영) */}
-      {cartBatchModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-lg p-6 space-y-4 max-h-[90vh] flex flex-col">
-            <div className="border-b border-gray-100 pb-3 flex items-center justify-between shrink-0">
-              <h4 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
-                <span>🤝 직권 일괄 반영 사전 양해 확인</span>
-              </h4>
-              <button
-                type="button"
-                onClick={() => setCartBatchModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 font-bold text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="overflow-y-auto space-y-3 pr-1 shrink">
-              <div className="text-xs font-semibold text-gray-700">
-                담김 목록 <strong>{cartItems.length}건</strong> 중 사전 장소 양해가 필요한 교환 건이 포함되어 있습니다.
-              </div>
-
-              {cartItems
-                .filter((item) => !!item.candidate?.coordination)
-                .map((item, i) => (
-                  <div key={item.id || i} className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-1.5 text-xs">
-                    <div className="font-extrabold text-amber-950 flex items-center justify-between">
-                      <span>🔄 {item.source.subjectName}({item.source.grade}-{item.source.classNum}) ↔ {item.candidate.counterpartName} 선생님</span>
-                      <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-bold">장소 조율</span>
-                    </div>
-                    <div className="text-amber-900 text-xs font-semibold">
-                      {formatCoordinationText(item.candidate.coordination)}
-                    </div>
-                    <div className="text-[11px] text-gray-800 font-bold">
-                      👥 양해 당사자:{" "}
-                      <span className="text-indigo-900">
-                        {getCoordinationOccupants(item.candidate.coordination)
-                          .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
-                          .join(", ")}
+                      <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                        선택됨
                       </span>
                     </div>
+                  ) : (
+                    /* 원본 미지정 — 모달이 그리드를 가리므로 여기서 직접 고른다 (묵은 원본 자동 사용 금지, 2026-08-07) */
+                    <div className="space-y-1.5">
+                      <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                        이 자리로 옮겨올 수업을 아래에서 골라 주세요. (여러 반이 함께 듣는 이동수업은 제외)
+                      </div>
+                      <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                        {(teacherWeekCellsMap[chainTargetSlot.weekId] || [])
+                          .filter((c) => !c.simul && !c.changed?.changeId?.startsWith("virtual-direct"))
+                          .sort((a, b) => a.day - b.day || a.period - b.period)
+                          .map((c, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() =>
+                                setChainSourceSlot({
+                                  weekId: chainTargetSlot.weekId,
+                                  grade: c.grade,
+                                  classNum: c.classNum,
+                                  day: c.day,
+                                  period: c.period,
+                                  subjectName: c.subjectShort || c.subjectName || "수업",
+                                  teacherEmail: selectedTeacherEmail,
+                                  teacherName: selectedTeacherName,
+                                })
+                              }
+                              className="w-full flex items-center justify-between bg-white hover:bg-indigo-50 border border-indigo-100 hover:border-indigo-300 rounded-lg px-2.5 py-1.5 text-xs transition-colors"
+                            >
+                              <span className="font-bold text-indigo-950">
+                                {DAY_LABEL[c.day]}요일 {c.period}교시 · {c.grade}-{c.classNum}반 {c.subjectShort || c.subjectName}
+                              </span>
+                              <span className="text-[10px] text-indigo-500 font-bold">선택</span>
+                            </button>
+                          ))}
+                        {(teacherWeekCellsMap[chainTargetSlot.weekId] || []).filter((c) => !c.simul).length === 0 && (
+                          <div className="text-[11px] text-gray-500 text-center py-2">이 주에 옮길 수 있는 수업이 없습니다.</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleRunChainSearch(2)}
+                      disabled={!chainSourceSlot || chainSearchLoading}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors"
+                    >
+                      {chainSearchLoading ? "경로 탐색 중..." : "🔍 연쇄 이동 탐색 (2단계)"}
+                    </button>
                   </div>
-                ))}
+                </div>
 
-              <div className="pt-2 border-t border-gray-100 space-y-2">
-                <label className="flex items-start gap-2 cursor-pointer bg-amber-50 p-2.5 rounded-lg border border-amber-300 shadow-2xs">
+                {/* 탐색 결과 리스트 */}
+                {chainSearchLoading ? (
+                  <div className="py-12 text-center text-xs text-indigo-600 font-bold space-y-2">
+                    <div className="inline-block animate-spin rounded-full h-6 w-6 border-3 border-indigo-600 border-t-transparent" />
+                    <p>목적지 도달 가능한 중간 교환 체인을 역방향 탐색 중입니다...</p>
+                  </div>
+                ) : chainSearchError ? (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-3">
+                    <p className="font-bold">{chainSearchError}</p>
+                    {chainMaxDepth < 3 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRunChainSearch(3)}
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shadow-xs"
+                      >
+                        🔄 3단계까지 넓혀 다시 탐색
+                      </button>
+                    )}
+                  </div>
+                ) : chainResults.length > 0 ? (
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-gray-700">
+                      도달 가능한 교환 체인 경로 ({chainResults.length}건 발견):
+                    </h4>
+                    <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                      {chainResults.map((chain, idx) => (
+                        <div
+                          key={idx}
+                          className="p-4 bg-white border border-indigo-100 hover:border-indigo-300 rounded-xl shadow-xs space-y-3 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black px-2 py-0.5 rounded bg-indigo-950 text-white">
+                                체인 {idx + 1}
+                              </span>
+                              <span className="text-xs font-bold text-gray-600">
+                                총 {chain.steps.length}단계 교환
+                              </span>
+                            </div>
+                            <span className={`text-xs font-extrabold px-2 py-0.5 rounded ${
+                              chain.totalScore === 0 ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"
+                            }`}>
+                              {chain.totalScore === 0 ? "감점 없음 (0점)" : `총 감점 ${chain.totalScore}점`}
+                            </span>
+                          </div>
+
+                          <div className="space-y-2">
+                            {chain.steps.map((step: any, sIdx: number) => (
+                              <div
+                                key={sIdx}
+                                className="p-2.5 bg-indigo-50/50 border border-indigo-100 rounded-lg text-xs space-y-1"
+                              >
+                                <div className="flex items-center justify-between font-bold">
+                                  <span className="text-indigo-950">
+                                    단계 {sIdx + 1}: {step.source.grade}-{step.source.classNum}반 ({step.source.subjectName})
+                                  </span>
+                                  <span className="text-[11px] text-gray-500">
+                                    {DAY_LABEL[step.source.day]} {step.source.period}교시 ➔ {DAY_LABEL[step.candidate?.targetDay]} {step.candidate?.targetPeriod}교시
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-gray-600 flex items-center justify-between">
+                                  <span>
+                                    담당: <strong>{step.sourceTeacherName || "담당 교사"}</strong> ↔ 상대: <strong>{step.candidate?.counterpartName}</strong> ({step.candidate?.counterpartSubjectName})
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex justify-end pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleAddChainToCart(chain)}
+                              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded-lg text-xs shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <span>🛒</span>
+                              <span>체인 전체 담기 ({chain.steps.length}단계)</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {/* ⚡ 직권 일괄 반영 사전 양해 확인 모달 (반려 4건 반영) */}
+          {cartBatchModalOpen && (
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-lg p-6 space-y-4 max-h-[90vh] flex flex-col">
+                <div className="border-b border-gray-100 pb-3 flex items-center justify-between shrink-0">
+                  <h4 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
+                    <span>🤝 직권 일괄 반영 사전 양해 확인</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setCartBatchModalOpen(false)}
+                    className="text-gray-400 hover:text-gray-600 font-bold text-sm cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="overflow-y-auto space-y-3 pr-1 shrink">
+                  <div className="text-xs font-semibold text-gray-700">
+                    담김 목록 <strong>{cartItems.length}건</strong> 중 사전 장소 양해가 필요한 교환 건이 포함되어 있습니다.
+                  </div>
+
+                  {cartItems
+                    .filter((item) => !!item.candidate?.coordination)
+                    .map((item, i) => (
+                      <div key={item.id || i} className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-1.5 text-xs">
+                        <div className="font-extrabold text-amber-950 flex items-center justify-between">
+                          <span>🔄 {item.source.subjectName}({item.source.grade}-{item.source.classNum}) ↔ {item.candidate.counterpartName} 선생님</span>
+                          <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-bold">장소 조율</span>
+                        </div>
+                        <div className="text-amber-900 text-xs font-semibold">
+                          {formatCoordinationText(item.candidate.coordination)}
+                        </div>
+                        <div className="text-[11px] text-gray-800 font-bold">
+                          👥 양해 당사자:{" "}
+                          <span className="text-indigo-900">
+                            {getCoordinationOccupants(item.candidate.coordination)
+                              .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum} ${o.subjectName})`)
+                              .join(", ")}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+
+                  <div className="pt-2 border-t border-gray-100 space-y-2">
+                    <label className="flex items-start gap-2 cursor-pointer bg-amber-50 p-2.5 rounded-lg border border-amber-300 shadow-2xs">
+                      <input
+                        type="checkbox"
+                        checked={cartBatchConsentConfirmed}
+                        onChange={(e) => setCartBatchConsentConfirmed(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                      />
+                      <span className="text-xs font-bold text-gray-900">
+                        위 조율 건에 대해 해당 선생님들께 사전 양해를 완료하였습니다 (필수)
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={200}
+                      value={cartBatchConsentNote}
+                      onChange={(e) => setCartBatchConsentNote(e.target.value)}
+                      placeholder="일괄 양해 메모 (선택, 예: 직권 배정 장소 사용 양해 완료)"
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setCartBatchModalOpen(false)}
+                    className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => executeBatchCommit(cartBatchConsentNote.trim())}
+                    disabled={submitting || !cartBatchConsentConfirmed}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    {submitting ? "일괄 반영 중..." : `양해 확인 및 ${cartItems.length}건 직권 반영`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* §3-2b ②: 조율 필요 후보 클릭 시 2단 경고 다이얼로그 */}
+          {pendingCoordinationSelect && pendingCoordinationSelect.candidate.coordination && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-md w-full p-6 space-y-4 animate-scale-up">
+                <div className="flex items-center gap-2 text-red-600 font-extrabold text-base border-b border-red-100 pb-3">
+                  <span className="text-xl">⚠️</span>
+                  <span>당사자 양해 필요 (장소 조율)</span>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs text-red-950">
+                  <div className="font-bold leading-relaxed">
+                    {formatCoordinationText(pendingCoordinationSelect.candidate.coordination)}
+                  </div>
+                  <div className="pt-2 border-t border-red-200 text-gray-800">
+                    <span className="font-bold">👥 양해 필요 당사자: </span>
+                    <span className="font-extrabold text-red-900">
+                      {getCoordinationOccupants(pendingCoordinationSelect.candidate.coordination)
+                        .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum}반 ${o.subjectName})`)
+                        .join(", ")}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs font-bold text-gray-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  💡 이 교환은 당사자 양해 없이는 반영할 수 없습니다. 그래도 검토하시겠습니까?
+                </p>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setPendingCoordinationSelect(null)}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl cursor-pointer"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const { candidate, weekId, startDate } = pendingCoordinationSelect;
+                      setPendingCoordinationSelect(null);
+                      handleSelectCandidate(candidate, weekId, startDate);
+                    }}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl shadow-sm cursor-pointer"
+                  >
+                    양해 전제로 검토
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* §3-2b ③: 조율 필요 후보 단건 즉시 반영 시 양해 확인 다이얼로그 */}
+          {singleCommitConsentModalOpen && selectedCandidate?.coordination && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-md w-full p-6 space-y-4 animate-scale-up">
+                <div className="flex items-center gap-2 text-red-600 font-extrabold text-base border-b border-red-100 pb-3">
+                  <span className="text-xl">⚡</span>
+                  <span>직권 즉시 반영 전 양해 확인</span>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs text-red-950">
+                  <div className="font-bold leading-relaxed">
+                    {formatCoordinationText(selectedCandidate.coordination)}
+                  </div>
+                  <div className="pt-2 border-t border-red-200 text-gray-800">
+                    <span className="font-bold">👥 양해 필요 당사자: </span>
+                    <span className="font-extrabold text-red-900">
+                      {getCoordinationOccupants(selectedCandidate.coordination)
+                        .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum}반 ${o.subjectName})`)
+                        .join(", ")}
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-2 pt-1 border-t border-gray-100">
+                  <label className="flex items-start gap-2 cursor-pointer bg-red-50/60 p-2.5 rounded-lg border border-red-200">
+                    <input
+                      type="checkbox"
+                      checked={singleCommitConsentConfirmed}
+                      onChange={(e) => setSingleCommitConsentConfirmed(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
+                    />
+                    <span className="text-xs font-bold text-red-950">
+                      위 선생님들께 사전 양해를 받았습니다 (필수)
+                    </span>
+                  </label>
                   <input
-                    type="checkbox"
-                    checked={cartBatchConsentConfirmed}
-                    onChange={(e) => setCartBatchConsentConfirmed(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                    type="text"
+                    maxLength={200}
+                    value={singleCommitConsentNote}
+                    onChange={(e) => setSingleCommitConsentNote(e.target.value)}
+                    placeholder="양해 메모 (선택, 예: 체육관 합반으로 양해)"
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
                   />
-                  <span className="text-xs font-bold text-gray-900">
-                    위 조율 건에 대해 해당 선생님들께 사전 양해를 완료하였습니다 (필수)
-                  </span>
-                </label>
-                <input
-                  type="text"
-                  maxLength={200}
-                  value={cartBatchConsentNote}
-                  onChange={(e) => setCartBatchConsentNote(e.target.value)}
-                  placeholder="일괄 양해 메모 (선택, 예: 직권 배정 장소 사용 양해 완료)"
-                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
-                />
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setSingleCommitConsentModalOpen(false)}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl cursor-pointer"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => executeDirectCommitSingle(singleCommitConsentNote.trim())}
+                    disabled={submitting || !singleCommitConsentConfirmed}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-sm cursor-pointer"
+                  >
+                    {submitting ? "반영 중..." : "양해 확인 및 즉시 반영"}
+                  </button>
+                </div>
               </div>
             </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
-              <button
-                type="button"
-                onClick={() => setCartBatchModalOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                onClick={() => executeBatchCommit(cartBatchConsentNote.trim())}
-                disabled={submitting || !cartBatchConsentConfirmed}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
-              >
-                {submitting ? "일괄 반영 중..." : `양해 확인 및 ${cartItems.length}건 직권 반영`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* §3-2b ②: 조율 필요 후보 클릭 시 2단 경고 다이얼로그 */}
-      {pendingCoordinationSelect && pendingCoordinationSelect.candidate.coordination && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-md w-full p-6 space-y-4 animate-scale-up">
-            <div className="flex items-center gap-2 text-red-600 font-extrabold text-base border-b border-red-100 pb-3">
-              <span className="text-xl">⚠️</span>
-              <span>당사자 양해 필요 (장소 조율)</span>
-            </div>
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs text-red-950">
-              <div className="font-bold leading-relaxed">
-                {formatCoordinationText(pendingCoordinationSelect.candidate.coordination)}
-              </div>
-              <div className="pt-2 border-t border-red-200 text-gray-800">
-                <span className="font-bold">👥 양해 필요 당사자: </span>
-                <span className="font-extrabold text-red-900">
-                  {getCoordinationOccupants(pendingCoordinationSelect.candidate.coordination)
-                    .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum}반 ${o.subjectName})`)
-                    .join(", ")}
-                </span>
-              </div>
-            </div>
-            <p className="text-xs font-bold text-gray-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-              💡 이 교환은 당사자 양해 없이는 반영할 수 없습니다. 그래도 검토하시겠습니까?
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setPendingCoordinationSelect(null)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl cursor-pointer"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const { candidate, weekId, startDate } = pendingCoordinationSelect;
-                  setPendingCoordinationSelect(null);
-                  handleSelectCandidate(candidate, weekId, startDate);
-                }}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl shadow-sm cursor-pointer"
-              >
-                양해 전제로 검토
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* §3-2b ③: 조율 필요 후보 단건 즉시 반영 시 양해 확인 다이얼로그 */}
-      {singleCommitConsentModalOpen && selectedCandidate?.coordination && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-md w-full p-6 space-y-4 animate-scale-up">
-            <div className="flex items-center gap-2 text-red-600 font-extrabold text-base border-b border-red-100 pb-3">
-              <span className="text-xl">⚡</span>
-              <span>직권 즉시 반영 전 양해 확인</span>
-            </div>
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs text-red-950">
-              <div className="font-bold leading-relaxed">
-                {formatCoordinationText(selectedCandidate.coordination)}
-              </div>
-              <div className="pt-2 border-t border-red-200 text-gray-800">
-                <span className="font-bold">👥 양해 필요 당사자: </span>
-                <span className="font-extrabold text-red-900">
-                  {getCoordinationOccupants(selectedCandidate.coordination)
-                    .map((o) => `${o.teacherName} 선생님(${o.grade}-${o.classNum}반 ${o.subjectName})`)
-                    .join(", ")}
-                </span>
-              </div>
-            </div>
-            <div className="space-y-2 pt-1 border-t border-gray-100">
-              <label className="flex items-start gap-2 cursor-pointer bg-red-50/60 p-2.5 rounded-lg border border-red-200">
-                <input
-                  type="checkbox"
-                  checked={singleCommitConsentConfirmed}
-                  onChange={(e) => setSingleCommitConsentConfirmed(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                />
-                <span className="text-xs font-bold text-red-950">
-                  위 선생님들께 사전 양해를 받았습니다 (필수)
-                </span>
-              </label>
-              <input
-                type="text"
-                maxLength={200}
-                value={singleCommitConsentNote}
-                onChange={(e) => setSingleCommitConsentNote(e.target.value)}
-                placeholder="양해 메모 (선택, 예: 체육관 합반으로 양해)"
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={() => setSingleCommitConsentModalOpen(false)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl cursor-pointer"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                onClick={() => executeDirectCommitSingle(singleCommitConsentNote.trim())}
-                disabled={submitting || !singleCommitConsentConfirmed}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-sm cursor-pointer"
-              >
-                {submitting ? "반영 중..." : "양해 확인 및 즉시 반영"}
-              </button>
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>

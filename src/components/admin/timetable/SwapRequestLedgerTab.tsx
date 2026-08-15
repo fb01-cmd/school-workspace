@@ -393,7 +393,9 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
               {statusInfo.label}
             </span>
             <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-semibold text-[11px] rounded border border-indigo-100 shrink-0">
-              {req.type === "chain"
+              {req.type === "simul_move"
+                ? "🧩 통 이동"
+                : req.type === "chain"
                 ? "🔗 체인교환"
                 : isCross
                 ? "↔️ 교차주"
@@ -424,7 +426,49 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
               {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
             </span>
             <span className="text-gray-400 font-bold px-0.5">→</span>
-            {req.type === "chain" ? (
+            {req.type === "simul_move" ? (
+              <div className="w-full space-y-1.5 mt-1">
+                <div className="flex items-center gap-1 font-bold text-purple-900">
+                  <span>→ 이동:</span>
+                  <span className="text-indigo-800">
+                    {formatSlotWithDate(req.weekId, req.source.day, req.source.period)}
+                  </span>
+                  <span className="text-gray-400 font-bold px-0.5">→</span>
+                  <span className="text-purple-800">
+                    {formatSlotWithDate(
+                      req.weekId,
+                      req.candidate?.targetDay ?? req.simulMove?.to?.day ?? 0,
+                      req.candidate?.targetPeriod ?? req.simulMove?.to?.period ?? 0
+                    )}
+                  </span>
+                  <span className="text-gray-600 font-semibold ml-1">
+                    (그룹: {req.simulMove?.label || req.candidate?.counterpartName || "이동수업"})
+                  </span>
+                </div>
+                {req.simulMove?.steps && req.simulMove.steps.length > 0 && (
+                  <div className="text-[11px] bg-purple-50 border border-purple-200 text-purple-950 rounded-lg p-2.5 space-y-1 mt-1 font-sans">
+                    <div className="font-bold text-[10px] text-purple-900 flex items-center gap-1">
+                      <span>🧩</span>
+                      <span>반별 이동 내역 ({req.simulMove.steps.length}개 반):</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-1">
+                      {req.simulMove.steps.map((step, idx) => (
+                        <div key={idx} className="text-[10px] leading-tight text-purple-950 bg-white rounded p-1.5 border border-purple-200 flex items-center justify-between shadow-2xs">
+                          <span>
+                            <strong>{step.classNum}반</strong>: {step.groupLesson.subjectName} ({step.groupLesson.teacherName})
+                          </span>
+                          <span className="font-semibold text-purple-800 ml-1">
+                            {step.kind === "swap" && step.counterpart
+                              ? `↔ ${step.counterpart.teacherName} (${step.counterpart.subjectName})`
+                              : "➔ 빈 교시 이동"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : req.type === "chain" ? (
               <div className="w-full space-y-1 mt-1">
                 <div className="flex items-center gap-1 font-bold text-purple-900">
                   <span>→ 목적지:</span>

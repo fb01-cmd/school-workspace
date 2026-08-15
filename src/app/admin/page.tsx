@@ -87,6 +87,17 @@ export default function AdminPage() {
     } catch (e) {}
   }, []);
 
+  // admin_navigate 이벤트 리스너 (탭/메뉴간 이동)
+  useEffect(() => {
+    const handleAdminNav = (e: any) => {
+      if (e.detail?.menu) {
+        setActiveMenu(e.detail.menu);
+      }
+    };
+    window.addEventListener("admin_navigate", handleAdminNav);
+    return () => window.removeEventListener("admin_navigate", handleAdminNav);
+  }, []);
+
   const toggleSection = (sectionKey: string) => {
     setCollapsedSections((prev) => {
       const next = { ...prev, [sectionKey]: !prev[sectionKey] };
