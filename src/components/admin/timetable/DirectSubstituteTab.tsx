@@ -1699,10 +1699,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             </div>
 
             <div className="space-y-3">
-              <p className="text-xs text-gray-700 leading-relaxed font-semibold">
-                담긴 {cartItems.length}건 중 <strong>{cartItems.filter((d) => !!d.candidate?.coordination).length}건</strong>이 당사자 사전 양해가 필요한 항목입니다.
-              </p>
-
+              {/* 건수 요약 문장은 삭제 (2026-08-16 사용자) — 아래 항목 나열과 중복이고 "양해 불요 교환"의 존재가 오히려 혼란을 줬다 */}
               {cartItems.filter((d) => !!d.candidate?.coordination).map((item, iIdx) => (
                 <div key={item.id || iIdx} className="space-y-1">
                   <div className="text-[11px] font-bold text-gray-900">
