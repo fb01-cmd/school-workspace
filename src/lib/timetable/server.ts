@@ -1240,6 +1240,7 @@ import {
   BaseRevisionOp,
   CalendarEventType,
   CandidateCoordination,
+  CoordinationSimulInfo,
   ChainSearchChain,
   ChainStepItem,
   CrossSwapLessonRef,
@@ -2418,11 +2419,112 @@ interface VirtualSwapItem {
  * appliedAt은 호출부가 미래값으로 지정한다 — 합성기의 appliedAt 재정렬에서 실 변경 뒤에
  * 적용되는 것을 보장하기 위함. 가상 문서는 절대 저장하지 않는다.
  */
+/**
+ * 담긴 묶음 초안 1건 → 반별 가상 change n건 (consent_swap_opening_spec §5c-9-4).
+ *
+ * 후보 스냅샷에 반별 전개(`coordination.simul.steps`)가 **이미 실려 저장**되므로
+ * (draft_save 페이로드에 coordination 포함) 재계산·추가 조회 없이 그대로 그린다.
+ * 문서 모양은 실제 커밋(assembleSimulMoveChanges)과 같은 규약 —
+ * 같은 주는 반별 swap/move, 교차 주는 §5c-8의 주별 문서 쌍 중 **이 주에 해당하는 쪽**만.
+ */
+function buildVirtualSimulChanges(
+  item: VirtualSwapItem,
+  simul: CoordinationSimulInfo,
+  weekId: string,
+  appliedAt: number,
+  isCross: boolean
+): TimetableChange[] {
+  const from = { day: item.source.day, period: item.source.period };
+  const to = { day: item.candidate.targetDay!, period: item.candidate.targetPeriod! };
+  const common = { termId: item.termId, appliedBy: "__virtual__" };
+  const out: TimetableChange[] = [];
+  simul.steps.forEach((step, i) => {
+    const id = `virtual-${item.key}-c${step.classNum}-${i}`;
+    if (!isCross) {
+      if (weekId !== item.weekId) return;
+      if (step.kind === "swap" && step.counterpart) {
+        out.push({
+          id, weekId, type: "swap", ...common, appliedAt: appliedAt + i,
+          swap: {
+            grade: simul.grade, classNum: step.classNum,
+            a: {
+              day: from.day, period: from.period,
+              subjectName: step.groupLesson.subjectName,
+              teacherEmail: step.groupLesson.teacherEmail, teacherName: step.groupLesson.teacherName,
+            },
+            b: {
+              day: to.day, period: to.period,
+              subjectName: step.counterpart.subjectName,
+              teacherEmail: step.counterpart.teacherEmail, teacherName: step.counterpart.teacherName,
+            },
+          },
+        });
+      } else {
+        out.push({
+          id, weekId, type: "move", ...common, appliedAt: appliedAt + i,
+          move: {
+            grade: simul.grade, classNum: step.classNum, from, to,
+            subjectName: step.groupLesson.subjectName,
+            teacherEmail: step.groupLesson.teacherEmail, teacherName: step.groupLesson.teacherName,
+          },
+        });
+      }
+      return;
+    }
+    // 교차 주: 수업을 재구성하므로 묶음 라벨을 명시 계승한다 (§5c-8과 같은 이유 —
+    // 잃으면 미리보기에서 옮겨진 수업이 묶음으로 보이지 않는다)
+    const groupRef: CrossSwapLessonRef = {
+      subjectName: step.groupLesson.subjectName,
+      subjectShort: step.groupLesson.subjectName.slice(0, 2), // 근사 — 가상 문서는 표시용이 아님
+      teacherEmail: step.groupLesson.teacherEmail,
+      teacherName: step.groupLesson.teacherName,
+      simul: simul.label,
+    };
+    const cpRef: CrossSwapLessonRef | null =
+      step.kind === "swap" && step.counterpart
+        ? {
+            subjectName: step.counterpart.subjectName,
+            subjectShort: step.counterpart.subjectName.slice(0, 2),
+            teacherEmail: step.counterpart.teacherEmail,
+            teacherName: step.counterpart.teacherName,
+          }
+        : null;
+    const exchangeId = `virtual-${item.key}-x${i}`;
+    if (weekId === item.weekId) {
+      out.push({
+        id: `${id}-a`, weekId, type: "cross_swap", ...common, appliedAt: appliedAt + i,
+        crossSwap: {
+          exchangeId, otherWeekId: item.targetWeekId!,
+          grade: simul.grade, classNum: step.classNum,
+          day: from.day, period: from.period, out: groupRef, in: cpRef,
+        },
+      });
+    } else if (weekId === item.targetWeekId) {
+      out.push({
+        id: `${id}-b`, weekId, type: "cross_swap", ...common, appliedAt: appliedAt + i,
+        crossSwap: {
+          exchangeId, otherWeekId: item.weekId,
+          grade: simul.grade, classNum: step.classNum,
+          day: to.day, period: to.period, out: cpRef, in: groupRef,
+        },
+      });
+    }
+  });
+  return out;
+}
+
 function buildVirtualChanges(item: VirtualSwapItem, weekId: string, appliedAt: number): TimetableChange[] {
-  // 통 이동은 반별 n건으로 전개되는 묶음이라 이 함수의 단건(swap/substitute) 표현으로 옮길 수 없다.
-  // 오늘은 도달 불가(생성 즉시 APPROVED라 PENDING 오버레이 대상이 아님)지만, 여기로 새면 조용히
-  // 대표 1개 반짜리 가짜 swap이 what-if 그리드에 그려진다 — 명시적으로 막는다.
-  if (item.type === "simul_move") return [];
+  const isCross0 = !!item.targetWeekId && item.targetWeekId !== item.weekId;
+  // §5c-9-4: 묶음은 반별 n건으로 전개된다 — 단건(swap/substitute) 표현으로는 옮길 수 없으므로
+  // 후보에 실린 steps로 그린다. steps가 없는 묶음(PENDING 신청 경로·구 초안)은 **그리지 않는다**:
+  // 대표 1개 반짜리 가짜 swap이 what-if 그리드에 조용히 그려지는 것이 최악이다.
+  // (초안 경로는 종전에 type "swap"으로 밀려 들어와 이 가드를 통과했다 — 그것이 §5c-9-4의 결함.)
+  const simulInfo = item.candidate.coordination?.simul;
+  if (simulInfo || item.type === "simul_move") {
+    if (!simulInfo?.steps?.length) return [];
+    if (item.candidate.targetDay == null || item.candidate.targetPeriod == null) return [];
+    return buildVirtualSimulChanges(item, simulInfo, weekId, appliedAt, isCross0);
+  }
   const common = {
     termId: item.termId,
     appliedBy: "__virtual__",
@@ -2553,6 +2655,8 @@ async function loadMyVirtualOverlay(
       if (!touches(d.sourceWeekId, d.targetWeekId) || isExcluded(d.sourceWeekId, d.source)) continue;
       // 이미 같은 소스 셀의 PENDING 신청이 겹쳐 있으면 초안은 건너뜀 (이중 적용 방지)
       if (items.some((it) => isSameSourceSlot(it, d.sourceWeekId, d.source))) continue;
+      // type은 "swap"으로 넘기지만 묶음 초안이면 candidate.coordination.simul이 실려 있고,
+      // buildVirtualChanges가 그것을 보고 반별 n건으로 전개한다 (§5c-9-4).
       items.push({
         key: `draft-${d.id}`, termId: d.termId, weekId: d.sourceWeekId, targetWeekId: d.targetWeekId,
         type: "swap", requesterEmail: norm,
@@ -5823,6 +5927,8 @@ export async function commitSimulGroupMove(
     target: { day: number; period: number };
     reason?: SwapRequestReason;
     consent?: SwapConsentInput;
+    /** 담기 일괄 반영의 묶음 항목 (§5c-9-4) — 같은 제출의 신청들이 공유 */
+    batchId?: string;
   },
   options?: { skipNotify?: boolean } // 검증 스크립트 전용 — 라우트는 항상 알림
 ): Promise<{ request: SwapRequest; changes: TimetableChange[] }> {
@@ -5964,6 +6070,7 @@ export async function commitSimulGroupMove(
       appliedChangeIds: changes.map((c) => c.id),
       createdAt: now,
       direct: true,
+      ...(params.batchId ? { batchId: params.batchId } : {}),
       consent,
     };
 

@@ -658,6 +658,40 @@ export async function POST(req: NextRequest) {
             if (![grade, classNum, day, period].every((n) => Number.isInteger(n) && n > 0)) {
               throw new Error("source 슬롯 값이 유효하지 않습니다.");
             }
+
+            // §5c-9-4: 담기에 묶음 항목이 섞이면 전용 경로로 보낸다. createSwapRequest의 묶음
+            // 거부는 단건 교체·체인·보강의 방어이므로 손대지 않고 여기서 항목별로 분기한다
+            // (교사 일괄 제출이 simul_move_create로 분기하는 것과 같은 형태).
+            const simulInfo = item.candidate?.coordination?.simul;
+            if (simulInfo) {
+              const tDay = item.candidate.targetDay;
+              const tPeriod = item.candidate.targetPeriod;
+              if (!Number.isInteger(tDay) || !Number.isInteger(tPeriod)) {
+                throw new Error("이동할 교시 정보가 없습니다. 담기 목록에서 이 항목을 지우고 다시 담아 주세요.");
+              }
+              const { request: sReq, changes: sChanges } = await commitSimulGroupMove(domain, auth.email, {
+                weekId: item.weekId,
+                targetWeekId: item.targetWeekId,
+                groupId: simulInfo.groupId,
+                source: { day, period },
+                target: { day: tDay as number, period: tPeriod as number },
+                reason: item.reason || body.reason,
+                consent: item.consent,
+                batchId,
+              });
+              const sm = sReq.simulMove!;
+              await writeAuditLog({
+                operatorEmail: auth.email,
+                targetEmail: sReq.requesterEmail,
+                action: "simul_move_commit",
+                details: `이동수업 통 이동: ${sm.grade}학년 ${sm.classNums.join("·")}반 「${sm.label}」 (${sm.from.day},${sm.from.period})→${sReq.targetWeekId ? `[${sReq.targetWeekId}]` : ""}(${sm.to.day},${sm.to.period}) — change ${sChanges.length}건, 양해 ${sReq.consent?.parties.length || 0}명 (일괄 ${i + 1}/${items.length}, batchId ${batchId})`,
+                status: "success",
+              });
+              results.push({ index: i, ok: true, requestId: sReq.id, changeId: sChanges[0].id });
+              committedChanges.push(...sChanges);
+              continue;
+            }
+
             const { request, change } = await directCommit(domain, auth.email, {
               weekId: item.weekId,
               type: item.type,

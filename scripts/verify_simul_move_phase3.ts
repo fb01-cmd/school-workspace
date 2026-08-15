@@ -28,9 +28,12 @@ import {
   commitSimulGroupMove,
   computeCandidates,
   computeChainSearch,
+  computeMyProjectedWeeks,
   createSimulMoveRequest,
   createSwapRequest,
+  deleteSwapDraft,
   listWeeks,
+  saveSwapDraft,
   loadBaseGridsByWeek,
   loadSimulGroups,
   loadTimetableSettings,
@@ -689,9 +692,11 @@ async function main() {
   const runCrossDirectCycle = async (pick: Pick): Promise<boolean> => {
     const { tWeekRaw, tSig0 } = crossCtx!;
     const target = { day: pick.cand.targetDay, period: pick.cand.targetPeriod };
+    // batchId는 §5c-9-4 담기 일괄 반영이 넘기는 값 — 원장에 실려야 요청대장이 같은 제출로 묶는다
+    const VERIFY_BATCH = "verify-batch-9-9";
     const { request, changes } = await commitSimulGroupMove(D, MANAGER, {
       weekId: week.id, targetWeekId: tWeekRaw.id, groupId: pick.group.id!,
-      source: pick.source, target,
+      source: pick.source, target, batchId: VERIFY_BATCH,
       reason: { type: "기타", note: "검증 스크립트 (즉시 정리)" }, consent: { confirmed: true, note: "검증용" },
     }, { skipNotify: true });
     const cleanupDocs: Array<{ col: "req" | "chg"; id: string }> = [{ col: "req", id: request.id }];
@@ -701,6 +706,7 @@ async function main() {
       const shapeOk =
         request.status === "APPROVED" && request.direct === true &&
         request.targetWeekId === tWeekRaw.id &&
+        request.batchId === VERIFY_BATCH &&
         changes.length === pick.cand.steps.length * 2 &&
         changes.every((c) => c.type === "cross_swap" && !!c.crossSwap);
       const { grids: srcAfter } = await synthWeek(termId, week.id);
@@ -736,8 +742,95 @@ async function main() {
     return failed;
   };
 
+  // ── [10] §5c-9-4 담기 표현 — 담은 묶음이 예상 시간표에 **반별로 그려지는가** ──
+  // 기존 증상: 초안이 type "swap"으로 새어 가짜 단건 swap이 되면서 화면은 그대로인데
+  // "N건 반영" 건수만 늘었다. 여기서는 담기 전/후 예상 시간표를 직접 비교한다. 알림 없음(초안은 무발송).
+  const runDraftOverlayCheck = async (pick: Pick): Promise<boolean> => {
+    const { group, source } = pick;
+    const target = { day: pick.cand.targetDay, period: pick.cand.targetPeriod };
+    // 그룹 담당 실교사 1인 — 그 사람의 예상 시간표에서 자기 수업이 옮겨져 보여야 한다
+    let teacherEmail = "", teacherClass = 0, subjectName = "";
+    for (const cn of group.classNums) {
+      const grid = grids0.find((g) => g.grade === group.grade && g.classNum === cn);
+      const cell = grid?.cells.find((c) => c.day === source.day && c.period === source.period);
+      for (const l of cell?.lessons || []) {
+        if (l.simul !== group.label) continue;
+        const t = (l.teachers || [])[0];
+        if (t?.email?.trim()) {
+          teacherEmail = t.email.trim().toLowerCase(); teacherClass = cn; subjectName = l.subjectName; break;
+        }
+      }
+      if (teacherEmail) break;
+    }
+    if (!teacherEmail) { console.error("[10] 그룹 담당 실교사 미검출 ❌"); return true; }
+
+    const at = (cells: any[], d: number, p: number) =>
+      cells.filter((c) => c.day === d && c.period === p && c.subjectName === subjectName && c.classNum === teacherClass);
+    const projOf = async (includeDrafts: boolean) => {
+      const r = await computeMyProjectedWeeks(D, teacherEmail, { includeMyPending: false, includeDrafts });
+      const w = r.weeks.find((x) => x.weekId === week.id)!;
+      return { cells: w.cells, draftCount: r.assumedDraftCount };
+    };
+
+    const before = await projOf(true); // 담기 전 (이 교사에게 기존 초안이 있을 수 있으므로 기준선으로 삼는다)
+    const baseAtFrom = at(before.cells, source.day, source.period).length;
+    const baseAtTo = at(before.cells, target.day, target.period).length;
+
+    let draftId = "";
+    let failed = false;
+    try {
+      const draft = await saveSwapDraft(D, teacherEmail, teacherEmail.split("@")[0], undefined, {
+        sourceWeekId: week.id,
+        source: {
+          grade: group.grade, classNum: teacherClass,
+          day: source.day, period: source.period, subjectName,
+        },
+        // 화면이 담을 때와 같은 모양 — coordination을 그대로 실어야 반별 전개(steps)가 저장된다
+        candidate: {
+          type: "swap",
+          targetDay: target.day, targetPeriod: target.period,
+          counterpartEmail: "", counterpartName: group.label,
+          score: pick.cand.score, penalties: pick.cand.penalties,
+          coordination: {
+            kind: pick.cand.coordination?.conflicts?.length ? "venue+simul" : "simul",
+            conflicts: pick.cand.coordination?.conflicts || [],
+            simul: {
+              groupId: group.id!, label: group.label, grade: group.grade,
+              classNums: [...group.classNums], steps: pick.cand.steps,
+            },
+          },
+        },
+        reason: { type: "기타", note: "검증 스크립트 (즉시 삭제)" },
+      });
+      draftId = draft.id;
+
+      const after = await projOf(true);
+      const goneFrom = at(after.cells, source.day, source.period).length === baseAtFrom - 1;
+      const landedTo = at(after.cells, target.day, target.period).length === baseAtTo + 1;
+      const counted = after.draftCount === before.draftCount + 1;
+      const badgeKept = at(after.cells, target.day, target.period).some((c) => c.simul === group.label);
+      console.log(
+        `[10] 담은 묶음이 예상 시간표에 그려짐 ${goneFrom && landedTo && counted && badgeKept ? "✅" : "❌"} — ` +
+        `소스에서 빠짐 ${goneFrom ? "✅" : "❌"} · 목적지에 나타남 ${landedTo ? "✅" : "❌"} · ` +
+        `묶음 표시 유지 ${badgeKept ? "✅" : "❌"} · 건수 ${before.draftCount}→${after.draftCount} ${counted ? "✅" : "❌"}`
+      );
+      if (!goneFrom || !landedTo || !counted || !badgeKept) failed = true;
+      if (goneFrom && landedTo) console.log(`      (${group.grade}-${teacherClass} ${subjectName}: ${DAYS[source.day]}${source.period} → ${DAYS[target.day]}${target.period}, 반별 ${pick.cand.steps.length}건)`);
+    } finally {
+      if (draftId) await deleteSwapDraft(D, teacherEmail, draftId);
+      const back = await projOf(true);
+      const restored =
+        at(back.cells, source.day, source.period).length === baseAtFrom &&
+        at(back.cells, target.day, target.period).length === baseAtTo;
+      console.log(`      초안 삭제 후 예상 시간표 원복 ${restored ? "✅" : "❌"}`);
+      if (!restored) failed = true;
+    }
+    return failed;
+  };
+
   let failed = await runCycle("A", pickA);
   if (pickB) failed = (await runCycle("B", pickB)) || failed;
+  failed = (await runDraftOverlayCheck(pickA)) || failed;
   failed = (await runTeacherCycle(pickA)) || failed;
   if (crossCtx) {
     if (crossPickSwap) failed = (await runCrossCycle("S", crossPickSwap)) || failed;
