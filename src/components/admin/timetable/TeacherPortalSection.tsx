@@ -2768,7 +2768,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
             <div className="space-y-3">
               <p className="text-xs text-gray-700 font-semibold">
-                일괄 신청 대상 {batchConfirmingDrafts.length}건 중 <strong>{batchConfirmingDrafts.filter((d) => !!d.candidate?.coordination).length}건</strong>이 당사자 양해가 필요한 항목입니다.
+                {/* 대조 화법("N건 중 M건이 양해 필요") 금지 — "일반 교체는 양해 없이 해도 된다"로 읽힌다 (2026-08-16 사용자) */}
+                아래 항목은 여러 선생님의 수업·자리가 함께 얽혀 있어, 양해를 받았는지 확인을 기록으로 남깁니다.
               </p>
 
               {batchConfirmingDrafts
@@ -2794,7 +2795,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500 cursor-pointer"
                   />
                   <span className="text-xs font-bold text-red-950">
-                    위 양해 필요 항목들의 담당 선생님들께 사전 양해를 완료하였음을 확인합니다 (필수)
+                    위 항목의 관련 선생님들께 사전 양해를 완료하였음을 확인합니다 (필수)
                   </span>
                 </label>
                 <input

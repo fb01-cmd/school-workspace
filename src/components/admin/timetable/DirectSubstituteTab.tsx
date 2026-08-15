@@ -1695,11 +1695,13 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-lg w-full p-6 space-y-4 animate-scale-up max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-2 text-red-600 font-extrabold text-base border-b border-red-100 pb-3">
               <span className="text-xl">⚠️</span>
-              <span>양해 필요 항목 포함 직권 일괄 반영</span>
+              <span>직권 일괄 반영 전 양해 확인</span>
             </div>
 
             <div className="space-y-3">
-              {/* 건수 요약 문장은 삭제 (2026-08-16 사용자) — 아래 항목 나열과 중복이고 "양해 불요 교환"의 존재가 오히려 혼란을 줬다 */}
+              {/* 건수 요약 문장 삭제 (2026-08-16 사용자) — "N건 중 M건이 양해 필요"는 나머지 교환은
+                  양해 없이 해도 된다는 뜻으로 읽힌다. 양해 관행은 전 교환의 전제고, 시스템이 확인
+                  기록을 강제하는 범위만 다를 뿐이다 (AGENTS.md 화면 문구 규칙 4). */}
               {cartItems.filter((d) => !!d.candidate?.coordination).map((item, iIdx) => (
                 <div key={item.id || iIdx} className="space-y-1">
                   <div className="text-[11px] font-bold text-gray-900">
@@ -1722,7 +1724,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                   className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
                 />
                 <span className="text-xs font-bold text-red-950">
-                  위 양해 필요 항목들의 담당 선생님들께 사전 양해를 완료하였습니다 (필수)
+                  위 항목의 관련 선생님들께 사전 양해를 완료하였습니다 (필수)
                 </span>
               </label>
               <input
