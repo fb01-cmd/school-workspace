@@ -120,6 +120,10 @@ function changeLabel(ch: TimetableChange): string {
     const s = ch.crossSwap;
     return `cross_swap ${s.grade}-${s.classNum} (${s.day},${s.period}) ${s.out.teacherName}→${s.in.teacherName} (상대 주 ${s.otherWeekId})`;
   }
+  if (ch.type === "move" && ch.move) {
+    const m = ch.move;
+    return `move ${m.grade}-${m.classNum} (${m.from.day},${m.from.period})→(${m.to.day},${m.to.period}) ${m.subjectName}`;
+  }
   if (ch.type === "revert") return `revert of ${ch.revertOf}`;
   return ch.type;
 }
@@ -169,6 +173,50 @@ function applySwap(
   destB.lessons.push(foundB.lesson);
   removeEmptyCell(grid, foundA.cell);
   removeEmptyCell(grid, foundB.cell);
+  return true;
+}
+
+/**
+ * 상대 없는 단순 이동 적용 (consent_swap_opening_spec §5b-1) — from 슬롯의 (과목·교사 일치)
+ * lesson을 to 슬롯으로 재배치. reversed(취소)는 to→from 복원 + changed 제거.
+ * 대상 불일치 시 기존과 동일하게 경고+건너뜀 (fail-soft).
+ */
+function applyMove(
+  grids: WeeklyClassGrid[],
+  ch: TimetableChange,
+  reversed: boolean,
+  warnings: string[]
+): boolean {
+  const m = ch.move!;
+  const grid = findGrid(grids, m.grade, m.classNum);
+  if (!grid) {
+    warnings.push(`[${ch.id}] 학급 ${m.grade}-${m.classNum} 그리드 없음 — 건너뜀 (${changeLabel(ch)})`);
+    return false;
+  }
+  const fromSlot = reversed ? m.to : m.from;
+  const toSlot = reversed ? m.from : m.to;
+  const found = findLesson(grid, {
+    day: fromSlot.day,
+    period: fromSlot.period,
+    subjectName: m.subjectName,
+    teacherEmail: m.teacherEmail,
+    teacherName: m.teacherName,
+  });
+  if (!found) {
+    warnings.push(
+      `[${ch.id}] 대상 슬롯 상태 불일치 — 건너뜀 (${changeLabel(ch)}${reversed ? " 취소" : ""})`
+    );
+    return false;
+  }
+  found.cell.lessons.splice(found.index, 1);
+  const dest = ensureCell(grid, toSlot.day, toSlot.period);
+  if (reversed) {
+    delete found.lesson.changed;
+  } else {
+    found.lesson.changed = { changeId: ch.id, type: "move", origin: { day: m.from.day, period: m.from.period } };
+  }
+  dest.lessons.push(found.lesson);
+  removeEmptyCell(grid, found.cell);
   return true;
 }
 
@@ -293,6 +341,8 @@ export function synthesizeWeeklyGrids(
       if (applySubstitute(grids, ch, false, warnings)) applied.set(ch.id, ch);
     } else if (ch.type === "cross_swap" && ch.crossSwap) {
       if (applyCrossSwap(grids, ch, false, warnings)) applied.set(ch.id, ch);
+    } else if (ch.type === "move" && ch.move) {
+      if (applyMove(grids, ch, false, warnings)) applied.set(ch.id, ch);
     } else if (ch.type === "revert" && ch.revertOf) {
       const target = applied.get(ch.revertOf);
       if (!target) {
@@ -308,7 +358,9 @@ export function synthesizeWeeklyGrids(
           ? applySwap(grids, target, true, warnings)
           : target.type === "cross_swap"
             ? applyCrossSwap(grids, target, true, warnings)
-            : applySubstitute(grids, target, true, warnings);
+            : target.type === "move"
+              ? applyMove(grids, target, true, warnings)
+              : applySubstitute(grids, target, true, warnings);
       if (ok) reverted.add(ch.revertOf);
     } else {
       warnings.push(`[${ch.id}] 알 수 없는 변경 형식(${ch.type}) — 건너뜀`);
@@ -419,6 +471,26 @@ export function flattenNeisChanges(
         prevDay: ps ? ps.day : s.day,
         prevPeriod: ps ? ps.period : s.period,
         note: `교차 주 맞교환 (${s.otherWeekId} 주와 교환)`,
+      });
+    } else if (ch.type === "move" && ch.move && filter.type !== "substitute") {
+      // 통 이동의 빈 교시 반 — 상대 없는 이동 1행 (consent_swap_opening_spec §5b-6-1)
+      const m = ch.move;
+      rows.push({
+        changeId: ch.id,
+        weekId: ch.weekId,
+        type: "move",
+        grade: m.grade,
+        classNum: m.classNum,
+        date: dateOf(ch.weekId, m.to.day),
+        day: m.to.day,
+        period: m.to.period,
+        teacherName: m.teacherName,
+        teacherEmail: m.teacherEmail,
+        subjectName: m.subjectName,
+        prevDate: dateOf(ch.weekId, m.from.day),
+        prevDay: m.from.day,
+        prevPeriod: m.from.period,
+        note: "이동수업 통 이동 (빈 교시로 이동)",
       });
     } else if (ch.type === "substitute" && ch.substitute && filter.type !== "swap") {
       const s = ch.substitute;

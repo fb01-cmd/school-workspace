@@ -17,9 +17,11 @@ import {
   timetableCalendarColRef,
   validateCalendarEventPayload,
   validateRevisionOps,
+  commitSimulGroupMove,
   computeCandidatesAllWeeks,
   computeChainSearch,
   computeDirectCandidates,
+  computeSimulGroupMoveCandidates,
   computeDirectProjectedWeeks,
   computeHourTotals,
   deleteTerm,
@@ -572,6 +574,58 @@ export async function POST(req: NextRequest) {
           maxDepth: body.chainMaxDepth,
         });
         return NextResponse.json({ success: true, action, ...result });
+      }
+
+      // §5b 통 이동 후보 (consent_swap_opening_spec §5b-4) — 일과계 게이트는 상단 canManageTimetable이 담당
+      case "simul_move_candidates": {
+        const src = body.simulMoveSource as any;
+        const okSlot = (o: any) =>
+          o && ["day", "period"].every((k) => Number.isInteger(o[k]) && o[k] > 0);
+        if (!body.weekId || !body.simulGroupId || !okSlot(src)) {
+          return NextResponse.json(
+            { error: "weekId, simulGroupId, simulMoveSource(day·period)가 필요합니다." },
+            { status: 400 }
+          );
+        }
+        const result = await computeSimulGroupMoveCandidates(domain, {
+          weekId: body.weekId,
+          groupId: body.simulGroupId,
+          source: { day: src.day, period: src.period },
+        });
+        return NextResponse.json({ success: true, action, ...result });
+      }
+
+      // §5b 통 이동 원자 커밋 — 재계산 대조·consent 필수·부분 성공 금지 (consent_swap_opening_spec §5b-3)
+      case "simul_move_commit": {
+        const src = body.simulMoveSource as any;
+        const tgt = body.simulMoveTarget as any;
+        const okSlot = (o: any) =>
+          o && ["day", "period"].every((k) => Number.isInteger(o[k]) && o[k] > 0);
+        if (!body.weekId || !body.simulGroupId || !okSlot(src) || !okSlot(tgt)) {
+          return NextResponse.json(
+            { error: "weekId, simulGroupId, simulMoveSource·simulMoveTarget(day·period)가 필요합니다." },
+            { status: 400 }
+          );
+        }
+        const { request, changes } = await commitSimulGroupMove(domain, auth.email, {
+          weekId: body.weekId,
+          groupId: body.simulGroupId,
+          source: { day: src.day, period: src.period },
+          target: { day: tgt.day, period: tgt.period },
+          reason: body.reason,
+          consent: body.consent,
+        });
+        const sm = request.simulMove!;
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: request.requesterEmail,
+          action: "simul_move_commit",
+          details: `이동수업 통 이동: ${sm.grade}학년 ${sm.classNums.join("·")}반 「${sm.label}」 (${sm.from.day},${sm.from.period})→(${sm.to.day},${sm.to.period}) — change ${changes.length}건, 양해 ${request.consent?.parties.length || 0}명`,
+          status: "success",
+        });
+        // 웹 푸시: 반별 change 전체를 한 번에 넘겨 수신자별 1건으로 집계 (응답 후 발송)
+        after(() => notifyTimetableChanges(domain, changes));
+        return NextResponse.json({ success: true, action, request, changes });
       }
 
       // §14-4 직권 담기 일괄 반영 — 항목별로 directCommit(생성+즉시 승인)을 순차 실행.

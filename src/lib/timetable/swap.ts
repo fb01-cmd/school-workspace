@@ -17,6 +17,9 @@ import {
   CandidateCoordination,
   CoordinationOccupant,
   PenaltyDetail,
+  SimulGroup,
+  SimulGroupMoveCandidate,
+  SimulMoveStep,
   SubstituteCandidate,
   SwapCandidate,
   SwapSourceSlot,
@@ -160,6 +163,55 @@ function roomOccupants(
     }
   }
   return occupants.length ? occupants : null; // 역참조 실패 시 보수적으로 하드 유지
+}
+
+/** isRoomFree의 복수 학급 제외 변형 (통 이동 §5b-2 — 이동으로 비워지는 반들의 점유를 함께 제외) */
+function isRoomFreeExcluding(
+  idx: SlotIndex,
+  room: string,
+  day: number,
+  period: number,
+  excludeClassKeys: Set<string>
+): boolean {
+  const users = idx.roomUse.get(`${day}-${period}`)?.get(room);
+  if (!users) return true;
+  return [...users].every((c) => excludeClassKeys.has(c));
+}
+
+/** roomOccupants의 복수 학급 제외 변형 (통 이동 §5b-2) — 판정 규칙은 단수판과 동일 */
+function roomOccupantsExcluding(
+  idx: SlotIndex,
+  grids: WeeklyClassGrid[],
+  room: string,
+  day: number,
+  period: number,
+  excludeClassKeys: Set<string>
+): CoordinationOccupant[] | null {
+  const users = idx.roomUse.get(`${day}-${period}`)?.get(room);
+  const others = [...(users || [])].filter((c) => !excludeClassKeys.has(c));
+  if (others.length === 0) return null; // 이동 반들뿐 = 충돌 아님 (isRoomFreeExcluding과 판정 일치)
+  const occupants: CoordinationOccupant[] = [];
+  for (const key of others) {
+    const [g, cn] = key.split("-").map(Number);
+    const cell = grids
+      .find((x) => x.grade === g && x.classNum === cn)
+      ?.cells.find((c) => c.day === day && c.period === period);
+    for (const lesson of cell?.lessons || []) {
+      if (lesson.room !== room) continue;
+      for (const t of lesson.teachers || []) {
+        if (!norm(t.email)) return null; // 가상 교사 점유 → 조율 불가
+        occupants.push({
+          grade: g,
+          classNum: cn,
+          subjectName: lesson.subjectName,
+          teacherEmail: norm(t.email),
+          teacherName: t.name,
+        });
+      }
+      if ((lesson.teachers || []).length === 0) return null; // 교사 없는 점유 → 조율 불가
+    }
+  }
+  return occupants.length ? occupants : null;
 }
 
 // ── 감점 계산 (주간시간표설명서 p.27 조건 계승 — 1차 근사 휴리스틱) ──
@@ -591,6 +643,221 @@ export function findSubstituteCandidates(
   // ① 보강 누계 오름차순 (부담 공평) → ② 이름순
   candidates.sort(
     (a, b) => a.substituteCount - b.substituteCount || a.teacherName.localeCompare(b.teacherName, "ko")
+  );
+  return { candidates };
+}
+
+// ── 동시수업 묶음 통 이동 후보 탐색 (consent_swap_opening_spec §5b-2) ──
+
+const DAYS_KO = ["", "월", "화", "수", "목", "금"];
+
+/**
+ * 동시수업 그룹 G의 (d₁,p₁) → (d₂,p₂) 통 이동 후보 열거 — 순수 함수, 추가 Firestore 읽기 0.
+ *
+ * 기존 엔진 경로를 재사용할 수 없는 이유(§5 ①): 그룹 담당 교사는 정의상 isBlockTeacher true.
+ * 여기서는 블록 판정을 "이 그룹 자신의 동시 수업"에 한해 면제하고, 공강 판정은
+ * **이동분 제거 후 의미론**으로 한다 — (d₂,p₂) 검사 = 기존 점유 − 이번에 빠져나가는 상대
+ * 수업들의 교사 집합에 그룹 교사가 없을 것, (d₁,p₁) 검사는 대칭. 같은 교사의 수업이
+ * 양방향으로 함께 움직이는 자기맞물림이 이 판정식으로 성립한다.
+ *
+ * 반별 판정(조건 ②): 빈 셀 = move / 단일 상대 = swap / simul·복수교사·가상 = 후보 전체 하드 제외.
+ * 한 반 셀에 그룹 수업이 여럿(분반 병기)이면 첫 수업이 swap, 나머지는 move로 전개된다.
+ */
+export function findSimulGroupMoveCandidates(
+  grids: WeeklyClassGrid[],
+  week: TimetableWeek,
+  settings: TimetableSettings,
+  group: SimulGroup,
+  source: { day: number; period: number }
+): { candidates: SimulGroupMoveCandidate[]; error?: string } {
+  const srcLabel = `${DAYS_KO[source.day]} ${source.period}교시`;
+
+  // ── 소스 해석: 각 반의 (d₁,p₁) 셀에서 그룹 수업 수집 (§5b-2 ⓐⓑ 검증) ──
+  const classLessons: Array<{ classNum: number; grid: WeeklyClassGrid; lessons: WeeklyLesson[] }> = [];
+  for (const cn of group.classNums) {
+    const grid = grids.find((g) => g.grade === group.grade && g.classNum === cn);
+    if (!grid)
+      return { candidates: [], error: `${group.grade}-${cn}반 시간표를 찾을 수 없습니다.` };
+    const cell = grid.cells.find((c) => c.day === source.day && c.period === source.period);
+    const lessons = cell?.lessons || [];
+    const groupLessons = lessons.filter((l) => l.simul === group.label);
+    if (groupLessons.length === 0)
+      return {
+        candidates: [],
+        error: `${group.grade}-${cn}반 ${srcLabel}에 이 그룹의 수업이 없습니다. 이동수업 등록부와 시간표가 어긋나 있어 통째로 옮길 수 없습니다 — 등록부를 먼저 확인해 주세요.`,
+      };
+    if (groupLessons.length !== lessons.length)
+      return {
+        candidates: [],
+        error: `${group.grade}-${cn}반 ${srcLabel}에 이 그룹이 아닌 다른 수업이 함께 있습니다. 데이터가 어긋나 있어 통째로 옮길 수 없습니다 — 등록부를 먼저 확인해 주세요.`,
+      };
+    classLessons.push({ classNum: cn, grid, lessons: groupLessons });
+  }
+
+  // 그룹 담당 교사 전원 (실이메일만 — 판정·양해 당사자 재료)
+  const groupTeachers = new Map<string, string>();
+  for (const cl of classLessons)
+    for (const l of cl.lessons)
+      for (const t of l.teachers || []) {
+        const e = norm(t.email);
+        if (e && !groupTeachers.has(e)) groupTeachers.set(e, t.name);
+      }
+
+  // 그룹의 현행 슬롯 전체 (자기 충돌 제외용 — 소스 슬롯 포함)
+  const groupSlots = new Set<string>();
+  for (const cn of group.classNums) {
+    const grid = grids.find((g) => g.grade === group.grade && g.classNum === cn)!;
+    for (const cell of grid.cells)
+      if (cell.lessons.some((l) => l.simul === group.label)) groupSlots.add(`${cell.day}-${cell.period}`);
+  }
+
+  const idx = buildSlotIndex(grids);
+  const ctx: PenaltyCtx = { idx, settings, week };
+  const groupClassKeys = new Set(group.classNums.map((cn) => `${group.grade}-${cn}`));
+
+  // 연속시수 경고 (§5b-2 — 차단하지 않는다): 소스 슬롯이 같은 요일 인접 그룹 슬롯과 짝일 때
+  const baseWarnings: string[] = [];
+  if (group.consecutive) {
+    const adjacent = [...groupSlots].some((k) => {
+      const [d, p] = k.split("-").map(Number);
+      return d === source.day && Math.abs(p - source.period) === 1;
+    });
+    if (adjacent)
+      baseWarnings.push(
+        "이 그룹은 연속 수업으로 등록돼 있습니다 — 이 교시를 옮기면 연속이 끊어집니다."
+      );
+  }
+
+  const candidates: SimulGroupMoveCandidate[] = [];
+
+  for (let d2 = 1; d2 <= 5; d2++) {
+    const maxP = periodsForGradeDay(week, settings, group.grade, d2);
+    for (let p2 = 1; p2 <= maxP; p2++) {
+      if (groupSlots.has(`${d2}-${p2}`)) continue; // 소스 슬롯·그룹의 다른 현행 슬롯 (자기 충돌)
+
+      // ── 반별 판정 (조건 ②) ──
+      const steps: SimulMoveStep[] = [];
+      const counterpartTeachers = new Map<string, string>();
+      const sourceRoomNeeds = new Set<string>(); // 상대 수업 room — (d₁,p₁)에서 성립해야
+      let hard = false;
+      for (const cl of classLessons) {
+        const targetCell = cl.grid.cells.find((c) => c.day === d2 && c.period === p2);
+        const tl = targetCell?.lessons || [];
+        const pick = (l: WeeklyLesson) => ({
+          subjectName: l.subjectName,
+          teacherEmail: norm((l.teachers || [])[0]?.email || ""),
+          teacherName: (l.teachers || [])[0]?.name || "",
+        });
+        if (tl.length === 0) {
+          for (const gl of cl.lessons) steps.push({ classNum: cl.classNum, kind: "move", groupLesson: pick(gl) });
+          continue;
+        }
+        if (tl.length >= 2) { hard = true; break; } // 하드: 동시수업 구조
+        const l2 = tl[0];
+        if (l2.simul || (l2.teachers || []).length > 1) { hard = true; break; } // 하드: 타 그룹·복수교사
+        const b = l2.teachers?.[0];
+        if (!b || !norm(b.email)) { hard = true; break; } // 하드: 가상 교사
+        steps.push({
+          classNum: cl.classNum,
+          kind: "swap",
+          groupLesson: pick(cl.lessons[0]),
+          counterpart: { subjectName: l2.subjectName, teacherEmail: norm(b.email), teacherName: b.name },
+        });
+        counterpartTeachers.set(norm(b.email), b.name);
+        if (l2.room) sourceRoomNeeds.add(l2.room);
+        for (const extra of cl.lessons.slice(1))
+          steps.push({ classNum: cl.classNum, kind: "move", groupLesson: pick(extra) });
+      }
+      if (hard) continue;
+
+      // ── 공강 판정: 이동분 제거 후 의미론 (§5b-2) ──
+      const busyTarget = idx.busyTeachers.get(`${d2}-${p2}`);
+      let free = true;
+      for (const email of groupTeachers.keys()) {
+        // (d₂,p₂) 기존 점유에서 이번에 빠져나가는 상대 수업 교사 집합을 뺀 뒤 그룹 교사가 남으면 불가
+        if (busyTarget?.has(email) && !counterpartTeachers.has(email)) { free = false; break; }
+      }
+      if (free) {
+        const busySource = idx.busyTeachers.get(`${source.day}-${source.period}`);
+        for (const email of counterpartTeachers.keys()) {
+          // (d₁,p₁) 대칭: 그룹 수업이 빠져나간 뒤에도 상대 교사가 점유 중이면 불가
+          if (busySource?.has(email) && !groupTeachers.has(email)) { free = false; break; }
+        }
+      }
+      if (!free) continue;
+
+      // ── 특별실 (조건 ③) — 이동 반들의 점유는 제외하고 판정 (§5b-2) ──
+      const conflicts: CandidateCoordination["conflicts"] = [];
+      let hardRoom = false;
+      const targetRoomNeeds = new Set<string>(); // 그룹 수업 room — (d₂,p₂)에서 성립해야
+      for (const cl of classLessons) for (const gl of cl.lessons) if (gl.room) targetRoomNeeds.add(gl.room);
+      for (const room of targetRoomNeeds) {
+        if (isRoomFreeExcluding(idx, room, d2, p2, groupClassKeys)) continue;
+        const occ = roomOccupantsExcluding(idx, grids, room, d2, p2, groupClassKeys);
+        if (!occ) { hardRoom = true; break; } // 가상 교사 점유 등 조율 불가 → 하드 유지
+        conflicts.push({ roomName: room, slot: { weekId: week.id, day: d2, period: p2 }, occupants: occ });
+      }
+      if (!hardRoom)
+        for (const room of sourceRoomNeeds) {
+          if (isRoomFreeExcluding(idx, room, source.day, source.period, groupClassKeys)) continue;
+          const occ = roomOccupantsExcluding(idx, grids, room, source.day, source.period, groupClassKeys);
+          if (!occ) { hardRoom = true; break; }
+          conflicts.push({
+            roomName: room,
+            slot: { weekId: week.id, day: source.day, period: source.period },
+            occupants: occ,
+          });
+        }
+      if (hardRoom) continue;
+
+      // ── 감점 (기존 함수 재사용, §5b-2) — 직권 전용 화면이라 실명 표기 ──
+      const details: PenaltyDetail[] = [];
+      for (const cl of classLessons) {
+        const excludeAtTarget = [p2, ...(d2 === source.day ? [source.period] : [])];
+        for (const gl of cl.lessons) {
+          const dup = classDuplicatePenalty(cl.grid, d2, gl.subjectName, excludeAtTarget);
+          if (dup) details.push({ scope: "class", text: dup.message, points: dup.points });
+        }
+        const step = steps.find((s) => s.classNum === cl.classNum && s.kind === "swap");
+        if (step?.counterpart) {
+          const dup = classDuplicatePenalty(
+            cl.grid, source.day, step.counterpart.subjectName,
+            [source.period, ...(source.day === d2 ? [p2] : [])]
+          );
+          if (dup) details.push({ scope: "class", text: dup.message, points: dup.points });
+        }
+      }
+      for (const [email, name] of groupTeachers)
+        details.push(
+          ...teacherDayPenalties(ctx, email, `${name} 선생님`, d2, p2,
+            source.day === d2 ? source.period : null)
+            .map((p) => ({ scope: "mine" as const, text: p.message, points: p.points }))
+        );
+      for (const [email, name] of counterpartTeachers)
+        details.push(
+          ...teacherDayPenalties(ctx, email, `${name} 선생님`, source.day, source.period,
+            d2 === source.day ? p2 : null)
+            .map((p) => ({ scope: "counterpart" as const, text: p.message, points: p.points }))
+        );
+
+      candidates.push({
+        targetDay: d2,
+        targetPeriod: p2,
+        steps,
+        score: details.reduce((sum, p) => sum + p.points, 0),
+        penalties: details.map((p) => p.text),
+        penaltyDetails: details,
+        ...(conflicts.length ? { coordination: { kind: "venue" as const, conflicts } } : {}),
+        ...(baseWarnings.length ? { warnings: [...baseWarnings] } : {}),
+      });
+    }
+  }
+
+  candidates.sort(
+    (a, b) =>
+      (a.coordination ? 1 : 0) - (b.coordination ? 1 : 0) || // §2-2 규약: 깨끗한 후보 → 조율 필요 후보
+      a.score - b.score ||
+      a.targetDay - b.targetDay || a.targetPeriod - b.targetPeriod
   );
   return { candidates };
 }

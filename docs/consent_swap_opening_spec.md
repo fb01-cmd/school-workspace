@@ -1,6 +1,8 @@
-# 양해 기반 교체 개방 스펙 v1 — 후보 이원화·양해 기록·탐색 개방·통 이동
+# 양해 기반 교체 개방 스펙 v1.2 — 후보 이원화·양해 기록·탐색 개방·통 이동
 
 > 2026-08-10 Claude 작성. 상위 문서: phase9b_spec.md(§4 엔진·§5 워크플로·§13 양해), pre_opening_3features_spec.md(§A 동시수업·§C 체인·§F 특별실), 로드맵 §2 "양해 기반 교체 개방"(4축 확정 엔트리).
+> **구현 현황 (2026-08-15 실측 대조)**: Phase 1(ⓐⓓ 서버+UI)·Phase 2(ⓑ 체인 서버 `9d79ef0`+UI+표적 검수)·§3-2b/c/d 실기기 배치(S1~S3·S5+U1~U9+후속 3건) **전부 구현 완결**. §4-1 공강 개방은 2026-08-11 철회로 종결. 잔여 = **Phase 3(§5b) 하나** + S4(체인 조율 허용, Phase 3 뒤 실수요 관찰 후 — 보류 유지). **Phase 3 서버부는 2026-08-15 완결**(§6 표) — 남은 것은 §5b-5 UI와 §5b-6 검수.
+> v1.2 (2026-08-15): §5b Phase 3 상세 설계 확정 — v1 §5 전제 중 실측과 어긋난 2건(합성기 무수정·simulMoveId) 교정 포함.
 > 전제 전환 근거: 2026-08-10 사용자·체육교사 통화 — ① 구장 수업 교체는 원칙 차단이나 **당사자 양해로 실제 진행됨**(체육교사가 "체육관 합반" 또는 "교실 수업"을 선택해 동의) ② 동시수업 묶음을 통으로 옮긴 실사례 존재 ③ **조율 주체는 교체 원하는 교사 본인**(일과계가 하면 책임 전가 구도).
 
 ## 0. 설계 원칙 (사용자 확정 반영)
@@ -175,15 +177,107 @@ consent?: {
 - **1차는 일과계 직권 전용**(direct 흐름 확장) — 상대 교사가 여러 명이라 양해 부담이 크고, 실사례도 일과계 개입 케이스. 양해 기록은 §3 모델 그대로(parties = 치워지는 수업 교사 전원 + G 담당 교사 전원). 교사 개방은 운영 후 판단.
 - **UI**: 이동수업 관리 탭(SimulGroupTab)에서 그룹 선택 → 슬롯 선택 → 이동 가능 교시 하이라이트 → 확인 다이얼로그(치워지는 수업 목록 명시) → 양해 확인 → 반영.
 
+## 5b. Phase 3 상세 설계 — 통 이동 확정판 (2026-08-15 Claude, 실코드 실측 기반)
+
+> §5는 2026-08-10의 방향 합의(연산 정의·성립 조건 ①②③·직권 전용 결정)로 유지하고, 여기서 구현 단위로 확정한다. 아래 실측 교정 2건 외에는 §5의 결정을 전부 계승한다.
+
+### 5b-0. 실측 교정 2건 (§5 전제 수정 — 2026-08-15 코드 대조)
+
+1. **"합성기 무수정" 불성립.** `applySwap`(weekly.ts)은 양쪽 슬롯 모두에서 lesson 실재를 요구한다(`findLesson` 실패 시 경고+건너뜀) — 대상 슬롯이 빈 학급의 "상대 없는 단순 이동"은 기존 swap change로 표현할 수 없다. **신규 ChangeType `"move"`가 필요**하며, 합성기(정방향·취소 역방향)·revert 재검증 분기·NEIS 평탄화가 함께 확장돼야 한다(§5b-1).
+2. **`simulMoveId` 불요.** 직권 경로도 SwapRequest 문서를 만들고(`directCommit` 실측 — direct:true 신청 생성 후 즉시 승인) change에 `requestId`가 실린다. revert는 이미 **requestId 묶음 전량 취소**를 chain 타입에서 구현·검증 완료(LIFO 역순 오프셋 포함, `9d79ef0`) — 조건에 신청 타입 하나를 추가하는 것으로 충분하다. 신규 연결 필드 대신 **신청 타입 `"simul_move"`를 신설**해 기구현 패턴에 정렬한다.
+
+### 5b-1. 모델 (types.ts·weekly.ts — Claude 구현)
+
+- `ChangeType`에 `"move"` 추가 + `TimetableChange.move`:
+
+```typescript
+move?: {
+  grade: number; classNum: number;
+  from: { day: number; period: number };
+  to: { day: number; period: number };
+  subjectName: string;                    // 이동하는 수업 식별 (applySwap의 SwapChangeSlot 대조와 같은 정신)
+  teacherEmail: string; teacherName: string;
+}
+```
+
+- weekly.ts `applyMove`: from 슬롯에서 (과목·교사 일치) lesson을 찾아 to 슬롯으로 재배치, `changed = { changeId, type: "move", origin: from }`. reversed(취소)는 to→from 복원 + changed 제거. 대상 불일치 시 기존과 동일하게 경고+건너뜀(fail-soft).
+- `WeeklyLessonChange.type`에 `"move"` 추가 — 학생·교사 카드의 변경 셀 렌더(U8 sky 계열)는 type 무관 `changed` 존재로 이미 동작하나, 소비처 전수 확인은 §5b-6.
+- `SwapRequestType`에 `"simul_move"` 추가 + `SwapRequest.simulMove`:
+
+```typescript
+simulMove?: {
+  groupId: string; label: string;         // SimulGroup 참조 + 사람용 라벨 스냅샷
+  grade: number; classNums: number[];
+  from: { day: number; period: number };
+  to: { day: number; period: number };
+  steps: SimulMoveStep[];                 // 반별 전개 — 서버 재계산 스냅샷 (chainSteps와 같은 정신)
+}
+
+// 반별 전개 1건: 상대 수업이 있으면 swap change, 빈 교시면 move change로 커밋된다
+interface SimulMoveStep {
+  classNum: number;
+  kind: "swap" | "move";
+  groupLesson: { subjectName: string; teacherEmail: string; teacherName: string };
+  counterpart?: { subjectName: string; teacherEmail: string; teacherName: string }; // kind==="swap"일 때
+}
+```
+
+- `candidate`(SwapCandidateSnapshot)는 chain 패턴대로 사람용 요약만: targetDay/Period = to, counterpartName = 그룹 라벨, penalties = 반별 요약 문장. 상세는 simulMove가 원본.
+
+### 5b-2. 엔진 `findSimulGroupMoveCandidates` (swap.ts 순수 함수 — Claude 구현)
+
+- **입력**: `(grids, week, settings, group: SimulGroup, source: {day, period})`. 추가 Firestore 읽기 0 — 호출부가 이미 합성한 주간 그리드와 로드된 등록부만 사용(읽기 예산 규율).
+- **소스 해석**: classNums 각 반의 (d₁,p₁) 셀에서 `lesson.simul === group.label`인 수업을 수집. 검증 — ⓐ 전 반에 그룹 수업 실재(누락 반 발견 시 후보 0 + 사유 반환: 등록부·그리드 불일치는 조용히 일부만 옮기면 안 됨) ⓑ 그 셀에 그룹 외 다른 lesson 혼재 시 동일하게 중단(데이터 이상). simul 스탬프는 기초 위치 기준이지만 swap 적용 시 lesson과 함께 이동하므로(실측), 앞선 교체가 있어도 합성본 탐지가 정확하다.
+- **후보 열거**: 그 학년 요일별 운영 교시(`periodsForGradeDay`) 전수에서 ⓐ 소스 슬롯 ⓑ 그룹의 다른 현행 슬롯(자기 충돌) 제외.
+- **반별 판정 (조건 ②의 구현)** — 각 반 c의 (d₂,p₂) 셀:
+  - 빈 셀 → 그 반은 `kind: "move"` (상대 없음).
+  - lessons 2개 이상 → 후보 전체 하드 제외.
+  - 단일 lesson: `lesson.simul` 존재(타 그룹 포함) · 복수교사 · 가상 교사(이메일 없음) 중 하나면 하드 제외. 통과 시 `kind: "swap"` + counterpart 기록.
+- **공강 판정은 "이동분 제거 후" 의미론** — 기존 `isTeacherFree`를 그대로 쓰면 안 되는 지점 2곳:
+  - 그룹 담당 교사는 정의상 `isBlockTeacher` true(§5 ①) — 블록 판정을 **이 그룹 자신에 한해 면제**.
+  - 상대 교사가 그룹 교사이기도 한 자기맞물림(같은 교사의 수업이 양방향으로 함께 움직이는 경우)은 성립 가능한데 소박한 점유 검사로는 탈락한다. 판정식: **(d₂,p₂) 검사 = 기존 점유 − 이번에 빠져나가는 상대 수업들의 교사 집합에 그룹 교사가 없을 것**, (d₁,p₁) 검사는 대칭(기존 점유 − 그룹 수업 교사 집합에 상대 교사가 없을 것).
+- **특별실 (조건 ③)**: 그룹 수업의 `lesson.room`(VenueGroup 스탬프)이 (d₂,p₂)에서, 상대 수업 room이 (d₁,p₁)에서 — `isRoomFree` 실패 시 §2와 동일하게 `roomOccupants` 역참조로 조율 필요 분류(가상 점유는 하드 유지). 자기 학급 제외 판정 시 **이번 이동으로 비워지는 이동 반들의 점유도 제외**해야 한다(그룹이 쓰던 특별실을 그룹 자신이 따라가는 정상 케이스가 충돌로 오판되지 않도록).
+- **감점**: 기존 함수 재사용 — 반별로 `classDuplicatePenalty`(그룹 과목 @ d₂ / 상대 과목 @ d₁) + `teacherDayPenalties`(그룹 교사=이동 방향, 상대 교사=역방향; 같은 요일이면 removePeriod 상쇄). 직권 전용 화면이므로 `thirdPerson` 실명 표기. score = 총합, 정렬 = 깨끗한 후보 → 조율 필요 후보 → score 오름차순(§2-2 규약).
+- **연속시수 경고**: `group.consecutive`가 있고 소스 슬롯이 같은 요일 인접 그룹 슬롯과 짝을 이루고 있었는데 이동으로 깨지면 후보에 `warnings: string[]`로 눈높이 경고("이 그룹은 2시간 연속 수업으로 등록돼 있습니다 — 이동하면 연속이 끊어집니다"). **차단하지 않는다** — 직권 화면이고 실사례(체육 통화 ②)가 곧 예외 승인이므로 판단은 일과계 몫.
+
+### 5b-3. 커밋 `commitSimulGroupMove` (server.ts — Claude 구현)
+
+- **재계산 대조**: 커밋 직전 주간 재합성 → `findSimulGroupMoveCandidates` 재실행 → 요청된 (groupId, from, to)와 일치하는 후보가 존재해야 성립(후보 위조 차단 — create·chain_create 재검증과 같은 정신). steps는 **서버 재계산 값을 저장**(클라이언트 값 불신).
+- **consent 필수 (§3 모델 그대로)**: `params.consent.confirmed !== true`면 400. parties 서버 도출 = **그룹 담당 교사 전원 ∪ 치워지는 상대 교사 전원 ∪ 특별실 조율 당사자(coordination.occupants)** − 중복. 상대·충돌이 없는 전 반 빈 교시 이동도 그룹 교사 전원이 당사자이므로 consent는 항상 필수(§5 결정 유지).
+- **원장·커밋 (원자)**: SwapRequest(type "simul_move", direct: true, requesterEmail = 일과계 관리자, status APPROVED 즉시) + change 문서들(반별 swap 또는 move, 전부 같은 requestId, `appliedAt = now + i` 순서 보존)을 **단일 트랜잭션 일괄 커밋. 부분 성공 금지** — 반별 분해는 표현 형식일 뿐 연산은 묶음 하나다(반쯤 이동된 동시수업 그룹은 성립 불가 상태 — 체인 원자 승인과 같은 이유). reason은 기존 `validateReason` 규약.
+- **revert**: `revertTimetableChange`의 requestId 묶음 확장 조건을 `type === "chain"`에서 `type === "chain" || type === "simul_move"`로 — 어느 change를 클릭해도 그룹 전량 LIFO 취소(기구현 재사용, 신규 로직 0).
+- **알림**: 반영·취소 모두 수신자 = parties 전원(revert의 consent.parties 합류는 기구현이라 자동). 발신자 hmnotice@ 규약 불변. 문구는 반별 전개를 눈높이로("2학년 3·4·5반 화 3교시 일본어Ⅰ/중국어Ⅰ 수업이 목 5교시로 통째로 이동" + 치워진 수업 안내).
+- 커밋 후 `bumpTimetableCacheVersion` + 감사 로그(action "simul_move_commit", 그룹·슬롯·양해 인원 요약) — 기존 규약.
+
+### 5b-4. API (manage 라우트 전용 — 일과계 게이트 자동)
+
+- `simul_move_candidates`: `{ weekId, groupId, source: {day, period} }` → `{ candidates }`. 후보에는 steps·coordination·warnings·score 동봉(UI가 하이라이트·다이얼로그를 이것만으로 구성).
+- `simul_move_commit`: `{ weekId, groupId, source, target: {day, period}, reason, consent }` → `{ request, changes }`.
+- requests 라우트에는 **아무것도 열지 않는다** — 1차 직권 전용(§5 결정). 교사 개방은 운영 후 별도 판단.
+
+### 5b-5. UI (Antigravity — Claude 서버부 완료 후)
+
+- **배치 확정: 직권 배정 탭(DirectSubstituteTab)의 신규 모드 "이동수업 통 이동"** — §5 초안의 SimulGroupTab 배치를 변경한다. 근거(실측): SimulGroupTab은 학기 단위 등록부 편집기로 **주(week) 개념이 없고**, 통 이동은 주 선택·시간표 그리드·양해 다이얼로그·반영 흐름이 전부 필요한데 직권 탭에 전부 기구현돼 있다. SimulGroupTab에는 그룹 카드에 "이 그룹 통 이동 →" 진입 링크만(직권 탭 해당 모드로 이동).
+- **흐름**: 모드 진입 → 그룹 선택(활성 그룹 드롭다운) → 그룹의 현행 슬롯 표시 → 소스 슬롯 선택 → `simul_move_candidates` → 이동 가능 교시 하이라이트(깨끗/조율 시각 위계는 §3-2b-1 그대로 — 조율은 빨간 계열 "⚠️ 양해 필수") → 후보 클릭 시 확인 다이얼로그(반별 전개 전체: 어느 반의 무슨 수업이 치워져 어디로 가는지 + 연속시수 경고 + 특별실 충돌) → **양해 확인은 반영 직전 1곳만**(§3-2b-3 원칙: 체크+메모, 당사자 실명 명단은 서버 도출값 표시) → `simul_move_commit`.
+- **요청대장**: type "simul_move" 카드 배지("🧩 통 이동") + 그룹 라벨·반별 전개·🤝 양해 배지(기존 consent 표시 재사용). 체인의 '보강' 오배지 전례가 있으므로 type 분기 누락 주의.
+- **문구**: 개발 용어 금지(“simul_move”·“steps” 노출 금지), 조율 문구는 U1 플랫화 규약("겹칩니다 — 사용 중: △△ 선생님", 처방 표현 금지).
+
+### 5b-6. 검수 고정 항목 (Claude 표적 검수)
+
+1. **신규 ChangeType "move" 소비처 전수** — 실측 확인 필요 지점: weekly.ts 적용 루프·revert 역방향 분기(`target.type` 삼항)·`flattenNeisChanges`(move = 이동 1행으로 NEIS 목록 합류)·`changeLabel` 경고 문구·교사/학생 카드 changed 렌더·`computeHourTotals`(이론상 무영향 — 확인만).
+2. **SwapRequestType "simul_move" 소비처 전수** — 요청대장 필터·배지, `listSwapRequests` type 필터, `listNeisRows` type 파라미터, `validatePendingSwapRequests`(simul_move는 즉시 APPROVED라 PENDING 경로에 안 나타남 — 확인만), 알림 문구 분기.
+3. **기존 출력 불변**: 옵션·신규 액션 미사용 경로의 엔진 출력 diff 0. `verify_chain_phase2.ts` 양식의 실데이터 검증 스크립트(알림 억제·원장 흔적 하드 삭제·합성 원복 대조) — 검증 항목: 반별 혼합(swap+move) 커밋, 자기맞물림 케이스, 원자성(중간 단계 위조 실패 시 change 0건), revert 전량 원복, parties 도출 정확성.
+4. 시간표 실험 기록 규약: 감점은 **코드별 분해**로 남긴다(2026-08-15 규약).
+
 ## 6. 구현 순서·분업
 
-| Phase | 내용 | 담당 | 비고 |
+| Phase | 내용 | 담당 | 상태 (2026-08-15 실측) |
 |---|---|---|---|
-| **1** | ⓐ 엔진 이원화(includeCoordination) + ⓓ consent 모델·create/approve/direct 검증·알림 수신자 확장 | **Claude** (엔진·검증 = 위험 지점) | 체육 교체 전멸이 현재 실무 pain — 최우선 |
-| **1** | 조율 필요 후보 섹션·양해 확인 다이얼로그·양해 카드 변형·요청대장 배지 | **Antigravity** | Claude 서버부 완료 후 |
-| **2** | ⓑ requests `chain_search` + `chain` 신청 타입·원자 승인·revert | **Claude** | 트랜잭션·권한 = 위험 지점 |
-| **2** | 공강 탐색 교사 포털 노출(추출 재사용) + 교사 체인 UX | **Antigravity** | 공강 UI는 서버 무변경이라 즉시 착수 가능 |
-| **3** | ⓒ 통 이동 엔진·simulMoveId·직권 UI | Claude(엔진·커밋) + Antigravity(UI) | 착수 시점 사용자 판단 (9c와 조율) |
+| **1** | ⓐ 엔진 이원화(includeCoordination) + ⓓ consent 모델·create/approve/direct 검증·알림 수신자 확장 | **Claude** (엔진·검증 = 위험 지점) | ✅ 완결 (2026-08-10) |
+| **1** | 조율 필요 후보 섹션·양해 확인 다이얼로그·양해 카드 변형·요청대장 배지 | **Antigravity** | ✅ 완결 (§3-2b~d 실기기 배치 포함, ~2026-08-12) |
+| **2** | ⓑ requests `chain_search` + `chain` 신청 타입·원자 승인·revert | **Claude** | ✅ 완결 (`9d79ef0`, 실데이터 검증 7항목) |
+| **2** | 교사 체인 UX (공강 노출은 2026-08-11 철회로 소멸) | **Antigravity** | ✅ 완결 (표적 검수 통과 2026-08-10) |
+| **3** | ⓒ 통 이동 — §5b 확정판: move 모델·엔진·원자 커밋·직권 UI | Claude(엔진·커밋) + Antigravity(UI) | **서버부 완결 (2026-08-15 Claude)** — 모델·합성기·엔진·원자 커밋·manage 액션 2종·revert 확장·웹푸시, 실데이터 검증(`verify_simul_move_phase3.ts`) 2사이클 통과. 잔여 = §5b-5 UI(Antigravity) → §5b-6 표적 검수 |
 
 - 각 Phase 완료 시 기존 규약대로 Claude 표적 검수(엔진 출력 불변 검증 — 옵션 꺼짐 경로 diff 0 확인 포함) 후 사용자 push 승인.
 - 검수 고정 항목 추가: **coordination·consent 필드가 정규화 조립(loadTimetableSettings 류)에 걸리는 신규 설정 필드는 없음** — swap_requests·후보 응답에만 존재. 다만 SwapCandidateSnapshot 소비처(요청대장·NEIS 목록·카드)가 신규 필드를 만나도 깨지지 않는지 확인.

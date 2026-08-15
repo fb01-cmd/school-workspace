@@ -209,6 +209,17 @@ function describeChange(change: TimetableChange): ChangeAudience | null {
       classKey: { grade: c.grade, classNum: c.classNum },
     };
   }
+  if (change.move) {
+    // 통 이동의 빈 교시 반 — 상대 없는 단순 이동 (consent_swap_opening_spec §5b-1)
+    const m = change.move;
+    return {
+      line:
+        `${revert}${dateLabel(change.weekId, m.from.day)} ${m.from.period}교시 ${m.subjectName}` +
+        ` → ${dateLabel(change.weekId, m.to.day)} ${m.to.period}교시 (${m.grade}-${m.classNum}반)`,
+      teacherEmails: [m.teacherEmail],
+      classKey: { grade: m.grade, classNum: m.classNum },
+    };
+  }
   return null;
 }
 
@@ -241,7 +252,7 @@ export async function notifyTimetableChanges(
     // 원본 change를 로드해 "변경 취소" 문구로 합성한다 (server.ts revert 트랜잭션 구조 참조)
     const resolved: TimetableChange[] = [];
     for (const change of changes) {
-      if (change.revertOf && !change.swap && !change.substitute && !change.crossSwap) {
+      if (change.revertOf && !change.swap && !change.substitute && !change.crossSwap && !change.move) {
         const snap = await timetableChangesColRef(domain).doc(change.revertOf).get();
         if (snap.exists) {
           resolved.push({ ...(snap.data() as TimetableChange), id: change.id, revertOf: change.revertOf });

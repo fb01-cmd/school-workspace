@@ -335,6 +335,9 @@ export type ManageAction =
   | "direct_commit_batch" // §14-4 직권 담기 일괄 반영 — direct_commit을 항목별 순차 실행 (부분 성공 허용)
   | "direct_projected" // §14-4 담기 가상 반영 그리드 — 대상 교사 전 주 시간표에 pendingItems 가상 적용 (my_projected의 직권 대응)
   | "chain_search" // §C 징검다리 체인 — 소스 수업이 목적지 슬롯에 도달하는 교환 수열 역방향 탐색 (pre_opening_3features_spec §C-2)
+  // ── 동시수업 묶음 통 이동 (consent_swap_opening_spec §5b-4) — 직권 전용, requests 라우트에는 열지 않는다 ──
+  | "simul_move_candidates" // 그룹·소스 슬롯 → 이동 가능 후보 (steps·coordination·warnings·score 동봉)
+  | "simul_move_commit"     // 재계산 대조 + consent 필수 + 반별 change 단일 트랜잭션 원자 커밋
   // ── Phase 9b 순서 5 운영 도구 (phase9b_spec §8) ──
   | "neis_list"
   | "hour_totals"
@@ -436,6 +439,9 @@ export interface ManageTimetableRequest {
   venueGroupId?: string; // venue_save(수정)·venue_delete 대상
   chainTarget?: { weekId?: string; day: number; period: number }; // chain_search 목적지 (weekId 없으면 소스 주)
   chainMaxDepth?: number; // chain_search 최대 교환 수 (기본 2, 상한 3 — §C-2)
+  // 동시수업 묶음 통 이동 (consent_swap_opening_spec §5b-4) — weekId·simulGroupId·reason·consent 재사용
+  simulMoveSource?: { day: number; period: number }; // simul_move_candidates·commit 소스 슬롯
+  simulMoveTarget?: { day: number; period: number }; // simul_move_commit 목적지 슬롯
   // 학사일정 (pre_opening_3features_spec §B)
   calendarEvent?: Partial<TimetableCalendarEvent>; // calendar_save 본문
   calendarEventId?: string; // calendar_save(수정)·calendar_delete 대상
@@ -530,7 +536,7 @@ export interface WeekRegisterInput {
 
 // ── 변경 오버레이 (timetable_changes — 불변 로그) ─────────────
 
-export type ChangeType = "swap" | "substitute" | "cross_swap" | "revert";
+export type ChangeType = "swap" | "substitute" | "cross_swap" | "move" | "revert";
 
 export interface SwapChangeSlot {
   day: number;
@@ -592,6 +598,17 @@ export interface TimetableChange {
     subSubjectName?: string;
   };
   crossSwap?: CrossSwapChange; // 교차 주 맞교환 (phase9b_spec §4-3b) — revert는 exchangeId 단위로만
+  /** 상대 없는 단순 이동 (consent_swap_opening_spec §5b-1) — 통 이동에서 대상 슬롯이 빈 반의 표현.
+   *  applySwap은 양쪽 lesson 실재를 요구해 빈 교시 이동을 기존 swap으로 표현할 수 없다 (§5b-0). */
+  move?: {
+    grade: number;
+    classNum: number;
+    from: { day: number; period: number };
+    to: { day: number; period: number };
+    subjectName: string; // 이동하는 수업 식별 (applySwap의 SwapChangeSlot 대조와 같은 정신)
+    teacherEmail: string;
+    teacherName: string;
+  };
   revertOf?: string; // 취소 대상 changeId (역방향 기록)
   appliedBy: string;
   appliedAt: number;
@@ -601,7 +618,8 @@ export interface TimetableChange {
 
 export type SwapRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELED";
 // "chain" = 교사 징검다리 체인 신청 (consent_swap_opening_spec §4-3) — 승인 시 단계별 swap/cross_swap change로 전개
-export type SwapRequestType = "swap" | "substitute" | "cross_swap" | "chain";
+// "simul_move" = 동시수업 묶음 통 이동 (§5b) — 직권 전용, 즉시 APPROVED + 반별 swap/move change 원자 커밋
+export type SwapRequestType = "swap" | "substitute" | "cross_swap" | "chain" | "simul_move";
 
 export const SWAP_REASON_TYPES = ["출장", "연수", "병가", "공가", "학교행사", "기타"] as const;
 export type SwapReasonType = (typeof SWAP_REASON_TYPES)[number];
@@ -672,6 +690,39 @@ export interface SwapConsentInput {
   note?: string;
 }
 
+// ── 동시수업 묶음 통 이동 (consent_swap_opening_spec §5b) ─────
+
+/** 반별 전개 1건: 상대 수업이 있으면 swap change, 빈 교시면 move change로 커밋된다 (§5b-1) */
+export interface SimulMoveStep {
+  classNum: number;
+  kind: "swap" | "move";
+  groupLesson: { subjectName: string; teacherEmail: string; teacherName: string };
+  counterpart?: { subjectName: string; teacherEmail: string; teacherName: string }; // kind==="swap"일 때
+}
+
+/** SwapRequest.simulMove — 통 이동 원본 (candidate 스냅샷은 사람용 요약만, chain 패턴) */
+export interface SimulMoveInfo {
+  groupId: string;
+  label: string; // SimulGroup 라벨 스냅샷 (사람용)
+  grade: number;
+  classNums: number[];
+  from: { day: number; period: number };
+  to: { day: number; period: number };
+  steps: SimulMoveStep[]; // 반별 전개 — 서버 재계산 스냅샷 (chainSteps와 같은 정신)
+}
+
+/** 통 이동 후보 (findSimulGroupMoveCandidates 출력 — §5b-2) */
+export interface SimulGroupMoveCandidate {
+  targetDay: number;
+  targetPeriod: number;
+  steps: SimulMoveStep[];
+  score: number; // 감점 합 (0이 최선)
+  penalties: string[];
+  penaltyDetails: PenaltyDetail[];
+  coordination?: CandidateCoordination; // 특별실 충돌 — §2 조율 분류 재사용
+  warnings?: string[]; // 연속시수 경고 등 — 차단하지 않는다 (§5b-2, 판단은 일과계 몫)
+}
+
 export interface SwapRequest {
   id: string;
   termId: string;
@@ -695,6 +746,8 @@ export interface SwapRequest {
   // ── type === "chain" 전용 (consent_swap_opening_spec §4-3) ──
   chainSteps?: ChainStepItem[]; // 서버 재계산 스냅샷 — 승인 시 이 단계열을 순차 재검증 후 원자 커밋
   chainTarget?: { weekId?: string; day: number; period: number }; // 목적지 (weekId 없으면 소스 주)
+  // ── type === "simul_move" 전용 (consent_swap_opening_spec §5b) ──
+  simulMove?: SimulMoveInfo; // 통 이동 원본 — 반별 전개 스냅샷 (revert는 requestId 묶음 전량)
 }
 
 // ── 사전 양해 임시저장 (swap_drafts — phase9b_spec §13-1) ─────
@@ -722,7 +775,7 @@ export interface SwapDraft {
 
 export interface WeeklyLessonChange {
   changeId: string;
-  type: "swap" | "substitute" | "cross_swap";
+  type: "swap" | "substitute" | "cross_swap" | "move";
   origin?: { day: number; period: number }; // "화3 ← 월2에서 이동" 출처
   otherWeekId?: string; // cross_swap: 이 수업이 넘어온 상대 주 (§4-3b)
 }
@@ -758,7 +811,7 @@ export interface WeeklySynthesisResult {
 export interface NeisRow {
   changeId: string;
   weekId: string;
-  type: "swap" | "substitute" | "cross_swap";
+  type: "swap" | "substitute" | "cross_swap" | "move";
   grade: number;
   classNum: number;
   date: string; // 변경 있는 교시의 일자 (YYYY-MM-DD)

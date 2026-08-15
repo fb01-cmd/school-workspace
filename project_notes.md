@@ -1267,3 +1267,29 @@ if (isProtectedAccountEmail(email)) {
   3. **요일당 배치 한도 확장** — 패턴 섹션 전용이던 요일당 1회 제한(`sectionDayCount`)을 단독 배치 일반(plain) 섹션에도 적용(고정 슬롯·동시수업 예외, 주당 시수>요일 수면 불가피분 허용). 컴시간·사람 손의 "과목은 요일에 분산" 통상 규칙을 배치 규칙으로 승격.
 - 실측: 백지 경로 하드 0·미배정 0·**S4 0건·소프트 27점**(직전 34~35, 현행 39) / 현행 재작성 경로 하드 0·미배정 0·S4 0건·28점. tsc·build ✅.
 - 검증 예언(결정론 회복의 실사용 확인): 배포 후 사용자 브라우저 재실행 결과가 **정확히 소프트 27점·중복 0건**이어야 한다. 다르면 환경 갈림이 남아 있는 것.
+
+---
+
+## [2026-08-15] Claude — 양해 개방 Phase 2 유령 판명 + Phase 3 상세 스펙 확정 (§5b)
+
+- **Phase 2는 유령**: 로드맵 잔여 표기("Phase 1 UI·Phase 2·Phase 3")가 8/10자로 낡아 있었음. 실측 — Phase 2 서버부 `9d79ef0`(8/10, 실데이터 검증 7항목) + 교사 체인 UI(Antigravity 8/10) + 표적 검수 통과 + §3-2d 배치(S1~S3·S5+U1~U9+후속 3건) 완결(아카이브 8월분 2826행). §4-1 공강 개방은 8/11 철회로 종결. **양해 개방 갈래 실잔여 = Phase 3 하나** (+S4 보류 유지). 로드맵·스펙 §6 표 상태 열 갱신 완료.
+- **Phase 3 상세 스펙 §5b 확정** (`docs/consent_swap_opening_spec.md` v1.2) — v1 §5 전제의 실측 교정 2건이 핵심:
+  1. "합성기 무수정" 불성립 — applySwap은 양쪽 lesson 실재 요구(빈 교시 이동 표현 불가) → **신규 ChangeType "move"** + 합성기·revert 분기·NEIS 평탄화 확장.
+  2. simulMoveId 불요 — 직권도 SwapRequest를 만들므로(directCommit 실측) **requestId 묶음 revert(체인 기구현) 재사용** → 신청 타입 "simul_move" 신설로 정렬.
+- 설계 요점: 엔진 `findSimulGroupMoveCandidates`(swap.ts 순수 함수, 그룹 자신 한정 블록 판정 면제 + **이동분 제거 후 공강 의미론**으로 자기맞물림 성립) / 반별 판정(빈 셀=move·단일 상대=swap·simul/복수/가상=하드) / 특별실은 §2 조율 분류 재사용(이동 반 점유 제외 주의) / 커밋 원자·부분 성공 금지 / consent 항상 필수(parties = 그룹 교사∪상대 교사∪특별실 점유자, 서버 도출) / **UI는 직권 탭 신규 모드로 확정**(SimulGroupTab은 주 개념 없는 등록부 편집기 — 실측 근거로 §5 초안 배치 변경) / 연속시수는 경고만.
+- **다음**: Claude(Fable) Phase 3 서버부 구현(모델·엔진·커밋·검증 스크립트) → Antigravity UI → Claude 표적 검수(§5b-6 고정 항목).
+
+## [2026-08-15] Claude — 양해 개방 Phase 3 서버부 구현 완결 (통 이동, §5b)
+
+- **변경 파일**: `types.ts`(ChangeType "move"·TimetableChange.move·SwapRequestType "simul_move"·SimulMoveStep/SimulMoveInfo/SimulGroupMoveCandidate·manage 액션 2종·요청 필드 `simulMoveSource/Target`) · `weekly.ts`(applyMove 정·역방향, revert 분기, changeLabel, NEIS 평탄화 move 1행) · `swap.ts`(`findSimulGroupMoveCandidates` 순수 함수 + 특별실 복수 학급 제외 헬퍼 2종 — 기존 함수 무수정) · `server.ts`(`computeSimulGroupMoveCandidates`·`commitSimulGroupMove` 원자 커밋, revert requestId 묶음 조건에 simul_move 추가, validatePending 방어 분기, 취소 알림 move/통 이동 문구) · `manage/route.ts`(`simul_move_candidates`·`simul_move_commit` + 감사 로그 + 웹 푸시) · `webpush.ts`(describeChange move 분기 — §5b-6 목록 밖이지만 change 소비처라 필수)
+- **설계 주의점 (검수·UI 작업자용)**:
+  - 커밋 재검증은 **트랜잭션 안에서** 주 changes 재읽기→재합성→엔진 재실행→(from,to) 대조 (approveSwapRequest와 동일 구조). steps·parties 전부 서버 재계산 값 저장.
+  - 한 반 셀에 같은 그룹 수업이 여럿(분반 병기)이면 첫 수업 swap + 나머지 move로 전개 — 스펙 모델의 자연 확장 (실데이터 커밋 검증은 단일 lesson 케이스만 존재했음).
+  - 공강 판정은 §5b-2 "이동분 제거 후" 집합식 그대로 — isTeacherFree·isBlockTeacher 미사용.
+- **실데이터 검증** (`scripts/verify_simul_move_phase3.ts`, 알림 억제·원장 하드 삭제·원복 대조 — phase2 양식):
+  - 후보 실측: 활성 그룹 11 × 현행 슬롯 전수 = 후보 95건 (move 포함 34 · 조율 필요 21 · **자기맞물림 10** · 소스 오류 0). **혼합(swap+move) 후보는 실데이터에 지형 없음(0건)** — kind별 개별 커밋으로 대체 커버.
+  - 게이트: consent 없는 커밋 거부 ✅ / 위조 목적지 거부 + change 0건(원자성) ✅
+  - 커밋 2사이클: **A = 전 반 swap + 자기맞물림**(3학년 과학 분반 6·8·10반, change 3건) / **B = 전 반 move**(빈 교시 이동, change 2건) — 상태·kind 일치·appliedAt 순서·requestId 연결·parties 도출·합성 실반영 전 항목 ✅
+  - revert: change 1건 지정 → 전량 취소·신청 CANCELED·합성본 바이트 원복 ✅ (2사이클 모두)
+  - tsc ✅ · build ✅. 기존 출력 불변은 구조적 보장(기존 엔진 함수 무수정, 합성기는 신규 type 분기만 추가) + 검증 후 합성본 최초 상태 대조 ✅
+- **잔여**: §5b-5 직권 UI(Antigravity — DirectSubstituteTab 신규 모드 "이동수업 통 이동" + SimulGroupTab 진입 링크 + 요청대장 "🧩 통 이동" 배지) → Claude 표적 검수 §5b-6(신규 API 응답에 `groupSlots` 동봉 — 그룹 현행 슬롯 하이라이트 재료). API 규약: manage `simul_move_candidates` = `{weekId, simulGroupId, simulMoveSource:{day,period}}`, `simul_move_commit` = `+ simulMoveTarget·reason·consent`.
