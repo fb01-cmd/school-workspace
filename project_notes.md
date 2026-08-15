@@ -1,5 +1,19 @@
 # Project Notes
 
+## [2026-08-15] Antigravity → Claude/사용자 (Phase 9c-I 실검증 후속 2건 보완 완료)
+- **변경 파일**:
+  - `src/lib/timetable/server.ts`: `deriveHoursPlanFromGrids`에서 그리드 lessons의 `lesson.teachers`를 순회하여 `emailToName` 사전을 구축하고, 실교사 행의 `teacherName`을 누락 없이 채우도록 수정.
+  - `src/components/admin/timetable/DraftAutoTab.tsx`: 사전 확인 모달(Preflight) 이슈 목록을 로드맵 9c-I 서브불릿 사용자 피드백에 맞춰 고지성 이슈(`simul-assumed`·`venue-slot-limited`·`fixed-standalone`)는 「ℹ️ 이렇게 처리합니다 N건」(slate 카드), 조치성 이슈(`fixed-missing`·`fixed-mismatch`·`simul-unsolved`·`class-slot-mismatch`)는 「⚠️ 짜기 전에 살펴볼 점 N건」(amber/red 카드)으로 2분할 렌더링.
+- **실DB 데이터 조치**:
+  - 기존 `[2027-1]` 시수 계획(구 ID: `be0a13c5-2a59-4ab5-a19f-c1accf9772df`)을 삭제하고 `deriveHoursPlanFromGrids`로 재파생하여 신규 계획(`6a8ee5fe-12e2-4e1f-a911-777a6ac1c442`, 432개 수업 전원 한글 교사명 정상 등록)으로 교체 완료.
+  - 이를 통해 솔버 백지 편성 및 초안 편집기에서 교사가 이메일 대신 한글 이름으로 정상 표출됨을 확인.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (39개 라우트 프로덕션 빌드 성공)
+  - `scripts/test_phase9c_i_equivalence.ts` ✅ (432행 동치성 100% 일치)
+  - `scripts/test_phase9c_i_dod.ts` ✅ (DoD 2, 3, 4, 5 전수 통과)
+  - `scripts/test_phase9c_i_e2e_ui_flow.ts` ✅ (파이프라인 전 단계 정상 통과, softTotal=35점)
+
 ## [2026-08-15] Antigravity → Claude/사용자 (Phase 9c-I 시수 계획 → 자동 작성 연결 완결)
 - **변경 파일**:
   - `src/lib/timetable/cohort.ts`: `hoursFromPlanRows` 구현 (계획 행 + 고정 블록 함의 행 병합 및 가상 교사 이중 계상 방지)

@@ -5965,6 +5965,22 @@ export async function deriveHoursPlanFromGrids(
   const hoursReqs = deriveHoursFromGrids(grids);
   const gradeDayPeriods = deriveGradeDayPeriods(grids);
 
+  // 그리드 lesson의 teachers에서 email -> name 매핑 수집
+  const emailToName = new Map<string, string>();
+  for (const g of grids) {
+    for (const cell of g.cells || []) {
+      for (const lesson of cell.lessons || []) {
+        for (const t of lesson.teachers || []) {
+          const email = (t.email || "").trim().toLowerCase();
+          const name = (t.name || "").trim();
+          if (email && name && !emailToName.has(email)) {
+            emailToName.set(email, name);
+          }
+        }
+      }
+    }
+  }
+
   const rows: HoursPlanRow[] = hoursReqs.map((r) => {
     let teacherEmail = "";
     let teacherName = "";
@@ -5972,6 +5988,7 @@ export async function deriveHoursPlanFromGrids(
       teacherName = r.teacherKey.slice(5);
     } else {
       teacherEmail = r.teacherKey;
+      teacherName = emailToName.get(teacherEmail.toLowerCase()) || "";
     }
     return {
       id: randomUUID(),

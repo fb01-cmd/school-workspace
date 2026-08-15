@@ -2281,41 +2281,77 @@ export default function DraftAutoTab({ activeTermId, periodsPerDay = 7 }: DraftA
               </div>
             )}
 
-            {/* 확인 필요 점 목록 */}
-            {preflightData.issues.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-gray-800">
-                  <span>확인이 필요한 점 {preflightData.issues.length}건</span>
-                </div>
-                <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 text-xs">
-                  {preflightData.issues.map((issue, idx) => {
-                    const isError =
-                      issue.code === "fixed-missing" ||
-                      issue.code === "simul-unsolved" ||
-                      issue.code === "class-slot-mismatch";
-                    return (
-                      <div
-                        key={idx}
-                        className={`p-2.5 rounded-lg border text-xs leading-relaxed ${
-                          isError
-                            ? "bg-red-50 border-red-200 text-red-900"
-                            : "bg-amber-50 border-amber-200 text-amber-900"
-                        }`}
-                      >
-                        <p className="font-medium">{issue.text}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            {/* 이슈 목록 분리 렌더링 (로드맵 9c-I 2026-08-15 사용자 피드백) */}
+            {(() => {
+              const handlingCodes = new Set(["simul-assumed", "venue-slot-limited", "fixed-standalone"]);
+              const handlingIssues = preflightData.issues.filter((i) => handlingCodes.has(i.code));
+              const warningIssues = preflightData.issues.filter((i) => !handlingCodes.has(i.code));
 
-            {preflightData.issues.length === 0 && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900 font-semibold flex items-center gap-2">
-                <span>✅</span>
-                <span>특이사항 없이 바로 시간표를 짤 수 있는 상태입니다.</span>
-              </div>
-            )}
+              return (
+                <div className="space-y-3">
+                  {/* 1. 시스템 처리 안내 ("이렇게 처리합니다 N건") */}
+                  {handlingIssues.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                        <span className="flex items-center gap-1.5">
+                          <span>ℹ️</span>
+                          <span>이렇게 처리합니다 {handlingIssues.length}건</span>
+                        </span>
+                      </div>
+                      <div className="max-h-36 overflow-y-auto space-y-1 pr-1 text-xs">
+                        {handlingIssues.map((issue, idx) => (
+                          <div
+                            key={idx}
+                            className="p-2 rounded-lg border bg-slate-50 border-slate-200 text-slate-700 text-xs leading-relaxed"
+                          >
+                            <p className="font-medium">{issue.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. 조치 필요 점검 ("짜기 전에 살펴볼 점 N건") */}
+                  {warningIssues.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs font-bold text-amber-900">
+                        <span className="flex items-center gap-1.5">
+                          <span>⚠️</span>
+                          <span>짜기 전에 살펴볼 점 {warningIssues.length}건</span>
+                        </span>
+                      </div>
+                      <div className="max-h-36 overflow-y-auto space-y-1 pr-1 text-xs">
+                        {warningIssues.map((issue, idx) => {
+                          const isError =
+                            issue.code === "fixed-missing" ||
+                            issue.code === "simul-unsolved" ||
+                            issue.code === "class-slot-mismatch";
+                          return (
+                            <div
+                              key={idx}
+                              className={`p-2 rounded-lg border text-xs leading-relaxed ${
+                                isError
+                                  ? "bg-red-50 border-red-200 text-red-900"
+                                  : "bg-amber-50 border-amber-200 text-amber-900"
+                              }`}
+                            >
+                              <p className="font-medium">{issue.text}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {preflightData.issues.length === 0 && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900 font-semibold flex items-center gap-2">
+                      <span>✅</span>
+                      <span>특이사항 없이 바로 시간표를 짤 수 있는 상태입니다.</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="flex gap-2 pt-2 border-t border-gray-100">
               <button
