@@ -789,7 +789,13 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
   return { sections: sections.sort((a, b) => a.id.localeCompare(b.id)), issues };
 }
 
-// ── 소프트 추정 점수 (validate.ts S1~S6과 동일 가중 — 국소 탐색 내부용) ──
+// ── 소프트 추정 점수 (validate.ts S1~S6 기반 — 국소 탐색 내부용) ──
+//
+// 내부 가중 교정 (2026-08-15): 공식 점수(validateTimetable)는 전 코드 1점 등가지만,
+// 솔버가 그 등가로 최적화하면 S3·S5를 줄이는 대가로 S4(같은 반 같은 날 동일 과목 중복)를
+// 지불한다 — 실측: 백지 편성 S4 16건·-17점 vs 현행(컴시간·사람 손) S4 1건. 사람은 같은 날
+// 중복을 점심 전후 연속(현행 S3 28건 방치)보다 훨씬 심각하게 본다. 따라서 **내부 목적함수에서만**
+// S4를 가중해 회피 우선순위를 사람 기준에 맞춘다. 화면·검사기의 공식 점수 정의는 불변.
 
 interface SoftState {
   /** 교사키 → day → 교시 집합 */
@@ -825,9 +831,12 @@ function teacherDayPenalty(
   return pts;
 }
 
+/** S4 내부 가중 — 위 주석 참조. 공식 1점당 솔버 내부에서는 이만큼으로 취급한다 */
+const S4_INTERNAL_WEIGHT = 4;
+
 function classDayPenalty(subjects: Map<string, number>): number {
   let pts = 0;
-  for (const n of subjects.values()) if (n >= 2) pts += n - 1; // S4
+  for (const n of subjects.values()) if (n >= 2) pts += (n - 1) * S4_INTERNAL_WEIGHT; // S4 (내부 가중)
   return pts;
 }
 
