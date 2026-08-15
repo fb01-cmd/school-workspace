@@ -13,7 +13,7 @@ import {
   DirectPendingOverlayItem,
   DirectCommitBatchItemResult,
 } from "@/lib/timetable/types";
-import { DAY_LABEL, formatSlotWithDate, formatCoordinationText, getCoordinationOccupants } from "@/lib/timetable/utils";
+import { DAY_LABEL, formatSlotWithDate, formatCoordinationText, formatCandidateSlotLabel, getCoordinationOccupants } from "@/lib/timetable/utils";
 
 import MiniPreviewGrid from "./MiniPreviewGrid";
 import CoordinationNoticeBlock from "./CoordinationNoticeBlock";
@@ -418,6 +418,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     if (!day || !period) return;
 
     if (!cell) {
+      // 이중 방어: 원본이 현재 선택 교사의 수업이 아니면 무효화 (묵은 원본으로 탐색 방지)
+      if (chainSourceSlot && chainSourceSlot.teacherEmail.toLowerCase() !== selectedTeacherEmail.toLowerCase()) {
+        setChainSourceSlot(null);
+      }
       setChainTargetSlot({ weekId, day, period });
       setChainResults([]);
       setChainSearchError(null);
@@ -441,6 +445,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       setPreviewCells(null);
       setCounterpartSourceCells(null);
       setCounterpartTargetCells(null);
+      setChainSourceSlot(null); // 선택 해제 시 체인 원본도 함께 해제 (묵은 원본 방지)
       return;
     }
 
@@ -453,6 +458,18 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     });
     setSourceLessonInfo({
       subjectName: cell.subjectName,
+      teacherName: selectedTeacherName,
+    });
+    // 체인 원본 수업으로 자동 지정 — 수업을 고른 뒤 빈 교시를 누르면 그 수업을 가져오는 것이 기본 동선.
+    // (이 지정이 빠지면 빈 교시 클릭 시 원본을 다시 고르라는 목록이 뜬다)
+    setChainSourceSlot({
+      weekId,
+      grade: cell.grade,
+      classNum: cell.classNum,
+      day: cell.day,
+      period: cell.period,
+      subjectName: cell.subjectName,
+      teacherEmail: selectedTeacherEmail,
       teacherName: selectedTeacherName,
     });
     fetchCandidates(weekId, cell.grade, cell.classNum, cell.day, cell.period, cell.subjectName);
@@ -980,7 +997,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                       {selectedSlot && activeCandidateType === "swap" && <span className="text-[11px] text-gray-500 font-semibold">맞교환 후보 {candidateListInWeek.length}건</span>}
                     </div>
                     <div className="border border-gray-200 rounded-xl overflow-hidden shadow-2xs">
-                      <table className="w-full border-collapse text-xs">
+                      <table className="w-full table-fixed border-collapse text-xs">
                         <thead>
                           <tr className="bg-indigo-950 text-white font-bold">
                             <th className="py-2.5 px-2 border-b border-r border-indigo-800 w-14 text-center">교시</th>
@@ -1053,10 +1070,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                                 : "bg-emerald-50 hover:bg-emerald-100/90 border-emerald-300 hover:border-emerald-500 text-emerald-950 shadow-2xs"
                                           }`}
                                         >
-                                          <div className="flex items-center justify-between gap-1">
-                                            <span className="font-black text-[11px] truncate flex items-center gap-0.5">
-                                              {inlineCand.coordination && <span>⚠️</span>}
-                                              <span>{inlineCand.counterpartName}</span>
+                                          <div className="flex items-center justify-between gap-1 min-w-0">
+                                            <span className="font-black text-[11px] truncate flex items-center gap-0.5 min-w-0" title={inlineCand.counterpartName}>
+                                              {inlineCand.coordination && <span className="shrink-0">⚠️</span>}
+                                              <span className="truncate">{formatCandidateSlotLabel(inlineCand)}</span>
                                             </span>
                                             <span className={`px-1 py-0.5 rounded text-[9px] font-extrabold shrink-0 ${
                                               inlineCand.coordination
@@ -1408,7 +1425,20 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
               </button>
             </div>
 
-            {chainSearchError && <div className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg font-semibold">{chainSearchError}</div>}
+            {chainSearchError && (
+              <div className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg font-semibold space-y-2">
+                <p>{chainSearchError}</p>
+                {chainMaxDepth < 3 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRunChainSearch(3)}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shadow-xs cursor-pointer"
+                  >
+                    🔄 3단계까지 넓혀 다시 탐색
+                  </button>
+                )}
+              </div>
+            )}
 
             {chainResults.length > 0 && (
               <div className="space-y-2 pt-2 border-t border-gray-100">

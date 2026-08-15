@@ -42,6 +42,7 @@ import {
   formatSlotWithDate,
   buildShareCardMessage,
   formatCoordinationText,
+  formatCandidateSlotLabel,
   getCoordinationOccupants,
 } from "@/lib/timetable/utils";
 
@@ -1605,8 +1606,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                           <div className="font-extrabold text-xs">⏳ 반영 중…</div>
                                         ) : (
                                           <>
-                                            <div className="font-extrabold text-xs truncate">
-                                              {isCoordination ? "⚠️ " : ""}{candidate.conditional ? "⏳ " : ""}{candidate.counterpartName}
+                                            <div className="font-extrabold text-xs truncate" title={candidate.counterpartName}>
+                                              {isCoordination ? "⚠️ " : ""}{candidate.conditional ? "⏳ " : ""}{formatCandidateSlotLabel(candidate)}
                                             </div>
                                             <div className="text-[10px] font-black mt-0.5">
                                               {isCoordination ? (

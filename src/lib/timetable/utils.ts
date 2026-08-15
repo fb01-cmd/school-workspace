@@ -155,6 +155,20 @@ export function formatCoordinationText(coordination?: CandidateCoordination): st
     .join(" / ");
 }
 
+/**
+ * 시간표 그리드의 후보 칸에 쓸 짧은 이름.
+ * 묶음 이동 후보의 counterpartName은 그룹 라벨 전체(예: "2학년 선택 밴드(4·5·7·8반) 일본어회화·중국어회화·기하·인공지능기초")여서
+ * 칸에 그대로 넣으면 열 폭을 밀어내 표가 깨진다. 칸에는 요약만 쓰고, 전체 내용은 확인창의 반별 전개에서 본다.
+ */
+export function formatCandidateSlotLabel(candidate?: {
+  counterpartName?: string;
+  coordination?: CandidateCoordination;
+}): string {
+  const simul = candidate?.coordination?.simul;
+  if (simul) return `묶음 이동 · ${simul.steps.length}개 반`;
+  return candidate?.counterpartName || "";
+}
+
 /** 조율 필요 후보의 occupants 전체 목록 추출 (중복 제거) */
 export function getCoordinationOccupants(coordination?: CandidateCoordination): CoordinationOccupant[] {
   if (!coordination || !coordination.conflicts) return [];
