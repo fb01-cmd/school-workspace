@@ -1436,3 +1436,43 @@ if (isProtectedAccountEmail(email)) {
   - `npx tsc --noEmit` 통과 (0 errors).
   - `npm run build` 통과.
 
+## [2026-08-15] Claude — Phase 3′ UI 재배선(`dbb999e`) 표적 검수: §5c-6 완료 판정 **조건부 통과** (결함 3건, 데이터 위험 0)
+
+핸드오버 주장 전 항목을 diff·실코드 대조로 실측했다. 허위 기재 없음.
+
+### 통과 확인 (지정 검수 항목)
+
+1. **전용 모드·그룹 드롭다운·진입 링크 철거 완전** — DirectSubstituteTab에 "이동수업 통 이동" 문자열 0건, `direct_tab_simul_group_id` sessionStorage 키·`admin_navigate` simulGroupId 소비처 잔존 0(발신부 SimulGroupTab diff로 제거 확인). SimulGroupTab 카드의 "통 이동 →" 버튼·핸들러 삭제 실측.
+2. **문구 구분 (§5c-7-5)** — `CoordinationNoticeBlock.tsx`: simul = *"선생님 수업도 함께 옮겨집니다. 묶여 있는 모든 반의 수업이 같은 시간으로 함께 이동합니다"* + 반별 전개(반·과목·담당·↔상대 또는 빈 교시) / venue = 기존 `formatCoordinationText` 사실 서술("…사용이 겹칩니다 ─ 사용 중: ○○ 선생님", U1 처방 표현 금지 준수) / `venue+simul` 복합 시 두 블록 모두 + 제목 병기. 당사자 명단은 `getCoordinationAllParties`(utils.ts)가 simul steps 교사(그룹+상대) ∪ venue occupants를 중복 제거해 일괄 표시.
+3. **`simul_move_create` 배선** — 교사 포털 2곳(`handleSingleSubmit`·`handleSubmitDraftConfirm`) payload = weekId·source·simulMoveTarget·reason·consent로 서버 시그니처 일치. 직권 단건은 `simul_move_commit`(weekId·simulGroupId·simulMoveSource·simulMoveTarget·reason·consent) 일치.
+4. **반별 전개 확인창** — 교사(신청 모달·2단 경고·초안 개별/일괄 모달)·직권(후보 패널·2단 경고·단건 양해 모달·일괄 모달) 전부 `CoordinationNoticeBlock` 삽입 확인.
+5. **개발 용어 노출 0** — 화면 문구에 simul_move·steps·venue 없음. 라벨은 "통 이동"·"묶음 이동 대기"·"동시수업 묶음 이동"(등록부 기존 어휘). 요청대장 카드 "🧩 통 이동" 배지 + 반별 이동 내역 렌더 확인.
+6. **§5c-4 배지 보완** — 본인 PENDING simul_move 슬롯에 "⏳ 묶음 이동 대기" 그리드 배지. `npx tsc --noEmit` 0 errors 재실측.
+7. **⑤ 기존 경로 불변** — 비simul 분기(else)는 기존 create/direct_commit payload 그대로. 서버부는 [8]에서 기검증.
+
+### 결함 (Antigravity 후속 수정 — 전부 UX층, 데이터 무결성 위험 없음)
+
+- **(A·중) 교사 초안 일괄 제출이 simul 초안을 일반 swap으로 전송** — `handleBatchSubmit`→`executeCreateBatchInTab`(TeacherPortalSection.tsx:650)이 선택 초안 전부를 `create_batch`·type "swap"으로 보냄. simul 초안은 서버 우회 방어(server.ts:3368 "여러 반이 함께 움직이는 수업입니다…")에 걸려 항목별 거부되므로 **커밋은 안전**하나, 일괄 모달에서 양해 체크까지 시킨 뒤 거부되는 흐름. 개별 제출(`handleSubmitDraftConfirm`)만 `simul_move_create` 분기 존재. 수정: 일괄 제출 시 simul 초안은 `simul_move_create`로 개별 분기하거나, 일괄 선택에서 제외하고 개별 제출 안내.
+- **(B·중) 직권 [담기]가 simul 후보에도 노출** — `handleAddToCart`(DirectSubstituteTab.tsx:461)에 simul 가드 없음 → `direct_commit_batch`→`directCommit`→`createSwapRequest`(server.ts:5092)에서 같은 방어로 항목별 거부. **커밋은 안전**. 수정: `coordination?.simul` 후보는 [담기] 버튼 숨기고 "단건 즉시 반영"만 허용.
+- **(C·경) SimulGroupTab 안내문 낡음** — "후보 추천 엔진 및 맞교환·보강에서 **자동으로 교체가 차단**됩니다"(SimulGroupTab.tsx:277)는 §5c-7 이후 사실과 다름(맞교환은 이제 차단이 아니라 조율 필요 후보로 안내됨; 차단 유지는 체인·보강). 문구 갱신 필요.
+- (관찰·기록만) 그리드 배지는 **본인 신청만** 표시 — 같은 그룹 다른 교사에겐 안 보이나, 중복 신청은 서버가 그룹·슬롯 단위로 차단하고 눈높이 사유를 반환([7-5] 기검증)하므로 v1 수용.
+
+### 판정
+
+§5c-6 ①(교사 완주: 수업 클릭→혼입 후보→2단 경고→양해→`simul_move_create`)·②③(서버부 [7] 기검증 + UI 배선 일치)·④(배지 포함 전건)·⑤ 충족 — **A·B·C 수정 후 push 승인 요청**. A·B는 서버 방어가 받치고 있어 배포 차단 사유는 아니나, 같은 커밋에서 정리하는 편이 싸다.
+
+## [2026-08-15] Antigravity — Phase 3′ 결함 A·B·C 조치 완료
+
+1. **A 조치 (TeacherPortalSection.tsx: `executeCreateBatchInTab`, `executeCreateBatchFromHeader`)**:
+   - 일괄 신청 시 초안 목록 중 `coordination.simul`이 있는 항목(`simulDrafts`)을 자동 분기하여 개별 `simul_move_create`로 전송하고, 성공 시 초안을 자동 정리하도록 구현.
+   - 일반 초안(`swapDrafts`)은 기존대로 `create_batch`로 일괄 전송한 후, 성공·거부 건수를 합산하여 사용자에게 안내.
+2. **B 조치 (DirectSubstituteTab.tsx: `handleAddToCart`, 버튼 렌더링)**:
+   - `selectedCandidate?.coordination?.simul` 후보인 경우 `🛒 [담기]에 모으기` 버튼을 숨기고 `⚡ 단건 즉시 반영` 버튼만 전체 너비로 노출.
+   - `handleAddToCart` 내부에도 simul 후보 진입 시 안내 문구와 함께 차단하는 안전 가드 추가.
+3. **C 조치 (SimulGroupTab.tsx: 상단 카드 안내문)**:
+   - 안내 문구를 갱신하여 맞교환 시 "묶여 있는 모든 반이 함께 이동하는 조율 필요 후보(사전 양해 필수)"로 안내되며, 단독 교환·연쇄 이동·보강은 안전하게 차단됨을 명시.
+- **검증**:
+  - `npx tsc --noEmit` 통과 (0 errors).
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` 통과.
+
+

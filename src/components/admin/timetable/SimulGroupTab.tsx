@@ -267,14 +267,14 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
         <div className="flex justify-between items-start">
           <div>
             <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-              <span>🔀 동시수업(분반 이동수업) 교체 불가 관리</span>
+              <span>🔀 동시수업(분반 이동수업) 그룹 관리</span>
               <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-purple-100 text-purple-800 border border-purple-200">
                 이동수업 그룹
               </span>
             </h3>
             <p className="text-xs text-gray-600 mt-1 leading-relaxed">
               제2외국어(중국어·일본어)나 과학 이동수업 등 여러 반을 묶어 동시에 진행되는 분반 수업을 그룹으로 등록합니다.<br />
-              지정된 이동수업 셀은 교사 포털·직권 배정·학생 카드 등에 <strong>연보라 배지</strong>로 표시되며, 후보 추천 엔진 및 맞교환·보강에서 <strong>자동으로 교체가 차단</strong>됩니다.
+              지정된 이동수업 칸은 교사 포털·직권 배정·학생 카드 등에 <strong>연보라 배지</strong>로 표시되며, 맞교환 시 <strong>묶여 있는 모든 반이 함께 이동하는 조율 필요 후보(사전 양해 필수)</strong>로 안내되고 단독 교환·연쇄 이동·보강은 안전하게 차단됩니다.
             </p>
           </div>
         </div>

@@ -461,6 +461,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const handleAddToCart = () => {
     if (!selectedCandidate || !selectedSlot || !sourceLessonInfo) return;
 
+    if (activeCandidateType === "swap" && (selectedCandidate as any)?.coordination?.simul) {
+      setSubmitError("동시수업 묶음 이동 후보는 여러 반이 함께 변경되므로 [담기]를 거치지 않고 [단건 즉시 반영]으로 처리해야 합니다.");
+      return;
+    }
+
     const sourceWeekId = selectedSlot.weekId;
     const targetWeekId = activeCandidateType === "swap" ? (selectedCandidate as any)?.targetWeekId : undefined;
     const counterpartEmail = activeCandidateType === "swap" ? selectedCandidate.counterpartEmail : (selectedCandidate as SubstituteCandidate).teacherEmail;
@@ -1206,18 +1211,20 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
                       <div className="space-y-2 pt-2 border-t border-gray-100">
                         <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={handleAddToCart}
-                            className="flex-1 py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
-                          >
-                            🛒 [담기]에 모으기
-                          </button>
+                          {!selectedCandidate?.coordination?.simul && (
+                            <button
+                              type="button"
+                              onClick={handleAddToCart}
+                              className="flex-1 py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
+                            >
+                              🛒 [담기]에 모으기
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={handleDirectCommitSingle}
                             disabled={submitting}
-                            className="flex-1 py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                            className={`${selectedCandidate?.coordination?.simul ? "w-full" : "flex-1"} py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50`}
                           >
                             {submitting ? "반영 중..." : "⚡ 단건 즉시 반영"}
                           </button>

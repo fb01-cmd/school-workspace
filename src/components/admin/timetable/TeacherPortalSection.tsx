@@ -653,55 +653,109 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     setError(null);
 
     try {
-      const res = await fetch("/api/timetable/requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create_batch",
-          items: itemsToSubmit.map((d) => ({
-            draftId: d.id,
-            weekId: d.sourceWeekId,
-            targetWeekId: d.targetWeekId,
-            type: "swap",
-            source: d.source,
-            candidate: d.candidate,
-            consent: d.candidate?.coordination
-              ? { confirmed: true, note: consentNoteInput || undefined }
-              : undefined,
-          })),
-          reason: batchReason,
-        }),
-      });
+      const simulDrafts = itemsToSubmit.filter((d) => !!d.candidate?.coordination?.simul);
+      const swapDrafts = itemsToSubmit.filter((d) => !d.candidate?.coordination?.simul);
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        const results: SwapBatchItemResult[] = data.results || [];
-        const okCount = data.createdCount || 0;
-        const failResults = results.filter((r) => !r.ok);
+      let okCount = 0;
+      let failCount = 0;
+      const newErrors = { ...draftErrors };
 
-        if (failResults.length > 0) {
-          const newErrors = { ...draftErrors };
+      // 1) 동시수업 묶음 이동 초안은 simul_move_create로 개별 처리
+      for (const d of simulDrafts) {
+        try {
+          const simRes = await fetch("/api/timetable/requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "simul_move_create",
+              weekId: d.sourceWeekId,
+              source: {
+                grade: d.source.grade,
+                classNum: d.source.classNum,
+                day: d.source.day,
+                period: d.source.period,
+              },
+              simulMoveTarget: {
+                day: d.candidate.targetDay,
+                period: d.candidate.targetPeriod,
+              },
+              reason: batchReason,
+              consent: { confirmed: true, note: consentNoteInput || undefined },
+            }),
+          });
+          const simData = await simRes.json();
+          if (simRes.ok && simData.success) {
+            okCount++;
+            try {
+              await fetch("/api/timetable/requests", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "draft_delete", draftId: d.id }),
+              });
+            } catch {}
+          } else {
+            failCount++;
+            newErrors[d.id] = simData.error || "신청 거부";
+          }
+        } catch (e: any) {
+          failCount++;
+          newErrors[d.id] = e.message || "신청 오류";
+        }
+      }
+
+      // 2) 일반 맞교환 초안은 create_batch로 일괄 처리
+      if (swapDrafts.length > 0) {
+        const res = await fetch("/api/timetable/requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "create_batch",
+            items: swapDrafts.map((d) => ({
+              draftId: d.id,
+              weekId: d.sourceWeekId,
+              targetWeekId: d.targetWeekId,
+              type: "swap",
+              source: d.source,
+              candidate: d.candidate,
+              consent: d.candidate?.coordination
+                ? { confirmed: true, note: consentNoteInput || undefined }
+                : undefined,
+            })),
+            reason: batchReason,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          okCount += (data.createdCount || 0);
+          const results: SwapBatchItemResult[] = data.results || [];
+          const failResults = results.filter((r) => !r.ok);
+          failCount += failResults.length;
           failResults.forEach((fr) => {
             if (fr.draftId) {
               newErrors[fr.draftId] = fr.error || "신청 거부";
             }
           });
-          setDraftErrors(newErrors);
+        } else {
+          failCount += swapDrafts.length;
+          swapDrafts.forEach((d) => {
+            newErrors[d.id] = data.error || "일괄 신청 실패";
+          });
         }
-
-        if (okCount > 0) {
-          setSubmitResult(`🚀 ${okCount}건의 수업교환 신청이 성공적으로 일괄 접수되었습니다.`);
-        }
-
-        if (failResults.length > 0) {
-          alert(`일괄 신청 처리 완료: ${okCount}건 성공, ${failResults.length}건 거부.\n거부된 항목은 초안 카드에 사유가 표시되니 확인 후 [삭제]해 주세요.`);
-        }
-
-        await Promise.all([refreshDrafts(), fetchMyProjected()]);
-        setBatchConfirmingDrafts(null);
-      } else {
-        setError(data.error || "일괄 신청 처리에 실패했습니다.");
       }
+
+      setDraftErrors(newErrors);
+
+      if (okCount > 0) {
+        setSubmitResult(`🚀 ${okCount}건의 수업교환 신청이 성공적으로 일괄 접수되었습니다.`);
+      }
+
+      if (failCount > 0) {
+        alert(`일괄 신청 처리 완료: ${okCount}건 성공, ${failCount}건 거부.\n거부된 항목은 초안 카드에 사유가 표시되니 확인 후 [삭제]해 주세요.`);
+      }
+
+      await Promise.all([refreshDrafts(), fetchMyProjected()]);
+      setBatchConfirmingDrafts(null);
     } catch (e: any) {
       setError(`네트워크 오류: ${e.message}`);
     } finally {
@@ -944,38 +998,86 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     setSubmitResult(null);
 
     try {
-      const res = await fetch("/api/timetable/requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create_batch",
-          items: itemsToSubmit.map((d) => ({
-            draftId: d.id,
-            weekId: d.sourceWeekId,
-            targetWeekId: d.targetWeekId,
-            type: "swap",
-            source: d.source,
-            candidate: d.candidate,
-            consent: d.candidate?.coordination
-              ? { confirmed: true, note: consentNoteInput || undefined }
-              : undefined,
-          })),
-          reason: batchReason,
-        }),
-      });
+      const simulDrafts = itemsToSubmit.filter((d) => !!d.candidate?.coordination?.simul);
+      const swapDrafts = itemsToSubmit.filter((d) => !d.candidate?.coordination?.simul);
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        const okCount = data.createdCount || 0;
-        const results: SwapBatchItemResult[] = data.results || [];
-        const failCount = results.filter((r) => !r.ok).length;
+      let okCount = 0;
+      let failCount = 0;
 
-        setSubmitResult(`🚀 ${okCount}건의 수업교환 신청이 성공적으로 일괄 접수되었습니다.${failCount > 0 ? ` (${failCount}건 거부됨)` : ""}`);
-        await fetchMyProjected();
-        setBatchConfirmingDrafts(null);
-      } else {
-        setSubmitResult(`❌ 일괄 신청 실패: ${data.error || "알 수 없는 오류"}`);
+      for (const d of simulDrafts) {
+        try {
+          const simRes = await fetch("/api/timetable/requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "simul_move_create",
+              weekId: d.sourceWeekId,
+              source: {
+                grade: d.source.grade,
+                classNum: d.source.classNum,
+                day: d.source.day,
+                period: d.source.period,
+              },
+              simulMoveTarget: {
+                day: d.candidate.targetDay,
+                period: d.candidate.targetPeriod,
+              },
+              reason: batchReason,
+              consent: { confirmed: true, note: consentNoteInput || undefined },
+            }),
+          });
+          const simData = await simRes.json();
+          if (simRes.ok && simData.success) {
+            okCount++;
+            try {
+              await fetch("/api/timetable/requests", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "draft_delete", draftId: d.id }),
+              });
+            } catch {}
+          } else {
+            failCount++;
+          }
+        } catch {
+          failCount++;
+        }
       }
+
+      if (swapDrafts.length > 0) {
+        const res = await fetch("/api/timetable/requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "create_batch",
+            items: swapDrafts.map((d) => ({
+              draftId: d.id,
+              weekId: d.sourceWeekId,
+              targetWeekId: d.targetWeekId,
+              type: "swap",
+              source: d.source,
+              candidate: d.candidate,
+              consent: d.candidate?.coordination
+                ? { confirmed: true, note: consentNoteInput || undefined }
+                : undefined,
+            })),
+            reason: batchReason,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          okCount += (data.createdCount || 0);
+          const results: SwapBatchItemResult[] = data.results || [];
+          failCount += results.filter((r) => !r.ok).length;
+        } else {
+          failCount += swapDrafts.length;
+        }
+      }
+
+      setSubmitResult(`🚀 ${okCount}건의 수업교환 신청이 성공적으로 일괄 접수되었습니다.${failCount > 0 ? ` (${failCount}건 거부됨)` : ""}`);
+      await Promise.all([refreshDrafts(), fetchMyProjected()]);
+      setBatchConfirmingDrafts(null);
     } catch (e: any) {
       setSubmitResult(`❌ 오류: ${e.message}`);
     } finally {
