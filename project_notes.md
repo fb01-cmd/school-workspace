@@ -15,13 +15,21 @@
   - `npm run build` ✅ (39개 라우트 프로덕션 빌드 성공)
   - `scripts/test_phase9c_i_equivalence.ts` ✅ (432행 동치성 100% 일치)
   - `scripts/test_phase9c_i_dod.ts` ✅ (DoD 2, 3, 4, 5 전수 통과 — 2027-1 백지 편성 E2E 완주, hoursSnapshot-model.hours 동등 비교, H1 감지, 테스트 데이터 자동 정리 완료)
+  - `scripts/test_phase9c_i_e2e_ui_flow.ts` ✅ (화면 E2E 전 과정 100% 완주):
+    1. 작업 학기 2027-1에서 '2026-2 기반 신학기 수업 시간' 계획(432개 수업) 선택 확인
+    2. '시수 계획으로 자동 작성 시작' 클릭 → 확인 모달 표출 수치 일치 (30개 학급 · 주 1020시간 · 고정 120칸 · 가상 60개 안내 문구 · 이슈 20건)
+    3. '이대로 짜기' 클릭 → 백지 컴파일(418섹션) 및 최적화(unplaced 0건, soft 45점)
+    4. 초안 생성(`draft_create`) 및 스냅샷 보존(hours 432행, fixedBlocks 4블록, sourcePlanId)
+    5. 초안 목록(`listDrafts`)에 정상 노출 확인
+    6. 초안 열기(`getDraft`) 및 검사 리포트 정상 표출 (Hard 0건, Soft 45점, 콘솔 에러 0건)
+    7. 검증용 생성 초안 정상 삭제 정리 완료
 - **Claude 리뷰 반영 (1~5)**:
   - `test_phase9c_i_dod.ts` 검증용 시수 계획 자동 삭제 로직 추가
   - `test_phase9c_i_dod.ts` DoD 4 `hoursSnapshot`과 `model.hours` 432행 동등 비교 추가
   - `DraftAutoTab.tsx` `checkBaseGrids` 모델 응답 캐싱으로 `handleSolve` 이중 호출 제거
   - `buildBlankSolveInput` 오류 문구 3곳에서 개발 용어(targetTermId, §, draft) 제거
   - `buildBlankSolveInput`에서 `gradeDayPeriods` 비어 있을 때 서버 거부 로직 추가
-- **커밋**: `5069ba2`
+- **커밋**: `2548fa3`
 - **주의점**:
   - 섹션 컴파일(`compileSectionsFromHours`)은 Set 직렬화 유실 방지를 위해 서버 preflight(통계/이슈용)와 클라이언트 워커에서만 수행됨 (§8-1).
   - `hoursSnapshot`은 계획 원본을 유지하여 초안 편집 시 H1이 정상 판정됨 (§4-1).
