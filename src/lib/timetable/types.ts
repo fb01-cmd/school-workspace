@@ -391,6 +391,7 @@ export type ManageAction =
   | "hours_plan_get"
   | "hours_plan_save"
   | "hours_plan_delete"
+  | "hours_plan_solve_input" // Phase 9c-I 시수 계획 백지 솔버 입력 조립 (phase9c_i_spec §5-1)
   | "cohort_list"
   | "cohort_save"
   | "cohort_delete"
@@ -454,6 +455,9 @@ export interface ManageTimetableRequest {
   draftUnplaced?: TimetableDraftUnplaced[];
   draftReport?: TimetableAuditReport; // draft_create 시 클라에서 검사기 실행 결과 동봉
   draftOp?: BaseRevisionOp; // draft_op 적용 연산 1건
+  draftHours?: HoursRequirement[]; // Phase 9c-I 시수 계획 원본 스냅샷 (phase9c_i_spec §5-2)
+  draftFixedBlocks?: FixedBlock[]; // Phase 9c-I 교육과정 고정 블록 스냅샷
+  draftPlanId?: string; // Phase 9c-I 출처 계획 ID
   // Phase 9c-F NEIS 매핑 (phase9c_f_spec §4) — neis_precheck 대상은 termId/draftId 재사용
   neisMap?: Partial<NeisMapRegistry>; // neis_map_save 본문 (전체 교체)
   // Phase 9c-E AI 보조 (phase9c_e_spec §3) — ai_formalize 자연어 문장 (실명 포함 가능, 서버가 가명화)
@@ -1229,7 +1233,12 @@ export interface TimetableDraft {
   opCursor: number; // 현재 그리드 = base + ops[0..opCursor)
   unplaced: TimetableDraftUnplaced[];
   lastReport?: TimetableDraftLastReport;
+  /** 시수 계획으로 만든 초안의 시수 원본. 없으면 종전대로 그리드에서 역산 */
   hoursSnapshot?: HoursRequirement[];
+  /** 시수 계획으로 만든 초안의 교육과정 고정 슬롯. 없으면 H6 검사 생략(종전 동작) */
+  fixedBlocksSnapshot?: FixedBlock[];
+  /** 출처 표시용 */
+  sourcePlanId?: string;
   createdBy?: string;
   createdAt?: number;
   updatedBy?: string;

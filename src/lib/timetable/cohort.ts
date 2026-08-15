@@ -7,7 +7,7 @@
  * 컴파일러(compileSectionsFromHours)는 학년 축을 모른다 — 전개 결과(학급 단위 FixedBlock)만
  * 넘긴다. 그 경계를 지켜야 코호트 축 변경이 솔버로 번지지 않는다.
  */
-import { CohortFixedSlot, CurriculumCohort, FixedBlock, HoursRequirement } from "./types";
+import { CohortFixedSlot, CurriculumCohort, FixedBlock, HoursPlanRow, HoursRequirement } from "./types";
 
 /** 특정 학년도의 특정 학년이 따르는 교육과정 — 적용 시작 입학년도가 그 이하인 것 중 가장 최근 것 */
 export function cohortForGrade(
@@ -121,6 +121,46 @@ export function impliedHoursFromFixedBlocks(blocks: FixedBlock[]): HoursRequirem
     (a, b) =>
       a.grade - b.grade || a.classNum - b.classNum || a.subjectName.localeCompare(b.subjectName)
   );
+}
+
+/**
+ * 계획 행 → 시수표 행 변환 (phase9c_i_spec §3)
+ * 계획 행 + 코호트 함의 행 결합 및 가상 교사 이중 계상 방지
+ */
+export function hoursFromPlanRows(
+  rows: HoursPlanRow[],
+  fixedBlocks: FixedBlock[]
+): { hours: HoursRequirement[]; droppedVirtual: number } {
+  const implied = impliedHoursFromFixedBlocks(fixedBlocks);
+  const impliedKeys = new Set(implied.map((r) => `${r.grade}-${r.classNum}|${r.subjectName}`));
+
+  const toHoursRequirement = (row: HoursPlanRow): HoursRequirement => {
+    const teacherKey = row.teacherEmail.trim()
+      ? row.teacherEmail.trim()
+      : `name:${row.teacherName}`;
+    return {
+      grade: row.grade,
+      classNum: row.classNum,
+      subjectName: row.subjectName,
+      teacherKey,
+      hours: row.hours,
+    };
+  };
+
+  const planHours = rows
+    .map(toHoursRequirement)
+    .filter(
+      (r) =>
+        !(
+          r.teacherKey.startsWith("name:") &&
+          impliedKeys.has(`${r.grade}-${r.classNum}|${r.subjectName}`)
+        )
+    );
+
+  return {
+    hours: [...planHours, ...implied],
+    droppedVirtual: rows.length - planHours.length,
+  };
 }
 
 /** 서버 검증 (9c-H §2-4) — 통과하면 null, 아니면 첫 번째 문제 문구 */

@@ -1,5 +1,32 @@
 # Project Notes
 
+## [2026-08-15] Antigravity → Claude/사용자 (Phase 9c-I 시수 계획 → 자동 작성 연결 완결)
+- **변경 파일**:
+  - `src/lib/timetable/cohort.ts`: `hoursFromPlanRows` 구현 (계획 행 + 고정 블록 함의 행 병합 및 가상 교사 이중 계상 방지)
+  - `src/lib/timetable/types.ts`: `TimetableDraft` (`fixedBlocksSnapshot?`, `sourcePlanId?`), `ManageAction` (`hours_plan_solve_input`), `ManageTimetableRequest` 필드 확장
+  - `src/lib/timetable/solver.ts`: `SolverWorkerRequest`에 `teacherNames?`, `subjectShorts?` 추가
+  - `src/lib/timetable/solver.worker.ts`: 백지 분기 (`compileSectionsFromHours` 연동)
+  - `src/lib/timetable/server.ts`: `buildBlankSolveInput` 신설, `createDraft` 인자 3개 확장 및 `hoursSnapshot` 분기, `loadDraftConstraintModel` `fixedBlocks` 연동
+  - `src/app/api/timetable/manage/route.ts`: `hours_plan_solve_input` 액션 및 `draft_create` 인자 검증/전달
+  - `src/components/admin/timetable/DraftAutoTab.tsx`: 시작 방법 선택 ("어떻게 짤까요?"), 계획 선택기, `handleSolveFromPlan`, 사전 확인 모달 UI
+  - `scripts/test_phase9c_i_equivalence.ts`, `scripts/test_phase9c_i_dod.ts`: 동치성 회귀 및 DoD 2~5 전수 자동 검증 스크립트
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (39개 라우트 프로덕션 빌드 성공)
+  - `scripts/test_phase9c_i_equivalence.ts` ✅ (432행 동치성 100% 일치)
+  - `scripts/test_phase9c_i_dod.ts` ✅ (DoD 2, 3, 4, 5 전수 통과 — 2027-1 백지 편성 E2E 완주, hoursSnapshot-model.hours 동등 비교, H1 감지, 테스트 데이터 자동 정리 완료)
+- **Claude 리뷰 반영 (1~5)**:
+  - `test_phase9c_i_dod.ts` 검증용 시수 계획 자동 삭제 로직 추가
+  - `test_phase9c_i_dod.ts` DoD 4 `hoursSnapshot`과 `model.hours` 432행 동등 비교 추가
+  - `DraftAutoTab.tsx` `checkBaseGrids` 모델 응답 캐싱으로 `handleSolve` 이중 호출 제거
+  - `buildBlankSolveInput` 오류 문구 3곳에서 개발 용어(targetTermId, §, draft) 제거
+  - `buildBlankSolveInput`에서 `gradeDayPeriods` 비어 있을 때 서버 거부 로직 추가
+- **커밋**: `5069ba2`
+- **주의점**:
+  - 섹션 컴파일(`compileSectionsFromHours`)은 Set 직렬화 유실 방지를 위해 서버 preflight(통계/이슈용)와 클라이언트 워커에서만 수행됨 (§8-1).
+  - `hoursSnapshot`은 계획 원본을 유지하여 초안 편집 시 H1이 정상 판정됨 (§4-1).
+  - 대상 학기는 계획의 `targetTermId`를 단일 원본으로 사용함 (§8-4).
+
 ## [2026-08-14] Antigravity → Claude/사용자 (학기 전환 스펙 §8-1~6 전체 구현 완료)
 - **변경 파일**:
   - `src/lib/timetable/types.ts`: `term_create_draft`, `registry_inherit`, `draft_adopt` 액션 및 `targetTermId` 등 요청/응답 타입 추가

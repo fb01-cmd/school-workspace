@@ -11,8 +11,9 @@ import { randomUUID } from "crypto";
 import { bumpTimetableCacheVersion } from "./cacheVersion";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
-import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardViolationKey, validateTimetable } from "./validate";
-import { validateCohortInput } from "./cohort";
+import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardViolationKey, normSubject, validateTimetable } from "./validate";
+import { cohortForGrade, expandCohortFixedBlocks, hoursFromPlanRows, validateCohortInput } from "./cohort";
+import { compileSectionsFromHours } from "./solver";
 import { SOFT_CODE_LABELS } from "./labels";
 import { applyRevisionOps, cloneClassGrids } from "./utils";
 export { applyRevisionOps, cloneClassGrids };
@@ -5216,7 +5217,10 @@ export async function createDraft(
   grids: ClassGrid[] | null,
   unplaced: import("./types").TimetableDraftUnplaced[],
   lastReport: import("./types").TimetableDraftLastReport | undefined,
-  createdBy: string
+  createdBy: string,
+  hoursSnapshot?: import("./types").HoursRequirement[],
+  fixedBlocksSnapshot?: import("./types").FixedBlock[],
+  sourcePlanId?: string
 ): Promise<string> {
   let baseGrids: ClassGrid[] = grids ?? [];
   if (baseGrids.length === 0) {
@@ -5228,13 +5232,19 @@ export async function createDraft(
     );
   }
 
-  // spec v1.1 §7: hoursSnapshot = sourceTermId 현행 학기 기초 그리드에서 역산한 시수표
-  const sourceBaseGrids = (grids && grids.length > 0)
-    ? await loadAllClassGrids(domain, sourceTermId)
-    : baseGrids;
-  const hoursSnapshot = sourceBaseGrids.length > 0
-    ? deriveHoursFromGrids(sourceBaseGrids)
-    : deriveHoursFromGrids(baseGrids);
+  // spec v1.1 §7 & phase9c_i_spec §4-1:
+  // hoursSnapshot이 넘어오면 (시수 계획 경로) 그리드 역산을 건너뛴다.
+  let finalHoursSnapshot: import("./types").HoursRequirement[];
+  if (hoursSnapshot && hoursSnapshot.length > 0) {
+    finalHoursSnapshot = hoursSnapshot;
+  } else {
+    const sourceBaseGrids = (grids && grids.length > 0)
+      ? await loadAllClassGrids(domain, sourceTermId)
+      : baseGrids;
+    finalHoursSnapshot = sourceBaseGrids.length > 0
+      ? deriveHoursFromGrids(sourceBaseGrids)
+      : deriveHoursFromGrids(baseGrids);
+  }
 
   const now = Date.now();
   const draftRef = timetableDraftsColRef(domain).doc();
@@ -5248,7 +5258,9 @@ export async function createDraft(
     opCursor: 0,
     unplaced,
     ...(lastReport ? { lastReport } : {}),
-    hoursSnapshot,
+    hoursSnapshot: finalHoursSnapshot,
+    ...(fixedBlocksSnapshot?.length ? { fixedBlocksSnapshot } : {}),
+    ...(sourcePlanId ? { sourcePlanId } : {}),
     createdBy,
     createdAt: now,
     updatedBy: createdBy,
@@ -5281,6 +5293,8 @@ export async function getDraft(
   if (!snap.exists) throw new Error("초안을 찾을 수 없습니다.");
   const d = snap.data()!;
   const hoursSnapshot = Array.isArray(d.hoursSnapshot) ? d.hoursSnapshot : undefined;
+  const fixedBlocksSnapshot = Array.isArray(d.fixedBlocksSnapshot) ? d.fixedBlocksSnapshot : undefined;
+  const sourcePlanId = typeof d.sourcePlanId === "string" ? d.sourcePlanId : undefined;
   const meta: import("./types").TimetableDraft = {
     id: draftId,
     label: d.label || "무제 초안",
@@ -5291,6 +5305,8 @@ export async function getDraft(
     unplaced: Array.isArray(d.unplaced) ? d.unplaced : [],
     lastReport: d.lastReport || undefined,
     hoursSnapshot,
+    fixedBlocksSnapshot,
+    sourcePlanId,
     createdBy: d.createdBy,
     createdAt: toMillis(d.createdAt) ?? undefined,
     updatedBy: d.updatedBy,
@@ -5376,6 +5392,7 @@ async function loadDraftConstraintModel(
     teacherSlotBans,
     consecutiveRules,
     coTeaching,
+    ...(meta.fixedBlocksSnapshot?.length ? { fixedBlocks: meta.fixedBlocksSnapshot } : {}),
   };
   return {
     model,
@@ -6121,6 +6138,176 @@ export async function saveHoursPlan(
 export async function deleteHoursPlan(domain: string, planId: string): Promise<void> {
   if (!planId) throw new Error("planId가 누락되었습니다.");
   await hoursPlansColRef(domain).doc(planId).delete();
+}
+
+/**
+ * 신학기 시수 계획 기반 백지 자동 작성 입력 데이터 조립 (phase9c_i_spec §2)
+ *
+ * 주의사항:
+ * - sections는 JSON 직렬화 불가(Set 포함)하므로 절대 클라이언트로 내려보내지 않는다 (§8-1).
+ * - 서버는 preflight용 컴파일 후 issues와 통계만 추출하고 sections는 버린다.
+ * - 실제 sections 컴파일은 클라이언트 워커에서 수행한다.
+ */
+export async function buildBlankSolveInput(
+  domain: string,
+  planId: string
+): Promise<{
+  model: import("./types").TimetableConstraintModel;
+  teacherNames: Record<string, string>;
+  subjectShorts: Record<string, string>;
+  issues: import("./solver").BlankCompileIssue[];
+  stats: {
+    classCount: number;
+    rowCount: number;
+    totalHours: number;
+    fixedSlotCount: number;
+    droppedVirtual: number;
+    cohortMissingGrades: number[];
+  };
+  planLabel: string;
+  termId: string;
+}> {
+  // ① plan 로드
+  const plan = await getHoursPlan(domain, planId);
+  if (!plan) {
+    throw new Error("지정한 시수 계획을 찾을 수 없습니다.");
+  }
+  if (!plan.targetTermId || !plan.targetTermId.trim()) {
+    throw new Error("시수 계획에 대상 학기가 지정되어 있지 않습니다.");
+  }
+  const termId = plan.targetTermId.trim();
+  const schoolYear = Number(termId.slice(0, 4));
+  if (!Number.isFinite(schoolYear) || schoolYear < 2000) {
+    throw new Error("대상 학기의 학년도 형식이 올바르지 않습니다.");
+  }
+
+  // ② term 로드 & status !== "draft" 거부
+  const term = await loadTimetableTerm(domain, termId);
+  if (!term) {
+    throw new Error("대상 학기 정보를 찾을 수 없습니다.");
+  }
+  if (term.status !== "draft") {
+    const statusLabel = term.status === "active" ? "운영 중" : "보관됨";
+    throw new Error(`시수 계획으로 시간표를 새로 짜는 작업은 초안 학기에서만 가능합니다. (현재 학기 상태: ${statusLabel})`);
+  }
+
+  // 요일별 교시수 정보 확인
+  if (!plan.gradeDayPeriods || Object.keys(plan.gradeDayPeriods).length === 0) {
+    throw new Error("시수 계획에 학년별·요일별 수업 시간(교시수) 정보가 없습니다.");
+  }
+
+  // ③ 설정, 등록부 5종, 코호트 로드
+  const settings = await loadTimetableSettings(domain);
+  const [simulGroups, venueGroups, teacherSlotBans, consecutiveRules, coTeaching, cohorts] =
+    await Promise.all([
+      loadSimulGroups(domain, termId),
+      loadVenueGroups(domain, termId),
+      loadTeacherSlotBans(domain, termId),
+      loadConsecutiveRules(domain, termId),
+      loadCoTeachingRules(domain, termId),
+      listCurriculumCohorts(domain),
+    ]);
+
+  // ④ 학급 목록: plan.rows에서 (grade, classNum) 중복 제거 및 정렬
+  const classKeySet = new Set<string>();
+  const classList: Array<{ grade: number; classNum: number }> = [];
+  for (const r of plan.rows) {
+    const key = `${r.grade}-${r.classNum}`;
+    if (!classKeySet.has(key)) {
+      classKeySet.add(key);
+      classList.push({ grade: r.grade, classNum: r.classNum });
+    }
+  }
+  classList.sort((a, b) => a.grade - b.grade || a.classNum - b.classNum);
+
+  if (classList.length === 0) {
+    throw new Error("시수 계획에 학급 정보가 없습니다.");
+  }
+
+  // ⑤ fixedBlocks = expandCohortFixedBlocks(cohorts, schoolYear, classList, termId)
+  const fixedBlocks = expandCohortFixedBlocks(cohorts, schoolYear, classList, termId);
+
+  // ⑥ hours = hoursFromPlanRows(plan.rows, fixedBlocks)
+  const { hours, droppedVirtual } = hoursFromPlanRows(plan.rows, fixedBlocks);
+
+  // ⑦ gradeDayPeriods = plan.gradeDayPeriods (계획이 단일 원본)
+  const gradeDayPeriods = plan.gradeDayPeriods;
+
+  // ⑧ teacherNames / subjectShorts
+  const teacherNames: Record<string, string> = {};
+  for (const r of plan.rows) {
+    const email = (r.teacherEmail || "").trim().toLowerCase();
+    if (email && r.teacherName && r.teacherName.trim()) {
+      teacherNames[email] = r.teacherName.trim();
+    }
+  }
+
+  const subjectShorts: Record<string, string> = {};
+  if (plan.sourceTermId) {
+    const sourceTerm = await loadTimetableTerm(domain, plan.sourceTermId);
+    if (sourceTerm?.subjects) {
+      for (const s of sourceTerm.subjects) {
+        if (s.name && s.shortName) {
+          subjectShorts[normSubject(s.name)] = s.shortName;
+          subjectShorts[normSubject(s.shortName)] = s.shortName;
+        }
+      }
+    }
+  }
+  for (const r of plan.rows) {
+    if (r.subjectShort?.trim()) {
+      subjectShorts[normSubject(r.subjectName)] = r.subjectShort.trim();
+    }
+  }
+
+  // ⑨ model 조립
+  const model: import("./types").TimetableConstraintModel = {
+    lunchAfterPeriod: settings.lunchAfterPeriod || 4,
+    periodsPerDay: settings.periodsPerDay || 7,
+    gradeDayPeriods,
+    hours,
+    simulGroups,
+    venueGroups,
+    teacherSlotBans,
+    consecutiveRules,
+    coTeaching,
+    fixedBlocks,
+  };
+
+  // ⑩ preflight = compileSectionsFromHours({ hours, model, gradeDayPeriods, teacherNames, subjectShorts })
+  // sections는 버리고 issues만 추출 (§8-1)
+  const preflight = compileSectionsFromHours({
+    hours,
+    model,
+    gradeDayPeriods,
+    teacherNames,
+    subjectShorts,
+  });
+
+  // 코호트 등록이 누락된 학년 추출
+  const distinctGrades = [...new Set(classList.map((c) => c.grade))].sort((a, b) => a - b);
+  const cohortMissingGrades = distinctGrades.filter(
+    (g) => cohortForGrade(cohorts, schoolYear, g) === null
+  );
+
+  const stats = {
+    classCount: classList.length,
+    rowCount: plan.rows.length,
+    totalHours: hours.reduce((acc, h) => acc + h.hours, 0),
+    fixedSlotCount: fixedBlocks.reduce((acc, b) => acc + b.entries.length, 0),
+    droppedVirtual,
+    cohortMissingGrades,
+  };
+
+  return {
+    model,
+    teacherNames,
+    subjectShorts,
+    issues: preflight.issues,
+    stats,
+    planLabel: plan.label,
+    termId,
+  };
 }
 
 // ═════════════════════════════════════════════════════════════

@@ -79,6 +79,7 @@ import {
   deriveHoursPlanFromGrids,
   saveHoursPlan,
   deleteHoursPlan,
+  buildBlankSolveInput,
   createDraftTerm,
   inheritRegistries,
   adoptDraftToTerm,
@@ -1226,6 +1227,34 @@ export async function POST(req: NextRequest) {
                 softTotal: body.draftReport.soft?.total ?? 0,
               }
             : undefined;
+
+        // phase9c_i_spec §5-2: 서버측 방어 검증
+        let draftHours = Array.isArray(body.draftHours) ? body.draftHours : undefined;
+        if (draftHours) {
+          if (draftHours.length > 5000) {
+            return NextResponse.json({ error: "시수표 행 수가 5000을 초과했습니다." }, { status: 400 });
+          }
+          for (const h of draftHours) {
+            if (!Number.isInteger(h.hours) || h.hours < 1 || h.hours > 40) {
+              return NextResponse.json({ error: "시수 값은 1~40 사이 정수여야 합니다." }, { status: 400 });
+            }
+          }
+        }
+
+        let draftFixedBlocks = Array.isArray(body.draftFixedBlocks) ? body.draftFixedBlocks : undefined;
+        if (draftFixedBlocks) {
+          if (draftFixedBlocks.length > 100) {
+            return NextResponse.json({ error: "고정 블록 수가 100을 초과했습니다." }, { status: 400 });
+          }
+          for (const b of draftFixedBlocks) {
+            if (Array.isArray(b.entries) && b.entries.length > 200) {
+              return NextResponse.json({ error: "고정 블록 항목 수가 200을 초과했습니다." }, { status: 400 });
+            }
+          }
+        }
+
+        const draftPlanId = typeof body.draftPlanId === "string" ? body.draftPlanId : undefined;
+
         const draftId = await createDraft(
           domain,
           label,
@@ -1234,7 +1263,10 @@ export async function POST(req: NextRequest) {
           body.draftGrids ?? null,
           body.draftUnplaced ?? [],
           lastReport,
-          auth.email
+          auth.email,
+          draftHours,
+          draftFixedBlocks,
+          draftPlanId
         );
         await writeAuditLog({
           operatorEmail: auth.email,
@@ -1506,6 +1538,15 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
         return NextResponse.json({ success: true, action, planId: body.planId });
+      }
+
+      // ── Phase 9c-I 시수 계획 기반 백지 자동 작성 입력 (phase9c_i_spec §5-1) ──
+      case "hours_plan_solve_input": {
+        if (!body.planId) {
+          return NextResponse.json({ error: "planId가 필요합니다." }, { status: 400 });
+        }
+        const result = await buildBlankSolveInput(domain, body.planId);
+        return NextResponse.json({ success: true, action, ...result });
       }
 
       // ── 학기 전환 스펙 (term_transition_spec) ──

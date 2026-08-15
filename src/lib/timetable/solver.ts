@@ -1361,10 +1361,12 @@ export function solveTimetablePortfolio(
 // 타입만 여기 둔다 — 워커 파일을 클라이언트가 직접 import하면 self 핸들러가 SSR에서 터진다.
 
 export interface SolverWorkerRequest {
-  grids: ClassGrid[]; // 현행(참조) 그리드 — 워커 안에서 섹션 컴파일
+  grids: ClassGrid[]; // 현행(참조) 그리드 — 워커 안에서 섹션 컴파일 (백지 모드 시 빈 배열)
   model: TimetableConstraintModel;
   seeds?: number[]; // 기본 DEFAULT_SEED_PORTFOLIO
   localSearchIterations?: number;
+  teacherNames?: Record<string, string>;
+  subjectShorts?: Record<string, string>;
 }
 
 export type SolverWorkerMessage =

@@ -10,6 +10,7 @@
 
 import {
   compileSectionsFromGrids,
+  compileSectionsFromHours,
   solveTimetablePortfolio,
   SolverWorkerMessage,
   SolverWorkerRequest,
@@ -20,12 +21,18 @@ const post = (msg: SolverWorkerMessage) => (self as unknown as Worker).postMessa
 
 self.onmessage = (e: MessageEvent<SolverWorkerRequest>) => {
   try {
-    const { grids, model, seeds, localSearchIterations } = e.data;
+    const { grids, model, seeds, localSearchIterations, teacherNames, subjectShorts } = e.data;
+    const blank = grids.length === 0;
+    if (blank && !(model.hours?.length && model.gradeDayPeriods)) {
+      throw new Error("시수 계획 정보가 없어 시간표를 짤 수 없습니다.");
+    }
     const gradeDayPeriods = model.gradeDayPeriods || deriveGradeDayPeriods(grids);
     // 시수표 미제공 시 입력(기준) 그리드에서 역산 — 관문 리포트의 H1/H4가
     // "기준 대비 시수 보존"을 감시하게 한다 (phase9c_d_spec §7 — draft_model엔 hours가 없음)
     const hours = model.hours?.length ? model.hours : deriveHoursFromGrids(grids);
-    const sections = compileSectionsFromGrids(grids, model);
+    const sections = blank
+      ? compileSectionsFromHours({ hours, model, gradeDayPeriods, teacherNames, subjectShorts }).sections
+      : compileSectionsFromGrids(grids, model);
     const { best, ranking } = solveTimetablePortfolio({
       sections,
       gradeDayPeriods,
