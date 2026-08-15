@@ -106,6 +106,7 @@
 - 🔜 **Phase 9c. 자동 시간표 작성 (CSP 솔버)** — 브라우저 CSP 솔버 및 스펙 4종 확정 (11월 말 시한) · docs/phase9c_spec.md
 * **9c 자동 시간표 작성 (브라우저 CSP 솔버 — 스펙 확정 🔜, 11월 말 검증 시한)**: 컴시간 재계약 판단 전 11월 말 검증 시한이 걸린 최대 미결 작업. 결정론 솔버 코어(CSP) + AI 보조 결합. 스펙: [`docs/phase9c_spec.md`](./docs/phase9c_spec.md), 서브 스펙 3종([`phase9c_d_spec.md`](./docs/phase9c_d_spec.md), [`phase9c_e_spec.md`](./docs/phase9c_e_spec.md), [`phase9c_f_spec.md`](./docs/phase9c_f_spec.md)).
   - **[2026-08-14 추가] 학기 전환 스펙 확정** — 사용자 지적("등록부는 현 학기용인데 신학기 것은 어디서?")으로 드러난 신학기 준비 통로 부재를 나이스형 모델(학기 데이터 분리 + 사전 작성·검증 + 전환)로 설계. 컴시간 매뉴얼(§3·§4 통째 사본)·나이스 실무(사용자 증언) 레퍼런스 대조 완료. 초안 학기 생성·학기 선택·등록부 승계 복사·시수 계획 소속·자동 작성 채택(draft_adopt)·전환 관문 6부. 임시 회귀는 안 만들기로 사용자 확정(생기부류 법정 기록 없음). 상세 = [`docs/term_transition_spec.md`](./docs/term_transition_spec.md).
+  - **[2026-08-15 추가] 9c-I 시수 계획 → 자동 작성 연결 스펙 확정 (Claude)** — 9c 마지막 큰 조각. 백지 편성 엔진(`compileSectionsFromHours`·코호트 전개, src에서 미사용이던 것)을 자동 작성 화면으로 잇는 배선: 새 서버 조립 함수 + `hours_plan_solve_input` action + 워커 백지 분기 + 초안 스냅샷 2필드. 조립 순서의 단일 원본은 `scripts/solve_blank.ts`(실물 통과 실증). 이중 계상 방지·H1 무력화 방지(초안 hoursSnapshot=계획) 등 함정 6건 명문화. 구현은 Antigravity. 행 단위 동시수업·특별실 힌트 전달은 9c-I-2로 분리(스펙 §10-1). 상세 = [`docs/phase9c_i_spec.md`](./docs/phase9c_i_spec.md).
 
 - ⏸ **(구) Phase 9 원안 (CSP·결강보강·캘린더)** — phase9_spec.md 및 9a/9b/9c 단계별 스펙으로 대체되어 보류
 #### (구) Phase 9 원안 — AI 기반 웹 시간표 및 교체수업 편성 시스템 (스펙으로 대체됨)

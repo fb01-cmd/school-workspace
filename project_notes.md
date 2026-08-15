@@ -1075,3 +1075,12 @@ if (isProtectedAccountEmail(email)) {
 3. [사용자] 3학년 이동수업 현황 수령(시수표 자동 생성 아이디어 선행) · 시수 계획 목록 정리(선택, [2027-1]만 남기기 권장) · B1 Max20 이후 결정(8/24까지).
 
 **이 세션에서 굳은 규약 (새 세션이 알아야 함)**: 시스템 과목명 = 단축명 계열(통사A·체육1, [`phase9c_h_spec.md`](docs/phase9c_h_spec.md) §0-1a-②′) · 학사일정은 학기 무관 날짜 원장(termId 동결) · 나이스 수집은 학기별 실패 격리(초안 0건 = 정상) · Antigravity는 Gemini 3.7 Flash로 실사용 검증됨(하루 실측, 8/24 분업 재점검 근거).
+
+---
+
+## [2026-08-15] Claude → Antigravity — 9c-I 스펙 완성 (시수 계획 → 자동 작성 연결)
+
+- 산출물: [`docs/phase9c_i_spec.md`](docs/phase9c_i_spec.md) (신규) + 로드맵 9c 절 서브불릿 1줄
+- 검증 상태: 문서만 — 코드 변경 0건. 스펙 내 모든 파일 경로·행 번호·시그니처는 이 세션에서 실코드로 확인함 (`solve_blank.ts`·`cohort.ts`·`solver.ts`·`solver.worker.ts`·`server.ts`·`route.ts`·`DraftAutoTab.tsx`)
+- 다음 할 일: Antigravity 구현. 변경 파일 목록은 스펙 §11, 완료 판정은 §9 (동치성 회귀 §9-2가 핵심 관문)
+- 주의: 🔴 3곳 필독 — §8-1(섹션을 HTTP로 내려보내면 Set 직렬화로 제약 소실), §4-1(초안 hoursSnapshot은 계획이지 솔버 산출 역산이 아님 — 틀리면 H1 영구 0), §8-4(termId 원본은 계획의 targetTermId, activeTermId 아님)
