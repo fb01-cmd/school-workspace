@@ -27,6 +27,10 @@ import {
 import { deriveGradeDayPeriods, teacherKeyOf } from "./validate";
 
 const norm = (e: string) => (e || "").trim().toLowerCase();
+/** 결정론 문자열 비교 — localeCompare는 실행 환경 로케일(ICU)을 타서 같은 입력에
+ *  Node와 브라우저가 다른 시간표를 냈다 (2026-08-15 실측: S4 3건 vs 2건).
+ *  섹션·행 순서가 탐색 경로를 정하므로, 순서를 정하는 비교는 전부 코드포인트로 고정한다. */
+const cmpStr = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const normSubject = (s: string) =>
   (s || "").normalize("NFC").replace(/\s+/g, "").trim().toLowerCase();
 
@@ -170,7 +174,7 @@ export function compileSectionsFromGrids(
           ])
       );
     const bySignature = new Map<string, { lessonsByClass: Record<string, TimetableLesson[]>; slots: string[] }>();
-    for (const [slotKey, lc] of [...bySlot.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    for (const [slotKey, lc] of [...bySlot.entries()].sort((a, b) => cmpStr(a[0], b[0]))) {
       const sig = signatureOf(lc);
       if (!bySignature.has(sig)) bySignature.set(sig, { lessonsByClass: lc, slots: [] });
       bySignature.get(sig)!.slots.push(slotKey);
@@ -259,7 +263,7 @@ export function compileSectionsFromGrids(
   }
 
   const consecutiveRules = (model.consecutiveRules || []).filter((r) => r.active);
-  for (const [key, b] of [...buckets.entries()].sort((a, c) => a[0].localeCompare(c[0]))) {
+  for (const [key, b] of [...buckets.entries()].sort((a, c) => cmpStr(a[0], c[0]))) {
     const ck = `${b.grade}-${b.classNum}`;
     const label = `${ck}반 ${b.lesson.subjectName}`;
     if (b.allVirtual) {
@@ -329,7 +333,7 @@ export function compileSectionsFromGrids(
     }
   }
 
-  return sections.sort((a, b) => a.id.localeCompare(b.id));
+  return sections.sort((a, b) => cmpStr(a.id, b.id));
 }
 
 /** 연속 패턴 → blockLens. 총 시수 hours에서 패턴 블록을 빼고 남는 시수는 단독 1교시.
@@ -504,7 +508,7 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
     if (!byClass.size) continue;
     const classKeys = [...byClass.keys()].sort();
     for (const list of byClass.values())
-      list.sort((a, b) => rowId(a).localeCompare(rowId(b)));
+      list.sort((a, b) => cmpStr(rowId(a), rowId(b)));
 
     // 주당 그룹 교시수 h: 등록부 slots가 있으면 그 수, 없으면 학급별 합의 최소값
     // (합이 h보다 큰 학급은 초과분이 그룹 밖 일반 수업 — 부분집합 선택으로 가른다)
@@ -571,7 +575,7 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
         }
       }
       for (const subset of candidates) {
-        subset.sort((a, b) => b.hours - a.hours || rowId(a).localeCompare(rowId(b)));
+        subset.sort((a, b) => b.hours - a.hours || cmpStr(rowId(a), rowId(b)));
         const fill = (ri: number): boolean => {
           if (ri === subset.length) return tryClass(ci + 1);
           const r = subset[ri];
@@ -899,7 +903,7 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
       });
   }
 
-  return { sections: sections.sort((a, b) => a.id.localeCompare(b.id)), issues };
+  return { sections: sections.sort((a, b) => cmpStr(a.id, b.id)), issues };
 }
 
 // ── 소프트 추정 점수 (validate.ts S1~S6 기반 — 국소 탐색 내부용) ──
@@ -944,8 +948,10 @@ function teacherDayPenalty(
   return pts;
 }
 
-/** S4 내부 가중 — 위 주석 참조. 공식 1점당 솔버 내부에서는 이만큼으로 취급한다 */
-const S4_INTERNAL_WEIGHT = 4;
+/** S4 내부 가중 — 위 주석 참조. 공식 1점당 솔버 내부에서는 이만큼으로 취급한다.
+ *  4 → 8 상향 (2026-08-15): 9c-I-2 힌트 직결로 탐색 공간이 좁아지자(동시수업 확정·특별실
+ *  슬롯 제약) 가중 4로는 같은 교사 진짜 중복이 다시 새어 나왔다 (실측 1건→2~3건). */
+const S4_INTERNAL_WEIGHT = 8;
 
 function classDayPenalty(subjects: Map<string, number>): number {
   let pts = 0;
@@ -977,6 +983,18 @@ export function solveTimetable(input: SolverInput): SolverResult {
    *  패턴 섹션은 요일당 1회로 제한한다 (컴시간 "2,2"의 통상 의미 = 서로 다른 요일 두 블록) */
   const sectionDayCount = new Map<number, Map<number, number>>();
   const hasPattern = sections.map((s) => s.blockLens.some((l) => l >= 2));
+  /** 요일당 배치 한도 (2026-08-15 확장) — 패턴 섹션은 종전대로 1(H9 보호).
+   *  단독 배치 일반(plain) 섹션도 원칙 1로 제한한다: 같은 반 같은 날 동일 과목 중복(S4)은
+   *  가중만으로는 국소 탐색이 못 푸는 지형이 실측됐다(2-4 도탐, 가중 8·16 동일 결과).
+   *  컴시간·사람 손의 통상 규칙(과목은 요일에 분산)을 배치 규칙으로 올린다.
+   *  예외 — 고정 슬롯 섹션(창체 금5·6처럼 등록부가 같은 날을 지정)과 동시수업 섹션
+   *  (등록부 슬롯이 같은 날 2개일 수 있음)은 무제한. 주당 시수 > 요일 수면 불가피분만 허용. */
+  const dayLimit = sections.map((s, i) => {
+    if (hasPattern[i]) return 1;
+    if (s.kind !== "plain" || (s.fixedSlots && s.fixedSlots.length)) return Infinity;
+    const days = Math.max(1, Object.keys(gdp[s.grade] || {}).length);
+    return Math.max(1, Math.ceil(s.occurrences / days));
+  });
   const soft: SoftState = {
     teacherDays: new Map(),
     teacherSubjects: new Map(),
@@ -1070,8 +1088,8 @@ export function solveTimetable(input: SolverInput): SolverResult {
     const s = sections[sectionIdx];
     const maxP = gdp[s.grade]?.[day] || 0;
     if (start < 1 || start + len - 1 > maxP) return false;
-    // 연속 패턴 섹션: 요일당 1회 (블록끼리·블록+단독 인접 시 연속 길이 붕괴 방지)
-    if (hasPattern[sectionIdx] && (sectionDayCount.get(sectionIdx)?.get(day) || 0) > 0)
+    // 요일당 배치 한도 — 패턴 섹션 1회(연속 길이 붕괴 방지) + 일반 섹션 과목 분산 (위 dayLimit 주석)
+    if ((sectionDayCount.get(sectionIdx)?.get(day) || 0) >= dayLimit[sectionIdx])
       return false;
     for (let p = start; p < start + len; p++) {
       const slot = `${day}-${p}`;
