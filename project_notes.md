@@ -1399,3 +1399,17 @@ if (isProtectedAccountEmail(email)) {
 - **[같은 날 추가 — §5c-7 확정 개정 (사용자 지시)]** 사용자: *"지금도 특별실 이동은 일반 교사가 하되 경고 뜨고 양해 확인하잖아. 이 방식을 그대로 적용하면 될 것 같아. 난이도 때문에 순차 개발한 거지 수업 교체 루틴은 같은 것 같아."* → **맞고, 모델이 원래 그렇게 설계돼 있었다**: `CandidateCoordination.kind`가 `"venue"` 하나지만 주석이 "확장 여지용 판별자"이고 §7이 확장 대상으로 "동시수업"을 명시해 뒀다. **통 이동은 별도 기능이 아니라 「조율 필요 후보」의 종류 하나로 편입한다** — 전용 모드·그룹 드롭다운·전용 확인창 전부 제거. 교사는 평소처럼 자기 수업을 클릭하고, 묶음이면 후보가 ⚠️ 양해 필수로 같은 목록에 섞여 나온다. §3-2b~c에서 이미 실기기 검증을 통과한 경고·양해 상호작용을 그대로 물려받으므로 **새로 만들 UX가 사실상 없다.**
   - **내가 덧붙인 실질 차이 1건**: 양해의 성격이 다르다 — 특별실은 "장소를 양보해 주세요"(상대 수업 **안 움직임**), 묶음은 "선생님 수업도 함께 옮겨집니다"(상대 수업 **움직임**). 루틴은 같아도 문장은 같을 수 없다. 확인창은 반별로 무엇이 함께 움직이는지 보여야 한다.
   - 구현 주의: `kind === "venue"` 등호 비교 소비처 전수 확인 / 후보의 단일 `counterpartName`은 chain 전례대로 그룹 라벨 요약, 실제 상대는 `coordination.simul.steps`가 원본 / `resolveSourceLesson`은 무수정하고 `computeCandidates` 호출부에서 분기(회귀 0) / 신청 타입 `simul_move`는 되돌리기 묶음 때문에 내부적으로 유지하되 화면에 노출 금지.
+
+## [2026-08-15] Claude — 양해 개방 Phase 3′ 서버부 구현 완결 (§5c-7 조율 후보 편입 + 교사 신청 주 경로)
+
+- **커밋**: `358fe25`. 변경 파일: `types.ts`(kind 확장·CoordinationSimulInfo·`simul_move_create` 액션·simulMoveTarget) · `server.ts`(`resolveSimulMoveSource`·호출부 분기 3곳·`createSimulMoveRequest`·approve simul_move 분기·`assembleSimulMoveChanges` 공용 추출·validatePending 진짜 재검증·`deriveSimulMoveParties`/`buildSimulCoordination`/`simulStepsSignature`) · requests/manage 라우트 · 검증 스크립트.
+- **반려 원칙 2건 이행 확인**: ① 전용 모드·그룹 선택 없음 — 분기는 `computeCandidates`·`computeCandidatesAllWeeks`·`computeDirectCandidates` **호출부**에서만, `resolveSourceLesson`·`resolveDirectSource`·기존 엔진 함수 전부 무수정 ② 교사 신청 주 경로 — requests `simul_move_create`(PENDING) → 일과계 approve. 직권 `commitSimulGroupMove`는 보조로 존치(§5c-3), manage `simul_move_candidates`/`commit` 액션도 보조 경로로 유지.
+- **§5c-4 방어 되짚기 표 전건**: createSwapRequest simul_move 거부 유지 + **새 우회면 방어 추가**(묶음 후보가 일반 후보 모양으로 나오므로 `coordination.simul` 있는 후보의 swap 신청을 명시 거부 — 스크립트 [7-2] 실측) / validatePending 조기 통과 → 그룹 로드·엔진 재실행·(from,to) 대조로 교체([7-6]) / approve 분기 신설 — substitute로 새지 않음([7-7]) / buildVirtualChanges 조기 return 유지 + `loadMyVirtualOverlay`가 simul_move를 집계에서 제외(오버레이 불가한 건이 "N건 반영" 숫자만 부풀리던 왜곡 차단; 그리드 배지는 UI 몫) / 알림 filter(Boolean) 유지.
+- **설계 주의점 (검수·UI 작업자용)**:
+  - 승인 재검증은 (from,to) 존재 + **steps 서명 대조**(반별 전개가 신청 시점과 다르면 거부) + **양해 당사자 확장 검사**(재계산 당사자가 양해 명단 밖이면 거부) — 화면에서 양해받은 내용과 커밋 불일치 차단.
+  - 중복 PENDING은 **그룹·슬롯 단위**(신청자별 아님) — 다른 그룹 교사 시점 실측([7-5]).
+  - parties: 교사 신청 = 서버 도출 − 신청자 본인 / 직권 = 전원(기존 유지).
+  - `approveSwapRequest`가 `changes` 전량을 반환하도록 확장 — manage approve 웹 푸시가 전량 발송으로 바뀜. **부수 수정: 체인 승인 웹 푸시가 첫 change 1건만 나가던 기존 누락도 함께 해소**(revert의 allReverts 전량 발송과 동일 원리).
+  - 교차 주 통 이동은 v1 제외(§7) — 묶음 소스 + targetWeekId 요청은 눈높이 사유로 거부.
+- **실데이터 검증** (`verify_simul_move_phase3.ts` 확장, 알림 억제·원장 하드 삭제·원복 대조): 기존 [1]~[6] 재통과(후보 95건·직권 2사이클) + **[7] 교사 사이클** 후보 혼입(4건, 전건 coordination.simul)→우회 거부→consent 게이트→신청(parties 신청자 제외)→중복 차단→validatePending→승인(change 3건)→revert 원복 전 항목 ✅ + **[8] 기존 출력 불변** 비묶음 소스 3건에서 computeCandidates ≡ 엔진 직접 호출 바이트 동등·simul 혼입 0·체인 스모크 ✅. tsc ✅ · build ✅.
+- **잔여 = §5c-7 UI 재배선 (Antigravity)**: ① DirectSubstituteTab "이동수업 통 이동" 전용 모드·그룹 드롭다운·SimulGroupTab 진입 링크 **철거**, 직권도 수업 클릭 → 조율 후보로 통일 ② 교사 포털·직권 탭에서 `coordination.simul` 후보 렌더 — 기존 조율 경고·양해 상호작용(§3-2b~c) 재사용하되 **문구 구분 필수**(§5c-7-5: 특별실 "장소 양보" ≠ 묶음 "선생님 수업도 함께 옮겨집니다", 확인창에 반별 전개 표시) ③ 신청 배선: 묶음 후보는 create 대신 `simul_move_create`(weekId·source·simulMoveTarget·reason·consent) ④ PENDING simul_move 그리드 배지("대기 중인 묶음 이동 신청 있음" — what-if 오버레이 미표현 보완) ⑤ 조율 문구 헬퍼(formatCoordinationText)는 venue 충돌만 다루므로 simul 전용 문장은 steps로 별도 조립.
