@@ -412,6 +412,7 @@ export interface ManageTimetableRequest {
   assignmentPdfB64?: string;
   creativePdfB64?: string;
   simulXlsxB64?: string;
+  simulXlsxB64List?: string[]; // 학년별 이동수업 현황이 여러 파일일 때 (2·3학년 실물)
   targetYear?: number;
   targetSemester?: number;
   jobId?: string;

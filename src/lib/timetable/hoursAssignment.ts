@@ -401,8 +401,11 @@ const normMoving = (s: string) => s.replace(/\s+/g, "").replace(/\d+$/, "");
 export interface SimulStatusParse {
   grade: number;
   entries: SimulStatusEntry[];
-  /** 보강 양식의 「단독 개설」 행 — "grade-class|과목" 확정 실증 (문서 명시라 학기 등급 무관 확정) */
+  /** 「단독 개설」 실증 — "grade-class|과목". 보강 양식의 한 쌍짜리 줄, 또는 구양식의
+   *  **괄호 없는 과목 기재**(2026-08-17 발견: 원본에 이미 있었다 — "중국문화2"가 2반 행에) */
   standalone: string[];
+  /** 파일 내부의 학기 표식 원문 (예: "<3학년 1학기>") — 학기 불일치 검출(검출 6) 재료 */
+  semesterTitle?: string;
 }
 
 /** 두 양식 자동 감지: ① 보강 양식(2026-08-17 — 헤더에 「개설 반」·「구분」) ② 구양식("과목(1반+6반)") */
@@ -448,14 +451,29 @@ export function parseSimulStatusXlsx(buf: Buffer): SimulStatusParse {
   const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 });
   let grade = 0;
   let currentClass = 0; // §9-B②: 행 맥락 — "N반" 셀 이후의 문자열은 그 반 행에 속한다
+  let semesterTitle: string | undefined;
   const seen = new Map<string, SimulStatusEntry>();
+  const standaloneSet = new Set<string>();
+  const normStandalone = (x: string) => x.replace(/\s+/g, "").replace(/\d+$/, "");
   for (const row of rows) {
+    let rowClass = 0; // 반 표식은 그 행에서만 유효 — 다음 행 문자열까지 전이되면 오귀속
     for (const cell of row || []) {
       if (typeof cell !== "string") continue;
       const g = cell.match(/<\s*(\d)\s*학년/);
       if (g) grade = Number(g[1]);
+      if (!semesterTitle && /<[^>]*학기[^>]*>/.test(cell)) semesterTitle = cell.trim();
       const cls = cell.trim().match(/^(\d{1,2})\s*반$/);
-      if (cls) currentClass = Number(cls[1]);
+      if (cls) { currentClass = Number(cls[1]); rowClass = currentClass; }
+      // 괄호 없는 과목 기재 = 단독 개설 (원본 실측: "중국문화2"·"논술1"·"사회문제탐구1" 등)
+      // 같은 행(반 표식 행)의 문자열만 — 다음 행들은 탐구선택 나열이라 반 귀속이 다르다
+      if (
+        rowClass > 0 && grade > 0 &&
+        !/[()<>=+/]/.test(cell) && !/^\d+\s*반$/.test(cell.trim()) &&
+        /^[가-힣][가-힣A-Za-zⅠⅡⅢ0-9\s]{2,15}$/.test(cell.trim()) &&
+        !/인원|계열|학기|선택$/.test(cell)
+      ) {
+        standaloneSet.add(`${grade}-${rowClass}|${normStandalone(cell.trim())}`);
+      }
       for (const m of cell.matchAll(/([가-힣A-Za-zⅠⅡⅢ]+\d*)\(((?:\d+\s*반\s*\+?\s*)+)\)/g)) {
         const subject = normMoving(m[1]);
         const classNums = [...m[2].matchAll(/(\d+)\s*반/g)].map((x) => Number(x[1])).sort((a, b) => a - b);
@@ -471,7 +489,7 @@ export function parseSimulStatusXlsx(buf: Buffer): SimulStatusParse {
     }
   }
   const entries = [...seen.values()].map((e) => ({ ...e, grade }));
-  return { grade, entries, standalone: [] };
+  return { grade, entries, standalone: [...standaloneSet], semesterTitle };
 }
 
 /**

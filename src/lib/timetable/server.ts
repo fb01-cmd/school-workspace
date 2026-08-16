@@ -8297,12 +8297,19 @@ export async function prepareHoursAssignmentJob(
     creative = { title: parsed.title, byClass: Object.fromEntries(parsed.byClass) };
   }
   let simul: { grade: number; entries: ReturnType<typeof _parseSimulStatusXlsx>["entries"]; standalone?: string[] } | null = null;
-  if (params.simulXlsxB64) {
-    const parsed = _parseSimulStatusXlsx(Buffer.from(params.simulXlsxB64, "base64"));
-    baseIssues.push(
-      ..._validateTitleSemester(`${parsed.grade ? "" : ""}`, expected, "이동수업 현황") // 학기 표기가 없는 실물 — 자리만
-    );
-    simul = { grade: parsed.grade, entries: parsed.entries, standalone: parsed.standalone || [] };
+  // 이동수업 현황은 학년별 파일이 따로일 수 있다(2학년·3학년 실물) — 여러 개 수용·병합
+  const simulB64List = [
+    ...(params.simulXlsxB64 ? [params.simulXlsxB64] : []),
+    ...((params as { simulXlsxB64List?: string[] }).simulXlsxB64List || []),
+  ];
+  for (const b64 of simulB64List) {
+    const parsed = _parseSimulStatusXlsx(Buffer.from(b64, "base64"));
+    // 파일 내부 학기 표식으로 낡음 검출 — 3학년 원본이 1학기 표인 실물 함정 (2026-08-17)
+    if (parsed.semesterTitle)
+      baseIssues.push(..._validateTitleSemester(parsed.semesterTitle, expected, "이동수업 현황"));
+    if (!simul) simul = { grade: parsed.grade, entries: [], standalone: [] };
+    simul.entries.push(...parsed.entries);
+    simul.standalone = [...(simul.standalone || []), ...(parsed.standalone || [])];
   }
 
   // 7일 지난 작업 문서 청소 (같은 쓰기 경로에 편승 — 별도 크론 불요)
