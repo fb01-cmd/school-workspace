@@ -22,6 +22,8 @@ import {
   validateCreative,
   validateSimulStatus,
   assembleHoursRows,
+  normalizeHostClasses,
+  detectSlashedSubjects,
 } from "../src/lib/timetable/hoursAssignment";
 import { ExtractedAssignmentDept } from "../src/lib/timetable/ai";
 import { runAssignmentExtract, buildPseudonymizer, AiTeacherRef } from "../src/lib/timetable/ai";
@@ -141,11 +143,18 @@ async function main() {
 
   // [5] 이동수업 현황(2학년) — 결정론 파스 + 검출 4 대조
   const status = parseSimulStatusXlsx(readFileSync(SIMUL_XLSX));
+  const hosted = status.entries.filter((e) => e.hostClassNum != null).length;
+  // §9-B②: 검증 전에 개설 반 정규화 (finalize와 같은 순서)
+  const normalized = normalizeHostClasses(extracted, status);
   const statusIssues = validateSimulStatus(extracted, status);
   const statusErrors = statusIssues.filter((i) => i.severity === "error");
   console.log(
-    `[5] 이동수업 대조 — ${status.grade}학년 묶음 ${status.entries.length}건 파스 · 반 불일치(오류) ${statusErrors.length}건 · 이름 미대조(고지) ${statusIssues.length - statusErrors.length}건`
+    `[5] 이동수업 대조 — ${status.grade}학년 묶음 ${status.entries.length}건 파스(개설 반 확보 ${hosted}건) · ` +
+      `개설 반 정규화 이동 ${normalized.moves.length}칸 · 반 불일치(오류) ${statusErrors.length}건 · 고지 ${statusIssues.length - statusErrors.length}건`
   );
+  for (const mv of normalized.moves.slice(0, 5))
+    console.log(`      → ${mv.subject}(${mv.teacher}): ${mv.from.classNum}반 → ${mv.to.classNum}반`);
+  if (hosted === 0) failed = true; // 행 맥락 파서가 죽으면 B② 전체가 무력화 — 실패로 간주
   for (const e of status.entries.slice(0, 4)) console.log(`      · ${e.subject} (${e.classNums.join("·")}반)`);
   for (const i of statusIssues.slice(0, 6)) console.log(`      ! [${i.severity}] ${i.text.slice(0, 90)}`);
   if (status.grade !== 2 || status.entries.length < 4) failed = true; // 실물엔 밴드 5개 안팎이 실재해야
@@ -154,16 +163,21 @@ async function main() {
   const creativeIssues = validateCreative(extracted, creative);
   const srv = await import("../src/lib/timetable/server");
   const st = await srv.loadTimetableSettings("hmh.or.kr");
-  const [sg, vg] = await Promise.all([
+  const [sg, vg, term] = await Promise.all([
     srv.loadSimulGroups("hmh.or.kr", st.activeTermId!),
     srv.loadVenueGroups("hmh.or.kr", st.activeTermId!),
+    srv.loadTimetableTerm("hmh.or.kr", st.activeTermId!),
   ]);
   const asm = assembleHoursRows(
     extracted,
     creative,
     "진로",
     roster.map((t) => ({ name: t.name || "", email: t.email || "" })),
-    { simulGroups: sg.filter((g) => g.active !== false), venueGroups: vg }
+    {
+      simulGroups: sg.filter((g) => g.active !== false),
+      venueGroups: vg,
+      subjectPairs: (term?.subjects || []).map((sj) => ({ name: sj.name, shortName: sj.shortName })),
+    }
   );
   const tagged = asm.rows.filter((r) => r.simulGroupId).length;
   const venued = asm.rows.filter((r) => r.venueHours != null).length;
@@ -176,6 +190,11 @@ async function main() {
   );
   for (const i of creativeIssues.slice(0, 4)) console.log(`      ! ${i.text.slice(0, 90)}`);
   if (!asm.rows.length || asm.creativeRows.length !== 30) failed = true;
+
+  // [7] §9-E 병기 과목 감지 — 실물에 "인간과 철학 /삶과종교" 실재
+  const slashed = chunks.flatMap((c) => detectSlashedSubjects(c.text));
+  console.log(`[7] 병기 과목 감지 ${slashed.length >= 1 ? "✅" : "❌"} — ${slashed.length}건${slashed[0] ? ` ("${slashed[0].text.slice(0, 45)}…")` : ""}`);
+  if (slashed.length < 1) failed = true;
 
   process.exit(failed ? 1 : 0);
 }

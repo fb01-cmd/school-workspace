@@ -363,6 +363,8 @@ export interface SimulStatusEntry {
   subject: string;
   classNums: number[];
   raw: string; // 원문 (보고용)
+  /** §9-B②: 개설 반 — 이 문자열이 적혀 있던 행의 반. 시수표에서 이 과목이 소속될 반이다 */
+  hostClassNum?: number;
 }
 
 const normMoving = (s: string) => s.replace(/\s+/g, "").replace(/\d+$/, "");
@@ -375,18 +377,26 @@ export function parseSimulStatusXlsx(buf: Buffer): { grade: number; entries: Sim
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 });
   let grade = 0;
+  let currentClass = 0; // §9-B②: 행 맥락 — "N반" 셀 이후의 문자열은 그 반 행에 속한다
   const seen = new Map<string, SimulStatusEntry>();
   for (const row of rows) {
     for (const cell of row || []) {
       if (typeof cell !== "string") continue;
       const g = cell.match(/<\s*(\d)\s*학년/);
       if (g) grade = Number(g[1]);
+      const cls = cell.trim().match(/^(\d{1,2})\s*반$/);
+      if (cls) currentClass = Number(cls[1]);
       for (const m of cell.matchAll(/([가-힣A-Za-zⅠⅡⅢ]+\d*)\(((?:\d+\s*반\s*\+?\s*)+)\)/g)) {
         const subject = normMoving(m[1]);
         const classNums = [...m[2].matchAll(/(\d+)\s*반/g)].map((x) => Number(x[1])).sort((a, b) => a - b);
         if (!subject || classNums.length < 2) continue; // 묶음(2반 이상)만 이동수업으로 본다
-        const key = `${subject}|${classNums.join(",")}`;
-        if (!seen.has(key)) seen.set(key, { grade: 0, subject, classNums, raw: m[0] });
+        const key = `${subject}|${classNums.join(",")}|${currentClass}`;
+        if (!seen.has(key))
+          seen.set(key, {
+            grade: 0, subject, classNums, raw: m[0],
+            // 개설 반은 문자열이 놓인 행의 반 — 단 그 반이 밴드 소속일 때만 신뢰 (표 여백 셀 방어)
+            hostClassNum: classNums.includes(currentClass) ? currentClass : undefined,
+          });
       }
     }
   }
@@ -481,18 +491,36 @@ export function assembleHoursRows(
   registries?: {
     simulGroups?: Array<{ id?: string; grade: number; classNums: number[]; subjectNames: string[] }>;
     venueGroups?: Array<{ grade: number; classNums: number[]; subjectNames: string[]; slots?: unknown[] }>;
+    /** 정식 과목명 ↔ 약칭 쌍 (term.subjects) — 등록부는 약칭("중화"), 배정표는 풀네임("중국어회화")이라 다리 필수 */
+    subjectPairs?: Array<{ name: string; shortName: string }>;
   }
 ): AssembleResult {
-  const canon = (x: string) => x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, "");
+  const canon = (x: string) => x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, "").replace(/\d+$/, "");
+  // 이름 동치 집합: 행 과목명과 등록부 표기가 정식↔약칭 어느 조합이어도 만나게
+  const aliasSets = new Map<string, Set<string>>();
+  for (const pr of registries?.subjectPairs || []) {
+    const a = canon(pr.name);
+    const b = canon(pr.shortName);
+    const set = aliasSets.get(a) || aliasSets.get(b) || new Set<string>();
+    set.add(a).add(b);
+    aliasSets.set(a, set);
+    aliasSets.set(b, set);
+  }
+  const sameSubject = (x: string, y: string) => {
+    const cx = canon(x);
+    const cy = canon(y);
+    if (cx === cy) return true;
+    return aliasSets.get(cx)?.has(cy) ?? false;
+  };
   const tagHints = (row: AssembledHoursRow) => {
     const sg = registries?.simulGroups?.find(
       (g) => g.grade === row.grade && g.classNums.includes(row.classNum) &&
-        g.subjectNames.some((sn) => canon(sn) === canon(row.subjectName))
+        g.subjectNames.some((sn) => sameSubject(sn, row.subjectName))
     );
     if (sg?.id) row.simulGroupId = sg.id;
     const vg = registries?.venueGroups?.find(
       (g) => g.grade === row.grade && g.classNums.includes(row.classNum) &&
-        g.subjectNames.some((sn) => canon(sn) === canon(row.subjectName))
+        g.subjectNames.some((sn) => sameSubject(sn, row.subjectName))
     );
     if (vg) row.venueHours = vg.slots?.length ? Math.min(row.hours, vg.slots.length) : row.hours;
     return row;
@@ -545,4 +573,95 @@ export function assembleHoursRows(
     });
   }
   return { rows, creativeRows, unmatchedNames: [...unmatched].sort() };
+}
+
+// ── 7. §9-B② 개설 반 정규화 — 배정표 반 표기를 이동수업 현황의 개설 반으로 ──
+
+export interface HostNormalization {
+  subject: string;
+  teacher: string;
+  from: { grade: number; classNum: number };
+  to: { grade: number; classNum: number };
+}
+
+/**
+ * 최종 시수표 역산(§9)에서 확정된 일과계 수작업의 자동화: 배정표가 이동수업 과목을
+ * 개설 반이 아닌 반에 적어 두는 경우가 실재한다(기하가 밴드 밖 3반에 등). 현황 파일의
+ * 행 맥락(hostClassNum)을 기준으로, 그 과목의 배정 칸 중 **개설 반 집합에 없는 칸**을
+ * 남는 개설 반으로 옮긴다. 시수는 절대 바꾸지 않는다 — 반 소속만.
+ *
+ * 보수 원칙: 확실할 때만 움직인다 — 떠돌이 칸 수 ≠ 남는 개설 반 수면 옮기지 않고
+ * 고지만 남긴다(오탐 이동이 무이동보다 나쁘다). 옮긴 건 전부 notice로 보고.
+ */
+export function normalizeHostClasses(
+  depts: ExtractedAssignmentDept[],
+  status: { grade: number; entries: SimulStatusEntry[] }
+): { moves: HostNormalization[]; issues: AssignmentIssue[] } {
+  const moves: HostNormalization[] = [];
+  const issues: AssignmentIssue[] = [];
+  const canon = (x: string) => x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, "").replace(/\d+$/, "");
+  // 과목별 개설 반 집합 (현황 행 맥락 유래만 — host 미상 항목은 정규화 근거로 안 쓴다)
+  const hostsBySubject = new Map<string, Set<number>>();
+  for (const e of status.entries) {
+    if (e.hostClassNum == null) continue;
+    const k = canon(e.subject);
+    if (!hostsBySubject.has(k)) hostsBySubject.set(k, new Set());
+    hostsBySubject.get(k)!.add(e.hostClassNum);
+  }
+  for (const [subjKey, hosts] of hostsBySubject) {
+    // 이 과목의 배정표 칸 전수 (해당 학년만)
+    const cells: Array<{ row: { teacher: string; cells: ExtractedHourCell[] }; cell: ExtractedHourCell }> = [];
+    for (const d of depts)
+      for (const r of d.personalRows) {
+        if (canon(r.subject) !== subjKey) continue;
+        for (const c of r.cells) if (c.grade === status.grade) cells.push({ row: r, cell: c });
+      }
+    if (!cells.length) continue;
+    const strays = cells.filter(({ cell }) => !hosts.has(cell.classNum));
+    const occupied = new Set(cells.map(({ cell }) => cell.classNum));
+    const freeHosts = [...hosts].filter((h) => !occupied.has(h)).sort((a, b) => a - b);
+    if (!strays.length) continue;
+    if (strays.length !== freeHosts.length) {
+      issues.push({
+        severity: "notice",
+        code: "simul-status-mismatch",
+        text: `${status.grade}학년 ${subjKey}: 배정표 반과 이동수업 개설 반(${[...hosts].sort((a, b) => a - b).join("·")})이 어긋나는데 짝이 맞지 않아 자동 정리하지 않았습니다 — 불러온 뒤 표에서 반을 확인해 주세요`,
+      });
+      continue;
+    }
+    strays
+      .sort((a, b) => a.cell.classNum - b.cell.classNum)
+      .forEach(({ row, cell }, i) => {
+        const to = freeHosts[i];
+        moves.push({
+          subject: subjKey,
+          teacher: row.teacher,
+          from: { grade: cell.grade, classNum: cell.classNum },
+          to: { grade: cell.grade, classNum: to },
+        });
+        issues.push({
+          severity: "notice",
+          code: "simul-status-mismatch",
+          text: `${status.grade}학년 ${subjKey}(${row.teacher}): 배정표의 ${cell.classNum}반 표기를 이동수업 개설 반인 ${to}반으로 옮겼습니다 (시수 변화 없음)`,
+        });
+        cell.classNum = to;
+      });
+  }
+  return { moves, issues };
+}
+
+/** §9-E 병기 과목 감지 — "인간과 철학 /(줄바꿈) 삶과종교" 실물. 시수표에는 한 이름만 실린다 */
+export function detectSlashedSubjects(chunkText: string): AssignmentIssue[] {
+  const issues: AssignmentIssue[] = [];
+  for (const m of chunkText.matchAll(/([가-힣][가-힣 ]{1,14}?)\s*\/\s*\n(?:[^\n가-힣]*\n){0,2}\s*([가-힣][가-힣 ]{1,14})/g)) {
+    const a = m[1].trim();
+    const b = m[2].trim();
+    if (/시간|배정|학년|교시/.test(a + b)) continue;
+    issues.push({
+      severity: "notice",
+      code: "simul-status-mismatch",
+      text: `「${a} / ${b}」 병기 표기가 있습니다 — 시수표에는 한 과목명만 실립니다. 확정 표기를 확인해 주세요`,
+    });
+  }
+  return issues;
 }

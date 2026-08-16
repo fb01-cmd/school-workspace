@@ -8211,6 +8211,7 @@ import {
   DeptChunk,
 } from "./hoursAssignment";
 import { runAssignmentExtract as _runAssignmentExtract, isAiEnabled as _isAiEnabled, ExtractedAssignmentDept } from "./ai";
+import { normalizeHostClasses as _normalizeHostClasses, detectSlashedSubjects as _detectSlashedSubjects } from "./hoursAssignment";
 
 export const hoursAssignmentJobsColRef = (domain: string) =>
   adminDb.collection("timetable_hours_assignment_jobs").doc(domain).collection("jobs");
@@ -8286,6 +8287,7 @@ export async function prepareHoursAssignmentJob(
   const baseIssues: AssignmentIssue[] = [];
   const expected = { year: params.targetYear, semester: params.targetSemester };
   baseIssues.push(..._validateTitleSemester(pages[0]?.split("\n")[0] || "", expected, "배정표"));
+  for (const c of chunks) baseIssues.push(..._detectSlashedSubjects(c.text)); // §9-E 병기 과목
 
   let creative: { title: string; byClass: Record<string, string> } | null = null;
   if (params.creativePdfB64) {
@@ -8386,6 +8388,8 @@ export async function finalizeHoursAssignmentJob(
     depts.push(d as ExtractedAssignmentDept);
   }
   const issues: AssignmentIssue[] = [...((job.baseIssues || []) as AssignmentIssue[])];
+  // §9-B②: 검증·조립 전에 개설 반 정규화 — 현황 행 맥락 기준, 시수 불변·이동은 전건 고지
+  if (job.simul) issues.push(..._normalizeHostClasses(depts, job.simul).issues);
   for (let i = 0; i < depts.length; i++) issues.push(..._validateDept(depts[i]));
   const creative = job.creative
     ? { title: job.creative.title as string, byClass: new Map(Object.entries(job.creative.byClass as Record<string, string>)) }
@@ -8395,13 +8399,15 @@ export async function finalizeHoursAssignmentJob(
   const roster = await loadTeacherNameRoster(domain);
   // §9-B①·C: 등록부 힌트 태깅 — 대상 학기 등록부가 있으면 simulGroupId·venueHours 자동 기입
   const targetTermId = `${job.targetYear}-${job.targetSemester}`;
-  const [simulGroups, venueGroups] = await Promise.all([
+  const [simulGroups, venueGroups, targetTerm] = await Promise.all([
     loadSimulGroups(domain, targetTermId).catch(() => []),
     loadVenueGroups(domain, targetTermId).catch(() => []),
+    loadTimetableTerm(domain, targetTermId).catch(() => null),
   ]);
   const asm = _assembleHoursRows(depts, creative || { title: "", byClass: new Map() }, "진로", roster, {
     simulGroups: simulGroups.filter((g) => g.active !== false),
     venueGroups,
+    subjectPairs: (targetTerm?.subjects || []).map((sj) => ({ name: sj.name, shortName: sj.shortName })),
   });
   return {
     rows: asm.rows,
