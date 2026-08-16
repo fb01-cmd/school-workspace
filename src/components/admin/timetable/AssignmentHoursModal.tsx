@@ -630,11 +630,8 @@ export default function AssignmentHoursModal({
         if (c.name) names.add(c.name);
       }
     }
-    for (const r of extractedRows) {
-      if (r.subjectName) names.add(r.subjectName);
-    }
     return Array.from(names).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [subjectResolutions, extractedRows]);
+  }, [subjectResolutions]);
 
   const unconfirmedCount = useMemo(() => {
     let count = 0;
@@ -1574,7 +1571,7 @@ export default function AssignmentHoursModal({
                                     </button>
                                   </div>
                                 ) : (
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-col items-start md:items-end gap-1">
                                     <select
                                       value={conf?.canonicalName || ""}
                                       onChange={(e) => handleSelectSuggested(item.rawName, e.target.value)}
@@ -1596,6 +1593,9 @@ export default function AssignmentHoursModal({
                                         ))}
                                       <option value="__create_new__">+ 「{item.rawName}」 새 과목으로 등록</option>
                                     </select>
+                                    <span className="text-[10px] text-gray-400">
+                                      목록에 연결할 과목이 없으면 맨 아래 &apos;+ 새 과목으로 등록&apos;을 선택해 주세요
+                                    </span>
                                   </div>
                                 )}
 
@@ -1665,30 +1665,35 @@ export default function AssignmentHoursModal({
 
                               <div className="flex flex-wrap items-center gap-2">
                                 {isLinkMode ? (
-                                  <div className="flex items-center gap-1.5">
-                                    <select
-                                      value={conf.canonicalName || ""}
-                                      onChange={(e) => handleSwitchToLink(item.rawName, e.target.value)}
-                                      disabled={isSkipped}
-                                      className="px-2.5 py-1 bg-white border border-gray-300 rounded text-xs font-bold text-indigo-900"
-                                    >
-                                      <option value="">연결할 기존 과목 선택 ▼</option>
-                                      {allKnownSubjectNames.map((s) => (
-                                        <option key={s} value={s}>{s}</option>
-                                      ))}
-                                    </select>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleUpdateShortName(
-                                          item.rawName,
-                                          item.suggestedShortName || item.rawName.replace(/\s+/g, "").slice(0, 2)
-                                        )
-                                      }
-                                      className="text-[11px] text-purple-700 hover:underline px-1"
-                                    >
-                                      새 과목 등록으로 전환
-                                    </button>
+                                  <div className="flex flex-col items-start md:items-end gap-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <select
+                                        value={conf.canonicalName || ""}
+                                        onChange={(e) => handleSwitchToLink(item.rawName, e.target.value)}
+                                        disabled={isSkipped}
+                                        className="px-2.5 py-1 bg-white border border-gray-300 rounded text-xs font-bold text-indigo-900"
+                                      >
+                                        <option value="">연결할 기존 과목 선택 ▼</option>
+                                        {allKnownSubjectNames.map((s) => (
+                                          <option key={s} value={s}>{s}</option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleUpdateShortName(
+                                            item.rawName,
+                                            item.suggestedShortName || item.rawName.replace(/\s+/g, "").slice(0, 2)
+                                          )
+                                        }
+                                        className="text-[11px] text-purple-700 hover:underline px-1"
+                                      >
+                                        새 과목 등록으로 전환
+                                      </button>
+                                    </div>
+                                    <span className="text-[10px] text-gray-400">
+                                      목록에 연결할 과목이 없으면 &apos;새 과목 등록으로 전환&apos;을 눌러주세요
+                                    </span>
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-1.5">

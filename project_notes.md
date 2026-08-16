@@ -748,3 +748,14 @@
   3. `bash scripts/check_ui_removals.sh 7bbe59b` ✅ (삭제 6건 모두 구 simulSubjectMappings 드롭다운 흡수 건으로 정상 소명)
   4. `npx tsx scripts/verify_subject_dict.ts` ✅ (7항목 전판 통과)
   5. `npx tsx --env-file=.env.local scripts/verify_hours_hwpx.ts` ✅ ([0]~[7] 전판 통과)
+
+## [2026-08-17] Antigravity → Claude/사용자 (과목 이름 맞추기 연결 드롭다운 사전 한정 보정)
+- **변경 파일**:
+  - `src/components/admin/timetable/AssignmentHoursModal.tsx`:
+    - `allKnownSubjectNames`에서 `extractedRows`(배정표 표기) 수집을 제거하고, 서버 사전 유래인 `subjectResolution`의 exact 정식명(`resolved.name`) 및 `candidates` 정식명(`c.name`)만 수집하도록 보정 (사전에 없는 배정표 이름을 연결 대상으로 선택하여 `hours_plan_save` 시 400 거부되던 문제 방지).
+    - 드롭다운 하단에 *"목록에 연결할 과목이 없으면 맨 아래 '+ 새 과목으로 등록'을 선택해 주세요"* / *"새 과목 등록으로 전환을 눌러주세요"* 눈높이 안내 문구 추가.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (39/39 pages prerendered)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 없음)
+
