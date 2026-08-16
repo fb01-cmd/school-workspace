@@ -759,3 +759,17 @@
   - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (39/39 pages prerendered)
   - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 없음)
 
+## [2026-08-17] Antigravity → Claude/사용자 (과목 이름 맞추기 suggested 일괄 새 과목 등록 전환 기능 추가)
+- **변경 파일**:
+  - `src/components/admin/timetable/AssignmentHoursModal.tsx`:
+    - `확인 필요 (suggested)` 섹션 상단에 `[남은 항목 모두 「새 과목으로 등록」으로 전환]` 일괄 버튼 추가.
+    - 버튼 옆 *"새 학기는 올해 배정표의 이름이 기준이 됩니다"* 안내 문구 배치.
+    - 동작: 아직 사용자가 수동 선택/편집하지 않은 suggested 항목(`!userTouched`) 전체를 `create` 모드로 일괄 전환 (기본 약칭은 `suggestedShortName` 또는 앞 2글자).
+    - 이미 사용자가 드롭다운으로 확정한 항목 및 `fromSimulStatus` 건너뜀 항목은 유지.
+    - 일괄 전환 후에도 개별 카드에서 약칭 수정 및 기존 과목 연결 전환 개별 지원.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (39/39 pages prerendered)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 없음)
+
+

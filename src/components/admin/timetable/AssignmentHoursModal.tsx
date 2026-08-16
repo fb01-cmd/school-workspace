@@ -401,6 +401,7 @@ export default function AssignmentHoursModal({
         canonicalName: string;
         shortName?: string;
         skipped?: boolean;
+        userTouched?: boolean;
       }
     >
   >({});
@@ -556,13 +557,14 @@ export default function AssignmentHoursModal({
 
       const initialConf: Record<
         string,
-        { action: "link" | "create"; canonicalName: string; shortName?: string; skipped?: boolean }
+        { action: "link" | "create"; canonicalName: string; shortName?: string; skipped?: boolean; userTouched?: boolean }
       > = {};
       for (const item of resList) {
         if (item.status === "exact" && item.resolved) {
           initialConf[item.rawName] = {
             action: "link",
             canonicalName: item.resolved.name,
+            userTouched: false,
           };
         } else if (item.status === "suggested") {
           const hist = item.candidates.find((c) => c.via === "history");
@@ -570,6 +572,7 @@ export default function AssignmentHoursModal({
             initialConf[item.rawName] = {
               action: "link",
               canonicalName: hist.name,
+              userTouched: false,
             };
           }
         } else if (item.status === "new") {
@@ -577,6 +580,7 @@ export default function AssignmentHoursModal({
             action: "create",
             canonicalName: item.rawName,
             shortName: item.suggestedShortName || item.rawName.replace(/\s+/g, "").slice(0, 2),
+            userTouched: false,
           };
         }
       }
@@ -649,6 +653,38 @@ export default function AssignmentHoursModal({
     return count;
   }, [subjectResolutions, subjectConfirmations]);
 
+  const untouchedSuggestedCount = useMemo(() => {
+    let count = 0;
+    for (const item of suggestedResolutions) {
+      const conf = subjectConfirmations[item.rawName];
+      if (item.fromSimulStatus && conf?.skipped) continue;
+      if (!conf?.userTouched) {
+        count++;
+      }
+    }
+    return count;
+  }, [suggestedResolutions, subjectConfirmations]);
+
+  const handleBatchConvertToCreate = () => {
+    setSubjectConfirmations((prev) => {
+      const next = { ...prev };
+      for (const item of suggestedResolutions) {
+        const conf = next[item.rawName];
+        if (item.fromSimulStatus && conf?.skipped) continue;
+        if (conf?.userTouched) continue;
+
+        next[item.rawName] = {
+          action: "create",
+          canonicalName: item.rawName,
+          shortName: item.suggestedShortName || item.rawName.replace(/\s+/g, "").slice(0, 2),
+          skipped: false,
+          userTouched: true,
+        };
+      }
+      return next;
+    });
+  };
+
   const handleSelectSuggested = (rawName: string, selectedValue: string) => {
     if (selectedValue === "__create_new__") {
       setSubjectConfirmations((prev) => ({
@@ -658,6 +694,7 @@ export default function AssignmentHoursModal({
           canonicalName: rawName,
           shortName: rawName.replace(/\s+/g, "").slice(0, 2),
           skipped: false,
+          userTouched: true,
         },
       }));
     } else {
@@ -667,6 +704,7 @@ export default function AssignmentHoursModal({
           action: "link",
           canonicalName: selectedValue,
           skipped: false,
+          userTouched: true,
         },
       }));
     }
@@ -680,6 +718,7 @@ export default function AssignmentHoursModal({
         canonicalName: rawName,
         shortName,
         skipped: false,
+        userTouched: true,
       },
     }));
   };
@@ -691,6 +730,7 @@ export default function AssignmentHoursModal({
         action: "link",
         canonicalName: targetCanonicalName,
         skipped: false,
+        userTouched: true,
       },
     }));
   };
@@ -703,6 +743,7 @@ export default function AssignmentHoursModal({
         [rawName]: {
           ...cur,
           skipped: !cur.skipped,
+          userTouched: true,
         },
       };
     });
@@ -1503,12 +1544,26 @@ export default function AssignmentHoursModal({
                   {/* 2. 확인 후보 과목 (suggested) */}
                   {suggestedResolutions.length > 0 && (
                     <div className="border border-amber-200 bg-white rounded-xl p-3 space-y-2.5">
-                      <div className="font-bold text-amber-950 text-xs flex items-center justify-between">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-amber-100">
                         <div className="flex items-center gap-1.5">
-                          <span>🔍 연결할 과목 확인 ({suggestedResolutions.length}건)</span>
+                          <span className="font-bold text-amber-950 text-xs">🔍 연결할 과목 확인 ({suggestedResolutions.length}건)</span>
                           <span className="text-[11px] text-gray-500 font-normal">
                             — 배정표 표기와 비슷한 기존 과목을 선택해 주세요
                           </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] text-amber-800 font-medium">
+                            새 학기는 올해 배정표의 이름이 기준이 됩니다
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleBatchConvertToCreate}
+                            disabled={untouchedSuggestedCount === 0}
+                            className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed text-purple-900 border border-purple-200 rounded text-xs font-bold transition-colors whitespace-nowrap"
+                          >
+                            남은 항목 모두 「새 과목으로 등록」으로 전환
+                          </button>
                         </div>
                       </div>
 
