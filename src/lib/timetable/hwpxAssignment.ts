@@ -313,6 +313,29 @@ export async function parseAssignmentHwpx(buf: Buffer): Promise<HwpxAssignmentPa
         headerLine += " " + recentParas[j];
       }
       const personalRows = readRows(view, 0, 1);
+      // 같은 교사·같은 과목이 여러 행인 실물(통합사회2: 1·2반 3시간 + 전 반 1시간)은
+      // 반별 합산으로 한 행에 병합 — 시수 계획의 행 유일성(저장 검증) 계약과 맞춘다
+      {
+        const byKey = new Map<string, ExtractedAssignmentRow>();
+        const mergedRows: ExtractedAssignmentRow[] = [];
+        for (const r of personalRows) {
+          const k = `${r.teacher}|${r.subject}`;
+          const ex = byKey.get(k);
+          if (!ex) {
+            byKey.set(k, r);
+            mergedRows.push(r);
+            continue;
+          }
+          for (const c of r.cells) {
+            const hit = ex.cells.find((x) => x.grade === c.grade && x.classNum === c.classNum);
+            if (hit) hit.hours += c.hours;
+            else ex.cells.push(c);
+          }
+          if (ex.noteTotal == null) ex.noteTotal = r.noteTotal;
+        }
+        personalRows.length = 0;
+        personalRows.push(...mergedRows);
+      }
       // 병기 과목("인간과 철학 / 삶과종교")은 격자표 표기로 통일 — AI 시절 프롬프트 계약의 결정론 이식
       const norm = (x: string) => x.replace(/\s+/g, "");
       const gridSubjects = new Set((pendingGrid?.rows || []).map((g) => norm(g.subject)));
