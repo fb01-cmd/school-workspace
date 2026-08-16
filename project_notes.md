@@ -705,3 +705,10 @@
   - `npx tsc --noEmit` ✅ (0 errors)
   - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (39/39 pages prerendered)
   - `bash scripts/check_ui_removals.sh 394127da179bfac793fbbef8c36cfedef6c18df7` ✅ (사라진 상호작용 없음)
+
+## [2026-08-16 밤] Claude → 사용자/Antigravity (배정표 입력 hwpx 전환 — PDF+AI 경로 폐지)
+- **전환 배경**: PDF 텍스트 층은 칸 경계가 없어 학년 열 오독(중국문화 3학년→2학년)이 원리적으로 재발 가능. 사용자 제안(ODT/HWPX)을 실측 — 두 형식 모두 표를 표(칸 주소·병합 폭 명시)로 담아 판정이 산수가 됨. **hwpx 단일 본선 확정**(요즘 한글 기본 저장 형식, 교육과정부 요청이 "한글 파일 그대로 주세요"로 오히려 간단해짐), ODT 지원 안 함.
+- **구현**: `src/lib/timetable/hwpxAssignment.ts` 신설(jszip+fast-xml-parser). 함정 3종 실측 해결 — ① 비고 칸 계산식 필드(=SUM) 오염 → 보이는 글(t 노드)만 수집 ② 교사 블록 비고가 과목별 분리 칸(체육 10|6) → 블록 합산 ③ 병기 과목·두 문단 제목 → 격자 표기 통일·괄호 접합. prepare가 추출까지 완결, extract는 검증·표시만. AI·가명화·재추출·pdfjs 전부 제거.
+- **판정**: verify_hours_hwpx.ts [0]~[7] 전판 통과 — 8부서 검증 오류 0 · 문화 과목 3학년 정위치 · 매칭 332/332 · AI 호출 0회. 학년 오독 검출(grade-misplacement)은 정규화 동일 이름으로 한정("과학"↔"과학사" 오탐 보수).
+- **주의**: docs/의 배정표·창체 hwpx(교사 실명 포함)는 저장소 미추적 — 로컬 셀프테스트 전용. 모달 업로드 칸은 .hwpx만 받는다.
+
