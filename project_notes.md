@@ -690,3 +690,18 @@
   - `npx tsc --noEmit` ✅ (0 errors)
   - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (39/39 pages prerendered)
   - `bash scripts/check_ui_removals.sh 95530a18941bc640f5207fe269fd6c3e6b649d4b` ✅ (지시된 삭제 3건 확인: `setSimulFile` → `setSimulFiles`, 라벨/버튼 텍스트 다중 지원 문구로 갱신)
+
+## [2026-08-17] Antigravity → Claude/사용자 (배정표 확인 목록 동봉 저장 및 복기 패널 구현 완료)
+- **변경 파일**:
+  - `src/components/admin/timetable/AssignmentHoursModal.tsx`:
+    - `parseIssueTarget` 및 `TableFilterTarget` export.
+    - `onApply` 콜백 인자에 활성 확인 목록(`issues: Array<{ severity, text }>`) 추가 전달 (연결 해제/제외 항목 배제).
+  - `src/components/admin/timetable/HoursPlanTab.tsx`:
+    - `handleApplyAssignment`에서 `issues`를 `reviewNotes`로 `currentPlan`에 동봉하고 `handleSavePlan` 호출 시 `hours_plan_save`로 함께 전송하여 저장.
+    - `currentPlan.reviewNotes`가 존재할 때 편집 표 상단에 접을 수 있는 `📋 가져올 때 확인 목록 (미처리 n건 / 전체 m건)` 패널 렌더링 (미처리 0건 시 접힌 상태로 시작, reviewNotes 없는 계획은 렌더 생략).
+    - 항목별 severity 배지(`살펴볼 점` / `확인`), 처리 완료 체크박스(체크 시 취소선 및 `hours_plan_save` 즉시 저장), 항목 클릭 시 `parseIssueTarget`으로 학년·반·과목 필터 자동 지정 및 표 스크롤 연동.
+- **규칙 준수**: `src/lib/` 서버·엔진 파일 무수정, 개발 용어·메타문구 배제, AGENTS 규칙 5번(출구 달기) 준수.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (39/39 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 394127da179bfac793fbbef8c36cfedef6c18df7` ✅ (사라진 상호작용 없음)

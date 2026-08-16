@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
   HoursPlan,
+  HoursPlanReviewNote,
   HoursPlanRow,
   HoursPlanSummary,
   SimulGroup,
@@ -12,7 +13,7 @@ import {
 import { parseHoursExcel, ParsedHoursResult } from "@/lib/timetable/excelHoursParser";
 import { expandCohortFixedBlocks, impliedHoursFromFixedBlocks } from "@/lib/timetable/cohort";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
-import AssignmentHoursModal from "./AssignmentHoursModal";
+import AssignmentHoursModal, { parseIssueTarget } from "./AssignmentHoursModal";
 
 interface HoursPlanTabProps {
   activeTermId?: string | null;
@@ -166,6 +167,10 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
   const [filterGrade, setFilterGrade] = useState<number | "all">(1);
   const [filterClassNum, setFilterClassNum] = useState<number | "all">("all");
   const [filterSearch, setFilterSearch] = useState<string>("");
+
+  // 배정표 자동 생성 확인 목록 접기/펼치기 상태 (null이면 미처리 건수 기준 자동 판정)
+  const [reviewNotesExpanded, setReviewNotesExpanded] = useState<boolean | null>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // 편집 표의 인라인 교사 편집 활성 행 ID (화면 전체에 select 최대 1개만 마운트)
   const [editingTeacherRowId, setEditingTeacherRowId] = useState<string | null>(null);
@@ -514,17 +519,24 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     targetYear,
     targetSemester,
     targetTermId,
+    issues,
   }: {
     rows: HoursPlanRow[];
     targetYear: number;
     targetSemester: number;
     targetTermId: string;
+    issues: Array<{ severity: "error" | "notice"; text: string }>;
   }) => {
     const defaultGradeDayPeriods: Record<number, Record<number, number>> = {
       1: { 1: 7, 2: 7, 3: 7, 4: 7, 5: 6 },
       2: { 1: 7, 2: 7, 3: 7, 4: 7, 5: 6 },
       3: { 1: 7, 2: 7, 3: 7, 4: 7, 5: 6 },
     };
+
+    const reviewNotes: HoursPlanReviewNote[] = (issues || []).map((iss) => ({
+      severity: iss.severity,
+      text: iss.text,
+    }));
 
     const newPlan: HoursPlan = {
       id: `plan-${Date.now()}`,
@@ -535,6 +547,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
       rows: rows,
       gradeDayPeriods: defaultGradeDayPeriods,
       status: "draft",
+      reviewNotes: reviewNotes.length > 0 ? reviewNotes : undefined,
       createdBy: userData?.email || "",
       updatedBy: userData?.email || "",
       updatedAt: Date.now(),
@@ -543,8 +556,9 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     setCurrentPlan(newPlan);
     setSelectedPlanId(newPlan.id);
     setOriginalRowsSnapshot(JSON.stringify(rows));
+    setReviewNotesExpanded(null);
     setSuccessMessage(
-      `배정표에서 ${rows.length}개의 수업 시간을 성공적으로 불러왔습니다. 내용을 검토한 후 우측 상단의 '💾 저장' 버튼을 눌러주세요.`
+      `배정표에서 ${rows.length}개의 수업 시간을 성공적으로 불러왔습니다. 확인 목록을 점검하고 우측 상단의 '💾 저장' 버튼을 눌러주세요.`
     );
     setTimeout(() => setSuccessMessage(null), 5000);
   };
@@ -567,6 +581,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
           planRows: currentPlan.rows,
           gradeDayPeriods: currentPlan.gradeDayPeriods,
           planStatus: currentPlan.status,
+          reviewNotes: currentPlan.reviewNotes,
         }),
       });
       const data = await res.json();
@@ -594,6 +609,68 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
       setError(`저장 오류: ${err.message || String(err)}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // 확인 목록 항목 완료 토글 및 즉시 저장
+  const handleToggleReviewNoteDone = async (noteIndex: number, done: boolean) => {
+    if (!currentPlan || !currentPlan.reviewNotes) return;
+    const updatedNotes: HoursPlanReviewNote[] = currentPlan.reviewNotes.map((note, idx) =>
+      idx === noteIndex ? { ...note, done } : note
+    );
+    const updatedPlan = { ...currentPlan, reviewNotes: updatedNotes };
+    setCurrentPlan(updatedPlan);
+
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "hours_plan_save",
+          planId: currentPlan.id.startsWith("plan-") ? undefined : currentPlan.id,
+          planLabel: currentPlan.label,
+          sourceTermId: currentPlan.sourceTermId,
+          targetTermId: currentPlan.targetTermId || activeTermId,
+          planRows: currentPlan.rows,
+          gradeDayPeriods: currentPlan.gradeDayPeriods,
+          planStatus: currentPlan.status,
+          reviewNotes: updatedNotes,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.plan) {
+        setCurrentPlan(data.plan);
+        setSelectedPlanId(data.plan.id);
+        setPlans((prev) => prev.map((p) => (p.id === data.plan.id ? data.plan : p)));
+      }
+    } catch (err) {
+      console.error("Failed to save review note status:", err);
+    }
+  };
+
+  // 확인 목록 클릭 시 해당 수업으로 표 필터 이동
+  const handleJumpToIssueTarget = (note: HoursPlanReviewNote) => {
+    const target = parseIssueTarget(note);
+    if (!target) return;
+    if (target.grade !== undefined) {
+      setFilterGrade(target.grade);
+    } else {
+      setFilterGrade("all");
+    }
+    if (target.classNum !== undefined) {
+      setFilterClassNum(target.classNum);
+    } else {
+      setFilterClassNum("all");
+    }
+    if (target.subject) {
+      setFilterSearch(target.subject);
+    } else if (target.teacher) {
+      setFilterSearch(target.teacher);
+    } else {
+      setFilterSearch("");
+    }
+    if (tableContainerRef.current) {
+      tableContainerRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
 
@@ -1006,8 +1083,114 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
             </div>
           </div>
 
+          {/* ── 가져올 때 확인 목록 (reviewNotes 복기 및 출구) ── */}
+          {currentPlan.reviewNotes && currentPlan.reviewNotes.length > 0 && (() => {
+            const unprocessedCount = currentPlan.reviewNotes.filter((n) => !n.done).length;
+            const isPanelOpen = reviewNotesExpanded !== null ? reviewNotesExpanded : unprocessedCount > 0;
+
+            return (
+              <div className="bg-slate-50 border border-slate-300 rounded-xl overflow-hidden shadow-xs">
+                <div
+                  onClick={() => setReviewNotesExpanded(!isPanelOpen)}
+                  className="px-4 py-3 bg-slate-100 hover:bg-slate-200/70 cursor-pointer flex items-center justify-between transition-colors select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                      <span>📋 가져올 때 확인 목록</span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                          unprocessedCount > 0
+                            ? "bg-amber-100 text-amber-900 ring-1 ring-amber-300"
+                            : "bg-emerald-100 text-emerald-800"
+                        }`}
+                      >
+                        미처리 {unprocessedCount}건 / 전체 {currentPlan.reviewNotes.length}건
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-slate-500 hidden sm:inline">
+                      — 배정표 자동 생성 시 발견된 점검 사항입니다. 항목을 클릭하면 해당 수업으로 이동합니다.
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-600 font-bold">
+                    {isPanelOpen ? "▲ 접기" : "▼ 펼치기"}
+                  </span>
+                </div>
+
+                {isPanelOpen && (
+                  <div className="p-3 space-y-1.5 max-h-72 overflow-y-auto divide-y divide-slate-100 bg-white">
+                    {currentPlan.reviewNotes.map((note, idx) => {
+                      const target = parseIssueTarget(note);
+                      const isError = note.severity === "error";
+
+                      return (
+                        <div
+                          key={idx}
+                          className={`pt-1.5 first:pt-0 p-2 rounded-lg flex items-center justify-between gap-3 text-xs transition-colors ${
+                            note.done
+                              ? "bg-gray-50/60 opacity-60"
+                              : isError
+                              ? "bg-amber-50/70 border border-amber-200 hover:bg-amber-100/50"
+                              : "bg-slate-50/70 border border-slate-200 hover:bg-slate-100/50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                            <label className="flex items-center gap-1.5 cursor-pointer shrink-0">
+                              <input
+                                type="checkbox"
+                                checked={!!note.done}
+                                onChange={(e) => handleToggleReviewNoteDone(idx, e.target.checked)}
+                                className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                              />
+                              <span className="text-[11px] text-gray-500 select-none">
+                                {note.done ? "완료됨" : "확인"}
+                              </span>
+                            </label>
+
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                                isError
+                                  ? "bg-amber-200 text-amber-950"
+                                  : "bg-slate-200 text-slate-800"
+                              }`}
+                            >
+                              {isError ? "살펴볼 점" : "확인"}
+                            </span>
+
+                            <span
+                              onClick={() => target && handleJumpToIssueTarget(note)}
+                              className={`truncate flex-1 ${
+                                note.done
+                                  ? "line-through text-gray-400"
+                                  : isError
+                                  ? "font-medium text-amber-950"
+                                  : "text-slate-800"
+                              } ${target ? "cursor-pointer hover:underline" : ""}`}
+                              title={note.text}
+                            >
+                              {note.text}
+                            </span>
+                          </div>
+
+                          {target && (
+                            <button
+                              type="button"
+                              onClick={() => handleJumpToIssueTarget(note)}
+                              className="shrink-0 px-2 py-0.5 bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-indigo-700 font-bold rounded text-[11px] transition-colors"
+                            >
+                              🔍 해당 수업 확인 →
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* ── 필터 및 작업 바 ── */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
+          <div ref={tableContainerRef} className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2 scroll-mt-6">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <select
                 value={filterGrade}

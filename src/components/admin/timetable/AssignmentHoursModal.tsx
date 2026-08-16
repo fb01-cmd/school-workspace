@@ -38,10 +38,11 @@ interface AssignmentHoursModalProps {
     targetYear: number;
     targetSemester: number;
     targetTermId: string;
+    issues: Array<{ severity: "error" | "notice"; text: string }>;
   }) => void;
 }
 
-interface TableFilterTarget {
+export interface TableFilterTarget {
   grade?: number;
   classNum?: number;
   subject?: string;
@@ -176,7 +177,7 @@ function formatFileSize(bytes: number): string {
 /**
  * 점검 항목 텍스트에서 미리보기 표 필터링 대상 추출 (출구 다리)
  */
-function parseIssueTarget(iss: AssignmentIssue): TableFilterTarget | null {
+export function parseIssueTarget(iss: { text: string }): TableFilterTarget | null {
   const t = iss.text;
 
   // 1. 이동수업 개설 반 정규화: "2학년 기하(박선생): 배정표의 3반 표기를 이동수업 개설 반인 6반으로 옮겼습니다 (시수 변화 없음)"
@@ -759,12 +760,45 @@ export default function AssignmentHoursModal({
       }
     }
 
+    // 결과 화면에 표시 중인 확인 목록 (살펴볼 점 + 확인해 두면 좋은 점) 수집 (연결 해제된 것 제외)
+    const activeIssues: Array<{ severity: "error" | "notice"; text: string }> = [];
+
+    // 1. 에러성 이슈 (살펴볼 점)
+    for (const err of errorIssues) {
+      activeIssues.push({ severity: "error", text: err.text });
+    }
+
+    // 2. 고지성 이슈 (확인해 두면 좋은 점)
+    // 2-1) 미연결 이동수업 과목 (연결된 과목은 제외)
+    for (const item of unmatchedSubjectItems) {
+      activeIssues.push({ severity: "notice", text: item.issue.text });
+    }
+    // 2-2) 개설 반 정규화 이동
+    for (const item of movedHostItems) {
+      activeIssues.push({ severity: "notice", text: item.issue.text });
+    }
+    // 2-3) 분담 배정
+    for (const group of sharedAssignmentGroups) {
+      for (const item of group.items) {
+        activeIssues.push({ severity: "notice", text: item.issue.text });
+      }
+    }
+    // 2-4) 이동수업 밴드 대조
+    for (const item of bandMismatchItems) {
+      activeIssues.push({ severity: "notice", text: item.issue.text });
+    }
+    // 2-5) 기타 고지
+    for (const item of otherNoticeItems) {
+      activeIssues.push({ severity: "notice", text: item.text });
+    }
+
     const targetTermId = activeTermId || `${targetYear}-${targetSemester}`;
     onApply({
       rows: planRows,
       targetYear,
       targetSemester,
       targetTermId,
+      issues: activeIssues,
     });
     handleClose();
   };
