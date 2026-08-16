@@ -10,6 +10,7 @@
  * 엔진·커밋 검증·화면은 이 필드 하나만 본다 (판정 단일 통로).
  */
 
+import { subjectMatches, subjectStemLoose } from "./hoursAssignment";
 import { ClassGrid, SimulGroup, SimulSlot, TimetableLesson } from "./types";
 
 export type { SimulGroup, SimulSlot };
@@ -33,13 +34,20 @@ export function buildSimulMatcher(groups: SimulGroup[]): SimulMatcher {
     grade: g.grade,
     classNums: new Set(g.classNums),
     subjects: new Set(g.subjectNames.map(normSubject)),
+    subjectNamesRaw: g.subjectNames,
     slots: g.slots?.length ? new Set(g.slots.map((s) => `${s.day}-${s.period}`)) : null,
   }));
+  // 등록부는 분반 차수 표기("중화"·"인공Ⅱ"), 배정표 유래 수업은 정식 명칭 — 정확 일치 →
+  // 약칭 부분열 → 그룹 한정 줄기 순으로 판정 (2026-08-17 H7 실사고: 이름 불일치로
+  // 밴드 구성원 인식 실패). 그룹이 학년·반 범위로 좁혀져 있어 느슨 매칭이 안전하다.
+  const nameHit = (g: (typeof prepared)[number], subj: string, subjectName: string) =>
+    g.subjects.has(subj) ||
+    g.subjectNamesRaw.some((s) => subjectMatches(s, subjectName) || subjectStemLoose(s, subjectName));
   return (grade, classNum, day, period, subjectName) => {
     const subj = normSubject(subjectName);
     for (const g of prepared) {
       if (g.grade !== grade || !g.classNums.has(classNum)) continue;
-      if (!g.subjects.has(subj)) continue;
+      if (!nameHit(g, subj, subjectName)) continue;
       if (g.slots && !g.slots.has(`${day}-${period}`)) continue;
       return g.label;
     }

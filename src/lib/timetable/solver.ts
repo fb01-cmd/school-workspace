@@ -511,7 +511,18 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
     const byClass = new Map<string, Row[]>();
     for (const r of rows) {
       if (r.consumed || r.grade !== g.grade || !g.classNums.includes(r.classNum)) continue;
-      if (!subjSet.has(normSubject(r.subjectName))) continue;
+      // 태그 우선 (2026-08-17 H7 실사고): 이 그룹 소속 태그면 이름과 무관하게 구성원,
+      // 다른 그룹 태그면 제외. 무태그 행만 이름 대조(정확 → 약칭 → 그룹 한정 줄기).
+      if (r.simulGroupId) {
+        if (r.simulGroupId !== g.id) continue;
+      } else {
+        const nameOk =
+          subjSet.has(normSubject(r.subjectName)) ||
+          g.subjectNames.some(
+            (s) => subjectMatches(s, r.subjectName) || subjectStemLoose(s, r.subjectName)
+          );
+        if (!nameOk) continue;
+      }
       r.consumed = true;
       const ck = `${r.grade}-${r.classNum}`;
       if (!byClass.has(ck)) byClass.set(ck, []);
