@@ -90,6 +90,31 @@ function synthesizeTeacherGrid(
   return result;
 }
 
+interface SolverErrorInfo {
+  message: string;
+  isChunkError?: boolean;
+}
+
+/** 워커 스크립트 / 동적 청크 로드 실패 여부 감지 (배포 직후 옛 버전 페이지 등) */
+function isWorkerChunkLoadError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  const name = err instanceof Error ? err.name.toLowerCase() : "";
+  return (
+    msg.includes("networkerror") ||
+    msg.includes("chunkloaderror") ||
+    msg.includes("loading chunk") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("importscripts") ||
+    msg.includes("dynamically imported module") ||
+    msg.includes("failed to load script") ||
+    msg.includes("error loading worker") ||
+    msg.includes("workerglobalscope") ||
+    name.includes("chunkloaderror") ||
+    name.includes("networkerror")
+  );
+}
+
 export default function DraftAutoTab({
   activeTermId,
   periodsPerDay = 7,
@@ -134,7 +159,7 @@ export default function DraftAutoTab({
   // ── 솔버 실행 상태 ──
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ phase: string; done: number; total: number } | null>(null);
-  const [solverError, setSolverError] = useState<string | null>(null);
+  const [solverError, setSolverError] = useState<SolverErrorInfo | null>(null);
   const runRef = useRef<SolverRun | null>(null);
 
   // ── 초안 편집기 상태 ──
@@ -392,13 +417,25 @@ export default function DraftAutoTab({
         setProgress(null);
         return;
       }
-      setSolverError(err.message || "시간표 자동 작성 중 오류가 발생했습니다.");
+      console.error("[솔버 워커 오류]", err);
+      if (isWorkerChunkLoadError(err)) {
+        setSolverError({
+          message: "새 버전이 배포되었습니다 — 페이지를 새로고침한 뒤 다시 실행해 주세요",
+          isChunkError: true,
+        });
+      } else {
+        setSolverError({
+          message: err.message || "시간표 자동 작성 중 오류가 발생했습니다.",
+        });
+      }
       setRunning(false);
       return;
     }
 
     if (!result.grids || result.grids.length === 0) {
-      setSolverError("짤 수 있는 수업이 없습니다. 시수 계획 및 고정 시간을 확인해 주세요.");
+      setSolverError({
+        message: "짤 수 있는 수업이 없습니다. 시수 계획 및 고정 시간을 확인해 주세요.",
+      });
       setRunning(false);
       return;
     }
@@ -433,7 +470,15 @@ export default function DraftAutoTab({
 
       await fetchDrafts();
     } catch (err: any) {
-      setSolverError(err.message);
+      console.error("[초안 저장 오류]", err);
+      if (isWorkerChunkLoadError(err)) {
+        setSolverError({
+          message: "새 버전이 배포되었습니다 — 페이지를 새로고침한 뒤 다시 실행해 주세요",
+          isChunkError: true,
+        });
+      } else {
+        setSolverError({ message: err.message || "초안 저장에 실패했습니다." });
+      }
     } finally {
       setRunning(false);
       setProgress(null);
@@ -464,13 +509,23 @@ export default function DraftAutoTab({
         baseGrids = data.baseGrids as ClassGrid[];
         setCachedDraftModel({ model, baseGrids });
       } catch (err: any) {
-        setSolverError(err.message);
+        console.error("[제약 모델 로드 오류]", err);
+        if (isWorkerChunkLoadError(err)) {
+          setSolverError({
+            message: "새 버전이 배포되었습니다 — 페이지를 새로고침한 뒤 다시 실행해 주세요",
+            isChunkError: true,
+          });
+        } else {
+          setSolverError({ message: err.message || "제약 모델 로드에 실패했습니다." });
+        }
         return;
       }
     }
 
     if (!baseGrids || baseGrids.length === 0) {
-      setSolverError("기초 시간표가 없습니다. 먼저 가져오기 탭에서 시간표를 가져와 주세요.");
+      setSolverError({
+        message: "기초 시간표가 없습니다. 먼저 가져오기 탭에서 시간표를 가져와 주세요.",
+      });
       return;
     }
 
@@ -489,7 +544,17 @@ export default function DraftAutoTab({
         setProgress(null);
         return;
       }
-      setSolverError(err.message || "솔버 실행 중 오류가 발생했습니다.");
+      console.error("[솔버 워커 오류]", err);
+      if (isWorkerChunkLoadError(err)) {
+        setSolverError({
+          message: "새 버전이 배포되었습니다 — 페이지를 새로고침한 뒤 다시 실행해 주세요",
+          isChunkError: true,
+        });
+      } else {
+        setSolverError({
+          message: err.message || "솔버 실행 중 오류가 발생했습니다.",
+        });
+      }
       setRunning(false);
       return;
     }
@@ -521,7 +586,15 @@ export default function DraftAutoTab({
 
       await fetchDrafts();
     } catch (err: any) {
-      setSolverError(err.message);
+      console.error("[초안 저장 오류]", err);
+      if (isWorkerChunkLoadError(err)) {
+        setSolverError({
+          message: "새 버전이 배포되었습니다 — 페이지를 새로고침한 뒤 다시 실행해 주세요",
+          isChunkError: true,
+        });
+      } else {
+        setSolverError({ message: err.message || "초안 저장에 실패했습니다." });
+      }
     } finally {
       setRunning(false);
       setProgress(null);
@@ -2411,8 +2484,21 @@ export default function DraftAutoTab({
       )}
 
       {solverError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-800 font-semibold">
-          ⚠️ {solverError}
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-800 font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base shrink-0">⚠️</span>
+            <span>{solverError.message}</span>
+          </div>
+          {solverError.isChunkError && (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs shrink-0 transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <span>🔄</span>
+              <span>새로고침</span>
+            </button>
+          )}
         </div>
       )}
 

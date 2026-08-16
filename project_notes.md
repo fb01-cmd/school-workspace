@@ -803,3 +803,20 @@
 - 검증 상태: 실데이터 점검 스크립트 — 계획 420행 박제 완전(사전 미해석 0·약칭 미기입 0) / 2027-1 사전 57과목·별칭 32과목 / 확정 이력 68건
 - 다음 할 일: ① 사용자 새로고침 후 자동 작성 실행(솔버 워커가 배포 직후 옛 청크를 물고 있던 것 — 코드 문제 아님) ② Antigravity: 워커 청크 로드 실패 시 영문 NetworkError 원문 대신 "새 버전이 배포되었습니다 — 새로고침해 주세요" 눈높이 안내+새로고침 버튼(ui-copy-rules) ③ 스펙 §5 2단계(폴백 제거)는 운영 학기 관문 통과 후 별도 착수
 - 주의: 사용자 확정 방향이 "배정표 정식명 → 기존 약칭 항목에 연결"이라 사전 정식명이 컴시간 표기(한국·통과·과탐)로 유지되고 올해 정식명이 별칭으로 실림 — 유효한 구성(practice-over-doctrine), 나이스 맵과도 정합(한국→한국사2 기확정)
+
+## [2026-08-17] Antigravity → Claude/사용자 (솔버 워커 청크 로드 실패 안내 및 새로고침 UI 구현 완료)
+- **변경 파일**:
+  - `src/components/admin/timetable/DraftAutoTab.tsx`:
+    - `isWorkerChunkLoadError` 헬퍼 함수 추가 (NetworkError, ChunkLoadError, importScripts, loading chunk, failed to fetch 등 배포 직후 옛 청크 참조 실패 감지).
+    - 솔버 실행(`handleSolveFromPlan`, `handleSolve`) 및 모델/초안 API 호출 오류 처리에서 청크 로드 실패 감지 시 사용자 친화적 메시지(`"새 버전이 배포되었습니다 — 페이지를 새로고침한 뒤 다시 실행해 주세요"`)와 `isChunkError: true` 설정.
+    - 원문 오류는 `console.error`로 콘솔에만 기록.
+    - UI 에러 배너에 `isChunkError`일 때 즉시 페이지를 새로고침할 수 있는 `[🔄 새로고침]` 버튼(`window.location.reload()`) 배치.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어(NetworkError, worker, chunk, importScripts 등) 화면 노출 배제 및 눈높이 안내 문구 적용.
+  - `AGENTS.md`: 자기 파일 한정 수정 및 상호작용 검증 통과.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (39/39 pages prerendered)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 없음)
+  - `npx tsx scripts/verify_subject_dict.ts` ✅ (11개 항목 전판 통과)
+
