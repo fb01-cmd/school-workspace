@@ -201,6 +201,31 @@ export interface AssignmentIssue {
   text: string;
 }
 
+/**
+ * 과목명 대조기 — 정규화 동일 또는 **약칭 부분열 규칙** (2026-08-17).
+ * 시스템 과목 등록부가 약칭만 담고 있어(컴시간 유래) 정식↔약칭 데이터 다리가 없다.
+ * 약칭 관행 = 풀네임 글자의 순서 보존 부분열("중화"⊂중국어회화, "세포"⊂세포와물질대사).
+ * 끝 숫자(로마숫자 포함, Ⅱ↔2 동일시)는 **일치 필수** — 물Ⅰ/물Ⅱ 충돌 방지.
+ */
+export function subjectMatches(a: string, b: string): boolean {
+  const roman = (x: string) => x.replace(/Ⅰ/g, "1").replace(/Ⅱ/g, "2").replace(/Ⅲ/g, "3");
+  const base = (x: string) => roman(x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, ""));
+  const va = base(a);
+  const vb = base(b);
+  if (va === vb) return true;
+  const numOf = (x: string) => (x.match(/(\d+)$/)?.[1] ?? "");
+  const stem = (x: string) => x.replace(/\d+$/, "");
+  const [shortV, longV] = va.length <= vb.length ? [va, vb] : [vb, va];
+  const sNum = numOf(shortV);
+  if (sNum && sNum !== numOf(longV)) return false;
+  const sStem = stem(shortV);
+  const lStem = stem(longV);
+  if (sStem.length < 2 || sStem[0] !== lStem[0]) return false;
+  let i = 0;
+  for (const ch of lStem) if (ch === sStem[i]) i++;
+  return i === sStem.length;
+}
+
 const cellsSum = (cells: ExtractedHourCell[]) => cells.reduce((s, c) => s + c.hours, 0);
 const cellKey = (c: ExtractedHourCell) => `${c.grade}-${c.classNum}`;
 
@@ -411,26 +436,28 @@ export function parseSimulStatusXlsx(buf: Buffer): { grade: number; entries: Sim
  */
 export function validateSimulStatus(
   depts: ExtractedAssignmentDept[],
-  status: { grade: number; entries: SimulStatusEntry[] }
+  status: { entries: SimulStatusEntry[] }
 ): AssignmentIssue[] {
   const issues: AssignmentIssue[] = [];
   // 밴드 의미론 (실물 재해석 2026-08-16): "중국어회화1(1반+6반+10반)"의 반 묶음은 그 과목
   // 수강 반이 아니라 **같이 움직이는 밴드**다 — 밴드의 각 반은 서로 다른 과목을 듣는다.
   // 따라서 과목 단위 대조는 같은 기반 과목의 **밴드 합집합**과 배정표 반 집합을 비교하되,
   // 단독 개설(비이동) 반이 실재하므로(3학년 10반 화Ⅱ 전례) 전부 **고지**로만 낸다.
-  const unionByStubject = new Map<string, Set<number>>();
-  for (const e of status.entries) {
-    const set = unionByStubject.get(e.subject) || new Set<number>();
-    e.classNums.forEach((c) => set.add(c));
-    unionByStubject.set(e.subject, set);
+  const unionByStubject = new Map<string, Set<number>>(); // key = grade|subject
+  for (const en of status.entries) {
+    const k = `${en.grade}|${en.subject}`;
+    const set = unionByStubject.get(k) || new Set<number>();
+    en.classNums.forEach((c) => set.add(c));
+    unionByStubject.set(k, set);
   }
-  for (const [subject, union] of unionByStubject) {
-    const e = { grade: status.grade, subject, classNums: [...union].sort((a, b) => a - b), raw: subject };
+  for (const [gradeSubj, union] of unionByStubject) {
+    const [gStr, subject] = gradeSubj.split("|");
+    const e = { grade: Number(gStr), subject, classNums: [...union].sort((a, b) => a - b), raw: subject };
     const assigned = new Set<number>();
     let subjectFound = false;
     for (const d of depts)
       for (const r of d.personalRows) {
-        if (normMoving(r.subject) !== e.subject) continue;
+        if (!subjectMatches(r.subject, e.subject)) continue;
         subjectFound = true;
         for (const c of r.cells) if (c.grade === e.grade) assigned.add(c.classNum);
       }
@@ -510,7 +537,8 @@ export function assembleHoursRows(
     const cx = canon(x);
     const cy = canon(y);
     if (cx === cy) return true;
-    return aliasSets.get(cx)?.has(cy) ?? false;
+    if (aliasSets.get(cx)?.has(cy)) return true;
+    return subjectMatches(x, y); // 약칭 부분열 폴백 — 등록부가 약칭만 담는 실태 (2026-08-17)
   };
   const tagHints = (row: AssembledHoursRow) => {
     const sg = registries?.simulGroups?.find(
@@ -595,26 +623,29 @@ export interface HostNormalization {
  */
 export function normalizeHostClasses(
   depts: ExtractedAssignmentDept[],
-  status: { grade: number; entries: SimulStatusEntry[] }
+  status: { entries: SimulStatusEntry[] }
 ): { moves: HostNormalization[]; issues: AssignmentIssue[] } {
   const moves: HostNormalization[] = [];
   const issues: AssignmentIssue[] = [];
   const canon = (x: string) => x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, "").replace(/\d+$/, "");
   // 과목별 개설 반 집합 (현황 행 맥락 유래만 — host 미상 항목은 정규화 근거로 안 쓴다)
-  const hostsBySubject = new Map<string, Set<number>>();
+  // 학년별로 따로 — 파일 유래(단일 학년)·시스템 역추출(2·3학년 혼합)이 같은 경로를 탄다
+  const hostsBySubject = new Map<string, Set<number>>(); // key = grade|subject
   for (const e of status.entries) {
     if (e.hostClassNum == null) continue;
-    const k = canon(e.subject);
+    const k = `${e.grade}|${canon(e.subject)}`;
     if (!hostsBySubject.has(k)) hostsBySubject.set(k, new Set());
     hostsBySubject.get(k)!.add(e.hostClassNum);
   }
-  for (const [subjKey, hosts] of hostsBySubject) {
+  for (const [gradeSubj, hosts] of hostsBySubject) {
+    const [gradeStr, subjKey] = gradeSubj.split("|");
+    const grade = Number(gradeStr);
     // 이 과목의 배정표 칸 전수 (해당 학년만)
     const cells: Array<{ row: { teacher: string; cells: ExtractedHourCell[] }; cell: ExtractedHourCell }> = [];
     for (const d of depts)
       for (const r of d.personalRows) {
-        if (canon(r.subject) !== subjKey) continue;
-        for (const c of r.cells) if (c.grade === status.grade) cells.push({ row: r, cell: c });
+        if (!subjectMatches(r.subject, subjKey)) continue;
+        for (const c of r.cells) if (c.grade === grade) cells.push({ row: r, cell: c });
       }
     if (!cells.length) continue;
     const strays = cells.filter(({ cell }) => !hosts.has(cell.classNum));
@@ -625,14 +656,16 @@ export function normalizeHostClasses(
       issues.push({
         severity: "notice",
         code: "simul-status-mismatch",
-        text: `${status.grade}학년 ${subjKey}: 배정표 반과 이동수업 개설 반(${[...hosts].sort((a, b) => a - b).join("·")})이 어긋나는데 짝이 맞지 않아 자동 정리하지 않았습니다 — 불러온 뒤 표에서 반을 확인해 주세요`,
+        text: `${grade}학년 ${subjKey}: 배정표 반과 이동수업 개설 반(${[...hosts].sort((a, b) => a - b).join("·")})이 어긋나는데 짝이 맞지 않아 자동 정리하지 않았습니다 — 불러온 뒤 표에서 반을 확인해 주세요`,
       });
       continue;
     }
+    const classMap = new Map<number, number>(); // from반 → to반 (격자표에도 같은 이동 적용용)
     strays
       .sort((a, b) => a.cell.classNum - b.cell.classNum)
       .forEach(({ row, cell }, i) => {
         const to = freeHosts[i];
+        classMap.set(cell.classNum, to);
         moves.push({
           subject: subjKey,
           teacher: row.teacher,
@@ -642,10 +675,19 @@ export function normalizeHostClasses(
         issues.push({
           severity: "notice",
           code: "simul-status-mismatch",
-          text: `${status.grade}학년 ${subjKey}(${row.teacher}): 배정표의 ${cell.classNum}반 표기를 이동수업 개설 반인 ${to}반으로 옮겼습니다 (시수 변화 없음)`,
+          text: `${grade}학년 ${subjKey}(${row.teacher}): 배정표의 ${cell.classNum}반 표기를 이동수업 개설 반인 ${to}반으로 옮겼습니다 (시수 변화 없음)`,
         });
         cell.classNum = to;
       });
+    // 격자표에도 같은 이동 — 개인표만 옮기면 격자↔개인 교차 검증이 우리 이동을 오류로 잡는다
+    // (2026-08-17 실배포 실측: 기하 4건 오탐). 격자·개인이 같은 진실을 보게 한다.
+    if (classMap.size)
+      for (const d of depts)
+        for (const r of d.gridRows) {
+          if (!subjectMatches(r.subject, subjKey)) continue;
+          for (const c of r.cells)
+            if (c.grade === grade && classMap.has(c.classNum)) c.classNum = classMap.get(c.classNum)!;
+        }
   }
   return { moves, issues };
 }

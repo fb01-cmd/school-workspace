@@ -112,7 +112,15 @@ async function main() {
   const extracted: ExtractedAssignmentDept[] = [];
   for (const chunk of chunks) {
     const target = chunk.dept;
-    const d = await runAssignmentExtract(chunk, roster, apiKey);
+    let d = await runAssignmentExtract(chunk, roster, apiKey);
+    // 서버(extractHoursAssignmentDept)와 동일: 오류가 잡히면 1회 재추출, 덜 틀린 쪽 채택
+    if (validateDept(d).some((i) => i.severity === "error")) {
+      try {
+        const retry = await runAssignmentExtract(chunk, roster, apiKey);
+        const ec = (x: ExtractedAssignmentDept) => validateDept(x).filter((i) => i.severity === "error").length;
+        if (ec(retry) < ec(d)) d = retry;
+      } catch { /* 재시도 실패 무시 */ }
+    }
     extracted.push(d);
     const all = validateDept(d);
     const issues = all.filter((i) => i.severity === "error"); // notice(분담 배정 등)는 실데이터 실재 — 실패 아님
@@ -142,14 +150,27 @@ async function main() {
   }
 
   // [5] 이동수업 현황(2학년) — 결정론 파스 + 검출 4 대조
-  const status = parseSimulStatusXlsx(readFileSync(SIMUL_XLSX));
-  const hosted = status.entries.filter((e) => e.hostClassNum != null).length;
+  const fileStatus = parseSimulStatusXlsx(readFileSync(SIMUL_XLSX));
+  const srv0 = await import("../src/lib/timetable/server");
+  const sysStatus = await srv0.deriveSimulStatusFromSystem("hmh.or.kr", (await srv0.loadTimetableSettings("hmh.or.kr")).activeTermId!);
+  const merged = [...sysStatus.entries];
+  const seenK = new Set(merged.map((e) => `${e.grade}|${e.subject}|${e.hostClassNum}`));
+  for (const e of fileStatus.entries) if (!seenK.has(`${e.grade}|${e.subject}|${e.hostClassNum}`)) merged.push(e);
+  const status = { entries: merged };
+  const hosted = merged.filter((e) => e.hostClassNum != null).length;
+  const g3 = sysStatus.entries.filter((e) => e.grade === 3).length;
+  console.log(`    역추출: 시스템 유래 ${sysStatus.entries.length}건(3학년 ${g3}건) + 파일 ${fileStatus.entries.length}건 → 병합 ${merged.length}건`);
   // §9-B②: 검증 전에 개설 반 정규화 (finalize와 같은 순서)
   const normalized = normalizeHostClasses(extracted, status);
+  // [5b] 정규화 후 격자↔개인 재검증 — 우리 이동이 오류로 잡히면 안 된다 (실배포 오탐 4건 재발 방지)
+  const postNormalizeErrors = extracted.flatMap((d) => validateDept(d)).filter((i) => i.severity === "error");
+  console.log(`    [5b] 정규화 후 재검증 오류 ${postNormalizeErrors.length}건 ${postNormalizeErrors.length === 0 ? "✅" : "❌"}`);
+  for (const i of postNormalizeErrors.slice(0, 4)) console.log(`      · [${i.code}] ${i.text}`);
+  if (postNormalizeErrors.length) failed = true;
   const statusIssues = validateSimulStatus(extracted, status);
   const statusErrors = statusIssues.filter((i) => i.severity === "error");
   console.log(
-    `[5] 이동수업 대조 — ${status.grade}학년 묶음 ${status.entries.length}건 파스(개설 반 확보 ${hosted}건) · ` +
+    `[5] 이동수업 대조 — 병합 ${status.entries.length}건(개설 반 확보 ${hosted}건) · ` +
       `개설 반 정규화 이동 ${normalized.moves.length}칸 · 반 불일치(오류) ${statusErrors.length}건 · 고지 ${statusIssues.length - statusErrors.length}건`
   );
   for (const mv of normalized.moves.slice(0, 5))
@@ -157,7 +178,7 @@ async function main() {
   if (hosted === 0) failed = true; // 행 맥락 파서가 죽으면 B② 전체가 무력화 — 실패로 간주
   for (const e of status.entries.slice(0, 4)) console.log(`      · ${e.subject} (${e.classNums.join("·")}반)`);
   for (const i of statusIssues.slice(0, 6)) console.log(`      ! [${i.severity}] ${i.text.slice(0, 90)}`);
-  if (status.grade !== 2 || status.entries.length < 4) failed = true; // 실물엔 밴드 5개 안팎이 실재해야
+  if (g3 === 0 || status.entries.length < 10) failed = true; // 역추출이 3학년을 못 내면 실패
 
   // [6] 창체 대조(검출 3) + 조립·이메일 매칭
   const creativeIssues = validateCreative(extracted, creative);

@@ -8211,7 +8211,7 @@ import {
   DeptChunk,
 } from "./hoursAssignment";
 import { runAssignmentExtract as _runAssignmentExtract, isAiEnabled as _isAiEnabled, ExtractedAssignmentDept } from "./ai";
-import { normalizeHostClasses as _normalizeHostClasses, detectSlashedSubjects as _detectSlashedSubjects } from "./hoursAssignment";
+import { normalizeHostClasses as _normalizeHostClasses, detectSlashedSubjects as _detectSlashedSubjects, SimulStatusEntry } from "./hoursAssignment";
 
 export const hoursAssignmentJobsColRef = (domain: string) =>
   adminDb.collection("timetable_hours_assignment_jobs").doc(domain).collection("jobs");
@@ -8388,14 +8388,22 @@ export async function finalizeHoursAssignmentJob(
     depts.push(d as ExtractedAssignmentDept);
   }
   const issues: AssignmentIssue[] = [...((job.baseIssues || []) as AssignmentIssue[])];
-  // §9-B②: 검증·조립 전에 개설 반 정규화 — 현황 행 맥락 기준, 시수 불변·이동은 전건 고지
-  if (job.simul) issues.push(..._normalizeHostClasses(depts, job.simul).issues);
+  // §9-B②′: 이동수업 정보 = 시스템 역추출(실증, 우선) + 업로드 파일(계획) 병합
+  const targetTermIdForSimul = `${job.targetYear}-${job.targetSemester}`;
+  const systemStatus = await deriveSimulStatusFromSystem(domain, targetTermIdForSimul).catch(() => ({ entries: [] as SimulStatusEntry[] }));
+  const mergedEntries: SimulStatusEntry[] = [...systemStatus.entries];
+  const seenKeys = new Set(mergedEntries.map((e) => `${e.grade}|${e.subject}|${e.hostClassNum}`));
+  for (const e of ((job.simul?.entries || []) as SimulStatusEntry[]))
+    if (!seenKeys.has(`${e.grade}|${e.subject}|${e.hostClassNum}`)) mergedEntries.push(e);
+  const mergedStatus = { entries: mergedEntries };
+  // §9-B②: 검증·조립 전에 개설 반 정규화 — 개설 반 기준, 시수 불변·이동은 전건 고지
+  if (mergedEntries.length) issues.push(..._normalizeHostClasses(depts, mergedStatus).issues);
   for (let i = 0; i < depts.length; i++) issues.push(..._validateDept(depts[i]));
   const creative = job.creative
     ? { title: job.creative.title as string, byClass: new Map(Object.entries(job.creative.byClass as Record<string, string>)) }
     : null;
   if (creative) issues.push(..._validateCreative(depts, creative));
-  if (job.simul) issues.push(..._validateSimulStatus(depts, job.simul));
+  if (mergedEntries.length) issues.push(..._validateSimulStatus(depts, mergedStatus));
   const roster = await loadTeacherNameRoster(domain);
   // §9-B①·C: 등록부 힌트 태깅 — 대상 학기 등록부가 있으면 simulGroupId·venueHours 자동 기입
   const targetTermId = `${job.targetYear}-${job.targetSemester}`;
@@ -8416,4 +8424,44 @@ export async function finalizeHoursAssignmentJob(
     issues,
     deptCount: depts.length,
   };
+}
+
+/**
+ * §9-B②′ 이동수업 정보 시스템 역추출 (2026-08-17 사용자 발상) — 파일이 계획이라면
+ * 그리드는 실증이다: 현행 학기 그리드의 simul 스탬프에서 "어느 반에 어느 묶음 과목이
+ * 개설돼 있는지"를 직접 읽는다. 현행 학기는 파일 없이 완결되고(3학년 포함), 신학기는
+ * 전 학기 역추출이 기본값+확인 항목이 된다. 과목명은 term.subjects로 정식명 변환
+ * (그리드 약칭 → 배정표 풀네임 대조 가능하게).
+ */
+export async function deriveSimulStatusFromSystem(
+  domain: string,
+  termId: string
+): Promise<{ entries: SimulStatusEntry[] }> {
+  const [groups, grids, term] = await Promise.all([
+    loadSimulGroups(domain, termId),
+    loadAllClassGrids(domain, termId).catch(() => [] as ClassGrid[]),
+    loadTimetableTerm(domain, termId).catch(() => null),
+  ]);
+  const fullName = new Map<string, string>();
+  for (const sj of term?.subjects || []) fullName.set(sj.shortName, sj.name);
+  const active = groups.filter((g) => g.active !== false);
+  const seen = new Map<string, SimulStatusEntry>();
+  for (const grid of grids)
+    for (const cell of grid.cells)
+      for (const l of cell.lessons || []) {
+        if (!l.simul) continue;
+        const group = active.find((g) => g.grade === grid.grade && g.label === l.simul);
+        if (!group) continue;
+        const subject = (fullName.get(l.subjectName) || l.subjectName).trim();
+        const key = `${grid.grade}|${subject}|${grid.classNum}`;
+        if (!seen.has(key))
+          seen.set(key, {
+            grade: grid.grade,
+            subject: subject.replace(/\s+/g, "").replace(/\d+$/, ""),
+            classNums: [...group.classNums],
+            raw: `${l.subjectName}(${group.classNums.join("반+")}반)`,
+            hostClassNum: grid.classNum,
+          });
+      }
+  return { entries: [...seen.values()] };
 }
