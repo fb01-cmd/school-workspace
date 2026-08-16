@@ -679,3 +679,14 @@
 - **함의**: 신학기에 교육과정부 원본만 오면 밴드+단독 완비 — **C안 보강 양식은 채택 요청품에서 보험·개선 제안으로 강등**(채택 마찰 0). 이번 학기 3학년은 어차피 역추출(same 등급)이 정답 원천
 - 파일명 정리: docs/이동수업_현황_원본_2학년_2026-2.xlsx · _3학년_2026-1학기표.xlsx (인원수만, 개인정보 무)
 - 잔여: 업로드 화면의 이동수업 칸 다중 파일 지원(Antigravity, 경미)
+
+## [2026-08-17] Antigravity → Claude/사용자 (배정표 모달: 대상 학기 읽기 전용화 & 이동수업 다중 파일 업로드 지원)
+- **변경 파일**:
+  - `src/components/admin/timetable/AssignmentHoursModal.tsx`:
+    1. **대상 학년도/학기 읽기 전용화**: `activeTermId`가 존재할 때 숫자 입력/드롭다운을 제거하고 `대상: {targetYear}학년도 {targetSemester}학기` 텍스트 배지로 고정 노출 (`activeTermId` 부재 시에만 폴백 입력칸 노출, 안내 문구 보존).
+    2. **이동수업 현황 다중 파일 지원**: `simulFiles` 배열 state 및 file input `multiple` 속성 추가, 선택된 엑셀 파일들을 개별 파일명·용량·삭제 버튼 목록으로 표출, 서버 `hours_assignment_prepare` 전송 시 첫 파일은 `simulXlsxB64`, 추가 파일은 `simulXlsxB64List`로 전송.
+- **규칙 준수**: `src/lib/` 서버·엔진 파일 무수정, 개발 용어·메타문구 배제, AGENTS 규칙 준수.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (39/39 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 95530a18941bc640f5207fe269fd6c3e6b649d4b` ✅ (지시된 삭제 3건 확인: `setSimulFile` → `setSimulFiles`, 라벨/버튼 텍스트 다중 지원 문구로 갱신)

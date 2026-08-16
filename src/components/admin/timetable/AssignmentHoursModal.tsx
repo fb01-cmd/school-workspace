@@ -306,7 +306,7 @@ export default function AssignmentHoursModal({
   // 파일 상태
   const [assignFile, setAssignFile] = useState<File | null>(null);
   const [creativeFile, setCreativeFile] = useState<File | null>(null);
-  const [simulFile, setSimulFile] = useState<File | null>(null);
+  const [simulFiles, setSimulFiles] = useState<File[]>([]);
 
   // 진행 상태 (extracting)
   const [deptsList, setDeptsList] = useState<Array<{ index: number; dept: string }>>([]);
@@ -345,7 +345,7 @@ export default function AssignmentHoursModal({
     setStep("input");
     setAssignFile(null);
     setCreativeFile(null);
-    setSimulFile(null);
+    setSimulFiles([]);
     setDeptsList([]);
     setCurrentDeptIndex(0);
     setCompletedDepts([]);
@@ -379,9 +379,11 @@ export default function AssignmentHoursModal({
       alert("창체 담당 파일 용량이 3MB를 초과합니다.");
       return;
     }
-    if (simulFile && simulFile.size > MAX_FILE_BYTES) {
-      alert("이동수업 현황 파일 용량이 3MB를 초과합니다.");
-      return;
+    for (const f of simulFiles) {
+      if (f.size > MAX_FILE_BYTES) {
+        alert(`이동수업 현황 파일(${f.name}) 용량이 3MB를 초과합니다.`);
+        return;
+      }
     }
 
     setStep("extracting");
@@ -392,7 +394,9 @@ export default function AssignmentHoursModal({
       // 1. 파일 Base64 변환
       const assignB64 = await fileToBase64(assignFile);
       const creativeB64 = creativeFile ? await fileToBase64(creativeFile) : undefined;
-      const simulB64 = simulFile ? await fileToBase64(simulFile) : undefined;
+      const simulB64List = await Promise.all(simulFiles.map((f) => fileToBase64(f)));
+      const simulXlsxB64 = simulB64List[0] || undefined;
+      const simulXlsxB64List = simulB64List.length > 1 ? simulB64List.slice(1) : undefined;
 
       // 2. 작업 준비 (hours_assignment_prepare)
       const prepRes = await fetch("/api/timetable/manage", {
@@ -402,7 +406,8 @@ export default function AssignmentHoursModal({
           action: "hours_assignment_prepare",
           assignmentPdfB64: assignB64,
           creativePdfB64: creativeB64,
-          simulXlsxB64: simulB64,
+          simulXlsxB64,
+          simulXlsxB64List,
           targetYear: Number(targetYear),
           targetSemester: Number(targetSemester),
         }),
@@ -786,37 +791,45 @@ export default function AssignmentHoursModal({
           {/* STEP 1: 파일 업로드 및 대상 학기 설정 */}
           {step === "input" && (
             <div className="space-y-6">
-              {/* 대상 연도 및 학기 입력 */}
+              {/* 대상 연도 및 학기 입력 / 읽기 전용 표출 */}
               <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-4 space-y-2">
                 <h4 className="font-bold text-indigo-950 flex items-center gap-1.5">
                   <span>📅 대상 학년도 및 학기</span>
                 </h4>
-                <div className="flex flex-wrap items-center gap-4 pt-1">
-                  <div className="flex items-center gap-1.5">
-                    <label className="text-gray-700 font-medium">학년도:</label>
-                    <input
-                      type="number"
-                      value={targetYear}
-                      onChange={(e) =>
-                        setTargetYear(parseInt(e.target.value, 10) || new Date().getFullYear())
-                      }
-                      className="w-24 px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg font-bold text-gray-900 text-center"
-                    />
-                    <span className="text-gray-600">학년도</span>
+                {activeTermId ? (
+                  <div className="pt-1">
+                    <span className="text-xs font-bold text-indigo-900 bg-white px-3 py-1.5 border border-indigo-200 rounded-lg inline-block shadow-xs">
+                      대상: {targetYear}학년도 {targetSemester}학기
+                    </span>
                   </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-4 pt-1">
+                    <div className="flex items-center gap-1.5">
+                      <label className="text-gray-700 font-medium">학년도:</label>
+                      <input
+                        type="number"
+                        value={targetYear}
+                        onChange={(e) =>
+                          setTargetYear(parseInt(e.target.value, 10) || new Date().getFullYear())
+                        }
+                        className="w-24 px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg font-bold text-gray-900 text-center"
+                      />
+                      <span className="text-gray-600">학년도</span>
+                    </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <label className="text-gray-700 font-medium">학기:</label>
-                    <select
-                      value={targetSemester}
-                      onChange={(e) => setTargetSemester(parseInt(e.target.value, 10) || 1)}
-                      className="px-3 py-1.5 bg-white border border-indigo-200 rounded-lg font-bold text-gray-900"
-                    >
-                      <option value={1}>1학기</option>
-                      <option value={2}>2학기</option>
-                    </select>
+                    <div className="flex items-center gap-1.5">
+                      <label className="text-gray-700 font-medium">학기:</label>
+                      <select
+                        value={targetSemester}
+                        onChange={(e) => setTargetSemester(parseInt(e.target.value, 10) || 1)}
+                        className="px-3 py-1.5 bg-white border border-indigo-200 rounded-lg font-bold text-gray-900"
+                      >
+                        <option value={1}>1학기</option>
+                        <option value={2}>2학기</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
+                )}
                 <p className="text-[11px] text-indigo-700 mt-1">
                   * 문서 내부의 학년도·학기 표기가 대상과 다르면 점검 안내가 표시됩니다.
                 </p>
@@ -939,10 +952,10 @@ export default function AssignmentHoursModal({
                     )}
                   </div>
 
-                  {/* 3. 이동수업 현황 (선택) */}
+                  {/* 3. 이동수업 현황 (선택, 다중 파일 가능) */}
                   <div
                     className={`border-2 rounded-xl p-4 flex flex-col justify-between transition-all ${
-                      simulFile
+                      simulFiles.length > 0
                         ? "border-indigo-400 bg-indigo-50/40"
                         : "border-dashed border-gray-300 hover:border-indigo-400 bg-gray-50/50"
                     }`}
@@ -955,37 +968,71 @@ export default function AssignmentHoursModal({
                         </span>
                       </div>
                       <p className="text-[11px] text-gray-500 mb-3">
-                        선택과목별 반 편성 및 수강 현황 (엑셀 .xlsx)
+                        선택과목별 반 편성 및 수강 현황 (엑셀 .xlsx, 학년별 복수 파일 가능)
                       </p>
                     </div>
 
-                    {simulFile ? (
-                      <div className="bg-white border border-indigo-200 rounded-lg p-2.5 flex items-center justify-between">
-                        <div className="overflow-hidden mr-2">
-                          <p className="font-bold text-indigo-900 truncate text-[11px]">{simulFile.name}</p>
-                          <p className="text-[10px] text-gray-400 font-mono">
-                            {formatFileSize(simulFile.size)}
-                          </p>
+                    {simulFiles.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="space-y-1.5 max-h-36 overflow-y-auto pr-0.5">
+                          {simulFiles.map((file, idx) => (
+                            <div
+                              key={`${file.name}-${idx}`}
+                              className="bg-white border border-indigo-200 rounded-lg p-2 flex items-center justify-between"
+                            >
+                              <div className="overflow-hidden mr-2">
+                                <p className="font-bold text-indigo-900 truncate text-[11px]">{file.name}</p>
+                                <p className="text-[10px] text-gray-400 font-mono">
+                                  {formatFileSize(file.size)}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSimulFiles((prev) => prev.filter((_, i) => i !== idx))
+                                }
+                                className="text-gray-400 hover:text-red-500 font-bold p-1 text-xs"
+                                title="삭제"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setSimulFile(null)}
-                          className="text-gray-400 hover:text-red-500 font-bold p-1 text-xs"
-                          title="삭제"
-                        >
-                          ✕
-                        </button>
+                        <label className="w-full py-1.5 px-3 bg-white border border-dashed border-indigo-300 hover:border-indigo-500 rounded-lg text-center font-medium text-indigo-700 cursor-pointer shadow-xs transition-colors text-[11px] flex items-center justify-center gap-1">
+                          <span>+ 파일 추가</span>
+                          <input
+                            type="file"
+                            accept=".xlsx,.xls"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              const files = e.target.files ? Array.from(e.target.files) : [];
+                              if (files.length > 0) {
+                                setSimulFiles((prev) => {
+                                  const existingNames = new Set(prev.map((f) => f.name));
+                                  const newUnique = files.filter((f) => !existingNames.has(f.name));
+                                  return [...prev, ...newUnique];
+                                });
+                              }
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
                       </div>
                     ) : (
                       <label className="w-full py-2.5 px-3 bg-white border border-gray-300 hover:border-indigo-500 rounded-lg text-center font-medium text-gray-700 cursor-pointer shadow-sm transition-colors text-xs flex items-center justify-center gap-1">
-                        <span>📊 엑셀 선택</span>
+                        <span>📊 엑셀 선택 (다중 가능)</span>
                         <input
                           type="file"
                           accept=".xlsx,.xls"
+                          multiple
                           className="hidden"
                           onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) setSimulFile(file);
+                            const files = e.target.files ? Array.from(e.target.files) : [];
+                            if (files.length > 0) {
+                              setSimulFiles(files);
+                            }
                             e.target.value = "";
                           }}
                         />
