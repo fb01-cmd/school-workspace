@@ -803,40 +803,31 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
   }, [currentPlan, originalRowsMap]);
 
   // ── 자체 점검 계산 (학급별 시수 합 vs 운영 교시수 합 비교) ──
-  const auditMismatches = useMemo(() => {
-    if (!currentPlan) return [];
+  const { auditMismatches, auditSkippedGrades } = useMemo(() => {
+    if (!currentPlan) return { auditMismatches: [], auditSkippedGrades: [] as number[] };
     const gdp = currentPlan.gradeDayPeriods || {};
     const mismatches: Array<{ grade: number; classNum: number; planSum: number; expectedSum: number }> = [];
 
-    // 학급별 시수 합계 산출.
-    // 이동수업 묶음은 같은 교시에 동시에 돌아가므로 행을 그대로 더하면 개설 반은 부풀고
-    // 학생을 보낸 반은 모자라게 보인다 — 묶음당 슬롯 시수 1회를 묶음의 모든 반에 넣는다
-    const groupById = new Map(simulGroups.filter((g) => g.id).map((g) => [g.id as string, g]));
+    // "반별 합계 = 운영 교시수"는 이동수업이 없는 학년에서만 성립하는 잣대다.
+    // 이동수업은 여러 반 학생이 개설 반으로 모이므로 개설 반은 크게, 보낸 반은 작게
+    // 보이는 게 정상 — 일과계 수기 최종본 실측도 같은 구조였다(2026-08-16).
+    // 이동수업이 얽힌 학년(등록부에 묶음이 있거나 계획에 이동수업 연결 행이 있는 학년)은
+    // 검사를 걸지 않고 그 사실만 안내한다.
+    const simulGrades = new Set<number>();
+    for (const g of simulGroups) if ((g.classNums || []).length) simulGrades.add(g.grade);
+    for (const r of currentPlan.rows) if (r.simulGroupId) simulGrades.add(r.grade);
+
     const classSums: Record<string, number> = {};
-    const groupSlot = new Map<string, number>();
     for (const r of currentPlan.rows) {
-      const grp = r.simulGroupId ? groupById.get(r.simulGroupId) : undefined;
-      if (grp && (grp.classNums || []).length) {
-        const gid = r.simulGroupId as string;
-        groupSlot.set(gid, Math.max(groupSlot.get(gid) || 0, Number(r.hours) || 0));
-        continue;
-      }
       const key = `${r.grade}-${r.classNum}`;
       classSums[key] = (classSums[key] || 0) + (Number(r.hours) || 0);
     }
-    for (const [gid, slot] of groupSlot) {
-      const grp = groupById.get(gid)!;
-      for (const c of grp.classNums || []) {
-        const key = `${grp.grade}-${c}`;
-        classSums[key] = (classSums[key] || 0) + slot;
-      }
-    }
 
-    // 모든 학급에 대해 검사
     for (const [key, sum] of Object.entries(classSums)) {
       const [gStr, cStr] = key.split("-");
       const g = parseInt(gStr, 10);
       const c = parseInt(cStr, 10);
+      if (simulGrades.has(g)) continue;
       const gradeDays = gdp[g] || { 1: 7, 2: 7, 3: 7, 4: 7, 5: 6 };
       const expected = Object.values(gradeDays).reduce((acc, v) => acc + (Number(v) || 0), 0);
       if (expected > 0 && sum !== expected) {
@@ -844,7 +835,10 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
       }
     }
 
-    return mismatches.sort((a, b) => a.grade - b.grade || a.classNum - b.classNum);
+    return {
+      auditMismatches: mismatches.sort((a, b) => a.grade - b.grade || a.classNum - b.classNum),
+      auditSkippedGrades: Array.from(simulGrades).sort(),
+    };
   }, [currentPlan, simulGroups]);
 
   // ── 필터링된 행 목록 ──
@@ -971,6 +965,13 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         </div>
       )}
 
+      {/* ── 자체 점검: 이동수업 학년 제외 안내 ── */}
+      {currentPlan && auditSkippedGrades.length > 0 && (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-[11px] text-slate-600">
+          ℹ️ {auditSkippedGrades.join("·")}학년은 이동수업(여러 반이 모여 듣는 수업)이 있어 반별 합계가 34시간과 달라 보이는 게 정상입니다 — 반별 합계 검사는 이동수업이 없는 학년만 수행합니다. 시수 자체의 검증은 배정표를 불러올 때의 확인 목록이 담당합니다.
+        </div>
+      )}
+
       {/* ── 자체 점검 경고 배너 ── */}
       {auditMismatches.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-900 space-y-1">
@@ -985,7 +986,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
             ))}
           </div>
           <p className="text-[11px] text-amber-700 pt-1">
-            * 시수 합계가 어긋나더라도 저장은 가능하나, 시간표 편성 전 반드시 확인하시기 바랍니다. 이동수업 수업인데 표에서 이동수업 묶음이 연결되지 않았으면 합계가 어긋나 보일 수 있습니다 — 해당 수업의 이동수업 칸을 먼저 연결해 주세요.
+            * 시수 합계가 어긋나더라도 저장은 가능하나, 시간표 편성 전 반드시 확인하시기 바랍니다.
           </p>
         </div>
       )}
