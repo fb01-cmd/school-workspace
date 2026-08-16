@@ -33,6 +33,8 @@
 // flash 계열은 세대와 무관하게 전부 20/일이다. 여유를 만드는 축은 **세대가 아니라 lite 계열**이다.
 // 11월 9c 리허설처럼 AI를 몰아 쓰는 일정 전에는 lite 전환을 먼저 검토할 것.
 export const GEMINI_MODEL = "gemini-3.5-flash";
+/** 한도 폴백용 lite (500/일 — 25배). 3단 레버 ① (로드맵 2026-08-16): flash 429 시 배치 작업이 갈아탄다 */
+export const GEMINI_MODEL_LITE = "gemini-3.5-flash-lite";
 
 const GEMINI_ENDPOINT = (model: string, key: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
@@ -209,11 +211,11 @@ export class AiCallError extends Error {
   }
 }
 
-async function callGemini(prompt: string, apiKey: string, timeoutMs = CALL_TIMEOUT_MS, maxOutputTokens = 8192): Promise<string> {
+async function callGemini(prompt: string, apiKey: string, timeoutMs = CALL_TIMEOUT_MS, maxOutputTokens = 8192, model = GEMINI_MODEL): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(GEMINI_ENDPOINT(GEMINI_MODEL, apiKey), {
+    const res = await fetch(GEMINI_ENDPOINT(model, apiKey), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: controller.signal,
@@ -259,16 +261,18 @@ async function callGeminiParsed<T>(
   apiKey: string,
   parse: (raw: string) => T | null,
   timeoutMs = CALL_TIMEOUT_MS,
-  maxOutputTokens = 8192
+  maxOutputTokens = 8192,
+  model = GEMINI_MODEL
 ): Promise<T> {
-  let parsed = parse(await callGemini(prompt, apiKey, timeoutMs, maxOutputTokens));
+  let parsed = parse(await callGemini(prompt, apiKey, timeoutMs, maxOutputTokens, model));
   if (!parsed) {
     parsed = parse(
       await callGemini(
         `${prompt}\n\n(직전 응답이 JSON 형식이 아니었습니다. 다른 텍스트 없이 JSON 하나만 다시 출력하세요.)`,
         apiKey,
         timeoutMs,
-        maxOutputTokens
+        maxOutputTokens,
+        model
       )
     );
   }
@@ -684,6 +688,7 @@ export function buildAssignmentExtractPrompt(maskedDeptText: string): string {
     "- 개인 배정표는 교사(T## 형식)가 여러 과목 행에 걸쳐 병합돼 있습니다 — 각 행을 해당 교사에게 연결하세요.",
     "- 교사가 T## 형식이 아닌 행(격자표)은 teacher를 빈 문자열로 두세요.",
     "- '창체' 행도 과목의 하나로 그대로 담습니다.",
+    "- 같은 과목이 격자표와 개인표에서 표기가 다르면(예: 물리학Ⅱ/물리Ⅱ) **격자표 표기로 통일**하세요.",
     "",
     "JSON만 출력:",
     "- cells는 [학년,반,시수] 삼중 배열입니다. 예: 1학년 3반 3시간 → [1,3,3]",
@@ -765,8 +770,11 @@ export async function runAssignmentExtract(
   }
   const p = buildPseudonymizer([...teachers, ...extra]);
   const masked = p.mask(dept.text);
-  // 배치 작업이라 순간 혼잡(429·503)은 백오프 재시도로 흡수한다 — 대화형 기능(E1~E4)과 다른 점
+  // 배치 재시도 정책 (3단 레버 ① — 로드맵 2026-08-16):
+  //   429(한도) → **lite로 즉시 갈아탄다** (flash 일일 한도는 백오프로 안 풀린다 — 8/16 실측)
+  //   502·504(혼잡·타임아웃) → 같은 모델로 백오프 재시도
   let parsed: { gridRows: ExtractedAssignmentRow[]; personalRows: ExtractedAssignmentRow[] } | null = null;
+  let model: string = GEMINI_MODEL;
   for (let attempt = 0; ; attempt++) {
     try {
       parsed = await callGeminiParsed(
@@ -774,13 +782,21 @@ export async function runAssignmentExtract(
         apiKey,
         parseAssignmentResponse,
         90_000, // 표 추출은 사고가 길다 — 업로드 배치 작업이라 길게
-        32_768 // 부서 하나 = 셀 수백 개 — 8192로는 JSON이 잘린다 (셀프테스트 실측)
+        32_768, // 부서 하나 = 셀 수백 개 — 8192로는 JSON이 잘린다 (셀프테스트 실측)
+        model
       );
       break;
     } catch (e) {
-      const transient = e instanceof AiCallError && (e.statusCode === 429 || e.statusCode === 502 || e.statusCode === 504);
-      if (!transient || attempt >= 2) throw e;
-      await new Promise((r) => setTimeout(r, attempt === 0 ? 5_000 : 20_000));
+      if (!(e instanceof AiCallError) || attempt >= 3) throw e;
+      if (e.statusCode === 429 && model === GEMINI_MODEL) {
+        model = GEMINI_MODEL_LITE; // 품질은 결정론 검증 그물이 판정한다 — 틀리면 불일치로 드러남
+        continue;
+      }
+      if (e.statusCode === 502 || e.statusCode === 504) {
+        await new Promise((r) => setTimeout(r, attempt === 0 ? 5_000 : 20_000));
+        continue;
+      }
+      throw e;
     }
   }
   const unmaskRow = (r: ExtractedAssignmentRow): ExtractedAssignmentRow => ({

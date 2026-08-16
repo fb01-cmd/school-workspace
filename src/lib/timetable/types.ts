@@ -396,6 +396,9 @@ export type ManageAction =
   | "hours_plan_save"
   | "hours_plan_delete"
   | "hours_plan_solve_input" // Phase 9c-I 시수 계획 백지 솔버 입력 조립 (phase9c_i_spec §5-1)
+  | "hours_assignment_prepare" // 배정표 자동 생성 작업 준비 (hours_source_files_analysis §5ⓓ)
+  | "hours_assignment_extract" // 부서 1개 AI 추출 (요청당 1콜 — 함수 시간 제한 대응)
+  | "hours_assignment_finalize" // 교차 검증·조립 결과 (저장은 hours_plan_save로만)
   | "cohort_list"
   | "cohort_save"
   | "cohort_delete"
@@ -405,6 +408,14 @@ export type ManageAction =
   | "draft_adopt";
 
 export interface ManageTimetableRequest {
+  // 배정표 자동 생성 (hours_assignment_*)
+  assignmentPdfB64?: string;
+  creativePdfB64?: string;
+  simulXlsxB64?: string;
+  targetYear?: number;
+  targetSemester?: number;
+  jobId?: string;
+  deptIndex?: number;
   action: ManageAction;
   managerEmails?: string[];
   observerEmails?: string[]; // set_observers action 전용 (phase9b_spec §5)

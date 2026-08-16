@@ -29,6 +29,9 @@ import {
   listNeisRows,
   listSwapRequests,
   validatePendingSwapRequests,
+  prepareHoursAssignmentJob,
+  extractHoursAssignmentDept,
+  finalizeHoursAssignmentJob,
   listWeeks,
   loadAllClassGrids,
   loadAllTerms,
@@ -1631,6 +1634,53 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
         return NextResponse.json({ success: true, action, planId: body.planId });
+      }
+
+      // ── 교사별 시수표 자동 생성 (hours_source_files_analysis §5ⓓ) — 작업 3단계.
+      //    저장은 없다: 결과는 화면 검토 후 기존 hours_plan_save로만 반영된다. ──
+      case "hours_assignment_prepare": {
+        if (!body.assignmentPdfB64 || !Number.isInteger(body.targetYear) || !Number.isInteger(body.targetSemester)) {
+          return NextResponse.json(
+            { error: "assignmentPdfB64, targetYear, targetSemester가 필요합니다." },
+            { status: 400 }
+          );
+        }
+        const result = await prepareHoursAssignmentJob(domain, auth.email, {
+          assignmentPdfB64: body.assignmentPdfB64,
+          creativePdfB64: body.creativePdfB64,
+          simulXlsxB64: body.simulXlsxB64,
+          targetYear: body.targetYear as number,
+          targetSemester: body.targetSemester as number,
+        });
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "hours_assignment_prepare",
+          details: `배정표 자동 생성 작업 준비 — 부서 ${result.depts.length}개 (job ${result.jobId})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, ...result });
+      }
+      case "hours_assignment_extract": {
+        if (!body.jobId || !Number.isInteger(body.deptIndex)) {
+          return NextResponse.json({ error: "jobId, deptIndex가 필요합니다." }, { status: 400 });
+        }
+        const result = await extractHoursAssignmentDept(domain, body.jobId, body.deptIndex as number);
+        return NextResponse.json({ success: true, action, ...result });
+      }
+      case "hours_assignment_finalize": {
+        if (!body.jobId) {
+          return NextResponse.json({ error: "jobId가 필요합니다." }, { status: 400 });
+        }
+        const result = await finalizeHoursAssignmentJob(domain, body.jobId);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "hours_assignment_finalize",
+          details: `배정표 자동 생성 결과 — 행 ${result.rows.length}건·창체 ${result.creativeRows.length}건·확인 항목 ${result.issues.length}건·미매칭 ${result.unmatchedNames.length}명`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, ...result });
       }
 
       // ── Phase 9c-I 시수 계획 기반 백지 자동 작성 입력 (phase9c_i_spec §5-1) ──

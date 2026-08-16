@@ -8189,3 +8189,170 @@ export async function adoptDraftToTerm(
   return { gridCount: currentGrids.length };
 }
 
+
+// ── 교사별 시수표 자동 생성 — 작업(job) 3단계 (hours_source_files_analysis §5ⓓ·§6) ──
+//
+// 한 요청에 부서 8개 AI 추출을 담으면 서버 함수 시간 제한을 넘는다 → 준비/부서별 추출/
+// 마무리로 쪼개고 중간 상태를 Firestore 작업 문서에 둔다. 추출은 부서당 요청 1건(≤90초).
+// AI에는 가명 텍스트만 나간다(runAssignmentExtract가 강제). 저장은 하지 않는다 —
+// 마무리 결과를 화면이 검토한 뒤 기존 hours_plan_save로만 반영한다(정규 저장 API 원칙).
+
+import {
+  splitDeptChunks as _splitDeptChunks,
+  extractPdfLayoutPages as _extractPdfLayoutPages,
+  parseCreativeGrid as _parseCreativeGrid,
+  parseSimulStatusXlsx as _parseSimulStatusXlsx,
+  validateDept as _validateDept,
+  validateCreative as _validateCreative,
+  validateTitleSemester as _validateTitleSemester,
+  validateSimulStatus as _validateSimulStatus,
+  assembleHoursRows as _assembleHoursRows,
+  AssignmentIssue,
+  DeptChunk,
+} from "./hoursAssignment";
+import { runAssignmentExtract as _runAssignmentExtract, isAiEnabled as _isAiEnabled, ExtractedAssignmentDept } from "./ai";
+
+export const hoursAssignmentJobsColRef = (domain: string) =>
+  adminDb.collection("timetable_hours_assignment_jobs").doc(domain).collection("jobs");
+
+async function loadTeacherNameRoster(): Promise<Array<{ name: string; email: string }>> {
+  const snap = await adminDb.collection("teacher_profiles").get();
+  const out: Array<{ name: string; email: string }> = [];
+  snap.docs.forEach((d) => {
+    const name = ((d.data().name as string) || "").trim();
+    if (name) out.push({ name, email: d.id });
+  });
+  return out;
+}
+
+const B64_LIMIT = 4_000_000; // ≈3MB 원본 — 실물 배정표 220KB의 10배 여유
+
+export async function prepareHoursAssignmentJob(
+  domain: string,
+  operatorEmail: string,
+  params: {
+    assignmentPdfB64: string;
+    creativePdfB64?: string;
+    simulXlsxB64?: string;
+    targetYear: number;
+    targetSemester: number;
+  }
+): Promise<{ jobId: string; depts: Array<{ index: number; dept: string }>; baseIssues: AssignmentIssue[] }> {
+  if (!_isAiEnabled()) throw new Error("AI 기능이 설정되지 않았습니다. 관리자에게 문의해 주세요.");
+  for (const [label, b64] of [
+    ["배정표", params.assignmentPdfB64],
+    ["창체", params.creativePdfB64 || ""],
+    ["이동수업", params.simulXlsxB64 || ""],
+  ] as const)
+    if (b64.length > B64_LIMIT) throw new Error(`${label} 파일이 너무 큽니다 (3MB 이하).`);
+
+  const pages = await _extractPdfLayoutPages(new Uint8Array(Buffer.from(params.assignmentPdfB64, "base64")));
+  const chunks = _splitDeptChunks(pages);
+  if (!chunks.length)
+    throw new Error(
+      "배정표에서 부서 표를 찾지 못했습니다. 한글에서 PDF로 저장한 과목별 배정표 파일이 맞는지 확인해 주세요."
+    );
+  const baseIssues: AssignmentIssue[] = [];
+  const expected = { year: params.targetYear, semester: params.targetSemester };
+  baseIssues.push(..._validateTitleSemester(pages[0]?.split("\n")[0] || "", expected, "배정표"));
+
+  let creative: { title: string; byClass: Record<string, string> } | null = null;
+  if (params.creativePdfB64) {
+    const cPages = await _extractPdfLayoutPages(new Uint8Array(Buffer.from(params.creativePdfB64, "base64")));
+    const parsed = _parseCreativeGrid(cPages.join("\n"));
+    baseIssues.push(..._validateTitleSemester(parsed.title, expected, "창체 담당 파일"));
+    creative = { title: parsed.title, byClass: Object.fromEntries(parsed.byClass) };
+  }
+  let simul: { grade: number; entries: ReturnType<typeof _parseSimulStatusXlsx>["entries"] } | null = null;
+  if (params.simulXlsxB64) {
+    const parsed = _parseSimulStatusXlsx(Buffer.from(params.simulXlsxB64, "base64"));
+    baseIssues.push(
+      ..._validateTitleSemester(`${parsed.grade ? "" : ""}`, expected, "이동수업 현황") // 학기 표기가 없는 실물 — 자리만
+    );
+    simul = { grade: parsed.grade, entries: parsed.entries };
+  }
+
+  // 7일 지난 작업 문서 청소 (같은 쓰기 경로에 편승 — 별도 크론 불요)
+  const stale = await hoursAssignmentJobsColRef(domain)
+    .where("createdAt", "<", Date.now() - 7 * 24 * 3600 * 1000)
+    .limit(20)
+    .get();
+  for (const d of stale.docs) await d.ref.delete();
+
+  const ref = hoursAssignmentJobsColRef(domain).doc();
+  await ref.set({
+    id: ref.id,
+    createdBy: operatorEmail.toLowerCase(),
+    createdAt: Date.now(),
+    targetYear: params.targetYear,
+    targetSemester: params.targetSemester,
+    chunks: chunks.map((c) => ({ dept: c.dept, headerLine: c.headerLine, text: c.text })),
+    creative,
+    simul,
+    extracted: {},
+    baseIssues,
+  });
+  return { jobId: ref.id, depts: chunks.map((c, i) => ({ index: i, dept: c.dept })), baseIssues };
+}
+
+export async function extractHoursAssignmentDept(
+  domain: string,
+  jobId: string,
+  index: number
+): Promise<{ dept: string; personalRows: number; gridRows: number; issues: AssignmentIssue[] }> {
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+  if (!apiKey) throw new Error("AI 기능이 설정되지 않았습니다. 관리자에게 문의해 주세요.");
+  const snap = await hoursAssignmentJobsColRef(domain).doc(jobId).get();
+  if (!snap.exists) throw new Error("작업을 찾을 수 없습니다. 파일 업로드부터 다시 시작해 주세요.");
+  const job = snap.data()!;
+  const chunk = (job.chunks as DeptChunk[])[index];
+  if (!chunk) throw new Error("부서 번호가 유효하지 않습니다.");
+  const roster = await loadTeacherNameRoster();
+  const extracted = await _runAssignmentExtract(chunk, roster, apiKey);
+  const issues = _validateDept(extracted);
+  await snap.ref.update({ [`extracted.${index}`]: extracted });
+  return {
+    dept: extracted.dept,
+    personalRows: extracted.personalRows.length,
+    gridRows: extracted.gridRows.length,
+    issues,
+  };
+}
+
+export async function finalizeHoursAssignmentJob(
+  domain: string,
+  jobId: string
+): Promise<{
+  rows: ReturnType<typeof _assembleHoursRows>["rows"];
+  creativeRows: ReturnType<typeof _assembleHoursRows>["creativeRows"];
+  unmatchedNames: string[];
+  issues: AssignmentIssue[];
+  deptCount: number;
+}> {
+  const snap = await hoursAssignmentJobsColRef(domain).doc(jobId).get();
+  if (!snap.exists) throw new Error("작업을 찾을 수 없습니다. 파일 업로드부터 다시 시작해 주세요.");
+  const job = snap.data()!;
+  const chunkCount = (job.chunks as DeptChunk[]).length;
+  const depts: ExtractedAssignmentDept[] = [];
+  for (let i = 0; i < chunkCount; i++) {
+    const d = (job.extracted || {})[i];
+    if (!d) throw new Error(`아직 읽지 않은 부서가 있습니다 (${(job.chunks as DeptChunk[])[i].dept}). 전 부서를 먼저 읽어 주세요.`);
+    depts.push(d as ExtractedAssignmentDept);
+  }
+  const issues: AssignmentIssue[] = [...((job.baseIssues || []) as AssignmentIssue[])];
+  for (let i = 0; i < depts.length; i++) issues.push(..._validateDept(depts[i]));
+  const creative = job.creative
+    ? { title: job.creative.title as string, byClass: new Map(Object.entries(job.creative.byClass as Record<string, string>)) }
+    : null;
+  if (creative) issues.push(..._validateCreative(depts, creative));
+  if (job.simul) issues.push(..._validateSimulStatus(depts, job.simul));
+  const roster = await loadTeacherNameRoster();
+  const asm = _assembleHoursRows(depts, creative || { title: "", byClass: new Map() }, "진로", roster);
+  return {
+    rows: asm.rows,
+    creativeRows: creative ? asm.creativeRows : [],
+    unmatchedNames: asm.unmatchedNames,
+    issues,
+    deptCount: depts.length,
+  };
+}
