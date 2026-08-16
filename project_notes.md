@@ -718,3 +718,33 @@
 - 검증 상태: tsc ✅ / build ✅(로컬은 힙 6GB 필요 — 환경 제약) / verify_subject_dict.ts 7항 ✅ / verify_hours_hwpx.ts 회귀 전판 ✅
 - 다음 할 일: Antigravity가 스펙 §6대로 관문 UI(AssignmentHoursModal 과목 대조 섹션 + 저장 시 subjectConfirmations 전송 + subjectLooseMatch 사본 삭제) 구현
 - 주의: ① 소비자 판정은 "사전 정확 일치 → (판정 불능 시에만) 기존 느슨 폴백" — 폴백이 결정하면 solver가 `subject-loose-bind` 고지를 낸다. 폴백 제거는 운영 학기 별칭 확정 후 별도 커밋(스펙 §5) ② `saveHoursPlan`에 `subjectConfirmations`가 오면 사전 갱신·행 박제·이력 기록·미해석 행 저장 거부까지 서버가 원자적으로 수행 — UI는 조립·전송만 ③ 어젯밤 임시 다리 커밋들(ab740da~68ea7b1)의 규칙은 삭제하지 않고 관문 후보 엔진(suggestCandidates)으로 강등·재사용했다
+
+## [2026-08-17] Antigravity → Claude/사용자 (과목 이름 맞추기 관문 UI 구현 완료)
+- **변경 파일**:
+  - `src/components/admin/timetable/AssignmentHoursModal.tsx`:
+    - `step === "result"` 상단에 **「🏷️ 과목 이름 맞추기」** 단일 사전 관문 섹션 신설.
+    - 서버 `hours_assignment_finalize` 응답의 `subjectResolution`을 분류해 렌더링:
+      - `exact`: `✅ 이미 등록된 과목 (N건)` (기본 접힘 토글).
+      - `suggested`: `🔍 연결할 과목 확인 (N건)` (이력 ⭐ / 추천 옵션 드롭다운, `via: "history"` 후보 기본 선택, 새 과목 등록 전환).
+      - `new`: `✨ 새로 등록할 과목 (N건)` (2글자 표시 약칭 입력창, 기존 과목 연결 전환).
+      - `fromSimulStatus: true` 항목: "이동수업 현황 문서 표기" 안내 배지 및 `「이번에 확정 안 함(건너뛰기)」` 토글 지원 (건너뛴 항목은 `subjectConfirmations`에서 제외되며 불러오기 미확정 카운트에서 제외).
+    - 기존 `simulSubjectMappings` 상태 및 이슈 목록 내 중복 드롭다운을 과목 이름 맞추기 섹션으로 통합 흡수.
+    - `subjectLooseMatch` 클라이언트 사본 삭제.
+    - 미확정 건수(`unconfirmedCount`) 실시간 추적 및 하단 `📥 시수 계획으로 불러오기` 버튼 비활성화 + 남은 개수 안내 툴팁/라벨 제공.
+    - `onApply` 콜백에 `subjectConfirmations` 배열 전달.
+  - `src/components/admin/timetable/HoursPlanTab.tsx`:
+    - `subjectLooseMatch` import 및 검색 필터 로직을 `subjectShort` 포함 검색으로 정돈.
+    - `pendingSubjectConfirmations` 상태 관리 (`SubjectConfirmation[] | null`).
+    - `handleApplyAssignment` 호출 시 `setPendingSubjectConfirmations(subjectConfirmations ?? [])`로 빈 배열 동봉 보장 (서버의 행 박제·검증 스위치 트리거).
+    - 다른 계획 선택(`handleSelectPlan`), 신규 파생(`handleDerive`), 엑셀 업로드(`handleApplyUpload`) 시 `pendingSubjectConfirmations`를 `null`로 초기화.
+    - `handleSavePlan`에서 `subjectConfirmations: pendingSubjectConfirmations !== null ? pendingSubjectConfirmations : undefined` 전송.
+    - 저장 성공 시 `setCurrentPlan(data.plan)`으로 에디터 행 교체 (서버가 정식명/약칭으로 박제한 `data.plan.rows` 즉시 반영) 및 `pendingSubjectConfirmations` 초기화.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어(alias, canonical, 사전 등) 배제하고 눈높이 용어 "과목 이름 맞추기", "약칭", "연결할 과목" 사용.
+  - `AGENTS.md`: 기존 파일 부분 수정 원칙 준수, UI 출구 유지.
+- **검증 결과 (5종 전판 통과)**:
+  1. `npx tsc --noEmit` ✅ (0 errors)
+  2. `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (39/39 pages prerendered)
+  3. `bash scripts/check_ui_removals.sh 7bbe59b` ✅ (삭제 6건 모두 구 simulSubjectMappings 드롭다운 흡수 건으로 정상 소명)
+  4. `npx tsx scripts/verify_subject_dict.ts` ✅ (7항목 전판 통과)
+  5. `npx tsx --env-file=.env.local scripts/verify_hours_hwpx.ts` ✅ ([0]~[7] 전판 통과)

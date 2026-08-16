@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import { CurriculumCohort, HoursPlanRow } from "@/lib/timetable/types";
 import { expandCohortFixedBlocks, impliedHoursFromFixedBlocks } from "@/lib/timetable/cohort";
+import { SubjectResolutionItem, SubjectConfirmation } from "@/lib/timetable/subjectDict";
 
 export interface TeacherOption {
   email: string;
@@ -39,6 +40,7 @@ interface AssignmentHoursModalProps {
     targetSemester: number;
     targetTermId: string;
     issues: Array<{ severity: "error" | "notice"; text: string }>;
+    subjectConfirmations: SubjectConfirmation[];
   }) => void;
 }
 
@@ -205,32 +207,6 @@ export function issueGuidance(text: string): string | null {
   return null;
 }
 
-/**
- * 줄임말-정식 과목명 느슨 매칭 — 엔진의 subjectMatches(hoursAssignment.ts)와 같은 규칙.
- * 서버 모듈을 클라이언트 번들에 끌어오지 않으려 소형 사본을 둔다(pdfjs 배포 사고 전례).
- * 규칙 변경 시 양쪽을 함께 고칠 것: 공백 제거·"화학Ⅱ→화Ⅱ" 축약·로마숫자 통일 후
- * 끝 숫자 일치 + 첫 글자 일치 + 순서 보존 부분열.
- * 의도적 완화 한 곳: 엔진은 줄기 두 글자 이상("물Ⅱ" 거부 — 오탐이 위험)이지만, 표 검색은
- * 오탐이 행 몇 개 더 보이는 것뿐이라 한 글자 줄임말("물Ⅱ"→물리학Ⅱ)을 허용한다.
- */
-export function subjectLooseMatch(a: string, b: string): boolean {
-  const roman = (x: string) => x.replace(/Ⅰ/g, "1").replace(/Ⅱ/g, "2").replace(/Ⅲ/g, "3");
-  const base = (x: string) => roman(x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, ""));
-  const va = base(a);
-  const vb = base(b);
-  if (va === vb) return true;
-  const numOf = (x: string) => (x.match(/(\d+)$/)?.[1] ?? "");
-  const stem = (x: string) => x.replace(/\d+$/, "");
-  const [shortV, longV] = va.length <= vb.length ? [va, vb] : [vb, va];
-  const sNum = numOf(shortV);
-  if (sNum && sNum !== numOf(longV)) return false;
-  const sStem = stem(shortV);
-  const lStem = stem(longV);
-  if (sStem.length < 1 || sStem[0] !== lStem[0]) return false;
-  let i = 0;
-  for (const ch of lStem) if (ch === sStem[i]) i++;
-  return i === sStem.length;
-}
 
 export function parseIssueTarget(iss: { text: string }): TableFilterTarget | null {
   const t = iss.text;
@@ -415,8 +391,20 @@ export default function AssignmentHoursModal({
   const [teacherMappings, setTeacherMappings] = useState<Record<string, string>>({}); // teacherName -> teacherEmail
   const [deptCount, setDeptCount] = useState<number>(0);
 
-  // v2: 세션 한정 이동수업 과목 매핑 (simulSubject -> assignmentSubject)
-  const [simulSubjectMappings, setSimulSubjectMappings] = useState<Record<string, string>>({});
+  // 관문 과목 대조 상태
+  const [subjectResolutions, setSubjectResolutions] = useState<SubjectResolutionItem[]>([]);
+  const [subjectConfirmations, setSubjectConfirmations] = useState<
+    Record<
+      string,
+      {
+        action: "link" | "create";
+        canonicalName: string;
+        shortName?: string;
+        skipped?: boolean;
+      }
+    >
+  >({});
+  const [expandedExact, setExpandedExact] = useState<boolean>(false);
 
   // v2: 고지 항목 접기/펼치기 상태
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -449,7 +437,9 @@ export default function AssignmentHoursModal({
     setIssues([]);
     setTeacherMappings({});
     setDeptCount(0);
-    setSimulSubjectMappings({});
+    setSubjectResolutions([]);
+    setSubjectConfirmations({});
+    setExpandedExact(false);
     setActiveTargetFilter(null);
   };
 
@@ -560,6 +550,38 @@ export default function AssignmentHoursModal({
       setIssues(finData.issues || []);
       setDeptCount(finData.deptCount || depts.length);
 
+      // 과목 대조 초기 상태 구축
+      const resList = (finData.subjectResolution || []) as SubjectResolutionItem[];
+      setSubjectResolutions(resList);
+
+      const initialConf: Record<
+        string,
+        { action: "link" | "create"; canonicalName: string; shortName?: string; skipped?: boolean }
+      > = {};
+      for (const item of resList) {
+        if (item.status === "exact" && item.resolved) {
+          initialConf[item.rawName] = {
+            action: "link",
+            canonicalName: item.resolved.name,
+          };
+        } else if (item.status === "suggested") {
+          const hist = item.candidates.find((c) => c.via === "history");
+          if (hist) {
+            initialConf[item.rawName] = {
+              action: "link",
+              canonicalName: hist.name,
+            };
+          }
+        } else if (item.status === "new") {
+          initialConf[item.rawName] = {
+            action: "create",
+            canonicalName: item.rawName,
+            shortName: item.suggestedShortName || item.rawName.replace(/\s+/g, "").slice(0, 2),
+          };
+        }
+      }
+      setSubjectConfirmations(initialConf);
+
       // 교사 매칭 초기 매핑 구축
       const allRows: AssembledHoursRow[] = [...(finData.rows || []), ...(finData.creativeRows || [])];
       const distinctNames = Array.from(new Set(allRows.map((r) => r.teacherName).filter(Boolean)));
@@ -586,28 +608,120 @@ export default function AssignmentHoursModal({
     }
   };
 
-  // 배정표에서 추출된 고유 과목명 목록 (과목 연결 드롭다운용)
-  const assignmentSubjectsList = useMemo(() => {
-    return Array.from(new Set(extractedRows.map((r) => r.subjectName))).sort((a, b) =>
-      a.localeCompare(b, "ko")
-    );
-  }, [extractedRows]);
+  // 과목 대조 상태별 분류 및 미확정 계산
+  const exactResolutions = useMemo(
+    () => subjectResolutions.filter((r) => r.status === "exact"),
+    [subjectResolutions]
+  );
+  const suggestedResolutions = useMemo(
+    () => subjectResolutions.filter((r) => r.status === "suggested"),
+    [subjectResolutions]
+  );
+  const newResolutions = useMemo(
+    () => subjectResolutions.filter((r) => r.status === "new"),
+    [subjectResolutions]
+  );
+
+  const allKnownSubjectNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const item of subjectResolutions) {
+      if (item.resolved?.name) names.add(item.resolved.name);
+      for (const c of item.candidates) {
+        if (c.name) names.add(c.name);
+      }
+    }
+    for (const r of extractedRows) {
+      if (r.subjectName) names.add(r.subjectName);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "ko"));
+  }, [subjectResolutions, extractedRows]);
+
+  const unconfirmedCount = useMemo(() => {
+    let count = 0;
+    for (const item of subjectResolutions) {
+      const conf = subjectConfirmations[item.rawName];
+      if (item.fromSimulStatus && conf?.skipped) continue;
+      if (!conf) {
+        count++;
+      } else if (conf.action === "link" && !conf.canonicalName) {
+        count++;
+      } else if (conf.action === "create" && !conf.shortName?.trim()) {
+        count++;
+      }
+    }
+    return count;
+  }, [subjectResolutions, subjectConfirmations]);
+
+  const handleSelectSuggested = (rawName: string, selectedValue: string) => {
+    if (selectedValue === "__create_new__") {
+      setSubjectConfirmations((prev) => ({
+        ...prev,
+        [rawName]: {
+          action: "create",
+          canonicalName: rawName,
+          shortName: rawName.replace(/\s+/g, "").slice(0, 2),
+          skipped: false,
+        },
+      }));
+    } else {
+      setSubjectConfirmations((prev) => ({
+        ...prev,
+        [rawName]: {
+          action: "link",
+          canonicalName: selectedValue,
+          skipped: false,
+        },
+      }));
+    }
+  };
+
+  const handleUpdateShortName = (rawName: string, shortName: string) => {
+    setSubjectConfirmations((prev) => ({
+      ...prev,
+      [rawName]: {
+        action: "create",
+        canonicalName: rawName,
+        shortName,
+        skipped: false,
+      },
+    }));
+  };
+
+  const handleSwitchToLink = (rawName: string, targetCanonicalName: string) => {
+    setSubjectConfirmations((prev) => ({
+      ...prev,
+      [rawName]: {
+        action: "link",
+        canonicalName: targetCanonicalName,
+        skipped: false,
+      },
+    }));
+  };
+
+  const handleToggleSkip = (rawName: string) => {
+    setSubjectConfirmations((prev) => {
+      const cur = prev[rawName] || { action: "link", canonicalName: "" };
+      return {
+        ...prev,
+        [rawName]: {
+          ...cur,
+          skipped: !cur.skipped,
+        },
+      };
+    });
+  };
 
   // 이슈 분리 (9c-I 확인 모달 관례)
   const errorIssues = useMemo(() => issues.filter((i) => i.severity === "error"), [issues]);
   const rawNoticeIssues = useMemo(() => issues.filter((i) => i.severity === "notice"), [issues]);
 
-  // v2: 고지성 이슈 카테고리별 분류 및 과목 연결 대조 재계산
+  // v2: 고지성 이슈 카테고리별 분류
   const {
-    unmatchedSubjectItems,
-    resolvedSubjectItems,
     movedHostItems,
     sharedAssignmentGroups,
     bandMismatchItems,
     otherNoticeItems,
   } = useMemo(() => {
-    const unmatched: Array<{ rawSubject: string; issue: AssignmentIssue }> = [];
-    const resolved: Array<{ rawSubject: string; mappedSubject: string; classNums: number[] }> = [];
     const moved: Array<{
       grade: number;
       subject: string;
@@ -632,23 +746,7 @@ export default function AssignmentHoursModal({
     for (const iss of rawNoticeIssues) {
       const t = iss.text;
 
-      // 1. "과목을 배정표에서 찾지 못했습니다"
-      const unmatchM = t.match(/이동수업\s*현황의\s*「(.+?)」\s*과목을\s*배정표에서\s*찾지\s*못했습니다/);
-      if (unmatchM) {
-        const rawSubject = unmatchM[1].trim();
-        const mapped = simulSubjectMappings[rawSubject];
-        if (mapped) {
-          // 클라이언트에서 연결된 과목의 배정 행 재계산
-          const assignedRows = extractedRows.filter((r) => r.subjectName === mapped);
-          const classNums = Array.from(new Set(assignedRows.map((r) => r.classNum))).sort((a, b) => a - b);
-          resolved.push({ rawSubject, mappedSubject: mapped, classNums });
-        } else {
-          unmatched.push({ rawSubject, issue: iss });
-        }
-        continue;
-      }
-
-      // 2. 이동수업 개설 반 정규화 ("옮겼습니다")
+      // 1. 이동수업 개설 반 정규화 ("옮겼습니다")
       const moveM = t.match(
         /^(\d+)학년\s+([^\s(]+)\s*\(([^)]+)\):\s*배정표의\s*(\d+)반\s*표기를\s*이동수업\s*개설\s*반인\s*(\d+)반으로\s*옮겼습니다/
       );
@@ -664,7 +762,7 @@ export default function AssignmentHoursModal({
         continue;
       }
 
-      // 3. 분담 배정 ("두 분이 나눠 맡습니다")
+      // 2. 분담 배정 ("두 분이 나눠 맡습니다")
       const sharedM = t.match(/^(.+?)\s+(\d+)학년\s+(\d+)반:\s+(.+?)\s+두 분이/);
       if (sharedM || iss.code === "shared-assignment") {
         const subject = sharedM ? sharedM[1].trim() : iss.dept || "교과";
@@ -677,7 +775,7 @@ export default function AssignmentHoursModal({
         continue;
       }
 
-      // 4. 밴드 대조 ("이동수업 밴드 반...과 배정표 반...이 다릅니다")
+      // 3. 밴드 대조 ("이동수업 밴드 반...과 배정표 반...이 다릅니다")
       const bandM = t.match(
         /^(\d+)학년\s+([^:]+):\s*이동수업\s*밴드\s*반\(([^)]+)\)과\s*배정표\s*반\(([^)]*)\)이\s*다릅니다/
       );
@@ -692,7 +790,7 @@ export default function AssignmentHoursModal({
         continue;
       }
 
-      // 5. 기타 고지
+      // 4. 기타 고지
       other.push(iss);
     }
 
@@ -703,14 +801,12 @@ export default function AssignmentHoursModal({
     }));
 
     return {
-      unmatchedSubjectItems: unmatched,
-      resolvedSubjectItems: resolved,
       movedHostItems: moved,
       sharedAssignmentGroups: sharedGroups,
       bandMismatchItems: band,
       otherNoticeItems: other,
     };
-  }, [rawNoticeIssues, simulSubjectMappings, extractedRows]);
+  }, [rawNoticeIssues]);
 
   // 전체 고유 교사 목록
   const distinctTeachersList = useMemo(() => {
@@ -784,6 +880,11 @@ export default function AssignmentHoursModal({
       return;
     }
 
+    if (unconfirmedCount > 0) {
+      alert(`아직 확인되지 않은 과목이 ${unconfirmedCount}개 있습니다. 과목 이름 맞추기를 완료해 주세요.`);
+      return;
+    }
+
     // 미매칭 교사 확인
     const unmappedTeachers = distinctTeachersList.filter((tName) => !teacherMappings[tName]);
     if (unmappedTeachers.length > 0) {
@@ -846,7 +947,7 @@ export default function AssignmentHoursModal({
       }
     }
 
-    // 결과 화면에 표시 중인 확인 목록 (살펴볼 점 + 확인해 두면 좋은 점) 수집 (연결 해제된 것 제외)
+    // 결과 화면에 표시 중인 확인 목록 (살펴볼 점 + 확인해 두면 좋은 점) 수집
     const activeIssues: Array<{ severity: "error" | "notice"; text: string }> = [];
 
     // 1. 에러성 이슈 (살펴볼 점)
@@ -855,27 +956,46 @@ export default function AssignmentHoursModal({
     }
 
     // 2. 고지성 이슈 (확인해 두면 좋은 점)
-    // 2-1) 미연결 이동수업 과목 (연결된 과목은 제외)
-    for (const item of unmatchedSubjectItems) {
-      activeIssues.push({ severity: "notice", text: item.issue.text });
-    }
-    // 2-2) 개설 반 정규화 이동
     for (const item of movedHostItems) {
       activeIssues.push({ severity: "notice", text: item.issue.text });
     }
-    // 2-3) 분담 배정
     for (const group of sharedAssignmentGroups) {
       for (const item of group.items) {
         activeIssues.push({ severity: "notice", text: item.issue.text });
       }
     }
-    // 2-4) 이동수업 밴드 대조
     for (const item of bandMismatchItems) {
       activeIssues.push({ severity: "notice", text: item.issue.text });
     }
-    // 2-5) 기타 고지
     for (const item of otherNoticeItems) {
       activeIssues.push({ severity: "notice", text: item.text });
+    }
+
+    // 확정 과목 목록 조립
+    const finalConfirmations: SubjectConfirmation[] = [];
+    for (const item of subjectResolutions) {
+      const conf = subjectConfirmations[item.rawName];
+      if (item.fromSimulStatus && conf?.skipped) continue;
+      if (conf && conf.action === "create" && conf.shortName?.trim()) {
+        finalConfirmations.push({
+          rawName: item.rawName,
+          action: "create",
+          canonicalName: conf.canonicalName || item.rawName,
+          shortName: conf.shortName.trim(),
+        });
+      } else if (conf && conf.action === "link" && conf.canonicalName) {
+        finalConfirmations.push({
+          rawName: item.rawName,
+          action: "link",
+          canonicalName: conf.canonicalName,
+        });
+      } else if (item.status === "exact" && item.resolved) {
+        finalConfirmations.push({
+          rawName: item.rawName,
+          action: "link",
+          canonicalName: item.resolved.name,
+        });
+      }
     }
 
     const targetTermId = activeTermId || `${targetYear}-${targetSemester}`;
@@ -885,6 +1005,7 @@ export default function AssignmentHoursModal({
       targetSemester,
       targetTermId,
       issues: activeIssues,
+      subjectConfirmations: finalConfirmations,
     });
     handleClose();
   };
@@ -1297,6 +1418,325 @@ export default function AssignmentHoursModal({
                 </div>
               </div>
 
+              {/* ── 과목 이름 맞추기 (단일 사전 관문) ── */}
+              {subjectResolutions.length > 0 && (
+                <div className="bg-gradient-to-b from-indigo-50/60 to-white border border-indigo-200 rounded-2xl p-4 space-y-4 shadow-xs">
+                  {/* 상단 헤더 & 상태 배지 */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-100 pb-3">
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                        <span>🏷️ 과목 이름 맞추기</span>
+                        <span className="text-xs text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded-full font-medium">
+                          총 {subjectResolutions.length}개 과목
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        배정표 및 문서의 과목 이름을 시간표 시스템의 정식 과목과 연결합니다. 한 번 확인하면 다음 학기에도 자동으로 기억됩니다.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                      {exactResolutions.length > 0 && (
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-medium">
+                          ✅ 자동 연결 {exactResolutions.length}
+                        </span>
+                      )}
+                      {suggestedResolutions.length > 0 && (
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded font-medium">
+                          🔍 확인 필요 {suggestedResolutions.length}
+                        </span>
+                      )}
+                      {newResolutions.length > 0 && (
+                        <span className="px-2 py-0.5 bg-purple-100 text-purple-900 rounded font-medium">
+                          ✨ 신규 등록 {newResolutions.length}
+                        </span>
+                      )}
+                      {unconfirmedCount > 0 ? (
+                        <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded font-bold animate-pulse">
+                          ⚠️ 미확정 {unconfirmedCount}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold border border-indigo-200 rounded">
+                          확인 완료
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 1. 자동 연결된 과목 (exact) — 기본 접힘 */}
+                  {exactResolutions.length > 0 && (
+                    <div className="border border-emerald-200 bg-emerald-50/30 rounded-xl overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedExact((prev) => !prev)}
+                        className="w-full px-3.5 py-2 bg-emerald-50/70 hover:bg-emerald-100/60 flex items-center justify-between text-left transition-colors"
+                      >
+                        <div className="flex items-center gap-2 text-xs text-emerald-950 font-bold">
+                          <span>✅ 이미 등록된 과목 ({exactResolutions.length}건)</span>
+                          <span className="text-[11px] text-emerald-700 font-normal">
+                            — 시스템에 등록된 과목 표기와 정확히 일치하여 자동 연결되었습니다
+                          </span>
+                        </div>
+                        <span className="text-xs text-emerald-800 font-bold">
+                          {expandedExact ? "▲ 접기" : "▼ 펼치기"}
+                        </span>
+                      </button>
+
+                      {expandedExact && (
+                        <div className="p-3 bg-white grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                          {exactResolutions.map((item) => (
+                            <div
+                              key={item.rawName}
+                              className="px-2.5 py-1.5 bg-emerald-50/50 border border-emerald-200 rounded-lg flex items-center justify-between text-xs"
+                            >
+                              <span className="font-bold text-gray-900 truncate" title={item.rawName}>
+                                {item.rawName}
+                              </span>
+                              <span className="text-[11px] text-emerald-700 font-mono">
+                                {item.resolved?.name}
+                                {item.resolved?.shortName && item.resolved.shortName !== item.resolved.name && ` (${item.resolved.shortName})`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 2. 확인 후보 과목 (suggested) */}
+                  {suggestedResolutions.length > 0 && (
+                    <div className="border border-amber-200 bg-white rounded-xl p-3 space-y-2.5">
+                      <div className="font-bold text-amber-950 text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span>🔍 연결할 과목 확인 ({suggestedResolutions.length}건)</span>
+                          <span className="text-[11px] text-gray-500 font-normal">
+                            — 배정표 표기와 비슷한 기존 과목을 선택해 주세요
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 divide-y divide-gray-100">
+                        {suggestedResolutions.map((item) => {
+                          const conf = subjectConfirmations[item.rawName];
+                          const isSkipped = item.fromSimulStatus && conf?.skipped;
+                          const isCreateMode = conf?.action === "create";
+                          const historyCand = item.candidates.find((c) => c.via === "history");
+
+                          return (
+                            <div
+                              key={item.rawName}
+                              className={`pt-2 first:pt-0 flex flex-col md:flex-row md:items-center justify-between gap-2 p-2 rounded-lg transition-colors ${
+                                isSkipped
+                                  ? "bg-gray-50 opacity-60"
+                                  : !conf?.canonicalName && !isCreateMode
+                                  ? "bg-amber-50/60 border border-amber-200"
+                                  : "bg-white"
+                              }`}
+                            >
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-gray-900 text-xs">「{item.rawName}」</span>
+                                  {item.fromSimulStatus && (
+                                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-medium text-[10px]">
+                                      이동수업 현황 문서 표기
+                                    </span>
+                                  )}
+                                  {historyCand && !isCreateMode && (
+                                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px]">
+                                      이전 기록 있음
+                                    </span>
+                                  )}
+                                </div>
+                                {historyCand && !isCreateMode && (
+                                  <p className="text-[11px] text-gray-500">
+                                    과거에 「{historyCand.name}」({historyCand.shortName})으로 확정한 기록이 있습니다.
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                {isCreateMode ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[11px] text-gray-600 font-medium">새 과목 약칭:</span>
+                                    <input
+                                      type="text"
+                                      value={conf.shortName || ""}
+                                      onChange={(e) => handleUpdateShortName(item.rawName, e.target.value)}
+                                      placeholder="2글자 약칭"
+                                      className="w-24 px-2 py-1 bg-white border border-gray-300 rounded text-xs font-bold text-gray-900 text-center"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSwitchToLink(item.rawName, item.candidates[0]?.name || "")}
+                                      className="text-[11px] text-indigo-600 hover:underline px-1"
+                                    >
+                                      기존 과목 목록에서 선택
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <select
+                                      value={conf?.canonicalName || ""}
+                                      onChange={(e) => handleSelectSuggested(item.rawName, e.target.value)}
+                                      disabled={isSkipped}
+                                      className="px-2.5 py-1 bg-white border border-gray-300 rounded text-xs font-bold text-indigo-900 focus:ring-1 focus:ring-indigo-500"
+                                    >
+                                      <option value="">어느 과목인지 선택 ▼</option>
+                                      {item.candidates.map((c) => (
+                                        <option key={`${c.via}-${c.name}`} value={c.name}>
+                                          {c.via === "history" ? `⭐ [이전 기록] ${c.name} (${c.shortName})` : `[추천] ${c.name} (${c.shortName})`}
+                                        </option>
+                                      ))}
+                                      {allKnownSubjectNames
+                                        .filter((s) => !item.candidates.some((c) => c.name === s))
+                                        .map((s) => (
+                                          <option key={`other-${s}`} value={s}>
+                                            {s}
+                                          </option>
+                                        ))}
+                                      <option value="__create_new__">+ 「{item.rawName}」 새 과목으로 등록</option>
+                                    </select>
+                                  </div>
+                                )}
+
+                                {/* 이동수업 현황 표기 전용: 이번에 확정 안 함 (건너뛰기) */}
+                                {item.fromSimulStatus && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleSkip(item.rawName)}
+                                    className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
+                                      isSkipped
+                                        ? "bg-gray-200 border-gray-300 text-gray-700 font-bold"
+                                        : "bg-white border-gray-200 text-gray-500 hover:bg-gray-100"
+                                    }`}
+                                  >
+                                    {isSkipped ? "건너뜀 (확인하기로 복원)" : "이번에 확정 안 함(건너뛰기)"}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. 새로 등록할 과목 (new) */}
+                  {newResolutions.length > 0 && (
+                    <div className="border border-purple-200 bg-white rounded-xl p-3 space-y-2.5">
+                      <div className="font-bold text-purple-950 text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span>✨ 새로 등록할 과목 ({newResolutions.length}건)</span>
+                          <span className="text-[11px] text-gray-500 font-normal">
+                            — 시스템에 처음 등록되는 과목입니다. 2글자 약칭을 확인해 주세요
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 divide-y divide-gray-100">
+                        {newResolutions.map((item) => {
+                          const conf = subjectConfirmations[item.rawName];
+                          const isSkipped = item.fromSimulStatus && conf?.skipped;
+                          const isLinkMode = conf?.action === "link";
+
+                          return (
+                            <div
+                              key={item.rawName}
+                              className={`pt-2 first:pt-0 flex flex-col md:flex-row md:items-center justify-between gap-2 p-2 rounded-lg transition-colors ${
+                                isSkipped ? "bg-gray-50 opacity-60" : "bg-white"
+                              }`}
+                            >
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-gray-900 text-xs">「{item.rawName}」</span>
+                                  <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded font-medium text-[10px]">
+                                    신규 과목
+                                  </span>
+                                  {item.fromSimulStatus && (
+                                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-medium text-[10px]">
+                                      이동수업 현황 문서 표기
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-gray-500">
+                                  시간표 칸에 표시될 약칭을 지정하여 과목으로 등록합니다.
+                                </p>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                {isLinkMode ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <select
+                                      value={conf.canonicalName || ""}
+                                      onChange={(e) => handleSwitchToLink(item.rawName, e.target.value)}
+                                      disabled={isSkipped}
+                                      className="px-2.5 py-1 bg-white border border-gray-300 rounded text-xs font-bold text-indigo-900"
+                                    >
+                                      <option value="">연결할 기존 과목 선택 ▼</option>
+                                      {allKnownSubjectNames.map((s) => (
+                                        <option key={s} value={s}>{s}</option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleUpdateShortName(
+                                          item.rawName,
+                                          item.suggestedShortName || item.rawName.replace(/\s+/g, "").slice(0, 2)
+                                        )
+                                      }
+                                      className="text-[11px] text-purple-700 hover:underline px-1"
+                                    >
+                                      새 과목 등록으로 전환
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[11px] text-gray-600 font-medium">표시 약칭:</span>
+                                    <input
+                                      type="text"
+                                      value={conf?.shortName || ""}
+                                      onChange={(e) => handleUpdateShortName(item.rawName, e.target.value)}
+                                      disabled={isSkipped}
+                                      placeholder="2글자 약칭"
+                                      className="w-24 px-2 py-1 bg-white border border-purple-300 focus:border-purple-500 rounded text-xs font-bold text-purple-950 text-center"
+                                    />
+                                    {allKnownSubjectNames.length > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSwitchToLink(item.rawName, allKnownSubjectNames[0])}
+                                        className="text-[11px] text-indigo-600 hover:underline px-1"
+                                      >
+                                        기존 과목에 연결
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* 이동수업 현황 표기 전용: 이번에 확정 안 함 (건너뛰기) */}
+                                {item.fromSimulStatus && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleSkip(item.rawName)}
+                                    className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
+                                      isSkipped
+                                        ? "bg-gray-200 border-gray-300 text-gray-700 font-bold"
+                                        : "bg-white border-gray-200 text-gray-500 hover:bg-gray-100"
+                                    }`}
+                                  >
+                                    {isSkipped ? "건너뜀 (확인하기로 복원)" : "이번에 확정 안 함(건너뛰기)"}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* 점검 이슈 목록 (9c-I 확인 모달 분리 관례 + v2 출구 달기) */}
               <div className="space-y-4">
                 {/* 1) 오류성 이슈: 짜기 전에 살펴볼 점 */}
@@ -1345,8 +1785,8 @@ export default function AssignmentHoursModal({
                   </div>
                 )}
 
-                {/* 2) 고지성 이슈: 확인해 두면 좋은 점 (v2: 과목별 접기/펼치기 + 연결 드롭다운 + 이동 강조) */}
-                {(rawNoticeIssues.length > 0 || resolvedSubjectItems.length > 0) && (
+                {/* 2) 고지성 이슈: 확인해 두면 좋은 점 */}
+                {rawNoticeIssues.length > 0 && (
                   <div className="bg-slate-50 border border-slate-300 rounded-xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="font-bold text-slate-900 flex items-center gap-1.5">
@@ -1357,94 +1797,7 @@ export default function AssignmentHoursModal({
                       </span>
                     </div>
 
-                    {/* 2-1) 이동수업 과목명 미대조 및 연결 드롭다운 (Req 3) */}
-                    {(unmatchedSubjectItems.length > 0 || resolvedSubjectItems.length > 0) && (
-                      <div className="space-y-2 bg-white border border-slate-200 rounded-lg p-3">
-                        <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                          <span>🔗 이동수업 현황 과목 연결</span>
-                          <span className="text-[11px] text-slate-500 font-normal">
-                            (배정표 표기와 다른 과목명을 1:1로 연결합니다)
-                          </span>
-                        </div>
-
-                        {/* 미연결 과목 목록 */}
-                        {unmatchedSubjectItems.map(({ rawSubject, issue }, idx) => (
-                          <div
-                            key={idx}
-                            className="bg-amber-50/70 border border-amber-200 rounded-lg p-2.5 flex flex-col md:flex-row md:items-center justify-between gap-2"
-                          >
-                            <div className="text-amber-950 font-medium">
-                              이동수업 현황의 <strong>「{rawSubject}」</strong> 과목을 배정표에서 찾지 못했습니다
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <select
-                                value={simulSubjectMappings[rawSubject] || ""}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setSimulSubjectMappings((prev) => {
-                                    const next = { ...prev };
-                                    if (val) next[rawSubject] = val;
-                                    else delete next[rawSubject];
-                                    return next;
-                                  });
-                                }}
-                                className="px-2.5 py-1 bg-white border border-amber-300 rounded text-xs font-bold text-indigo-900"
-                              >
-                                <option value="">배정표의 어느 과목인지 연결 ▼</option>
-                                {assignmentSubjectsList.map((s) => (
-                                  <option key={s} value={s}>
-                                    {s}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                        ))}
-
-                        {/* 연결 완료된 과목 목록 */}
-                        {resolvedSubjectItems.map(({ rawSubject, mappedSubject, classNums }) => (
-                          <div
-                            key={rawSubject}
-                            onClick={() =>
-                              handleFilterByIssue({
-                                subject: mappedSubject,
-                                label: `${mappedSubject} (${rawSubject} 연결됨)`,
-                              })
-                            }
-                            className="bg-emerald-50/80 border border-emerald-200 rounded-lg p-2.5 flex items-center justify-between gap-2 cursor-pointer hover:bg-emerald-100/70 transition-colors"
-                          >
-                            <div className="text-emerald-950 font-medium">
-                              ✅ 이동수업 <strong>「{rawSubject}」</strong> → 배정표 <strong>「{mappedSubject}」</strong> 과목과 연결되었습니다
-                              <span className="text-emerald-700 ml-2 font-bold font-mono">
-                                ({classNums.join("·")}반 {classNums.length}개 반 배정 확인)
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[11px] text-indigo-700 font-bold px-2 py-0.5 bg-white border border-emerald-200 rounded">
-                                🔍 수업 확인
-                              </span>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSimulSubjectMappings((prev) => {
-                                    const next = { ...prev };
-                                    delete next[rawSubject];
-                                    return next;
-                                  });
-                                }}
-                                className="text-xs text-gray-400 hover:text-red-500 font-bold px-1"
-                                title="연결 해제"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* 2-2) 이동수업 개설 반 정규화 ("옮겼습니다" - Req 4) */}
+                    {/* 2-1) 이동수업 개설 반 정규화 ("옮겼습니다") */}
                     {movedHostItems.length > 0 && (
                       <div className="border border-slate-200 bg-white rounded-lg overflow-hidden">
                         <div
@@ -1504,7 +1857,7 @@ export default function AssignmentHoursModal({
                       </div>
                     )}
 
-                    {/* 2-3) 분담 배정 (Req 1: 과목별 접기/펼치기) */}
+                    {/* 2-2) 분담 배정 */}
                     {sharedAssignmentGroups.length > 0 && (
                       <div className="border border-slate-200 bg-white rounded-lg overflow-hidden">
                         <div
@@ -1575,7 +1928,7 @@ export default function AssignmentHoursModal({
                       </div>
                     )}
 
-                    {/* 2-4) 이동수업 밴드 대조 (Req 1: 접기/펼치기) */}
+                    {/* 2-3) 이동수업 밴드 대조 */}
                     {bandMismatchItems.length > 0 && (
                       <div className="border border-slate-200 bg-white rounded-lg overflow-hidden">
                         <div
@@ -1630,7 +1983,7 @@ export default function AssignmentHoursModal({
                       </div>
                     )}
 
-                    {/* 2-5) 기타 고지 항목 */}
+                    {/* 2-4) 기타 고지 항목 */}
                     {otherNoticeItems.length > 0 && (
                       <div className="space-y-1.5 pt-1">
                         {otherNoticeItems.map((iss, idx) => {
@@ -1931,9 +2284,14 @@ export default function AssignmentHoursModal({
               <button
                 type="button"
                 onClick={handleApplyToPlan}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs shadow-sm transition-colors flex items-center gap-1.5"
+                disabled={unconfirmedCount > 0}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg text-xs shadow-sm transition-colors flex items-center gap-1.5"
+                title={unconfirmedCount > 0 ? `과목 이름 맞추기 미확정 ${unconfirmedCount}건이 남아 있습니다` : undefined}
               >
-                <span>📥 시수 계획으로 불러오기</span>
+                <span>
+                  📥 시수 계획으로 불러오기
+                  {unconfirmedCount > 0 ? ` (미확인 ${unconfirmedCount}개)` : ""}
+                </span>
               </button>
             )}
           </div>

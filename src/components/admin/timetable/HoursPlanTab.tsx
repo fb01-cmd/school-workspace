@@ -13,7 +13,8 @@ import {
 import { parseHoursExcel, ParsedHoursResult } from "@/lib/timetable/excelHoursParser";
 import { expandCohortFixedBlocks, impliedHoursFromFixedBlocks } from "@/lib/timetable/cohort";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
-import AssignmentHoursModal, { parseIssueTarget, issueGuidance, subjectLooseMatch } from "./AssignmentHoursModal";
+import AssignmentHoursModal, { parseIssueTarget, issueGuidance } from "./AssignmentHoursModal";
+import { SubjectConfirmation } from "@/lib/timetable/subjectDict";
 
 interface HoursPlanTabProps {
   activeTermId?: string | null;
@@ -162,6 +163,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
 
   // 배정표 자동 생성 모달 상태
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
+  const [pendingSubjectConfirmations, setPendingSubjectConfirmations] = useState<SubjectConfirmation[] | null>(null);
 
   // 필터 상태 (기본값: 1학년 선택으로 초기 렌더 행 수 축소)
   const [filterGrade, setFilterGrade] = useState<number | "all">(1);
@@ -308,6 +310,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         setSelectedPlanId(planId);
         setCurrentPlan(data.plan);
         setOriginalRowsSnapshot(JSON.stringify(data.plan.rows || []));
+        setPendingSubjectConfirmations(null);
       } else {
         setError(data.error || "선택한 계획을 불러오지 못했습니다.");
       }
@@ -343,6 +346,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         setCurrentPlan(data.plan);
         setSelectedPlanId(data.plan.id);
         setOriginalRowsSnapshot(JSON.stringify(data.plan.rows || []));
+        setPendingSubjectConfirmations(null);
         setDeriveLabel("");
         const simulCount = (data.plan.rows || []).filter((r: any) => r.simulGroupId).length;
         const venueCount = (data.plan.rows || []).filter((r: any) => (r.venueHours || 0) > 0).length;
@@ -507,6 +511,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     setCurrentPlan(newPlan);
     setSelectedPlanId(newPlan.id);
     setOriginalRowsSnapshot(JSON.stringify(newRows));
+    setPendingSubjectConfirmations(null);
     setUploadModalOpen(false);
     setExcelResult(null);
     setSuccessMessage(`엑셀에서 ${newRows.length}개의 수업 시간을 성공적으로 불러왔습니다.`);
@@ -520,12 +525,14 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     targetSemester,
     targetTermId,
     issues,
+    subjectConfirmations,
   }: {
     rows: HoursPlanRow[];
     targetYear: number;
     targetSemester: number;
     targetTermId: string;
     issues: Array<{ severity: "error" | "notice"; text: string }>;
+    subjectConfirmations: SubjectConfirmation[];
   }) => {
     const defaultGradeDayPeriods: Record<number, Record<number, number>> = {
       1: { 1: 7, 2: 7, 3: 7, 4: 7, 5: 6 },
@@ -556,6 +563,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     setCurrentPlan(newPlan);
     setSelectedPlanId(newPlan.id);
     setOriginalRowsSnapshot(JSON.stringify(rows));
+    setPendingSubjectConfirmations(subjectConfirmations ?? []);
     setReviewNotesExpanded(null);
     setSuccessMessage(
       `배정표에서 ${rows.length}개의 수업 시간을 성공적으로 불러왔습니다. 확인 목록을 점검하고 우측 상단의 '💾 저장' 버튼을 눌러주세요.`
@@ -582,6 +590,8 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
           gradeDayPeriods: currentPlan.gradeDayPeriods,
           planStatus: currentPlan.status,
           reviewNotes: currentPlan.reviewNotes,
+          subjectConfirmations:
+            pendingSubjectConfirmations !== null ? pendingSubjectConfirmations : undefined,
         }),
       });
       const data = await res.json();
@@ -589,6 +599,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         setCurrentPlan(data.plan);
         setSelectedPlanId(data.plan.id);
         setOriginalRowsSnapshot(JSON.stringify(data.plan.rows || []));
+        setPendingSubjectConfirmations(null);
         setSuccessMessage("선생님별 주당 수업 시간이 안전하게 저장되었습니다.");
         setTimeout(() => setSuccessMessage(null), 3000);
 
@@ -850,16 +861,10 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
       if (filterSearch) {
         const q = filterSearch.toLowerCase();
         const sub = (r.subjectName || "").toLowerCase();
+        const sShort = (r.subjectShort || "").toLowerCase();
         const tName = (r.teacherName || "").toLowerCase();
         const tEmail = (r.teacherEmail || "").toLowerCase();
-        // 확인 목록은 이동수업 자료의 줄임말("화Ⅱ")로 검색을 걸 수 있다 — 표는 배정표
-        // 표기("화학Ⅱ")이므로 느슨 매칭도 함께 본다 (빈 표 출구 사고, 2026-08-16)
-        if (
-          !sub.includes(q) &&
-          !tName.includes(q) &&
-          !tEmail.includes(q) &&
-          !subjectLooseMatch(r.subjectName || "", filterSearch)
-        )
+        if (!sub.includes(q) && !sShort.includes(q) && !tName.includes(q) && !tEmail.includes(q))
           return false;
       }
       return true;
