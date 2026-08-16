@@ -8309,7 +8309,14 @@ export async function prepareHoursAssignmentJob(
     if (parsed.semesterTitle)
       baseIssues.push(..._validateTitleSemester(parsed.semesterTitle, expected, "이동수업 현황"));
     if (!simul) simul = { grade: parsed.grade, entries: [], standalone: [] };
-    simul.entries.push(...parsed.entries);
+    // Firestore는 undefined 필드를 거부 — 개설 반 미상(hostClassNum 없음) 항목은 키 자체를 뺀다
+    simul.entries.push(
+      ...parsed.entries.map((e) => {
+        if (e.hostClassNum != null) return e;
+        const { hostClassNum: _drop, ...rest } = e;
+        return rest;
+      })
+    );
     simul.standalone = [...(simul.standalone || []), ...(parsed.standalone || [])];
   }
 
