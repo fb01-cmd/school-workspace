@@ -581,15 +581,19 @@ export function validateSimulStatus(
     const want = new Set(e.classNums);
     const missing = e.classNums.filter((c) => !assigned.has(c));
     const extra = [...assigned].filter((c) => !want.has(c));
+    const overlap = e.classNums.filter((c) => assigned.has(c)).length;
     if (missing.length || extra.length)
       issues.push({
         severity: "notice",
         code: "simul-status-mismatch",
         text:
-          `${e.grade}학년 ${subject}: 이동수업 밴드 반(${e.classNums.join("·")})과 배정표 반(${[...assigned].sort((a, b) => a - b).join("·") || "없음"})이 다릅니다 — ` +
-          `밴드에서 다른 과목을 듣는 반이거나 단독 개설 반이면 정상입니다 (확인용)` +
-          (missing.length ? ` · 밴드에만 있는 반: ${missing.join("·")}` : "") +
-          (extra.length ? ` · 배정에만 있는 반: ${extra.join("·")}` : ""),
+          overlap === 0
+            ? // 겹치는 반이 0 = 대개 이름만 비슷한 서로 다른 수업 (과학 ↔ 과학사 실사고 2026-08-16)
+              `${e.grade}학년 ${subject}: 이동수업 자료의 「${subject}」(${e.classNums.join("·")}반)과 배정표에서 이름이 비슷한 과목(${[...assigned].sort((a, b) => a - b).join("·")}반)은 겹치는 반이 하나도 없습니다 — 이름만 비슷한 서로 다른 수업일 가능성이 큽니다. 서로 다른 수업이 맞다면 조치 없이 확인 체크만 하면 됩니다`
+            : `${e.grade}학년 ${subject}: 이동수업 밴드 반(${e.classNums.join("·")})과 배정표 반(${[...assigned].sort((a, b) => a - b).join("·")})이 다릅니다 — ` +
+              `밴드에서 다른 과목을 듣는 반이거나 단독 개설 반이면 정상입니다 (확인용)` +
+              (missing.length ? ` · 밴드에만 있는 반: ${missing.join("·")}` : "") +
+              (extra.length ? ` · 배정에만 있는 반: ${extra.join("·")}` : ""),
       });
   }
   return issues;

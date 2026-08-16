@@ -190,6 +190,8 @@ export function issueGuidance(text: string): string | null {
     return "조치가 필요 없는 안내입니다. 읽으셨으면 확인 체크만 하면 됩니다.";
   if (/전 학기.*단독 수업이었/.test(text))
     return "이번 학기도 같은지는 교육과정부 자료로만 확정할 수 있습니다. 같다고 알고 계시면 확인 체크, 바뀌었다면 [해당 수업 확인]으로 표에서 반 번호를 고쳐 주세요.";
+  if (/겹치는 반이 하나도 없습니다/.test(text))
+    return "이동수업 자료의 이름과 배정표의 과목명이 비슷해 짝지어 봤지만, 반이 전혀 안 겹쳐 서로 다른 수업으로 보입니다. [해당 수업 확인]으로 배정표 쪽 과목을 보고, 정말 다른 수업이면 확인 체크만 하면 됩니다. 같은 수업인데 반이 전부 바뀐 것이라면 표에서 반 번호를 고쳐 주세요.";
   if (/밴드 반.*배정표 반.*다릅니다/.test(text))
     return "함께 이동하는 반 전체와 이 과목을 실제로 듣는 반은 다를 수 있어, 다르게 보이는 것만으로는 오류가 아닙니다. 표의 반 번호가 실제 수강 반과 맞는지만 보시고 확인 체크하면 됩니다.";
   if (/병기 표기/.test(text))
@@ -305,6 +307,14 @@ export function parseIssueTarget(iss: { text: string }): TableFilterTarget | nul
     const subject = misM[2].trim();
     const wrongGrade = parseInt(misM[3], 10);
     return { grade: wrongGrade, subject, label: `${wrongGrade}학년(오독 위치) ${subject}` };
+  }
+
+  // 5a-1b. 이름만 비슷한 남남: "2학년 과학: 이동수업 자료의 「과학」(6·8·9·10반)과 배정표에서 이름이 비슷한 과목…"
+  const noOvM = t.match(/^(\d+)학년\s+([^:]+):\s*이동수업 자료의\s*「/);
+  if (noOvM) {
+    const grade = parseInt(noOvM[1], 10);
+    const subject = noOvM[2].trim();
+    return { grade, subject, label: `${grade}학년 ${subject}(유사 이름)` };
   }
 
   // 5a-2. 보수 무이동: "2학년 인공지능기초: 배정표 반과 이동수업 개설 반(6·8)이 어긋나는데 짝이 맞지 않아…"
