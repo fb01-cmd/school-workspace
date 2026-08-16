@@ -489,6 +489,7 @@ export interface ManageTimetableRequest {
   planRows?: HoursPlanRow[];
   gradeDayPeriods?: Record<number, Record<number, number>>;
   planStatus?: "draft" | "ready";
+  reviewNotes?: HoursPlanReviewNote[];
   cohort?: Partial<CurriculumCohort>;
   cohortId?: string;
   // ── 학기 전환 스펙 (term_transition_spec) ──
