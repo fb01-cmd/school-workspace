@@ -16,6 +16,7 @@
  * 소프트 가중치는 검사기(validate.ts S1~S6)와 동일 — 최종 판정은 반드시 validateTimetable 관문.
  */
 
+import { subjectMatches } from "./hoursAssignment";
 import { buildSimulMatcher } from "./simul";
 import { buildVenueMatcher } from "./venue";
 import {
@@ -440,9 +441,18 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
     subjectName: string
   ): { roomName: string; restricted: boolean; slots: Array<{ day: number; period: number }> } | null => {
     const subj = normSubject(subjectName);
+    // 등록부는 약칭("과탐"), 계획은 정식 명칭("과학탐구실험2")일 수 있다 — 완전 일치 →
+    // 약칭 다리(term.subjects) → 줄임말 느슨 매칭 순으로 시도 (2026-08-16 실사고: 전부 미연결)
+    const short = input.subjectShorts?.[subj];
+    const nameHits = (s: string): boolean => {
+      const ns = normSubject(s);
+      if (ns === subj) return true;
+      if (short && normSubject(short) === ns) return true;
+      return subjectMatches(s, subjectName);
+    };
     for (const g of venueGroups) {
       if (g.grade !== grade || !g.classNums.includes(classNum)) continue;
-      if (!g.subjectNames.some((s) => normSubject(s) === subj)) continue;
+      if (!g.subjectNames.some(nameHits)) continue;
       return { roomName: g.roomName, restricted: !!g.slots?.length, slots: g.slots || [] };
     }
     return null;
