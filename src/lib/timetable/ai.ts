@@ -32,9 +32,21 @@
 // 교훈 갱신: "한 세대 이전이라 여유가 있다"는 전제는 더 이상 성립하지 않는다 —
 // flash 계열은 세대와 무관하게 전부 20/일이다. 여유를 만드는 축은 **세대가 아니라 lite 계열**이다.
 // 11월 9c 리허설처럼 AI를 몰아 쓰는 일정 전에는 lite 전환을 먼저 검토할 것.
-export const GEMINI_MODEL = "gemini-3.5-flash";
-/** 한도 폴백용 lite (500/일 — 25배). 3단 레버 ① (로드맵 2026-08-16): flash 429 시 배치 작업이 갈아탄다 */
-export const GEMINI_MODEL_LITE = "gemini-3.5-flash-lite";
+// **[2026-08-16 정정 — 위 별칭 철회는 무료 등급 조건부였다]** 선불 자동충전으로 유료 전환
+// (사용자 결정: 무료 원칙은 실서비스 운영 경로에만 적용, 개발 지출은 허용). 철회 사유였던
+// "최신일수록 무료 한도가 작다"가 소멸 → 별칭 복귀. 모델명 고정은 세대 폐기(2.5 404 실사고)에
+// 취약하다는 사용자 지적이 근거다. 무료 키로 되돌아가면 이 정정도 낡는다 — 그때 다시 고정할 것.
+//
+// 모델 사다리: [환경변수 강제 지정(비상 고정용)] → 최신 flash 별칭 → 최신 lite 별칭.
+// 강등 조건 = 404(세대 폐기)·429(한도). 품질 최종선은 모델이 아니라 결정론 검증
+// (시수표 = hoursAssignment 교차 검증, 시간표 = validateTimetable)이다.
+export const GEMINI_MODEL_LADDER: string[] = [
+  ...((process.env.GEMINI_MODEL_OVERRIDE || "").trim() ? [(process.env.GEMINI_MODEL_OVERRIDE || "").trim()] : []),
+  "gemini-flash-latest",
+  "gemini-flash-lite-latest",
+];
+export const GEMINI_MODEL = GEMINI_MODEL_LADDER[0];
+export const GEMINI_MODEL_LITE = GEMINI_MODEL_LADDER[GEMINI_MODEL_LADDER.length - 1];
 
 const GEMINI_ENDPOINT = (model: string, key: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
@@ -72,17 +84,21 @@ export interface Pseudonymizer {
  *   개인정보 방향으로 안전한 실패(false positive)라 허용한다.
  */
 export function buildPseudonymizer(teachers: AiTeacherRef[]): Pseudonymizer {
-  // 이름 기준 정렬로 결정론 부여 → 같은 입력 = 같은 가명 배정
-  const uniq = new Map<string, AiTeacherRef>();
+  // 이름 기준 정렬로 결정론 부여 → 같은 입력 = 같은 가명 배정.
+  // 같은 이메일의 서로 다른 표기("이서준"/"서준쌤" — 프로필 별칭 실사고 2026-08-16)는
+  // **한 가명에 이름 토큰을 전부** 싣는다 — 첫 이름만 채택하면 나머지 표기가 마스킹에서 샌다.
+  const uniq = new Map<string, { names: string[]; email: string }>();
   for (const t of teachers) {
     const name = (t.name || "").trim();
     const email = (t.email || "").trim().toLowerCase();
     if (!name && !email) continue;
     const key = email || `name:${name}`;
-    if (!uniq.has(key)) uniq.set(key, { name, email });
+    const entry = uniq.get(key) || { names: [], email };
+    if (name && !entry.names.includes(name)) entry.names.push(name);
+    uniq.set(key, entry);
   }
   const sorted = Array.from(uniq.values()).sort((a, b) =>
-    (a.name || a.email || "").localeCompare(b.name || b.email || "", "ko")
+    (a.names[0] || a.email || "").localeCompare(b.names[0] || b.email || "", "ko")
   );
 
   const aliasByToken: Array<{ token: string; alias: string }> = [];
@@ -91,9 +107,9 @@ export function buildPseudonymizer(teachers: AiTeacherRef[]): Pseudonymizer {
   sorted.forEach((t, i) => {
     const alias = `T${String(i + 1).padStart(2, "0")}`;
     if (t.email) aliasByToken.push({ token: t.email, alias });
-    if (t.name) aliasByToken.push({ token: t.name, alias });
-    nameByAlias.set(alias, t.name || t.email || alias);
-    teacherByAlias.set(alias, t);
+    for (const name of t.names) aliasByToken.push({ token: name, alias });
+    nameByAlias.set(alias, t.names[0] || t.email || alias);
+    teacherByAlias.set(alias, { name: t.names[0], email: t.email });
   });
   // 긴 토큰 먼저 — "김지구" 치환 전에 "지구"가 먼저 먹으면 "김T05" 잔여가 생긴다
   aliasByToken.sort((a, b) => b.token.length - a.token.length);
@@ -235,6 +251,10 @@ async function callGemini(prompt: string, apiKey: string, timeoutMs = CALL_TIMEO
       // 1분 안에 저절로 풀린다. "잠시 후"는 얼마나 기다릴지 몰라 답답하므로 시간을 명시한다.
       throw new AiCallError("AI 사용량이 순간적으로 몰렸습니다. 약 1분 뒤 다시 시도해 주세요.", 429);
     }
+    if (res.status === 404) {
+      // 모델 세대 폐기(2.5 404 실사고) — 사다리 강등 조건이므로 상태를 살려 보낸다
+      throw new AiCallError(`AI 모델(${model})을 더 이상 쓸 수 없습니다.`, 404);
+    }
     if (!res.ok) {
       throw new AiCallError(`AI 호출에 실패했습니다 (${res.status}).`, 502);
     }
@@ -264,7 +284,17 @@ async function callGeminiParsed<T>(
   maxOutputTokens = 8192,
   model = GEMINI_MODEL
 ): Promise<T> {
-  let parsed = parse(await callGemini(prompt, apiKey, timeoutMs, maxOutputTokens, model));
+  let parsed: T | null;
+  try {
+    parsed = parse(await callGemini(prompt, apiKey, timeoutMs, maxOutputTokens, model));
+  } catch (e) {
+    // 대화형 경로의 1단 강등: 최신 별칭이 404·429면 사다리 다음 단으로 한 번만 내려간다
+    const next = GEMINI_MODEL_LADDER[GEMINI_MODEL_LADDER.indexOf(model) + 1];
+    if (e instanceof AiCallError && (e.statusCode === 404 || e.statusCode === 429) && next) {
+      model = next;
+      parsed = parse(await callGemini(prompt, apiKey, timeoutMs, maxOutputTokens, model));
+    } else throw e;
+  }
   if (!parsed) {
     parsed = parse(
       await callGemini(
@@ -773,11 +803,12 @@ export async function runAssignmentExtract(
   }
   const p = buildPseudonymizer([...teachers, ...extra]);
   const masked = p.mask(dept.text);
-  // 배치 재시도 정책 (3단 레버 ① — 로드맵 2026-08-16):
-  //   429(한도) → **lite로 즉시 갈아탄다** (flash 일일 한도는 백오프로 안 풀린다 — 8/16 실측)
-  //   502·504(혼잡·타임아웃) → 같은 모델로 백오프 재시도
+  // 배치 재시도 = 모델 사다리 순회 (2026-08-16 사용자 설계):
+  //   429(한도)·404(세대 폐기) → 사다리 다음 단으로 강등 (일일 한도는 백오프로 안 풀린다 — 실측)
+  //   502·504(혼잡·타임아웃) → 같은 단에서 백오프 재시도
   let parsed: { gridRows: ExtractedAssignmentRow[]; personalRows: ExtractedAssignmentRow[] } | null = null;
-  let model: string = GEMINI_MODEL;
+  let rung = 0;
+  let model: string = GEMINI_MODEL_LADDER[rung];
   for (let attempt = 0; ; attempt++) {
     try {
       parsed = await callGeminiParsed(
@@ -790,9 +821,10 @@ export async function runAssignmentExtract(
       );
       break;
     } catch (e) {
-      if (!(e instanceof AiCallError) || attempt >= 3) throw e;
-      if (e.statusCode === 429 && model === GEMINI_MODEL) {
-        model = GEMINI_MODEL_LITE; // 품질은 결정론 검증 그물이 판정한다 — 틀리면 불일치로 드러남
+      if (!(e instanceof AiCallError) || attempt >= 4) throw e;
+      if ((e.statusCode === 429 || e.statusCode === 404) && rung < GEMINI_MODEL_LADDER.length - 1) {
+        rung++;
+        model = GEMINI_MODEL_LADDER[rung]; // 품질은 결정론 검증 그물이 판정한다
         continue;
       }
       if (e.statusCode === 502 || e.statusCode === 504) {

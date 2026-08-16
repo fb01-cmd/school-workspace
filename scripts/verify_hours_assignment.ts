@@ -51,8 +51,7 @@ async function loadRoster(): Promise<AiTeacherRef[]> {
         for (const l of cell.lessons || [])
           for (const t of l.teachers || []) if (t.email) add(t.name, t.email);
   }
-  const users = await adminDb.collection("users").get();
-  users.docs.forEach((d) => add(d.data().displayName || d.data().name || "", d.id));
+  // users 컬렉션 제외 — 문서 ID가 Auth UID (서버 loadTeacherNameRoster 주석 참조)
   return [...out.values()];
 }
 

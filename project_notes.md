@@ -581,3 +581,11 @@
 - **lite 품질 실측(폴백 실전 발동)**: flash 한도 소진(어제 새벽+오늘 = 태평양 같은 날) → lite로 6부서 추출. flash에서 깨끗하던 부서들이 lite에선 비고 오독 다수 — **그물이 전부 검출** = 검증 그물이 품질 게이지로도 작동. 운영 함의: flash 우선, lite 폴백 시 확인 항목이 늘 수 있음을 화면에 고지할 것(UI 몫)
 - 다음 할 일: **오후 4시경(태평양 자정) flash 리셋 후 전량 재실행 = 최종 판정** → push 승인 → UI(업로드 3칸·부서별 진행·오류/고지 분리·이메일 매칭·hours_plan_save 연결) Antigravity 인계
 - 주의: 작업 문서(timetable_hours_assignment_jobs)는 실명 포함 — 7일 자동 청소를 prepare에 편승시킴. 실명은 Firestore까지만, AI로는 가명만(불변 규약)
+
+## [2026-08-16] Claude(Fable) — 시수표 엔진 서버부 완결 + 모델 사다리 (아홉 판 실측 종결)
+
+- 변경 파일: ai.ts(모델 사다리 — 환경변수 오버라이드→flash-latest→lite-latest, 404·429 강등, 별칭 복귀 정정 각주, 가명 사전 이메일 병합) · hoursAssignment.ts·server.ts(로스터 2원 합집합 — users는 문서ID가 UID라 제외) · verify_hours_assignment.ts
+- 검증 상태: 최종판(run 9) 전 항목 ✅ — 8부서 추출 오류 0(flash-latest)·가명 잔존 0·**매칭 347/347 미매칭 0**·창체 30·이동수업 대조 오류 0·주입 검출 ✓ / ai_selftest(E1~E4 순수부) ✅ / tsc·build ✅
+- 결정 기록: Gemini 선불 자동충전(사용자) — 무료 원칙 범위 확정(운영 경로만 0원, 개발 지출 허용, memory 갱신). lite 품질 실측 = 큰 부서 분담 시수 오독 반복 → 본선 flash·lite 비상용
+- 다음 할 일: push 승인 → **UI = Antigravity**(업로드→부서별 진행→오류/고지 분리→저장은 hours_plan 편집 화면 경유) → 3학년 이동수업 파일 오면 데이터 추가
+- 주의: ① 실명 PDF를 AI에 직접 보내는 변경 금지(가명화 강제 경로 유지) ② 로스터에 users 컬렉션 재도입 금지(UID 오염) ③ 창체 행은 배정표 행과 이중 계상 위험 — UI에서 기본 미포함

@@ -8216,10 +8216,10 @@ export const hoursAssignmentJobsColRef = (domain: string) =>
   adminDb.collection("timetable_hours_assignment_jobs").doc(domain).collection("jobs");
 
 /**
- * 성명→이메일 매칭·가명화용 로스터 — 3원 합집합 (2026-08-16 실측 교훈):
+ * 성명→이메일 매칭·가명화용 로스터 — 2원 합집합 (2026-08-16 실측 교훈):
  * 프로필 이름 하나만 쓰면 빈 이름(김은호)·별칭 저장("서준쌤"=이서준)에 구멍이 난다.
  * ① teacher_profiles.name ② **현행 학기 시간표의 (교사명,이메일) 실쌍** — 가장 강한 원천,
- * 나이스 유래 실명이 이메일과 짝으로 실려 있다 ③ users.displayName. 같은 이메일의 서로 다른
+ * 나이스 유래 실명이 이메일과 짝으로 실려 있다. 같은 이메일의 서로 다른
  * 표기는 전부 별칭으로 수용한다(한 사람 = 여러 name 항목, buildPseudonymizer가 이메일로 합침).
  */
 async function loadTeacherNameRoster(domain?: string): Promise<Array<{ name: string; email: string }>> {
@@ -8247,8 +8247,9 @@ async function loadTeacherNameRoster(domain?: string): Promise<Array<{ name: str
       console.error("[hoursAssignment] 학기 시간표 로스터 보강 실패 (프로필만 사용):", (e as Error).message);
     }
   }
-  const users = await adminDb.collection("users").get();
-  users.docs.forEach((d) => add(((d.data().displayName as string) || (d.data().name as string) || ""), d.id));
+  // users 컬렉션은 넣지 않는다 — 문서 ID가 이메일이 아니라 Auth UID라서(2026-08-16 실사고:
+  // 전 실명에 가짜 두 번째 "이메일"이 붙어 매칭 17명 파괴), 그리고 배정표에 나오는 수업
+  // 교사는 프로필∪시간표 쌍이 전부 커버한다.
   return [...out.values()];
 }
 

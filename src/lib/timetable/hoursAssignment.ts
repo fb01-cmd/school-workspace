@@ -443,15 +443,18 @@ export function assembleHoursRows(
   creativeSubjectLabel: string,
   roster: Array<{ name: string; email: string }>
 ): AssembleResult {
-  // 성명→이메일: 유일할 때만 자동 매칭 (동명이인은 미매칭으로 남겨 사람이 정한다)
-  const byName = new Map<string, string[]>();
+  // 성명→이메일: **서로 다른** 이메일이 유일할 때만 자동 매칭 (동명이인은 미매칭으로 남겨
+  // 사람이 정한다). 같은 사람이 여러 소스에서 중복 들어오는 것은 Set이 흡수한다 —
+  // 배열로 세면 3소스 합집합에서 전원이 "후보 3개"가 되는 실사고 (2026-08-16).
+  const byName = new Map<string, Set<string>>();
   for (const t of roster) {
-    if (!t.name) continue;
-    byName.set(t.name, [...(byName.get(t.name) || []), t.email]);
+    if (!t.name || !t.email) continue;
+    if (!byName.has(t.name)) byName.set(t.name, new Set());
+    byName.get(t.name)!.add(t.email.toLowerCase());
   }
   const emailOf = (name: string) => {
-    const list = byName.get(name) || [];
-    return list.length === 1 ? list[0] : "";
+    const set = byName.get(name);
+    return set && set.size === 1 ? [...set][0] : "";
   };
   const unmatched = new Set<string>();
   const rows: AssembledHoursRow[] = [];
