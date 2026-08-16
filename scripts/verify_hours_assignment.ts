@@ -107,7 +107,7 @@ async function main() {
     const headerSum = headerTotals.reduce((s, t) => s + t.hours, 0);
     const aliasLeak = d.personalRows.some((r) => /^T\d{2,}$/.test(r.teacher));
     console.log(
-      `[3-${target}] 추출 ${issues.length === 0 && headerSum === personalSum && !aliasLeak ? "✅" : "❌"} — ` +
+      `[3-${target}] 추출 ${issues.length === 0 && headerSum === personalSum && !aliasLeak ? "✅" : "❌"} [${d.modelUsed || "?"}] — ` +
         `개인 행 ${d.personalRows.length}·격자 행 ${d.gridRows.length} · 제목 합 ${headerSum} = 개인 합 ${personalSum} ${headerSum === personalSum ? "✅" : "❌"} · ` +
         `교차 검증 오류 ${issues.length}건(고지 ${notices}건 별도) · 미해석 가명 ${aliasLeak ? "있음 ❌" : "없음 ✅"}`
     );

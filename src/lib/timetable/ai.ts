@@ -671,6 +671,8 @@ export interface ExtractedAssignmentDept {
   headerLine: string;
   gridRows: ExtractedAssignmentRow[]; // 상단 과목별 격자표
   personalRows: ExtractedAssignmentRow[]; // 하단 개인 배정표
+  /** 실제 추출에 쓰인 모델 — 폴백이 조용히 lite로 넘겼는지 판별용 (한도 진단·품질 귀속) */
+  modelUsed?: string;
 }
 
 export function buildAssignmentExtractPrompt(maskedDeptText: string): string {
@@ -689,6 +691,7 @@ export function buildAssignmentExtractPrompt(maskedDeptText: string): string {
     "- 교사가 T## 형식이 아닌 행(격자표)은 teacher를 빈 문자열로 두세요.",
     "- '창체' 행도 과목의 하나로 그대로 담습니다.",
     "- 같은 과목이 격자표와 개인표에서 표기가 다르면(예: 물리학Ⅱ/물리Ⅱ) **격자표 표기로 통일**하세요.",
+    "- 각 행은 **한 번만** 출력합니다. 같은 교사·같은 과목·같은 칸을 두 번 내보내지 마세요.",
     "",
     "JSON만 출력:",
     "- cells는 [학년,반,시수] 삼중 배열입니다. 예: 1학년 3반 3시간 → [1,3,3]",
@@ -799,6 +802,19 @@ export async function runAssignmentExtract(
       throw e;
     }
   }
+  // 완전 동일 행 중복 제거 — AI가 같은 행을 두 번 내보내는 사례 실측(체육·과학 2배 오독).
+  // 실제 분담 행은 교사가 다르므로 완전 동일 중복은 항상 추출 아티팩트다.
+  const dedupe = (rows: ExtractedAssignmentRow[]): ExtractedAssignmentRow[] => {
+    const seen = new Set<string>();
+    return rows.filter((r) => {
+      const k = `${r.teacher}|${r.subject}|${JSON.stringify(r.cells)}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
+  parsed.gridRows = dedupe(parsed.gridRows);
+  parsed.personalRows = dedupe(parsed.personalRows);
   const unmaskRow = (r: ExtractedAssignmentRow): ExtractedAssignmentRow => ({
     ...r,
     teacher: r.teacher ? p.unmask(r.teacher) : "",
@@ -809,5 +825,6 @@ export async function runAssignmentExtract(
     headerLine: dept.headerLine,
     gridRows: parsed.gridRows.map(unmaskRow),
     personalRows: parsed.personalRows.map(unmaskRow),
+    modelUsed: model,
   };
 }
