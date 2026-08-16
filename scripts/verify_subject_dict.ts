@@ -11,6 +11,7 @@ import {
   resolveSubjectsForGate,
   applySubjectConfirmations,
   defaultShortNameFor,
+  pruneSubjectsToReferenced,
 } from "../src/lib/timetable/subjectDict";
 import { buildSimulMatcher } from "../src/lib/timetable/simul";
 import { SimulGroup, SubjectNameHistoryEntry, TimetableSubject } from "../src/lib/timetable/types";
@@ -151,6 +152,29 @@ const S = (name: string, shortName: string, aliases?: string[]): TimetableSubjec
   const dictBinds = buildSimulMatcher([group], dict2)(2, 1, 1, 1, "지구과학Ⅱ") !== null;
   check("[7] 매처 — 사전 우선·폴백 강등", looseBind && dictBlocks && dictBinds,
     `폴백 ${looseBind} · 사전 격리 ${dictBlocks} · 별칭 정확 일치 ${dictBinds}`);
+}
+
+// [8] 신학기 도태 — 승계 항목 중 올해 안 쓰는 것이 새 등록을 막지 않는다 (실사고: 「논술」 vs 논술A/B 약칭)
+{
+  const inherited = [S("논술A", "논술"), S("논술B", "논술"), S("미술", "미술")];
+  const rowNames = ["논술", "미술"]; // 올해 배정표 — 미술은 정확 일치로 계속 쓰임, 논술A/B는 안 쓰임
+  const confs = [{ rawName: "논술", action: "create" as const, canonicalName: "논술", shortName: "논술" }];
+  // 도태 전에는 create가 승계 약칭에 막힌다 (거부 자체는 안전장치로서 정상)
+  const blocked = applySubjectConfirmations(inherited, confs, (n, s) => S(n, s));
+  // 도태 후에는 논술A/B가 빠지고 create가 성립하며, 계속 쓰는 미술은 살아남는다
+  const pruned = pruneSubjectsToReferenced(inherited, rowNames, confs);
+  const applied = applySubjectConfirmations(pruned, confs, (n, s) => S(n, s));
+  const idx = buildSubjectIndex(applied.subjects);
+  check(
+    "[8] 신학기 도태 — 안 쓰는 승계 표기 정리 후 새 등록 성립",
+    blocked.errors.length === 1 &&
+      pruned.length === 1 &&
+      pruned[0].name === "미술" &&
+      applied.errors.length === 0 &&
+      resolveExact(idx, "논술")?.name === "논술" &&
+      resolveExact(idx, "미술")?.name === "미술",
+    `도태 전 오류 ${blocked.errors.length}건 → 도태 후 오류 ${applied.errors.length}건 · 생존 ${pruned.map((e) => e.name).join(",")}`
+  );
 }
 
 console.log(fails ? `\n❌ 실패 ${fails}건` : "\n✅ 전판 통과");

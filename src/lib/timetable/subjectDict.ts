@@ -169,6 +169,33 @@ export function resolveSubjectsForGate(
   });
 }
 
+/**
+ * 신학기 도태 — 승계 사전에서 이번 학기가 실제로 쓰는 항목만 남긴다 (2026-08-17 사용자 원칙:
+ * "작년 기준 관성을 줄이고 올해 받은 리소스만으로"). 쓰임 = 행 이름이 정확 해석되는 항목
+ * + 확정(link)이 가리키는 항목. 안 쓰는 승계 항목(작년 분반 표기 등)이 새 등록의 표기
+ * 자리를 선점해 충돌내는 것을 막는다 — 실사고: 「논술」 create가 승계 논술A/B의 약칭에 막힘.
+ * 그리드가 이미 채택된 학기에는 쓰지 말 것(살아 있는 그리드가 참조하는 항목까지 지운다).
+ */
+export function pruneSubjectsToReferenced<T extends SubjectNameEntry>(
+  subjects: T[],
+  rowNames: string[],
+  confirmations: SubjectConfirmation[]
+): T[] {
+  const index = buildSubjectIndex(subjects);
+  const keep = new Set<SubjectNameEntry>();
+  for (const n of rowNames) {
+    const hit = resolveExact(index, n);
+    if (hit) keep.add(hit);
+  }
+  const byName = new Map(subjects.map((e) => [normSubjectName(e.name), e] as const));
+  for (const c of confirmations) {
+    if (c.action !== "link") continue;
+    const t = byName.get(normSubjectName((c.canonicalName || "").trim()));
+    if (t) keep.add(t);
+  }
+  return subjects.filter((e) => keep.has(e));
+}
+
 // ── 관문 확정 반영 (저장 시점, 스펙 §3-2) ─────────────────────────
 
 export interface SubjectConfirmation {

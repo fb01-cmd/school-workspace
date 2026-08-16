@@ -773,3 +773,9 @@
   - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 없음)
 
 
+
+## [2026-08-17] Claude(Fable) → 사용자/Antigravity (신학기 도태 — 승계 표기 충돌로 관문 저장 거부되던 실사고 보수)
+- 변경 파일: src/lib/timetable/{subjectDict,server}.ts·scripts/verify_subject_dict.ts([8] 추가)·docs/{subject_dictionary_spec,9c_research_notes}.md
+- 검증 상태: tsc ✅ / build ✅ / verify_subject_dict 8항 ✅
+- 다음 할 일: 사용자가 시수 계획 화면에서 저장 재시도(확정 상태는 화면에 보존돼 있음) → 성공 시 박제·사전·이력 데이터 확인
+- 주의: ① 도태는 그리드 없는 학기의 관문 저장에서만(운영 학기 보호) ② 컴시간 매뉴얼 실독 결과를 9c_research_notes §5에 기록 — 과목 쪼개기 금지·NEIS 빈칸 조치가 우리 원칙과 동형 ③ 나이스 기록 관문 주입 시도는 사용자 지적("올해 리소스만으로")으로 철회, 커밋 안 됨

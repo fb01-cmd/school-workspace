@@ -7759,7 +7759,18 @@ export async function saveHoursPlan(
     if (!termId)
       throw new Error("과목 확정을 반영하려면 대상 학기(targetTermId)가 필요합니다.");
     const term = await loadTimetableTerm(domain, termId);
-    const baseSubjects = term?.subjects || [];
+    let baseSubjects = term?.subjects || [];
+    // 0. 신학기 도태 (subjectDict.pruneSubjectsToReferenced 주석 참조) — 그리드가 아직 없는
+    // 학기에서만: 승계 항목 중 이번 배정표가 안 쓰는 것을 정리해, 안 쓰는 작년 표기가
+    // 새 등록을 막는 충돌(실사고: 「논술」 vs 승계 논술A/B 약칭)을 없앤다.
+    const gridProbe = await classGridsColRef(domain, termId).limit(1).get();
+    if (gridProbe.empty) {
+      baseSubjects = _pruneSubjectsToReferenced(
+        baseSubjects,
+        rows.map((r) => (r.subjectName || "").trim()),
+        payload.subjectConfirmations
+      );
+    }
     // 1. 사전 갱신 (create = 신규 등록·신학기 시딩, link = 별칭 박제)
     const applied = _applySubjectConfirmations(
       baseSubjects,
@@ -8327,6 +8338,7 @@ import {
   applySubjectConfirmations as _applySubjectConfirmations,
   buildSubjectIndex as _buildSubjectIndex,
   resolveExact as _resolveExact,
+  pruneSubjectsToReferenced as _pruneSubjectsToReferenced,
   SubjectConfirmation,
 } from "./subjectDict";
 import { normalizeHostClasses as _normalizeHostClasses, SimulStatusEntry } from "./hoursAssignment";
