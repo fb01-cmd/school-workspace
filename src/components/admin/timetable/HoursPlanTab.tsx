@@ -731,11 +731,28 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     const gdp = currentPlan.gradeDayPeriods || {};
     const mismatches: Array<{ grade: number; classNum: number; planSum: number; expectedSum: number }> = [];
 
-    // 학급별 시수 합계 산출
+    // 학급별 시수 합계 산출.
+    // 이동수업 묶음은 같은 교시에 동시에 돌아가므로 행을 그대로 더하면 개설 반은 부풀고
+    // 학생을 보낸 반은 모자라게 보인다 — 묶음당 슬롯 시수 1회를 묶음의 모든 반에 넣는다
+    const groupById = new Map(simulGroups.filter((g) => g.id).map((g) => [g.id as string, g]));
     const classSums: Record<string, number> = {};
+    const groupSlot = new Map<string, number>();
     for (const r of currentPlan.rows) {
+      const grp = r.simulGroupId ? groupById.get(r.simulGroupId) : undefined;
+      if (grp && (grp.classNums || []).length) {
+        const gid = r.simulGroupId as string;
+        groupSlot.set(gid, Math.max(groupSlot.get(gid) || 0, Number(r.hours) || 0));
+        continue;
+      }
       const key = `${r.grade}-${r.classNum}`;
       classSums[key] = (classSums[key] || 0) + (Number(r.hours) || 0);
+    }
+    for (const [gid, slot] of groupSlot) {
+      const grp = groupById.get(gid)!;
+      for (const c of grp.classNums || []) {
+        const key = `${grp.grade}-${c}`;
+        classSums[key] = (classSums[key] || 0) + slot;
+      }
     }
 
     // 모든 학급에 대해 검사
@@ -751,7 +768,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     }
 
     return mismatches.sort((a, b) => a.grade - b.grade || a.classNum - b.classNum);
-  }, [currentPlan]);
+  }, [currentPlan, simulGroups]);
 
   // ── 필터링된 행 목록 ──
   const filteredRows = useMemo(() => {
@@ -891,7 +908,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
             ))}
           </div>
           <p className="text-[11px] text-amber-700 pt-1">
-            * 시수 합계가 어긋나더라도 저장은 가능하나, 시간표 편성 전 반드시 확인하시기 바랍니다.
+            * 시수 합계가 어긋나더라도 저장은 가능하나, 시간표 편성 전 반드시 확인하시기 바랍니다. 이동수업 수업인데 표에서 이동수업 묶음이 연결되지 않았으면 합계가 어긋나 보일 수 있습니다 — 해당 수업의 이동수업 칸을 먼저 연결해 주세요.
           </p>
         </div>
       )}
