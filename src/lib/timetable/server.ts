@@ -8296,13 +8296,13 @@ export async function prepareHoursAssignmentJob(
     baseIssues.push(..._validateTitleSemester(parsed.title, expected, "창체 담당 파일"));
     creative = { title: parsed.title, byClass: Object.fromEntries(parsed.byClass) };
   }
-  let simul: { grade: number; entries: ReturnType<typeof _parseSimulStatusXlsx>["entries"] } | null = null;
+  let simul: { grade: number; entries: ReturnType<typeof _parseSimulStatusXlsx>["entries"]; standalone?: string[] } | null = null;
   if (params.simulXlsxB64) {
     const parsed = _parseSimulStatusXlsx(Buffer.from(params.simulXlsxB64, "base64"));
     baseIssues.push(
       ..._validateTitleSemester(`${parsed.grade ? "" : ""}`, expected, "이동수업 현황") // 학기 표기가 없는 실물 — 자리만
     );
-    simul = { grade: parsed.grade, entries: parsed.entries };
+    simul = { grade: parsed.grade, entries: parsed.entries, standalone: parsed.standalone || [] };
   }
 
   // 7일 지난 작업 문서 청소 (같은 쓰기 경로에 편승 — 별도 크론 불요)
@@ -8416,8 +8416,12 @@ export async function finalizeHoursAssignmentJob(
     if (!seenKeys.has(`${e.grade}|${e.subject}|${e.hostClassNum}`)) mergedEntries.push(e);
   const mergedStatus = { entries: mergedEntries };
   // §9-B②: 검증·조립 전에 개설 반 정규화 — 개설 반 기준, 시수 불변·이동은 전건 고지
+  // 파일 명시 「단독 개설」은 문서 확정 — 학기 등급과 무관하게 same 등급 실증으로 합류
+  const fileStandalone: string[] = (job.simul?.standalone || []) as string[];
+  const standaloneUnion = new Set<string>([...systemStatus.standaloneLessons, ...fileStandalone]);
+  const tierForNormalize = fileStandalone.length ? "same" : evidenceTier;
   if (mergedEntries.length)
-    issues.push(..._normalizeHostClasses(depts, mergedStatus, systemStatus.standaloneLessons, evidenceTier).issues);
+    issues.push(..._normalizeHostClasses(depts, mergedStatus, standaloneUnion, tierForNormalize).issues);
   for (let i = 0; i < depts.length; i++) issues.push(..._validateDept(depts[i]));
   const creative = job.creative
     ? { title: job.creative.title as string, byClass: new Map(Object.entries(job.creative.byClass as Record<string, string>)) }

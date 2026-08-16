@@ -397,11 +397,69 @@ export interface SimulStatusEntry {
 
 const normMoving = (s: string) => s.replace(/\s+/g, "").replace(/\d+$/, "");
 
-/** "과목명N(1반+6반+10반)" 패턴 셀 전수 수집. 학년은 시트 제목("<2학년 2학기>")에서 */
-export function parseSimulStatusXlsx(buf: Buffer): { grade: number; entries: SimulStatusEntry[] } {
+/** 파싱 결과 — 보강 양식이면 standalone(단독 개설 확정 실증)이 함께 온다 */
+export interface SimulStatusParse {
+  grade: number;
+  entries: SimulStatusEntry[];
+  /** 보강 양식의 「단독 개설」 행 — "grade-class|과목" 확정 실증 (문서 명시라 학기 등급 무관 확정) */
+  standalone: string[];
+}
+
+/** 두 양식 자동 감지: ① 보강 양식(2026-08-17 — 헤더에 「개설 반」·「구분」) ② 구양식("과목(1반+6반)") */
+export function parseSimulStatusXlsx(buf: Buffer): SimulStatusParse {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const XLSX = require("xlsx") as typeof import("xlsx");
   const wb = XLSX.read(buf, { type: "buffer" });
+  // 보강 양식(최종형, 2026-08-17) 감지: 헤더 「반」+「과목」. 한 줄 = 한 묶음 —
+  // k번째 반 ↔ k번째 과목 짝, 반 1개 = 단독 개설 확정 실증, 여러 개 = 이동수업.
+  for (const sheetName of wb.SheetNames) {
+    const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName], { header: 1 });
+    const hIdx = sheetRows.findIndex(
+      (r) =>
+        Array.isArray(r) &&
+        r.some((c) => c === "반") &&
+        r.some((c) => typeof c === "string" && (c as string).startsWith("과목"))
+    );
+    if (hIdx < 0) continue;
+    const header = sheetRows[hIdx] as string[];
+    const col = (name: string) => header.findIndex((h) => typeof h === "string" && h.startsWith(name));
+    const ci = { grade: col("학년"), cls: col("반"), name: col("과목") };
+    const normName = (x: string) => x.replace(/\s+/g, "").replace(/\d+$/, "");
+    const entries: SimulStatusEntry[] = [];
+    const standalone: string[] = [];
+    for (const r of sheetRows.slice(hIdx + 1)) {
+      if (!Array.isArray(r)) continue;
+      const grade = Number(r[ci.grade]);
+      const clsList = String(r[ci.cls] ?? "")
+        .split(/[,、·]/)
+        .map((x) => Number(x.replace(/[^0-9]/g, "")))
+        .filter((n) => n >= 1 && n <= 15);
+      const nameList = String(r[ci.name] ?? "")
+        .split(/[,、]/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      if (!grade || !clsList.length || !nameList.length) continue;
+      if (clsList.length !== nameList.length) {
+        // 작성 실수 — 짝이 안 맞으면 이 줄은 쓰지 않는다 (호출부 검증이 "찾지 못함"으로 드러냄)
+        continue;
+      }
+      if (clsList.length === 1) {
+        standalone.push(`${grade}-${clsList[0]}|${normName(nameList[0])}`);
+        continue;
+      }
+      const band = [...new Set(clsList)].sort((a, b) => a - b);
+      clsList.forEach((cls, i) => {
+        entries.push({
+          grade, subject: normName(nameList[i]), classNums: band,
+          raw: `${nameList[i]}(${band.join("반+")}반)`, hostClassNum: cls,
+        });
+      });
+    }
+    if (entries.length || standalone.length) {
+      const grades = new Set(entries.map((e) => e.grade));
+      return { grade: grades.size === 1 ? [...grades][0] : 0, entries, standalone };
+    }
+  }
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 });
   let grade = 0;
@@ -429,7 +487,7 @@ export function parseSimulStatusXlsx(buf: Buffer): { grade: number; entries: Sim
     }
   }
   const entries = [...seen.values()].map((e) => ({ ...e, grade }));
-  return { grade, entries };
+  return { grade, entries, standalone: [] };
 }
 
 /**

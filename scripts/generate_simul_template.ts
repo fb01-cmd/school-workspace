@@ -75,23 +75,43 @@ const FULL: Record<string, string> = {
 
   rows.sort((a, b) => a.grade - b.grade || a.name.localeCompare(b.name, "ko") || a.host.localeCompare(b.host, "ko"));
 
-  const HEADER = ["학년", "과목명(정식)", "약칭", "개설 반", "함께 이동하는 반", "구분", "특별실(시수)"];
+  // 최종형 (2026-08-17 사용자 3차 다듬기): 한 줄 = 한 묶음. 반이 하나면 단독, 여럿이면 이동 —
+  // 구분·묶음이름 열 불요(사실에서 따라 나옴). k번째 반 ↔ k번째 과목 짝. 숫자만·쉼표 구분.
+  const HEADER = ["학년", "반", "과목 (반 순서대로)", "특별실 (선택, 반 순서대로)"];
   const GUIDE = [
-    ["이동수업 현황 — 보강 작성 양식"],
-    ["작성 요령: 선택·이동 과목마다 한 줄씩 적습니다. 같은 과목이 여러 반에 개설되면 반마다 한 줄입니다."],
-    ["구분: '이동수업' = 여러 반이 함께 움직이는 수업 / '단독 개설' = 이동 없이 그 반만 듣는 수업."],
-    ["'단독 개설'도 반드시 적어 주세요 — 적혀 있지 않은 반의 배정은 오기재로 판정됩니다."],
+    ["이동수업 현황 — 작성 양식"],
+    ["한 줄 = 함께 움직이는 한 묶음. 반 번호를 쉼표로, 각 반에 개설된 과목을 같은 순서로 적습니다."],
+    ["반이 하나뿐인 줄 = 그 반만 듣는 단독 수업입니다. 단독도 꼭 적어 주세요 — 이 표에 없는 반의 배정은 오기재로 판정됩니다."],
+    ["예:  2 | 1, 6, 10 | 중국어회화, 인공지능기초, 기하     /     2 | 9 | 인공지능기초"],
     [],
     HEADER,
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(GUIDE), "작성 양식");
+  // 묶음별 압축: (학년, 밴드) → 반 목록·과목 목록 병렬. 단독은 밴드 "-" 행 그대로 1반 1과목
+  const byBand = new Map<string, { grade: number; pairs: Array<{ cls: number; name: string; venue: string }> }>();
+  for (const r of rows) {
+    const key = r.kind === "단독 개설" ? `${r.grade}|단독|${r.host}|${r.name}` : `${r.grade}|${r.band}`;
+    if (!byBand.has(key)) byBand.set(key, { grade: r.grade, pairs: [] });
+    byBand.get(key)!.pairs.push({ cls: Number(r.host.replace("반", "")), name: r.name, venue: r.venue });
+  }
+  const sampleRows = [...byBand.values()]
+    .map((b) => {
+      b.pairs.sort((x, y) => x.cls - y.cls);
+      return [
+        b.grade,
+        b.pairs.map((p) => p.cls).join(", "),
+        b.pairs.map((p) => p.name).join(", "),
+        b.pairs.some((p) => p.venue) ? b.pairs.map((p) => p.venue || "-").join(", ") : "",
+      ];
+    })
+    .sort((a, b) => Number(a[0]) - Number(b[0]) || String(a[1]).localeCompare(String(b[1])));
   const sample = [
-    [`2026학년도 2학기 완성 샘플 — 시스템(시간표·등록부) 실증으로 자동 기입 (${rows.length}행)`],
-    ["기존 파일과 비교: 개설 반·단독 개설·정식 명칭·전 학년·특별실이 이렇게 명시돼 있었어야 합니다."],
+    [`2026학년도 2학기 완성 샘플 — 시스템(시간표·등록부) 실증으로 자동 기입 (묶음 ${sampleRows.length}줄)`],
+    ["기존 파일과 비교: 반별 개설·단독 여부·정식 명칭·전 학년이 이렇게 적혀 있었어야 합니다."],
     [],
     HEADER,
-    ...rows.map((r) => [r.grade, r.name, r.short, r.host, r.band, r.kind, r.venue]),
+    ...sampleRows,
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sample), "2026-2 완성 샘플");
   const out = "docs/이동수업_현황_보강양식_2026-2샘플.xlsx";
