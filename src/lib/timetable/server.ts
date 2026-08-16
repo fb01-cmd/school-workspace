@@ -7760,11 +7760,13 @@ export async function saveHoursPlan(
       throw new Error("과목 확정을 반영하려면 대상 학기(targetTermId)가 필요합니다.");
     const term = await loadTimetableTerm(domain, termId);
     let baseSubjects = term?.subjects || [];
-    // 0. 신학기 도태 (subjectDict.pruneSubjectsToReferenced 주석 참조) — 그리드가 아직 없는
-    // 학기에서만: 승계 항목 중 이번 배정표가 안 쓰는 것을 정리해, 안 쓰는 작년 표기가
-    // 새 등록을 막는 충돌(실사고: 「논술」 vs 승계 논술A/B 약칭)을 없앤다.
-    const gridProbe = await classGridsColRef(domain, termId).limit(1).get();
-    if (gridProbe.empty) {
+    // 0. 신학기 도태 (subjectDict.pruneSubjectsToReferenced 주석 참조) — 운영 학기가 아닌
+    // 학기(초안·미래 학기)에서만: 승계 항목 중 이번 배정표가 안 쓰는 것을 정리해, 안 쓰는
+    // 작년 표기가 새 등록을 막는 충돌(실사고: 「논술」 vs 승계 논술A/B 약칭)을 없앤다.
+    // "그리드 없음" 조건은 틀린다 — 학기 전환이 참고용 그리드를 초안 학기에 복사해 온다
+    // (2027-1 실측 2026-08-17). 보호가 필요한 것은 판정 원본으로 살아 있는 운영 학기뿐.
+    const settingsForPrune = await loadTimetableSettings(domain);
+    if (settingsForPrune.activeTermId !== termId) {
       baseSubjects = _pruneSubjectsToReferenced(
         baseSubjects,
         rows.map((r) => (r.subjectName || "").trim()),

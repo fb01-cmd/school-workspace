@@ -177,5 +177,26 @@ const S = (name: string, shortName: string, aliases?: string[]): TimetableSubjec
   );
 }
 
+// [9] 같은 저장 안의 표기 자기 충돌 — 공백만 다른 두 create는 오류가 아니라 별칭 합류 (실사고: 인공지능 기초/인공지능기초)
+{
+  const applied = applySubjectConfirmations(
+    [] as ReturnType<typeof S>[],
+    [
+      { rawName: "인공지능 기초", action: "create", canonicalName: "인공지능 기초", shortName: "인공" },
+      { rawName: "인공지능기초", action: "create", canonicalName: "인공지능기초", shortName: "인공" },
+    ],
+    (n, s) => S(n, s)
+  );
+  const idx = buildSubjectIndex(applied.subjects);
+  check(
+    "[9] 공백 변형 create 자기 충돌 → 별칭 자동 합류",
+    applied.errors.length === 0 &&
+      applied.subjects.length === 1 &&
+      resolveExact(idx, "인공지능기초")?.name === "인공지능 기초" &&
+      resolveExact(idx, "인공지능 기초")?.name === "인공지능 기초",
+    `오류 ${applied.errors.length}건 · 항목 ${applied.subjects.length}개 · 별칭 ${JSON.stringify(applied.subjects[0]?.aliases)}`
+  );
+}
+
 console.log(fails ? `\n❌ 실패 ${fails}건` : "\n✅ 전판 통과");
 process.exit(fails ? 1 : 0);

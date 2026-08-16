@@ -230,7 +230,20 @@ export function applySubjectConfirmations<T extends SubjectNameEntry>(
     }
     if (c.action === "create") {
       const key = normSubjectName(canonical);
-      if (byName.has(key) || owner.has(key)) {
+      // 정식명이 정규화(공백 무시)로 같은 항목이 이미 있으면 오류가 아니라 그 항목의 다른
+      // 표기다 — 배정표 「인공지능 기초」와 이동수업 현황 「인공지능기초」가 같은 저장에서
+      // 둘 다 새 등록으로 와 자기끼리 충돌한 실사고 (2026-08-17). 추측이 아니라 정규화
+      // 동일성이므로 자동 합류가 안전하다. 약칭·별칭 자리와 겹치는 경우만 오류 유지.
+      const nameTwin = byName.get(key);
+      if (nameTwin) {
+        const rawKey = normSubjectName(raw);
+        if (!entrySpellings(nameTwin).some((sp) => normSubjectName(sp) === rawKey)) {
+          nameTwin.aliases = [...(nameTwin.aliases || []), raw];
+          owner.set(rawKey, nameTwin);
+        }
+        continue;
+      }
+      if (owner.has(key)) {
         errors.push(`「${canonical}」은 이미 등록된 과목 표기와 겹칩니다 — 기존 과목에 연결해 주세요.`);
         continue;
       }
