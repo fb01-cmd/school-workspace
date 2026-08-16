@@ -97,21 +97,29 @@ export interface AssignmentIssue {
  */
 export function subjectMatches(a: string, b: string): boolean {
   const roman = (x: string) => x.replace(/Ⅰ/g, "1").replace(/Ⅱ/g, "2").replace(/Ⅲ/g, "3");
-  const base = (x: string) => roman(x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, ""));
-  const va = base(a);
-  const vb = base(b);
-  if (va === vb) return true;
-  const numOf = (x: string) => (x.match(/(\d+)$/)?.[1] ?? "");
-  const stem = (x: string) => x.replace(/\d+$/, "");
-  const [shortV, longV] = va.length <= vb.length ? [va, vb] : [vb, va];
-  const sNum = numOf(shortV);
-  if (sNum && sNum !== numOf(longV)) return false;
-  const sStem = stem(shortV);
-  const lStem = stem(longV);
-  if (sStem.length < 2 || sStem[0] !== lStem[0]) return false;
-  let i = 0;
-  for (const ch of lStem) if (ch === sStem[i]) i++;
-  return i === sStem.length;
+  // "화학Ⅱ→화Ⅱ" 축약(학 탈락)은 한쪽에만 적용될 수 있어 변형 두 벌을 모두 시도한다 —
+  // "지구과학" ↔ "지구과학Ⅱ"가 축약 비대칭으로 어긋나던 실사고 보수 (2026-08-16)
+  const variants = (x: string): string[] => {
+    const flat = roman(x.replace(/\s+/g, ""));
+    const contracted = roman(x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, ""));
+    return contracted === flat ? [flat] : [flat, contracted];
+  };
+  const pairOk = (va: string, vb: string): boolean => {
+    if (va === vb) return true;
+    const numOf = (x: string) => (x.match(/(\d+)$/)?.[1] ?? "");
+    const stem = (x: string) => x.replace(/\d+$/, "");
+    const [shortV, longV] = va.length <= vb.length ? [va, vb] : [vb, va];
+    const sNum = numOf(shortV);
+    if (sNum && sNum !== numOf(longV)) return false;
+    const sStem = stem(shortV);
+    const lStem = stem(longV);
+    if (sStem.length < 2 || sStem[0] !== lStem[0]) return false;
+    let i = 0;
+    for (const ch of lStem) if (ch === sStem[i]) i++;
+    return i === sStem.length;
+  };
+  for (const va of variants(a)) for (const vb of variants(b)) if (pairOk(va, vb)) return true;
+  return false;
 }
 
 const cellsSum = (cells: ExtractedHourCell[]) => cells.reduce((s, c) => s + c.hours, 0);
