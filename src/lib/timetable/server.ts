@@ -8390,14 +8390,34 @@ export async function finalizeHoursAssignmentJob(
   const issues: AssignmentIssue[] = [...((job.baseIssues || []) as AssignmentIssue[])];
   // §9-B②′: 이동수업 정보 = 시스템 역추출(실증, 우선) + 업로드 파일(계획) 병합
   const targetTermIdForSimul = `${job.targetYear}-${job.targetSemester}`;
-  const systemStatus = await deriveSimulStatusFromSystem(domain, targetTermIdForSimul).catch(() => ({ entries: [] as SimulStatusEntry[] }));
-  const mergedEntries: SimulStatusEntry[] = [...systemStatus.entries];
+  let systemStatus = await deriveSimulStatusFromSystem(domain, targetTermIdForSimul).catch(() => ({
+    entries: [] as SimulStatusEntry[],
+    standaloneLessons: new Set<string>(),
+  }));
+  // 학기 등급 (2026-08-17 사용자 지적): 대상 학기 그리드가 있으면 실증=확정("same"),
+  // 없으면(신학기) 현행 학기 그리드를 **참고("previous")**로만 — 자동 이동 근거 금지·문구 구분.
+  let evidenceTier: "same" | "previous" = "same";
+  if (!systemStatus.entries.length && !systemStatus.standaloneLessons.size) {
+    const settingsForTier = await loadTimetableSettings(domain);
+    if (settingsForTier.activeTermId && settingsForTier.activeTermId !== targetTermIdForSimul) {
+      systemStatus = await deriveSimulStatusFromSystem(domain, settingsForTier.activeTermId).catch(() => ({
+        entries: [] as SimulStatusEntry[],
+        standaloneLessons: new Set<string>(),
+      }));
+      evidenceTier = "previous";
+    }
+  }
+  // 병합 우선순위도 등급을 따른다: 같은 학기 실증이면 시스템 우선, 전 학기 참고면 **파일(그 학기 계획) 우선**
+  const primary = evidenceTier === "same" ? systemStatus.entries : ((job.simul?.entries || []) as SimulStatusEntry[]);
+  const secondary = evidenceTier === "same" ? ((job.simul?.entries || []) as SimulStatusEntry[]) : systemStatus.entries;
+  const mergedEntries: SimulStatusEntry[] = [...primary];
   const seenKeys = new Set(mergedEntries.map((e) => `${e.grade}|${e.subject}|${e.hostClassNum}`));
-  for (const e of ((job.simul?.entries || []) as SimulStatusEntry[]))
+  for (const e of secondary)
     if (!seenKeys.has(`${e.grade}|${e.subject}|${e.hostClassNum}`)) mergedEntries.push(e);
   const mergedStatus = { entries: mergedEntries };
   // §9-B②: 검증·조립 전에 개설 반 정규화 — 개설 반 기준, 시수 불변·이동은 전건 고지
-  if (mergedEntries.length) issues.push(..._normalizeHostClasses(depts, mergedStatus).issues);
+  if (mergedEntries.length)
+    issues.push(..._normalizeHostClasses(depts, mergedStatus, systemStatus.standaloneLessons, evidenceTier).issues);
   for (let i = 0; i < depts.length; i++) issues.push(..._validateDept(depts[i]));
   const creative = job.creative
     ? { title: job.creative.title as string, byClass: new Map(Object.entries(job.creative.byClass as Record<string, string>)) }
@@ -8436,7 +8456,7 @@ export async function finalizeHoursAssignmentJob(
 export async function deriveSimulStatusFromSystem(
   domain: string,
   termId: string
-): Promise<{ entries: SimulStatusEntry[] }> {
+): Promise<{ entries: SimulStatusEntry[]; standaloneLessons: Set<string> }> {
   const [groups, grids, term] = await Promise.all([
     loadSimulGroups(domain, termId),
     loadAllClassGrids(domain, termId).catch(() => [] as ClassGrid[]),
@@ -8444,12 +8464,22 @@ export async function deriveSimulStatusFromSystem(
   ]);
   const fullName = new Map<string, string>();
   for (const sj of term?.subjects || []) fullName.set(sj.shortName, sj.name);
+  const fullNameEarly = (short: string) => fullName.get(short);
   const active = groups.filter((g) => g.active !== false);
   const seen = new Map<string, SimulStatusEntry>();
+  // 단독 개설 실증: 이동수업 딱지 없이 실재하는 (학년-반|과목) — 정규화의 "떠돌이 오판" 방어
+  const standaloneLessons = new Set<string>();
   for (const grid of grids)
     for (const cell of grid.cells)
       for (const l of cell.lessons || []) {
-        if (!l.simul) continue;
+        if (!l.simul) {
+          const subj = ((fullNameEarly(l.subjectName) || l.subjectName) as string)
+            .replace(/\s+/g, "")
+            .replace(/\d+$/, "");
+          standaloneLessons.add(`${grid.grade}-${grid.classNum}|${subj}`);
+          standaloneLessons.add(`${grid.grade}-${grid.classNum}|${l.subjectName.replace(/\s+/g, "").replace(/\d+$/, "")}`);
+          continue;
+        }
         const group = active.find((g) => g.grade === grid.grade && g.label === l.simul);
         if (!group) continue;
         const subject = (fullName.get(l.subjectName) || l.subjectName).trim();
@@ -8463,5 +8493,5 @@ export async function deriveSimulStatusFromSystem(
             hostClassNum: grid.classNum,
           });
       }
-  return { entries: [...seen.values()] };
+  return { entries: [...seen.values()], standaloneLessons };
 }

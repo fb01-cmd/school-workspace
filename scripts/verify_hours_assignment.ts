@@ -159,9 +159,9 @@ async function main() {
   const status = { entries: merged };
   const hosted = merged.filter((e) => e.hostClassNum != null).length;
   const g3 = sysStatus.entries.filter((e) => e.grade === 3).length;
-  console.log(`    역추출: 시스템 유래 ${sysStatus.entries.length}건(3학년 ${g3}건) + 파일 ${fileStatus.entries.length}건 → 병합 ${merged.length}건`);
+  console.log(`    역추출: 시스템 유래 ${sysStatus.entries.length}건(3학년 ${g3}건) + 파일 ${fileStatus.entries.length}건 → 병합 ${merged.length}건 · 단독 개설 실증 ${sysStatus.standaloneLessons.size / 2}조합`);
   // §9-B②: 검증 전에 개설 반 정규화 (finalize와 같은 순서)
-  const normalized = normalizeHostClasses(extracted, status);
+  const normalized = normalizeHostClasses(extracted, status, sysStatus.standaloneLessons);
   // [5b] 정규화 후 격자↔개인 재검증 — 우리 이동이 오류로 잡히면 안 된다 (실배포 오탐 4건 재발 방지)
   const postNormalizeErrors = extracted.flatMap((d) => validateDept(d)).filter((i) => i.severity === "error");
   console.log(`    [5b] 정규화 후 재검증 오류 ${postNormalizeErrors.length}건 ${postNormalizeErrors.length === 0 ? "✅" : "❌"}`);

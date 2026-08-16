@@ -633,7 +633,13 @@ export interface HostNormalization {
  */
 export function normalizeHostClasses(
   depts: ExtractedAssignmentDept[],
-  status: { entries: SimulStatusEntry[] }
+  status: { entries: SimulStatusEntry[] },
+  /** 그리드 실증 (2026-08-17): "grade-class|과목" 중 이동수업 딱지 **없이** 실재하는 조합.
+   *  현황 파일의 부재는 "이동수업이 아님"과 "존재하지 않음"을 구별 못 하지만 그리드는 안다. */
+  standaloneLessons?: Set<string>,
+  /** 실증의 학기 등급 (2026-08-17 사용자 지적): "same" = 대상 학기 실물 → 확정, 떠돌이에서 제외.
+   *  "previous" = 전 학기 참고 → **추정일 뿐** — 자동 이동 근거로 쓰지 않고 확인 요청 고지만 낸다. */
+  evidenceTier: "same" | "previous" = "same"
 ): { moves: HostNormalization[]; issues: AssignmentIssue[] } {
   const moves: HostNormalization[] = [];
   const issues: AssignmentIssue[] = [];
@@ -669,7 +675,32 @@ export function normalizeHostClasses(
         for (const c of r.cells) if (c.grade === grade) cells.push({ row: r, cell: c });
       }
     if (!cells.length) continue;
-    const strays = cells.filter(({ cell }) => !hosts.has(cell.classNum));
+    let strays = cells.filter(({ cell }) => !hosts.has(cell.classNum));
+    // 그리드 실증으로 단독 개설 확인된 칸은 떠돌이가 아니다 — 제자리 유지 + 고지
+    if (standaloneLessons) {
+      const confirmed = strays.filter(({ cell }) =>
+        cluster.names.some((n) => standaloneLessons.has(`${cell.grade}-${cell.classNum}|${n}`)) ||
+        standaloneLessons.has(`${cell.grade}-${cell.classNum}|${subjKey}`)
+      );
+      if (confirmed.length) {
+        const classes = confirmed.map(({ cell }) => `${cell.classNum}반`).join("·");
+        if (evidenceTier === "same") {
+          issues.push({
+            severity: "notice",
+            code: "simul-status-mismatch",
+            text: `${grade}학년 ${subjKey}: ${classes}은 이 학기 시간표 실증상 이동 없는 단독 수업입니다 — 그대로 둡니다 (확인됨)`,
+          });
+          strays = strays.filter((x) => !confirmed.includes(x));
+        } else {
+          // 전 학기 참고 — 확정 아님: 떠돌이에서 빼지 않는다(자동 이동 근거 금지). 판단 재료만 제공
+          issues.push({
+            severity: "notice",
+            code: "simul-status-mismatch",
+            text: `${grade}학년 ${subjKey}: ${classes}은 **전 학기** 시간표에서 이동 없는 단독 수업이었습니다 — 이번 학기도 같다면 정상, 바뀌었다면 불러온 뒤 표에서 반을 확인해 주세요`,
+          });
+        }
+      }
+    }
     const occupied = new Set(cells.map(({ cell }) => cell.classNum));
     const freeHosts = [...hosts].filter((h) => !occupied.has(h)).sort((a, b) => a - b);
     if (!strays.length) continue;
