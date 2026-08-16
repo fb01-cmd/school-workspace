@@ -8423,12 +8423,29 @@ export async function finalizeHoursAssignmentJob(
     if (!seenKeys.has(`${e.grade}|${e.subject}|${e.hostClassNum}`)) mergedEntries.push(e);
   const mergedStatus = { entries: mergedEntries };
   // §9-B②: 검증·조립 전에 개설 반 정규화 — 개설 반 기준, 시수 불변·이동은 전건 고지
-  // 파일 명시 「단독 개설」은 문서 확정 — 학기 등급과 무관하게 same 등급 실증으로 합류
+  // 자동 이동(정규화)의 근거 등급 (2026-08-17 신학기 시뮬 점검에서 보강):
+  // - 같은 학기 실물("same"): 시스템+파일 병합 전체가 이동 근거, 실증 단독도 확정 제외
+  // - 신학기("previous"): **파일(그 학기 문서)만** 이동 근거 — 전 학기 역추출은 검증 고지에만
+  //   쓰고 이동·확정 제외 근거로 쓰지 않는다(전 학기 밴드로 옮기면 유령 이동 위험).
+  //   파일 명시 단독은 그 학기 문서 확정이므로 어느 등급에서든 제외 근거로 유효.
   const fileStandalone: string[] = (job.simul?.standalone || []) as string[];
-  const standaloneUnion = new Set<string>([...systemStatus.standaloneLessons, ...fileStandalone]);
-  const tierForNormalize = fileStandalone.length ? "same" : evidenceTier;
-  if (mergedEntries.length)
-    issues.push(..._normalizeHostClasses(depts, mergedStatus, standaloneUnion, tierForNormalize).issues);
+  if (evidenceTier === "same") {
+    const standaloneUnion = new Set<string>([...systemStatus.standaloneLessons, ...fileStandalone]);
+    if (mergedEntries.length)
+      issues.push(..._normalizeHostClasses(depts, mergedStatus, standaloneUnion, "same").issues);
+  } else {
+    const fileEntries = ((job.simul?.entries || []) as SimulStatusEntry[]);
+    if (fileEntries.length)
+      issues.push(
+        ..._normalizeHostClasses(depts, { entries: fileEntries }, new Set(fileStandalone), "same").issues
+      );
+    // 전 학기 실증은 참고 고지로만 — 이동 없는 안내 경로
+    if (systemStatus.standaloneLessons.size && mergedEntries.length)
+      issues.push(
+        ..._normalizeHostClasses(depts, { entries: systemStatus.entries }, systemStatus.standaloneLessons, "previous").issues
+          .filter((i) => i.text.includes("전 학기")) // 이동 문구는 버리고 참고 고지만 채택
+      );
+  }
   for (let i = 0; i < depts.length; i++) issues.push(..._validateDept(depts[i]));
   const creative = job.creative
     ? { title: job.creative.title as string, byClass: new Map(Object.entries(job.creative.byClass as Record<string, string>)) }
