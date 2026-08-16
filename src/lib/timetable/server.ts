@@ -7632,6 +7632,8 @@ export async function saveHoursPlan(
     rows: HoursPlanRow[];
     gradeDayPeriods: Record<number, Record<number, number>>;
     status?: "draft" | "ready";
+    /** 배정표 자동 생성 확인 목록 — undefined면 기존 저장분 유지 (구버전 UI 호환) */
+    reviewNotes?: Array<{ severity?: string; text?: string; done?: boolean }>;
   },
   userEmail: string
 ): Promise<HoursPlan> {
@@ -7710,13 +7712,30 @@ export async function saveHoursPlan(
   // 기존 문서 조회하여 createdBy 보존
   let createdBy = userEmail;
   let derivedAt = now;
+  let existingReviewNotes: HoursPlan["reviewNotes"] = undefined;
   if (planId) {
     const existing = await hoursPlansColRef(domain).doc(planId).get();
     if (existing.exists) {
       const exData = existing.data() as any;
       createdBy = exData.createdBy || userEmail;
       derivedAt = toMillis(exData.derivedAt) || now;
+      existingReviewNotes = Array.isArray(exData.reviewNotes) ? exData.reviewNotes : undefined;
     }
+  }
+
+  // 확인 목록: 넘어오면 정제해 채택, 안 넘어오면 기존 저장분 유지
+  let reviewNotes = existingReviewNotes;
+  if (payload.reviewNotes !== undefined) {
+    if (!Array.isArray(payload.reviewNotes)) throw new Error("reviewNotes는 배열이어야 합니다.");
+    if (payload.reviewNotes.length > 300)
+      throw new Error(`확인 목록(${payload.reviewNotes.length}건)이 최대 허용치(300건)를 초과했습니다.`);
+    reviewNotes = payload.reviewNotes
+      .filter((n) => n && typeof n.text === "string" && n.text.trim())
+      .map((n) => ({
+        severity: n.severity === "error" ? ("error" as const) : ("notice" as const),
+        text: n.text!.trim().slice(0, 600),
+        ...(n.done === true ? { done: true } : {}),
+      }));
   }
 
   // undefined 값 키는 아예 넣지 않는다 — 이 프로젝트 Firestore는 ignoreUndefinedProperties
@@ -7744,6 +7763,7 @@ export async function saveHoursPlan(
     rows: cleanRows,
     gradeDayPeriods: payload.gradeDayPeriods || {},
     status: payload.status === "ready" ? "ready" : "draft",
+    ...(reviewNotes !== undefined ? { reviewNotes } : {}),
     createdBy,
     updatedBy: userEmail,
     updatedAt: now,

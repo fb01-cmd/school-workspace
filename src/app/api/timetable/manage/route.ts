@@ -1611,6 +1611,7 @@ export async function POST(req: NextRequest) {
             rows: body.planRows,
             gradeDayPeriods: body.gradeDayPeriods || {},
             status: body.planStatus,
+            reviewNotes: body.reviewNotes,
           },
           auth.email
         );

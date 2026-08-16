@@ -1111,9 +1111,19 @@ export interface HoursPlan {
   rows: HoursPlanRow[];
   gradeDayPeriods: Record<number, Record<number, number>>;  // 부족정보 #5
   status: "draft" | "ready";  // ready = 솔버에 넘길 수 있음
+  /** 배정표 자동 생성 확인 목록 사본 — 없으면 빈 배열 취급 */
+  reviewNotes?: HoursPlanReviewNote[];
   createdBy: string;
   updatedBy: string;
   updatedAt: number;
+}
+
+/** 배정표 자동 생성이 남긴 확인 목록 — 불러온 뒤에도 복기·체크할 수 있게 계획에 동봉 */
+export interface HoursPlanReviewNote {
+  severity: "error" | "notice";
+  text: string;
+  /** 사용자가 "처리 완료" 표시한 항목 */
+  done?: boolean;
 }
 
 export interface HoursPlanRow {
