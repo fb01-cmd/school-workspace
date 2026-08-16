@@ -7766,17 +7766,36 @@ export async function saveHoursPlan(
     // "그리드 없음" 조건은 틀린다 — 학기 전환이 참고용 그리드를 초안 학기에 복사해 온다
     // (2027-1 실측 2026-08-17). 보호가 필요한 것은 판정 원본으로 살아 있는 운영 학기뿐.
     const settingsForPrune = await loadTimetableSettings(domain);
+    let confirmations = payload.subjectConfirmations;
     if (settingsForPrune.activeTermId !== termId) {
+      // 도태의 "쓰임" 판정은 **배정표 행 유래**만 센다. 이동수업 현황 유래 항목의 자동
+      // 연결(정확 일치 메아리)까지 세면, 현황이 작년 분반 표기("논술A")를 그대로 쓰는
+      // 실물에서 그 옛 항목이 도태를 면제받아 약칭 자리("논술")를 계속 선점 — 배정표
+      // 정식명("논술")의 새 등록이 영영 막힌다 (2026-08-17 3차 실측).
+      const rowNameNorms = new Set(
+        rows.map((r) => (r.subjectName || "").trim().replace(/\s+/g, "").toLowerCase())
+      );
+      const normOf = (s: string) => (s || "").trim().replace(/\s+/g, "").toLowerCase();
       baseSubjects = _pruneSubjectsToReferenced(
         baseSubjects,
         rows.map((r) => (r.subjectName || "").trim()),
-        payload.subjectConfirmations
+        payload.subjectConfirmations.filter(
+          (c) => c.action === "link" && rowNameNorms.has(normOf(c.rawName))
+        )
       );
+      // 도태로 대상이 사라진 현황 유래 연결은 조용히 버린다 — 그 표기는 다음 불러오기에서
+      // 새 사전 기준의 후보로 다시 떠서 사람이 확정한다 (행 유래 연결은 남겨 오류로 드러나게)
+      const survivors = new Set(baseSubjects.map((e) => normOf(e.name)));
+      confirmations = payload.subjectConfirmations.filter((c) => {
+        if (c.action !== "link") return true;
+        if (survivors.has(normOf(c.canonicalName))) return true;
+        return rowNameNorms.has(normOf(c.rawName));
+      });
     }
     // 1. 사전 갱신 (create = 신규 등록·신학기 시딩, link = 별칭 박제)
     const applied = _applySubjectConfirmations(
       baseSubjects,
-      payload.subjectConfirmations,
+      confirmations,
       (name, shortName) => ({ name, shortName, teacherEmails: [] })
     );
     if (applied.errors.length)
@@ -7804,7 +7823,7 @@ export async function saveHoursPlan(
     // 4. 확정 이력 기록 — 학습이 아니라 기록. 차기 학기 관문 후보 1순위 재료 (spec §1-2)
     await appendSubjectNameHistory(
       domain,
-      payload.subjectConfirmations.map((c) => ({
+      confirmations.map((c) => ({
         alias: c.rawName,
         canonicalName: c.canonicalName,
         ...(c.shortName ? { shortName: c.shortName } : {}),

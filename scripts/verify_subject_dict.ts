@@ -198,5 +198,41 @@ const S = (name: string, shortName: string, aliases?: string[]): TimetableSubjec
   );
 }
 
+// [10] 3차 실측 재연 — 현황이 작년 분반 표기(논술A/B)를 그대로 쓸 때, 그 자동 연결 메아리가
+// 도태를 면제시켜 새 등록을 막으면 안 된다 (서버 saveHoursPlan의 필터 규칙 합성 재연)
+{
+  const inherited = [S("논술A", "논술"), S("논술B", "논술"), S("미술", "미술")];
+  const rowNames = ["논술", "미술"];
+  const allConfs = [
+    { rawName: "미술", action: "link" as const, canonicalName: "미술" }, // 행 유래 exact 메아리
+    { rawName: "논술A", action: "link" as const, canonicalName: "논술A" }, // 현황 유래 exact 메아리
+    { rawName: "논술B", action: "link" as const, canonicalName: "논술B" },
+    { rawName: "논술", action: "create" as const, canonicalName: "논술", shortName: "논술" },
+  ];
+  const normOf = (s: string) => s.trim().replace(/\s+/g, "").toLowerCase();
+  const rowNorms = new Set(rowNames.map(normOf));
+  const pruned = pruneSubjectsToReferenced(
+    inherited,
+    rowNames,
+    allConfs.filter((c) => c.action === "link" && rowNorms.has(normOf(c.rawName)))
+  );
+  const survivors = new Set(pruned.map((e) => normOf(e.name)));
+  const filtered = allConfs.filter((c) => {
+    if (c.action !== "link") return true;
+    if (survivors.has(normOf(c.canonicalName))) return true;
+    return rowNorms.has(normOf(c.rawName));
+  });
+  const applied = applySubjectConfirmations(pruned, filtered, (n, s) => S(n, s));
+  const idx = buildSubjectIndex(applied.subjects);
+  check(
+    "[10] 현황의 작년 분반 표기 메아리에도 새 등록 성립",
+    applied.errors.length === 0 &&
+      resolveExact(idx, "논술")?.name === "논술" &&
+      resolveExact(idx, "미술")?.name === "미술" &&
+      !applied.subjects.some((e) => e.name === "논술A"),
+    `오류 ${applied.errors.length}건 · 항목 ${applied.subjects.map((e) => e.name).join(",")}`
+  );
+}
+
 console.log(fails ? `\n❌ 실패 ${fails}건` : "\n✅ 전판 통과");
 process.exit(fails ? 1 : 0);
