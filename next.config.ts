@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   // (2026-08-16 실사고: 배정표 업로드가 배포에서만 "DOMMatrix is not defined").
   // 로컬 검증(tsx)은 원본 로드라 무사했다 — 이 설정이 배포를 로컬과 같은 조건으로 만든다.
   serverExternalPackages: ["pdfjs-dist"],
+  // 워커까지 배포 꾸러미에 확실히 포함 (동적 로드라 추적 누락 — 2026-08-16 2차 실사고)
+  outputFileTracingIncludes: {
+    "/api/timetable/manage": ["./node_modules/pdfjs-dist/legacy/build/**"],
+  },
   // Firebase 인증 핸들러(/__/auth/*)를 우리 도메인에서 서빙하도록 프록시.
   // signInWithRedirect가 별도 도메인(firebaseapp.com)을 경유하면 크롬의
   // 서드파티 저장소 차단 정책에 걸려 로그인 결과가 유실되므로(공식 문서의

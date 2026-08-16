@@ -46,6 +46,11 @@ export async function extractPdfLayoutPages(data: Uint8Array): Promise<string[]>
       constructor(w: number, h: number) { this.width = w; this.height = h; this.data = new Uint8ClampedArray(w * h * 4); }
     };
   }
+  // 워커 모듈을 명시적으로 로드 — pdfjs가 내부에서 경로 계산으로 불러오면 배포 파일 추적에
+  // 안 걸려 "/var/task/...pdf.worker.mjs 없음"으로 죽는다 (배포 실사고 2026-08-16 2차).
+  // 명시 import는 ① 추적기에 걸려 파일이 실리고 ② 전역 워커로 등록돼 경로 탐색 자체를 건너뛴다.
+  // @ts-expect-error — 워커 모듈은 타입 선언이 없다
+  await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const doc = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
   const pages: string[] = [];
