@@ -650,3 +650,10 @@
   - `npx tsc --noEmit` ✅ (0 errors)
   - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (39/39 pages prerendered)
   - `bash scripts/check_ui_removals.sh aabe05ba65e8bf4f1628efe822b6d7352b5770b8` ✅ (사라진 상호작용 없음)
+
+## [2026-08-17] Claude — 화면 v2 검수 **사후 완료** + 커밋 오염 자백·규칙 신설
+
+- **자백**: 21fe37f(클러스터링)는 제 add -A가 Antigravity 작업 중이던 화면 v2 700줄을 쓸어 담은 **혼합 커밋** — 미검수 UI가 제 메시지로 배포됨. 이력 강제 수정은 안 하고 이 기록으로 정정. AGENTS ①-0(병행 시 add -A 금지) 신설
+- 사후 검수 결과: **통과** — 기능 4종(접기·클릭→필터·연결 드롭다운 4곳·이동 배지/필터) 실재, 서버 무수정, 개발 용어 노출 0, 유실 0(6555359 기준 총괄), tsc·build ✅. Antigravity 게이트 3종+핸드오버 정위치 — 절차는 그쪽이 완벽했고 사고는 제 쪽
+- 관찰(경미): parseIssueTarget이 서버 문구 정규식에 결합 — 문구 바꿀 때 화면 필터 동반 수정 필요(주석으로 양쪽 표식 권장, 차단 아님)
+- 화면 확인: 체크리스트 I절 재확인 + v2 동작(항목 클릭→표 필터·연결 드롭다운)은 사용자 몫
