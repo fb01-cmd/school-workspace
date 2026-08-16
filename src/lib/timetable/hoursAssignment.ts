@@ -540,12 +540,25 @@ export function assembleHoursRows(
     aliasSets.set(a, set);
     aliasSets.set(b, set);
   }
+  // 그룹 맥락 한정 최후 폴백: 등록부 약칭이 분반 차수 표기로 끝나는 실물("인공Ⅱ" =
+  // 인공지능 기초 2번째 밴드, 2026-08-16 실사고). subjectMatches의 끝 숫자 보호(물Ⅰ/Ⅱ)를
+  // 여기서만 완화 — 등록부 그룹이 이미 학년·반 범위로 좁혀 동명 충돌이 없다.
+  const stemLoose = (a: string, b: string) => {
+    const stem = (x: string) =>
+      x.replace(/\s+/g, "").replace(/Ⅰ/g, "1").replace(/Ⅱ/g, "2").replace(/Ⅲ/g, "3").replace(/\d+$/, "");
+    const [sh, lo] = [stem(a), stem(b)].sort((p2, q) => p2.length - q.length);
+    if (sh.length < 2 || sh[0] !== lo[0]) return false;
+    let i = 0;
+    for (const ch of lo) if (ch === sh[i]) i++;
+    return i === sh.length;
+  };
   const sameSubject = (x: string, y: string) => {
     const cx = canon(x);
     const cy = canon(y);
     if (cx === cy) return true;
     if (aliasSets.get(cx)?.has(cy)) return true;
-    return subjectMatches(x, y); // 약칭 부분열 폴백 — 등록부가 약칭만 담는 실태 (2026-08-17)
+    if (subjectMatches(x, y)) return true; // 약칭 부분열 폴백 — 등록부가 약칭만 담는 실태 (2026-08-17)
+    return stemLoose(x, y);
   };
   const tagHints = (row: AssembledHoursRow) => {
     const sg = registries?.simulGroups?.find(
