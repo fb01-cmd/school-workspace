@@ -116,7 +116,10 @@ export function splitDeptChunks(pages: string[]): DeptChunk[] {
       lines[s].match(/과목별 배정표\s*:\s*(.+)$/)?.[1] ||
       lines[s].match(/([가-힣]+과?)\s*시수 배정표/)?.[1] ||
       ""
-    ).trim();
+    )
+      .trim()
+      // 원본이 부서명을 괄호로 감싼 경우가 실재("(과학)") — 표시용 이름에서만 벗긴다
+      .replace(/^\((.+)\)$/, "$1");
     const hIdx = chunk.findIndex((l) => /개인 배정표\s*:|개인시수표/.test(l));
     let headerLine = hIdx >= 0 ? chunk[hIdx] : "";
     // 괄호 미닫힘 → 다음 줄 접합 (최대 2줄)
