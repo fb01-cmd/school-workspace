@@ -12,6 +12,7 @@ import {
 import { parseHoursExcel, ParsedHoursResult } from "@/lib/timetable/excelHoursParser";
 import { expandCohortFixedBlocks, impliedHoursFromFixedBlocks } from "@/lib/timetable/cohort";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
+import AssignmentHoursModal from "./AssignmentHoursModal";
 
 interface HoursPlanTabProps {
   activeTermId?: string | null;
@@ -157,6 +158,9 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
   const [excelTargetYear, setExcelTargetYear] = useState<number>(new Date().getFullYear());
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 배정표 자동 생성 모달 상태
+  const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
 
   // 필터 상태 (기본값: 1학년 선택으로 초기 렌더 행 수 축소)
   const [filterGrade, setFilterGrade] = useState<number | "all">(1);
@@ -504,6 +508,47 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
+  // 배정표 자동 생성 결과 적용
+  const handleApplyAssignment = ({
+    rows,
+    targetYear,
+    targetSemester,
+    targetTermId,
+  }: {
+    rows: HoursPlanRow[];
+    targetYear: number;
+    targetSemester: number;
+    targetTermId: string;
+  }) => {
+    const defaultGradeDayPeriods: Record<number, Record<number, number>> = {
+      1: { 1: 7, 2: 7, 3: 7, 4: 7, 5: 6 },
+      2: { 1: 7, 2: 7, 3: 7, 4: 7, 5: 6 },
+      3: { 1: 7, 2: 7, 3: 7, 4: 7, 5: 6 },
+    };
+
+    const newPlan: HoursPlan = {
+      id: `plan-${Date.now()}`,
+      label: `${targetYear}학년도 ${targetSemester}학기 배정표 기반 수업 시간`,
+      sourceTermId: "assignment_pdf",
+      targetTermId: targetTermId || activeTermId || `${targetYear}-${targetSemester}`,
+      derivedAt: Date.now(),
+      rows: rows,
+      gradeDayPeriods: defaultGradeDayPeriods,
+      status: "draft",
+      createdBy: userData?.email || "",
+      updatedBy: userData?.email || "",
+      updatedAt: Date.now(),
+    };
+
+    setCurrentPlan(newPlan);
+    setSelectedPlanId(newPlan.id);
+    setOriginalRowsSnapshot(JSON.stringify(rows));
+    setSuccessMessage(
+      `배정표에서 ${rows.length}개의 수업 시간을 성공적으로 불러왔습니다. 내용을 검토한 후 우측 상단의 '💾 저장' 버튼을 눌러주세요.`
+    );
+    setTimeout(() => setSuccessMessage(null), 5000);
+  };
+
   // 4. 계획 저장
   const handleSavePlan = async () => {
     if (!currentPlan) return;
@@ -749,7 +794,16 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* 1) 엑셀 파일 불러오기 버튼 */}
+            {/* 1) 배정표에서 만들기 버튼 */}
+            <button
+              type="button"
+              onClick={() => setAssignmentModalOpen(true)}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
+            >
+              <span>📄 배정표에서 만들기</span>
+            </button>
+
+            {/* 2) 엑셀 파일 불러오기 버튼 */}
             <label className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm cursor-pointer transition-colors flex items-center gap-1.5">
               <span>📥 엑셀 파일 불러오기</span>
               <input
@@ -761,7 +815,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
               />
             </label>
 
-            {/* 2) 저장된 계획 선택 드롭다운 */}
+            {/* 3) 저장된 계획 선택 드롭다운 */}
             {plans.length > 0 && (
               <select
                 value={selectedPlanId || ""}
@@ -1303,6 +1357,15 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
           </div>
         </div>
       )}
+      {/* ── 배정표 자동 생성 모달 ── */}
+      <AssignmentHoursModal
+        isOpen={assignmentModalOpen}
+        onClose={() => setAssignmentModalOpen(false)}
+        activeTermId={activeTermId}
+        teachers={teachers}
+        cohorts={cohorts}
+        onApply={handleApplyAssignment}
+      />
     </div>
   );
 }

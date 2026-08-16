@@ -4,6 +4,16 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-16] Antigravity → Claude/사용자 (배정표 기반 교사별 시수표 자동 생성 UI 구현 완료)
+- **변경 파일**:
+  - `src/components/admin/timetable/AssignmentHoursModal.tsx` (신설): 3칸 파일 업로드(배정표 PDF 필수·창체 PDF 선택·이동수업 xlsx 선택, 3MB 가드), `hours_assignment_prepare` → 부서별 `hours_assignment_extract` 순차 호출 및 진행률/부서명 실시간 표시, `hours_assignment_finalize` 결과 수신, 9c-I 관례 이슈 2분할(⚠️ 짜기 전에 살펴볼 점 / ℹ️ 확인해 두면 좋은 점), 창체 진로 행 기본 미포함 체크박스 및 이중 계상 경고 문구, 교사 성명-시스템 계정 1:1 매칭(`TeacherAutocompleteInput`), 추출 수업 미리보기 표 구현.
+  - `src/components/admin/timetable/HoursPlanTab.tsx`: 상단 액션 바에 `[📄 배정표에서 만들기]` 신규 진입 경로 추가 및 모달 연동. `[시수 계획으로 불러오기]` 클릭 시 코호트 고정 블록 함의 행과 함께 편집 화면 `currentPlan.rows`에 채워 넣고, 저장은 기존 저장 버튼에 위임.
+- **규칙 준수**: 서버·엔진 3파일(`ai.ts`·`hoursAssignment.ts`·`server.ts`) 변경 0줄 유지, 개발 용어 및 메타문구 배제.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (39/39 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 828d85ae157f961bb215950ed06116e28325841a` ✅ (사라진 상호작용 없음)
+
 ## [2026-08-15] Antigravity → Claude/사용자 (운영 매뉴얼 A1: 리뷰 피드백 3건 복원 완료)
 - **변경 파일**:
   - `operations_handbook.md`: §6-2 복원 절차에 누락되었던 3가지 항목을 온전히 보강/복원.
