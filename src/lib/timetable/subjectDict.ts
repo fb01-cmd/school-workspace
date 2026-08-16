@@ -84,13 +84,16 @@ export interface SubjectCandidate {
 }
 
 export interface SubjectResolutionItem {
-  rawName: string; // 배정표 표기
+  rawName: string; // 배정표 표기 (fromSimulStatus면 이동수업 현황 표기)
   status: "exact" | "suggested" | "new";
   /** exact일 때 — 확인 불요, 표시만 */
   resolved?: { name: string; shortName: string };
   candidates: SubjectCandidate[];
   /** new일 때 신규 등록 약칭 기본값 (확정 이력 → 앞 2글자 순) */
   suggestedShortName?: string;
+  /** 배정표 행이 아니라 이동수업 현황 문서에서만 나온 표기 — 기존 "이동수업 현황 과목 연결"
+   *  드롭다운을 관문으로 흡수하는 다리 (spec §6). UI는 출처를 문구로 구분해 준다. */
+  fromSimulStatus?: boolean;
 }
 
 /**

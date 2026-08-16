@@ -8633,12 +8633,19 @@ export async function finalizeHoursAssignmentJob(
   });
   // 관문 과목 대조 (subject_dictionary_spec §3-1) — 배정표 전 과목(창체 담당 파일 유래 포함)을
   // 대상 학기 사전·확정 이력과 대조. 진짜 신학기(빈 사전)는 전 항목 new = 배정표가 사전의 시드.
+  // 이동수업 현황 문서의 표기도 함께 올린다 — 기존 "이동수업 현황 과목 연결" 드롭다운을
+  // 관문으로 흡수하려면 현황 유래 이름("지구과학" 류)도 여기서 확정돼야 한다 (spec §6).
   const history = await loadSubjectNameHistory(domain).catch(() => []);
+  const rowNames = [...asm.rows, ...(creative ? asm.creativeRows : [])].map((r) => r.subjectName);
+  const simulStatusNames = mergedEntries.map((e) => (e.subject || "").trim()).filter(Boolean);
   const subjectResolution = _resolveSubjectsForGate(
-    [...asm.rows, ...(creative ? asm.creativeRows : [])].map((r) => r.subjectName),
+    [...rowNames, ...simulStatusNames],
     targetTerm?.subjects || [],
     history
   );
+  const rowNameSet = new Set(rowNames.map((n) => n.trim()));
+  for (const item of subjectResolution)
+    if (!rowNameSet.has(item.rawName)) item.fromSimulStatus = true;
   return {
     rows: asm.rows,
     creativeRows: creative ? asm.creativeRows : [],
