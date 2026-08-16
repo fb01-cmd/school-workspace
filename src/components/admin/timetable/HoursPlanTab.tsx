@@ -13,7 +13,7 @@ import {
 import { parseHoursExcel, ParsedHoursResult } from "@/lib/timetable/excelHoursParser";
 import { expandCohortFixedBlocks, impliedHoursFromFixedBlocks } from "@/lib/timetable/cohort";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
-import AssignmentHoursModal, { parseIssueTarget } from "./AssignmentHoursModal";
+import AssignmentHoursModal, { parseIssueTarget, issueGuidance } from "./AssignmentHoursModal";
 
 interface HoursPlanTabProps {
   activeTermId?: string | null;
@@ -1126,7 +1126,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                       return (
                         <div
                           key={idx}
-                          className={`pt-1.5 first:pt-0 p-2 rounded-lg flex items-center justify-between gap-3 text-xs transition-colors ${
+                          className={`pt-1.5 first:pt-0 p-2 rounded-lg flex items-start justify-between gap-3 text-xs transition-colors ${
                             note.done
                               ? "bg-gray-50/60 opacity-60"
                               : isError
@@ -1134,7 +1134,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                               : "bg-slate-50/70 border border-slate-200 hover:bg-slate-100/50"
                           }`}
                         >
-                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                          <div className="flex items-start gap-2.5 flex-1 min-w-0">
                             <label className="flex items-center gap-1.5 cursor-pointer shrink-0">
                               <input
                                 type="checkbox"
@@ -1157,19 +1157,25 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                               {isError ? "살펴볼 점" : "확인"}
                             </span>
 
-                            <span
-                              onClick={() => target && handleJumpToIssueTarget(note)}
-                              className={`truncate flex-1 ${
-                                note.done
-                                  ? "line-through text-gray-400"
-                                  : isError
-                                  ? "font-medium text-amber-950"
-                                  : "text-slate-800"
-                              } ${target ? "cursor-pointer hover:underline" : ""}`}
-                              title={note.text}
-                            >
-                              {note.text}
-                            </span>
+                            <div className="flex-1 min-w-0">
+                              <span
+                                onClick={() => target && handleJumpToIssueTarget(note)}
+                                className={`block whitespace-normal break-words ${
+                                  note.done
+                                    ? "line-through text-gray-400"
+                                    : isError
+                                    ? "font-medium text-amber-950"
+                                    : "text-slate-800"
+                                } ${target ? "cursor-pointer hover:underline" : ""}`}
+                              >
+                                {note.text}
+                              </span>
+                              {!note.done && issueGuidance(note.text) && (
+                                <p className="mt-1 text-[11px] leading-relaxed text-slate-500 whitespace-normal break-words">
+                                  → {issueGuidance(note.text)}
+                                </p>
+                              )}
+                            </div>
                           </div>
 
                           {target && (
