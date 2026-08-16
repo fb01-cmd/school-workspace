@@ -410,54 +410,38 @@ export function parseSimulStatusXlsx(buf: Buffer): SimulStatusParse {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const XLSX = require("xlsx") as typeof import("xlsx");
   const wb = XLSX.read(buf, { type: "buffer" });
-  // 보강 양식(최종형, 2026-08-17) 감지: 헤더 「반」+「과목」. 한 줄 = 한 묶음 —
-  // k번째 반 ↔ k번째 과목 짝, 반 1개 = 단독 개설 확정 실증, 여러 개 = 이동수업.
-  for (const sheetName of wb.SheetNames) {
-    const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName], { header: 1 });
-    const hIdx = sheetRows.findIndex(
-      (r) =>
-        Array.isArray(r) &&
-        r.some((c) => c === "반") &&
-        r.some((c) => typeof c === "string" && (c as string).startsWith("과목"))
-    );
-    if (hIdx < 0) continue;
-    const header = sheetRows[hIdx] as string[];
-    const col = (name: string) => header.findIndex((h) => typeof h === "string" && h.startsWith(name));
-    const ci = { grade: col("학년"), cls: col("반"), name: col("과목") };
-    const normName = (x: string) => x.replace(/\s+/g, "").replace(/\d+$/, "");
-    const entries: SimulStatusEntry[] = [];
-    const standalone: string[] = [];
-    for (const r of sheetRows.slice(hIdx + 1)) {
-      if (!Array.isArray(r)) continue;
-      const grade = Number(r[ci.grade]);
-      const clsList = String(r[ci.cls] ?? "")
-        .split(/[,、·]/)
-        .map((x) => Number(x.replace(/[^0-9]/g, "")))
-        .filter((n) => n >= 1 && n <= 15);
-      const nameList = String(r[ci.name] ?? "")
-        .split(/[,、]/)
-        .map((x) => x.trim())
-        .filter(Boolean);
-      if (!grade || !clsList.length || !nameList.length) continue;
-      if (clsList.length !== nameList.length) {
-        // 작성 실수 — 짝이 안 맞으면 이 줄은 쓰지 않는다 (호출부 검증이 "찾지 못함"으로 드러냄)
-        continue;
+  // 보강 양식 C안(2026-08-17 확정) 감지: 「반=과목」 쌍 셀. 한 줄 = 한 묶음,
+  // 쌍이 명시라 순서 무관. 쌍 1개 = 단독 개설 확정 실증, 2개 이상 = 이동수업.
+  {
+    const PAIR = /(\d{1,2})\s*반?\s*=\s*([가-힣A-Za-zⅠⅡⅢ0-9·\s]+)/g;
+    for (const sheetName of wb.SheetNames) {
+      const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName], { header: 1 });
+      const entries: SimulStatusEntry[] = [];
+      const standalone: string[] = [];
+      const normName = (x: string) => x.replace(/\s+/g, "").replace(/\d+$/, "");
+      for (const r of sheetRows) {
+        if (!Array.isArray(r)) continue;
+        const grade = Number(r.find((c) => Number(c) >= 1 && Number(c) <= 3));
+        if (!grade) continue;
+        const content = r.find((c) => typeof c === "string" && /\d+\s*반?\s*=/.test(c)) as string | undefined;
+        if (!content) continue;
+        const pairs = [...content.matchAll(PAIR)].map((m) => ({ cls: Number(m[1]), name: m[2].trim() }));
+        if (!pairs.length) continue;
+        if (pairs.length === 1) {
+          standalone.push(`${grade}-${pairs[0].cls}|${normName(pairs[0].name)}`);
+          continue;
+        }
+        const band = [...new Set(pairs.map((p) => p.cls))].sort((a, b) => a - b);
+        for (const pr of pairs)
+          entries.push({
+            grade, subject: normName(pr.name), classNums: band,
+            raw: `${pr.name}(${band.join("반+")}반)`, hostClassNum: pr.cls,
+          });
       }
-      if (clsList.length === 1) {
-        standalone.push(`${grade}-${clsList[0]}|${normName(nameList[0])}`);
-        continue;
+      if (entries.length || standalone.length) {
+        const grades = new Set(entries.map((e) => e.grade));
+        return { grade: grades.size === 1 ? [...grades][0] : 0, entries, standalone };
       }
-      const band = [...new Set(clsList)].sort((a, b) => a - b);
-      clsList.forEach((cls, i) => {
-        entries.push({
-          grade, subject: normName(nameList[i]), classNums: band,
-          raw: `${nameList[i]}(${band.join("반+")}반)`, hostClassNum: cls,
-        });
-      });
-    }
-    if (entries.length || standalone.length) {
-      const grades = new Set(entries.map((e) => e.grade));
-      return { grade: grades.size === 1 ? [...grades][0] : 0, entries, standalone };
     }
   }
   const ws = wb.Sheets[wb.SheetNames[0]];
