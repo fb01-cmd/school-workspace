@@ -102,6 +102,9 @@ import { randomUUID } from "crypto";
 import { notifyTimetableChanges } from "@/lib/push/webpush";
 import type { TimetableChange } from "@/lib/timetable/types";
 
+// 배정표 부서 추출은 AI 호출 최대 3회(1차+힌트 재시도 2회)가 직렬로 돌 수 있다
+export const maxDuration = 300;
+
 export async function POST(req: NextRequest) {
   try {
     const auth = await verifyAuthAccess(req);

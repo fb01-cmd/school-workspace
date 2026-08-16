@@ -705,7 +705,7 @@ export interface ExtractedAssignmentDept {
   modelUsed?: string;
 }
 
-export function buildAssignmentExtractPrompt(maskedDeptText: string): string {
+export function buildAssignmentExtractPrompt(maskedDeptText: string, focusAliases?: string[]): string {
   return [
     "다음은 고등학교 '과목별 배정표' 한 부서 분량의 텍스트입니다 (고정폭 배치 근사).",
     "구조: 상단에 [과목별 배정표] 격자(과목 × 반 시수), 하단에 [개인 배정표](교사 × 과목 × 반 시수).",
@@ -727,6 +727,13 @@ export function buildAssignmentExtractPrompt(maskedDeptText: string): string {
     "- cells는 [학년,반,시수] 삼중 배열입니다. 예: 1학년 3반 3시간 → [1,3,3]",
     `{"gridRows":[{"teacher":"","subject":"과목명","cells":[[1,3,3],[1,4,3]],"noteTotal":30}],`,
     ` "personalRows":[{"teacher":"T05","subject":"과목명","cells":[[2,1,4]],"noteTotal":15}]}`,
+    ...(focusAliases?.length
+      ? [
+          "",
+          `주의: 직전 읽기에서 다음 교사 블록의 비고 총계와 배정 합이 일치하지 않았습니다: ${focusAliases.join(", ")}.`,
+          "이 교사들의 블록 경계(각 행이 어느 교사 소속인지)와 비고 숫자를 특히 주의 깊게 다시 읽으세요.",
+        ]
+      : []),
     "",
     "--- 텍스트 시작 ---",
     maskedDeptText,
@@ -783,7 +790,9 @@ export function parseAssignmentResponse(
 export async function runAssignmentExtract(
   dept: { dept: string; headerLine: string; text: string },
   teachers: AiTeacherRef[],
-  apiKey: string
+  apiKey: string,
+  /** 재시도 힌트: 직전 읽기에서 검증 그물에 걸린 교사 실명 — 프롬프트에는 가명으로만 나간다 */
+  focusNames?: string[]
 ): Promise<ExtractedAssignmentDept> {
   // 로스터 밖 인명(전출자·미등록자) 방어: 1차 마스킹 후 명단 줄에 남은 2~4자 한글 토큰을
   // 추가 가명으로 흡수한다. 명단 줄은 추출 대상이 아니라 AI가 이 이름을 알 필요가 없다 —
@@ -811,8 +820,12 @@ export async function runAssignmentExtract(
   let model: string = GEMINI_MODEL_LADDER[rung];
   for (let attempt = 0; ; attempt++) {
     try {
+      // 힌트 실명 → 가명 변환. 변환에 실패한 이름(로스터 밖)은 버린다 — 실명 유출 금지
+      const focusAliases = (focusNames || [])
+        .map((n) => p.mask(n))
+        .filter((a) => /^T\d+$/.test(a));
       parsed = await callGeminiParsed(
-        buildAssignmentExtractPrompt(masked),
+        buildAssignmentExtractPrompt(masked, focusAliases),
         apiKey,
         parseAssignmentResponse,
         90_000, // 표 추출은 사고가 길다 — 업로드 배치 작업이라 길게

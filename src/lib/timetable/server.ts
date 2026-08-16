@@ -8361,16 +8361,24 @@ export async function extractHoursAssignmentDept(
   // AI 읽기의 회차 편차(교사 블록 경계 오독 등)로 오류가 잡히면 한 번 더 읽고 덜 틀린 쪽을
   // 채택한다 — 결정론 검증 그물을 품질 심판으로 쓰는 구조 (2026-08-16, (과학) 비고 9건 실측)
   const errorCount = (list: AssignmentIssue[]) => list.filter((i) => i.severity === "error").length;
-  if (errorCount(issues) > 0) {
+  // 오류 항목 앞머리의 교사 이름을 재시도 힌트로 — "이윤정: 비고 총계 15 ≠ 배정 합 18" 형식
+  const focusFrom = (list: AssignmentIssue[]) =>
+    list
+      .filter((i) => i.severity === "error")
+      .map((i) => i.text.match(/^([가-힣]{2,4}):/)?.[1])
+      .filter((n): n is string => !!n);
+  // 최대 2회, 틀린 블록을 힌트로 지목해 다시 읽기 — 맹목 재시도가 같은 곳을 또 틀리는
+  // 회차 편차 대응 (2026-08-17 신학기 시뮬 과학 2건 실측)
+  for (let attempt = 0; attempt < 2 && errorCount(issues) > 0; attempt++) {
     try {
-      const retry = await _runAssignmentExtract(chunk, roster, apiKey);
+      const retry = await _runAssignmentExtract(chunk, roster, apiKey, focusFrom(issues));
       const retryIssues = _validateDept(retry);
       if (errorCount(retryIssues) < errorCount(issues)) {
         extracted = retry;
         issues = retryIssues;
       }
     } catch {
-      // 재시도 실패는 무시 — 1차 결과와 그 오류 목록을 그대로 쓴다
+      break; // 재시도 실패는 무시 — 지금까지의 최선 결과를 그대로 쓴다
     }
   }
   await snap.ref.update({ [`extracted.${index}`]: extracted });
