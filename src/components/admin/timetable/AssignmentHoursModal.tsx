@@ -1138,7 +1138,7 @@ export default function AssignmentHoursModal({
                       </span>
                     </div>
                     <p className="text-[11px] text-amber-800">
-                      배정표 내부의 시수 합계가 어긋나거나 기준과 맞지 않는 항목입니다:
+                      배정표 내부의 시수 합계가 어긋나거나 기준과 맞지 않는 항목입니다. 필요 시 확인해 주세요:
                     </p>
                     <div className="space-y-1.5 pt-1">
                       {errorIssues.map((iss, idx) => {
