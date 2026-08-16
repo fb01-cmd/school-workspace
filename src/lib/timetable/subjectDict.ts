@@ -20,12 +20,18 @@ export const normSubjectName = (s: string): string =>
 
 /**
  * 사전 색인 — 정규화 표기 → 사전 항목(동일 객체 참조가 동치 판정의 근거).
- * ambiguous: 서로 다른 항목이 같은 표기를 주장하는 정규화 키 집합. 컴시간 유래 약칭이
- * 앞 2글자 폴백이라 실데이터에서 충돌이 실재한다("과학"↔"과학사" 류) — 그런 표기는
- * 색인에서 제외해 정확 일치가 어느 쪽에도 붙지 않게 한다 (추측 금지의 색인판).
+ *
+ * **계층 원칙 (2026-08-17 실사고 후 확정): 정식명(name)은 유일 식별자, 약칭·별칭은 보조 표기.**
+ * 계열 과목의 앞 2글자 약칭이 실데이터에서 흔히 겹치고(체육·체육2·체육3의 약칭이 전부
+ * "체육", "과학"↔"과학사" 류), 그 겹침이 **다른 항목의 정식명까지** 판정 불능으로 만들면
+ * 이름 자체가 죽는다(체육 행 미확정 실사고). 그래서 이름 층과 보조 표기 층을 나눈다 —
+ * 이름 일치가 항상 먼저고, 보조 표기의 겹침(ambiguous)은 보조 층 안에서만 판정 불능이다.
  */
 export interface SubjectIndex {
-  byNorm: Map<string, SubjectNameEntry>;
+  /** 정식명 층 — norm(name) → 항목. 이름끼리의 충돌만 여기서 판정 불능 처리 */
+  nameByNorm: Map<string, SubjectNameEntry>;
+  /** 보조 표기 층 — norm(shortName·alias) → 항목. 겹친 표기는 제외(추측 금지의 색인판) */
+  spellByNorm: Map<string, SubjectNameEntry>;
   ambiguous: Set<string>;
 }
 
@@ -35,27 +41,40 @@ export function entrySpellings(e: SubjectNameEntry): string[] {
 }
 
 export function buildSubjectIndex(subjects: SubjectNameEntry[] | undefined): SubjectIndex {
-  const byNorm = new Map<string, SubjectNameEntry>();
-  const ambiguous = new Set<string>();
+  const nameByNorm = new Map<string, SubjectNameEntry>();
+  const spellByNorm = new Map<string, SubjectNameEntry>();
+  // 겹침은 층별로만 죽는다 — 보조 층의 겹침("체육" 약칭 3개)이 이름 층의 같은 키(정식명
+  // "체육")까지 지우면 계층 원칙이 무너진다 (4차 실사고의 마지막 형태)
+  const nameAmbiguous = new Set<string>();
+  const spellAmbiguous = new Set<string>();
   for (const e of subjects || []) {
-    for (const sp of entrySpellings(e)) {
-      const key = normSubjectName(sp);
+    const nameKey = normSubjectName(e.name);
+    if (nameKey) {
+      const prev = nameByNorm.get(nameKey);
+      if (prev && prev !== e) nameAmbiguous.add(nameKey);
+      else nameByNorm.set(nameKey, e);
+    }
+    for (const sp of [e.shortName, ...(e.aliases || [])]) {
+      const key = normSubjectName(sp || "");
       if (!key) continue;
-      const prev = byNorm.get(key);
+      const prev = spellByNorm.get(key);
       if (prev && prev !== e) {
-        ambiguous.add(key);
+        spellAmbiguous.add(key);
         continue;
       }
-      byNorm.set(key, e);
+      spellByNorm.set(key, e);
     }
   }
-  for (const key of ambiguous) byNorm.delete(key);
-  return { byNorm, ambiguous };
+  for (const key of nameAmbiguous) nameByNorm.delete(key);
+  for (const key of spellAmbiguous) spellByNorm.delete(key);
+  // 이름↔보조 층 사이의 겹침은 이름이 이긴다 — resolveExact의 조회 순서가 계층을 보장한다.
+  return { nameByNorm, spellByNorm, ambiguous: new Set([...nameAmbiguous, ...spellAmbiguous]) };
 }
 
-/** 내부 판정의 전부 — 색인 정확 일치. 실패 시 null (추측하지 않는다). */
+/** 내부 판정의 전부 — 정식명 층 → 보조 표기 층 순서의 정확 일치. 실패 시 null (추측하지 않는다). */
 export function resolveExact(index: SubjectIndex, raw: string): SubjectNameEntry | null {
-  return index.byNorm.get(normSubjectName(raw)) || null;
+  const key = normSubjectName(raw);
+  return index.nameByNorm.get(key) || index.spellByNorm.get(key) || null;
 }
 
 /**
@@ -68,8 +87,8 @@ export function sameSubjectExact(index: SubjectIndex, a: string, b: string): boo
   const na = normSubjectName(a);
   const nb = normSubjectName(b);
   if (na === nb) return true;
-  const ea = index.byNorm.get(na);
-  const eb = index.byNorm.get(nb);
+  const ea = resolveExact(index, a);
+  const eb = resolveExact(index, b);
   if (ea && eb) return ea === eb;
   return null;
 }
@@ -218,8 +237,16 @@ export function applySubjectConfirmations<T extends SubjectNameEntry>(
 ): { subjects: T[]; errors: string[] } {
   const out = subjects.map((e) => ({ ...e, aliases: [...(e.aliases || [])] }) as T);
   const errors: string[] = [];
-  const owner = new Map<string, T>();
-  for (const e of out) for (const sp of entrySpellings(e)) owner.set(normSubjectName(sp), e);
+  // 색인의 계층 원칙과 짝: 이름·별칭(사람이 확정한 표기)은 강한 소유권, 약칭(기계적 앞
+  // 2글자 관행)은 약한 소유권 — 새 등록의 이름이 남의 "약칭"과 겹치는 것은 막지 않는다
+  // (체육·체육2·체육3 계열 실사고: 약칭 전부 "체육"이라 정식명 체육 등록이 막혔다).
+  const ownerStrong = new Map<string, T>(); // norm(name·alias) → 항목
+  const ownerShort = new Map<string, T>(); // norm(shortName) → 항목
+  for (const e of out) {
+    for (const sp of [e.name, ...(e.aliases || [])]) ownerStrong.set(normSubjectName(sp), e);
+    if (e.shortName && !ownerShort.has(normSubjectName(e.shortName)))
+      ownerShort.set(normSubjectName(e.shortName), e);
+  }
   const byName = new Map(out.map((e) => [normSubjectName(e.name), e] as const));
   for (const c of confirmations) {
     const raw = (c.rawName || "").trim();
@@ -239,12 +266,16 @@ export function applySubjectConfirmations<T extends SubjectNameEntry>(
         const rawKey = normSubjectName(raw);
         if (!entrySpellings(nameTwin).some((sp) => normSubjectName(sp) === rawKey)) {
           nameTwin.aliases = [...(nameTwin.aliases || []), raw];
-          owner.set(rawKey, nameTwin);
+          ownerStrong.set(rawKey, nameTwin);
         }
         continue;
       }
-      if (owner.has(key)) {
-        errors.push(`「${canonical}」은 이미 등록된 과목 표기와 겹칩니다 — 기존 과목에 연결해 주세요.`);
+      // 사람이 확정한 표기(별칭)와의 충돌만 오류 — 기계적 약칭 겹침은 이름 우선 원칙이 흡수
+      const strongOwner = ownerStrong.get(key);
+      if (strongOwner) {
+        errors.push(
+          `「${canonical}」은 이미 「${strongOwner.name}」의 표기로 확정돼 있습니다 — 기존 과목에 연결해 주세요.`
+        );
         continue;
       }
       const short = (c.shortName || "").trim();
@@ -252,15 +283,12 @@ export function applySubjectConfirmations<T extends SubjectNameEntry>(
         errors.push(`새 과목 「${canonical}」의 약칭이 비었습니다.`);
         continue;
       }
-      const shortOwner = owner.get(normSubjectName(short));
       const entry = makeEntry(canonical, short);
       entry.aliases = [];
       out.push(entry);
       byName.set(key, entry);
-      owner.set(key, entry);
-      // 약칭 겹침은 오류가 아니다(앞 2글자 관행상 흔함) — 색인이 ambiguous로 빼서 정확
-      // 일치에 안 쓰일 뿐. 다만 완전히 같은 항목 표기를 또 만드는 것만 위에서 막았다.
-      if (!shortOwner) owner.set(normSubjectName(short), entry);
+      ownerStrong.set(key, entry);
+      if (!ownerShort.has(normSubjectName(short))) ownerShort.set(normSubjectName(short), entry);
     } else {
       const target = byName.get(normSubjectName(canonical));
       if (!target) {
@@ -268,7 +296,9 @@ export function applySubjectConfirmations<T extends SubjectNameEntry>(
         continue;
       }
       const rawKey = normSubjectName(raw);
-      const rawOwner = owner.get(rawKey);
+      // 연결(별칭 승격)은 강·약 어느 소유권과 겹쳐도 오류 — 별칭이 죽은 표기가 되면
+      // 행 박제가 조용히 실패한다. 오류로 드러내 사람이 정리하게 한다.
+      const rawOwner = ownerStrong.get(rawKey) || ownerShort.get(rawKey);
       if (rawOwner && rawOwner !== target) {
         errors.push(
           `「${raw}」은 이미 「${rawOwner.name}」의 표기로 등록돼 있어 「${canonical}」에 연결할 수 없습니다.`
@@ -277,7 +307,7 @@ export function applySubjectConfirmations<T extends SubjectNameEntry>(
       }
       if (!rawOwner && !entrySpellings(target).some((sp) => normSubjectName(sp) === rawKey)) {
         target.aliases = [...(target.aliases || []), raw];
-        owner.set(rawKey, target);
+        ownerStrong.set(rawKey, target);
       }
     }
   }

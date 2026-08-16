@@ -159,21 +159,21 @@ const S = (name: string, shortName: string, aliases?: string[]): TimetableSubjec
   const inherited = [S("논술A", "논술"), S("논술B", "논술"), S("미술", "미술")];
   const rowNames = ["논술", "미술"]; // 올해 배정표 — 미술은 정확 일치로 계속 쓰임, 논술A/B는 안 쓰임
   const confs = [{ rawName: "논술", action: "create" as const, canonicalName: "논술", shortName: "논술" }];
-  // 도태 전에는 create가 승계 약칭에 막힌다 (거부 자체는 안전장치로서 정상)
-  const blocked = applySubjectConfirmations(inherited, confs, (n, s) => S(n, s));
-  // 도태 후에는 논술A/B가 빠지고 create가 성립하며, 계속 쓰는 미술은 살아남는다
+  // 이름 우선 계층(2026-08-17 4차) 이후: 승계 약칭 선점은 새 등록을 더는 못 막는다
+  const unblocked = applySubjectConfirmations(inherited, confs, (n, s) => S(n, s));
+  // 도태는 별개로 유효 — 안 쓰는 승계 항목이 정리되고, 계속 쓰는 미술은 살아남는다
   const pruned = pruneSubjectsToReferenced(inherited, rowNames, confs);
   const applied = applySubjectConfirmations(pruned, confs, (n, s) => S(n, s));
   const idx = buildSubjectIndex(applied.subjects);
   check(
-    "[8] 신학기 도태 — 안 쓰는 승계 표기 정리 후 새 등록 성립",
-    blocked.errors.length === 1 &&
+    "[8] 신학기 도태 + 이름 우선 — 승계 약칭 선점이 새 등록을 못 막고, 안 쓰는 항목은 정리",
+    unblocked.errors.length === 0 &&
       pruned.length === 1 &&
       pruned[0].name === "미술" &&
       applied.errors.length === 0 &&
       resolveExact(idx, "논술")?.name === "논술" &&
       resolveExact(idx, "미술")?.name === "미술",
-    `도태 전 오류 ${blocked.errors.length}건 → 도태 후 오류 ${applied.errors.length}건 · 생존 ${pruned.map((e) => e.name).join(",")}`
+    `계층 후 오류 ${unblocked.errors.length}건 · 도태 생존 ${pruned.map((e) => e.name).join(",")}`
   );
 }
 
@@ -231,6 +231,29 @@ const S = (name: string, shortName: string, aliases?: string[]): TimetableSubjec
       resolveExact(idx, "미술")?.name === "미술" &&
       !applied.subjects.some((e) => e.name === "논술A"),
     `오류 ${applied.errors.length}건 · 항목 ${applied.subjects.map((e) => e.name).join(",")}`
+  );
+}
+
+// [11] 이름 우선 계층 — 계열 과목의 앞 2글자 약칭이 전부 겹쳐도(체육·체육2·체육3 → 전부 "체육")
+// 정식명 판정은 흔들리지 않는다 (4차 실사고: 체육 행 미확정)
+{
+  const applied = applySubjectConfirmations(
+    [] as ReturnType<typeof S>[],
+    [
+      { rawName: "체육", action: "create" as const, canonicalName: "체육", shortName: "체육" },
+      { rawName: "체육2", action: "create" as const, canonicalName: "체육2", shortName: "체육" },
+      { rawName: "체육3", action: "create" as const, canonicalName: "체육3", shortName: "체육" },
+    ],
+    (n, s) => S(n, s)
+  );
+  const idx = buildSubjectIndex(applied.subjects);
+  check(
+    "[11] 계열 약칭 총돌림에도 정식명 판정 생존",
+    applied.errors.length === 0 &&
+      resolveExact(idx, "체육")?.name === "체육" &&
+      resolveExact(idx, "체육2")?.name === "체육2" &&
+      resolveExact(idx, "체육3")?.name === "체육3",
+    `오류 ${applied.errors.length}건 · 체육→${resolveExact(idx, "체육")?.name || "판정불능"}`
   );
 }
 
