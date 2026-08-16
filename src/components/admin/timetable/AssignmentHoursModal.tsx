@@ -182,6 +182,8 @@ function formatFileSize(bytes: number): string {
  * 비전문가는 막다른 골목). 유형이 유한해서 AI 해설보다 고정 안내가 정확하고 즉답이다.
  */
 export function issueGuidance(text: string): string | null {
+  if (/학년 열을 잘못 읽었을 수 있습니다/.test(text))
+    return "자동 읽기가 이 수업을 다른 학년 칸으로 옮겨 적은 것으로 보입니다. [해당 수업 확인]을 누르면 잘못 실린 자리의 행이 나옵니다 — 그 행의 학년 숫자를 자료의 학년으로 고치고, 반 번호도 항목에 적힌 반 기준으로 맞춰 주세요.";
   if (/짝이 맞지 않아 자동 정리하지 않았습니다/.test(text))
     return "이동수업 자료와 배정표가 서로 다른 반을 가리키고 있어 자동으로 고치지 않았습니다. [해당 수업 확인]으로 표에 이동해, 실제로 수업이 열리는 반 번호로 표의 반 칸을 고쳐 주세요. 표가 이미 맞다면 왼쪽 확인 체크만 하면 됩니다.";
   if (/단독으로 적혀 있습니다/.test(text))
@@ -295,6 +297,22 @@ export function parseIssueTarget(iss: { text: string }): TableFilterTarget | nul
       teacher,
       label: `${teacher} 선생님`,
     };
+  }
+
+  // 5a-1. 학년 오독: "3학년 중국문화: 이동수업 자료상 3학년 수업인데 배정표 추출 결과에는 2학년 6·7반으로 잡혀 있습니다"
+  const misM = t.match(/^(\d+)학년\s+([^:]+):\s*이동수업 자료상.*?추출 결과에는\s*(\d+)학년/);
+  if (misM) {
+    const subject = misM[2].trim();
+    const wrongGrade = parseInt(misM[3], 10);
+    return { grade: wrongGrade, subject, label: `${wrongGrade}학년(오독 위치) ${subject}` };
+  }
+
+  // 5a-2. 보수 무이동: "2학년 인공지능기초: 배정표 반과 이동수업 개설 반(6·8)이 어긋나는데 짝이 맞지 않아…"
+  const consM = t.match(/^(\d+)학년\s+([^:]+):\s*배정표 반과\s*이동수업 개설 반/);
+  if (consM) {
+    const grade = parseInt(consM[1], 10);
+    const subject = consM[2].trim();
+    return { grade, subject, label: `${grade}학년 ${subject}` };
   }
 
   // 5b. 병기 표기: "「인간과 철학 / 삶과종교」 병기 표기가 있습니다" → 앞쪽 이름으로 검색

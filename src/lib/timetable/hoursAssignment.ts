@@ -198,7 +198,8 @@ export interface AssignmentIssue {
     | "dept-total-mismatch" // 2b. 부서 제목 총시간 ≠ 개인표 합
     | "creative-mismatch" // 3. 배정표 창체 반 ↔ 창체 파일 담당 반 불일치
     | "shared-assignment" // 5. 같은 반·같은 과목에 두 교사 — 실측상 분담(3+1시간 등)이 실재해 고지로 낮춤
-    | "simul-status-mismatch" // 4. 이동수업 현황 반 묶음 ≠ 배정표 배정 반
+    | "simul-status-mismatch"
+    | "grade-misplacement" // 4. 이동수업 현황 반 묶음 ≠ 배정표 배정 반
     | "stale-title"; // 6. 문서 제목 학기 ≠ 대상 학기
   dept?: string;
   text: string;
@@ -550,6 +551,32 @@ export function validateSimulStatus(
         text: `이동수업 현황의 「${subject}」 과목을 배정표에서 찾지 못했습니다 (배정표 표기가 다른 이름일 수 있음 — 확인용)`,
       });
       continue;
+    }
+    if (!assigned.size) {
+      // 이 학년엔 한 칸도 없는데 같은 과목이 다른 학년에 잡혀 있다 = PDF 열 좌표 드리프트로
+      // 학년 경계를 잘못 읽었을 신호 (중국문화 3학년→2학년 실사고, 2026-08-16). 격자·개인이
+      // 같이 밀리면 합계 검증은 통과하므로 이 교차 신호가 유일한 그물이다.
+      const elsewhere = new Map<number, Set<number>>();
+      for (const d of depts)
+        for (const r of d.personalRows) {
+          if (!matchNames.some((n) => subjectMatches(r.subject, n))) continue;
+          for (const c of r.cells)
+            if (c.grade !== e.grade) {
+              if (!elsewhere.has(c.grade)) elsewhere.set(c.grade, new Set());
+              elsewhere.get(c.grade)!.add(c.classNum);
+            }
+        }
+      if (elsewhere.size) {
+        const desc = [...elsewhere.entries()]
+          .map(([g, cs]) => `${g}학년 ${[...cs].sort((a, b) => a - b).join("·")}반`)
+          .join(", ");
+        issues.push({
+          severity: "error",
+          code: "grade-misplacement",
+          text: `${e.grade}학년 ${subject}: 이동수업 자료상 ${e.grade}학년 수업인데 배정표 추출 결과에는 ${desc}으로 잡혀 있습니다 — 학년 열을 잘못 읽었을 수 있습니다. 표에서 이 수업의 학년·반을 자료 기준으로 고쳐 주세요`,
+        });
+        continue;
+      }
     }
     const want = new Set(e.classNums);
     const missing = e.classNums.filter((c) => !assigned.has(c));
