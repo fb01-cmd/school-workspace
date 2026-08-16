@@ -201,6 +201,33 @@ export function issueGuidance(text: string): string | null {
   return null;
 }
 
+/**
+ * 줄임말-정식 과목명 느슨 매칭 — 엔진의 subjectMatches(hoursAssignment.ts)와 같은 규칙.
+ * 서버 모듈을 클라이언트 번들에 끌어오지 않으려 소형 사본을 둔다(pdfjs 배포 사고 전례).
+ * 규칙 변경 시 양쪽을 함께 고칠 것: 공백 제거·"화학Ⅱ→화Ⅱ" 축약·로마숫자 통일 후
+ * 끝 숫자 일치 + 첫 글자 일치 + 순서 보존 부분열.
+ * 의도적 완화 한 곳: 엔진은 줄기 두 글자 이상("물Ⅱ" 거부 — 오탐이 위험)이지만, 표 검색은
+ * 오탐이 행 몇 개 더 보이는 것뿐이라 한 글자 줄임말("물Ⅱ"→물리학Ⅱ)을 허용한다.
+ */
+export function subjectLooseMatch(a: string, b: string): boolean {
+  const roman = (x: string) => x.replace(/Ⅰ/g, "1").replace(/Ⅱ/g, "2").replace(/Ⅲ/g, "3");
+  const base = (x: string) => roman(x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, ""));
+  const va = base(a);
+  const vb = base(b);
+  if (va === vb) return true;
+  const numOf = (x: string) => (x.match(/(\d+)$/)?.[1] ?? "");
+  const stem = (x: string) => x.replace(/\d+$/, "");
+  const [shortV, longV] = va.length <= vb.length ? [va, vb] : [vb, va];
+  const sNum = numOf(shortV);
+  if (sNum && sNum !== numOf(longV)) return false;
+  const sStem = stem(shortV);
+  const lStem = stem(longV);
+  if (sStem.length < 1 || sStem[0] !== lStem[0]) return false;
+  let i = 0;
+  for (const ch of lStem) if (ch === sStem[i]) i++;
+  return i === sStem.length;
+}
+
 export function parseIssueTarget(iss: { text: string }): TableFilterTarget | null {
   const t = iss.text;
 
@@ -268,6 +295,13 @@ export function parseIssueTarget(iss: { text: string }): TableFilterTarget | nul
       teacher,
       label: `${teacher} 선생님`,
     };
+  }
+
+  // 5b. 병기 표기: "「인간과 철학 / 삶과종교」 병기 표기가 있습니다" → 앞쪽 이름으로 검색
+  const pairM = t.match(/「([^」/]+)\/[^」]*」.*병기/);
+  if (pairM) {
+    const subject = pairM[1].trim();
+    return { subject, label: `과목 「${subject}」` };
   }
 
   // 6. 밴드 대조: "2학년 중국어회화: 이동수업 밴드 반(1·2·3·5·10)과 배정표 반(1·2·3)이 다릅니다"

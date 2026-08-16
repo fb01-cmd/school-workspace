@@ -13,7 +13,7 @@ import {
 import { parseHoursExcel, ParsedHoursResult } from "@/lib/timetable/excelHoursParser";
 import { expandCohortFixedBlocks, impliedHoursFromFixedBlocks } from "@/lib/timetable/cohort";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
-import AssignmentHoursModal, { parseIssueTarget, issueGuidance } from "./AssignmentHoursModal";
+import AssignmentHoursModal, { parseIssueTarget, issueGuidance, subjectLooseMatch } from "./AssignmentHoursModal";
 
 interface HoursPlanTabProps {
   activeTermId?: string | null;
@@ -852,7 +852,15 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         const sub = (r.subjectName || "").toLowerCase();
         const tName = (r.teacherName || "").toLowerCase();
         const tEmail = (r.teacherEmail || "").toLowerCase();
-        if (!sub.includes(q) && !tName.includes(q) && !tEmail.includes(q)) return false;
+        // 확인 목록은 이동수업 자료의 줄임말("화Ⅱ")로 검색을 걸 수 있다 — 표는 배정표
+        // 표기("화학Ⅱ")이므로 느슨 매칭도 함께 본다 (빈 표 출구 사고, 2026-08-16)
+        if (
+          !sub.includes(q) &&
+          !tName.includes(q) &&
+          !tEmail.includes(q) &&
+          !subjectLooseMatch(r.subjectName || "", filterSearch)
+        )
+          return false;
       }
       return true;
     });
