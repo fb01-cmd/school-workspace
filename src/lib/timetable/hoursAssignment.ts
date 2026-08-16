@@ -458,10 +458,15 @@ export interface AssembledHoursRow {
   teacherName: string;
   teacherEmail: string; // 미매칭이면 "" — 화면의 성명→이메일 매칭 UI(9c-H 재사용)가 마저 채운다
   hours: number;
+  /** §9-B①: 이동수업 등록부 대조로 자동 태그 (9c-I-2 힌트 계보) — 솔버 무편집 투입의 재료 */
+  simulGroupId?: string | null;
+  /** §9-C: 특별실 등록부 대조 — 슬롯 제한형이면 그 수, 아니면 전 시수 */
+  venueHours?: number | null;
 }
 
 export interface AssembleResult {
-  rows: AssembledHoursRow[]; // 배정표 개인표 유래 (창체 행 포함)
+  rows: AssembledHoursRow[]; // 배정표 개인표 유래 — **창체 제외** (§9-A: 최종 시수표 실측상
+  // 창체는 시수표에 없고 교육과정 고정 시간 몫. 불러오기의 코호트 함의 행과 이중 계상 차단)
   /** 창체 담당 파일 유래(반별 담당 1시간) — 배정표 창체와 관계가 확정되지 않아 **합치지 않고 따로** 준다.
    *  포함 여부는 화면에서 일과계가 정한다 (이중 계상 방지 — 9c-I H1 무력화 함정과 같은 정신). */
   creativeRows: AssembledHoursRow[];
@@ -472,8 +477,26 @@ export function assembleHoursRows(
   depts: ExtractedAssignmentDept[],
   creative: CreativeGrid,
   creativeSubjectLabel: string,
-  roster: Array<{ name: string; email: string }>
+  roster: Array<{ name: string; email: string }>,
+  registries?: {
+    simulGroups?: Array<{ id?: string; grade: number; classNums: number[]; subjectNames: string[] }>;
+    venueGroups?: Array<{ grade: number; classNums: number[]; subjectNames: string[]; slots?: unknown[] }>;
+  }
 ): AssembleResult {
+  const canon = (x: string) => x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, "");
+  const tagHints = (row: AssembledHoursRow) => {
+    const sg = registries?.simulGroups?.find(
+      (g) => g.grade === row.grade && g.classNums.includes(row.classNum) &&
+        g.subjectNames.some((sn) => canon(sn) === canon(row.subjectName))
+    );
+    if (sg?.id) row.simulGroupId = sg.id;
+    const vg = registries?.venueGroups?.find(
+      (g) => g.grade === row.grade && g.classNums.includes(row.classNum) &&
+        g.subjectNames.some((sn) => canon(sn) === canon(row.subjectName))
+    );
+    if (vg) row.venueHours = vg.slots?.length ? Math.min(row.hours, vg.slots.length) : row.hours;
+    return row;
+  };
   // 성명→이메일: **서로 다른** 이메일이 유일할 때만 자동 매칭 (동명이인은 미매칭으로 남겨
   // 사람이 정한다). 같은 사람이 여러 소스에서 중복 들어오는 것은 Set이 흡수한다 —
   // 배열로 세면 3소스 합집합에서 전원이 "후보 3개"가 되는 실사고 (2026-08-16).
@@ -492,17 +515,20 @@ export function assembleHoursRows(
   for (const d of depts)
     for (const r of d.personalRows) {
       if (!r.teacher) continue;
+      if (r.subject === "창체") continue; // §9-A — 검출 3 대조에는 depts 원본이 계속 쓰인다
       const email = emailOf(r.teacher);
       if (!email) unmatched.add(r.teacher);
       for (const c of r.cells)
-        rows.push({
-          grade: c.grade,
-          classNum: c.classNum,
-          subjectName: r.subject,
-          teacherName: r.teacher,
-          teacherEmail: email,
-          hours: c.hours,
-        });
+        rows.push(
+          tagHints({
+            grade: c.grade,
+            classNum: c.classNum,
+            subjectName: r.subject,
+            teacherName: r.teacher,
+            teacherEmail: email,
+            hours: c.hours,
+          })
+        );
     }
   const creativeRows: AssembledHoursRow[] = [];
   for (const [key, name] of creative.byClass) {

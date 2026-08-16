@@ -8393,7 +8393,16 @@ export async function finalizeHoursAssignmentJob(
   if (creative) issues.push(..._validateCreative(depts, creative));
   if (job.simul) issues.push(..._validateSimulStatus(depts, job.simul));
   const roster = await loadTeacherNameRoster(domain);
-  const asm = _assembleHoursRows(depts, creative || { title: "", byClass: new Map() }, "진로", roster);
+  // §9-B①·C: 등록부 힌트 태깅 — 대상 학기 등록부가 있으면 simulGroupId·venueHours 자동 기입
+  const targetTermId = `${job.targetYear}-${job.targetSemester}`;
+  const [simulGroups, venueGroups] = await Promise.all([
+    loadSimulGroups(domain, targetTermId).catch(() => []),
+    loadVenueGroups(domain, targetTermId).catch(() => []),
+  ]);
+  const asm = _assembleHoursRows(depts, creative || { title: "", byClass: new Map() }, "진로", roster, {
+    simulGroups: simulGroups.filter((g) => g.active !== false),
+    venueGroups,
+  });
   return {
     rows: asm.rows,
     creativeRows: creative ? asm.creativeRows : [],

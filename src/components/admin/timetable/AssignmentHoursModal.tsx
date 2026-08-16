@@ -23,6 +23,8 @@ export interface AssembledHoursRow {
   teacherName: string;
   teacherEmail: string;
   hours: number;
+  simulGroupId?: string | null;
+  venueHours?: number | null;
 }
 
 interface AssignmentHoursModalProps {
@@ -435,6 +437,8 @@ export default function AssignmentHoursModal({
         teacherName: r.teacherName,
         teacherEmail: email,
         hours: r.hours,
+        simulGroupId: r.simulGroupId ?? null,
+        venueHours: r.venueHours ?? null,
       };
     });
 

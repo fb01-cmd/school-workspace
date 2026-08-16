@@ -152,17 +152,27 @@ async function main() {
 
   // [6] 창체 대조(검출 3) + 조립·이메일 매칭
   const creativeIssues = validateCreative(extracted, creative);
+  const srv = await import("../src/lib/timetable/server");
+  const st = await srv.loadTimetableSettings("hmh.or.kr");
+  const [sg, vg] = await Promise.all([
+    srv.loadSimulGroups("hmh.or.kr", st.activeTermId!),
+    srv.loadVenueGroups("hmh.or.kr", st.activeTermId!),
+  ]);
   const asm = assembleHoursRows(
     extracted,
     creative,
     "진로",
-    roster.map((t) => ({ name: t.name || "", email: t.email || "" }))
+    roster.map((t) => ({ name: t.name || "", email: t.email || "" })),
+    { simulGroups: sg.filter((g) => g.active !== false), venueGroups: vg }
   );
+  const tagged = asm.rows.filter((r) => r.simulGroupId).length;
+  const venued = asm.rows.filter((r) => r.venueHours != null).length;
   const rowsHours = asm.rows.reduce((s, r) => s + r.hours, 0);
   const matched = asm.rows.filter((r) => r.teacherEmail).length;
   console.log(
     `[6] 조립 — 배정표 행 ${asm.rows.length}건(${rowsHours}시간) + 창체 행 ${asm.creativeRows.length}건(별도) · ` +
-      `이메일 매칭 ${matched}/${asm.rows.length} · 미매칭 성명 ${asm.unmatchedNames.length}명(${asm.unmatchedNames.slice(0, 6).join(",") || "없음"}) · 창체 대조 이슈 ${creativeIssues.length}건`
+      `이메일 매칭 ${matched}/${asm.rows.length} · 미매칭 ${asm.unmatchedNames.length}명 · 창체 대조 이슈 ${creativeIssues.length}건 · ` +
+      `동시수업 태그 ${tagged}행 · 특별실 시수 ${venued}행 (§9-B①·C)`
   );
   for (const i of creativeIssues.slice(0, 4)) console.log(`      ! ${i.text.slice(0, 90)}`);
   if (!asm.rows.length || asm.creativeRows.length !== 30) failed = true;
