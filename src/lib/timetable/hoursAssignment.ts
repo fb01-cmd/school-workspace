@@ -1,93 +1,13 @@
 /**
  * 교사별 시수표 자동 생성 — 상류 3파일 파이프라인 (hours_source_files_analysis §2·§4·§5ⓓ)
  *
- * 구조:
- *   배정표 PDF → 텍스트 층 추출(pdfjs, 로컬) → 가명화(ai.ts Pseudonymizer) → Gemini 구조화(E5)
- *   → 역치환 → **결정론 교차 검증(§4의 1·2·5·6)** → 창체·이동수업 대조(3·4) → HoursPlan 행 조립.
- *
- * 원칙 (9c-D 철칙): AI는 추출만 한다. 숫자의 진실성은 이 파일의 검증기가 판정하며,
- * 검증을 통과하지 못한 추출은 반영되지 않고 불일치 목록으로 사람에게 보인다.
- * 실명 PDF를 AI에 직접 보내지 않는다 — 텍스트 추출·가명화는 항상 서버 로컬에서.
+ * 구조 (2026-08-16 hwpx 전환 후):
+ *   배정표 hwpx → 결정론 표 파싱(hwpxAssignment.ts) → **결정론 교차 검증(§4의 1·2·5·6)**
+ *   → 창체·이동수업 대조(3·4) → HoursPlan 행 조립. PDF+AI 경로는 폐지 —
+ *   칸 좌표 추측이 학년 밀림 오독을 낳던 뿌리를 형식 교체로 제거했다.
  */
 
 import { ExtractedAssignmentDept, ExtractedHourCell } from "./ai";
-
-// ── 1. PDF 텍스트 층 추출 (레이아웃 보존) ─────────────────────
-
-/**
- * pdfjs 텍스트 항목을 줄·열 정렬 텍스트로 재구성한다.
- * 열 위치(어느 반 칸인가)가 의미를 갖는 표라서, 항목 사이 간격을 공백으로 환산해
- * pdftotext -layout과 같은 "고정폭 배치" 근사를 만든다 (실물 검증: verify_hours_assignment [0]).
- */
-export async function extractPdfLayoutPages(data: Uint8Array): Promise<string[]> {
-  // 서버 런타임 폴리필 — pdfjs가 브라우저 전용 전역을 참조한다 (배포 실사고 2026-08-16).
-  // 텍스트 추출만 쓰므로 행렬 연산 결과는 소비되지 않는다 — 형태만 채우는 최소 구현이면 충분.
-  const g = globalThis as Record<string, unknown>;
-  if (typeof g.DOMMatrix === "undefined") {
-    g.DOMMatrix = class DOMMatrix {
-      a = 1; b = 0; c = 0; d = 1; e = 0; f = 0;
-      constructor(init?: number[]) {
-        if (Array.isArray(init) && init.length >= 6)
-          [this.a, this.b, this.c, this.d, this.e, this.f] = init;
-      }
-      translate() { return this; }
-      scale() { return this; }
-      multiply() { return this; }
-      invertSelf() { return this; }
-      transformPoint(p: { x: number; y: number }) { return p; }
-    };
-  }
-  if (typeof g.Path2D === "undefined") {
-    g.Path2D = class Path2D { addPath() {} moveTo() {} lineTo() {} closePath() {} };
-  }
-  if (typeof g.ImageData === "undefined") {
-    g.ImageData = class ImageData {
-      width: number; height: number; data: Uint8ClampedArray;
-      constructor(w: number, h: number) { this.width = w; this.height = h; this.data = new Uint8ClampedArray(w * h * 4); }
-    };
-  }
-  // 워커 모듈을 명시적으로 로드 — pdfjs가 내부에서 경로 계산으로 불러오면 배포 파일 추적에
-  // 안 걸려 "/var/task/...pdf.worker.mjs 없음"으로 죽는다 (배포 실사고 2026-08-16 2차).
-  // 명시 import는 ① 추적기에 걸려 파일이 실리고 ② 전역 워커로 등록돼 경로 탐색 자체를 건너뛴다.
-  // @ts-expect-error — 워커 모듈은 타입 선언이 없다
-  await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const doc = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
-  const pages: string[] = [];
-  for (let p = 1; p <= doc.numPages; p++) {
-    const page = await doc.getPage(p);
-    const content = await page.getTextContent();
-    type Item = { str: string; x: number; y: number; w: number };
-    const items: Item[] = (content.items as Array<{ str: string; transform: number[]; width: number }>)
-      .filter((it) => it.str && it.str.trim())
-      .map((it) => ({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width }));
-    // 줄 묶기: y가 가까운 항목(±3pt)을 한 줄로
-    items.sort((a, b) => b.y - a.y || a.x - b.x);
-    const lines: Item[][] = [];
-    for (const it of items) {
-      const last = lines[lines.length - 1];
-      if (last && Math.abs(last[0].y - it.y) <= 3) last.push(it);
-      else lines.push([it]);
-    }
-    const rendered = lines.map((line) => {
-      line.sort((a, b) => a.x - b.x);
-      // 평균 글자폭으로 x → 열 환산 (한글 PDF 실측상 5~10pt/자 — 페이지별 평균 사용)
-      const charW =
-        line.reduce((s, i) => s + (i.str.length ? i.w / i.str.length : 0), 0) / line.length || 6;
-      let out = "";
-      for (const it of line) {
-        const col = Math.max(0, Math.round(it.x / charW));
-        if (col > out.length) out += " ".repeat(col - out.length);
-        else if (out.length && !out.endsWith(" ")) out += " ";
-        out += it.str;
-      }
-      return out;
-    });
-    pages.push(rendered.join("\n"));
-  }
-  await doc.cleanup();
-  return pages;
-}
 
 // ── 2. 배정표 부서 단위 분할 ──────────────────────────────────
 
@@ -95,42 +15,6 @@ export interface DeptChunk {
   dept: string; // 격자표 제목의 부서명 (예: "국어", "(과학)")
   headerLine: string; // 개인 배정표 제목 줄 — 부서 총시간 파싱 재료 (검증 2)
   text: string; // 격자표+개인표 전체 텍스트 (가명화 전)
-}
-
-/** 부서 시작 = "과목별 배정표 : X" 또는 "…과 시수 배정표"(생활교양과 실물 양식 — 콜론 없음).
- *  개인표 제목이 괄호 중간에서 줄바꿈되는 실물(생활교양과)이 있어 괄호가 닫힐 때까지 접합한다. */
-export function splitDeptChunks(pages: string[]): DeptChunk[] {
-  const all = pages.join("\n");
-  const lines = all.split("\n");
-  const starts: number[] = [];
-  lines.forEach((l, i) => {
-    const gridTitle =
-      (/과목별 배정표\s*:/.test(l) && !/개인 배정표/.test(l)) ||
-      (/시수 배정표\s*$/.test(l.trim()) && !/개인/.test(l));
-    if (gridTitle) starts.push(i);
-  });
-  return starts.map((s, idx) => {
-    const end = idx + 1 < starts.length ? starts[idx + 1] : lines.length;
-    const chunk = lines.slice(s, end);
-    const dept = (
-      lines[s].match(/과목별 배정표\s*:\s*(.+)$/)?.[1] ||
-      lines[s].match(/([가-힣]+과?)\s*시수 배정표/)?.[1] ||
-      ""
-    )
-      .trim()
-      // 원본이 부서명을 괄호로 감싼 경우가 실재("(과학)") — 표시용 이름에서만 벗긴다
-      .replace(/^\((.+)\)$/, "$1");
-    const hIdx = chunk.findIndex((l) => /개인 배정표\s*:|개인시수표/.test(l));
-    let headerLine = hIdx >= 0 ? chunk[hIdx] : "";
-    // 괄호 미닫힘 → 다음 줄 접합 (최대 2줄)
-    for (let j = 1; j <= 2 && hIdx >= 0; j++) {
-      const open = (headerLine.match(/\(/g) || []).length;
-      const close = (headerLine.match(/\)/g) || []).length;
-      if (open <= close) break;
-      headerLine += " " + (chunk[hIdx + j] || "").trim();
-    }
-    return { dept, headerLine, text: chunk.join("\n") };
-  });
 }
 
 /** 개인 배정표 제목의 "국어 (113시간+창체5) / 한문 (15시간)" → [{label, hours, creative}] (검증 2 재료) */
@@ -553,13 +437,15 @@ export function validateSimulStatus(
       continue;
     }
     if (!assigned.size) {
-      // 이 학년엔 한 칸도 없는데 같은 과목이 다른 학년에 잡혀 있다 = PDF 열 좌표 드리프트로
-      // 학년 경계를 잘못 읽었을 신호 (중국문화 3학년→2학년 실사고, 2026-08-16). 격자·개인이
-      // 같이 밀리면 합계 검증은 통과하므로 이 교차 신호가 유일한 그물이다.
+      // 이 학년엔 한 칸도 없는데 같은 과목이 다른 학년에 잡혀 있다 = 학년 열 오독 신호
+      // (중국문화 3학년→2학년 실사고, 2026-08-16). 판정은 **정규화 동일 이름**만 —
+      // 약칭 부분열("과학"↔"과학사")까지 잡으면 유사 이름 남남이 오독으로 오인된다(실측).
+      const baseName = (x: string) =>
+        x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, "").replace(/Ⅰ/g, "1").replace(/Ⅱ/g, "2").replace(/Ⅲ/g, "3");
       const elsewhere = new Map<number, Set<number>>();
       for (const d of depts)
         for (const r of d.personalRows) {
-          if (!matchNames.some((n) => subjectMatches(r.subject, n))) continue;
+          if (!matchNames.some((n) => baseName(r.subject) === baseName(n))) continue;
           for (const c of r.cells)
             if (c.grade !== e.grade) {
               if (!elsewhere.has(c.grade)) elsewhere.set(c.grade, new Set());
@@ -850,18 +736,4 @@ export function normalizeHostClasses(
   return { moves, issues };
 }
 
-/** §9-E 병기 과목 감지 — "인간과 철학 /(줄바꿈) 삶과종교" 실물. 시수표에는 한 이름만 실린다 */
-export function detectSlashedSubjects(chunkText: string): AssignmentIssue[] {
-  const issues: AssignmentIssue[] = [];
-  for (const m of chunkText.matchAll(/([가-힣][가-힣 ]{1,14}?)\s*\/\s*\n(?:[^\n가-힣]*\n){0,2}\s*([가-힣][가-힣 ]{1,14})/g)) {
-    const a = m[1].trim();
-    const b = m[2].trim();
-    if (/시간|배정|학년|교시/.test(a + b)) continue;
-    issues.push({
-      severity: "notice",
-      code: "simul-status-mismatch",
-      text: `「${a} / ${b}」 병기 표기가 있습니다 — 시수표에는 한 과목명만 실립니다. 확정 표기를 확인해 주세요`,
-    });
-  }
-  return issues;
-}
+

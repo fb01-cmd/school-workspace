@@ -8218,8 +8218,6 @@ export async function adoptDraftToTerm(
 // 마무리 결과를 화면이 검토한 뒤 기존 hours_plan_save로만 반영한다(정규 저장 API 원칙).
 
 import {
-  splitDeptChunks as _splitDeptChunks,
-  extractPdfLayoutPages as _extractPdfLayoutPages,
   parseCreativeGrid as _parseCreativeGrid,
   parseSimulStatusXlsx as _parseSimulStatusXlsx,
   validateDept as _validateDept,
@@ -8230,8 +8228,9 @@ import {
   AssignmentIssue,
   DeptChunk,
 } from "./hoursAssignment";
-import { runAssignmentExtract as _runAssignmentExtract, isAiEnabled as _isAiEnabled, ExtractedAssignmentDept } from "./ai";
-import { normalizeHostClasses as _normalizeHostClasses, detectSlashedSubjects as _detectSlashedSubjects, SimulStatusEntry } from "./hoursAssignment";
+import { ExtractedAssignmentDept } from "./ai";
+import { parseAssignmentHwpx as _parseAssignmentHwpx, creativeHwpxToText as _creativeHwpxToText } from "./hwpxAssignment";
+import { normalizeHostClasses as _normalizeHostClasses, SimulStatusEntry } from "./hoursAssignment";
 
 export const hoursAssignmentJobsColRef = (domain: string) =>
   adminDb.collection("timetable_hours_assignment_jobs").doc(domain).collection("jobs");
@@ -8243,7 +8242,7 @@ export const hoursAssignmentJobsColRef = (domain: string) =>
  * 나이스 유래 실명이 이메일과 짝으로 실려 있다. 같은 이메일의 서로 다른
  * 표기는 전부 별칭으로 수용한다(한 사람 = 여러 name 항목, buildPseudonymizer가 이메일로 합침).
  */
-async function loadTeacherNameRoster(domain?: string): Promise<Array<{ name: string; email: string }>> {
+export async function loadTeacherNameRoster(domain?: string): Promise<Array<{ name: string; email: string }>> {
   const out = new Map<string, { name: string; email: string }>();
   const add = (name: string, email: string) => {
     const n = (name || "").trim();
@@ -8291,7 +8290,6 @@ export async function prepareHoursAssignmentJob(
     targetSemester: number;
   }
 ): Promise<{ jobId: string; depts: Array<{ index: number; dept: string }>; baseIssues: AssignmentIssue[] }> {
-  if (!_isAiEnabled()) throw new Error("AI 기능이 설정되지 않았습니다. 관리자에게 문의해 주세요.");
   for (const [label, b64] of [
     ["배정표", params.assignmentPdfB64],
     ["창체", params.creativePdfB64 || ""],
@@ -8299,23 +8297,32 @@ export async function prepareHoursAssignmentJob(
   ] as const)
     if (b64.length > B64_LIMIT) throw new Error(`${label} 파일이 너무 큽니다 (3MB 이하).`);
 
-  const pages = await _extractPdfLayoutPages(new Uint8Array(Buffer.from(params.assignmentPdfB64, "base64")));
-  const chunks = _splitDeptChunks(pages);
-  if (!chunks.length)
+  // hwpx 결정론 파싱 — PDF+AI 경로 폐지 (2026-08-16 사용자 확정 "PDF는 날리자").
+  // 표의 칸 주소가 명시돼 학년·반 판정이 산수가 되고, AI·가명화·재추출이 전부 불필요하다.
+  const parsed = await _parseAssignmentHwpx(Buffer.from(params.assignmentPdfB64, "base64"));
+  if (!parsed.depts.length)
     throw new Error(
-      "배정표에서 부서 표를 찾지 못했습니다. 한글에서 PDF로 저장한 과목별 배정표 파일이 맞는지 확인해 주세요."
+      "배정표에서 부서 표를 찾지 못했습니다. 교육과정부의 과목별 배정표 한글 파일(.hwpx)이 맞는지 확인해 주세요."
     );
   const baseIssues: AssignmentIssue[] = [];
   const expected = { year: params.targetYear, semester: params.targetSemester };
-  baseIssues.push(..._validateTitleSemester(pages[0]?.split("\n")[0] || "", expected, "배정표"));
-  for (const c of chunks) baseIssues.push(..._detectSlashedSubjects(c.text)); // §9-E 병기 과목
+  baseIssues.push(..._validateTitleSemester(parsed.title, expected, "배정표"));
+  // §9-E 병기 과목 — 표기 자체가 구조로 오므로 행에서 직접 검출
+  for (const d of parsed.depts)
+    for (const r of [...d.gridRows, ...d.personalRows])
+      if (r.subject.includes("/")) {
+        const [a, b] = r.subject.split("/").map((x) => x.trim());
+        const text = `「${a} / ${b}」 병기 표기가 있습니다 — 시수표에는 한 과목명만 실립니다. 확정 표기를 확인해 주세요`;
+        if (a && b && !baseIssues.some((i) => i.text === text))
+          baseIssues.push({ severity: "notice", code: "simul-status-mismatch", text });
+      }
 
   let creative: { title: string; byClass: Record<string, string> } | null = null;
   if (params.creativePdfB64) {
-    const cPages = await _extractPdfLayoutPages(new Uint8Array(Buffer.from(params.creativePdfB64, "base64")));
-    const parsed = _parseCreativeGrid(cPages.join("\n"));
-    baseIssues.push(..._validateTitleSemester(parsed.title, expected, "창체 담당 파일"));
-    creative = { title: parsed.title, byClass: Object.fromEntries(parsed.byClass) };
+    const cText = await _creativeHwpxToText(Buffer.from(params.creativePdfB64, "base64"));
+    const parsedC = _parseCreativeGrid(cText);
+    baseIssues.push(..._validateTitleSemester(parsedC.title, expected, "창체 담당 파일"));
+    creative = { title: parsedC.title, byClass: Object.fromEntries(parsedC.byClass) };
   }
   let simul: { grade: number; entries: ReturnType<typeof _parseSimulStatusXlsx>["entries"]; standalone?: string[] } | null = null;
   // 이동수업 현황은 학년별 파일이 따로일 수 있다(2학년·3학년 실물) — 여러 개 수용·병합
@@ -8354,13 +8361,14 @@ export async function prepareHoursAssignmentJob(
     createdAt: Date.now(),
     targetYear: params.targetYear,
     targetSemester: params.targetSemester,
-    chunks: chunks.map((c) => ({ dept: c.dept, headerLine: c.headerLine, text: c.text })),
+    chunks: parsed.depts.map((d) => ({ dept: d.dept, headerLine: d.headerLine, text: "" })),
     creative,
     simul,
-    extracted: {},
+    // 결정론 파싱이라 준비 단계에서 추출 완결 — 부서 단계는 검증·표시만 남는다
+    extracted: Object.fromEntries(parsed.depts.map((d, i) => [String(i), d])),
     baseIssues,
   });
-  return { jobId: ref.id, depts: chunks.map((c, i) => ({ index: i, dept: c.dept })), baseIssues };
+  return { jobId: ref.id, depts: parsed.depts.map((d, i) => ({ index: i, dept: d.dept })), baseIssues };
 }
 
 export async function extractHoursAssignmentDept(
@@ -8368,40 +8376,15 @@ export async function extractHoursAssignmentDept(
   jobId: string,
   index: number
 ): Promise<{ dept: string; personalRows: number; gridRows: number; issues: AssignmentIssue[] }> {
-  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
-  if (!apiKey) throw new Error("AI 기능이 설정되지 않았습니다. 관리자에게 문의해 주세요.");
   const snap = await hoursAssignmentJobsColRef(domain).doc(jobId).get();
   if (!snap.exists) throw new Error("작업을 찾을 수 없습니다. 파일 업로드부터 다시 시작해 주세요.");
   const job = snap.data()!;
-  const chunk = (job.chunks as DeptChunk[])[index];
-  if (!chunk) throw new Error("부서 번호가 유효하지 않습니다.");
-  const roster = await loadTeacherNameRoster(domain);
-  let extracted = await _runAssignmentExtract(chunk, roster, apiKey);
-  let issues = _validateDept(extracted);
-  // AI 읽기의 회차 편차(교사 블록 경계 오독 등)로 오류가 잡히면 한 번 더 읽고 덜 틀린 쪽을
-  // 채택한다 — 결정론 검증 그물을 품질 심판으로 쓰는 구조 (2026-08-16, (과학) 비고 9건 실측)
-  const errorCount = (list: AssignmentIssue[]) => list.filter((i) => i.severity === "error").length;
-  // 오류 항목 앞머리의 교사 이름을 재시도 힌트로 — "이윤정: 비고 총계 15 ≠ 배정 합 18" 형식
-  const focusFrom = (list: AssignmentIssue[]) =>
-    list
-      .filter((i) => i.severity === "error")
-      .map((i) => i.text.match(/^([가-힣]{2,4}):/)?.[1])
-      .filter((n): n is string => !!n);
-  // 최대 2회, 틀린 블록을 힌트로 지목해 다시 읽기 — 맹목 재시도가 같은 곳을 또 틀리는
-  // 회차 편차 대응 (2026-08-17 신학기 시뮬 과학 2건 실측)
-  for (let attempt = 0; attempt < 2 && errorCount(issues) > 0; attempt++) {
-    try {
-      const retry = await _runAssignmentExtract(chunk, roster, apiKey, focusFrom(issues));
-      const retryIssues = _validateDept(retry);
-      if (errorCount(retryIssues) < errorCount(issues)) {
-        extracted = retry;
-        issues = retryIssues;
-      }
-    } catch {
-      break; // 재시도 실패는 무시 — 지금까지의 최선 결과를 그대로 쓴다
-    }
-  }
-  await snap.ref.update({ [`extracted.${index}`]: extracted });
+  // hwpx 결정론 전환(2026-08-16) 후 추출은 준비 단계에서 완결 — 여기서는 검증·표시만.
+  // AI 재추출 사다리는 PDF 경로와 함께 폐지됐다.
+  const extracted = (job.extracted || {})[String(index)] as ExtractedAssignmentDept | undefined;
+  if (!extracted)
+    throw new Error("부서 추출 데이터가 없습니다. 파일 업로드부터 다시 시작해 주세요.");
+  const issues = _validateDept(extracted);
   return {
     dept: extracted.dept,
     personalRows: extracted.personalRows.length,

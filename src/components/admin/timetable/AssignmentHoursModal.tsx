@@ -461,7 +461,7 @@ export default function AssignmentHoursModal({
   // 분석 시작
   const handleStartExtraction = async () => {
     if (!assignFile) {
-      alert("과목별 배정표 PDF 파일을 선택해 주세요.");
+      alert("과목별 배정표 한글 파일(.hwpx)을 선택해 주세요.");
       return;
     }
     if (assignFile.size > MAX_FILE_BYTES) {
@@ -984,7 +984,7 @@ export default function AssignmentHoursModal({
                         </span>
                       </div>
                       <p className="text-[11px] text-gray-500 mb-3">
-                        한글(HWP)에서 PDF로 저장한 교과별 배정표 (8쪽 내외)
+                        교육과정부에서 받은 과목별 배정표 한글 파일 그대로 (.hwpx)
                       </p>
                     </div>
 
@@ -1007,10 +1007,10 @@ export default function AssignmentHoursModal({
                       </div>
                     ) : (
                       <label className="w-full py-2.5 px-3 bg-white border border-gray-300 hover:border-indigo-500 rounded-lg text-center font-bold text-gray-700 cursor-pointer shadow-sm transition-colors text-xs flex items-center justify-center gap-1">
-                        <span>📄 PDF 선택</span>
+                        <span>📄 한글 파일 선택</span>
                         <input
                           type="file"
-                          accept=".pdf"
+                          accept=".hwpx"
                           className="hidden"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
@@ -1038,7 +1038,7 @@ export default function AssignmentHoursModal({
                         </span>
                       </div>
                       <p className="text-[11px] text-gray-500 mb-3">
-                        학년·반별 진로/창체 담당 교사 배정표 (PDF)
+                        학년·반별 진로/창체 담당 교사 배정표 한글 파일 (.hwpx)
                       </p>
                     </div>
 
@@ -1063,10 +1063,10 @@ export default function AssignmentHoursModal({
                       </div>
                     ) : (
                       <label className="w-full py-2.5 px-3 bg-white border border-gray-300 hover:border-indigo-500 rounded-lg text-center font-medium text-gray-700 cursor-pointer shadow-sm transition-colors text-xs flex items-center justify-center gap-1">
-                        <span>📄 PDF 선택</span>
+                        <span>📄 한글 파일 선택</span>
                         <input
                           type="file"
-                          accept=".pdf"
+                          accept=".hwpx"
                           className="hidden"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
@@ -1206,7 +1206,7 @@ export default function AssignmentHoursModal({
                       : "배정표 데이터를 종합 분석하고 있습니다..."}
                   </h4>
                   <p className="text-xs text-gray-500 mt-1">
-                    부서별로 상세 분석 및 무결성 검증을 순차적으로 진행합니다. 잠시만 기다려 주세요. (부서당 약 10~20초)
+                    부서별로 표를 읽고 무결성 검증을 진행합니다. 잠시만 기다려 주세요.
                   </p>
                 </div>
               </div>
