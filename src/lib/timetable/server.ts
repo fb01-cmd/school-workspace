@@ -8266,6 +8266,7 @@ export async function prepareHoursAssignmentJob(
     assignmentPdfB64: string;
     creativePdfB64?: string;
     simulXlsxB64?: string;
+    simulXlsxB64List?: string[];
     targetYear: number;
     targetSemester: number;
   }
@@ -8300,7 +8301,7 @@ export async function prepareHoursAssignmentJob(
   // 이동수업 현황은 학년별 파일이 따로일 수 있다(2학년·3학년 실물) — 여러 개 수용·병합
   const simulB64List = [
     ...(params.simulXlsxB64 ? [params.simulXlsxB64] : []),
-    ...((params as { simulXlsxB64List?: string[] }).simulXlsxB64List || []),
+    ...(params.simulXlsxB64List || []),
   ];
   for (const b64 of simulB64List) {
     const parsed = _parseSimulStatusXlsx(Buffer.from(b64, "base64"));
