@@ -1649,6 +1649,9 @@ export async function POST(req: NextRequest) {
           assignmentPdfB64: body.assignmentPdfB64,
           creativePdfB64: body.creativePdfB64,
           simulXlsxB64: body.simulXlsxB64,
+          simulXlsxB64List: Array.isArray(body.simulXlsxB64List)
+            ? (body.simulXlsxB64List as string[]).filter((x) => typeof x === "string")
+            : undefined,
           targetYear: body.targetYear as number,
           targetSemester: body.targetSemester as number,
         });
