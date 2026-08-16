@@ -303,6 +303,12 @@ export default function AssignmentHoursModal({
   const [targetYear, setTargetYear] = useState<number>(initialYear);
   const [targetSemester, setTargetSemester] = useState<number>(initialSemester);
 
+  // 작업 대상 학기 선택이 바뀌면 따라가야 함 — 읽기 전용 표시라 사용자가 직접 고칠 수 없음
+  React.useEffect(() => {
+    setTargetYear(initialYear);
+    setTargetSemester(initialSemester);
+  }, [initialYear, initialSemester]);
+
   // 파일 상태
   const [assignFile, setAssignFile] = useState<File | null>(null);
   const [creativeFile, setCreativeFile] = useState<File | null>(null);
