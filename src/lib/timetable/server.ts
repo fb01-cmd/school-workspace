@@ -8215,14 +8215,41 @@ import { runAssignmentExtract as _runAssignmentExtract, isAiEnabled as _isAiEnab
 export const hoursAssignmentJobsColRef = (domain: string) =>
   adminDb.collection("timetable_hours_assignment_jobs").doc(domain).collection("jobs");
 
-async function loadTeacherNameRoster(): Promise<Array<{ name: string; email: string }>> {
-  const snap = await adminDb.collection("teacher_profiles").get();
-  const out: Array<{ name: string; email: string }> = [];
-  snap.docs.forEach((d) => {
-    const name = ((d.data().name as string) || "").trim();
-    if (name) out.push({ name, email: d.id });
-  });
-  return out;
+/**
+ * 성명→이메일 매칭·가명화용 로스터 — 3원 합집합 (2026-08-16 실측 교훈):
+ * 프로필 이름 하나만 쓰면 빈 이름(김은호)·별칭 저장("서준쌤"=이서준)에 구멍이 난다.
+ * ① teacher_profiles.name ② **현행 학기 시간표의 (교사명,이메일) 실쌍** — 가장 강한 원천,
+ * 나이스 유래 실명이 이메일과 짝으로 실려 있다 ③ users.displayName. 같은 이메일의 서로 다른
+ * 표기는 전부 별칭으로 수용한다(한 사람 = 여러 name 항목, buildPseudonymizer가 이메일로 합침).
+ */
+async function loadTeacherNameRoster(domain?: string): Promise<Array<{ name: string; email: string }>> {
+  const out = new Map<string, { name: string; email: string }>();
+  const add = (name: string, email: string) => {
+    const n = (name || "").trim();
+    const e = (email || "").trim().toLowerCase();
+    if (!n || !/^[가-힣]{2,5}(쌤)?$/.test(n.replace(/\s/g, ""))) return;
+    const key = `${n}|${e}`;
+    if (!out.has(key)) out.set(key, { name: n, email: e });
+  };
+  const profiles = await adminDb.collection("teacher_profiles").get();
+  profiles.docs.forEach((d) => add((d.data().name as string) || "", d.id));
+  if (domain) {
+    try {
+      const settings = await loadTimetableSettings(domain);
+      if (settings.activeTermId) {
+        const grids = await loadAllClassGrids(domain, settings.activeTermId);
+        for (const g of grids)
+          for (const cell of g.cells)
+            for (const l of cell.lessons || [])
+              for (const t of l.teachers || []) if (t.email) add(t.name, t.email);
+      }
+    } catch (e) {
+      console.error("[hoursAssignment] 학기 시간표 로스터 보강 실패 (프로필만 사용):", (e as Error).message);
+    }
+  }
+  const users = await adminDb.collection("users").get();
+  users.docs.forEach((d) => add(((d.data().displayName as string) || (d.data().name as string) || ""), d.id));
+  return [...out.values()];
 }
 
 const B64_LIMIT = 4_000_000; // ≈3MB 원본 — 실물 배정표 220KB의 10배 여유
@@ -8307,7 +8334,7 @@ export async function extractHoursAssignmentDept(
   const job = snap.data()!;
   const chunk = (job.chunks as DeptChunk[])[index];
   if (!chunk) throw new Error("부서 번호가 유효하지 않습니다.");
-  const roster = await loadTeacherNameRoster();
+  const roster = await loadTeacherNameRoster(domain);
   const extracted = await _runAssignmentExtract(chunk, roster, apiKey);
   const issues = _validateDept(extracted);
   await snap.ref.update({ [`extracted.${index}`]: extracted });
@@ -8346,7 +8373,7 @@ export async function finalizeHoursAssignmentJob(
     : null;
   if (creative) issues.push(..._validateCreative(depts, creative));
   if (job.simul) issues.push(..._validateSimulStatus(depts, job.simul));
-  const roster = await loadTeacherNameRoster();
+  const roster = await loadTeacherNameRoster(domain);
   const asm = _assembleHoursRows(depts, creative || { title: "", byClass: new Map() }, "진로", roster);
   return {
     rows: asm.rows,

@@ -32,13 +32,28 @@ const CREATIVE_PDF = "2026학년도 2학기 창체 수업 담당교사.pdf";
 const SIMUL_XLSX = "이동수업 현황(2학년2학기) (1).xlsx";
 
 async function loadRoster(): Promise<AiTeacherRef[]> {
+  // 서버의 loadTeacherNameRoster와 같은 3원 합집합 (프로필 + 학기 시간표 실쌍 + 계정 표시명)
+  const out = new Map<string, AiTeacherRef>();
+  const add = (name: string, email: string) => {
+    const n = (name || "").trim();
+    if (!n || !/^[가-힣]{2,5}(쌤)?$/.test(n.replace(/\s/g, ""))) return;
+    const key = `${n}|${email.toLowerCase()}`;
+    if (!out.has(key)) out.set(key, { name: n, email: email.toLowerCase() });
+  };
   const snap = await adminDb.collection("teacher_profiles").get();
-  const out: AiTeacherRef[] = [];
-  snap.docs.forEach((d) => {
-    const name = (d.data().name || "").trim();
-    if (name) out.push({ name, email: d.id });
-  });
-  return out;
+  snap.docs.forEach((d) => add(d.data().name || "", d.id));
+  const { loadTimetableSettings, loadAllClassGrids } = await import("../src/lib/timetable/server");
+  const settings = await loadTimetableSettings("hmh.or.kr");
+  if (settings.activeTermId) {
+    const grids = await loadAllClassGrids("hmh.or.kr", settings.activeTermId);
+    for (const g of grids)
+      for (const cell of g.cells)
+        for (const l of cell.lessons || [])
+          for (const t of l.teachers || []) if (t.email) add(t.name, t.email);
+  }
+  const users = await adminDb.collection("users").get();
+  users.docs.forEach((d) => add(d.data().displayName || d.data().name || "", d.id));
+  return [...out.values()];
 }
 
 async function main() {
