@@ -8231,8 +8231,9 @@ async function loadTeacherNameRoster(domain?: string): Promise<Array<{ name: str
     const key = `${n}|${e}`;
     if (!out.has(key)) out.set(key, { name: n, email: e });
   };
-  const profiles = await adminDb.collection("teacher_profiles").get();
-  profiles.docs.forEach((d) => add((d.data().name as string) || "", d.id));
+  // 순서 중요: **시간표 실쌍(나이스 유래 실명)을 먼저** — 가명 사전이 이메일당 첫 이름을
+  // 대표 표기로 쓰므로, 프로필 별칭("서준쌤")이 먼저 들어가면 결과 화면 교사명이 별칭으로
+  // 복원된다 (2026-08-16 사용자 발견: 배정표엔 "이서준"인데 결과엔 "서준쌤").
   if (domain) {
     try {
       const settings = await loadTimetableSettings(domain);
@@ -8247,6 +8248,8 @@ async function loadTeacherNameRoster(domain?: string): Promise<Array<{ name: str
       console.error("[hoursAssignment] 학기 시간표 로스터 보강 실패 (프로필만 사용):", (e as Error).message);
     }
   }
+  const profiles = await adminDb.collection("teacher_profiles").get();
+  profiles.docs.forEach((d) => add((d.data().name as string) || "", d.id));
   // users 컬렉션은 넣지 않는다 — 문서 ID가 이메일이 아니라 Auth UID라서(2026-08-16 실사고:
   // 전 실명에 가짜 두 번째 "이메일"이 붙어 매칭 17명 파괴), 그리고 배정표에 나오는 수업
   // 교사는 프로필∪시간표 쌍이 전부 커버한다.
@@ -8336,8 +8339,23 @@ export async function extractHoursAssignmentDept(
   const chunk = (job.chunks as DeptChunk[])[index];
   if (!chunk) throw new Error("부서 번호가 유효하지 않습니다.");
   const roster = await loadTeacherNameRoster(domain);
-  const extracted = await _runAssignmentExtract(chunk, roster, apiKey);
-  const issues = _validateDept(extracted);
+  let extracted = await _runAssignmentExtract(chunk, roster, apiKey);
+  let issues = _validateDept(extracted);
+  // AI 읽기의 회차 편차(교사 블록 경계 오독 등)로 오류가 잡히면 한 번 더 읽고 덜 틀린 쪽을
+  // 채택한다 — 결정론 검증 그물을 품질 심판으로 쓰는 구조 (2026-08-16, (과학) 비고 9건 실측)
+  const errorCount = (list: AssignmentIssue[]) => list.filter((i) => i.severity === "error").length;
+  if (errorCount(issues) > 0) {
+    try {
+      const retry = await _runAssignmentExtract(chunk, roster, apiKey);
+      const retryIssues = _validateDept(retry);
+      if (errorCount(retryIssues) < errorCount(issues)) {
+        extracted = retry;
+        issues = retryIssues;
+      }
+    } catch {
+      // 재시도 실패는 무시 — 1차 결과와 그 오류 목록을 그대로 쓴다
+    }
+  }
   await snap.ref.update({ [`extracted.${index}`]: extracted });
   return {
     dept: extracted.dept,

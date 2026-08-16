@@ -40,8 +40,7 @@ async function loadRoster(): Promise<AiTeacherRef[]> {
     const key = `${n}|${email.toLowerCase()}`;
     if (!out.has(key)) out.set(key, { name: n, email: email.toLowerCase() });
   };
-  const snap = await adminDb.collection("teacher_profiles").get();
-  snap.docs.forEach((d) => add(d.data().name || "", d.id));
+  // 시간표 실쌍 먼저 — 대표 표기가 실명이 되도록 (서버 loadTeacherNameRoster와 동일 순서)
   const { loadTimetableSettings, loadAllClassGrids } = await import("../src/lib/timetable/server");
   const settings = await loadTimetableSettings("hmh.or.kr");
   if (settings.activeTermId) {
@@ -51,6 +50,8 @@ async function loadRoster(): Promise<AiTeacherRef[]> {
         for (const l of cell.lessons || [])
           for (const t of l.teachers || []) if (t.email) add(t.name, t.email);
   }
+  const snap = await adminDb.collection("teacher_profiles").get();
+  snap.docs.forEach((d) => add(d.data().name || "", d.id));
   // users 컬렉션 제외 — 문서 ID가 Auth UID (서버 loadTeacherNameRoster 주석 참조)
   return [...out.values()];
 }
