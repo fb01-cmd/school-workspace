@@ -266,8 +266,8 @@ export function validateTimetable(
   const gdp = model.gradeDayPeriods || deriveGradeDayPeriods(grids);
   const simulGroups = (model.simulGroups || []).filter((g) => g.active);
   const venueGroups = (model.venueGroups || []).filter((g) => g.active);
-  const simulMatch = buildSimulMatcher(simulGroups);
-  const venueMatch = buildVenueMatcher(venueGroups);
+  const simulMatch = buildSimulMatcher(simulGroups, model.subjects);
+  const venueMatch = buildVenueMatcher(venueGroups, model.subjects);
 
   /** lesson의 동시수업 라벨 — 로더 스탬프(simul) 우선, 없으면 등록부 직접 판정 (비스탬프 그리드 입력 대비) */
   const simulLabelOf = (p: Placement): string | null =>
@@ -527,7 +527,7 @@ export function validateTimetable(
 
   // ── H7: 동시수업 그룹 동시성 (그룹 전원이 같은 슬롯 집합) ──
   for (const g of simulGroups) {
-    const oneGroupMatch = buildSimulMatcher([g]);
+    const oneGroupMatch = buildSimulMatcher([g], model.subjects);
     const slotsByClass = new Map<number, Set<string>>();
     for (const cn of g.classNums) slotsByClass.set(cn, new Set());
     for (const p of placements) {
@@ -586,8 +586,8 @@ export function validateTimetable(
       if (!g.consecutive) return;
       const oneMatch =
         kind === "동시수업"
-          ? buildSimulMatcher([g as SimulGroup])
-          : buildVenueMatcher([g as VenueGroup]);
+          ? buildSimulMatcher([g as SimulGroup], model.subjects)
+          : buildVenueMatcher([g as VenueGroup], model.subjects);
       effective.push({
         label: `${kind} "${g.label}"`,
         pattern: g.consecutive,

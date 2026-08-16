@@ -12,7 +12,8 @@
  * 옮겨갈 교시에 같은 특별실 사용 수업이 있으면 그 후보만 제외된다 (2026-08-07 사용자 확정).
  */
 
-import { ClassGrid, SimulSlot, VenueGroup } from "./types";
+import { buildSubjectIndex, sameSubjectExact } from "./subjectDict";
+import { ClassGrid, SimulSlot, SubjectNameEntry, VenueGroup } from "./types";
 
 export type { VenueGroup };
 
@@ -27,21 +28,30 @@ export type VenueMatcher = (
   subjectName: string
 ) => string | null;
 
-/** 등록부에서 판정 함수 생성 — active 그룹만. 반환값은 특별실명(미해당 시 null). */
-export function buildVenueMatcher(groups: VenueGroup[]): VenueMatcher {
+/** 등록부에서 판정 함수 생성 — active 그룹만. 반환값은 특별실명(미해당 시 null).
+ *  subjects(과목 사전)가 오면 확정 별칭까지 정확 일치로 잡는다 — 완전일치 전용이던 이
+ *  경로와 느슨하던 solver venueProbe의 규칙 비대칭 해소 (subject_dictionary_spec §4).
+ *  느슨 매칭 폴백은 여기엔 처음부터 없었고 지금도 넣지 않는다. */
+export function buildVenueMatcher(groups: VenueGroup[], subjects?: SubjectNameEntry[]): VenueMatcher {
   const active = groups.filter((g) => g.active);
+  const dict = buildSubjectIndex(subjects);
   const prepared = active.map((g) => ({
     roomName: g.roomName,
     grade: g.grade,
     classNums: new Set(g.classNums),
     subjects: new Set(g.subjectNames.map(normSubject)),
+    subjectNamesRaw: g.subjectNames,
     slots: g.slots?.length ? new Set(g.slots.map((s: SimulSlot) => `${s.day}-${s.period}`)) : null,
   }));
   return (grade, classNum, day, period, subjectName) => {
     const subj = normSubject(subjectName);
     for (const g of prepared) {
       if (g.grade !== grade || !g.classNums.has(classNum)) continue;
-      if (!g.subjects.has(subj)) continue;
+      if (
+        !g.subjects.has(subj) &&
+        !g.subjectNamesRaw.some((s) => sameSubjectExact(dict, s, subjectName) === true)
+      )
+        continue;
       if (g.slots && !g.slots.has(`${day}-${period}`)) continue;
       return g.roomName;
     }
@@ -54,9 +64,9 @@ export function buildVenueMatcher(groups: VenueGroup[]): VenueMatcher {
  * simul 마크와 달리 미일치 lesson의 기존 room은 지우지 않는다 — room은 가져오기 원본이
  * 실을 수 있는 정식 저장 필드이므로 (등록부는 덮어쓰기만, 삭제 권한 없음).
  */
-export function applyVenueMarks(grids: ClassGrid[], groups: VenueGroup[]): void {
+export function applyVenueMarks(grids: ClassGrid[], groups: VenueGroup[], subjects?: SubjectNameEntry[]): void {
   if (!groups.some((g) => g.active)) return;
-  const match = buildVenueMatcher(groups);
+  const match = buildVenueMatcher(groups, subjects);
   for (const grid of grids) {
     for (const cell of grid.cells || []) {
       for (const lesson of cell.lessons || []) {
@@ -78,8 +88,8 @@ export interface VenueCellListing {
 }
 
 /** 판정에 걸리는 셀 전수 나열 — 등재 검증(눈 대조)·등록부 미리보기용 */
-export function listVenueCells(grids: ClassGrid[], groups: VenueGroup[]): VenueCellListing[] {
-  const match = buildVenueMatcher(groups);
+export function listVenueCells(grids: ClassGrid[], groups: VenueGroup[], subjects?: SubjectNameEntry[]): VenueCellListing[] {
+  const match = buildVenueMatcher(groups, subjects);
   const out: VenueCellListing[] = [];
   for (const grid of grids) {
     for (const cell of grid.cells || []) {

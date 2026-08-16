@@ -11,7 +11,8 @@
  */
 
 import { subjectMatches, subjectStemLoose } from "./hoursAssignment";
-import { ClassGrid, SimulGroup, SimulSlot, TimetableLesson } from "./types";
+import { buildSubjectIndex, sameSubjectExact } from "./subjectDict";
+import { ClassGrid, SimulGroup, SimulSlot, SubjectNameEntry, TimetableLesson } from "./types";
 
 export type { SimulGroup, SimulSlot };
 
@@ -26,9 +27,11 @@ export type SimulMatcher = (
   subjectName: string
 ) => string | null;
 
-/** 등록부에서 판정 함수 생성 — active 그룹만. 반환값은 그룹 라벨(미해당 시 null). */
-export function buildSimulMatcher(groups: SimulGroup[]): SimulMatcher {
+/** 등록부에서 판정 함수 생성 — active 그룹만. 반환값은 그룹 라벨(미해당 시 null).
+ *  subjects(과목 사전)가 오면 사전 정확 일치가 1차 판정 (subject_dictionary_spec §4). */
+export function buildSimulMatcher(groups: SimulGroup[], subjects?: SubjectNameEntry[]): SimulMatcher {
   const active = groups.filter((g) => g.active);
+  const dict = buildSubjectIndex(subjects);
   const prepared = active.map((g) => ({
     label: g.label,
     grade: g.grade,
@@ -37,12 +40,21 @@ export function buildSimulMatcher(groups: SimulGroup[]): SimulMatcher {
     subjectNamesRaw: g.subjectNames,
     slots: g.slots?.length ? new Set(g.slots.map((s) => `${s.day}-${s.period}`)) : null,
   }));
-  // 등록부는 분반 차수 표기("중화"·"인공Ⅱ"), 배정표 유래 수업은 정식 명칭 — 정확 일치 →
-  // 약칭 부분열 → 그룹 한정 줄기 순으로 판정 (2026-08-17 H7 실사고: 이름 불일치로
-  // 밴드 구성원 인식 실패). 그룹이 학년·반 범위로 좁혀져 있어 느슨 매칭이 안전하다.
-  const nameHit = (g: (typeof prepared)[number], subj: string, subjectName: string) =>
-    g.subjects.has(subj) ||
-    g.subjectNamesRaw.some((s) => subjectMatches(s, subjectName) || subjectStemLoose(s, subjectName));
+  // 등록부는 분반 차수 표기("중화"·"인공Ⅱ"), 배정표 유래 수업은 정식 명칭.
+  // 1차 = 과목 사전 정확 일치(별칭 포함). 사전이 "서로 다른 과목"이라 확정하면 그걸로 끝 —
+  // 느슨 폴백을 시도하지 않는다(물Ⅰ/Ⅱ류 오연결 방지). 사전이 판정 불능일 때만
+  // 기존 느슨 매칭(약칭 부분열 → 그룹 한정 줄기)으로 폴백한다 — 전환 1단계 안전망
+  // (2026-08-17 H7 실사고의 임시 다리, 사전 확정이 쌓이면 §5의 조건으로 제거).
+  const nameHit = (g: (typeof prepared)[number], subj: string, subjectName: string) => {
+    if (g.subjects.has(subj)) return true;
+    for (const s of g.subjectNamesRaw) {
+      const exact = sameSubjectExact(dict, s, subjectName);
+      if (exact === true) return true;
+      if (exact === false) continue;
+      if (subjectMatches(s, subjectName) || subjectStemLoose(s, subjectName)) return true;
+    }
+    return false;
+  };
   return (grade, classNum, day, period, subjectName) => {
     const subj = normSubject(subjectName);
     for (const g of prepared) {
@@ -56,9 +68,9 @@ export function buildSimulMatcher(groups: SimulGroup[]): SimulMatcher {
 }
 
 /** 기초 그리드에 simul 라벨 스탬프 (제자리 수정) — 로더가 호출. 판정은 기초 위치 기준(§A-2). */
-export function applySimulMarks(grids: ClassGrid[], groups: SimulGroup[]): void {
+export function applySimulMarks(grids: ClassGrid[], groups: SimulGroup[], subjects?: SubjectNameEntry[]): void {
   if (!groups.some((g) => g.active)) return;
-  const match = buildSimulMatcher(groups);
+  const match = buildSimulMatcher(groups, subjects);
   for (const grid of grids) {
     for (const cell of grid.cells || []) {
       for (const lesson of cell.lessons || []) {
@@ -81,8 +93,8 @@ export interface SimulCellListing {
 }
 
 /** 판정에 걸리는 셀 전수 나열 — 등재 검증(눈 대조)·등록부 미리보기용 (§A-5) */
-export function listSimulCells(grids: ClassGrid[], groups: SimulGroup[]): SimulCellListing[] {
-  const match = buildSimulMatcher(groups);
+export function listSimulCells(grids: ClassGrid[], groups: SimulGroup[], subjects?: SubjectNameEntry[]): SimulCellListing[] {
+  const match = buildSimulMatcher(groups, subjects);
   const out: SimulCellListing[] = [];
   for (const grid of grids) {
     for (const cell of grid.cells || []) {

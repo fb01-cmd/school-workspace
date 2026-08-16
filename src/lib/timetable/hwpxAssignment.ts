@@ -288,6 +288,12 @@ export async function parseAssignmentHwpx(buf: Buffer): Promise<HwpxAssignmentPa
     }
     const view = buildTableView(item.cells);
     const head0 = (c: number) => view.textAt(0, c).replace(/\s/g, "");
+    // 양식 변화는 시끄러운 실패로 (subject_dictionary_spec 요건 ⑦): 배정표 표(첫 칸 "교과"/"교사")인데
+    // 학년·반 머리글을 못 읽었으면 조용히 건너뛰지 않고 즉시 중단한다 — 조용한 오독이 더 비싸다
+    if ((head0(0) === "교과" || head0(0) === "교사") && !view.colMap.size)
+      throw new Error(
+        "배정표 표의 학년·반 머리글을 읽지 못했습니다. 한글 파일 양식이 바뀐 것 같습니다 — 파일을 확인하시고, 양식이 맞다면 개발 담당에게 알려 주세요."
+      );
     if (!view.colMap.size) continue; // 배정표 모양이 아닌 표(안내 표 등)는 무시
     if (head0(0) === "교과") {
       // 격자표 — 부서명은 직전 문단들에서
@@ -356,6 +362,12 @@ export async function parseAssignmentHwpx(buf: Buffer): Promise<HwpxAssignmentPa
       recentParas = [];
     }
   }
+  // 격자표만 읽히고 개인 배정표가 따라오지 않은 부서 — 조용히 떨어뜨리면 그 부서 전체가
+  // 시수표에서 사라진다. 시끄러운 실패 (요건 ⑦)
+  if (pendingGrid)
+    throw new Error(
+      `「${pendingGrid.dept}」 부서는 배정 격자표만 있고 개인 배정표를 찾지 못했습니다. 한글 파일이 온전한지 확인해 주세요.`
+    );
   return { title, depts };
 }
 

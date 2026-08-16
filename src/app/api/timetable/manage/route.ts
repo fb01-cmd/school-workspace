@@ -1612,6 +1612,10 @@ export async function POST(req: NextRequest) {
             gradeDayPeriods: body.gradeDayPeriods || {},
             status: body.planStatus,
             reviewNotes: body.reviewNotes,
+            // 관문 과목 확정 (subject_dictionary_spec §3-2) — 미제공이면 기존 저장 동작 그대로
+            subjectConfirmations: Array.isArray(body.subjectConfirmations)
+              ? body.subjectConfirmations
+              : undefined,
           },
           auth.email
         );

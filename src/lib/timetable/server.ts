@@ -552,10 +552,11 @@ export function validateCoTeachingRulePayload(raw: any): { ok: true; rule: Omit<
 // ── 학급 시간표 그리드 (ClassGrid) Operations ─────────────────
 
 export async function loadAllClassGrids(domain: string, termId: string): Promise<ClassGrid[]> {
-  const [snap, simulGroups, venueGroups] = await Promise.all([
+  const [snap, simulGroups, venueGroups, term] = await Promise.all([
     classGridsColRef(domain, termId).get(),
     loadSimulGroups(domain, termId),
     loadVenueGroups(domain, termId),
+    loadTimetableTerm(domain, termId).catch(() => null),
   ]);
   const grids = snap.docs.map((doc) => {
     const data = doc.data() || {};
@@ -567,8 +568,9 @@ export async function loadAllClassGrids(domain: string, termId: string): Promise
   });
   // 동시수업(분반) 라벨 + 특별실명 스탬프 — 저장 데이터는 무표기, 읽기 시점에 등록부 대조
   // (§A·§F 판정 단일 통로). 이후의 합성·엔진·커밋 재검증·view 응답이 전부 이 마크를 본다.
-  applySimulMarks(grids, simulGroups);
-  applyVenueMarks(grids, venueGroups);
+  // 과목 사전(term.subjects) 주입 — 등록부 표기↔그리드 표기 대조의 정확 일치 다리 (subject_dictionary_spec §4)
+  applySimulMarks(grids, simulGroups, term?.subjects);
+  applyVenueMarks(grids, venueGroups, term?.subjects);
   return grids;
 }
 
@@ -579,10 +581,11 @@ export async function loadClassGrid(
   classNum: number
 ): Promise<ClassGrid | null> {
   const docId = `${grade}-${classNum}`;
-  const [snap, simulGroups, venueGroups] = await Promise.all([
+  const [snap, simulGroups, venueGroups, term] = await Promise.all([
     classGridsColRef(domain, termId).doc(docId).get(),
     loadSimulGroups(domain, termId),
     loadVenueGroups(domain, termId),
+    loadTimetableTerm(domain, termId).catch(() => null),
   ]);
   if (!snap.exists) return null;
   const data = snap.data() || {};
@@ -591,8 +594,8 @@ export async function loadClassGrid(
     classNum: Number(data.classNum) || classNum,
     cells: Array.isArray(data.cells) ? data.cells : [],
   };
-  applySimulMarks([grid], simulGroups);
-  applyVenueMarks([grid], venueGroups);
+  applySimulMarks([grid], simulGroups, term?.subjects);
+  applyVenueMarks([grid], venueGroups, term?.subjects);
   return grid;
 }
 
@@ -2171,9 +2174,10 @@ export async function loadBaseGridsByWeek(
     for (const d of dates) out.set(d, grids);
     return out;
   }
-  const [simulGroups, venueGroups] = await Promise.all([
+  const [simulGroups, venueGroups, term] = await Promise.all([
     loadSimulGroups(domain, termId),
     loadVenueGroups(domain, termId),
+    loadTimetableTerm(domain, termId).catch(() => null),
   ]);
   let cur = grids;
   let idx = 0;
@@ -2190,8 +2194,8 @@ export async function loadBaseGridsByWeek(
       idx++;
     }
     if (advanced) {
-      applySimulMarks(cur, simulGroups);
-      applyVenueMarks(cur, venueGroups);
+      applySimulMarks(cur, simulGroups, term?.subjects);
+      applyVenueMarks(cur, venueGroups, term?.subjects);
     }
     out.set(date, cur);
   }
@@ -6935,13 +6939,14 @@ async function loadDraftConstraintModel(
   const settings = await loadTimetableSettings(domain);
   const sourceTermId = meta.sourceTermId || settings.activeTermId || "";
 
-  const [simulGroups, venueGroups, teacherSlotBans, consecutiveRules, coTeaching] =
+  const [simulGroups, venueGroups, teacherSlotBans, consecutiveRules, coTeaching, sourceTerm] =
     await Promise.all([
       loadSimulGroups(domain, sourceTermId),
       loadVenueGroups(domain, sourceTermId),
       loadTeacherSlotBans(domain, sourceTermId),
       loadConsecutiveRules(domain, sourceTermId),
       loadCoTeachingRules(domain, sourceTermId),
+      loadTimetableTerm(domain, sourceTermId).catch(() => null),
     ]);
 
   const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
@@ -6958,6 +6963,7 @@ async function loadDraftConstraintModel(
     teacherSlotBans,
     consecutiveRules,
     coTeaching,
+    ...(sourceTerm?.subjects?.length ? { subjects: sourceTerm.subjects } : {}),
     ...(meta.fixedBlocksSnapshot?.length ? { fixedBlocks: meta.fixedBlocksSnapshot } : {}),
   };
   return {
@@ -7634,6 +7640,9 @@ export async function saveHoursPlan(
     status?: "draft" | "ready";
     /** 배정표 자동 생성 확인 목록 — undefined면 기존 저장분 유지 (구버전 UI 호환) */
     reviewNotes?: Array<{ severity?: string; text?: string; done?: boolean }>;
+    /** 관문 과목 확정 (subject_dictionary_spec §3-2) — undefined면 관문 규율 없이 기존 저장 동작.
+     *  제공되면(빈 배열 포함) 사전 갱신 → 행 박제 → 이력 기록 → 미해석 행 저장 거부까지 수행. */
+    subjectConfirmations?: SubjectConfirmation[];
   },
   userEmail: string
 ): Promise<HoursPlan> {
@@ -7738,14 +7747,86 @@ export async function saveHoursPlan(
       }));
   }
 
+  // ── 관문 확정 반영 (subject_dictionary_spec §3-2) — 사전 갱신 → 박제 → 이력 → 저장 가드 ──
+  // 배열 그대로의 rows가 아니라 아래 cleanRows 생성 단계에서 박제를 적용하기 위해 먼저 계산한다.
+  let stampByNorm: Map<string, { name: string; shortName: string }> | null = null;
+  if (payload.subjectConfirmations !== undefined) {
+    if (!Array.isArray(payload.subjectConfirmations))
+      throw new Error("subjectConfirmations는 배열이어야 합니다.");
+    if (payload.subjectConfirmations.length > 300)
+      throw new Error("과목 확정 목록이 너무 큽니다 (300건 이하).");
+    const termId = (payload.targetTermId || "").trim();
+    if (!termId)
+      throw new Error("과목 확정을 반영하려면 대상 학기(targetTermId)가 필요합니다.");
+    const term = await loadTimetableTerm(domain, termId);
+    const baseSubjects = term?.subjects || [];
+    // 1. 사전 갱신 (create = 신규 등록·신학기 시딩, link = 별칭 박제)
+    const applied = _applySubjectConfirmations(
+      baseSubjects,
+      payload.subjectConfirmations,
+      (name, shortName) => ({ name, shortName, teacherEmails: [] })
+    );
+    if (applied.errors.length)
+      throw new Error(`과목 확정을 반영할 수 없습니다: ${applied.errors.join(" / ")}`);
+    // 2. 박제 색인 — 확정 후 사전으로 전 행을 해석. 실패 행이 남으면 저장 거부 (§3-2-4)
+    const index = _buildSubjectIndex(applied.subjects);
+    stampByNorm = new Map();
+    const unresolved = new Set<string>();
+    for (const r of rows) {
+      const raw = (r.subjectName || "").trim();
+      if (!raw) continue;
+      const hit = _resolveExact(index, raw);
+      if (hit) stampByNorm.set(raw.replace(/\s+/g, "").toLowerCase(), { name: hit.name, shortName: hit.shortName });
+      else unresolved.add(raw);
+    }
+    if (unresolved.size)
+      throw new Error(
+        `과목 이름이 확정되지 않은 행이 있어 저장할 수 없습니다: ${[...unresolved].slice(0, 8).join(", ")}${unresolved.size > 8 ? " 외" : ""}. 과목 이름 맞추기를 마친 뒤 다시 저장해 주세요.`
+      );
+    // 3. 사전 저장 (merge — 신학기엔 학기 문서가 아직 없을 수 있다: 초안 기본값으로 부분 생성됨)
+    await timetableTermsColRef(domain).doc(termId).set(
+      { subjects: applied.subjects, updatedBy: userEmail.toLowerCase(), updatedAt: Date.now() },
+      { merge: true }
+    );
+    // 4. 확정 이력 기록 — 학습이 아니라 기록. 차기 학기 관문 후보 1순위 재료 (spec §1-2)
+    await appendSubjectNameHistory(
+      domain,
+      payload.subjectConfirmations.map((c) => ({
+        alias: c.rawName,
+        canonicalName: c.canonicalName,
+        ...(c.shortName ? { shortName: c.shortName } : {}),
+      })),
+      userEmail
+    );
+  }
+  const stampOf = (subjectName: string) =>
+    stampByNorm?.get(subjectName.trim().replace(/\s+/g, "").toLowerCase()) || null;
+  if (stampByNorm) {
+    // 박제 후 중복 재검사 — 서로 다른 원문 표기가 같은 과목으로 확정되면 위의 원문 기준
+    // 중복 검사를 통과하고도 저장본에서 겹칠 수 있다
+    const seenStamped = new Set<string>();
+    for (const r of rows) {
+      const st = stampOf(r.subjectName);
+      const key = `${r.grade}|${r.classNum}|${(st?.name || r.subjectName).trim().toLowerCase()}|${(r.teacherEmail || "").trim().toLowerCase()}`;
+      if (seenStamped.has(key))
+        throw new Error(
+          `과목 이름 확정 결과 같은 수업 행이 두 번 생깁니다 (${r.grade}학년 ${r.classNum}반 ${st?.name || r.subjectName}). 행을 합친 뒤 다시 저장해 주세요.`
+        );
+      seenStamped.add(key);
+    }
+  }
+
   // undefined 값 키는 아예 넣지 않는다 — 이 프로젝트 Firestore는 ignoreUndefinedProperties
   // 미설정이라 명시적 undefined가 set()에서 통째로 거부된다 (가상 교사 행의 단축·나이스명이 해당)
   const cleanRows: HoursPlanRow[] = rows.map((r) => ({
     id: r.id?.trim() || randomUUID(),
     grade: Number(r.grade),
     classNum: Number(r.classNum),
-    subjectName: r.subjectName.trim(),
-    ...(r.subjectShort?.trim() ? { subjectShort: r.subjectShort.trim() } : {}),
+    // 관문 확정 시 박제 — 확정된 사전 표기가 행에 실린다 (subject_dictionary_spec §1-3)
+    subjectName: stampOf(r.subjectName)?.name || r.subjectName.trim(),
+    ...((stampOf(r.subjectName)?.shortName || r.subjectShort?.trim())
+      ? { subjectShort: stampOf(r.subjectName)?.shortName || r.subjectShort!.trim() }
+      : {}),
     ...(r.neisName?.trim() ? { neisName: r.neisName.trim() } : {}),
     teacherEmail: (r.teacherEmail || "").trim(),
     teacherName: (r.teacherName || "").trim(),
@@ -7881,9 +7962,11 @@ export async function buildBlankSolveInput(
   }
 
   const subjectShorts: Record<string, string> = {};
+  let sourceTermSubjects: import("./types").TimetableSubject[] = [];
   if (plan.sourceTermId) {
     const sourceTerm = await loadTimetableTerm(domain, plan.sourceTermId);
     if (sourceTerm?.subjects) {
+      sourceTermSubjects = sourceTerm.subjects;
       for (const s of sourceTerm.subjects) {
         if (s.name && s.shortName) {
           subjectShorts[normSubject(s.name)] = s.shortName;
@@ -7909,6 +7992,7 @@ export async function buildBlankSolveInput(
     teacherSlotBans,
     consecutiveRules,
     coTeaching,
+    ...(sourceTermSubjects.length ? { subjects: sourceTermSubjects } : {}),
     fixedBlocks,
   };
 
@@ -8194,9 +8278,17 @@ export async function adoptDraftToTerm(
     }
   }
 
+  // 확정 별칭 보존 병합 (subject_dictionary_spec §3-3) — 재생성이 aliases를 지우면
+  // 관문에서 사람이 확정한 사전이 채택 때마다 기억상실에 걸린다
+  const prevAliases = new Map<string, string[]>();
+  const prevTerm = await loadTimetableTerm(domain, termId).catch(() => null);
+  for (const sj of prevTerm?.subjects || [])
+    if (sj.aliases?.length) prevAliases.set(sj.name.trim(), sj.aliases);
+
   const subjects = Array.from(subjectMap.entries()).map(([name, shortName]) => ({
     name,
     shortName,
+    ...(prevAliases.get(name)?.length ? { aliases: prevAliases.get(name) } : {}),
   }));
 
   await timetableTermsColRef(domain).doc(termId).update({
@@ -8230,10 +8322,63 @@ import {
 } from "./hoursAssignment";
 import { ExtractedAssignmentDept } from "./ai";
 import { parseAssignmentHwpx as _parseAssignmentHwpx, creativeHwpxToText as _creativeHwpxToText } from "./hwpxAssignment";
+import {
+  resolveSubjectsForGate as _resolveSubjectsForGate,
+  applySubjectConfirmations as _applySubjectConfirmations,
+  buildSubjectIndex as _buildSubjectIndex,
+  resolveExact as _resolveExact,
+  SubjectConfirmation,
+} from "./subjectDict";
 import { normalizeHostClasses as _normalizeHostClasses, SimulStatusEntry } from "./hoursAssignment";
 
 export const hoursAssignmentJobsColRef = (domain: string) =>
   adminDb.collection("timetable_hours_assignment_jobs").doc(domain).collection("jobs");
+
+// ── 과목 이름 확정 이력 (subject_dictionary_spec §1-2) ─────────────
+// 학기 무관 영속 단일 문서 — 소비처는 관문 후보 랭킹뿐. 런타임 판정은 절대 읽지 않는다.
+
+export const subjectHistoryDocRef = (domain: string) =>
+  adminDb.collection("timetable_subject_history").doc(domain);
+
+export async function loadSubjectNameHistory(
+  domain: string
+): Promise<import("./types").SubjectNameHistoryEntry[]> {
+  const snap = await subjectHistoryDocRef(domain).get();
+  if (!snap.exists) return [];
+  const d = snap.data() || {};
+  return Array.isArray(d.entries)
+    ? d.entries.filter(
+        (e: any) => e && typeof e.alias === "string" && typeof e.canonicalName === "string"
+      )
+    : [];
+}
+
+/** 확정 쌍 기록 — 같은 (alias, canonical)은 시각만 갱신, alias 재확정은 마지막이 이긴다 (spec §1-2) */
+export async function appendSubjectNameHistory(
+  domain: string,
+  additions: Array<{ alias: string; canonicalName: string; shortName?: string }>,
+  operatorEmail: string
+): Promise<void> {
+  if (!additions.length) return;
+  const now = Date.now();
+  const entries = await loadSubjectNameHistory(domain);
+  const keyOf = (alias: string) => alias.replace(/\s+/g, "").toLowerCase();
+  const byAlias = new Map(entries.map((e) => [keyOf(e.alias), e] as const));
+  for (const a of additions) {
+    const alias = (a.alias || "").trim();
+    const canonicalName = (a.canonicalName || "").trim();
+    if (!alias || !canonicalName) continue;
+    byAlias.set(keyOf(alias), {
+      alias,
+      canonicalName,
+      ...(a.shortName?.trim() ? { shortName: a.shortName.trim() } : {}),
+      confirmedBy: operatorEmail.toLowerCase(),
+      confirmedAt: now,
+    });
+  }
+  const merged = [...byAlias.values()].slice(-1000); // 폭주 방어 상한 — 실물 과목 수 대비 10배 여유
+  await subjectHistoryDocRef(domain).set({ entries: merged, updatedAt: now });
+}
 
 /**
  * 성명→이메일 매칭·가명화용 로스터 — 2원 합집합 (2026-08-16 실측 교훈):
@@ -8402,6 +8547,8 @@ export async function finalizeHoursAssignmentJob(
   unmatchedNames: string[];
   issues: AssignmentIssue[];
   deptCount: number;
+  /** 관문 과목 대조 (subject_dictionary_spec §3-1) — exact는 표시만, suggested/new는 사람 확정 대상 */
+  subjectResolution: import("./subjectDict").SubjectResolutionItem[];
 }> {
   const snap = await hoursAssignmentJobsColRef(domain).doc(jobId).get();
   if (!snap.exists) throw new Error("작업을 찾을 수 없습니다. 파일 업로드부터 다시 시작해 주세요.");
@@ -8478,14 +8625,27 @@ export async function finalizeHoursAssignmentJob(
   const asm = _assembleHoursRows(depts, creative || { title: "", byClass: new Map() }, "진로", roster, {
     simulGroups: simulGroups.filter((g) => g.active !== false),
     venueGroups,
-    subjectPairs: (targetTerm?.subjects || []).map((sj) => ({ name: sj.name, shortName: sj.shortName })),
+    subjectPairs: (targetTerm?.subjects || []).map((sj) => ({
+      name: sj.name,
+      shortName: sj.shortName,
+      ...(sj.aliases?.length ? { aliases: sj.aliases } : {}),
+    })),
   });
+  // 관문 과목 대조 (subject_dictionary_spec §3-1) — 배정표 전 과목(창체 담당 파일 유래 포함)을
+  // 대상 학기 사전·확정 이력과 대조. 진짜 신학기(빈 사전)는 전 항목 new = 배정표가 사전의 시드.
+  const history = await loadSubjectNameHistory(domain).catch(() => []);
+  const subjectResolution = _resolveSubjectsForGate(
+    [...asm.rows, ...(creative ? asm.creativeRows : [])].map((r) => r.subjectName),
+    targetTerm?.subjects || [],
+    history
+  );
   return {
     rows: asm.rows,
     creativeRows: creative ? asm.creativeRows : [],
     unmatchedNames: asm.unmatchedNames,
     issues,
     deptCount: depts.length,
+    subjectResolution,
   };
 }
 

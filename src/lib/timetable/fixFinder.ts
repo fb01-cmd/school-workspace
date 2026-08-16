@@ -337,7 +337,7 @@ function* searchGenerator(
   const operatingPeriods = (grade: number, day: number) =>
     gdp[grade]?.[day] ?? model.periodsPerDay;
   const occ = buildOccupancy(currentGrids);
-  const simulMatcher = buildSimulMatcher(model.simulGroups || []);
+  const simulMatcher = buildSimulMatcher(model.simulGroups || [], model.subjects);
 
   /** 자리표시·동시수업 셀인가 — 편집 경로(handleCellClick·analyzeOpImpact)와 같은 기준 */
   const isLocked = (grid: ClassGrid, s: Slot): boolean => {

@@ -712,3 +712,9 @@
 - **판정**: verify_hours_hwpx.ts [0]~[7] 전판 통과 — 8부서 검증 오류 0 · 문화 과목 3학년 정위치 · 매칭 332/332 · AI 호출 0회. 학년 오독 검출(grade-misplacement)은 정규화 동일 이름으로 한정("과학"↔"과학사" 오탐 보수).
 - **주의**: docs/의 배정표·창체 hwpx(교사 실명 포함)는 저장소 미추적 — 로컬 셀프테스트 전용. 모달 업로드 칸은 .hwpx만 받는다.
 
+
+## [2026-08-17] Claude(Fable) → Antigravity (과목 이름 단일 사전 — 스펙+서버·엔진 코어 완결, UI 인계)
+- 변경 파일: docs/subject_dictionary_spec.md(신설)·src/lib/timetable/{subjectDict.ts(신설),types,simul,venue,solver,validate,fixFinder,hoursAssignment,hwpxAssignment,server}.ts·manage/route.ts·DraftAutoTab.tsx·scripts/verify_subject_dict.ts(신설)
+- 검증 상태: tsc ✅ / build ✅(로컬은 힙 6GB 필요 — 환경 제약) / verify_subject_dict.ts 7항 ✅ / verify_hours_hwpx.ts 회귀 전판 ✅
+- 다음 할 일: Antigravity가 스펙 §6대로 관문 UI(AssignmentHoursModal 과목 대조 섹션 + 저장 시 subjectConfirmations 전송 + subjectLooseMatch 사본 삭제) 구현
+- 주의: ① 소비자 판정은 "사전 정확 일치 → (판정 불능 시에만) 기존 느슨 폴백" — 폴백이 결정하면 solver가 `subject-loose-bind` 고지를 낸다. 폴백 제거는 운영 학기 별칭 확정 후 별도 커밋(스펙 §5) ② `saveHoursPlan`에 `subjectConfirmations`가 오면 사전 갱신·행 박제·이력 기록·미해석 행 저장 거부까지 서버가 원자적으로 수행 — UI는 조립·전송만 ③ 어젯밤 임시 다리 커밋들(ab740da~68ea7b1)의 규칙은 삭제하지 않고 관문 후보 엔진(suggestCandidates)으로 강등·재사용했다

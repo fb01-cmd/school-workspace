@@ -551,20 +551,23 @@ export function assembleHoursRows(
   registries?: {
     simulGroups?: Array<{ id?: string; grade: number; classNums: number[]; subjectNames: string[] }>;
     venueGroups?: Array<{ grade: number; classNums: number[]; subjectNames: string[]; slots?: unknown[] }>;
-    /** 정식 과목명 ↔ 약칭 쌍 (term.subjects) — 등록부는 약칭("중화"), 배정표는 풀네임("중국어회화")이라 다리 필수 */
-    subjectPairs?: Array<{ name: string; shortName: string }>;
+    /** 정식 과목명 ↔ 약칭 쌍 (term.subjects) — 등록부는 약칭("중화"), 배정표는 풀네임("중국어회화")이라 다리 필수.
+     *  aliases = 관문에서 사람이 확정한 다른 표기 (subject_dictionary_spec §1-1) — 같은 동치 집합에 편입 */
+    subjectPairs?: Array<{ name: string; shortName: string; aliases?: string[] }>;
   }
 ): AssembleResult {
   const canon = (x: string) => x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, "").replace(/\d+$/, "");
-  // 이름 동치 집합: 행 과목명과 등록부 표기가 정식↔약칭 어느 조합이어도 만나게
+  // 이름 동치 집합: 행 과목명과 등록부 표기가 정식↔약칭·확정 별칭 어느 조합이어도 만나게
   const aliasSets = new Map<string, Set<string>>();
   for (const pr of registries?.subjectPairs || []) {
-    const a = canon(pr.name);
-    const b = canon(pr.shortName);
-    const set = aliasSets.get(a) || aliasSets.get(b) || new Set<string>();
-    set.add(a).add(b);
-    aliasSets.set(a, set);
-    aliasSets.set(b, set);
+    const keys = [pr.name, pr.shortName, ...(pr.aliases || [])].filter(Boolean).map(canon);
+    let set: Set<string> | undefined;
+    for (const k of keys) if ((set = aliasSets.get(k))) break;
+    if (!set) set = new Set<string>();
+    for (const k of keys) {
+      set.add(k);
+      aliasSets.set(k, set);
+    }
   }
   const sameSubject = (x: string, y: string) => {
     const cx = canon(x);

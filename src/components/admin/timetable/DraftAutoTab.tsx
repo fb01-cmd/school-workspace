@@ -180,8 +180,11 @@ export default function DraftAutoTab({
 
   // ── 동시수업 밴드 판정 matcher (솔버 산출 그리드 스탬프 부재 방어) ──
   const simulMatcher = useMemo(
-    () => (openDraft?.model?.simulGroups ? buildSimulMatcher(openDraft.model.simulGroups) : () => null),
-    [openDraft?.model?.simulGroups]
+    () =>
+      openDraft?.model?.simulGroups
+        ? buildSimulMatcher(openDraft.model.simulGroups, openDraft.model.subjects)
+        : () => null,
+    [openDraft?.model?.simulGroups, openDraft?.model?.subjects]
   );
 
   const getSimulLabel = (grade: number, classNum: number, day: number, period: number, lesson?: TimetableLesson | null) => {

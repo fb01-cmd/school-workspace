@@ -81,6 +81,15 @@ export interface TimetableSubject {
   name: string; // 정식 과목명 (NEIS 일치)
   shortName: string; // 약칭 (한글 2자)
   teacherEmails: string[];
+  /** 사람이 관문(배정표 불러오기)에서 확정한 다른 표기 — 시스템이 추측해 넣지 않는다 (subject_dictionary_spec §1-1) */
+  aliases?: string[];
+}
+
+/** 과목 사전 이름 항목 — 판정 배선용 최소형 (teacherEmails 불요, subject_dictionary_spec §2) */
+export interface SubjectNameEntry {
+  name: string;
+  shortName: string;
+  aliases?: string[];
 }
 
 export interface TimetableTeacher {
@@ -490,6 +499,13 @@ export interface ManageTimetableRequest {
   gradeDayPeriods?: Record<number, Record<number, number>>;
   planStatus?: "draft" | "ready";
   reviewNotes?: HoursPlanReviewNote[];
+  /** 관문 과목 확정 (subject_dictionary_spec §3-2) — hours_plan_save 동반 */
+  subjectConfirmations?: Array<{
+    rawName: string;
+    action: "link" | "create";
+    canonicalName: string;
+    shortName?: string;
+  }>;
   cohort?: Partial<CurriculumCohort>;
   cohortId?: string;
   // ── 학기 전환 스펙 (term_transition_spec) ──
@@ -1241,6 +1257,9 @@ export interface TimetableConstraintModel {
   fixedBlocks?: FixedBlock[];
   consecutiveRules?: ConsecutiveRule[];
   coTeaching?: CoTeachingRule[];
+  /** 과목 사전(term.subjects 유래) — 등록부 표기↔계획 표기 대조의 정확 일치 다리 (subject_dictionary_spec §4).
+   *  없으면 소비자들은 기존 느슨 매칭 폴백만으로 동작한다 (전환 1단계 호환). */
+  subjects?: SubjectNameEntry[];
 }
 
 export type HardViolationCode =
@@ -1358,6 +1377,26 @@ export interface TimetableDraft {
 // ═════════════════════════════════════════════════════════════
 // Phase 9c-F: NEIS 일괄 내보내기 — 매핑 등록부·사전 검증 (phase9c_f_spec)
 // ═════════════════════════════════════════════════════════════
+
+// ═════════════════════════════════════════════════════════════
+// 과목 이름 단일 사전 — 확정 이력 (subject_dictionary_spec §1-2)
+// ═════════════════════════════════════════════════════════════
+
+/** 관문에서 사람이 확정한 이름 쌍 1건 — 학습이 아니라 기록. 소비처는 관문 후보 랭킹뿐,
+ *  런타임 판정(솔버·검사기·스탬프)은 이 문서를 절대 읽지 않는다. */
+export interface SubjectNameHistoryEntry {
+  alias: string; // 확정된 표기 ("과탐")
+  canonicalName: string; // 그때 연결된 정식명 ("과학탐구실험2")
+  shortName?: string; // 그때의 약칭 (신규 등록·신학기 시딩 기본값 재료)
+  confirmedBy: string;
+  confirmedAt: number;
+}
+
+/** timetable_subject_history/{domain} 단일 문서 — 학기 무관 영속 (NeisMapRegistry와 같은 패턴) */
+export interface SubjectNameHistory {
+  entries: SubjectNameHistoryEntry[];
+  updatedAt?: number;
+}
 
 /** 과목 NEIS 등재명 매핑 1행 — neisName "" = 미확정 (동일해도 명시 저장 = 확인의 의미) */
 export interface NeisSubjectMapping {
