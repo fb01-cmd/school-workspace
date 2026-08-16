@@ -16,7 +16,7 @@
  * 소프트 가중치는 검사기(validate.ts S1~S6)와 동일 — 최종 판정은 반드시 validateTimetable 관문.
  */
 
-import { subjectMatches } from "./hoursAssignment";
+import { subjectMatches, subjectStemLoose } from "./hoursAssignment";
 import { buildSimulMatcher } from "./simul";
 import { buildVenueMatcher } from "./venue";
 import {
@@ -448,7 +448,9 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
       const ns = normSubject(s);
       if (ns === subj) return true;
       if (short && normSubject(short) === ns) return true;
-      return subjectMatches(s, subjectName);
+      if (subjectMatches(s, subjectName)) return true;
+      // 분반 차수 표기("인공Ⅱ") 실물 — 특별실 그룹도 학년·반 범위로 좁혀져 있어 안전
+      return subjectStemLoose(s, subjectName);
     };
     for (const g of venueGroups) {
       if (g.grade !== grade || !g.classNums.includes(classNum)) continue;

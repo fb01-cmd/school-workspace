@@ -113,13 +113,32 @@ export function subjectMatches(a: string, b: string): boolean {
     if (sNum && sNum !== numOf(longV)) return false;
     const sStem = stem(shortV);
     const lStem = stem(longV);
-    if (sStem.length < 2 || sStem[0] !== lStem[0]) return false;
+    // 끝 숫자가 양쪽에 있고 일치하면 한 글자 줄기도 허용("체Ⅱ"↔체육2) — 숫자 불일치
+    // 보호가 위에서 이미 물Ⅰ/물Ⅱ류를 걸렀다. 숫자 근거가 없으면 두 글자 이상 유지.
+    const minLen = sNum && sNum === numOf(longV) ? 1 : 2;
+    if (sStem.length < minLen || sStem[0] !== lStem[0]) return false;
     let i = 0;
     for (const ch of lStem) if (ch === sStem[i]) i++;
     return i === sStem.length;
   };
   for (const va of variants(a)) for (const vb of variants(b)) if (pairOk(va, vb)) return true;
   return false;
+}
+
+/**
+ * 그룹 맥락 한정 최후 폴백 — 등록부 약칭이 분반 차수 표기로 끝나는 실물("인공Ⅱ" =
+ * 인공지능 기초 2번째 밴드, 2026-08-16 실사고). subjectMatches의 끝 숫자 보호(물Ⅰ/Ⅱ)를
+ * 무시하고 줄기 부분열만 본다. **학년·반 범위로 이미 좁혀진 등록부(이동수업·특별실)
+ * 대조에서만 쓸 것** — 전역에 쓰면 물Ⅰ/물Ⅱ가 충돌한다.
+ */
+export function subjectStemLoose(a: string, b: string): boolean {
+  const stem = (x: string) =>
+    x.replace(/\s+/g, "").replace(/Ⅰ/g, "1").replace(/Ⅱ/g, "2").replace(/Ⅲ/g, "3").replace(/\d+$/, "");
+  const [sh, lo] = [stem(a), stem(b)].sort((p, q) => p.length - q.length);
+  if (sh.length < 2 || sh[0] !== lo[0]) return false;
+  let i = 0;
+  for (const ch of lo) if (ch === sh[i]) i++;
+  return i === sh.length;
 }
 
 const cellsSum = (cells: ExtractedHourCell[]) => cells.reduce((s, c) => s + c.hours, 0);
@@ -540,25 +559,13 @@ export function assembleHoursRows(
     aliasSets.set(a, set);
     aliasSets.set(b, set);
   }
-  // 그룹 맥락 한정 최후 폴백: 등록부 약칭이 분반 차수 표기로 끝나는 실물("인공Ⅱ" =
-  // 인공지능 기초 2번째 밴드, 2026-08-16 실사고). subjectMatches의 끝 숫자 보호(물Ⅰ/Ⅱ)를
-  // 여기서만 완화 — 등록부 그룹이 이미 학년·반 범위로 좁혀 동명 충돌이 없다.
-  const stemLoose = (a: string, b: string) => {
-    const stem = (x: string) =>
-      x.replace(/\s+/g, "").replace(/Ⅰ/g, "1").replace(/Ⅱ/g, "2").replace(/Ⅲ/g, "3").replace(/\d+$/, "");
-    const [sh, lo] = [stem(a), stem(b)].sort((p2, q) => p2.length - q.length);
-    if (sh.length < 2 || sh[0] !== lo[0]) return false;
-    let i = 0;
-    for (const ch of lo) if (ch === sh[i]) i++;
-    return i === sh.length;
-  };
   const sameSubject = (x: string, y: string) => {
     const cx = canon(x);
     const cy = canon(y);
     if (cx === cy) return true;
     if (aliasSets.get(cx)?.has(cy)) return true;
     if (subjectMatches(x, y)) return true; // 약칭 부분열 폴백 — 등록부가 약칭만 담는 실태 (2026-08-17)
-    return stemLoose(x, y);
+    return subjectStemLoose(x, y);
   };
   const tagHints = (row: AssembledHoursRow) => {
     const sg = registries?.simulGroups?.find(
