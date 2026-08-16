@@ -4,15 +4,6 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
-## [2026-08-16] Antigravity → Claude/사용자 (배정표 기반 교사별 시수표 자동 생성 UI 구현 완료)
-- **변경 파일**:
-  - `src/components/admin/timetable/AssignmentHoursModal.tsx` (신설): 3칸 파일 업로드(배정표 PDF 필수·창체 PDF 선택·이동수업 xlsx 선택, 3MB 가드), `hours_assignment_prepare` → 부서별 `hours_assignment_extract` 순차 호출 및 진행률/부서명 실시간 표시, `hours_assignment_finalize` 결과 수신, 9c-I 관례 이슈 2분할(⚠️ 짜기 전에 살펴볼 점 / ℹ️ 확인해 두면 좋은 점), 창체 진로 행 기본 미포함 체크박스 및 이중 계상 경고 문구, 교사 성명-시스템 계정 1:1 매칭(`TeacherAutocompleteInput`), 추출 수업 미리보기 표 구현.
-  - `src/components/admin/timetable/HoursPlanTab.tsx`: 상단 액션 바에 `[📄 배정표에서 만들기]` 신규 진입 경로 추가 및 모달 연동. `[시수 계획으로 불러오기]` 클릭 시 코호트 고정 블록 함의 행과 함께 편집 화면 `currentPlan.rows`에 채워 넣고, 저장은 기존 저장 버튼에 위임.
-- **규칙 준수**: 서버·엔진 3파일(`ai.ts`·`hoursAssignment.ts`·`server.ts`) 변경 0줄 유지, 개발 용어 및 메타문구 배제.
-- **검증 상태**:
-  - `npx tsc --noEmit` ✅ (0 errors)
-  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (39/39 pages prerendered)
-  - `bash scripts/check_ui_removals.sh 828d85ae157f961bb215950ed06116e28325841a` ✅ (사라진 상호작용 없음)
 
 ## [2026-08-15] Antigravity → Claude/사용자 (운영 매뉴얼 A1: 리뷰 피드백 3건 복원 완료)
 - **변경 파일**:
@@ -599,3 +590,20 @@
 - 결정 기록: Gemini 선불 자동충전(사용자) — 무료 원칙 범위 확정(운영 경로만 0원, 개발 지출 허용, memory 갱신). lite 품질 실측 = 큰 부서 분담 시수 오독 반복 → 본선 flash·lite 비상용
 - 다음 할 일: push 승인 → **UI = Antigravity**(업로드→부서별 진행→오류/고지 분리→저장은 hours_plan 편집 화면 경유) → 3학년 이동수업 파일 오면 데이터 추가
 - 주의: ① 실명 PDF를 AI에 직접 보내는 변경 금지(가명화 강제 경로 유지) ② 로스터에 users 컬렉션 재도입 금지(UID 오염) ③ 창체 행은 배정표 행과 이중 계상 위험 — UI에서 기본 미포함
+
+## [2026-08-16] Antigravity → Claude/사용자 (배정표 기반 교사별 시수표 자동 생성 UI 구현 완료)
+- **변경 파일**:
+  - `src/components/admin/timetable/AssignmentHoursModal.tsx` (신설): 3칸 파일 업로드(배정표 PDF 필수·창체 PDF 선택·이동수업 xlsx 선택, 3MB 가드), `hours_assignment_prepare` → 부서별 `hours_assignment_extract` 순차 호출 및 진행률/부서명 실시간 표시, `hours_assignment_finalize` 결과 수신, 9c-I 관례 이슈 2분할(⚠️ 짜기 전에 살펴볼 점 / ℹ️ 확인해 두면 좋은 점), 창체 진로 행 기본 미포함 체크박스 및 이중 계상 경고 문구, 교사 성명-시스템 계정 1:1 매칭(`TeacherAutocompleteInput`), 추출 수업 미리보기 표 구현.
+  - `src/components/admin/timetable/HoursPlanTab.tsx`: 상단 액션 바에 `[📄 배정표에서 만들기]` 신규 진입 경로 추가 및 모달 연동. `[시수 계획으로 불러오기]` 클릭 시 코호트 고정 블록 함의 행과 함께 편집 화면 `currentPlan.rows`에 채워 넣고, 저장은 기존 저장 버튼에 위임.
+- **규칙 준수**: 서버·엔진 3파일(`ai.ts`·`hoursAssignment.ts`·`server.ts`) 변경 0줄 유지, 개발 용어 및 메타문구 배제.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (39/39 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 828d85ae157f961bb215950ed06116e28325841a` ✅ (사라진 상호작용 없음)
+
+## [2026-08-16] Claude — 시수표 UI 핸드오버 검수: **통과** (`6555359`)
+
+- 3대 게이트 전건 준수(커밋·핸드오버·탐지기 실행 기재) — 단 핸드오버를 파일 상단에 삽입(④ 하단 누적 위반, 검수 중 규약 위치로 이관). 검수자 주의: 상단 삽입 전례 2회째 — 꼬리만 보지 말 것
+- 실측: 서버 3파일 무수정 ✅ · 재작성 없음(신규 1121줄+진입 65줄) ✅ · 유실 0 ✅ · base64 접두사 제거 정확 ✅ · 개발 용어 노출 0 ✅ · 창체 기본 미포함 ✅ · 미매칭 확인창·코호트 보강·변환 지시문 일치 ✅ · tsc·build ✅
+- 관찰(차단 아님): 배정표 유래 "창체" 행과 코호트 함의 창체가 겹칠 가능성 — H1 대조가 최종선이라 체크리스트 I-7로 사용자 확인 지점화
+- 다음 할 일: push 승인 → 사용자 화면 확인 = 체크리스트 **I절**(실물 3파일로)
