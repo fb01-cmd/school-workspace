@@ -20,6 +20,32 @@ import { ExtractedAssignmentDept, ExtractedHourCell } from "./ai";
  * pdftotext -layout과 같은 "고정폭 배치" 근사를 만든다 (실물 검증: verify_hours_assignment [0]).
  */
 export async function extractPdfLayoutPages(data: Uint8Array): Promise<string[]> {
+  // 서버 런타임 폴리필 — pdfjs가 브라우저 전용 전역을 참조한다 (배포 실사고 2026-08-16).
+  // 텍스트 추출만 쓰므로 행렬 연산 결과는 소비되지 않는다 — 형태만 채우는 최소 구현이면 충분.
+  const g = globalThis as Record<string, unknown>;
+  if (typeof g.DOMMatrix === "undefined") {
+    g.DOMMatrix = class DOMMatrix {
+      a = 1; b = 0; c = 0; d = 1; e = 0; f = 0;
+      constructor(init?: number[]) {
+        if (Array.isArray(init) && init.length >= 6)
+          [this.a, this.b, this.c, this.d, this.e, this.f] = init;
+      }
+      translate() { return this; }
+      scale() { return this; }
+      multiply() { return this; }
+      invertSelf() { return this; }
+      transformPoint(p: { x: number; y: number }) { return p; }
+    };
+  }
+  if (typeof g.Path2D === "undefined") {
+    g.Path2D = class Path2D { addPath() {} moveTo() {} lineTo() {} closePath() {} };
+  }
+  if (typeof g.ImageData === "undefined") {
+    g.ImageData = class ImageData {
+      width: number; height: number; data: Uint8ClampedArray;
+      constructor(w: number, h: number) { this.width = w; this.height = h; this.data = new Uint8ClampedArray(w * h * 4); }
+    };
+  }
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const doc = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
   const pages: string[] = [];
