@@ -351,8 +351,20 @@ export function validateTitleSemester(
   expected: { year: number; semester: number },
   fileLabel: string
 ): AssignmentIssue[] {
-  const m = title.match(/(\d{4})\s*학년도\s*(\d)\s*학기/);
-  if (!m) return [];
+  const m = title.match(/(\d{4})\s*학?년도?\s*.*?(\d)\s*학기/);
+  // 연도 없는 표식("<2학년 2학기>")도 실재 — 학기만이라도 대조 (2026-08-17 신학기 시뮬 실측)
+  if (!m) {
+    const semOnly = title.match(/(\d)\s*학기/);
+    if (semOnly && Number(semOnly[1]) !== expected.semester)
+      return [
+        {
+          severity: "error",
+          code: "stale-title",
+          text: `${fileLabel} 내부 표기가 「${semOnly[1]}학기」입니다 — 대상(${expected.year}학년도 ${expected.semester}학기)과 학기가 다릅니다. 지난 학기 파일인지 확인해 주세요.`,
+        },
+      ];
+    return [];
+  }
   const [y, s] = [Number(m[1]), Number(m[2])];
   if (y !== expected.year || s !== expected.semester)
     return [
@@ -699,7 +711,9 @@ export function normalizeHostClasses(
   standaloneLessons?: Set<string>,
   /** 실증의 학기 등급 (2026-08-17 사용자 지적): "same" = 대상 학기 실물 → 확정, 떠돌이에서 제외.
    *  "previous" = 전 학기 참고 → **추정일 뿐** — 자동 이동 근거로 쓰지 않고 확인 요청 고지만 낸다. */
-  evidenceTier: "same" | "previous" = "same"
+  evidenceTier: "same" | "previous" = "same",
+  /** 확정 실증의 출처 — 문구 구분용: "grid"=시간표 실증 / "doc"=제출 문서 명시 */
+  evidenceSource: "grid" | "doc" = "grid"
 ): { moves: HostNormalization[]; issues: AssignmentIssue[] } {
   const moves: HostNormalization[] = [];
   const issues: AssignmentIssue[] = [];
@@ -745,10 +759,11 @@ export function normalizeHostClasses(
       if (confirmed.length) {
         const classes = confirmed.map(({ cell }) => `${cell.classNum}반`).join("·");
         if (evidenceTier === "same") {
+          const basis = evidenceSource === "doc" ? "제출하신 이동수업 현황에 단독으로 적혀 있습니다" : "이 학기 시간표 실증상 이동 없는 단독 수업입니다";
           issues.push({
             severity: "notice",
             code: "simul-status-mismatch",
-            text: `${grade}학년 ${subjKey}: ${classes}은 이 학기 시간표 실증상 이동 없는 단독 수업입니다 — 그대로 둡니다 (확인됨)`,
+            text: `${grade}학년 ${subjKey}: ${classes}은 ${basis} — 그대로 둡니다 (확인됨)`,
           });
           strays = strays.filter((x) => !confirmed.includes(x));
         } else {

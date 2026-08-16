@@ -8397,23 +8397,19 @@ export async function finalizeHoursAssignmentJob(
   const issues: AssignmentIssue[] = [...((job.baseIssues || []) as AssignmentIssue[])];
   // §9-B②′: 이동수업 정보 = 시스템 역추출(실증, 우선) + 업로드 파일(계획) 병합
   const targetTermIdForSimul = `${job.targetYear}-${job.targetSemester}`;
-  let systemStatus = await deriveSimulStatusFromSystem(domain, targetTermIdForSimul).catch(() => ({
-    entries: [] as SimulStatusEntry[],
-    standaloneLessons: new Set<string>(),
-  }));
-  // 학기 등급 (2026-08-17 사용자 지적): 대상 학기 그리드가 있으면 실증=확정("same"),
-  // 없으면(신학기) 현행 학기 그리드를 **참고("previous")**로만 — 자동 이동 근거 금지·문구 구분.
-  let evidenceTier: "same" | "previous" = "same";
-  if (!systemStatus.entries.length && !systemStatus.standaloneLessons.size) {
-    const settingsForTier = await loadTimetableSettings(domain);
-    if (settingsForTier.activeTermId && settingsForTier.activeTermId !== targetTermIdForSimul) {
-      systemStatus = await deriveSimulStatusFromSystem(domain, settingsForTier.activeTermId).catch(() => ({
+  // 학기 등급 (2026-08-17 2차 정정 — 신학기 시뮬 실측): 실증("same")은 **운영 중인 학기**의
+  // 그리드만 받는다. 대상이 초안·채택본 학기면 그 그리드는 우리 자동 작성의 산출물이라
+  // 자기 검증의 정답지가 되는 순환 — 그때는 운영 학기 그리드를 참고("previous")로만 쓴다.
+  const settingsForTier = await loadTimetableSettings(domain);
+  const isOperatingTerm = settingsForTier.activeTermId === targetTermIdForSimul;
+  const evidenceTermId = isOperatingTerm ? targetTermIdForSimul : settingsForTier.activeTermId;
+  const evidenceTier: "same" | "previous" = isOperatingTerm ? "same" : "previous";
+  const systemStatus = evidenceTermId
+    ? await deriveSimulStatusFromSystem(domain, evidenceTermId).catch(() => ({
         entries: [] as SimulStatusEntry[],
         standaloneLessons: new Set<string>(),
-      }));
-      evidenceTier = "previous";
-    }
-  }
+      }))
+    : { entries: [] as SimulStatusEntry[], standaloneLessons: new Set<string>() };
   // 병합 우선순위도 등급을 따른다: 같은 학기 실증이면 시스템 우선, 전 학기 참고면 **파일(그 학기 계획) 우선**
   const primary = evidenceTier === "same" ? systemStatus.entries : ((job.simul?.entries || []) as SimulStatusEntry[]);
   const secondary = evidenceTier === "same" ? ((job.simul?.entries || []) as SimulStatusEntry[]) : systemStatus.entries;
@@ -8437,7 +8433,7 @@ export async function finalizeHoursAssignmentJob(
     const fileEntries = ((job.simul?.entries || []) as SimulStatusEntry[]);
     if (fileEntries.length)
       issues.push(
-        ..._normalizeHostClasses(depts, { entries: fileEntries }, new Set(fileStandalone), "same").issues
+        ..._normalizeHostClasses(depts, { entries: fileEntries }, new Set(fileStandalone), "same", "doc").issues
       );
     // 전 학기 실증은 참고 고지로만 — 이동 없는 안내 경로
     if (systemStatus.standaloneLessons.size && mergedEntries.length)
