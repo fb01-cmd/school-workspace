@@ -682,7 +682,11 @@ export function normalizeHostClasses(
         standaloneLessons.has(`${cell.grade}-${cell.classNum}|${subjKey}`)
       );
       if (confirmed.length) {
-        const classes = confirmed.map(({ cell }) => `${cell.classNum}반`).join("·");
+        // 분담 배정(한 반에 교사 두 행)이면 같은 반이 두 번 잡힌다 — 반 번호로 중복 제거
+        const classes = [...new Set(confirmed.map(({ cell }) => cell.classNum))]
+          .sort((a, b) => a - b)
+          .map((n) => `${n}반`)
+          .join("·");
         if (evidenceTier === "same") {
           const basis = evidenceSource === "doc" ? "제출하신 이동수업 현황에 단독으로 적혀 있습니다" : "이 학기 시간표 실증상 이동 없는 단독 수업입니다";
           issues.push({
