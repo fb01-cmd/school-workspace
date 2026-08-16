@@ -132,8 +132,15 @@ export function subjectMatches(a: string, b: string): boolean {
  * 대조에서만 쓸 것** — 전역에 쓰면 물Ⅰ/물Ⅱ가 충돌한다.
  */
 export function subjectStemLoose(a: string, b: string): boolean {
+  // 끝의 분반 기호(숫자·로마숫자·A/B류 한 글자)를 벗긴 줄기로 대조 — "수탐A"↔수학과제탐구 실물
   const stem = (x: string) =>
-    x.replace(/\s+/g, "").replace(/Ⅰ/g, "1").replace(/Ⅱ/g, "2").replace(/Ⅲ/g, "3").replace(/\d+$/, "");
+    x
+      .replace(/\s+/g, "")
+      .replace(/Ⅰ/g, "1")
+      .replace(/Ⅱ/g, "2")
+      .replace(/Ⅲ/g, "3")
+      .replace(/[A-Za-z]$/, "")
+      .replace(/\d+$/, "");
   const [sh, lo] = [stem(a), stem(b)].sort((p, q) => p.length - q.length);
   if (sh.length < 2 || sh[0] !== lo[0]) return false;
   let i = 0;
