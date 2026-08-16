@@ -443,21 +443,28 @@ export function validateSimulStatus(
   // 수강 반이 아니라 **같이 움직이는 밴드**다 — 밴드의 각 반은 서로 다른 과목을 듣는다.
   // 따라서 과목 단위 대조는 같은 기반 과목의 **밴드 합집합**과 배정표 반 집합을 비교하되,
   // 단독 개설(비이동) 반이 실재하므로(3학년 10반 화Ⅱ 전례) 전부 **고지**로만 낸다.
-  const unionByStubject = new Map<string, Set<number>>(); // key = grade|subject
+  // 정규화와 같은 동치류 클러스터링 — 같은 과목이 두 이름이면 대조도 한 번만
+  const vClusters: Array<{ grade: number; names: string[]; union: Set<number> }> = [];
   for (const en of status.entries) {
-    const k = `${en.grade}|${en.subject}`;
-    const set = unionByStubject.get(k) || new Set<number>();
-    en.classNums.forEach((c) => set.add(c));
-    unionByStubject.set(k, set);
+    const found = vClusters.find(
+      (c) => c.grade === en.grade && c.names.some((n) => subjectMatches(n, en.subject))
+    );
+    if (found) {
+      if (!found.names.includes(en.subject)) found.names.push(en.subject);
+      en.classNums.forEach((c) => found.union.add(c));
+    } else {
+      vClusters.push({ grade: en.grade, names: [en.subject], union: new Set(en.classNums) });
+    }
   }
-  for (const [gradeSubj, union] of unionByStubject) {
-    const [gStr, subject] = gradeSubj.split("|");
-    const e = { grade: Number(gStr), subject, classNums: [...union].sort((a, b) => a - b), raw: subject };
+  for (const vc of vClusters) {
+    const subject = [...vc.names].sort((a, b) => b.length - a.length)[0];
+    const e = { grade: vc.grade, subject, classNums: [...vc.union].sort((a, b) => a - b), raw: subject };
+    const matchNames = vc.names;
     const assigned = new Set<number>();
     let subjectFound = false;
     for (const d of depts)
       for (const r of d.personalRows) {
-        if (!subjectMatches(r.subject, e.subject)) continue;
+        if (!matchNames.some((n) => subjectMatches(r.subject, n))) continue;
         subjectFound = true;
         for (const c of r.cells) if (c.grade === e.grade) assigned.add(c.classNum);
       }
@@ -629,22 +636,33 @@ export function normalizeHostClasses(
   const issues: AssignmentIssue[] = [];
   const canon = (x: string) => x.replace(/\s+/g, "").replace(/학(?=[ⅠⅡⅢ])/g, "").replace(/\d+$/, "");
   // 과목별 개설 반 집합 (현황 행 맥락 유래만 — host 미상 항목은 정규화 근거로 안 쓴다)
-  // 학년별로 따로 — 파일 유래(단일 학년)·시스템 역추출(2·3학년 혼합)이 같은 경로를 탄다
-  const hostsBySubject = new Map<string, Set<number>>(); // key = grade|subject
+  // 학년별 **동치류 클러스터링** (2026-08-17 실배포 실사고): 같은 과목이 역추출(약칭 "중화")과
+  // 파일(풀네임 "중국어회화") 두 이름으로 들어오면, 별개 기준으로 정규화가 두 번 돌아
+  // 이미 정리된 반을 또 "떠돌이"로 밀어낸다(이경호 3칸 연쇄 이동). 같은 학년에서
+  // subjectMatches로 통하는 항목들을 한 덩어리로 합쳐 **과목당 정확히 한 번**만 정리한다.
+  const clusters: Array<{ grade: number; names: string[]; hosts: Set<number> }> = [];
   for (const e of status.entries) {
     if (e.hostClassNum == null) continue;
-    const k = `${e.grade}|${canon(e.subject)}`;
-    if (!hostsBySubject.has(k)) hostsBySubject.set(k, new Set());
-    hostsBySubject.get(k)!.add(e.hostClassNum);
+    const found = clusters.find(
+      (c) => c.grade === e.grade && c.names.some((n) => subjectMatches(n, e.subject))
+    );
+    if (found) {
+      if (!found.names.includes(e.subject)) found.names.push(e.subject);
+      found.hosts.add(e.hostClassNum);
+    } else {
+      clusters.push({ grade: e.grade, names: [e.subject], hosts: new Set([e.hostClassNum]) });
+    }
   }
-  for (const [gradeSubj, hosts] of hostsBySubject) {
-    const [gradeStr, subjKey] = gradeSubj.split("|");
-    const grade = Number(gradeStr);
+  for (const cluster of clusters) {
+    const grade = cluster.grade;
+    // 표시·대조 대표명 = 가장 긴 이름 (풀네임 우선)
+    const subjKey = [...cluster.names].sort((a, b) => b.length - a.length)[0];
+    const hosts = cluster.hosts;
     // 이 과목의 배정표 칸 전수 (해당 학년만)
     const cells: Array<{ row: { teacher: string; cells: ExtractedHourCell[] }; cell: ExtractedHourCell }> = [];
     for (const d of depts)
       for (const r of d.personalRows) {
-        if (!subjectMatches(r.subject, subjKey)) continue;
+        if (!cluster.names.some((n) => subjectMatches(r.subject, n))) continue;
         for (const c of r.cells) if (c.grade === grade) cells.push({ row: r, cell: c });
       }
     if (!cells.length) continue;
@@ -684,7 +702,7 @@ export function normalizeHostClasses(
     if (classMap.size)
       for (const d of depts)
         for (const r of d.gridRows) {
-          if (!subjectMatches(r.subject, subjKey)) continue;
+          if (!cluster.names.some((n) => subjectMatches(r.subject, n))) continue;
           for (const c of r.cells)
             if (c.grade === grade && classMap.has(c.classNum)) c.classNum = classMap.get(c.classNum)!;
         }

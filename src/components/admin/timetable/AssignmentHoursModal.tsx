@@ -41,6 +41,14 @@ interface AssignmentHoursModalProps {
   }) => void;
 }
 
+interface TableFilterTarget {
+  grade?: number;
+  classNum?: number;
+  subject?: string;
+  teacher?: string;
+  label: string;
+}
+
 /**
  * 교직원 검색 자동완성 입력 컴포넌트
  */
@@ -165,6 +173,105 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+/**
+ * 점검 항목 텍스트에서 미리보기 표 필터링 대상 추출 (출구 다리)
+ */
+function parseIssueTarget(iss: AssignmentIssue): TableFilterTarget | null {
+  const t = iss.text;
+
+  // 1. 이동수업 개설 반 정규화: "2학년 기하(박선생): 배정표의 3반 표기를 이동수업 개설 반인 6반으로 옮겼습니다 (시수 변화 없음)"
+  const moveM = t.match(
+    /^(\d+)학년\s+([^\s(]+)\s*\(([^)]+)\):\s*배정표의\s*(\d+)반\s*표기를\s*이동수업\s*개설\s*반인\s*(\d+)반으로\s*옮겼습니다/
+  );
+  if (moveM) {
+    const grade = parseInt(moveM[1], 10);
+    const subject = moveM[2].trim();
+    const teacher = moveM[3].trim();
+    const toClass = parseInt(moveM[5], 10);
+    return {
+      grade,
+      classNum: toClass,
+      subject,
+      teacher,
+      label: `${grade}학년 ${toClass}반 ${subject} (${teacher})`,
+    };
+  }
+
+  // 2. 분담 배정: "문학 2학년 3반: 김선생·이선생 두 분이 나눠 맡습니다"
+  const sharedM = t.match(/^(.+?)\s+(\d+)학년\s+(\d+)반:\s+(.+?)\s+두 분이/);
+  if (sharedM) {
+    const subject = sharedM[1].trim();
+    const grade = parseInt(sharedM[2], 10);
+    const classNum = parseInt(sharedM[3], 10);
+    return {
+      grade,
+      classNum,
+      subject,
+      label: `${grade}학년 ${classNum}반 ${subject}`,
+    };
+  }
+
+  // 3. 격자표 vs 개인표 (학급 불일치): "문학 1학년 2반: 격자표 3 ≠ 개인표 합 2"
+  const cellM = t.match(/^(.+?)\s+(\d+)학년\s+(\d+)반:\s*격자표/);
+  if (cellM) {
+    const subject = cellM[1].trim();
+    const grade = parseInt(cellM[2], 10);
+    const classNum = parseInt(cellM[3], 10);
+    return {
+      grade,
+      classNum,
+      subject,
+      label: `${grade}학년 ${classNum}반 ${subject}`,
+    };
+  }
+
+  // 4. 격자표 vs 개인표 (과목 전체): "심화국어: 격자표에는 있는데 개인표에 배정이 없습니다"
+  const subjM = t.match(/^([^:]+):\s*(?:격자표에는 있는데|개인표에는 있는데)/);
+  if (subjM) {
+    const subject = subjM[1].trim();
+    return {
+      subject,
+      label: `${subject}`,
+    };
+  }
+
+  // 5. 교사 비고 총계 불일치: "김선생: 비고 총계 15 ≠ 배정 합 14"
+  const teacherM = t.match(/^([가-힣A-Za-z0-9]+):\s*비고 총계/);
+  if (teacherM) {
+    const teacher = teacherM[1].trim();
+    return {
+      teacher,
+      label: `${teacher} 선생님`,
+    };
+  }
+
+  // 6. 밴드 대조: "2학년 중국어회화: 이동수업 밴드 반(1·2·3·5·10)과 배정표 반(1·2·3)이 다릅니다"
+  const bandM = t.match(/^(\d+)학년\s+([^:]+):\s*이동수업\s*밴드/);
+  if (bandM) {
+    const grade = parseInt(bandM[1], 10);
+    const subject = bandM[2].trim();
+    return {
+      grade,
+      subject,
+      label: `${grade}학년 ${subject}`,
+    };
+  }
+
+  // 7. 창체 파일 대조: "배정표에 1학년 2반 창체가 있는데..."
+  const creatM = t.match(/배정표에\s*(\d+)학년\s*(\d+)반/);
+  if (creatM) {
+    const grade = parseInt(creatM[1], 10);
+    const classNum = parseInt(creatM[2], 10);
+    return {
+      grade,
+      classNum,
+      label: `${grade}학년 ${classNum}반`,
+    };
+  }
+
+  return null;
+}
+
 export default function AssignmentHoursModal({
   isOpen,
   onClose,
@@ -215,7 +322,21 @@ export default function AssignmentHoursModal({
   const [teacherMappings, setTeacherMappings] = useState<Record<string, string>>({}); // teacherName -> teacherEmail
   const [deptCount, setDeptCount] = useState<number>(0);
 
-  // 결과 화면 필터
+  // v2: 세션 한정 이동수업 과목 매핑 (simulSubject -> assignmentSubject)
+  const [simulSubjectMappings, setSimulSubjectMappings] = useState<Record<string, string>>({});
+
+  // v2: 고지 항목 접기/펼치기 상태
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    shared: false,
+    band: false,
+    moved: true,
+  });
+
+  // v2: 미리보기 표 필터 타겟 및 테이블 스크롤 Ref (출구 다리)
+  const [activeTargetFilter, setActiveTargetFilter] = useState<TableFilterTarget | null>(null);
+  const previewTableRef = useRef<HTMLDivElement>(null);
+
+  // 결과 화면 기본 필터
   const [previewGradeFilter, setPreviewGradeFilter] = useState<number | "all">("all");
   const [previewSearch, setPreviewSearch] = useState<string>("");
 
@@ -235,6 +356,8 @@ export default function AssignmentHoursModal({
     setIssues([]);
     setTeacherMappings({});
     setDeptCount(0);
+    setSimulSubjectMappings({});
+    setActiveTargetFilter(null);
   };
 
   const handleClose = () => {
@@ -365,9 +488,131 @@ export default function AssignmentHoursModal({
     }
   };
 
+  // 배정표에서 추출된 고유 과목명 목록 (과목 연결 드롭다운용)
+  const assignmentSubjectsList = useMemo(() => {
+    return Array.from(new Set(extractedRows.map((r) => r.subjectName))).sort((a, b) =>
+      a.localeCompare(b, "ko")
+    );
+  }, [extractedRows]);
+
   // 이슈 분리 (9c-I 확인 모달 관례)
   const errorIssues = useMemo(() => issues.filter((i) => i.severity === "error"), [issues]);
-  const noticeIssues = useMemo(() => issues.filter((i) => i.severity === "notice"), [issues]);
+  const rawNoticeIssues = useMemo(() => issues.filter((i) => i.severity === "notice"), [issues]);
+
+  // v2: 고지성 이슈 카테고리별 분류 및 과목 연결 대조 재계산
+  const {
+    unmatchedSubjectItems,
+    resolvedSubjectItems,
+    movedHostItems,
+    sharedAssignmentGroups,
+    bandMismatchItems,
+    otherNoticeItems,
+  } = useMemo(() => {
+    const unmatched: Array<{ rawSubject: string; issue: AssignmentIssue }> = [];
+    const resolved: Array<{ rawSubject: string; mappedSubject: string; classNums: number[] }> = [];
+    const moved: Array<{
+      grade: number;
+      subject: string;
+      teacher: string;
+      fromClass: number;
+      toClass: number;
+      issue: AssignmentIssue;
+    }> = [];
+    const sharedMap = new Map<
+      string,
+      Array<{ grade: number; classNum: number; teachers: string; issue: AssignmentIssue }>
+    >();
+    const band: Array<{
+      grade: number;
+      subject: string;
+      bandClasses: string;
+      assignedClasses: string;
+      issue: AssignmentIssue;
+    }> = [];
+    const other: AssignmentIssue[] = [];
+
+    for (const iss of rawNoticeIssues) {
+      const t = iss.text;
+
+      // 1. "과목을 배정표에서 찾지 못했습니다"
+      const unmatchM = t.match(/이동수업\s*현황의\s*「(.+?)」\s*과목을\s*배정표에서\s*찾지\s*못했습니다/);
+      if (unmatchM) {
+        const rawSubject = unmatchM[1].trim();
+        const mapped = simulSubjectMappings[rawSubject];
+        if (mapped) {
+          // 클라이언트에서 연결된 과목의 배정 행 재계산
+          const assignedRows = extractedRows.filter((r) => r.subjectName === mapped);
+          const classNums = Array.from(new Set(assignedRows.map((r) => r.classNum))).sort((a, b) => a - b);
+          resolved.push({ rawSubject, mappedSubject: mapped, classNums });
+        } else {
+          unmatched.push({ rawSubject, issue: iss });
+        }
+        continue;
+      }
+
+      // 2. 이동수업 개설 반 정규화 ("옮겼습니다")
+      const moveM = t.match(
+        /^(\d+)학년\s+([^\s(]+)\s*\(([^)]+)\):\s*배정표의\s*(\d+)반\s*표기를\s*이동수업\s*개설\s*반인\s*(\d+)반으로\s*옮겼습니다/
+      );
+      if (moveM) {
+        moved.push({
+          grade: parseInt(moveM[1], 10),
+          subject: moveM[2].trim(),
+          teacher: moveM[3].trim(),
+          fromClass: parseInt(moveM[4], 10),
+          toClass: parseInt(moveM[5], 10),
+          issue: iss,
+        });
+        continue;
+      }
+
+      // 3. 분담 배정 ("두 분이 나눠 맡습니다")
+      const sharedM = t.match(/^(.+?)\s+(\d+)학년\s+(\d+)반:\s+(.+?)\s+두 분이/);
+      if (sharedM || iss.code === "shared-assignment") {
+        const subject = sharedM ? sharedM[1].trim() : iss.dept || "교과";
+        const grade = sharedM ? parseInt(sharedM[2], 10) : 0;
+        const classNum = sharedM ? parseInt(sharedM[3], 10) : 0;
+        const teachers = sharedM ? sharedM[4].trim() : "";
+        const list = sharedMap.get(subject) || [];
+        list.push({ grade, classNum, teachers, issue: iss });
+        sharedMap.set(subject, list);
+        continue;
+      }
+
+      // 4. 밴드 대조 ("이동수업 밴드 반...과 배정표 반...이 다릅니다")
+      const bandM = t.match(
+        /^(\d+)학년\s+([^:]+):\s*이동수업\s*밴드\s*반\(([^)]+)\)과\s*배정표\s*반\(([^)]*)\)이\s*다릅니다/
+      );
+      if (bandM) {
+        band.push({
+          grade: parseInt(bandM[1], 10),
+          subject: bandM[2].trim(),
+          bandClasses: bandM[3].trim(),
+          assignedClasses: bandM[4].trim() || "없음",
+          issue: iss,
+        });
+        continue;
+      }
+
+      // 5. 기타 고지
+      other.push(iss);
+    }
+
+    const sharedGroups = Array.from(sharedMap.entries()).map(([subject, items]) => ({
+      subject,
+      items,
+      totalClasses: items.length,
+    }));
+
+    return {
+      unmatchedSubjectItems: unmatched,
+      resolvedSubjectItems: resolved,
+      movedHostItems: moved,
+      sharedAssignmentGroups: sharedGroups,
+      bandMismatchItems: band,
+      otherNoticeItems: other,
+    };
+  }, [rawNoticeIssues, simulSubjectMappings, extractedRows]);
 
   // 전체 고유 교사 목록
   const distinctTeachersList = useMemo(() => {
@@ -377,11 +622,28 @@ export default function AssignmentHoursModal({
     );
   }, [extractedRows, creativeRows, includeCreative]);
 
-  // 미리보기 대상 행 목록
+  // 미리보기 대상 행 목록 (v2: activeTargetFilter 연동)
   const displayedPreviewRows = useMemo(() => {
     const combined = includeCreative ? [...extractedRows, ...creativeRows] : extractedRows;
     return combined.filter((r) => {
+      // 1. 이슈 클릭으로 활성화된 표적 필터 적용
+      if (activeTargetFilter) {
+        if (activeTargetFilter.grade !== undefined && r.grade !== activeTargetFilter.grade) return false;
+        if (activeTargetFilter.classNum !== undefined && r.classNum !== activeTargetFilter.classNum) return false;
+        if (activeTargetFilter.subject) {
+          const rSub = r.subjectName.replace(/\s+/g, "");
+          const fSub = activeTargetFilter.subject.replace(/\s+/g, "");
+          if (!rSub.includes(fSub) && !fSub.includes(rSub)) return false;
+        }
+        if (activeTargetFilter.teacher) {
+          if (!r.teacherName.includes(activeTargetFilter.teacher)) return false;
+        }
+      }
+
+      // 2. 기본 학년 필터
       if (previewGradeFilter !== "all" && r.grade !== previewGradeFilter) return false;
+
+      // 3. 검색어 필터
       if (previewSearch) {
         const q = previewSearch.toLowerCase();
         const sub = (r.subjectName || "").toLowerCase();
@@ -391,13 +653,30 @@ export default function AssignmentHoursModal({
       }
       return true;
     });
-  }, [extractedRows, creativeRows, includeCreative, previewGradeFilter, previewSearch, teacherMappings]);
+  }, [
+    extractedRows,
+    creativeRows,
+    includeCreative,
+    activeTargetFilter,
+    previewGradeFilter,
+    previewSearch,
+    teacherMappings,
+  ]);
 
   // 전체 주당 시수 합계
   const totalHours = useMemo(() => {
     const combined = includeCreative ? [...extractedRows, ...creativeRows] : extractedRows;
     return combined.reduce((sum, r) => sum + (Number(r.hours) || 0), 0);
   }, [extractedRows, creativeRows, includeCreative]);
+
+  // 이슈 클릭 시 미리보기 표 필터링 및 스크롤 핸들러 (출구 다리)
+  const handleFilterByIssue = (target: TableFilterTarget | null) => {
+    if (!target) return;
+    setActiveTargetFilter(target);
+    if (previewTableRef.current) {
+      previewTableRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  };
 
   // 시수 계획으로 적용 및 불러오기
   const handleApplyToPlan = () => {
@@ -428,7 +707,10 @@ export default function AssignmentHoursModal({
 
     // HoursPlanRow 변환
     const planRows: HoursPlanRow[] = sourceRows.map((r, idx) => {
-      const email = teacherMappings[r.teacherName] !== undefined ? teacherMappings[r.teacherName] : (r.teacherEmail || "");
+      const email =
+        teacherMappings[r.teacherName] !== undefined
+          ? teacherMappings[r.teacherName]
+          : r.teacherEmail || "";
       return {
         id: `assign-${r.grade}-${r.classNum}-${r.subjectName}-${r.teacherName}-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
         grade: r.grade,
@@ -437,8 +719,8 @@ export default function AssignmentHoursModal({
         teacherName: r.teacherName,
         teacherEmail: email,
         hours: r.hours,
-        simulGroupId: r.simulGroupId ?? null,
-        venueHours: r.venueHours ?? null,
+        simulGroupId: r.simulGroupId,
+        venueHours: r.venueHours,
       };
     });
 
@@ -515,7 +797,9 @@ export default function AssignmentHoursModal({
                     <input
                       type="number"
                       value={targetYear}
-                      onChange={(e) => setTargetYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
+                      onChange={(e) =>
+                        setTargetYear(parseInt(e.target.value, 10) || new Date().getFullYear())
+                      }
                       className="w-24 px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg font-bold text-gray-900 text-center"
                     />
                     <span className="text-gray-600">학년도</span>
@@ -569,7 +853,9 @@ export default function AssignmentHoursModal({
                       <div className="bg-white border border-indigo-200 rounded-lg p-2.5 flex items-center justify-between">
                         <div className="overflow-hidden mr-2">
                           <p className="font-bold text-indigo-900 truncate text-[11px]">{assignFile.name}</p>
-                          <p className="text-[10px] text-gray-400 font-mono">{formatFileSize(assignFile.size)}</p>
+                          <p className="text-[10px] text-gray-400 font-mono">
+                            {formatFileSize(assignFile.size)}
+                          </p>
                         </div>
                         <button
                           type="button"
@@ -620,8 +906,12 @@ export default function AssignmentHoursModal({
                     {creativeFile ? (
                       <div className="bg-white border border-indigo-200 rounded-lg p-2.5 flex items-center justify-between">
                         <div className="overflow-hidden mr-2">
-                          <p className="font-bold text-indigo-900 truncate text-[11px]">{creativeFile.name}</p>
-                          <p className="text-[10px] text-gray-400 font-mono">{formatFileSize(creativeFile.size)}</p>
+                          <p className="font-bold text-indigo-900 truncate text-[11px]">
+                            {creativeFile.name}
+                          </p>
+                          <p className="text-[10px] text-gray-400 font-mono">
+                            {formatFileSize(creativeFile.size)}
+                          </p>
                         </div>
                         <button
                           type="button"
@@ -673,7 +963,9 @@ export default function AssignmentHoursModal({
                       <div className="bg-white border border-indigo-200 rounded-lg p-2.5 flex items-center justify-between">
                         <div className="overflow-hidden mr-2">
                           <p className="font-bold text-indigo-900 truncate text-[11px]">{simulFile.name}</p>
-                          <p className="text-[10px] text-gray-400 font-mono">{formatFileSize(simulFile.size)}</p>
+                          <p className="text-[10px] text-gray-400 font-mono">
+                            {formatFileSize(simulFile.size)}
+                          </p>
                         </div>
                         <button
                           type="button"
@@ -709,8 +1001,12 @@ export default function AssignmentHoursModal({
                   <span>💡 진행 안내</span>
                 </p>
                 <ul className="list-disc list-inside space-y-0.5 text-[11px] text-gray-600">
-                  <li>과목별 배정표의 부서별 표를 순차적으로 읽어 교사별 주당 수업 시간을 자동으로 추출합니다.</li>
-                  <li>추출된 교사 성명은 시스템에 등록된 계정과 1:1로 매칭되며, 결과 화면에서 자유롭게 수정할 수 있습니다.</li>
+                  <li>
+                    과목별 배정표의 부서별 표를 순차적으로 읽어 교사별 주당 수업 시간을 자동으로 추출합니다.
+                  </li>
+                  <li>
+                    추출된 교사 성명은 시스템에 등록된 계정과 1:1로 매칭되며, 결과 화면에서 자유롭게 수정할 수 있습니다.
+                  </li>
                   <li>창체 담당 파일 및 이동수업 현황을 함께 올리면 상호 불일치 여부를 자동으로 교차 점검합니다.</li>
                 </ul>
               </div>
@@ -725,7 +1021,7 @@ export default function AssignmentHoursModal({
                   <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
                   <div className="absolute inset-0 flex items-center justify-center font-bold text-indigo-700 text-xs">
                     {deptsList.length > 0
-                      ? `${Math.round(((completedDepts.length) / deptsList.length) * 100)}%`
+                      ? `${Math.round((completedDepts.length / deptsList.length) * 100)}%`
                       : "..."}
                   </div>
                 </div>
@@ -828,58 +1124,375 @@ export default function AssignmentHoursModal({
                 </div>
               </div>
 
-              {/* 점검 이슈 목록 (9c-I 확인 모달 분리 관례) */}
-              <div className="space-y-3">
+              {/* 점검 이슈 목록 (9c-I 확인 모달 분리 관례 + v2 출구 달기) */}
+              <div className="space-y-4">
                 {/* 1) 오류성 이슈: 짜기 전에 살펴볼 점 */}
                 {errorIssues.length > 0 && (
                   <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 space-y-2">
-                    <div className="font-bold text-amber-950 flex items-center gap-1.5">
-                      <span>⚠️ 짜기 전에 살펴볼 점 ({errorIssues.length}건)</span>
+                    <div className="flex items-center justify-between">
+                      <div className="font-bold text-amber-950 flex items-center gap-1.5">
+                        <span>⚠️ 짜기 전에 살펴볼 점 ({errorIssues.length}건)</span>
+                      </div>
+                      <span className="text-[11px] text-amber-800 font-medium">
+                        항목을 클릭하면 해당 수업으로 이동합니다
+                      </span>
                     </div>
                     <p className="text-[11px] text-amber-800">
-                      배정표 내부의 시수 합계가 어긋나거나 기준과 맞지 않는 항목입니다. 필요 시 확인해 주세요:
+                      배정표 내부의 시수 합계가 어긋나거나 기준과 맞지 않는 항목입니다:
                     </p>
                     <div className="space-y-1.5 pt-1">
-                      {errorIssues.map((iss, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-white/80 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-950 flex items-start gap-2"
-                        >
-                          <span className="text-amber-600 font-bold">·</span>
-                          <div className="flex-1">
-                            {iss.dept && <strong className="text-amber-900 mr-1.5">[{iss.dept}]</strong>}
-                            <span>{iss.text}</span>
+                      {errorIssues.map((iss, idx) => {
+                        const target = parseIssueTarget(iss);
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => handleFilterByIssue(target)}
+                            className={`bg-white/90 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-950 flex items-center justify-between gap-2 transition-all ${
+                              target
+                                ? "cursor-pointer hover:border-amber-400 hover:bg-amber-100/60 shadow-xs"
+                                : ""
+                            }`}
+                          >
+                            <div className="flex items-start gap-2 flex-1">
+                              <span className="text-amber-600 font-bold">·</span>
+                              <div>
+                                {iss.dept && <strong className="text-amber-900 mr-1.5">[{iss.dept}]</strong>}
+                                <span>{iss.text}</span>
+                              </div>
+                            </div>
+                            {target && (
+                              <span className="text-[11px] text-indigo-700 font-bold whitespace-nowrap px-2 py-0.5 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100">
+                                🔍 해당 수업 확인 →
+                              </span>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
 
-                {/* 2) 고지성 이슈: 확인해 두면 좋은 점 */}
-                {noticeIssues.length > 0 && (
-                  <div className="bg-slate-50 border border-slate-300 rounded-xl p-4 space-y-2">
-                    <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                      <span>ℹ️ 확인해 두면 좋은 점 ({noticeIssues.length}건)</span>
+                {/* 2) 고지성 이슈: 확인해 두면 좋은 점 (v2: 과목별 접기/펼치기 + 연결 드롭다운 + 이동 강조) */}
+                {(rawNoticeIssues.length > 0 || resolvedSubjectItems.length > 0) && (
+                  <div className="bg-slate-50 border border-slate-300 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>ℹ️ 확인해 두면 좋은 점</span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 font-medium">
+                        항목을 클릭하면 해당 수업으로 이동합니다
+                      </span>
                     </div>
-                    <div className="space-y-1.5 pt-1">
-                      {noticeIssues.map((iss, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 flex items-start gap-2"
-                        >
-                          <span className="text-slate-500 font-bold">·</span>
-                          <div className="flex-1">
-                            {iss.dept && <strong className="text-slate-900 mr-1.5">[{iss.dept}]</strong>}
-                            <span>{iss.text}</span>
-                          </div>
+
+                    {/* 2-1) 이동수업 과목명 미대조 및 연결 드롭다운 (Req 3) */}
+                    {(unmatchedSubjectItems.length > 0 || resolvedSubjectItems.length > 0) && (
+                      <div className="space-y-2 bg-white border border-slate-200 rounded-lg p-3">
+                        <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                          <span>🔗 이동수업 현황 과목 연결</span>
+                          <span className="text-[11px] text-slate-500 font-normal">
+                            (배정표 표기와 다른 과목명을 1:1로 연결합니다)
+                          </span>
                         </div>
-                      ))}
-                    </div>
+
+                        {/* 미연결 과목 목록 */}
+                        {unmatchedSubjectItems.map(({ rawSubject, issue }, idx) => (
+                          <div
+                            key={idx}
+                            className="bg-amber-50/70 border border-amber-200 rounded-lg p-2.5 flex flex-col md:flex-row md:items-center justify-between gap-2"
+                          >
+                            <div className="text-amber-950 font-medium">
+                              이동수업 현황의 <strong>「{rawSubject}」</strong> 과목을 배정표에서 찾지 못했습니다
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={simulSubjectMappings[rawSubject] || ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setSimulSubjectMappings((prev) => {
+                                    const next = { ...prev };
+                                    if (val) next[rawSubject] = val;
+                                    else delete next[rawSubject];
+                                    return next;
+                                  });
+                                }}
+                                className="px-2.5 py-1 bg-white border border-amber-300 rounded text-xs font-bold text-indigo-900"
+                              >
+                                <option value="">배정표의 어느 과목인지 연결 ▼</option>
+                                {assignmentSubjectsList.map((s) => (
+                                  <option key={s} value={s}>
+                                    {s}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* 연결 완료된 과목 목록 */}
+                        {resolvedSubjectItems.map(({ rawSubject, mappedSubject, classNums }) => (
+                          <div
+                            key={rawSubject}
+                            onClick={() =>
+                              handleFilterByIssue({
+                                subject: mappedSubject,
+                                label: `${mappedSubject} (${rawSubject} 연결됨)`,
+                              })
+                            }
+                            className="bg-emerald-50/80 border border-emerald-200 rounded-lg p-2.5 flex items-center justify-between gap-2 cursor-pointer hover:bg-emerald-100/70 transition-colors"
+                          >
+                            <div className="text-emerald-950 font-medium">
+                              ✅ 이동수업 <strong>「{rawSubject}」</strong> → 배정표 <strong>「{mappedSubject}」</strong> 과목과 연결되었습니다
+                              <span className="text-emerald-700 ml-2 font-bold font-mono">
+                                ({classNums.join("·")}반 {classNums.length}개 반 배정 확인)
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-indigo-700 font-bold px-2 py-0.5 bg-white border border-emerald-200 rounded">
+                                🔍 수업 확인
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSimulSubjectMappings((prev) => {
+                                    const next = { ...prev };
+                                    delete next[rawSubject];
+                                    return next;
+                                  });
+                                }}
+                                className="text-xs text-gray-400 hover:text-red-500 font-bold px-1"
+                                title="연결 해제"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* 2-2) 이동수업 개설 반 정규화 ("옮겼습니다" - Req 4) */}
+                    {movedHostItems.length > 0 && (
+                      <div className="border border-slate-200 bg-white rounded-lg overflow-hidden">
+                        <div
+                          onClick={() =>
+                            setExpandedSections((prev) => ({ ...prev, moved: !prev.moved }))
+                          }
+                          className="px-3.5 py-2.5 bg-slate-100/70 hover:bg-slate-200/60 cursor-pointer flex items-center justify-between transition-colors"
+                        >
+                          <div className="font-bold text-slate-800 text-xs flex items-center gap-2">
+                            <span>🔄 이동수업 개설 반 자동 정리</span>
+                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded font-bold text-[11px]">
+                              {movedHostItems.length}건
+                            </span>
+                            <span className="text-[11px] text-slate-500 font-normal">
+                              — 개설 반 기준으로 표기 통일 (시수 변화 없음)
+                            </span>
+                          </div>
+                          <span className="text-xs text-slate-600 font-bold">
+                            {expandedSections.moved ? "▲ 접기" : "▼ 펼치기"}
+                          </span>
+                        </div>
+
+                        {expandedSections.moved && (
+                          <div className="p-3 space-y-1.5 divide-y divide-gray-100">
+                            {movedHostItems.map((item, idx) => (
+                              <div
+                                key={idx}
+                                onClick={() =>
+                                  handleFilterByIssue({
+                                    grade: item.grade,
+                                    classNum: item.toClass,
+                                    subject: item.subject,
+                                    teacher: item.teacher,
+                                    label: `${item.grade}학년 ${item.toClass}반 ${item.subject} (${item.teacher})`,
+                                  })
+                                }
+                                className="pt-1.5 first:pt-0 flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 p-1.5 rounded transition-colors"
+                              >
+                                <div className="text-slate-800 font-medium">
+                                  <strong>{item.grade}학년 {item.subject}</strong> ({item.teacher}): 배정표의{" "}
+                                  <span className="px-1.5 py-0.5 bg-gray-200 text-gray-900 rounded font-mono font-bold">
+                                    {item.fromClass}반
+                                  </span>{" "}
+                                  표기를 이동수업 개설 반인{" "}
+                                  <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-900 rounded font-mono font-bold ring-1 ring-indigo-300">
+                                    {item.toClass}반
+                                  </span>
+                                  으로 옮겼습니다
+                                </div>
+                                <span className="text-[11px] text-indigo-700 font-bold whitespace-nowrap ml-2">
+                                  🔍 {item.toClass}반 확인 →
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 2-3) 분담 배정 (Req 1: 과목별 접기/펼치기) */}
+                    {sharedAssignmentGroups.length > 0 && (
+                      <div className="border border-slate-200 bg-white rounded-lg overflow-hidden">
+                        <div
+                          onClick={() =>
+                            setExpandedSections((prev) => ({ ...prev, shared: !prev.shared }))
+                          }
+                          className="px-3.5 py-2.5 bg-slate-100/70 hover:bg-slate-200/60 cursor-pointer flex items-center justify-between transition-colors"
+                        >
+                          <div className="font-bold text-slate-800 text-xs flex items-center gap-2">
+                            <span>👥 분담 배정 안내</span>
+                            <span className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded font-bold text-[11px]">
+                              {sharedAssignmentGroups.length}개 과목 · 총{" "}
+                              {sharedAssignmentGroups.reduce((acc, g) => acc + g.totalClasses, 0)}개 학급
+                            </span>
+                            <span className="text-[11px] text-slate-500 font-normal">
+                              — 여러 선생님이 나눠 맡는 정상 배정
+                            </span>
+                          </div>
+                          <span className="text-xs text-slate-600 font-bold">
+                            {expandedSections.shared ? "▲ 접기" : "▼ 펼치기"}
+                          </span>
+                        </div>
+
+                        {expandedSections.shared && (
+                          <div className="p-3 space-y-3">
+                            {sharedAssignmentGroups.map((group) => (
+                              <div key={group.subject} className="bg-slate-50/70 border border-slate-200 rounded-lg p-2.5 space-y-1.5">
+                                <div className="flex items-center justify-between font-bold text-slate-900 text-xs">
+                                  <span>{group.subject} ({group.totalClasses}개 학급)</span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleFilterByIssue({
+                                        subject: group.subject,
+                                        label: `${group.subject} 전체`,
+                                      })
+                                    }
+                                    className="text-[11px] text-indigo-700 hover:underline font-bold"
+                                  >
+                                    이 과목 전체 보기 →
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 pt-1">
+                                  {group.items.map((item, idx) => (
+                                    <div
+                                      key={idx}
+                                      onClick={() =>
+                                        handleFilterByIssue({
+                                          grade: item.grade,
+                                          classNum: item.classNum,
+                                          subject: group.subject,
+                                          label: `${item.grade}학년 ${item.classNum}반 ${group.subject}`,
+                                        })
+                                      }
+                                      className="p-1.5 bg-white border border-slate-200 rounded flex items-center justify-between text-[11px] cursor-pointer hover:bg-indigo-50/50 hover:border-indigo-300 transition-colors"
+                                    >
+                                      <span>
+                                        <strong>{item.grade}-{item.classNum}반:</strong> {item.teachers}
+                                      </span>
+                                      <span className="text-indigo-600 font-bold ml-1">확인</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 2-4) 이동수업 밴드 대조 (Req 1: 접기/펼치기) */}
+                    {bandMismatchItems.length > 0 && (
+                      <div className="border border-slate-200 bg-white rounded-lg overflow-hidden">
+                        <div
+                          onClick={() =>
+                            setExpandedSections((prev) => ({ ...prev, band: !prev.band }))
+                          }
+                          className="px-3.5 py-2.5 bg-slate-100/70 hover:bg-slate-200/60 cursor-pointer flex items-center justify-between transition-colors"
+                        >
+                          <div className="font-bold text-slate-800 text-xs flex items-center gap-2">
+                            <span>🔀 이동수업 밴드 편성 대조</span>
+                            <span className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded font-bold text-[11px]">
+                              {bandMismatchItems.length}개 과목
+                            </span>
+                            <span className="text-[11px] text-slate-500 font-normal">
+                              — 선택과목 분반 및 단독 개설 확인용
+                            </span>
+                          </div>
+                          <span className="text-xs text-slate-600 font-bold">
+                            {expandedSections.band ? "▲ 접기" : "▼ 펼치기"}
+                          </span>
+                        </div>
+
+                        {expandedSections.band && (
+                          <div className="p-3 space-y-2">
+                            {bandMismatchItems.map((item, idx) => (
+                              <div
+                                key={idx}
+                                onClick={() =>
+                                  handleFilterByIssue({
+                                    grade: item.grade,
+                                    subject: item.subject,
+                                    label: `${item.grade}학년 ${item.subject}`,
+                                  })
+                                }
+                                className="p-2.5 bg-slate-50/70 border border-slate-200 rounded-lg flex items-center justify-between text-xs cursor-pointer hover:bg-slate-100 transition-colors"
+                              >
+                                <div className="space-y-0.5">
+                                  <div className="font-bold text-slate-900">
+                                    {item.grade}학년 {item.subject}
+                                  </div>
+                                  <div className="text-[11px] text-slate-600">
+                                    밴드 반: <span className="font-mono font-bold text-slate-800">{item.bandClasses}</span> vs 배정표 반: <span className="font-mono font-bold text-slate-800">{item.assignedClasses}</span>
+                                  </div>
+                                </div>
+                                <span className="text-[11px] text-indigo-700 font-bold whitespace-nowrap ml-2">
+                                  🔍 수업 확인 →
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 2-5) 기타 고지 항목 */}
+                    {otherNoticeItems.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        {otherNoticeItems.map((iss, idx) => {
+                          const target = parseIssueTarget(iss);
+                          return (
+                            <div
+                              key={idx}
+                              onClick={() => handleFilterByIssue(target)}
+                              className={`bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 flex items-center justify-between gap-2 transition-all ${
+                                target
+                                  ? "cursor-pointer hover:border-slate-400 hover:bg-slate-100/60 shadow-xs"
+                                  : ""
+                              }`}
+                            >
+                              <div className="flex items-start gap-2 flex-1">
+                                <span className="text-slate-500 font-bold">·</span>
+                                <div>
+                                  {iss.dept && <strong className="text-slate-900 mr-1.5">[{iss.dept}]</strong>}
+                                  <span>{iss.text}</span>
+                                </div>
+                              </div>
+                              {target && (
+                                <span className="text-[11px] text-indigo-700 font-bold whitespace-nowrap px-2 py-0.5 bg-slate-50 border border-slate-200 rounded">
+                                  🔍 확인 →
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {errorIssues.length === 0 && noticeIssues.length === 0 && (
+                {errorIssues.length === 0 && rawNoticeIssues.length === 0 && (
                   <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-3 text-emerald-800 flex items-center gap-2">
                     <span>✨</span>
                     <span>배정표와 교차 파일의 모든 시수 합계와 대상 정보가 정상적으로 일치합니다.</span>
@@ -973,8 +1586,8 @@ export default function AssignmentHoursModal({
                 </div>
               </div>
 
-              {/* 추출된 수업 목록 미리보기 */}
-              <div className="space-y-2">
+              {/* 추출된 수업 목록 미리보기 (출구 다리 연동) */}
+              <div ref={previewTableRef} className="space-y-2 pt-2 scroll-mt-6">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h4 className="font-bold text-gray-900 text-xs flex items-center gap-1.5">
                     <span>📋 추출된 수업 목록 미리보기 ({displayedPreviewRows.length}건)</span>
@@ -987,7 +1600,9 @@ export default function AssignmentHoursModal({
                         type="button"
                         onClick={() => setPreviewGradeFilter("all")}
                         className={`px-2 py-0.5 rounded font-medium ${
-                          previewGradeFilter === "all" ? "bg-white text-gray-900 shadow-xs font-bold" : "text-gray-600"
+                          previewGradeFilter === "all"
+                            ? "bg-white text-gray-900 shadow-xs font-bold"
+                            : "text-gray-600"
                         }`}
                       >
                         전체
@@ -996,7 +1611,9 @@ export default function AssignmentHoursModal({
                         type="button"
                         onClick={() => setPreviewGradeFilter(1)}
                         className={`px-2 py-0.5 rounded font-medium ${
-                          previewGradeFilter === 1 ? "bg-white text-gray-900 shadow-xs font-bold" : "text-gray-600"
+                          previewGradeFilter === 1
+                            ? "bg-white text-gray-900 shadow-xs font-bold"
+                            : "text-gray-600"
                         }`}
                       >
                         1학년
@@ -1005,7 +1622,9 @@ export default function AssignmentHoursModal({
                         type="button"
                         onClick={() => setPreviewGradeFilter(2)}
                         className={`px-2 py-0.5 rounded font-medium ${
-                          previewGradeFilter === 2 ? "bg-white text-gray-900 shadow-xs font-bold" : "text-gray-600"
+                          previewGradeFilter === 2
+                            ? "bg-white text-gray-900 shadow-xs font-bold"
+                            : "text-gray-600"
                         }`}
                       >
                         2학년
@@ -1014,7 +1633,9 @@ export default function AssignmentHoursModal({
                         type="button"
                         onClick={() => setPreviewGradeFilter(3)}
                         className={`px-2 py-0.5 rounded font-medium ${
-                          previewGradeFilter === 3 ? "bg-white text-gray-900 shadow-xs font-bold" : "text-gray-600"
+                          previewGradeFilter === 3
+                            ? "bg-white text-gray-900 shadow-xs font-bold"
+                            : "text-gray-600"
                         }`}
                       >
                         3학년
@@ -1032,6 +1653,28 @@ export default function AssignmentHoursModal({
                   </div>
                 </div>
 
+                {/* v2: 이슈 클릭 필터 활성화 배너 */}
+                {activeTargetFilter && (
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-2.5 flex items-center justify-between text-xs text-indigo-950 animate-in fade-in duration-150">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-indigo-700">🎯 선택한 항목 필터:</span>
+                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-900 rounded font-bold">
+                        {activeTargetFilter.label}
+                      </span>
+                      <span className="text-gray-500 font-normal">
+                        ({displayedPreviewRows.length}개 수업 표시 중)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTargetFilter(null)}
+                      className="px-2.5 py-1 bg-white hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg font-bold text-[11px] transition-colors"
+                    >
+                      ✕ 전체 목록 보기
+                    </button>
+                  </div>
+                )}
+
                 <div className="border border-gray-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead className="bg-gray-100 text-gray-700 font-bold sticky top-0">
@@ -1045,7 +1688,10 @@ export default function AssignmentHoursModal({
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {displayedPreviewRows.slice(0, 100).map((r, idx) => {
-                        const email = teacherMappings[r.teacherName] !== undefined ? teacherMappings[r.teacherName] : r.teacherEmail;
+                        const email =
+                          teacherMappings[r.teacherName] !== undefined
+                            ? teacherMappings[r.teacherName]
+                            : r.teacherEmail;
                         return (
                           <tr key={idx} className="hover:bg-gray-50">
                             <td className="px-3 py-1.5 font-mono font-bold text-gray-800">
