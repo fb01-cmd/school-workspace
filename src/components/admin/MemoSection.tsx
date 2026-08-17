@@ -3,7 +3,7 @@
 // 서버부: /api/memo. 읽기는 Firestore 직독(onSnapshot), 쓰기는 API 경유.
 // §11-1·§11-2 개편 적용 (2026-08-13): 조직도 우선 2단계 흐름, 확인창 제거.
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
   collection,
@@ -86,30 +86,23 @@ function formatFull(ms: number): string {
 }
 
 /**
- * GWS 이름 캐시 가져오기 헬퍼
- * 목록·검색 루프에서 호출마다 전수 재구성하지 않도록, 캐시 원본 배열의
- * 참조가 같은 동안은 만들어 둔 Map을 재사용한다(clientCache가 무효화·만료
- * 전까지 같은 참조를 돌려주는 성질에 기댐).
+ * GWS 사용자 배열 → 이메일별 표시 이름 맵.
+ * 이름의 원본은 GWS 디렉터리 성·이름이다(memo_spec.md §11-7). 이 맵은 화면이 쥔 state에서
+ * 만들어지므로, 캐시가 만료되어도 이름이 아이디로 되돌아가지 않는다.
  */
-let gwsNameMapMemo: { source: unknown; map: Map<string, string> } | null = null;
-
-function getGwsNameMap(): Map<string, string> {
-  const cached = getClientCache("users:all") as any[] | null;
-  if (gwsNameMapMemo && gwsNameMapMemo.source === cached) return gwsNameMapMemo.map;
+function buildGwsNameMap(users: unknown): Map<string, string> {
   const map = new Map<string, string>();
-  if (Array.isArray(cached)) {
-    cached.forEach((u) => {
-      const email = (u.primaryEmail || u.email || "").toLowerCase();
-      if (!email) return;
-      const name =
-        u.name?.fullName ||
-        (u.name?.familyName ? `${u.name.familyName}${u.name.givenName || ""}` : null);
-      if (name && typeof name === "string" && name.trim()) {
-        map.set(email, name.trim());
-      }
-    });
-  }
-  gwsNameMapMemo = { source: cached, map };
+  if (!Array.isArray(users)) return map;
+  users.forEach((u: any) => {
+    const email = (u.primaryEmail || u.email || "").toLowerCase();
+    if (!email) return;
+    const name =
+      u.name?.fullName ||
+      (u.name?.familyName ? `${u.name.familyName}${u.name.givenName || ""}` : null);
+    if (name && typeof name === "string" && name.trim()) {
+      map.set(email, name.trim());
+    }
+  });
   return map;
 }
 
@@ -119,12 +112,12 @@ function getGwsNameMap(): Map<string, string> {
  */
 function resolveMemoDisplayName(
   email: string,
-  profileMap: Map<string, TeacherProfile>
+  profileMap: Map<string, TeacherProfile>,
+  gwsNameMap: Map<string, string>
 ): string {
   const cleanEmail = email.toLowerCase();
   const p = profileMap.get(cleanEmail);
-  const gwsName = getGwsNameMap().get(cleanEmail);
-  return resolveDisplayName(email, p, gwsName).name;
+  return resolveDisplayName(email, p, gwsNameMap.get(cleanEmail)).name;
 }
 
 
@@ -516,12 +509,14 @@ function MemoDetailPanel({
   tab,
   myEmail,
   profileMap,
+  gwsNameMap,
   onClose,
 }: {
   memo: MemoItem;
   tab: Tab;
   myEmail: string;
   profileMap: Map<string, TeacherProfile>;
+  gwsNameMap: Map<string, string>;
   onClose: () => void;
 }) {
   // §12-2 회수 상태
@@ -734,7 +729,7 @@ function MemoDetailPanel({
                 const readAt = memo.reads?.[email];
                 const cleanEmail = email.toLowerCase();
                 const p = profileMap.get(cleanEmail);
-                const displayName = resolveMemoDisplayName(email, profileMap);
+                const displayName = resolveMemoDisplayName(email, profileMap, gwsNameMap);
                 return (
                   <div key={email} className="flex items-center justify-between px-4 py-2 text-sm">
                     <span className="text-slate-700 truncate mr-2 inline-flex items-center gap-1.5">
@@ -774,6 +769,7 @@ interface ComposeModalProps {
   domain: string;
   myDepts: string[];
   profileMap: Map<string, TeacherProfile>;
+  gwsNameMap: Map<string, string>;
   /** 버그2 수정: 조직도 로드 실패 메시지 — 에러/로딩/정상 3상태 구분 */
   profileError: string | null;
   deptOrder: string[];
@@ -786,6 +782,7 @@ function ComposeModal({
   domain,
   myDepts,
   profileMap,
+  gwsNameMap,
   profileError,
   deptOrder,
   onClose,
@@ -818,7 +815,7 @@ function ComposeModal({
       const members: DeptMember[] = [];
       profileMap.forEach((p, email) => {
         if (p.departments?.includes(dept)) {
-          members.push({ email, name: resolveMemoDisplayName(email, profileMap), extension: p.extension });
+          members.push({ email, name: resolveMemoDisplayName(email, profileMap, gwsNameMap), extension: p.extension });
         }
 
       });
@@ -846,7 +843,7 @@ function ComposeModal({
             type: "user",
             source: "dept",
             email: m.email,
-            label: resolveMemoDisplayName(m.email, profileMap),
+            label: resolveMemoDisplayName(m.email, profileMap, gwsNameMap),
             deptLabel: sec.dept,
           });
         });
@@ -860,36 +857,36 @@ function ComposeModal({
         type: "user",
         source: "person",
         email,
-        label: resolveMemoDisplayName(email, profileMap),
+        label: resolveMemoDisplayName(email, profileMap, gwsNameMap),
       });
     });
 
     setChips([...chipMap.values()]);
-  }, [sections, profileMap]);
+  }, [sections, profileMap, gwsNameMap]);
 
   // 개인 검색 선택 → 칩 추가 (중복 방지)
   const handleUserSelect = useCallback((email: string, name?: string) => {
     const lowerEmail = email.toLowerCase();
-    const displayName = resolveMemoDisplayName(lowerEmail, profileMap);
+    const displayName = resolveMemoDisplayName(lowerEmail, profileMap, gwsNameMap);
     setChips((prev) => {
       if (prev.some((c) => c.email === lowerEmail)) return prev;
       return [...prev, { type: "user", source: "person", email: lowerEmail, label: displayName }];
     });
     setSelected((prev) => new Set([...prev, lowerEmail]));
     setSearchVal("");
-  }, [profileMap]);
+  }, [profileMap, gwsNameMap]);
 
   // step2 검색 추가
   const handleAddUserSelect = useCallback((email: string) => {
     const lowerEmail = email.toLowerCase();
-    const displayName = resolveMemoDisplayName(lowerEmail, profileMap);
+    const displayName = resolveMemoDisplayName(lowerEmail, profileMap, gwsNameMap);
     setChips((prev) => {
       if (prev.some((c) => c.email === lowerEmail)) return prev;
       return [...prev, { type: "user", source: "person", email: lowerEmail, label: displayName }];
     });
     setSelected((prev) => new Set([...prev, lowerEmail]));
     setAddSearchVal("");
-  }, [profileMap]);
+  }, [profileMap, gwsNameMap]);
 
   const removeChip = (email: string) => {
     setChips((prev) => prev.filter((c) => c.email !== email));
@@ -911,13 +908,9 @@ function ComposeModal({
     setLinkUrl(""); setLinkLabel(""); setError("");
   };
 
-  // 이미지 파일 선택 핸들러 (리사이즈 + 업로드 파이프라인)
-  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const fileList = Array.from(files);
-    e.target.value = ""; // 동일 파일 재선택 허용
+  // 이미지 파일 배열을 받아 리사이즈 & 업로드 큐에 추가하는 공통 함수
+  const enqueueFiles = (fileList: File[]) => {
+    if (!fileList || fileList.length === 0) return;
 
     const currentCount = stagedAttachments.length;
     if (currentCount >= MEMO_ATTACHMENT_MAX_COUNT) {
@@ -995,6 +988,43 @@ function ComposeModal({
     }
   };
 
+  // 이미지 파일 선택 핸들러 (리사이즈 + 업로드 파이프라인)
+  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const fileList = Array.from(files);
+    e.target.value = ""; // 동일 파일 재선택 허용
+    enqueueFiles(fileList);
+  };
+
+  // 클립보드 붙여넣기 (Ctrl+V) — 이미지 감지 시 첨부 큐로 연결, 텍스트는 브라우저 기본 동작 유지
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items || items.length === 0) return;
+
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          let fileName = file.name;
+          if (!fileName || fileName === "image.png" || fileName === "blob") {
+            const ext = file.type.split("/")[1] || "png";
+            fileName = `붙여넣은 이미지.${ext}`;
+          }
+          const namedFile = new File([file], fileName, { type: file.type });
+          imageFiles.push(namedFile);
+        }
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      enqueueFiles(imageFiles);
+    }
+  };
+
   const handleRemoveAttachment = (id: string) => {
     setStagedAttachments((prev) => {
       const target = prev.find((a) => a.id === id);
@@ -1064,7 +1094,7 @@ function ComposeModal({
     if (p.departments && p.departments.length > 0) {
       searchCandidates.push({
         email,
-        name: resolveMemoDisplayName(email, profileMap),
+        name: resolveMemoDisplayName(email, profileMap, gwsNameMap),
         dept: p.departments[0] ?? "",
         extension: p.extension,
       });
@@ -1224,7 +1254,7 @@ function ComposeModal({
         {/* ── Step 2: 작성 ── */}
         {step === 2 && (
           <>
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            <div onPaste={handlePaste} className="flex-1 overflow-y-auto p-6 space-y-5">
               {/* 받는 분 요약 + 수정 */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -1258,6 +1288,7 @@ function ComposeModal({
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
+                  onPaste={handlePaste}
                   maxLength={200}
                   placeholder="제목을 입력하세요"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -1270,6 +1301,7 @@ function ComposeModal({
                 <textarea
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
+                  onPaste={handlePaste}
                   maxLength={10000}
                   rows={5}
                   placeholder="내용을 입력하세요"
@@ -1336,7 +1368,7 @@ function ComposeModal({
                   className="hidden"
                 />
 
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-1">
                   <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
                     <span>이미지 첨부</span>
                     <span className="text-xs font-normal text-slate-400">
@@ -1356,6 +1388,9 @@ function ComposeModal({
                     </button>
                   )}
                 </div>
+                <p className="text-xs text-slate-400 mb-1.5">
+                  복사한 이미지를 붙여넣어도 됩니다.
+                </p>
 
                 {stagedAttachments.length > 0 && (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-2">
@@ -1496,6 +1531,36 @@ export default function MemoSection() {
         setProfileError("조직도 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
       });
   }, []);
+
+  // GWS 이름 — 이름의 원본은 GWS 디렉터리 성·이름이다(memo_spec.md §11-7).
+  // users:all 캐시를 렌더 중에 읽기만 하면 두 구간에서 이름이 아이디로 떨어진다:
+  // ⓐ 로그인 후 백그라운드 프리페치가 도착하기 전, ⓑ TTL 5분이 만료된 뒤(탭을 오래 열어 둔 경우).
+  // 캐시 도착은 재렌더를 유발하지 않으므로 열려 있던 조직도는 갱신되지도 않았다.
+  // (2026-08-17 실사용 신고 — 수신자 조직도에 김정은·김항래·송낙형 등이 아이디로 표시)
+  // 조직도 화면(OrgChartTree·OrgChartBuilder)과 같은 방식으로 state에 담는다: 캐시가 없으면
+  // 직접 불러오고, state에 있으므로 캐시 만료와 무관하게 이름이 유지된다.
+  const [gwsUsers, setGwsUsers] = useState<any[]>([]);
+  useEffect(() => {
+    const cached = getClientCache("users:all");
+    if (Array.isArray(cached)) {
+      setGwsUsers(cached);
+      return;
+    }
+    fetch("/api/workspace/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "list", orgUnitPaths: ["all"] }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.users)) {
+          setClientCache("users:all", data.users);
+          setGwsUsers(data.users);
+        }
+      })
+      .catch((err) => console.error("[memo] GWS 이름 로드 실패", err));
+  }, []);
+  const gwsNameMap = useMemo(() => buildGwsNameMap(gwsUsers), [gwsUsers]);
 
   // 부서 순서: schoolSettings.departments → DEFAULT_DEPARTMENTS
   const deptOrder: string[] = schoolSettings?.departments ?? DEFAULT_DEPARTMENTS;
@@ -1688,6 +1753,7 @@ export default function MemoSection() {
               tab={tab}
               myEmail={myEmail}
               profileMap={profileMap}
+              gwsNameMap={gwsNameMap}
               onClose={() => setSelectedMemoId(null)}
             />
           </div>
@@ -1701,6 +1767,7 @@ export default function MemoSection() {
           domain={domain}
           myDepts={teacherProfile?.departments ?? []}
           profileMap={profileMap}
+          gwsNameMap={gwsNameMap}
           profileError={profileError}
           deptOrder={deptOrder}
           onClose={() => setShowCompose(false)}

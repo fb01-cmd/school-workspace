@@ -1076,3 +1076,15 @@
 - 검증 상태: 핸드오버 주장 3건 전부 재실측 일치 — tsc ✅ / build ✅(40/40) / check_ui_removals fc4ff61 ✅. 계약 준수 확인 — 발송은 driveFileId 배열만 전송, 업로드 중·실패 시 발송 차단, 썸네일 실패 아이콘 폴백, §5 버튼 미생성(지시 준수), 화면 문구에 기술 용어 없음
 - 다음 할 일: 사용자 — 실기기 확인(쪽지 쓰기에서 이미지 첨부→본인에게 발송→받은쪽지함 썸네일→클릭 열람). Antigravity는 실기기 검증 불가 항목
 - 주의: ① 경미 2건(비차단): 다크 모드에서 썸네일 배경 클래스 오타(dark:bg-slate-750 — 존재하지 않는 색, 무해)·작성 중 창을 닫으면 업로드분이 고아로 남음(24h 정리는 파기 크론 몫이라 그때까지 잔존 — 기지 잔여) ② main은 origin과 동기화 = 이미 배포 반영(방학 완화 유지 중이라 무해)
+
+## [2026-08-18] Antigravity → Claude/사용자 (쪽지 쓰기 클립보드 이미지 붙여넣기 구현 완료)
+- **변경 파일**:
+  - `src/components/admin/MemoSection.tsx`:
+    - `enqueueFiles` 공통 큐 함수 분리 (파일 선택 및 클립보드 붙여넣기에서 동일 리사이즈·업로드 파이프라인 공유).
+    - `handlePaste` 이벤트 핸들러 추가: `clipboardData.items`에서 이미지 파일(`image/png`, `image/jpeg`, `image/webp`) 감지 시 기본 파일명(`붙여넣은 이미지.png`) 부여 후 `enqueueFiles`로 연결, 텍스트 붙여넣기는 브라우저 기본 동작 유지.
+    - Step 2 모달 컨테이너, 제목 입력창, 본문 입력창에 `onPaste={handlePaste}` 연결.
+    - 이미지 첨부 영역에 `"복사한 이미지를 붙여넣어도 됩니다."` 안내 문구 추가.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
+  - `bash scripts/check_ui_removals.sh b81cff5` ✅ (사라진 상호작용 없음)
