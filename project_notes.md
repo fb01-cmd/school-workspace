@@ -4,6 +4,23 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-18] Antigravity → Claude/사용자 (쪽지 즐겨찾기·검색 UI 완결 — memo_star_search_spec §1-5·§2-4)
+- **변경 파일**:
+  - `src/components/admin/MemoSection.tsx`:
+    - **별 토글**: 목록 행(`InboxRow`, `SentRow`, `StarredRow`) 및 상세 패널(`MemoDetailPanel`) 헤더에 별 아이콘(☆/★) 버튼 배치. 클릭 시 낙관적 갱신(로컬 상태 즉시 변경) 후 `POST /api/memo { action: "star", memoId, on }` 호출. 실패 시 롤백 및 캐시 최신화.
+    - **즐겨찾기 탭**: 상단 탭에 `[받은쪽지함 | 보낸쪽지함 | 즐겨찾기]` 확장. 즐겨찾기 탭 활성화 시 스펙 §1-3의 등호 쿼리 2개(`where("recipientEmails", "array-contains", myEmail)`, `where("senderEmail", "==", myEmail)` + `starredBy.{myEmail} == true`)를 `orderBy` 없이 1회 조회(복합 색인 0 유지). 클라이언트에서 `createdAt` 정렬, `hiddenBy` 필터, 중복 제거 적용. 빈 목록 문구 "별표를 눌러 자주 찾는 쪽지를 모아두세요." 제공.
+    - **검색**: 상단 탭 줄 옆 검색 입력창 배치. 검색어 입력 시 기존 쿼리 패턴(`recipientEmails`/`senderEmail` + `startAfter` 페이지네이션 300건)으로 전량 조회 후 5분 TTL의 `clientCache`(`memos:all_user:${myEmail}`)에 캐싱. `src/lib/memo/search_logic.ts`의 `memoMatchesSearch`를 직접 임포트하여 다중 키워드 AND 검색(제목·본문·발신자 이름 스탬프/현재이름·수신자 요약) 적용. 로딩 중 "전체 쪽지에서 찾는 중…", 결과 0건 시 "'{검색어}'에 해당하는 쪽지가 없습니다." 안내, 검색어 비우면 즉시 원래 목록 복귀.
+  - `docs/memo_star_search_spec.md`: §5 순서 3을 Antigravity 완료로 갱신.
+  - `development_roadmap.md`: §2 피드백 덤프 ⑧, ⑨ 항목 완료 처리.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어 배제, 사용자 눈높이 문구 적용 ("별표를 눌러 자주 찾는 쪽지를 모아두세요.", "전체 쪽지에서 찾는 중…").
+  - `memo_star_search_spec`: 즐겨찾기 쿼리에 `orderBy` 미사용, `memoMatchesSearch` 순수 함수 직접 사용(자체 매칭 구현 0건), 검색 전량 조회 시 5분 `clientCache` 적용.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npx tsx scripts/memo_selftest.ts` ✅ (별표 4+검색 10+삭제 6케이스 포함 전 항목 통과)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 0건)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 static pages prerendered)
+
 ## [2026-08-18] Antigravity → Claude/사용자 (쪽지 삭제(내 화면 감추기) UI 완결 — memo_spec §12-1)
 - **변경 파일**:
   - `src/components/admin/MemoSection.tsx`:

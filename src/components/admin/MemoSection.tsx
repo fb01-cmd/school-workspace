@@ -2,6 +2,7 @@
 // 쪽지 화면 — docs/memo_spec.md §4-1 (데스크톱 관리자 포털)
 // 서버부: /api/memo. 읽기는 Firestore 직독(onSnapshot), 쓰기는 API 경유.
 // §11-1·§11-2 개편 적용 (2026-08-13): 조직도 우선 2단계 흐름, 확인창 제거.
+// §1·§2 즐겨찾기·검색 적용 (2026-08-18): 별 토글, 즐겨찾기 탭, 전량 캐시 검색.
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
@@ -13,6 +14,8 @@ import {
   limit,
   onSnapshot,
   getDocs,
+  FieldPath,
+  startAfter,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
@@ -27,6 +30,7 @@ import {
   formatAttachmentSize,
   MEMO_ATTACHMENT_MAX_COUNT,
 } from "@/lib/memo/client_attachments";
+import { memoMatchesSearch, type MemoSearchTarget } from "@/lib/memo/search_logic";
 import MemoAttachmentGrid from "@/components/common/MemoAttachmentGrid";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
@@ -53,7 +57,7 @@ interface RecipientChip {
   deptLabel?: string;     // source === "dept" 일 때 부서명 (summary용)
 }
 
-type Tab = "inbox" | "sent";
+type Tab = "inbox" | "sent" | "starred";
 type ComposeStep = 1 | 2;
 
 // ── 헬퍼 ──────────────────────────────────────────────────────────────────────
@@ -392,24 +396,66 @@ function DeptCheckboxTree({ sections, selected, onChange, myDepts }: DeptCheckbo
   );
 }
 
-// ── 하위 컴포넌트: 쪽지 목록 행 ───────────────────────────────────────────────
+// ── 하위 컴포넌트: 별표 버튼 및 목록 행 ───────────────────────────────────────────────
+
+function StarButton({
+  isStarred,
+  onClick,
+}: {
+  isStarred: boolean;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick(e);
+      }}
+      className="p-1 -m-1 rounded-md text-slate-300 hover:text-amber-400 hover:bg-slate-100/80 transition-colors cursor-pointer flex-shrink-0"
+      aria-label={isStarred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+      title={isStarred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+    >
+      <svg
+        className={`w-4 h-4 transition-colors ${
+          isStarred
+            ? "fill-amber-400 text-amber-400"
+            : "fill-none text-slate-300 hover:text-amber-400"
+        }`}
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"
+        />
+      </svg>
+    </button>
+  );
+}
 
 function InboxRow({
   memo,
   myEmail,
   selected,
   onClick,
+  onToggleStar,
 }: {
   memo: MemoItem;
   myEmail: string;
   selected: boolean;
   onClick: () => void;
+  onToggleStar: (memo: MemoItem) => void;
 }) {
   const isUnread = !memo.reads?.[myEmail];
+  const isStarred = !!memo.starredBy?.[myEmail];
+
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-3.5 border-b border-slate-200/80 hover:bg-indigo-50/60 transition-colors flex items-start gap-3 cursor-pointer ${
+      className={`w-full text-left px-4 py-3.5 border-b border-slate-200/80 hover:bg-indigo-50/60 transition-colors flex items-start gap-2.5 cursor-pointer ${
         selected
           ? "bg-indigo-50/90 border-l-4 border-l-indigo-600 -ml-[1px]"
           : isUnread
@@ -417,12 +463,15 @@ function InboxRow({
           : "bg-white"
       }`}
     >
-      {/* 안읽음 인디케이터 */}
-      <span
-        className={`flex-shrink-0 w-2.5 h-2.5 rounded-full mt-1 ${
-          isUnread ? "bg-indigo-600 ring-4 ring-indigo-100" : "bg-transparent"
-        }`}
-      />
+      <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+        <StarButton isStarred={isStarred} onClick={() => onToggleStar(memo)} />
+        {/* 안읽음 인디케이터 */}
+        <span
+          className={`w-2 h-2 rounded-full ${
+            isUnread ? "bg-indigo-600 ring-2 ring-indigo-100" : "bg-transparent"
+          }`}
+        />
+      </div>
       <div className="flex-1 min-w-0">
         {/* 발신자 + 시각 (보조 톤) */}
         <div className="flex items-center justify-between gap-2">
@@ -452,26 +501,35 @@ function InboxRow({
 
 function SentRow({
   memo,
+  myEmail,
   selected,
   onClick,
+  onToggleStar,
 }: {
   memo: MemoItem;
+  myEmail: string;
   selected: boolean;
   onClick: () => void;
+  onToggleStar: (memo: MemoItem) => void;
 }) {
   const readCount = Object.keys(memo.reads || {}).length;
   const total = memo.recipientCount || memo.recipientEmails?.length || 0;
   const recalled = memo.recalledCount ?? 0;
+  const isStarred = !!memo.starredBy?.[myEmail];
+
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-3.5 border-b border-slate-200/80 hover:bg-indigo-50/60 transition-colors flex items-start gap-3 cursor-pointer ${
+      className={`w-full text-left px-4 py-3.5 border-b border-slate-200/80 hover:bg-indigo-50/60 transition-colors flex items-start gap-2.5 cursor-pointer ${
         selected
           ? "bg-indigo-50/90 border-l-4 border-l-indigo-600 -ml-[1px]"
           : "bg-white"
       }`}
     >
-      <span className="flex-shrink-0 w-2.5 h-2.5 rounded-full mt-1 bg-transparent" />
+      <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+        <StarButton isStarred={isStarred} onClick={() => onToggleStar(memo)} />
+        <span className="w-2 h-2 rounded-full bg-transparent" />
+      </div>
       <div className="flex-1 min-w-0">
         {/* 받는 분 요약 + 시각 (보조 톤) */}
         <div className="flex items-center justify-between gap-2">
@@ -510,6 +568,102 @@ function SentRow({
   );
 }
 
+function StarredRow({
+  memo,
+  myEmail,
+  selected,
+  onClick,
+  onToggleStar,
+}: {
+  memo: MemoItem;
+  myEmail: string;
+  selected: boolean;
+  onClick: () => void;
+  onToggleStar: (memo: MemoItem) => void;
+}) {
+  const isSentByMe = memo.senderEmail.toLowerCase() === myEmail.toLowerCase();
+  const isUnread = !isSentByMe && !memo.reads?.[myEmail];
+  const readCount = Object.keys(memo.reads || {}).length;
+  const total = memo.recipientCount || memo.recipientEmails?.length || 0;
+  const recalled = memo.recalledCount ?? 0;
+  const isStarred = !!memo.starredBy?.[myEmail];
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-4 py-3.5 border-b border-slate-200/80 hover:bg-indigo-50/60 transition-colors flex items-start gap-2.5 cursor-pointer ${
+        selected
+          ? "bg-indigo-50/90 border-l-4 border-l-indigo-600 -ml-[1px]"
+          : isUnread
+          ? "bg-slate-50/50"
+          : "bg-white"
+      }`}
+    >
+      <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+        <StarButton isStarred={isStarred} onClick={() => onToggleStar(memo)} />
+        <span
+          className={`w-2 h-2 rounded-full ${
+            isUnread ? "bg-indigo-600 ring-2 ring-indigo-100" : "bg-transparent"
+          }`}
+        />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span
+              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${
+                isSentByMe
+                  ? "bg-slate-100 text-slate-600"
+                  : "bg-indigo-50 text-indigo-600 border border-indigo-100"
+              }`}
+            >
+              {isSentByMe ? "보낸 쪽지" : "받은 쪽지"}
+            </span>
+            <span
+              className={`text-xs truncate ${
+                isUnread ? "font-bold text-slate-700" : "text-slate-500 font-medium"
+              }`}
+            >
+              {isSentByMe
+                ? `받는 분: ${memo.recipientSummary || `${total}명`}`
+                : memo.senderName || memo.senderEmail}
+            </span>
+          </div>
+          <span className="flex-shrink-0 text-[11px] text-slate-400">
+            {formatDate(memo.createdAt)}
+          </span>
+        </div>
+        <p
+          className={`text-sm truncate mt-1 ${
+            isUnread ? "font-bold text-slate-950" : "font-medium text-slate-800"
+          }`}
+        >
+          {memo.title}
+        </p>
+        {isSentByMe && (
+          <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
+            <span
+              className={`font-semibold ${
+                readCount === total && total > 0
+                  ? "text-emerald-600"
+                  : "text-amber-500"
+              }`}
+            >
+              읽음 {readCount}/{total}
+            </span>
+            {recalled > 0 && (
+              <>
+                <span>·</span>
+                <span className="font-semibold text-rose-500">{recalled}명에게서 회수함</span>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
 // ── 하위 컴포넌트: 상세 패널 ──────────────────────────────────────────────────
 
 type RecallResult =
@@ -526,6 +680,7 @@ function MemoDetailPanel({
   onSelectMemo,
   onReply,
   onClose,
+  onToggleStar,
 }: {
   memo: MemoItem;
   tab: Tab;
@@ -536,6 +691,7 @@ function MemoDetailPanel({
   onSelectMemo: (memo: MemoItem, targetTab: Tab) => void;
   onReply?: () => void;
   onClose: () => void;
+  onToggleStar: (memo: MemoItem) => void;
 }) {
   // §12-2 회수 상태
   const [recalling, setRecalling] = useState(false);
@@ -596,8 +752,11 @@ function MemoDetailPanel({
     }
   };
 
-  // 내가 보낸 쪽지이고 아직 회수하지 않은 수신자가 있는지
-  const isMine = tab === "sent" && memo.senderEmail === myEmail;
+  // 내가 보낸 쪽지인지 여부 (즐겨찾기 탭 대응)
+  const isMine = memo.senderEmail.toLowerCase() === myEmail.toLowerCase();
+  const effectiveTab: "inbox" | "sent" = tab === "starred" ? (isMine ? "sent" : "inbox") : tab;
+  const isStarred = !!memo.starredBy?.[myEmail];
+
   const unreadCount = isMine
     ? (memo.recipientEmails || []).filter((e) => !memo.reads?.[e]).length
     : 0;
@@ -605,8 +764,8 @@ function MemoDetailPanel({
 
   // 삭제 자격: 받은쪽지함은 읽은 것만(서버 400 거부 방지), 보낸쪽지함은 내가 보낸 것 (§12-1)
   const canDelete =
-    (tab === "inbox" && !!memo.reads?.[myEmail]) ||
-    (tab === "sent" && memo.senderEmail.toLowerCase() === myEmail.toLowerCase());
+    (effectiveTab === "inbox" && !!memo.reads?.[myEmail]) ||
+    (effectiveTab === "sent" && isMine);
 
   // 주고받은 이력 계산 (threadId 로컬 그룹핑 — reply spec §2·§3)
   const currentThreadId = memo.threadId || memo.id;
@@ -630,7 +789,7 @@ function MemoDetailPanel({
           <div className="flex-1 min-w-0">
             {/* 메타 정보: 작고 옅게 한 줄로 정리 */}
             <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap mb-1.5">
-              {tab === "inbox" ? (
+              {effectiveTab === "inbox" ? (
                 <span>
                   보낸 사람: <strong className="text-slate-700 font-semibold">{memo.senderName || memo.senderEmail}</strong>
                 </span>
@@ -650,8 +809,35 @@ function MemoDetailPanel({
 
           {/* 액션 버튼 */}
           <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+            {/* 별 토글 버튼 */}
+            <button
+              type="button"
+              onClick={() => onToggleStar(memo)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 border border-slate-200 bg-white hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+              aria-label={isStarred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+              title={isStarred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+            >
+              <svg
+                className={`w-3.5 h-3.5 transition-colors ${
+                  isStarred
+                    ? "fill-amber-400 text-amber-400"
+                    : "fill-none text-slate-400 hover:text-amber-400"
+                }`}
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"
+                />
+              </svg>
+              <span>{isStarred ? "즐겨찾기됨" : "즐겨찾기"}</span>
+            </button>
+
             {/* 받은쪽지함: 답장 버튼 */}
-            {tab === "inbox" && onReply && (
+            {effectiveTab === "inbox" && onReply && (
               <button
                 type="button"
                 onClick={onReply}
@@ -1758,6 +1944,15 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
   const [tab, setTab] = useState<Tab>("inbox");
   const [inboxMemos, setInboxMemos] = useState<MemoItem[]>([]);
   const [sentMemos, setSentMemos] = useState<MemoItem[]>([]);
+  const [starredMemos, setStarredMemos] = useState<MemoItem[]>([]);
+  const [starredLoading, setStarredLoading] = useState(false);
+  const [starredError, setStarredError] = useState<string | null>(null);
+
+  // 검색 상태
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [allUserMemos, setAllUserMemos] = useState<MemoItem[] | null>(null);
+
   /**
    * 선택한 쪽지는 id만 들고 있는다. 문서 사본을 state에 담으면 클릭 시점에 얼어붙어,
    * 수신자가 읽어도 열려 있는 "읽음 현황" 표가 갱신되지 않는다(스펙 §8 완료 기준).
@@ -1776,6 +1971,7 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
       }).catch(() => {});
     }
   }, [initialMemoId]);
+
   const [showCompose, setShowCompose] = useState(false);
   const [replyTargetMemo, setReplyTargetMemo] = useState<MemoItem | null>(null);
   const [inboxLoading, setInboxLoading] = useState(true);
@@ -1796,12 +1992,6 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
   }, []);
 
   // GWS 이름 — 이름의 원본은 GWS 디렉터리 성·이름이다(memo_spec.md §11-7).
-  // users:all 캐시를 렌더 중에 읽기만 하면 두 구간에서 이름이 아이디로 떨어진다:
-  // ⓐ 로그인 후 백그라운드 프리페치가 도착하기 전, ⓑ TTL 5분이 만료된 뒤(탭을 오래 열어 둔 경우).
-  // 캐시 도착은 재렌더를 유발하지 않으므로 열려 있던 조직도는 갱신되지도 않았다.
-  // (2026-08-17 실사용 신고 — 수신자 조직도에 김정은·김항래·송낙형 등이 아이디로 표시)
-  // 조직도 화면(OrgChartTree·OrgChartBuilder)과 같은 방식으로 state에 담는다: 캐시가 없으면
-  // 직접 불러오고, state에 있으므로 캐시 만료와 무관하게 이름이 유지된다.
   const [gwsUsers, setGwsUsers] = useState<any[]>([]);
   useEffect(() => {
     const cached = getClientCache("users:all");
@@ -1828,15 +2018,16 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
   // 부서 순서: schoolSettings.departments → DEFAULT_DEPARTMENTS
   const deptOrder: string[] = schoolSettings?.departments ?? DEFAULT_DEPARTMENTS;
 
-  const selectedMemo =
-    (tab === "inbox" ? inboxMemos : sentMemos).find((m) => m.id === selectedMemoId) || null;
-  const loading = tab === "inbox" ? inboxLoading : sentLoading;
-
   // 전체 쪽지 목록 (주고받은 이력 계산용 — reply spec §2·§3, 삭제된 항목 배제)
-  const allMemos = useMemo(
-    () => [...inboxMemos, ...sentMemos].filter((m) => !m.hiddenBy?.[myEmail]),
-    [inboxMemos, sentMemos, myEmail]
-  );
+  const allMemos = useMemo(() => {
+    const map = new Map<string, MemoItem>();
+    for (const m of [...inboxMemos, ...sentMemos, ...starredMemos, ...(allUserMemos || [])]) {
+      if (!m.hiddenBy?.[myEmail]) {
+        map.set(m.id, m);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt);
+  }, [inboxMemos, sentMemos, starredMemos, allUserMemos, myEmail]);
 
   // ── 받은쪽지함 구독
   useEffect(() => {
@@ -1890,11 +2081,278 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
     return () => unsub();
   }, [myEmail, domain, notEligible]);
 
+  // ── 즐겨찾기함 1회 조회 (§1-3 — orderBy 절대 사용 금지)
+  const loadStarredMemos = useCallback(async () => {
+    if (!myEmail || !domain || notEligible) return;
+    setStarredLoading(true);
+    setStarredError(null);
+    try {
+      const col = collection(db, "memos", domain, "items");
+      // 1. 받은 별표: where("recipientEmails", "array-contains", myEmail).where(FieldPath("starredBy", myEmail), "==", true)
+      const q1 = query(
+        col,
+        where("recipientEmails", "array-contains", myEmail),
+        where(new FieldPath("starredBy", myEmail), "==", true)
+      );
+      // 2. 보낸 별표: where("senderEmail", "==", myEmail).where(FieldPath("starredBy", myEmail), "==", true)
+      const q2 = query(
+        col,
+        where("senderEmail", "==", myEmail),
+        where(new FieldPath("starredBy", myEmail), "==", true)
+      );
+
+      const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+      const map = new Map<string, MemoItem>();
+
+      for (const doc of [...snap1.docs, ...snap2.docs]) {
+        const data = doc.data() as MemoDoc;
+        if (!data.hiddenBy?.[myEmail]) {
+          map.set(doc.id, { id: doc.id, ...data });
+        }
+      }
+
+      const list = Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt);
+      setStarredMemos(list);
+    } catch (e: any) {
+      console.error("[memo] 즐겨찾기 조회 실패:", e);
+      setStarredError("즐겨찾기 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setStarredLoading(false);
+    }
+  }, [myEmail, domain, notEligible]);
+
+  useEffect(() => {
+    if (tab === "starred") {
+      loadStarredMemos();
+    }
+  }, [tab, loadStarredMemos]);
+
+  // ── 즐겨찾기 토글 (낙관적 갱신 + 실패 시 롤백)
+  const handleToggleStar = useCallback(
+    async (targetMemo: MemoItem) => {
+      const isStarred = !!targetMemo.starredBy?.[myEmail];
+      const nextOn = !isStarred;
+
+      const updateList = (list: MemoItem[]) =>
+        list.map((m) => {
+          if (m.id !== targetMemo.id) return m;
+          const nextStarred = { ...(m.starredBy || {}) };
+          if (nextOn) nextStarred[myEmail] = true;
+          else delete nextStarred[myEmail];
+          return { ...m, starredBy: nextStarred };
+        });
+
+      setInboxMemos(updateList);
+      setSentMemos(updateList);
+      setStarredMemos(updateList);
+      setAllUserMemos((prev) => (prev ? updateList(prev) : null));
+
+      try {
+        const res = await fetch("/api/memo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "star", memoId: targetMemo.id, on: nextOn }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "즐겨찾기 변경 실패");
+
+        // clientCache 최신화
+        const cacheKey = `memos:all_user:${myEmail}`;
+        const cached = getClientCache(cacheKey);
+        if (Array.isArray(cached)) {
+          setClientCache(cacheKey, updateList(cached));
+        }
+      } catch (err: any) {
+        // 실패 롤백
+        const revertList = (list: MemoItem[]) =>
+          list.map((m) => (m.id === targetMemo.id ? { ...m, starredBy: targetMemo.starredBy } : m));
+        setInboxMemos(revertList);
+        setSentMemos(revertList);
+        setStarredMemos(revertList);
+        setAllUserMemos((prev) => (prev ? revertList(prev) : null));
+        alert(err.message || "즐겨찾기 상태를 변경하지 못했습니다.");
+      }
+    },
+    [myEmail, allUserMemos]
+  );
+
+  // ── 검색 실행: 전량 조회 및 clientCache (TTL 5분) 관리
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const loadAllMemosForSearch = async () => {
+      const cacheKey = `memos:all_user:${myEmail}`;
+      const cached = getClientCache(cacheKey);
+      if (Array.isArray(cached)) {
+        if (!cancelled) setAllUserMemos(cached);
+        return;
+      }
+
+      setSearchLoading(true);
+      try {
+        const col = collection(db, "memos", domain, "items");
+        const PAGE_SIZE = 300;
+
+        // 1. 받은 쪽지 전량
+        const inboxList: MemoItem[] = [];
+        let lastInboxDoc: any = null;
+        while (true) {
+          let q = query(
+            col,
+            where("recipientEmails", "array-contains", myEmail),
+            orderBy("createdAt", "desc"),
+            limit(PAGE_SIZE)
+          );
+          if (lastInboxDoc) {
+            q = query(
+              col,
+              where("recipientEmails", "array-contains", myEmail),
+              orderBy("createdAt", "desc"),
+              startAfter(lastInboxDoc),
+              limit(PAGE_SIZE)
+            );
+          }
+          const snap = await getDocs(q);
+          if (snap.empty) break;
+          for (const doc of snap.docs) {
+            inboxList.push({ id: doc.id, ...(doc.data() as MemoDoc) });
+          }
+          if (snap.docs.length < PAGE_SIZE) break;
+          lastInboxDoc = snap.docs[snap.docs.length - 1];
+        }
+
+        // 2. 보낸 쪽지 전량
+        const sentList: MemoItem[] = [];
+        let lastSentDoc: any = null;
+        while (true) {
+          let q = query(
+            col,
+            where("senderEmail", "==", myEmail),
+            orderBy("createdAt", "desc"),
+            limit(PAGE_SIZE)
+          );
+          if (lastSentDoc) {
+            q = query(
+              col,
+              where("senderEmail", "==", myEmail),
+              orderBy("createdAt", "desc"),
+              startAfter(lastSentDoc),
+              limit(PAGE_SIZE)
+            );
+          }
+          const snap = await getDocs(q);
+          if (snap.empty) break;
+          for (const doc of snap.docs) {
+            sentList.push({ id: doc.id, ...(doc.data() as MemoDoc) });
+          }
+          if (snap.docs.length < PAGE_SIZE) break;
+          lastSentDoc = snap.docs[snap.docs.length - 1];
+        }
+
+        const map = new Map<string, MemoItem>();
+        for (const m of [...inboxList, ...sentList]) {
+          map.set(m.id, m);
+        }
+        const all = Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt);
+
+        setClientCache(cacheKey, all, 5 * 60 * 1000);
+        if (!cancelled) {
+          setAllUserMemos(all);
+        }
+      } catch (e) {
+        console.error("[memo] 검색용 전량 쪽지 조회 실패:", e);
+      } finally {
+        if (!cancelled) {
+          setSearchLoading(false);
+        }
+      }
+    };
+
+    loadAllMemosForSearch();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchQuery, myEmail, domain]);
+
+  // ── 현재 탭 및 검색 상태에 따른 목록 산출
+  const isSearching = searchQuery.trim().length > 0;
+
+  const currentList = useMemo(() => {
+    if (isSearching) {
+      const source = allUserMemos || [];
+      return source
+        .filter((m) => !m.hiddenBy?.[myEmail])
+        .filter((m) => {
+          if (tab === "inbox") {
+            return Array.isArray(m.recipientEmails) && m.recipientEmails.includes(myEmail);
+          }
+          if (tab === "sent") {
+            return m.senderEmail?.toLowerCase() === myEmail;
+          }
+          if (tab === "starred") {
+            return !!m.starredBy?.[myEmail];
+          }
+          return true;
+        })
+        .filter((m) => {
+          const target: MemoSearchTarget = {
+            title: m.title,
+            body: m.body,
+            senderName: m.senderName,
+            senderDisplayName:
+              gwsNameMap.get(m.senderEmail?.toLowerCase()) ||
+              profileMap.get(m.senderEmail?.toLowerCase())?.name,
+            recipientSummary: m.recipientSummary,
+          };
+          return memoMatchesSearch(target, searchQuery);
+        });
+    }
+
+    if (tab === "inbox") return inboxMemos;
+    if (tab === "sent") return sentMemos;
+    return starredMemos;
+  }, [
+    isSearching,
+    searchQuery,
+    allUserMemos,
+    tab,
+    inboxMemos,
+    sentMemos,
+    starredMemos,
+    myEmail,
+    gwsNameMap,
+    profileMap,
+  ]);
+
+  const selectedMemo =
+    currentList.find((m) => m.id === selectedMemoId) ||
+    allMemos.find((m) => m.id === selectedMemoId) ||
+    null;
+
+  const loading = isSearching
+    ? searchLoading
+    : tab === "inbox"
+    ? inboxLoading
+    : tab === "sent"
+    ? sentLoading
+    : starredLoading;
+
+  const errorMsg = tab === "starred" ? starredError : loadError;
+
   // ── 쪽지 클릭 → read API 호출
   const handleSelectMemo = useCallback(
     async (memo: MemoItem) => {
       setSelectedMemoId(memo.id);
-      if (tab === "inbox" && !memo.reads?.[myEmail]) {
+      if (
+        Array.isArray(memo.recipientEmails) &&
+        memo.recipientEmails.includes(myEmail) &&
+        !memo.reads?.[myEmail]
+      ) {
         try {
           await fetch("/api/memo", {
             method: "POST",
@@ -1906,10 +2364,9 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
         }
       }
     },
-    [tab, myEmail]
+    [myEmail]
   );
 
-  const currentList = tab === "inbox" ? inboxMemos : sentMemos;
   const unreadCount = inboxMemos.filter((m) => !m.reads?.[myEmail]).length;
 
   // 조직도 미등록 계정 안내
@@ -1927,7 +2384,6 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
             왼쪽 아래 <strong>「내 정보 관리」</strong>로 소속을 등록하고 담당 선생님의 확인을
             받으면 바로 이용할 수 있습니다.
           </p>
-
         </div>
       </div>
     );
@@ -1936,11 +2392,11 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
   return (
     <div className="h-full flex flex-col">
       {/* 상단 툴바 */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white">
-        <div className="flex gap-1">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white gap-3 flex-wrap">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => { setTab("inbox"); setSelectedMemoId(null); }}
-            className={`relative flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
+            className={`relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
               tab === "inbox" ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"
             }`}
           >
@@ -1955,19 +2411,71 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
           </button>
           <button
             onClick={() => { setTab("sent"); setSelectedMemoId(null); }}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
               tab === "sent" ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"
             }`}
           >
             보낸쪽지함
           </button>
+          <button
+            onClick={() => { setTab("starred"); setSelectedMemoId(null); }}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
+              tab === "starred" ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <svg
+              className={`w-3.5 h-3.5 ${tab === "starred" ? "fill-amber-300 text-amber-300" : "fill-none text-slate-400"}`}
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"
+              />
+            </svg>
+            즐겨찾기
+          </button>
         </div>
+
+        {/* 검색 입력란 (탭 줄 옆) */}
+        <div className="relative flex-1 max-w-xs min-w-[200px]">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="쪽지 검색 (제목, 내용, 이름)"
+            className="w-full pl-8 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
+          />
+          <svg
+            className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+              aria-label="검색어 지우기"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
         <button
           onClick={() => {
             setReplyTargetMemo(null);
             setShowCompose(true);
           }}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold rounded-lg transition-colors border border-indigo-200 cursor-pointer"
+          className="flex items-center gap-2 px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold rounded-lg transition-colors border border-indigo-200 cursor-pointer flex-shrink-0"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -1984,43 +2492,72 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
             <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
               <div className="animate-pulse flex items-center gap-2">
                 <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" />
-                <span>불러오는 중…</span>
+                {isSearching ? (
+                  <span>전체 쪽지에서 찾는 중…</span>
+                ) : (
+                  <span>불러오는 중…</span>
+                )}
               </div>
             </div>
-          ) : loadError ? (
+          ) : errorMsg ? (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-2 px-6 text-center">
               <span className="text-2xl">⚠️</span>
-              <span className="text-sm">{loadError}</span>
+              <span className="text-sm">{errorMsg}</span>
             </div>
           ) : currentList.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-2">
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-2 px-6 text-center">
               <svg className="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
               <span className="text-sm">
-                {tab === "inbox" ? "받은 쪽지가 없습니다." : "보낸 쪽지가 없습니다."}
+                {isSearching
+                  ? `'${searchQuery}'에 해당하는 쪽지가 없습니다.`
+                  : tab === "starred"
+                  ? "별표를 눌러 자주 찾는 쪽지를 모아두세요."
+                  : tab === "inbox"
+                  ? "받은 쪽지가 없습니다."
+                  : "보낸 쪽지가 없습니다."}
               </span>
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto">
-              {tab === "inbox"
-                ? inboxMemos.map((m) => (
+              {currentList.map((m) => {
+                const isSent = m.senderEmail?.toLowerCase() === myEmail;
+                if (tab === "starred" || isSearching) {
+                  return (
+                    <StarredRow
+                      key={m.id}
+                      memo={m}
+                      myEmail={myEmail}
+                      selected={selectedMemo?.id === m.id}
+                      onClick={() => handleSelectMemo(m)}
+                      onToggleStar={handleToggleStar}
+                    />
+                  );
+                }
+                if (tab === "inbox") {
+                  return (
                     <InboxRow
                       key={m.id}
                       memo={m}
                       myEmail={myEmail}
                       selected={selectedMemo?.id === m.id}
                       onClick={() => handleSelectMemo(m)}
+                      onToggleStar={handleToggleStar}
                     />
-                  ))
-                : sentMemos.map((m) => (
-                    <SentRow
-                      key={m.id}
-                      memo={m}
-                      selected={selectedMemo?.id === m.id}
-                      onClick={() => handleSelectMemo(m)}
-                    />
-                  ))}
+                  );
+                }
+                return (
+                  <SentRow
+                    key={m.id}
+                    memo={m}
+                    myEmail={myEmail}
+                    selected={selectedMemo?.id === m.id}
+                    onClick={() => handleSelectMemo(m)}
+                    onToggleStar={handleToggleStar}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
@@ -2040,7 +2577,7 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
                 handleSelectMemo(m);
               }}
               onReply={
-                tab === "inbox"
+                (tab === "inbox" || (tab === "starred" && selectedMemo.senderEmail.toLowerCase() !== myEmail))
                   ? () => {
                       setReplyTargetMemo(selectedMemo);
                       setShowCompose(true);
@@ -2048,6 +2585,7 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
                   : undefined
               }
               onClose={() => setSelectedMemoId(null)}
+              onToggleStar={handleToggleStar}
             />
           </div>
         )}
