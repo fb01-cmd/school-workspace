@@ -1032,3 +1032,15 @@
 - 검증 상태: tsc ✅ / build ✅ / verify_notifications ✅
 - 다음 할 일: Antigravity — 알림 패널 하단 [지난 알림 더 보기] 버튼: list 응답의 hasMore가 true면 표시, 클릭 시 limit을 30씩 늘려(최대 200) 재조회
 - 주의: 스펙 §6의 "30개 + 더 보기" 중 더 보기가 MVP에서 누락됐던 것의 보수. 알림은 원장(포인터)이라 영구 아카이브는 설계상 없음(180일 파기) — 사용자 질문에 대한 확정 답
+
+## [2026-08-18] Antigravity → Claude/사용자 (알림 패널 지난 알림 더 보기 구현 완료)
+- **변경 파일**:
+  - `src/components/common/NotificationCenter.tsx`:
+    - 알림 패널 열람 시 기본 30건 조회(`limit: 30`) 및 `hasMore` 상태 수신.
+    - `hasMore`가 `true`일 때 목록 하단에 `[지난 알림 더 보기]` 버튼 표출.
+    - 클릭 시 `limit`을 30씩 늘려(최대 200) `POST /api/notifications` `{ action: "list", limit }`로 재조회하여 목록 교체 및 `hasMore` 갱신.
+    - 상한선(200건) 도달 시 버튼 대신 `"더 오래된 알림은 자동 정리되었습니다"` 한 줄 안내 표시.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 1168df6` ✅ (사라진 상호작용 없음)

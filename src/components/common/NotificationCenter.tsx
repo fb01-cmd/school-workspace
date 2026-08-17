@@ -77,7 +77,10 @@ export default function NotificationCenter() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [limit, setLimit] = useState(30);
   const [error, setError] = useState<string | null>(null);
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [decliningNotifId, setDecliningNotifId] = useState<string | null>(null);
@@ -140,18 +143,20 @@ export default function NotificationCenter() {
   const fetchAndMarkRead = async () => {
     setLoading(true);
     setError(null);
+    setLimit(30);
     try {
-      // 1. 목록 조회
+      // 1. 목록 조회 (기본 30건)
       const res = await fetch("/api/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list" }),
+        body: JSON.stringify({ action: "list", limit: 30 }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
         throw new Error(data.error || "알림 목록을 불러오지 못했습니다.");
       }
       setItems(data.items || []);
+      setHasMore(!!data.hasMore);
 
       // 2. 열람과 동시에 mark_read 호출 (스펙 §2)
       await fetch("/api/notifications", {
@@ -167,6 +172,30 @@ export default function NotificationCenter() {
       setError(err.message || "알림을 불러오는 중 오류가 발생했습니다.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLoadMore = async () => {
+    if (loadingMore || limit >= 200) return;
+    const nextLimit = Math.min(200, limit + 30);
+    setLoadingMore(true);
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list", limit: nextLimit }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "알림 목록을 불러오지 못했습니다.");
+      }
+      setItems(data.items || []);
+      setHasMore(!!data.hasMore);
+      setLimit(nextLimit);
+    } catch (err: any) {
+      alert(`알림 불러오기 오류: ${err.message}`);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -656,6 +685,33 @@ export default function NotificationCenter() {
                   </div>
                 );
               })
+            )}
+
+            {/* 지난 알림 더 보기 / 200건 도달 안내 */}
+            {!loading && !error && items.length > 0 && hasMore && (
+              <div className="p-3 text-center bg-slate-50/50 dark:bg-slate-850/50 border-t border-gray-100 dark:border-slate-800">
+                {limit < 200 ? (
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="w-full py-2 px-3 text-xs font-bold text-gray-700 dark:text-gray-200 bg-white dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-700 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    {loadingMore ? (
+                      <>
+                        <span className="inline-block animate-spin rounded-full h-3.5 w-3.5 border-2 border-indigo-600 border-t-transparent" />
+                        <span>알림을 불러오는 중…</span>
+                      </>
+                    ) : (
+                      <span>지난 알림 더 보기</span>
+                    )}
+                  </button>
+                ) : (
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
+                    더 오래된 알림은 자동 정리되었습니다
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
