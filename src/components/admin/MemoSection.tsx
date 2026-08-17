@@ -1623,7 +1623,11 @@ function ComposeModal({
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 
-export default function MemoSection() {
+interface MemoSectionProps {
+  initialMemoId?: string | null;
+}
+
+export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
   const { user, userData, teacherProfile, schoolSettings } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "";
@@ -1640,7 +1644,20 @@ export default function MemoSection() {
    * 선택한 쪽지는 id만 들고 있는다. 문서 사본을 state에 담으면 클릭 시점에 얼어붙어,
    * 수신자가 읽어도 열려 있는 "읽음 현황" 표가 갱신되지 않는다(스펙 §8 완료 기준).
    */
-  const [selectedMemoId, setSelectedMemoId] = useState<string | null>(null);
+  const [selectedMemoId, setSelectedMemoId] = useState<string | null>(initialMemoId || null);
+
+  useEffect(() => {
+    if (initialMemoId) {
+      setTab("inbox");
+      setSelectedMemoId(initialMemoId);
+      // 대시보드 직행 시 읽음 처리 (서버 멱등)
+      fetch("/api/memo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "read", memoId: initialMemoId }),
+      }).catch(() => {});
+    }
+  }, [initialMemoId]);
   const [showCompose, setShowCompose] = useState(false);
   const [replyTargetMemo, setReplyTargetMemo] = useState<MemoItem | null>(null);
   const [inboxLoading, setInboxLoading] = useState(true);

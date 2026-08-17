@@ -4,6 +4,32 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-18] Antigravity → Claude/사용자 (어드민 대시보드 받은 쪽지 편입 완결 — roadmap §2 피드백 덤프 ⑤)
+- **변경 파일**:
+  - `src/components/admin/DashboardMemoPanel.tsx` (신규):
+    - 모바일 `/m` 받은쪽지함과 동일한 `where("recipientEmails", "array-contains", myEmail)` 실시간 `onSnapshot` 구독 재사용 (새 Firestore 쿼리 패턴 0건).
+    - 안 읽은 쪽지 우선 정렬 및 동일 상태 내 최신순 정렬.
+    - 발신자 표시는 발송 시 서버가 스탬프한 `memo.senderName`을 직접 사용하여 프리페치 전/TTL 만료 시에도 이름 표시 보장 (모바일 쪽지 섹션과 동일 방식, 캐시 직독 제거).
+    - 안 읽음 뱃지, 안 읽음 인디케이터 점, 쪽지 제목, 첨부/링크 힌트 아이콘 표출.
+    - 조직도 미등록 상태 및 빈 목록 상태 안내 문구 처리.
+    - 항목 클릭 시 `onNavigateToMemo(memo.id)` 호출로 쪽지함의 해당 쪽지 상세로 직행 지원.
+  - `src/app/admin/page.tsx`:
+    - 일반 교사 홈 화면(대시보드) 레이아웃을 2단 반응형 그리드로 개편:
+      - 넓은 화면(`lg:` 이상): 2단 그리드 (`lg:col-span-7/8` 좌측 컬럼에 "이번 주 내 시간표" + "오늘의 급식" 세로 스택, `lg:col-span-5/4` 우측 컬럼에 "받은 쪽지" 패널을 세로로 길게 배치).
+      - 좁은 화면(`lg:` 미만): 세로 스택 (시간표 → 급식 → 쪽지 순서 유지).
+    - `targetMemoId` state 및 `handleNavigateToMemo`를 추가하여 대시보드 항목 클릭 시 쪽지 메뉴 이동과 동시에 해당 쪽지 자동 선택 연동 (`MemoSection initialMemoId={targetMemoId}`).
+  - `src/components/admin/MemoSection.tsx`:
+    - `initialMemoId` prop을 수신하여 마운트/전환 시 해당 쪽지를 초기 선택하고 `tab="inbox"`로 자동 포커싱.
+    - `initialMemoId` 수신 시 `POST /api/memo { action: "read", memoId: initialMemoId }`를 호출하여 대시보드에서 연 쪽지가 발신자에게 정상적으로 "읽음" 처리되도록 동기화 보장.
+- **규칙 준수**:
+  - Firestore 쿼리 규칙: 기존 `where("recipientEmails", "array-contains", myEmail)` 패턴 준수.
+  - `ui-copy-rules`: 개발 용어 배제, "받은 쪽지", "쪽지함 전체보기" 등 직관적인 한국어 문구 적용.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `scripts/memo_selftest.ts` ✅ (답장 9케이스 포함 전 항목 통과)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 static pages prerendered)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 0건)
+
 ## [2026-08-18] Antigravity → Claude/사용자 (쪽지 답장 및 주고받은 이력 UI 구현 완료 — reply spec §3·§8 순서 2)
 - **변경 파일**:
   - `src/components/admin/MemoSection.tsx`:

@@ -43,6 +43,7 @@ import MealCard from "@/components/common/MealCard";
 import PushNotificationManager from "@/components/common/PushNotificationManager";
 import NotificationCenter from "@/components/common/NotificationCenter";
 import MyTimetableCard from "@/components/admin/MyTimetableCard";
+import DashboardMemoPanel from "@/components/admin/DashboardMemoPanel";
 
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { TimetableSettings } from "@/lib/timetable/types";
@@ -56,6 +57,7 @@ export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
   const router = useRouter();
   const [activeMenu, setActiveMenu] = useState<MenuType>("home");
+  const [targetMemoId, setTargetMemoId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [pendingProfileCount, setPendingProfileCount] = useState(0);
   const [timetableSettings, setTimetableSettings] = useState<TimetableSettings | null>(null);
@@ -92,6 +94,9 @@ export default function AdminPage() {
   useEffect(() => {
     const handleAdminNav = (e: any) => {
       if (e.detail?.menu) {
+        if (e.detail.memoId !== undefined) {
+          setTargetMemoId(e.detail.memoId);
+        }
         setActiveMenu(e.detail.menu);
       }
     };
@@ -180,10 +185,15 @@ export default function AdminPage() {
     (timetableSettings?.observerEmails || []).some((m) => m.toLowerCase() === userEmail);
   const canSeeTimetableMenu = isTimetableManager || isTimetableObserver;
 
+  const handleNavigateToMemo = (memoId?: string) => {
+    setTargetMemoId(memoId || null);
+    setActiveMenu("memo");
+  };
+
   const renderContent = () => {
     switch (activeMenu) {
       case "memo":
-        return <MemoSection />;
+        return <MemoSection initialMemoId={targetMemoId} />;
       case "users":
         return <UserList />;
       case "profile_approvals":
@@ -377,11 +387,16 @@ export default function AdminPage() {
                 </div>
               </div>
             ) : (
-              /* 일반 교사(role teacher) 홈: 시간표가 위, 급식이 아래 (2026-08-07 사용자 지시) */
-              <>
-                <MyTimetableCard onNavigateToMyTimetable={() => setActiveMenu("my_timetable")} />
-                <MealCard />
-              </>
+              /* 일반 교사(role teacher) 홈: 넓은 화면 2단 그리드(좌: 시간표+급식, 우: 받은 쪽지), 좁은 화면 세로 스택 (2026-08-18 피드백 덤프 ⑤) */
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+                  <MyTimetableCard onNavigateToMyTimetable={() => setActiveMenu("my_timetable")} />
+                  <MealCard />
+                </div>
+                <div className="lg:col-span-5 xl:col-span-4">
+                  <DashboardMemoPanel onNavigateToMemo={handleNavigateToMemo} />
+                </div>
+              </div>
             )}
           </div>
         );
