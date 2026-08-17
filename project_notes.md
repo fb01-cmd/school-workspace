@@ -4,6 +4,32 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-18] Antigravity → Claude/사용자 (쪽지 답장 및 주고받은 이력 UI 구현 완료 — reply spec §3·§8 순서 2)
+- **변경 파일**:
+  - `src/components/admin/MemoSection.tsx`:
+    - **받은쪽지함 상세 [답장] 버튼**: `tab === "inbox"`일 때 상세 헤더에 `[답장]` 버튼 노출 (보낸쪽지함에는 미노출).
+    - **ComposeModal 답장 모드 (`replyToMemo`)**:
+      - Step 1(조직도)을 건너뛰고 Step 2(작성)로 바로 진입 (`isReply` 시 초기 `step=2`).
+      - 수신자는 원 쪽지 발신자 1인 고정 칩 표시 (칩 삭제 버튼·전체 지우기 버튼·받는 사람 변경 버튼·이름으로 추가 검색창 비노출로 UI 잠금).
+      - 제목 `"RE: 원제목"` 프리필 (`/^re:\s*/i` 중첩 방지).
+      - 발송 시 `replyToMemoId`를 payload에 포함하여 서버로 전달.
+      - 헤더 및 발송 버튼 문구 "답장"으로 통일.
+    - **상세 패널 「주고받은 이력」 로컬 그룹핑**:
+      - `allMemos` (`inboxMemos` + `sentMemos`)를 `threadId`(`memo.threadId || memo.id`)로 로컬 그룹핑하여 시간순 요약 행(보낸이·제목·시각) 표시 (새 Firestore 쿼리 0건).
+      - 현재 쪽지 하이라이트 및 `현재 쪽지` 배지 표시, 행 클릭 시 해당 쪽지 및 탭(`inbox`/`sent`)으로 전환 이동.
+  - `src/components/mobile/MobileMemoSection.tsx`:
+    - 보낸쪽지함(`sentMemos`) 구독을 추가하여 `allMemos` 기반 `threadId` 로컬 그룹핑 지원.
+    - 상세 펼침 영역에 「주고받은 이력」 요약 행 표시 (행 클릭 시 해당 쪽지 본문·첨부로 전환 열람).
+    - 모바일 열람 전용 원칙에 따라 [답장] 버튼은 미배치.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어(threadId, payload, spec 등) 배제, "답장", "주고받은 이력", "현재 쪽지" 등 눈높이 한국어 문구 적용.
+  - Firestore 쿼리 규칙 준수: `threadId` 쿼리 신설 0건 (로컬 그룹핑 사용).
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `scripts/memo_selftest.ts` ✅ (답장 9케이스 포함 전 항목 통과)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 없음)
+
 
 ## [2026-08-15] Antigravity → Claude/사용자 (운영 매뉴얼 A1: 리뷰 피드백 3건 복원 완료)
 - **변경 파일**:
@@ -1139,3 +1165,9 @@
 - 검증 상태: memo_selftest ✅ 전판 / tsc ✅ / build ✅(40/40)
 - 다음 할 일: Antigravity — 답장 UI (reply spec §3: 받은쪽지함 상세 [답장] 버튼·ComposeModal 고정 수신자 모드·상세 「주고받은 이력」 로컬 그룹핑·/m 이력 표시)
 - 주의: ① 답장 발송 = 기존 send에 replyToMemoId만 추가 — 수신자 입력은 서버가 무시하고 원 발신자 1인으로 강제(그룹 확장도 건너뜀), UI도 수신자 잠금으로 정직하게 ② 자격 = 부모 쪽지의 수신자 본인만(발신자 본인·비당사자·회수된 수신자 403) ③ 스레드 뷰는 전용 쿼리 금지 — 받은/보낸 onSnapshot 목록을 threadId로 로컬 그룹핑(규칙상 threadId 쿼리는 거부됨, limit 50 밖 이력은 안 보이는 한계 수용) ④ 응답에 threadId 에코 포함
+
+## [2026-08-18] Claude(Fable) → 사용자/Antigravity (답장 UI 검수 통과 — 단, 커밋 미이행 지적)
+- 변경 파일: (검수만, 코드 무변경) 대상 = 작업 트리의 미커밋 답장 UI
+- 검증 상태: tsc ✅ / build ✅(40/40) / check_ui_removals 0f37904 — 표시 1건(setMemos)은 받은/보낸 구독 분리에 따른 정당 개명(소명 완료). 계약 준수 확인 — 답장 버튼 inbox 전용·수신자 잠금(칩 제거/검색/전체 지우기 비노출)·RE 중첩 방지·replyToMemoId 전송·threadId 신규 쿼리 0건·모바일 열람 전용 유지(+이력 열람 시 read 멱등 호출은 가점)
+- 다음 할 일: ① Antigravity — **자기 변경 직접 커밋**(④-3 게이트 1번 미이행 — 작업 트리에 미커밋 상태로 완료 보고됨. 검수자는 대행하지 않음) ② 커밋·push 후 사용자 실기기 확인: 자기에게 쪽지 → [답장] → 보낸쪽지함에 RE 도착·상세의 「주고받은 이력」 왕복 표시
+- 주의: 모바일 이력 senderLabel 폴백이 이메일(senderName 부재 시) — senderName은 발송 시 항상 스탬프되므로 실노출 거의 없음, 비차단 메모만

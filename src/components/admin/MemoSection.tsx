@@ -510,6 +510,9 @@ function MemoDetailPanel({
   myEmail,
   profileMap,
   gwsNameMap,
+  allMemos,
+  onSelectMemo,
+  onReply,
   onClose,
 }: {
   memo: MemoItem;
@@ -517,6 +520,9 @@ function MemoDetailPanel({
   myEmail: string;
   profileMap: Map<string, TeacherProfile>;
   gwsNameMap: Map<string, string>;
+  allMemos: MemoItem[];
+  onSelectMemo: (memo: MemoItem, targetTab: Tab) => void;
+  onReply?: () => void;
   onClose: () => void;
 }) {
   // §12-2 회수 상태
@@ -561,6 +567,19 @@ function MemoDetailPanel({
     : 0;
   const canRecall = isMine && unreadCount > 0 && !recalling;
 
+  // 주고받은 이력 계산 (threadId 로컬 그룹핑 — reply spec §2·§3)
+  const currentThreadId = memo.threadId || memo.id;
+  const threadMemos = useMemo(() => {
+    const map = new Map<string, MemoItem>();
+    for (const m of allMemos) {
+      const mThreadId = m.threadId || m.id;
+      if (mThreadId === currentThreadId) {
+        map.set(m.id, m);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.createdAt - b.createdAt);
+  }, [allMemos, currentThreadId]);
+
   return (
     <div className="flex flex-col h-full relative">
       {/* 헤더 */}
@@ -569,6 +588,21 @@ function MemoDetailPanel({
           {memo.title}
         </h3>
         <div className="flex items-center gap-2">
+          {/* 받은쪽지함: 답장 버튼 */}
+          {tab === "inbox" && onReply && (
+            <button
+              type="button"
+              onClick={onReply}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
+              aria-label="답장"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+              <span>답장</span>
+            </button>
+          )}
+
           {/* §12-2 회수 버튼 — 내가 보낸 쪽지, 안 읽은 수신자 있을 때만 표시 */}
           {isMine && unreadCount > 0 && (
             <button
@@ -716,6 +750,65 @@ function MemoDetailPanel({
         {/* 첨부 이미지 그리드 */}
         <MemoAttachmentGrid attachments={memo.attachments} />
 
+        {/* 주고받은 이력 (threadId 로컬 그룹핑 — 스펙 §3) */}
+        {threadMemos.length > 1 && (
+          <div className="border border-slate-200 rounded-lg overflow-hidden mt-4">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-700">
+                주고받은 이력 ({threadMemos.length}건)
+              </span>
+            </div>
+            <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
+              {threadMemos.map((item) => {
+                const isCurrent = item.id === memo.id;
+                const isSentByMe = item.senderEmail.toLowerCase() === myEmail.toLowerCase();
+                const senderLabel = isSentByMe
+                  ? "나"
+                  : (item.senderName || resolveMemoDisplayName(item.senderEmail, profileMap, gwsNameMap));
+                const targetTab: Tab = isSentByMe ? "sent" : "inbox";
+
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      if (!isCurrent) {
+                        onSelectMemo(item, targetTab);
+                      }
+                    }}
+                    className={`w-full text-left px-4 py-2.5 text-xs flex items-center justify-between gap-3 transition-colors ${
+                      isCurrent
+                        ? "bg-indigo-50/80 font-bold text-indigo-950 cursor-default"
+                        : "hover:bg-slate-50 text-slate-600 cursor-pointer"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${
+                          isSentByMe ? "bg-slate-100 text-slate-600" : "bg-indigo-100 text-indigo-700"
+                        }`}
+                      >
+                        {senderLabel}
+                      </span>
+                      <span className={`truncate flex-1 ${isCurrent ? "font-bold text-indigo-950" : "text-slate-700"}`}>
+                        {item.title}
+                      </span>
+                      {isCurrent && (
+                        <span className="text-[10px] bg-indigo-600 text-white font-semibold px-1.5 py-0.5 rounded flex-shrink-0">
+                          현재 쪽지
+                        </span>
+                      )}
+                    </div>
+                    <span className="flex-shrink-0 text-slate-400 text-[11px]">
+                      {formatDate(item.createdAt)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* 보낸쪽지함: 받는 분별 읽음 표 (실시간 — 데모 핵심) */}
         {tab === "sent" && (
           <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -773,6 +866,7 @@ interface ComposeModalProps {
   /** 버그2 수정: 조직도 로드 실패 메시지 — 에러/로딩/정상 3상태 구분 */
   profileError: string | null;
   deptOrder: string[];
+  replyToMemo?: MemoItem | null;
   onClose: () => void;
   onSent: () => void;
 }
@@ -785,18 +879,38 @@ function ComposeModal({
   gwsNameMap,
   profileError,
   deptOrder,
+  replyToMemo,
   onClose,
   onSent,
 }: ComposeModalProps) {
-  const [step, setStep] = useState<ComposeStep>(1);
+  const isReply = !!replyToMemo;
+  const [step, setStep] = useState<ComposeStep>(isReply ? 2 : 1);
 
-  // 수신자 선택 (step 1)
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [chips, setChips] = useState<RecipientChip[]>([]);
+  // 수신자 선택 (step 1 / reply 모드 시 원 발신자 1인 고정)
+  const initialRecipient = useMemo(() => {
+    if (!replyToMemo) return { selected: new Set<string>(), chips: [] as RecipientChip[] };
+    const email = replyToMemo.senderEmail.toLowerCase();
+    const label =
+      replyToMemo.senderName ||
+      resolveMemoDisplayName(email, profileMap, gwsNameMap);
+    return {
+      selected: new Set([email]),
+      chips: [{ type: "user" as const, source: "person" as const, email, label }],
+    };
+  }, [replyToMemo, profileMap, gwsNameMap]);
+
+  const [selected, setSelected] = useState<Set<string>>(initialRecipient.selected);
+  const [chips, setChips] = useState<RecipientChip[]>(initialRecipient.chips);
   const [searchVal, setSearchVal] = useState("");
 
   // 작성 (step 2)
-  const [title, setTitle] = useState("");
+  const initialTitle = useMemo(() => {
+    if (!replyToMemo) return "";
+    const clean = replyToMemo.title.trim();
+    return /^re:\s*/i.test(clean) ? clean : `RE: ${clean}`;
+  }, [replyToMemo]);
+
+  const [title, setTitle] = useState(initialTitle);
   const [body, setBody] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
@@ -1065,11 +1179,12 @@ function ComposeModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "send",
+          replyToMemoId: isReply ? replyToMemo.id : undefined,
           title,
           body,
           links: links.length > 0 ? links : undefined,
           attachments: driveFileIds.length > 0 ? driveFileIds : undefined,
-          recipientSummary: buildSummary(chips),
+          recipientSummary: isReply ? (chips[0]?.label || "") : buildSummary(chips),
           recipients: { users: userEmails, groups: [] },
         }),
       });
@@ -1120,7 +1235,7 @@ function ComposeModal({
               <button
                 type="button"
                 onClick={() => removeChip(chip.email)}
-                className="hover:text-indigo-500 ml-0.5"
+                className="hover:text-indigo-500 ml-0.5 cursor-pointer"
                 aria-label={`${chip.label} 제거`}
               >
                 ×
@@ -1132,7 +1247,7 @@ function ComposeModal({
           <button
             type="button"
             onClick={() => { setChips([]); setSelected(new Set()); }}
-            className="text-xs text-slate-400 hover:text-slate-600 px-1"
+            className="text-xs text-slate-400 hover:text-slate-600 px-1 cursor-pointer"
           >
             전체 지우기
           </button>
@@ -1147,18 +1262,20 @@ function ComposeModal({
         {/* 모달 헤더 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-bold text-slate-900">쪽지 쓰기</h2>
-            {/* 단계 표시 */}
-            <div className="flex items-center gap-1 text-xs text-slate-400">
-              <span className={step === 1 ? "font-bold text-indigo-600" : ""}>① 받는 사람</span>
-              <span>›</span>
-              <span className={step === 2 ? "font-bold text-indigo-600" : ""}>② 작성</span>
-            </div>
+            <h2 className="text-lg font-bold text-slate-900">{isReply ? "답장" : "쪽지 쓰기"}</h2>
+            {/* 단계 표시 — 일반 쓰기일 때만 */}
+            {!isReply && (
+              <div className="flex items-center gap-1 text-xs text-slate-400">
+                <span className={step === 1 ? "font-bold text-indigo-600" : ""}>① 받는 사람</span>
+                <span>›</span>
+                <span className={step === 2 ? "font-bold text-indigo-600" : ""}>② 작성</span>
+              </div>
+            )}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 p-1 rounded transition-colors"
+            className="text-slate-400 hover:text-slate-700 p-1 rounded transition-colors cursor-pointer"
             aria-label="닫기"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1167,8 +1284,8 @@ function ComposeModal({
           </button>
         </div>
 
-        {/* ── Step 1: 받는 사람 고르기 ── */}
-        {step === 1 && (
+        {/* ── Step 1: 받는 사람 고르기 (답장 모드에서는 건너뜀) ── */}
+        {!isReply && step === 1 && (
           <>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {/* 이름 검색 (teacher_profiles 로컬 필터, 이름 매칭, 부서 부제) */}
@@ -1195,7 +1312,7 @@ function ComposeModal({
                         const allSelected = allEmails.size > 0 && [...allEmails].every((e) => selected.has(e));
                         handleTreeChange(allSelected ? new Set() : allEmails);
                       }}
-                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
                     >
                       {(() => {
                         // 버그1 수정: flatMap은 중복 포함 — Set으로 dedupe해 실인원만 카운트
@@ -1235,7 +1352,7 @@ function ComposeModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors"
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
               >
                 취소
               </button>
@@ -1243,7 +1360,7 @@ function ComposeModal({
                 type="button"
                 onClick={() => setStep(2)}
                 disabled={chips.length === 0}
-                className="flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+                className="flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors cursor-pointer"
               >
                 작성하기
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1255,33 +1372,37 @@ function ComposeModal({
         )}
 
         {/* ── Step 2: 작성 ── */}
-        {step === 2 && (
+        {(isReply || step === 2) && (
           <>
             <div onPaste={handlePaste} className="flex-1 overflow-y-auto p-6 space-y-5">
               {/* 받는 분 요약 + 수정 */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-sm font-semibold text-slate-700">받는 분 ({chips.length}명)</label>
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                  >
-                    ← 받는 사람 변경
-                  </button>
+                  {!isReply && (
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
+                    >
+                      ← 받는 사람 변경
+                    </button>
+                  )}
                 </div>
-                {chipListNode()}
-                {/* 추가 검색 */}
-                <div className="mt-2">
-                  <LocalNameSearch
-                    value={addSearchVal}
-                    onChange={setAddSearchVal}
-                    candidates={searchCandidates}
-                    alreadySelected={selected}
-                    onSelect={handleAddUserSelect}
-                    placeholder="이름으로 추가…"
-                  />
-                </div>
+                {chipListNode(!isReply)}
+                {/* 추가 검색 — 일반 쓰기일 때만 */}
+                {!isReply && (
+                  <div className="mt-2">
+                    <LocalNameSearch
+                      value={addSearchVal}
+                      onChange={setAddSearchVal}
+                      candidates={searchCandidates}
+                      alreadySelected={selected}
+                      onSelect={handleAddUserSelect}
+                      placeholder="이름으로 추가…"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* 제목 */}
@@ -1478,7 +1599,7 @@ function ComposeModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors"
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
               >
                 취소
               </button>
@@ -1486,9 +1607,11 @@ function ComposeModal({
                 type="button"
                 onClick={handleSend}
                 disabled={!canSend}
-                className="px-5 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+                className="px-5 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors cursor-pointer"
               >
-                {sending ? "보내는 중…" : `${recipientCount}명에게 보내기`}
+                {sending
+                  ? (isReply ? "답장 보내는 중…" : "보내는 중…")
+                  : (isReply ? "답장 보내기" : `${recipientCount}명에게 보내기`)}
               </button>
             </div>
           </>
@@ -1519,6 +1642,7 @@ export default function MemoSection() {
    */
   const [selectedMemoId, setSelectedMemoId] = useState<string | null>(null);
   const [showCompose, setShowCompose] = useState(false);
+  const [replyTargetMemo, setReplyTargetMemo] = useState<MemoItem | null>(null);
   const [inboxLoading, setInboxLoading] = useState(true);
   const [sentLoading, setSentLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1572,6 +1696,9 @@ export default function MemoSection() {
   const selectedMemo =
     (tab === "inbox" ? inboxMemos : sentMemos).find((m) => m.id === selectedMemoId) || null;
   const loading = tab === "inbox" ? inboxLoading : sentLoading;
+
+  // 전체 쪽지 목록 (주고받은 이력 계산용 — reply spec §2·§3)
+  const allMemos = useMemo(() => [...inboxMemos, ...sentMemos], [inboxMemos, sentMemos]);
 
   // ── 받은쪽지함 구독
   useEffect(() => {
@@ -1667,7 +1794,7 @@ export default function MemoSection() {
         <div className="flex gap-1">
           <button
             onClick={() => { setTab("inbox"); setSelectedMemoId(null); }}
-            className={`relative flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            className={`relative flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
               tab === "inbox" ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"
             }`}
           >
@@ -1682,7 +1809,7 @@ export default function MemoSection() {
           </button>
           <button
             onClick={() => { setTab("sent"); setSelectedMemoId(null); }}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
               tab === "sent" ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"
             }`}
           >
@@ -1690,8 +1817,11 @@ export default function MemoSection() {
           </button>
         </div>
         <button
-          onClick={() => setShowCompose(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold rounded-lg transition-colors border border-indigo-200"
+          onClick={() => {
+            setReplyTargetMemo(null);
+            setShowCompose(true);
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold rounded-lg transition-colors border border-indigo-200 cursor-pointer"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -1758,13 +1888,26 @@ export default function MemoSection() {
               myEmail={myEmail}
               profileMap={profileMap}
               gwsNameMap={gwsNameMap}
+              allMemos={allMemos}
+              onSelectMemo={(m, targetTab) => {
+                setTab(targetTab);
+                handleSelectMemo(m);
+              }}
+              onReply={
+                tab === "inbox"
+                  ? () => {
+                      setReplyTargetMemo(selectedMemo);
+                      setShowCompose(true);
+                    }
+                  : undefined
+              }
               onClose={() => setSelectedMemoId(null)}
             />
           </div>
         )}
       </div>
 
-      {/* 쪽지 쓰기 모달 */}
+      {/* 쪽지 쓰기 / 답장 모달 */}
       {showCompose && (
         <ComposeModal
           myEmail={myEmail}
@@ -1774,8 +1917,16 @@ export default function MemoSection() {
           gwsNameMap={gwsNameMap}
           profileError={profileError}
           deptOrder={deptOrder}
-          onClose={() => setShowCompose(false)}
-          onSent={() => { setTab("sent"); setSelectedMemoId(null); }}
+          replyToMemo={replyTargetMemo}
+          onClose={() => {
+            setShowCompose(false);
+            setReplyTargetMemo(null);
+          }}
+          onSent={() => {
+            setTab("sent");
+            setSelectedMemoId(null);
+            setReplyTargetMemo(null);
+          }}
         />
       )}
     </div>
