@@ -25,8 +25,8 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case "list": {
-        const items = await listNotifications(domain, email);
-        return NextResponse.json({ success: true, action, items });
+        const { items, hasMore } = await listNotifications(domain, email, body.limit);
+        return NextResponse.json({ success: true, action, items, hasMore });
       }
 
       case "mark_read": {

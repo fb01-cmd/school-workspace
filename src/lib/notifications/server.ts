@@ -121,15 +121,17 @@ export async function emitNotificationsBatch(domain: string, inputs: EmitInput[]
  *  보존 180일·승격 4종이라 1인당 문서 수가 작다(수십 건). 커지면 복합 색인 도입. */
 export async function listNotifications(
   domain: string,
-  email: string
-): Promise<Array<NotificationDoc & { id: string }>> {
+  email: string,
+  limit: number = NOTIF_LIST_LIMIT
+): Promise<{ items: Array<NotificationDoc & { id: string }>; hasMore: boolean }> {
+  const capped = Math.max(1, Math.min(Number(limit) || NOTIF_LIST_LIMIT, 200)); // 더 보기 상한 (스펙 §6)
   const snap = await notificationsColRef(domain)
     .where("recipientEmail", "==", email.trim().toLowerCase())
     .get();
-  return snap.docs
+  const all = snap.docs
     .map((d) => ({ id: d.id, ...(d.data() as NotificationDoc) }))
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, NOTIF_LIST_LIMIT);
+    .sort((a, b) => b.createdAt - a.createdAt);
+  return { items: all.slice(0, capped), hasMore: all.length > capped };
 }
 
 /** 열람 처리 — 미열람 전건 read 표시 + 카운터 재동기화(0). 자가 치유가 곧 리셋이다 (스펙 §2). */

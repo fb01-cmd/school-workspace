@@ -8,10 +8,10 @@ import { listNotifications, markAllNotificationsRead } from "../src/lib/notifica
 async function main() {
   const domain = "hmh.or.kr";
   const ghost = "notif-selftest-ghost@hmh.or.kr";
-  const items = await listNotifications(domain, ghost);
+  const { items, hasMore } = await listNotifications(domain, ghost);
   const marked = await markAllNotificationsRead(domain, ghost);
-  const ok = Array.isArray(items) && items.length === 0 && marked === 0;
-  console.log(`${ok ? "✅" : "❌"} 질의 경로 (본인 필터·미열람 동등 필터·색인 불요) — 목록 ${items.length}건 · 열람 처리 ${marked}건`);
+  const ok = Array.isArray(items) && items.length === 0 && hasMore === false && marked === 0;
+  console.log(`${ok ? "✅" : "❌"} 질의 경로 (본인 필터·미열람 동등 필터·색인 불요) — 목록 ${items.length}건 · 더보기 ${hasMore} · 열람 처리 ${marked}건`);
   process.exit(ok ? 0 : 1);
 }
 main().catch((e) => {
