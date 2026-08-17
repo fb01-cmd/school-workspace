@@ -870,13 +870,13 @@ export default function AdminPage() {
               </h1>
             </div>
             <div className="flex items-center gap-3">
-              <NotificationCenter />
               <PWAInstallPrompt onOpenGuide={() => setActiveMenu("pwa_guide")} />
               <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
                 isSuperAdmin ? "bg-indigo-100 text-indigo-800" : "bg-gray-100 text-gray-800"
               }`}>
                 {isSuperAdmin ? "수퍼어드민 권한" : "교사 권한"}
               </span>
+              <NotificationCenter />
             </div>
           </header>
 

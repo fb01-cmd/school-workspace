@@ -288,27 +288,37 @@ export default function StudentPortal() {
 
   return (
     <RouteGuard allowedRoles={["student"]}>
-      <div className="min-h-screen bg-slate-50 p-6 sm:p-8">
-        <div className="max-w-5xl mx-auto space-y-6">
-          
-          {/* Header Dashboard Banner */}
-          <div className="bg-gradient-to-r from-indigo-700 via-indigo-800 to-violet-800 rounded-2xl text-white p-6 sm:p-8 shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <span className="bg-indigo-500/30 text-indigo-200 px-3 py-1 rounded-full text-xs font-semibold">학생 포털</span>
-              <h1 className="text-2xl sm:text-3xl font-black mt-2 tracking-tight">효명고등학교 계정관리시스템</h1>
-              <p className="text-indigo-200 text-sm mt-1">환영합니다! {userData?.email} 학생의 개인 대시보드입니다.</p>
+      <div className="min-h-screen bg-slate-50 text-slate-900">
+        {/* Top Navbar Header */}
+        <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-2xs">
+          <div className="max-w-5xl mx-auto px-4 sm:px-8 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🏫</span>
+              <span className="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight">
+                효명고등학교
+              </span>
+              <span className="hidden sm:inline-block bg-indigo-50 text-indigo-700 border border-indigo-100 text-[11px] font-semibold px-2 py-0.5 rounded-full">
+                학생 포털
+              </span>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="bg-white/10 rounded-xl">
-                <NotificationCenter />
-              </div>
+            <div className="flex items-center gap-2">
               <button
                 onClick={handleLogout}
-                className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-semibold transition-all border border-white/10 hover:border-white/20 cursor-pointer"
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
               >
                 로그아웃
               </button>
+              <NotificationCenter />
             </div>
+          </div>
+        </header>
+
+        <div className="max-w-5xl mx-auto p-4 sm:p-6 md:p-8 space-y-6">
+          {/* Header Dashboard Banner */}
+          <div className="bg-gradient-to-r from-indigo-700 via-indigo-800 to-violet-800 rounded-2xl text-white p-6 sm:p-8 shadow-md">
+            <span className="sm:hidden bg-indigo-500/30 text-indigo-200 px-2.5 py-0.5 rounded-full text-xs font-semibold">학생 포털</span>
+            <h1 className="text-2xl sm:text-3xl font-black mt-1 sm:mt-0 tracking-tight">효명고등학교 계정관리시스템</h1>
+            <p className="text-indigo-200 text-sm mt-1">환영합니다! {userData?.email} 학생의 개인 대시보드입니다.</p>
           </div>
 
           {/* 🔔 알림 설정 관리자 */}

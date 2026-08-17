@@ -221,7 +221,7 @@ export default function NotificationCenter() {
   // Close on outside click
   useEffect(() => {
     if (!isOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       if (
         panelRef.current &&
         !panelRef.current.contains(e.target as Node) &&
@@ -232,7 +232,11 @@ export default function NotificationCenter() {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
   }, [isOpen]);
 
   // Close on ESC
@@ -489,7 +493,7 @@ export default function NotificationCenter() {
       {isOpen && (
         <div
           ref={panelRef}
-          className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-800 z-50 overflow-hidden font-sans animate-in fade-in slide-in-from-top-2 duration-150"
+          className="fixed sm:absolute right-3 sm:right-0 top-14 sm:top-full mt-1 sm:mt-2 w-[min(384px,calc(100vw-1.5rem))] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-800 z-50 overflow-hidden font-sans animate-in fade-in slide-in-from-top-2 duration-150"
         >
           {/* 패널 헤더 */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-850/80 backdrop-blur-xs">

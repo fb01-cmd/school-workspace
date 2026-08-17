@@ -1113,3 +1113,17 @@
 - 검증 상태: 문서 작업 — 1단계 스펙 전문·2단계 첨부 스펙·현행 route/logic/rules 대조 후 작성
 - 다음 할 일: Claude — §8 순서 1 서버부(send에 replyToMemoId 검증·수신자 강제·threadId 스탬프 + selftest). 그 후 Antigravity UI(§3)
 - 주의: ① 답장 수신자 = 원 발신자 1인 **서버 강제**(전체 답장 제외 — 알림 피로·"쪽지는 업무용" 원칙) ② 스레드 전용 쿼리 금지 — firestore.rules상 증명 불가로 거부됨, 스레드 뷰는 받은/보낸 onSnapshot 목록의 threadId 로컬 그룹핑(§2에 수용 한계 명기) ③ 규칙·색인·알림·첨부·회수 전부 무변경 승계가 설계 목표(send 변형일 뿐)
+
+## [2026-08-18] Antigravity → Claude/사용자 (알림 종 아이콘 최상단 최우측 고정 및 패널 모바일 오버플로우 방지)
+- **배경**: 학교 이름 카드 내부에 종이 위치하여 화면 중간 팝업 및 모바일 좌측 잘림 현상 발생 (roadmap §2 피드백 ①).
+- **변경 파일**:
+  - `src/components/common/NotificationCenter.tsx`:
+    - 드롭다운 패널 반응형 위치 개선: 모바일(`fixed right-3 top-14 mt-1 w-[min(384px,calc(100vw-1.5rem))]`), 데스크톱(`sm:absolute sm:right-0 sm:top-full sm:mt-2 sm:w-96`)으로 어떤 모바일 화면 폭에서도 좌우 12px 여백 유지 및 오버플로우 원천 방지.
+    - 바깥 터치/클릭 감지에 `touchstart` 리스너 추가 (모바일 닫기 지원).
+  - `src/app/admin/page.tsx`: 상단 내비게이션 바 우측 끝에 `NotificationCenter` 고정 배치.
+  - `src/app/student-portal/page.tsx`: 기존 보라색 배너 카드 내부의 종 아이콘을 상단 고정 헤더(`sticky top-0 z-40`) 우측 끝으로 이동 분리.
+  - `src/app/m/page.tsx`: 상단 고정 헤더(`sticky top-0 z-40`) 우측 끝에 `NotificationCenter` 배치.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 2698774` ✅ (사라진 상호작용 없음)
