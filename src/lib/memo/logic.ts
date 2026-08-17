@@ -9,6 +9,8 @@ export const MEMO_MAX_SUMMARY = 100;
 export const MEMO_DEFAULT_RETENTION_DAYS = 365;
 export const MEMO_GROUP_MAX_DEPTH = 3;
 
+import type { AttachmentShareMode, MemoAttachment } from "./attachment_logic";
+
 export interface MemoLink {
   url: string;
   label?: string;
@@ -31,6 +33,12 @@ export interface MemoDoc {
   recalledAt?: number;
   /** 지금까지 회수된 인원 누계 — 보낸 이력이 왜곡되지 않게 남긴다 (§12-2) */
   recalledCount?: number;
+  /** 첨부 참조 (2단계 attachment spec §3-1) — 파일 실체는 hmnotice@ Drive, ≤5개 */
+  attachments?: MemoAttachment[];
+  /** 첨부 열람 권한 방식 — 전 교직원 공지만 domain (attachment spec §3-3) */
+  attachmentShareMode?: AttachmentShareMode;
+  /** 권한 부여 실패분 잔존 — 다음 발송·크론이 재시도 (attachment spec §3-3) */
+  permissionPending?: boolean;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -149,7 +157,7 @@ export interface ResolvedRecipients {
   invalidFormat: string[];
 }
 
-function isStudentOuPath(path: string | null | undefined): boolean {
+export function isStudentOuPath(path: string | null | undefined): boolean {
   if (!path) return false;
   return path === "/학생" || path.startsWith("/학생/");
 }

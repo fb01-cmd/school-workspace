@@ -1050,3 +1050,9 @@
 - **결정된 원칙(신규)**: 실무자 관행에 처방 금지 / 알림=원장·푸시=초인종·입구는 벨 하나 / 양해는 "문구 달라도 프로세스 동일"(교사·일과계) / 독촉 대행 금지
 - **다음 작업(사용자 확정)**: 쪽지 2단계(이미지 첨부) — memo_attachment_spec §8 순서 1·2(서버: attach_upload·staging 대조·권한 부여·폴더 관리·검증)가 Claude 몫. **주의: 스펙 §5(양해 쪽지 전송 버튼)는 오늘 구현된 알림 양해 왕복과 겹침 — 착수 시 §5 존폐/축소를 먼저 판단할 것**
 - **잔여 소품**: TTL 콘솔 설정(사용자 콘솔 접속 시)·프로필 승인 알림 배선·양해 왕복 실기기 확인(상대 계정 필요)
+
+## [2026-08-18] Claude(Fable) → Antigravity/사용자 (쪽지 2단계 서버부 완결 + §5 양해 쪽지 버튼 폐지 판정)
+- 변경 파일: docs/memo_attachment_spec.md(§5 폐지 판정·§8/§9 갱신)·development_roadmap.md(같은 판정 기록)·src/lib/memo/{attachment_logic,attachments}.ts(신설)·src/lib/memo/logic.ts(MemoDoc 첨부 필드)·src/app/api/memo/route.ts(attach_upload·send 확장·recall 권한 회수·attachment_quota)·scripts/memo_attachment_selftest.ts(신설)
+- 검증 상태: tsc ✅ / build ✅ / memo_attachment_selftest ✅ (순수 19건 + 실계정 사이클 — 업로드→staging 위조·재사용 차단→파일명 확정→수신자 권한 실측→회수→파기, 흔적 0)
+- 다음 할 일: Antigravity — 쓰기 첨부 UI·읽기 썸네일 (스펙 §4, 인계 프롬프트는 이번 답변 말미)
+- 주의: ① **§5(양해 쪽지 전송 버튼) 폐지** — 알림 양해 왕복이 상위 호환 대체, 해당 UI 만들지 말 것(스펙 §5 판정) ② 발송 payload의 attachments는 **driveFileId 문자열 배열만** — 이름·링크 등 메타데이터는 서버가 staging에서 복원(클라이언트 값 불신) ③ 업로드 = POST /api/memo **multipart**(필드명 "file", 장당 1요청, 응답 {attachment}) ④ 권한 부여는 응답 후 비동기(after) — 수신자가 즉시 클릭하면 Drive "권한 요청" 화면 가능(스펙이 수용, 다음 발송 때 재시도 수렴) ⑤ 실측: hmnotice@ Drive는 학교 풀 용량(≈101TB 중 10.4TB 사용) — 스펙 §1의 15GB 가정은 과보수, 파기 주기 압박 없음 ⑥ 파기 크론(§8 순서 5)·staging 24h 고아 정리는 미구현 잔여 — 크론 구현 시 platform_config/attachment_folders 캐시 키 정리 포함(attachments.ts 주석 참조)

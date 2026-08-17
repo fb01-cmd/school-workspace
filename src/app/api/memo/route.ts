@@ -6,18 +6,33 @@ import {
   MemoDoc,
   computeRecall,
   expandGroupEmails,
+  isStudentOuPath,
   isValidEmailFormat,
   resolveRecipients,
   resolveRetentionDays,
   validateMemoContent,
 } from "@/lib/memo/logic";
+import {
+  decideAttachmentShareMode,
+  validateAttachmentIds,
+  validateAttachmentUpload,
+} from "@/lib/memo/attachment_logic";
+import {
+  deleteStagingDocs,
+  finalizeMemoAttachments,
+  getAttachmentQuota,
+  resolveStagedAttachments,
+  retryPendingAttachmentGrants,
+  revokeAttachmentAccess,
+  uploadMemoAttachment,
+} from "@/lib/memo/attachments";
 import { listGroupMembers, listUsersInOUs } from "@/lib/google/workspace";
 import { notifyMemo } from "@/lib/push/webpush";
 import { emitNotificationsBatch } from "@/lib/notifications/server";
 import { FieldPath } from "firebase-admin/firestore";
 import { NextRequest, NextResponse, after } from "next/server";
 
-type MemoAction = "send" | "read" | "recall";
+type MemoAction = "send" | "read" | "recall" | "attachment_quota";
 
 const memoItemsColRef = (domain: string) =>
   adminDb.collection("memos").doc(domain).collection("items");
@@ -50,6 +65,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 첨부 업로드 (attachment spec §3-2) — 유일한 multipart 액션이라 본문 파서 앞에서 분기.
+    // 자격 게이트(승인 교직원)는 위에서 이미 통과했다.
+    const contentType = req.headers.get("content-type") || "";
+    if (contentType.includes("multipart/form-data")) {
+      const form = await req.formData().catch(() => null);
+      const file = form?.get("file");
+      if (!(file instanceof File)) {
+        return NextResponse.json({ error: "첨부할 이미지를 확인하지 못했습니다." }, { status: 400 });
+      }
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const checked = validateAttachmentUpload({ name: file.name, mimeType: file.type, bytes: buffer });
+      if (!checked.ok) {
+        return NextResponse.json({ error: checked.error }, { status: 400 });
+      }
+      try {
+        const attachment = await uploadMemoAttachment({
+          uploaderEmail: email,
+          domain,
+          safeName: checked.safeName,
+          mimeType: checked.mimeType,
+          buffer,
+        });
+        return NextResponse.json({ success: true, action: "attach_upload", attachment });
+      } catch (e: any) {
+        console.error("[api/memo] 첨부 업로드 실패:", e?.message || e);
+        return NextResponse.json(
+          { error: "이미지 업로드에 실패했습니다. 잠시 후 다시 시도해 주세요." },
+          { status: 502 }
+        );
+      }
+    }
+
     const body = await req.json().catch(() => ({} as any));
     const action: MemoAction = body.action;
 
@@ -58,6 +105,11 @@ export async function POST(req: NextRequest) {
         const validated = validateMemoContent(body);
         if (!validated.ok) {
           return NextResponse.json({ error: validated.error }, { status: 400 });
+        }
+        // 첨부는 driveFileId 배열만 받는다 — 메타데이터는 staging이 원본 (attachment spec §3-2)
+        const attIds = validateAttachmentIds(body.attachments);
+        if (!attIds.ok) {
+          return NextResponse.json({ error: attIds.error }, { status: 400 });
         }
 
         // 수신자 원자료 — 형식·개수 방어
@@ -148,6 +200,18 @@ export async function POST(req: NextRequest) {
         }
 
 
+        // 첨부 대조 — 발신자 본인이 방금 올린 파일만 통과 (attachment spec §3-2)
+        const staged = await resolveStagedAttachments(attIds.ids, email, domain);
+        if (!staged.ok) {
+          return NextResponse.json({ error: staged.error }, { status: 400 });
+        }
+        // 전 교직원 공지면 개별 권한 대신 도메인 내부 링크 공유 (attachment spec §3-3 예외)
+        const staffCount = directory.filter((u: any) => !isStudentOuPath(u.orgUnitPath)).length;
+        const attachmentShareMode =
+          staged.attachments.length > 0
+            ? decideAttachmentShareMode(resolved.accepted.length, staffCount)
+            : undefined;
+
         // 보존 기한 — 발송 시 즉시 스탬프 (스펙 §6)
         const settingsSnap = await adminDb.collection("settings").doc(domain).get();
         const retentionDays = resolveRetentionDays(settingsSnap.data()?.memoRetentionDays);
@@ -165,9 +229,33 @@ export async function POST(req: NextRequest) {
           reads: {},
           createdAt: now,
           expireAt: now + retentionDays * 24 * 3600 * 1000,
+          ...(staged.attachments.length > 0
+            ? { attachments: staged.attachments, attachmentShareMode }
+            : {}),
         };
         const ref = memoItemsColRef(domain).doc();
         await ref.set(doc);
+
+        // 첨부 마무리 — staging 소거(재사용 차단) → 파일명 확정·권한 부여 → 잔존 실패분 수습.
+        // 응답 후 실행: 권한 부여는 수신자 수만큼 Drive 콜이라 응답을 붙잡지 않는다 (attachment spec §3-3).
+        if (staged.attachments.length > 0) {
+          after(async () => {
+            try {
+              await deleteStagingDocs(attIds.ids);
+              await finalizeMemoAttachments({
+                domain,
+                memoId: ref.id,
+                attachments: staged.attachments,
+                recipients: resolved.accepted,
+                shareMode: attachmentShareMode!,
+              });
+              await retryPendingAttachmentGrants(domain);
+            } catch (e) {
+              console.error("[api/memo] 첨부 마무리 실패:", (e as Error)?.message);
+              await ref.set({ permissionPending: true }, { merge: true }).catch(() => {});
+            }
+          });
+        }
 
         // 웹 푸시 — 응답 후 발송, 실패해도 저장에 영향 없음 (스펙 §2-6·§5)
         after(() =>
@@ -193,6 +281,9 @@ export async function POST(req: NextRequest) {
           action,
           memoId: ref.id,
           recipientCount: resolved.accepted.length,
+          ...(staged.attachments.length > 0
+            ? { attachmentCount: staged.attachments.length, attachmentShareMode }
+            : {}),
           excluded: {
             notFound: resolved.notFound.slice(0, 20),
             students: resolved.students.length,
@@ -252,14 +343,50 @@ export async function POST(req: NextRequest) {
             // 누계로 쌓는다 — 덮어쓰면 앞선 회수 이력이 사라진다
             recalledCount: (memo.recalledCount || 0) + recalled.length,
           });
-          return { recalledCount: recalled.length, remainingCount: keep.length };
+          return {
+            recalledCount: recalled.length,
+            remainingCount: keep.length,
+            recalledEmails: recalled,
+            attachments: memo.attachments || [],
+            shareMode: memo.attachmentShareMode,
+          };
         });
 
         if ("fail" in outcome && outcome.fail) {
           return NextResponse.json({ error: outcome.fail.error }, { status: outcome.fail.status });
         }
+        // 첨부 열람 권한 = 쪽지 열람 집합 (attachment spec §0-3) — 회수된 미열람자의 reader도 거둔다.
+        // 도메인 공유(전 교직원 공지)는 개인 단위 회수가 불가능하므로 제외.
+        if (
+          "recalledEmails" in outcome &&
+          outcome.recalledCount > 0 &&
+          Array.isArray(outcome.attachments) &&
+          outcome.attachments.length > 0 &&
+          outcome.shareMode !== "domain"
+        ) {
+          const { attachments, recalledEmails = [] } = outcome;
+          after(() =>
+            revokeAttachmentAccess(attachments, recalledEmails).catch((e) =>
+              console.warn("[api/memo] 회수 첨부 권한 정리 실패:", (e as Error)?.message)
+            )
+          );
+        }
         // 푸시는 되돌릴 수 없다(잠금화면에 발신자·제목이 이미 남았다) — 화면이 안내한다(§12-2).
-        return NextResponse.json({ success: true, action, ...outcome });
+        return NextResponse.json({
+          success: true,
+          action,
+          recalledCount: outcome.recalledCount,
+          remainingCount: outcome.remainingCount,
+        });
+      }
+
+      case "attachment_quota": {
+        // 운영 액션 (attachment spec §7) — 첨부 저장 계정 Drive 사용량. 관리자 전용.
+        if (userData.role !== "super_admin") {
+          return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });
+        }
+        const quota = await getAttachmentQuota();
+        return NextResponse.json({ success: true, action, quota });
       }
 
       default:
