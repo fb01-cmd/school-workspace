@@ -622,6 +622,30 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     }
   };
 
+  // 양해 요청 보내기 (notification_center_spec §4, §5c-9-3)
+  const [sendingConsentDraftId, setSendingConsentDraftId] = useState<string | null>(null);
+
+  const handleSendConsentRequest = async (draftId: string) => {
+    setSendingConsentDraftId(draftId);
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "consent_request", draftId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "양해 요청 전송에 실패했습니다.");
+      }
+      alert("상대 선생님께 양해 요청 알림을 보냈습니다.");
+      await refreshDrafts();
+    } catch (err: any) {
+      alert(`오류: ${err.message}`);
+    } finally {
+      setSendingConsentDraftId(null);
+    }
+  };
+
   const handleCopyDraftShareImage = async (draft: SwapDraft) => {
     try {
       const isCrossWeek = !!(draft.targetWeekId && draft.targetWeekId !== draft.sourceWeekId);
@@ -1378,19 +1402,42 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         {draftGroups.size > 0 && (
           <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
             <span className="text-[11px] font-bold text-gray-500">📨 신청 전 양해 구하기 (상대별 이미지 복사):</span>
-            {Array.from(draftGroups.entries()).map(([email, g]) => (
-              <button
-                key={email}
-                onClick={() => handleCopyConsolidatedShare(email)}
-                disabled={!!generatingShareFor}
-                className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 disabled:opacity-50 border border-sky-200 text-sky-800 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
-              >
-                <span>📋</span>
-                <span>
-                  {generatingShareFor === email ? "이미지 생성 중…" : `${g.name} 선생님 (${g.drafts.length}건)`}
-                </span>
-              </button>
-            ))}
+            {Array.from(draftGroups.entries()).map(([email, g]) => {
+              const allConsented = g.drafts.every((d) => d.consentStatus === "CONSENTED");
+              const anyRequested = g.drafts.some((d) => d.consentStatus === "REQUESTED");
+              return (
+                <div key={email} className="inline-flex items-center gap-1 bg-sky-50 border border-sky-200 rounded-lg p-1">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyConsolidatedShare(email)}
+                    disabled={!!generatingShareFor}
+                    title="양해 이미지 복사"
+                    className="px-2.5 py-1 hover:bg-sky-100 disabled:opacity-50 text-sky-800 rounded-md text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>📋</span>
+                    <span>
+                      {generatingShareFor === email ? "생성 중…" : `${g.name} 선생님 (${g.drafts.length}건)`}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      for (const d of g.drafts) {
+                        if (d.consentStatus !== "CONSENTED") {
+                          await handleSendConsentRequest(d.id);
+                        }
+                      }
+                    }}
+                    disabled={!!sendingConsentDraftId || allConsented}
+                    title="양해 요청 알림 보내기"
+                    className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-md text-[11px] font-bold transition-colors disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>📨</span>
+                    <span>{allConsented ? "양해 수락됨" : anyRequested ? "다시 요청" : "양해 요청"}</span>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -2544,6 +2591,21 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                             ⚠️ 양해 필수
                           </span>
                         )}
+                        {draft.consentStatus === "REQUESTED" && (
+                          <span className="text-[10px] bg-blue-100 text-blue-900 border border-blue-300 font-bold px-1.5 py-0.5 rounded">
+                            📨 양해 대기 중
+                          </span>
+                        )}
+                        {draft.consentStatus === "CONSENTED" && (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold px-1.5 py-0.5 rounded">
+                            ✅ 양해 수락됨
+                          </span>
+                        )}
+                        {draft.consentStatus === "DECLINED" && (
+                          <span className="text-[10px] bg-rose-100 text-rose-900 border border-rose-300 font-bold px-1.5 py-0.5 rounded">
+                            ❌ 양해 거절됨
+                          </span>
+                        )}
                         <span className="text-gray-400 text-[10px]">
                           · {new Date(draft.updatedAt).toLocaleDateString("ko-KR")} 저장
                         </span>
@@ -2589,6 +2651,26 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       className="flex-1 min-w-[120px] py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
                     >
                       {submittingDraftId === draft.id ? "신청 중..." : "이 안으로 신청"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSendConsentRequest(draft.id)}
+                      disabled={sendingConsentDraftId === draft.id || draft.consentStatus === "CONSENTED"}
+                      className="py-1.5 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold rounded-lg text-xs border border-amber-300 transition-colors shrink-0 disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                    >
+                      {sendingConsentDraftId === draft.id ? (
+                        <span className="animate-spin rounded-full h-3 w-3 border-2 border-amber-800 border-t-transparent" />
+                      ) : (
+                        <span>📨</span>
+                      )}
+                      <span>
+                        {draft.consentStatus === "REQUESTED"
+                          ? "양해 다시 요청"
+                          : draft.consentStatus === "CONSENTED"
+                          ? "양해 수락 완료"
+                          : "양해 요청 보내기"}
+                      </span>
                     </button>
 
                     <button
@@ -3551,6 +3633,16 @@ export default function TeacherPortalSection() {
         .catch(() => {})
         .finally(() => setLoading(false));
     }
+  }, []);
+
+  useEffect(() => {
+    const handlePortalNav = (e: any) => {
+      if (e.detail?.tab && ["my_tt", "my_requests", "other"].includes(e.detail.tab)) {
+        setActiveTab(e.detail.tab);
+      }
+    };
+    window.addEventListener("teacher_portal_nav", handlePortalNav);
+    return () => window.removeEventListener("teacher_portal_nav", handlePortalNav);
   }, []);
 
   // 학생 전면 차단

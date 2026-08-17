@@ -15,6 +15,7 @@ export interface UserData {
     version: string;
     ackedAt: any;
   };
+  unreadNotifCount?: number;
 }
 
 // 홈 화면에 설치한 앱(standalone)으로 실행 중인지. iOS는 이 모드에서 팝업 로그인이

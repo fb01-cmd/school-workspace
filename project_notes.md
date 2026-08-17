@@ -936,3 +936,23 @@
 - 검증 상태: tsc ✅ / build ✅ / verify_notifications(읽기 전용 스모크) ✅
 - 다음 할 일: ① Antigravity — 벨·목록·수락 버튼 UI(스펙 §6, API: /api/notifications list·mark_read·consent_decide, 배지 = userData.unreadNotifCount) ② 사용자 or Claude — Firestore 콘솔에서 notifications 컬렉션 그룹 TTL 정책(expireAt) 1회 설정 ③ 후속 — 프로필 승인(행정 처리 유형) 발생 지점 배선, 양해 카드 UI에 consent_request 액션 연결
 - 주의: ① 원장 발생 3종 배선 완료(수업 변경 전 경로[webpush 단일 지점]·신청 승인/반려·쪽지 발송), 행정 처리는 자리만 ② 푸시는 기존 경로 유지(이중 발송 방지) — emitNotification은 저장·카운터만 ③ 수업 변경 원장은 교사만(학생은 푸시만 — 문서 폭발 방지) ④ consent_decide는 swap_draft의 consentStatus를 REQUESTED→CONSENTED/DECLINED로 전이하고 신청자에게 결과 알림(365일 보존)
+
+## [2026-08-18] Antigravity → Claude/사용자 (알림 센터 화면 UI & 양해 요청 연동 완료)
+- **변경 파일**:
+  - `src/lib/firebase/auth.ts`: `UserData` 인터페이스에 `unreadNotifCount?: number` 필드 추가.
+  - `src/components/common/NotificationCenter.tsx` (신설):
+    - 상단 벨(🔔) 아이콘 및 미열람 배지(AuthContext의 `userData.unreadNotifCount`를 그대로 구독하여 추가 읽기 비용 0원).
+    - 벨 클릭 시 `POST /api/notifications` `{ action: "list" }`로 최신 30건 조회 및 동시에 `{ action: "mark_read" }` 호출(자가 치유 및 배지 0 리셋).
+    - 원본 바로가기(딥링크): 쪽지(`memo`), 신청 처리(`swap_request`), 수업 변경(`weekly`/`timetable_change`), 양해 초안(`swap_draft`)별 맞춤 이동.
+    - 양해 수락 창구: `actionable.state === "pending"` 항목에 `[🤝 양해합니다]` / `[어렵습니다]` 버튼 연동 (`action: "consent_decide"`).
+    - UI Copy Rules 준수: 기술 용어 배제, 빈 목록 문구 *"새로 확인할 알림이 없습니다."*, 교사·학생 공통 레이아웃.
+  - `src/app/admin/page.tsx`, `src/app/student-portal/page.tsx`, `src/app/m/page.tsx`: 각 상단 헤더에 `NotificationCenter` 컴포넌트 탑재.
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`:
+    - `teacher_portal_nav` 커스텀 이벤트 리스너 추가 (알림 딥링크와 탭 동기화).
+    - 초안 카드 및 융합 양해 섹션에 `[📨 양해 요청 보내기]` 버튼 배선 (`POST /api/timetable/requests` `{ action: "consent_request", draftId }`).
+    - 초안 카드에 `consentStatus` (`REQUESTED`, `CONSENTED`, `DECLINED`) 상태 배지 표시.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 63d94de` ✅ (사라진 상호작용 없음)
+  - `npx tsx --env-file=.env.local scripts/verify_notifications.ts` ✅ (질의 경로 전판 통과)

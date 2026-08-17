@@ -10,6 +10,7 @@ import { doc, getDoc } from "firebase/firestore";
 import StudentTimetableCard from "@/components/student/StudentTimetableCard";
 import MealCard from "@/components/common/MealCard";
 import PushNotificationManager from "@/components/common/PushNotificationManager";
+import NotificationCenter from "@/components/common/NotificationCenter";
 import CalendarSubscribeCard from "@/components/calendar/CalendarSubscribeCard";
 
 
@@ -297,12 +298,17 @@ export default function StudentPortal() {
               <h1 className="text-2xl sm:text-3xl font-black mt-2 tracking-tight">효명고등학교 계정관리시스템</h1>
               <p className="text-indigo-200 text-sm mt-1">환영합니다! {userData?.email} 학생의 개인 대시보드입니다.</p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-semibold transition-all border border-white/10 hover:border-white/20"
-            >
-              로그아웃
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="bg-white/10 rounded-xl">
+                <NotificationCenter />
+              </div>
+              <button
+                onClick={handleLogout}
+                className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-semibold transition-all border border-white/10 hover:border-white/20 cursor-pointer"
+              >
+                로그아웃
+              </button>
+            </div>
           </div>
 
           {/* 🔔 알림 설정 관리자 */}

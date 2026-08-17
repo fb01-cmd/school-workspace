@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import RouteGuard from "@/components/RouteGuard";
 import { logOut } from "@/lib/firebase/auth";
 import PushNotificationManager from "@/components/common/PushNotificationManager";
+import NotificationCenter from "@/components/common/NotificationCenter";
 import MealCard from "@/components/common/MealCard";
 import TodayTimetableCard from "@/components/mobile/TodayTimetableCard";
 import MobileMemoSection from "@/components/mobile/MobileMemoSection";
@@ -44,12 +45,15 @@ export default function MobileTeacherHome() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleSignOut}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            >
-              로그아웃
-            </button>
+            <div className="flex items-center gap-2">
+              <NotificationCenter />
+              <button
+                onClick={handleSignOut}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                로그아웃
+              </button>
+            </div>
           </header>
 
           {/* 2. 알림 켜기 */}
