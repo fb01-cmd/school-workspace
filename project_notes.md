@@ -844,3 +844,9 @@
   - `npx tsx scripts/verify_subject_dict.ts` ✅ (11개 항목 전판 통과)
   - `npx tsx --env-file=.env.local scripts/verify_hours_hwpx.ts` ✅ ([0]~[7] 전판 통과)
 
+
+## [2026-08-17] Claude(Fable) → 사용자 (단일 사전 §5 2단계 완결 — 느슨 매칭 폴백 제거)
+- 변경 파일: src/lib/timetable/{simul,solver}.ts·scripts/verify_subject_dict.ts([7] 갱신)·docs/subject_dictionary_spec.md·development_roadmap.md
+- 검증 상태: tsc ✅ / build ✅ / verify_subject_dict 11항 ✅ / verify_hours_hwpx 회귀 ✅ / 감사 전 학기 0건(제거 전·후 동일) ✅
+- 다음 할 일: 없음 — 작업 7 전체 종결. 다음 배정표 불러오기·자동 작성에서 "임시 연결" 문구가 더는 안 뜨는 것이 정상
+- 주의: 제거 범위는 런타임 판정 3곳(시뮬 매처·venueProbe·솔버 구성원)뿐 — 관문 보조(후보 제안·조립 힌트·현황 대조)는 제안·고지 엔진으로 존치(4cac058 확정의 그 자리). subjectMatches/subjectStemLoose의 소비자는 이제 hoursAssignment(관문 계열)와 suggestCandidates뿐

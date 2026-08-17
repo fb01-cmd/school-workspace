@@ -142,16 +142,16 @@ const S = (name: string, shortName: string, aliases?: string[]): TimetableSubjec
     slots: [],
     active: true,
   } as unknown as SimulGroup;
-  // 사전 없음 → 어젯밤 느슨 다리 그대로: "지구과학Ⅱ"가 태그 "지구과학"에 붙는다 (전환 1단계 안전망)
-  const looseBind = buildSimulMatcher([group])(2, 1, 1, 1, "지구과학Ⅱ") !== null;
+  // §5 2단계(폴백 제거) 이후: 사전이 없으면(판정 불능) 잇지 않는다 — 추측 소멸
+  const noDictNoBind = buildSimulMatcher([group])(2, 1, 1, 1, "지구과학Ⅱ") === null;
   // 사전이 지구과학·지구과학Ⅱ를 서로 다른 과목으로 알면 → 붙지 않는다 (내부 정확 일치만)
   const dict = [S("지구과학", "지구"), S("지구과학Ⅱ", "지2")];
   const dictBlocks = buildSimulMatcher([group], dict)(2, 1, 1, 1, "지구과학Ⅱ") === null;
   // 사전 별칭 확정("지구과학" 태그가 지구과학Ⅱ의 별칭) → 정확 일치로 붙는다
   const dict2 = [S("지구과학Ⅱ", "지2", ["지구과학"])];
   const dictBinds = buildSimulMatcher([group], dict2)(2, 1, 1, 1, "지구과학Ⅱ") !== null;
-  check("[7] 매처 — 사전 우선·폴백 강등", looseBind && dictBlocks && dictBinds,
-    `폴백 ${looseBind} · 사전 격리 ${dictBlocks} · 별칭 정확 일치 ${dictBinds}`);
+  check("[7] 매처 — 정확 일치만 (폴백 소멸)", noDictNoBind && dictBlocks && dictBinds,
+    `무사전 미연결 ${noDictNoBind} · 사전 격리 ${dictBlocks} · 별칭 정확 일치 ${dictBinds}`);
 }
 
 // [8] 신학기 도태 — 승계 항목 중 올해 안 쓰는 것이 새 등록을 막지 않는다 (실사고: 「논술」 vs 논술A/B 약칭)

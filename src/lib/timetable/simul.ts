@@ -10,7 +10,6 @@
  * 엔진·커밋 검증·화면은 이 필드 하나만 본다 (판정 단일 통로).
  */
 
-import { subjectMatches, subjectStemLoose } from "./hoursAssignment";
 import { buildSubjectIndex, sameSubjectExact } from "./subjectDict";
 import { ClassGrid, SimulGroup, SimulSlot, SubjectNameEntry, TimetableLesson } from "./types";
 
@@ -41,19 +40,12 @@ export function buildSimulMatcher(groups: SimulGroup[], subjects?: SubjectNameEn
     slots: g.slots?.length ? new Set(g.slots.map((s) => `${s.day}-${s.period}`)) : null,
   }));
   // 등록부는 분반 차수 표기("중화"·"인공Ⅱ"), 배정표 유래 수업은 정식 명칭.
-  // 1차 = 과목 사전 정확 일치(별칭 포함). 사전이 "서로 다른 과목"이라 확정하면 그걸로 끝 —
-  // 느슨 폴백을 시도하지 않는다(물Ⅰ/Ⅱ류 오연결 방지). 사전이 판정 불능일 때만
-  // 기존 느슨 매칭(약칭 부분열 → 그룹 한정 줄기)으로 폴백한다 — 전환 1단계 안전망
-  // (2026-08-17 H7 실사고의 임시 다리, 사전 확정이 쌓이면 §5의 조건으로 제거).
+  // 판정 = 정규화 동일 또는 과목 사전 정확 일치(별칭 포함)뿐이다. 느슨 매칭 폴백은
+  // 2026-08-17 §5 2단계에서 제거 — 감사(audit_subject_loose_binds) 전 학기 0건 확인 후.
+  // 사전이 모르는 조합은 잇지 않는다: 추측은 관문(suggestCandidates)에서 한 번, 사람이 확정한다.
   const nameHit = (g: (typeof prepared)[number], subj: string, subjectName: string) => {
     if (g.subjects.has(subj)) return true;
-    for (const s of g.subjectNamesRaw) {
-      const exact = sameSubjectExact(dict, s, subjectName);
-      if (exact === true) return true;
-      if (exact === false) continue;
-      if (subjectMatches(s, subjectName) || subjectStemLoose(s, subjectName)) return true;
-    }
-    return false;
+    return g.subjectNamesRaw.some((s) => sameSubjectExact(dict, s, subjectName) === true);
   };
   return (grade, classNum, day, period, subjectName) => {
     const subj = normSubject(subjectName);

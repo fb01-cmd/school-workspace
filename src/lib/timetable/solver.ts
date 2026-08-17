@@ -16,7 +16,6 @@
  * 소프트 가중치는 검사기(validate.ts S1~S6)와 동일 — 최종 판정은 반드시 validateTimetable 관문.
  */
 
-import { subjectMatches, subjectStemLoose } from "./hoursAssignment";
 import { buildSimulMatcher } from "./simul";
 import { buildSubjectIndex, sameSubjectExact } from "./subjectDict";
 import { buildVenueMatcher } from "./venue";
@@ -377,8 +376,8 @@ export interface BlankCompileIssue {
     | "simul-tag-mismatch" // 태그 행 합 ≠ 그룹 교시수 → 그 학급만 태그 무시하고 추정 폴백
     | "simul-tag-unknown" // 태그가 가리키는 그룹이 이 학기 등록부에 없음 → 일반 취급
     | "venue-hours-no-group" // venueHours가 있는데 특별실 등록부 미매치 → 힌트 무시
-    | "venue-hours-block-adjust" // venueHours가 연속 블록 경계와 어긋나 올림 배분 (고지성)
-    | "subject-loose-bind"; // 과목 사전 밖 이름을 느슨 매칭으로 임시 연결 — 관문 확정 유도 (subject_dictionary_spec §5)
+    | "venue-hours-block-adjust"; // venueHours가 연속 블록 경계와 어긋나 올림 배분 (고지성)
+  // ("subject-loose-bind"는 §5 2단계에서 폴백과 함께 제거 — 감사 0건 확인 2026-08-17)
   text: string;
 }
 
@@ -437,18 +436,6 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
 
   const venueGroups = (model.venueGroups || []).filter((g) => g.active);
   const subjectIndex = buildSubjectIndex(model.subjects);
-  // 전환 1단계 안전망 고지 — 느슨 폴백이 판정을 결정하면 수집해 확인 목록으로 노출
-  // (조용한 추측 금지, subject_dictionary_spec §5). 같은 쌍은 한 번만.
-  const looseBindSeen = new Set<string>();
-  const noteLooseBind = (registryName: string, subjectName: string, where: string) => {
-    const key = `${normSubject(registryName)}|${normSubject(subjectName)}|${where}`;
-    if (looseBindSeen.has(key)) return;
-    looseBindSeen.add(key);
-    issues.push({
-      code: "subject-loose-bind",
-      text: `${where} — 「${subjectName}」을 등록부 표기 「${registryName}」과 이름 유사성으로 임시 연결했습니다. 배정표 불러오기에서 과목 이름을 확정하면 이 임시 연결이 사라집니다`,
-    });
-  };
   /** 슬롯 무관 특별실 조회 — 배치 전이라 (요일,교시)가 없으므로 매처를 못 쓴다 */
   const venueProbe = (
     grade: number,
@@ -456,21 +443,14 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
     subjectName: string
   ): { roomName: string; restricted: boolean; slots: Array<{ day: number; period: number }> } | null => {
     const subj = normSubject(subjectName);
-    // 등록부는 약칭("과탐"), 계획은 정식 명칭("과학탐구실험2")일 수 있다.
-    // 1차 = 과목 사전 정확 일치(별칭 포함). 사전이 서로 다른 과목이라 확정하면 느슨 폴백 금지.
-    // 사전 판정 불능일 때만 기존 느슨 매칭 폴백 (전환 1단계 안전망 — 2026-08-16 실사고 다리)
+    // 등록부는 약칭("과탐"), 계획은 정식 명칭("과학탐구실험2")일 수 있다 — 다리는 과목
+    // 사전(별칭 포함) 정확 일치뿐이다. 느슨 매칭 폴백은 §5 2단계에서 제거(감사 0건 확인).
     const short = input.subjectShorts?.[subj];
     const nameHits = (s: string): boolean => {
       const ns = normSubject(s);
       if (ns === subj) return true;
       if (short && normSubject(short) === ns) return true;
-      const exact = sameSubjectExact(subjectIndex, s, subjectName);
-      if (exact !== null) return exact;
-      if (subjectMatches(s, subjectName) || subjectStemLoose(s, subjectName)) {
-        noteLooseBind(s, subjectName, `${grade}-${classNum}반 특별실 판정`);
-        return true;
-      }
-      return false;
+      return sameSubjectExact(subjectIndex, s, subjectName) === true;
     };
     for (const g of venueGroups) {
       if (g.grade !== grade || !g.classNums.includes(classNum)) continue;
@@ -536,18 +516,10 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
       if (r.simulGroupId) {
         if (r.simulGroupId !== g.id) continue;
       } else {
-        // 1차 = 사전 정확 일치. 사전이 다른 과목이라 확정하면 느슨 폴백 금지 (spec §4)
+        // 판정은 사전 정확 일치(별칭 포함)뿐 (spec §4·§5 2단계 — 느슨 폴백 제거)
         const nameOk =
           subjSet.has(normSubject(r.subjectName)) ||
-          g.subjectNames.some((s) => {
-            const exact = sameSubjectExact(subjectIndex, s, r.subjectName);
-            if (exact !== null) return exact;
-            if (subjectMatches(s, r.subjectName) || subjectStemLoose(s, r.subjectName)) {
-              noteLooseBind(s, r.subjectName, `${r.grade}-${r.classNum}반 이동수업 구성원 판정`);
-              return true;
-            }
-            return false;
-          });
+          g.subjectNames.some((s) => sameSubjectExact(subjectIndex, s, r.subjectName) === true);
         if (!nameOk) continue;
       }
       r.consumed = true;
