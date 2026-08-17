@@ -20,10 +20,29 @@ import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
 import { resolveDisplayName } from "@/lib/org/displayName";
 import type { MemoDoc } from "@/lib/memo/logic";
 import type { TeacherProfile } from "@/context/AuthContext";
+import type { MemoAttachment } from "@/lib/memo/attachment_logic";
+import {
+  resizeAndValidateImage,
+  uploadAttachmentFile,
+  formatAttachmentSize,
+  MEMO_ATTACHMENT_MAX_COUNT,
+} from "@/lib/memo/client_attachments";
+import MemoAttachmentGrid from "@/components/common/MemoAttachmentGrid";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 
 type MemoItem = MemoDoc & { id: string };
+
+interface StagedAttachment {
+  id: string;
+  name: string;
+  size: number;
+  previewUrl?: string;
+  status: "resizing" | "uploading" | "done" | "error";
+  progressText?: string;
+  attachment?: MemoAttachment;
+  error?: string;
+}
 
 /** 칩의 출처: "person" = 개인 검색·개별 체크, "dept" = 부서 헤더 체크 */
 interface RecipientChip {
@@ -699,6 +718,9 @@ function MemoDetailPanel({
           </div>
         )}
 
+        {/* 첨부 이미지 그리드 */}
+        <MemoAttachmentGrid attachments={memo.attachments} />
+
         {/* 보낸쪽지함: 받는 분별 읽음 표 (실시간 — 데모 핵심) */}
         {tab === "sent" && (
           <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -782,7 +804,9 @@ function ComposeModal({
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
   const [links, setLinks] = useState<{ url: string; label?: string }[]>([]);
+  const [stagedAttachments, setStagedAttachments] = useState<StagedAttachment[]>([]);
   const [addSearchVal, setAddSearchVal] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -887,11 +911,122 @@ function ComposeModal({
     setLinkUrl(""); setLinkLabel(""); setError("");
   };
 
+  // 이미지 파일 선택 핸들러 (리사이즈 + 업로드 파이프라인)
+  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const fileList = Array.from(files);
+    e.target.value = ""; // 동일 파일 재선택 허용
+
+    const currentCount = stagedAttachments.length;
+    if (currentCount >= MEMO_ATTACHMENT_MAX_COUNT) {
+      setError(`이미지는 최대 ${MEMO_ATTACHMENT_MAX_COUNT}장까지 첨부할 수 있습니다.`);
+      return;
+    }
+
+    const availableSlots = MEMO_ATTACHMENT_MAX_COUNT - currentCount;
+    if (fileList.length > availableSlots) {
+      setError(`이미지는 최대 ${MEMO_ATTACHMENT_MAX_COUNT}장까지 첨부할 수 있습니다. (초과분 제외)`);
+    }
+
+    const selectedFiles = fileList.slice(0, availableSlots);
+
+    const newItems: StagedAttachment[] = selectedFiles.map((file) => ({
+      id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      name: file.name,
+      size: file.size,
+      previewUrl: typeof window !== "undefined" ? URL.createObjectURL(file) : undefined,
+      status: "resizing",
+      progressText: "리사이즈 중…",
+    }));
+
+    setStagedAttachments((prev) => [...prev, ...newItems]);
+    setError("");
+
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      const item = newItems[i];
+
+      (async () => {
+        try {
+          // 1. 캔버스 리사이즈(최대 변 2000px, JPEG 0.85, PNG 원본 유지) 및 3.5MB 검증
+          const { blob, safeName } = await resizeAndValidateImage(file);
+
+          setStagedAttachments((prev) =>
+            prev.map((a) =>
+              a.id === item.id
+                ? { ...a, name: safeName, size: blob.size, status: "uploading", progressText: "업로드 중…" }
+                : a
+            )
+          );
+
+          // 2. 서버 업로드 (POST /api/memo multipart, 필드명 file)
+          const uploaded = await uploadAttachmentFile(blob, safeName);
+
+          setStagedAttachments((prev) =>
+            prev.map((a) =>
+              a.id === item.id
+                ? {
+                    ...a,
+                    status: "done",
+                    progressText: undefined,
+                    attachment: uploaded,
+                    previewUrl: uploaded.thumbnailLink || a.previewUrl,
+                  }
+                : a
+            )
+          );
+        } catch (err: any) {
+          setStagedAttachments((prev) =>
+            prev.map((a) =>
+              a.id === item.id
+                ? {
+                    ...a,
+                    status: "error",
+                    progressText: undefined,
+                    error: err?.message || "업로드 실패",
+                  }
+                : a
+            )
+          );
+        }
+      })();
+    }
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setStagedAttachments((prev) => {
+      const target = prev.find((a) => a.id === id);
+      if (target?.previewUrl && target.previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((a) => a.id !== id);
+    });
+  };
+
   // 발송 (확인창 없음 — §11-1)
   const handleSend = async () => {
+    const isUploading = stagedAttachments.some(
+      (a) => a.status === "resizing" || a.status === "uploading"
+    );
+    if (isUploading) {
+      setError("이미지를 업로드하고 있습니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+    const hasError = stagedAttachments.some((a) => a.status === "error");
+    if (hasError) {
+      setError("업로드에 실패한 이미지가 있습니다. 삭제하거나 다시 시도해 주세요.");
+      return;
+    }
+
     setError(""); setSending(true);
     try {
       const userEmails = chips.map((c) => c.email);
+      const driveFileIds = stagedAttachments
+        .filter((a) => a.status === "done" && a.attachment)
+        .map((a) => a.attachment!.driveFileId);
+
       const res = await fetch("/api/memo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -899,7 +1034,8 @@ function ComposeModal({
           action: "send",
           title,
           body,
-          links,
+          links: links.length > 0 ? links : undefined,
+          attachments: driveFileIds.length > 0 ? driveFileIds : undefined,
           recipientSummary: buildSummary(chips),
           recipients: { users: userEmails, groups: [] },
         }),
@@ -915,8 +1051,11 @@ function ComposeModal({
     }
   };
 
+  const isUploading = stagedAttachments.some(
+    (a) => a.status === "resizing" || a.status === "uploading"
+  );
   const recipientCount = chips.length;
-  const canSend = recipientCount > 0 && title.trim() && body.trim() && !sending;
+  const canSend = recipientCount > 0 && title.trim() && body.trim() && !sending && !isUploading;
 
   // ── 검색 후보 목록 (teacher_profiles 기반 로컬 필터, 이름 매칭)
   // 결함 5 수정: resolveDisplayName 헬퍼 통일
@@ -1151,7 +1290,7 @@ function ComposeModal({
                         <button
                           type="button"
                           onClick={() => setLinks((prev) => prev.filter((_, idx) => idx !== i))}
-                          className="text-slate-400 hover:text-red-500"
+                          className="text-slate-400 hover:text-red-500 cursor-pointer"
                         >
                           ×
                         </button>
@@ -1178,10 +1317,112 @@ function ComposeModal({
                     <button
                       type="button"
                       onClick={handleAddLink}
-                      className="px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors"
+                      className="px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors cursor-pointer"
                     >
                       추가
                     </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 이미지 첨부 (최대 5장) */}
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                  onChange={handleFilesSelected}
+                  className="hidden"
+                />
+
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+                    <span>이미지 첨부</span>
+                    <span className="text-xs font-normal text-slate-400">
+                      ({stagedAttachments.length}/{MEMO_ATTACHMENT_MAX_COUNT}장, 장당 3.5MB 이하)
+                    </span>
+                  </label>
+                  {stagedAttachments.length < MEMO_ATTACHMENT_MAX_COUNT && (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span>이미지 추가</span>
+                    </button>
+                  )}
+                </div>
+
+                {stagedAttachments.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-2">
+                    {stagedAttachments.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`relative flex flex-col bg-slate-50 border rounded-xl overflow-hidden text-xs transition-all ${
+                          item.status === "error"
+                            ? "border-rose-300 bg-rose-50/50"
+                            : item.status === "done"
+                            ? "border-slate-200"
+                            : "border-indigo-200 bg-indigo-50/30"
+                        }`}
+                      >
+                        {/* 썸네일 미리보기 영역 */}
+                        <div className="relative w-full h-24 bg-slate-100 flex items-center justify-center overflow-hidden">
+                          {item.previewUrl ? (
+                            <img
+                              src={item.previewUrl}
+                              alt={item.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="text-slate-400 text-xs">미리보기 없음</div>
+                          )}
+
+                          {/* 상태 오버레이 (리사이즈 / 업로드 중) */}
+                          {(item.status === "resizing" || item.status === "uploading") && (
+                            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex flex-col items-center justify-center text-white gap-1 p-1">
+                              <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                              <span className="text-[10px] font-bold">{item.progressText || "처리 중…"}</span>
+                            </div>
+                          )}
+
+                          {/* 삭제 버튼 */}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAttachment(item.id)}
+                            className="absolute top-1 right-1 w-5 h-5 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                            title="삭제"
+                            aria-label="첨부 이미지 삭제"
+                          >
+                            ×
+                          </button>
+                        </div>
+
+                        {/* 파일 정보 및 상태 라벨 */}
+                        <div className="p-2 space-y-0.5">
+                          <p className="font-medium text-slate-800 truncate" title={item.name}>
+                            {item.name}
+                          </p>
+                          <div className="flex items-center justify-between text-[10px] text-slate-400">
+                            <span>{formatAttachmentSize(item.size)}</span>
+                            {item.status === "done" && (
+                              <span className="text-emerald-600 font-bold flex items-center gap-0.5">
+                                ✓ 완료
+                              </span>
+                            )}
+                            {item.status === "error" && (
+                              <span className="text-rose-600 font-bold truncate max-w-[80px]" title={item.error}>
+                                ⚠️ {item.error || "실패"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

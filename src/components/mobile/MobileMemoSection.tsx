@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import type { MemoDoc } from "@/lib/memo/logic";
+import MemoAttachmentGrid from "@/components/common/MemoAttachmentGrid";
 
 type MemoItem = MemoDoc & { id: string };
 
@@ -227,6 +228,7 @@ export default function MobileMemoSection() {
                         ))}
                       </div>
                     )}
+                    <MemoAttachmentGrid attachments={memo.attachments} />
                   </div>
                 )}
               </li>

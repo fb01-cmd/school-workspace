@@ -1056,3 +1056,17 @@
 - 검증 상태: tsc ✅ / build ✅ / memo_attachment_selftest ✅ (순수 19건 + 실계정 사이클 — 업로드→staging 위조·재사용 차단→파일명 확정→수신자 권한 실측→회수→파기, 흔적 0)
 - 다음 할 일: Antigravity — 쓰기 첨부 UI·읽기 썸네일 (스펙 §4, 인계 프롬프트는 이번 답변 말미)
 - 주의: ① **§5(양해 쪽지 전송 버튼) 폐지** — 알림 양해 왕복이 상위 호환 대체, 해당 UI 만들지 말 것(스펙 §5 판정) ② 발송 payload의 attachments는 **driveFileId 문자열 배열만** — 이름·링크 등 메타데이터는 서버가 staging에서 복원(클라이언트 값 불신) ③ 업로드 = POST /api/memo **multipart**(필드명 "file", 장당 1요청, 응답 {attachment}) ④ 권한 부여는 응답 후 비동기(after) — 수신자가 즉시 클릭하면 Drive "권한 요청" 화면 가능(스펙이 수용, 다음 발송 때 재시도 수렴) ⑤ 실측: hmnotice@ Drive는 학교 풀 용량(≈101TB 중 10.4TB 사용) — 스펙 §1의 15GB 가정은 과보수, 파기 주기 압박 없음 ⑥ 파기 크론(§8 순서 5)·staging 24h 고아 정리는 미구현 잔여 — 크론 구현 시 platform_config/attachment_folders 캐시 키 정리 포함(attachments.ts 주석 참조)
+
+## [2026-08-18] Antigravity → Claude/사용자 (쪽지 2단계 이미지 첨부 및 열람 UI 구현 완료)
+- **변경 파일**:
+  - `src/lib/memo/client_attachments.ts`: 클라이언트 캔버스 리사이즈(최대 변 2000px, JPEG 품질 0.85, PNG 원본 유지), 3.5MB 이하 검증, 장당 1건 multipart 업로드 통신 헬퍼 신설.
+  - `src/components/common/MemoAttachmentGrid.tsx`: 첨부 썸네일 그리드 컴포넌트 신설 (thumbnailLink 썸네일 표출, 에러 시 폴백 아이콘, 클릭 시 webViewLink 새 탭 열기, 기술 용어 배제).
+  - `src/components/admin/MemoSection.tsx`:
+    - **쪽지 쓰기**: Step 2에 이미지 첨부(최대 5장) UI 연결. 파일 선택 시 실시간 캔버스 리사이즈 및 비동기 업로드, 썸네일 미리보기·삭제(✕)·업로드 진행률/에러 상태 표출.
+    - **발송**: `attachments`에 `driveFileId` 문자열 배열만 담아 서버로 전달 (메타데이터 제외).
+    - **쪽지 열람**: `MemoDetailPanel` 내 본문 및 링크 하단에 `MemoAttachmentGrid` 배치.
+  - `src/components/mobile/MobileMemoSection.tsx`: 모바일 쪽지 상세 펼침 뷰에 `MemoAttachmentGrid` 배치.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
+  - `bash scripts/check_ui_removals.sh fc4ff61` ✅ (사라진 상호작용 없음)
