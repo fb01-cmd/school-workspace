@@ -33,6 +33,8 @@ export interface MemoDoc {
   recalledAt?: number;
   /** 지금까지 회수된 인원 누계 — 보낸 이력이 왜곡되지 않게 남긴다 (§12-2) */
   recalledCount?: number;
+  /** 본인 화면에서 감춘 사람 → 감춘 시각(ms) (§12-1 — 원본은 보존 기간까지 남는다). 키에 점(.) — FieldPath 필수 */
+  hiddenBy?: Record<string, number>;
   /** 스레드 뿌리 쪽지의 memoId — 답장에만 존재, 뿌리 자신에게는 없음 (reply spec §2) */
   threadId?: string;
   /** 직접 부모 쪽지의 memoId (reply spec §2) */
@@ -222,6 +224,29 @@ export function resolveRetentionDays(raw: unknown): number {
   const n = typeof raw === "number" ? Math.floor(raw) : NaN;
   if (!Number.isFinite(n) || n < 1 || n > 3650) return MEMO_DEFAULT_RETENTION_DAYS;
   return n;
+}
+
+// ── 삭제(내 화면에서만 감추기) (§12-1) ──────────────────────────────────────
+
+/**
+ * 감추기 자격 판정 — 발신자·수신자 본인만, 수신자는 **읽은 뒤에만**.
+ * 안 읽고 감추면 발신자 화면에 영원히 "안 읽음"으로 남아 수신확인이 거짓이 된다(§12-1 해소 규칙).
+ * 발신자는 제약 없음(보낸쪽지함에서 감춤 — 수신자 쪽 영향 없음). 이미 감춘 경우는 멱등.
+ */
+export function resolveHideEligibility(
+  memo: Pick<MemoDoc, "senderEmail" | "recipientEmails" | "reads">,
+  email: string
+): { ok: true } | { ok: false; error: string; status: 400 | 403 } {
+  const me = email.trim().toLowerCase();
+  const isSender = (memo.senderEmail || "").toLowerCase() === me;
+  const isRecipient = Array.isArray(memo.recipientEmails) && memo.recipientEmails.includes(me);
+  if (!isSender && !isRecipient) {
+    return { ok: false, error: "이 쪽지의 당사자가 아닙니다.", status: 403 };
+  }
+  if (!isSender && isRecipient && !memo.reads?.[me]) {
+    return { ok: false, error: "읽은 뒤에 정리할 수 있습니다.", status: 400 };
+  }
+  return { ok: true };
 }
 
 // ── 답장 (reply spec §6) ─────────────────────────────────────────────────────

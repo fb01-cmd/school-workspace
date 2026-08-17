@@ -7,6 +7,7 @@ import {
   MEMO_DEFAULT_RETENTION_DAYS,
   computeRecall,
   expandGroupEmails,
+  resolveHideEligibility,
   resolveReplyContext,
   resolveRecipients,
   resolveRetentionDays,
@@ -189,6 +190,25 @@ async function main() {
     // 대소문자 정규화
     const upper = resolveReplyContext(root, "A@X.KR");
     expect("발신자 이메일 대소문자 정규화", upper.ok);
+  }
+
+  console.log("\n── 삭제(내 화면 감추기) (§12-1) ──");
+  {
+    const memo = {
+      senderEmail: "boss@x.kr",
+      recipientEmails: ["a@x.kr", "b@x.kr"],
+      reads: { "a@x.kr": 1 },
+    };
+    expect("읽은 수신자 감추기 허용", resolveHideEligibility(memo, "a@x.kr").ok);
+    const unread = resolveHideEligibility(memo, "b@x.kr");
+    expect("안 읽은 수신자 감추기 거부(400) — 수신확인 왜곡 방지", !unread.ok && unread.status === 400);
+    expect("발신자 감추기 제약 없음", resolveHideEligibility(memo, "boss@x.kr").ok);
+    const outsider = resolveHideEligibility(memo, "c@x.kr");
+    expect("비당사자 감추기 403", !outsider.ok && outsider.status === 403);
+    expect("대소문자 정규화", resolveHideEligibility(memo, "A@X.KR").ok);
+    // 발신자가 수신자이기도 한 자기 쪽지 — 안 읽었어도 발신자 자격으로 허용
+    const selfMemo = { senderEmail: "a@x.kr", recipientEmails: ["a@x.kr"], reads: {} };
+    expect("자기 쪽지는 발신자 자격으로 허용", resolveHideEligibility(selfMemo, "a@x.kr").ok);
   }
 
   console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);

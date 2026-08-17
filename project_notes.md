@@ -1242,3 +1242,9 @@
 - 검증 상태: verify_memo_purge ✅ 12케이스(실계정 — dryRun 무삭제→실파기 문서·파일·staging·폴더·캐시 전부 소멸·보류 0) / tsc ✅ / build ✅(40/40)
 - 다음 할 일: 없음(크론 자동) — 첫 실전 실행은 내일 daily-sync(03:00 KST). 확인하고 싶으면 Vercel 로그의 memoPurge 항목
 - 주의: ① 크론 슬롯 판단 = daily-sync 통합 채택, GitHub Actions 기각(스케줄러 이원화) ② Drive 삭제 실패 시 참조 문서를 남겨 다음 회차 재시도(참조 유실 = 영구 고아 방지) ③ 회차 상한 100건/100건 — 밀리면 다음 날 이어감 ④ 실전 첫 파기는 2027년 중반(365일 보존)이라 당분간 staging 고아·빈 폴더 정리만 동작
+
+## [2026-08-18] Claude(Fable) → Antigravity/사용자 (쪽지 삭제(내 화면 감추기) 서버부 완결 — memo_spec §12-1)
+- 변경 파일: src/lib/memo/logic.ts(hiddenBy 필드·resolveHideEligibility)·src/app/api/memo/route.ts(action "hide")·scripts/memo_selftest.ts(6케이스)·personal_data_inventory.md·src/app/privacy/page.tsx(고지 "삭제해도 원본은 보존 기간까지" — §12-1 딸린 의무)·docs/memo_spec.md(§12-1 상태)
+- 검증 상태: memo_selftest ✅ 전판 / tsc ✅ / build ✅(40/40)
+- 다음 할 일: Antigravity — 삭제 UI (아래 주의 참조. 사용자 아이디어의 소재 질문에서 착수 — §12-1은 2026-08-13 확정 스펙이었고 미구현 대기였음)
+- 주의: ① 안 읽은 받은쪽지는 서버가 400 "읽은 뒤에 정리할 수 있습니다" — UI도 안 읽음 항목에는 삭제를 보이지 말 것 ② 감춤은 문서의 hiddenBy(email→시각) — 받은/보낸 목록·스레드 이력·대시보드 패널 전부 클라이언트 필터(hiddenBy[myEmail] 있으면 제외), 새 쿼리 없음 ③ 삭제 확인 문구에 "내 화면에서만 지워지며 상대방 화면과 기록은 남습니다" 필수 ④ 복구(숨김 해제) 기능은 없음 — 확인 1회로 방어

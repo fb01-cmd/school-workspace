@@ -9,6 +9,7 @@ import {
   expandGroupEmails,
   isStudentOuPath,
   isValidEmailFormat,
+  resolveHideEligibility,
   resolveRecipients,
   resolveReplyContext,
   resolveRetentionDays,
@@ -34,7 +35,7 @@ import { emitNotificationsBatch } from "@/lib/notifications/server";
 import { FieldPath } from "firebase-admin/firestore";
 import { NextRequest, NextResponse, after } from "next/server";
 
-type MemoAction = "send" | "read" | "recall" | "attachment_quota";
+type MemoAction = "send" | "read" | "recall" | "hide" | "attachment_quota";
 
 const memoItemsColRef = (domain: string) =>
   adminDb.collection("memos").doc(domain).collection("items");
@@ -408,6 +409,29 @@ export async function POST(req: NextRequest) {
           recalledCount: outcome.recalledCount,
           remainingCount: outcome.remainingCount,
         });
+      }
+
+      case "hide": {
+        // 삭제 = 내 화면에서만 감추기 (§12-1) — 원본·상대 화면·수신확인 이력은 그대로다.
+        const memoId = typeof body.memoId === "string" ? body.memoId.trim() : "";
+        if (!memoId || memoId.length > 128 || memoId.includes("/")) {
+          return NextResponse.json({ error: "쪽지 정보가 유효하지 않습니다." }, { status: 400 });
+        }
+        const ref = memoItemsColRef(domain).doc(memoId);
+        const snap = await ref.get();
+        if (!snap.exists) {
+          return NextResponse.json({ error: "쪽지를 찾을 수 없습니다." }, { status: 404 });
+        }
+        const memo = snap.data() as MemoDoc;
+        const eligible = resolveHideEligibility(memo, email);
+        if (!eligible.ok) {
+          return NextResponse.json({ error: eligible.error }, { status: eligible.status });
+        }
+        // 멱등 — 이미 감췄으면 최초 시각 보존 (이메일 키에 점이 있으므로 FieldPath 필수, §1)
+        if (!memo.hiddenBy?.[email]) {
+          await ref.update(new FieldPath("hiddenBy", email), Date.now());
+        }
+        return NextResponse.json({ success: true, action });
       }
 
       case "attachment_quota": {
