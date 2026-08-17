@@ -1088,3 +1088,16 @@
   - `npx tsc --noEmit` ✅ (0 errors)
   - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
   - `bash scripts/check_ui_removals.sh b81cff5` ✅ (사라진 상호작용 없음)
+
+## [2026-08-17] Claude(Fable) → 사용자 (조직도에 이름 대신 아이디 표출 — 근본 원인 수정, 실기기 확인 잔여)
+- **증상 신고**: 쪽지 수신자 조직도를 열면 일부 계정이 이름이 아니라 아이디로 뜬다("처음에 그런 경우가 좀 있어"). 스크린샷 = 휴직 교사 구획(`admin`·`admin3`·`marinawithu`·`mykhr1111`·`snackh`·`tteacher`).
+- **근본 원인 (실측 확정)**: `MemoSection`만 GWS 이름 맵을 **렌더 중 `getClientCache("users:all")` 직독**으로 만들고 있었다. 이 캐시는 ⓐ 로그인 후 백그라운드 프리페치(`AuthContext.tsx:186`)로 채워지고 ⓑ **TTL 5분에 만료**된다. 캐시 적재는 재렌더를 유발하지 않으므로, 프리페치 도착 전이나 TTL 만료 후에 조직도를 그리면 `profile.name`이 빈 계정이 `displayName.ts`의 마지막 단계인 이메일 로컬부로 떨어진다. 조직도 화면(`OrgChartTree`·`OrgChartBuilder`)은 같은 목록을 **state에 담고 캐시 미스 시 직접 fetch**해서 이 문제가 없었다 — 쪽지 화면만 누락된 패턴이었다.
+- **채택하지 않은 안 (기록용)**: `teacher_profiles.name` 백필. dry-run까지 만들어 대상 18건을 실측했으나 **폐기**했다. ⓐ 사용자 원칙 재확인(2026-08-17): "이 플랫폼은 구글 계정의 성·이름을 그대로 가져다 쓴다. 캐시·저장 사정으로 따로 적어 둘 순 있어도 그걸로 하드코딩되는 건 안 된다" ⓑ `memo_spec.md` §11-7이 이미 같은 결정을 문서화 — 이름의 원본 = GWS 디렉터리, **`teacher_profiles`는 이름이 아니라 부가 정보(소속·직책·담임·내선)의 단일 원본**. 백필은 GWS에서 이름을 고쳐도 낡은 값이 캐시 미스 구간에 되살아나는 드리프트를 만든다. 스크립트는 삭제했다.
+- **변경 파일**: `src/components/admin/MemoSection.tsx` 한 개
+  - 모듈 레벨 `getGwsNameMap()`(캐시 직독 + 참조 메모) 제거 → 순수 함수 `buildGwsNameMap(users)`로 교체.
+  - `resolveMemoDisplayName(email, profileMap)` → `(email, profileMap, gwsNameMap)`. 호출 7곳·`useCallback` 의존성 3곳 갱신.
+  - 최상위 `MemoSection`에 `gwsUsers` state + 캐시 미스 시 `/api/workspace/users`(action `list`, 교사 허용 액션) 1회 fetch + `useMemo`로 이름 맵 파생. state에 있으므로 **TTL 만료와 무관**하고, 도착 시 재렌더로 열려 있던 조직도도 채워진다.
+  - `MemoDetailPanel`·`ComposeModal`에 `gwsNameMap` prop 추가(기존 `profileMap`과 대칭).
+- **검증 상태**: `npx tsc --noEmit` ✅ 0 errors / `next build` ✅ Compiled + 40/40 / `check_ui_removals.sh ccfe62c` ✅ 사라진 상호작용 없음. **실기기 미검증** — 로그인이 필요해 Claude가 화면을 볼 수 없다(자격증명 입력 금지). 확인 방법: 쪽지 탭을 열고 **5분 이상 그대로 둔 뒤** 「쪽지 쓰기」 → 조직도에 아이디가 하나도 없어야 한다(만료 구간 재현이 핵심).
+- **주의 — 기록 유실 위험 1건**: 이 수정은 Antigravity가 23:19:53에 커밋한 `2698774 feat: 쪽지 쓰기 창 클립보드 이미지 붙여넣기...`에 **작업 중이던 상태로 함께 휩쓸려 들어갔고 origin에 푸시됐다**(= Vercel 배포 반영). 커밋 메시지에 이 수정 언급이 없어, 이 엔트리가 유일한 기록이다. 동시 편집 중 커밋은 이 함정의 재발 사례.
+- **남은 관련 항목**: ① `iny_miri`(미리캔버스지상인)처럼 GWS 이름 자체가 실명이 아닌 계정은 **구글 관리 콘솔에서 고치는 것이 유일한 경로**(원칙상 코드로 손대지 않는다) ② 목록에 섞인 관리·시험 계정 4개(`admin`·`admin2`·`admin3`·`tteacher`, `휴직 교사` 배치) 정리는 §11-5 체크포인트 기존 항목 그대로.
