@@ -982,3 +982,9 @@
 - 검증 상태: 실기기 확인 = 배지·목록·읽음 처리·입구 통일 전부 사용자 통과. 검수 = 삭제 소명 일치·tsc·명명 규약 일괄 적용 확인
 - 다음 할 일: 잔여 2건은 로드맵 상태 줄로 분리(TTL 콘솔 설정·프로필 승인 배선) — 착수 시점 자유
 - 주의: TTL 설정 전까지 알림 문서는 자연 누적되나 180일 보존 정책 내라 무해. 양해 수락 흐름의 실전 첫 사용은 실사용 재개 후 자연 발생 — 그때 consent_decide 감사 로그 확인 권장
+
+## [2026-08-18] Claude(Fable) → Antigravity/사용자 (양해 수락의 제출 효력 + 미니 쪽지 왕복 배선)
+- 변경 파일: src/lib/timetable/{server,types}.ts·src/lib/notifications/server.ts·src/app/api/notifications/route.ts·src/app/api/timetable/requests/route.ts·docs/notification_center_spec.md
+- 검증 상태: tsc ✅ / build ✅
+- 다음 할 일: Antigravity UI 4곳 — ① 양해 요청 다이얼로그(부탁 한 줄 입력, consentMessage) ② 알림 항목에 message 표시(제목 아래 회색 한 줄) ③ 거절 시 사유 입력(consent_decide body.note)·결과 알림에 사유 표시 ④ 담긴 요청 카드에 양해 상태 배지(REQUESTED 대기/CONSENTED ✓ 알림으로 양해 받음[수동 체크 대체 표시]/DECLINED 사유 표시)
+- 주의: ① 제출 효력은 서버가 판정(consentDraftId — create·create_batch 이미 전달 배선 완료) — UI는 CONSENTED면 체크박스 대신 "✓ 알림으로 양해 받음" 표시만 ② 수락 창구의 컨테이너(알림 vs 쪽지) 재검토 질문은 사용자 결정 대기 — Claude 권고는 알림 유지

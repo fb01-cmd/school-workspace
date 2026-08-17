@@ -738,6 +738,11 @@ export interface SwapConsent {
   parties: Array<{ email: string; name: string }>;
   note?: string; // 예: "체육관 합반으로 양해" (선택, 200자)
   confirmedAt: number; // 서버 시각
+  /** 양해 경로 (notification_center_spec §4 후속 배선): manual = 구두 양해 후 수동 체크(기존),
+   *  in-app = 알림 수락(consentStatus=CONSENTED)이 검증을 대체. 미기록 = manual(과거 데이터) */
+  method?: "manual" | "in-app";
+  /** in-app일 때 — 수락이 일어난 초안 id (감사 추적) */
+  consentDraftId?: string;
 }
 
 /** 신청 body의 양해 입력 — confirmed 체크와 메모만 받는다 (당사자 명단은 서버 도출) */
@@ -1064,6 +1069,7 @@ export interface SwapRequestApiRequest {
   simulMoveTarget?: { day: number; period: number };
   // 임시저장 (draft_save / draft_delete)
   draftId?: string;
+  consentMessage?: string; // 양해 요청(consent_request)에 붙이는 부탁 한 줄 (선택, 200자)
   draft?: {
     termId?: string;
     sourceWeekId?: string;

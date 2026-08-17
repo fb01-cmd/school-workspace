@@ -3549,6 +3549,8 @@ export async function createSwapRequest(
     reason?: SwapRequestReason;
     targetWeekId?: string; // 교차 주 맞교환 (§4-3b) — 없거나 weekId와 같으면 같은-주
     consent?: SwapConsentInput; // 조율 필요 후보의 양해 확인 (consent_swap_opening_spec §3) — 명단은 서버 도출
+    /** 알림 수락 경로 (notification_center_spec §4) — CONSENTED 초안이면 수동 체크를 대체 */
+    consentDraftId?: string;
   },
   options?: { skipManagerNotify?: boolean; direct?: boolean; batchId?: string }
 ): Promise<SwapRequest> {
@@ -3629,9 +3631,29 @@ export async function createSwapRequest(
   // parties는 서버 재계산된 coordination에서 도출 — 신청 body의 명단은 받지도 않는다 (AGENTS.md §5).
   let consentRecord: SwapConsent | undefined;
   if (candidate.coordination) {
-    if (params.consent?.confirmed !== true) {
+    // 알림 수락 경로 (notification_center_spec §4 배선): 같은 소유자·같은 수업·같은 상대의
+    // CONSENTED 초안이면 수동 체크를 대체한다 — 남의 수락·다른 수업의 수락은 효력 없음.
+    // 구두 양해 후 수동 체크(기존 경로)는 실무 관행 수용으로 존치.
+    let inAppConsent = false;
+    if (params.consentDraftId) {
+      const dSnap = await swapDraftsColRef(domain).doc(params.consentDraftId).get();
+      if (dSnap.exists) {
+        const d = dSnap.data()!;
+        const s = d.source || {};
+        inAppConsent =
+          (d.requesterEmail || "").toLowerCase() === requesterEmail.toLowerCase() &&
+          s.grade === params.source.grade &&
+          s.classNum === params.source.classNum &&
+          s.day === params.source.day &&
+          s.period === params.source.period &&
+          (d.candidate?.counterpartEmail || "").toLowerCase() ===
+            (candidate.counterpartEmail || "").toLowerCase() &&
+          (d.consentStatus || "NONE") === "CONSENTED";
+      }
+    }
+    if (!inAppConsent && params.consent?.confirmed !== true) {
       throw new Error(
-        "이 후보는 당사자 양해가 필요합니다. 해당 선생님께 양해를 받은 뒤 확인란을 체크해 주세요."
+        "이 후보는 당사자 양해가 필요합니다. 알림으로 양해를 요청해 수락을 받거나, 직접 양해를 받은 뒤 확인란을 체크해 주세요."
       );
     }
     const partyMap = new Map<string, string>();
@@ -3640,12 +3662,14 @@ export async function createSwapRequest(
         if (!partyMap.has(o.teacherEmail)) partyMap.set(o.teacherEmail, o.teacherName);
       }
     }
-    const consentNote = (params.consent.note || "").trim().slice(0, 200);
+    const consentNote = (params.consent?.note || "").trim().slice(0, 200);
     consentRecord = {
       confirmed: true,
       parties: [...partyMap.entries()].map(([email, name]) => ({ email, name })),
       ...(consentNote ? { note: consentNote } : {}),
       confirmedAt: Date.now(),
+      method: inAppConsent ? "in-app" : "manual",
+      ...(inAppConsent && params.consentDraftId ? { consentDraftId: params.consentDraftId } : {}),
     };
   }
 
@@ -6619,8 +6643,9 @@ export async function saveSwapDraft(
 export async function markDraftConsentRequested(
   domain: string,
   userEmail: string,
-  draftId: string
-): Promise<{ recipients: string[]; requesterName: string; summary: string }> {
+  draftId: string,
+  message?: string
+): Promise<{ recipients: string[]; requesterName: string; summary: string; message?: string }> {
   const ref = swapDraftsColRef(domain).doc(draftId);
   const snap = await ref.get();
   if (!snap.exists) throw new Error("담아둔 요청을 찾을 수 없습니다.");
@@ -6636,12 +6661,22 @@ export async function markDraftConsentRequested(
       if (occ.teacherEmail) recipients.add(String(occ.teacherEmail).toLowerCase());
   recipients.delete(me);
   if (!recipients.size) throw new Error("양해를 요청할 상대 선생님이 없는 요청입니다.");
-  await ref.set({ consentStatus: "REQUESTED", updatedAt: Date.now() }, { merge: true });
+  const trimmedMessage = (message || "").trim().slice(0, 200);
+  await ref.set(
+    {
+      consentStatus: "REQUESTED",
+      // 보내는 사람의 부탁 한 줄 (2026-08-18 사용자 — 기계 문구만 가면 성의 없어 보임)
+      ...(trimmedMessage ? { consentRequestMessage: trimmedMessage } : {}),
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
   const src = d.source || {};
   return {
     recipients: [...recipients],
     requesterName: d.requesterName || me.split("@")[0],
     summary: `${src.grade ?? "?"}-${src.classNum ?? "?"} ${src.day ?? "?"}요일 ${src.period ?? "?"}교시 수업 이동`,
+    ...(trimmedMessage ? { message: trimmedMessage } : {}),
   };
 }
 
@@ -6653,14 +6688,24 @@ export async function markDraftConsentRequested(
 export async function transitionDraftConsent(
   domain: string,
   draftId: string,
-  to: "CONSENTED" | "DECLINED"
+  to: "CONSENTED" | "DECLINED",
+  note?: string
 ): Promise<string | null> {
   const ref = swapDraftsColRef(domain).doc(draftId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const d = snap.data()!;
   if ((d.consentStatus || "NONE") !== "REQUESTED") return null;
-  await ref.set({ consentStatus: to, updatedAt: Date.now() }, { merge: true });
+  const trimmedNote = (note || "").trim().slice(0, 200);
+  await ref.set(
+    {
+      consentStatus: to,
+      // 당사자의 한 줄 사유 — 담긴 요청 카드에 표시 (미니 쪽지, 2026-08-18 사용자)
+      ...(trimmedNote ? { consentNote: trimmedNote } : {}),
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
   return (d.requesterEmail || "").toLowerCase() || null;
 }
 

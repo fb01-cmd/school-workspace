@@ -28,10 +28,18 @@ export interface NotificationDoc {
   title: string;
   refType: string;
   refId: string;
+  /** 발신 당사자의 한 줄 메시지 (선택) — 양해 요청의 부탁 말씀 등. 제목 아래 표시 (미니 쪽지) */
+  message?: string;
   createdAt: number;
   read: boolean; // 미열람 질의용 (동등 필터 — 복합 색인 불요)
   readAt?: number;
-  actionable?: { kind: "consent"; state: "pending" | "accepted" | "declined"; decidedAt?: number };
+  actionable?: {
+    kind: "consent";
+    state: "pending" | "accepted" | "declined";
+    decidedAt?: number;
+    /** 수락·거절에 붙이는 당사자의 한 줄 사유 (2026-08-18 사용자 — "알림이 미니 쪽지 역할") */
+    note?: string;
+  };
   /** 파기 — Firestore TTL 정책 대상 필드 (Timestamp, phase11 관례) */
   expireAt: Timestamp;
 }
@@ -53,6 +61,8 @@ export interface EmitInput {
   title: string;
   refType: string;
   refId: string;
+  /** 발신 당사자의 한 줄 메시지 (선택, 200자) */
+  message?: string;
   actionable?: { kind: "consent" };
   /** 스펙 §5 예외(수락 기록 등) — 미지정 시 180일 */
   retentionDays?: number;
@@ -68,6 +78,7 @@ function buildDoc(input: EmitInput, now: number): NotificationDoc {
     refId: input.refId,
     createdAt: now,
     read: false,
+    ...((input.message || "").trim() ? { message: input.message!.trim().slice(0, 200) } : {}),
     ...(input.actionable ? { actionable: { kind: input.actionable.kind, state: "pending" as const } } : {}),
     expireAt: Timestamp.fromMillis(now + days * 24 * 3600 * 1000),
   };
@@ -145,7 +156,8 @@ export async function decideActionableNotification(
   domain: string,
   email: string,
   notificationId: string,
-  decision: "accepted" | "declined"
+  decision: "accepted" | "declined",
+  note?: string
 ): Promise<NotificationDoc & { id: string }> {
   const ref = notificationsColRef(domain).doc(notificationId);
   const snap = await ref.get();
@@ -156,11 +168,17 @@ export async function decideActionableNotification(
   if (!doc.actionable || doc.actionable.state !== "pending")
     throw new Error("이미 처리되었거나 처리할 수 없는 알림입니다.");
   const decidedAt = Date.now();
+  const trimmedNote = (note || "").trim().slice(0, 200);
   await ref.update({
     "actionable.state": decision,
     "actionable.decidedAt": decidedAt,
+    ...(trimmedNote ? { "actionable.note": trimmedNote } : {}),
     read: true,
     readAt: doc.readAt || decidedAt,
   });
-  return { id: notificationId, ...doc, actionable: { ...doc.actionable, state: decision, decidedAt } };
+  return {
+    id: notificationId,
+    ...doc,
+    actionable: { ...doc.actionable, state: decision, decidedAt, ...(trimmedNote ? { note: trimmedNote } : {}) },
+  };
 }

@@ -43,17 +43,26 @@ export async function POST(req: NextRequest) {
           );
         }
         const decision = body.decision as "accepted" | "declined";
-        const notif = await decideActionableNotification(domain, email, body.notificationId, decision);
+        const decisionNote = typeof body.note === "string" ? body.note : undefined;
+        const notif = await decideActionableNotification(
+          domain,
+          email,
+          body.notificationId,
+          decision,
+          decisionNote
+        );
         // 원본(양해 초안) 전이 — REQUESTED일 때만 전이하고, 아니면 알림만 정리된다
         let draftRequester: string | null = null;
         if (notif.refType === "swap_draft") {
           draftRequester = await transitionDraftConsent(
             domain,
             notif.refId,
-            decision === "accepted" ? "CONSENTED" : "DECLINED"
+            decision === "accepted" ? "CONSENTED" : "DECLINED",
+            decisionNote
           );
         }
-        // 신청자에게 결과 알림 (스펙 §4 — 수락 기록은 원본 기한 보존 대상이라 길게)
+        // 신청자에게 결과 알림 (스펙 §4 — 수락 기록은 원본 기한 보존 대상이라 길게).
+        // 당사자의 한 줄 사유는 message로 동봉 (미니 쪽지 왕복, 2026-08-18 사용자)
         if (draftRequester) {
           await emitNotification(domain, {
             recipientEmail: draftRequester,
@@ -64,6 +73,7 @@ export async function POST(req: NextRequest) {
                 : "요청하신 양해를 상대 선생님이 수락하지 못했습니다.",
             refType: "swap_draft",
             refId: notif.refId,
+            ...(notif.actionable?.note ? { message: notif.actionable.note } : {}),
             retentionDays: 365,
           });
         }

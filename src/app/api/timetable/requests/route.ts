@@ -117,6 +117,7 @@ export async function POST(req: NextRequest) {
           reason: body.reason,
           targetWeekId: body.targetWeekId,
           consent: body.consent, // 조율 필요 후보의 양해 확인 (consent_swap_opening_spec §3) — 검증·명단 도출은 서버
+          consentDraftId: body.draftId, // 알림 수락 경로 — CONSENTED 초안이면 수동 체크 대체 (notification_center_spec §4)
         });
         await writeAuditLog({
           operatorEmail: auth.email,
@@ -161,6 +162,7 @@ export async function POST(req: NextRequest) {
                 reason: item.reason || body.reason,
                 targetWeekId: item.targetWeekId,
                 consent: item.consent, // 항목별 양해 확인 — 조율 필요 후보 항목만 필요 (서버가 판정)
+                consentDraftId: item.draftId, // 알림 수락 경로 (notification_center_spec §4)
               },
               { batchId, skipManagerNotify: true } // 요약 알림 1건으로 대체 (아래)
             );
@@ -351,7 +353,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
         }
         const consentDraftId = body.draftId;
-        const marked = await markDraftConsentRequested(domain, auth.email, consentDraftId);
+        const marked = await markDraftConsentRequested(domain, auth.email, consentDraftId, body.consentMessage);
         await emitNotificationsBatch(
           domain,
           marked.recipients.map((r) => ({
@@ -360,6 +362,7 @@ export async function POST(req: NextRequest) {
             title: `${marked.requesterName} 선생님이 양해를 요청했습니다 — ${marked.summary}`,
             refType: "swap_draft",
             refId: consentDraftId,
+            ...(marked.message ? { message: marked.message } : {}),
             actionable: { kind: "consent" as const },
             retentionDays: 365, // 수락 기록 계열 — 원본 기한 보존 (spec §5 예외)
           }))
