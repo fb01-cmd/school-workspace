@@ -102,6 +102,7 @@ import {
 import { NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
 import { notifyTimetableChanges } from "@/lib/push/webpush";
+import { emitNotification } from "@/lib/notifications/server";
 import type { TimetableChange } from "@/lib/timetable/types";
 
 // 배정표 부서 추출은 AI 호출 최대 3회(1차+힌트 재시도 2회)가 직렬로 돌 수 있다
@@ -404,7 +405,8 @@ export async function POST(req: NextRequest) {
         if (!body.requestId) {
           return NextResponse.json({ error: "requestId가 누락되었습니다." }, { status: 400 });
         }
-        const { request, change, changes } = await approveSwapRequest(domain, auth.email, body.requestId);
+        const approvedRequestId = body.requestId;
+        const { request, change, changes } = await approveSwapRequest(domain, auth.email, approvedRequestId);
         await writeAuditLog({
           operatorEmail: auth.email,
           targetEmail: request.requesterEmail,
@@ -416,6 +418,16 @@ export async function POST(req: NextRequest) {
         // §5c: 체인·통 이동은 change가 여러 건 — 전량을 넘겨야 뒷 단계·다른 반 당사자도 푸시를 받는다
         // (revert_change의 allReverts 전량 발송과 같은 이유. 종전 [change] 1건은 체인에서 누락이 있었다).
         after(() => notifyTimetableChanges(domain, changes.length ? changes : [change]));
+        // 원장: 신청자에게 처리 결과 (notification_center_spec §3 ②)
+        after(() =>
+          emitNotification(domain, {
+            recipientEmail: request.requesterEmail,
+            type: "request-resolved",
+            title: "교체 신청이 승인되었습니다.",
+            refType: "swap_request",
+            refId: approvedRequestId,
+          }).catch((e) => console.error("[알림 센터] 승인 원장 기록 실패:", e?.message))
+        );
         return NextResponse.json({ success: true, action, request, change, changes });
       }
 
@@ -426,7 +438,8 @@ export async function POST(req: NextRequest) {
         if (!body.decisionNote?.trim()) {
           return NextResponse.json({ error: "반려 사유는 필수입니다." }, { status: 400 });
         }
-        const request = await rejectSwapRequest(domain, auth.email, body.requestId, body.decisionNote);
+        const rejectedRequestId = body.requestId;
+        const request = await rejectSwapRequest(domain, auth.email, rejectedRequestId, body.decisionNote);
         await writeAuditLog({
           operatorEmail: auth.email,
           targetEmail: request.requesterEmail,
@@ -434,6 +447,17 @@ export async function POST(req: NextRequest) {
           details: `수업교환 반려: ${body.requestId} — ${body.decisionNote}`,
           status: "success",
         });
+        // 원장: 신청자에게 처리 결과 (notification_center_spec §3 ②) — 반려는 푸시 경로가
+        // 없던 곳이라 원장이 유일한 비휘발 통지가 된다
+        after(() =>
+          emitNotification(domain, {
+            recipientEmail: request.requesterEmail,
+            type: "request-resolved",
+            title: "교체 신청이 반려되었습니다. 사유를 확인해 주세요.",
+            refType: "swap_request",
+            refId: rejectedRequestId,
+          }).catch((e) => console.error("[알림 센터] 반려 원장 기록 실패:", e?.message))
+        );
         return NextResponse.json({ success: true, action, request });
       }
 

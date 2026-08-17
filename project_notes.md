@@ -930,3 +930,9 @@
 - 검증 상태: 문서 작업 — 코드 무변경. 스펙 내 실코드 대조: userData 전역 실시간 구독 실재(배지 카운터 무임승차 근거)·webpush.ts 실재·SwapDraft.consentStatus 기호환(§13-3) 확인
 - 다음 할 일: 사용자 — 스펙의 [권고] 8건(ⓐ~ⓔ + 수락 ⓐ~ⓒ) 확정. 확정 후 §7 순서대로 Claude 서버 코어 착수
 - 주의: 쪽지 2단계(이미지 첨부)는 스펙 §8 분업상 서버부(Claude)가 UI보다 선행 — attach_upload 미구현 실측 확인, Antigravity UI 인계는 서버부 완성 후
+
+## [2026-08-18] Claude(Fable) → Antigravity/사용자 (알림 센터 서버 코어 완결 — 스펙 §7 순서 1~3)
+- 변경 파일: src/lib/notifications/server.ts(신설)·src/app/api/notifications/route.ts(신설)·src/lib/push/webpush.ts(수업 변경 원장 편입)·src/app/api/timetable/{manage,requests}/route.ts·src/app/api/memo/route.ts·src/lib/timetable/{server,types}.ts·docs/notification_center_spec.md(확정·구현 노트)·personal_data_inventory.md(notifications 등재)·scripts/verify_notifications.ts(신설)
+- 검증 상태: tsc ✅ / build ✅ / verify_notifications(읽기 전용 스모크) ✅
+- 다음 할 일: ① Antigravity — 벨·목록·수락 버튼 UI(스펙 §6, API: /api/notifications list·mark_read·consent_decide, 배지 = userData.unreadNotifCount) ② 사용자 or Claude — Firestore 콘솔에서 notifications 컬렉션 그룹 TTL 정책(expireAt) 1회 설정 ③ 후속 — 프로필 승인(행정 처리 유형) 발생 지점 배선, 양해 카드 UI에 consent_request 액션 연결
+- 주의: ① 원장 발생 3종 배선 완료(수업 변경 전 경로[webpush 단일 지점]·신청 승인/반려·쪽지 발송), 행정 처리는 자리만 ② 푸시는 기존 경로 유지(이중 발송 방지) — emitNotification은 저장·카운터만 ③ 수업 변경 원장은 교사만(학생은 푸시만 — 문서 폭발 방지) ④ consent_decide는 swap_draft의 consentStatus를 REQUESTED→CONSENTED/DECLINED로 전이하고 신청자에게 결과 알림(365일 보존)

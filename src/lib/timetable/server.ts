@@ -6611,6 +6611,59 @@ export async function saveSwapDraft(
   };
 }
 
+/**
+ * 양해 요청 표시 (notification_center_spec §4) — 본인 초안만. consentStatus REQUESTED 전이
+ * + 양해 당사자 이메일 수집(교체 상대 + 조율 충돌 점유 교사, 본인 제외)을 한 번에.
+ * 알림 발행은 라우트 몫(import 방향 원칙 — notifications 모듈이 이 파일을 import하지 않게).
+ */
+export async function markDraftConsentRequested(
+  domain: string,
+  userEmail: string,
+  draftId: string
+): Promise<{ recipients: string[]; requesterName: string; summary: string }> {
+  const ref = swapDraftsColRef(domain).doc(draftId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("담아둔 요청을 찾을 수 없습니다.");
+  const d = snap.data()!;
+  if ((d.requesterEmail || "").toLowerCase() !== userEmail.toLowerCase())
+    throw new Error("본인이 담아둔 요청만 양해를 요청할 수 있습니다.");
+  const me = userEmail.toLowerCase();
+  const recipients = new Set<string>();
+  const cand = d.candidate || {};
+  if (cand.counterpartEmail) recipients.add(String(cand.counterpartEmail).toLowerCase());
+  for (const conflict of cand.coordination?.conflicts || [])
+    for (const occ of conflict.occupants || [])
+      if (occ.teacherEmail) recipients.add(String(occ.teacherEmail).toLowerCase());
+  recipients.delete(me);
+  if (!recipients.size) throw new Error("양해를 요청할 상대 선생님이 없는 요청입니다.");
+  await ref.set({ consentStatus: "REQUESTED", updatedAt: Date.now() }, { merge: true });
+  const src = d.source || {};
+  return {
+    recipients: [...recipients],
+    requesterName: d.requesterName || me.split("@")[0],
+    summary: `${src.grade ?? "?"}-${src.classNum ?? "?"} ${src.day ?? "?"}요일 ${src.period ?? "?"}교시 수업 이동`,
+  };
+}
+
+/**
+ * 양해 수락/거절 전이 (notification_center_spec §4) — REQUESTED일 때만 전이하고 신청자
+ * 이메일을 반환한다(결과 알림 대상). 이미 전이됐거나 초안이 사라졌으면 null — 알림 쪽은
+ * 이미 정리됐으므로 조용히 끝낸다(중복 결과 알림 방지).
+ */
+export async function transitionDraftConsent(
+  domain: string,
+  draftId: string,
+  to: "CONSENTED" | "DECLINED"
+): Promise<string | null> {
+  const ref = swapDraftsColRef(domain).doc(draftId);
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  const d = snap.data()!;
+  if ((d.consentStatus || "NONE") !== "REQUESTED") return null;
+  await ref.set({ consentStatus: to, updatedAt: Date.now() }, { merge: true });
+  return (d.requesterEmail || "").toLowerCase() || null;
+}
+
 export async function listSwapDrafts(domain: string, userEmail: string): Promise<SwapDraft[]> {
   const colRef = swapDraftsColRef(domain);
   const snap = await colRef.where("requesterEmail", "==", userEmail).get();

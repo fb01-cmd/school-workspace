@@ -13,6 +13,7 @@ import {
 } from "@/lib/memo/logic";
 import { listGroupMembers, listUsersInOUs } from "@/lib/google/workspace";
 import { notifyMemo } from "@/lib/push/webpush";
+import { emitNotificationsBatch } from "@/lib/notifications/server";
 import { FieldPath } from "firebase-admin/firestore";
 import { NextRequest, NextResponse, after } from "next/server";
 
@@ -171,6 +172,20 @@ export async function POST(req: NextRequest) {
         // 웹 푸시 — 응답 후 발송, 실패해도 저장에 영향 없음 (스펙 §2-6·§5)
         after(() =>
           notifyMemo(domain, resolved.accepted, senderName, validated.content.title, ref.id)
+        );
+        // 원장: 수신자 전원에게 알림 (notification_center_spec §3 ③) — 문구는 푸시와 동일 수준
+        // (발신자·제목까지만, 본문 금지)
+        after(() =>
+          emitNotificationsBatch(
+            domain,
+            resolved.accepted.map((r: string) => ({
+              recipientEmail: r,
+              type: "memo" as const,
+              title: `${senderName} 선생님의 쪽지: ${validated.content.title}`,
+              refType: "memo",
+              refId: ref.id,
+            }))
+          ).catch((e) => console.error("[알림 센터] 쪽지 원장 기록 실패:", (e as Error)?.message))
         );
 
         return NextResponse.json({

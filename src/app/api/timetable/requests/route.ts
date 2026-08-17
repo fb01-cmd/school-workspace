@@ -15,8 +15,10 @@ import {
   listSwapRequests,
   notifySwapBatchToManagers,
   saveSwapDraft,
+  markDraftConsentRequested,
 } from "@/lib/timetable/server";
 import { SwapBatchItemResult, SwapRequestApiRequest } from "@/lib/timetable/types";
+import { emitNotificationsBatch } from "@/lib/notifications/server";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 
@@ -342,6 +344,35 @@ export async function POST(req: NextRequest) {
       }
 
       // ── 사전 양해 임시저장 API (phase9b_spec §13-1) ───────────
+
+      // 양해 요청 보내기 (notification_center_spec §4) — 초안의 양해 당사자들에게 수락 알림
+      case "consent_request": {
+        if (!body.draftId) {
+          return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
+        }
+        const consentDraftId = body.draftId;
+        const marked = await markDraftConsentRequested(domain, auth.email, consentDraftId);
+        await emitNotificationsBatch(
+          domain,
+          marked.recipients.map((r) => ({
+            recipientEmail: r,
+            type: "consent-request" as const,
+            title: `${marked.requesterName} 선생님이 양해를 요청했습니다 — ${marked.summary}`,
+            refType: "swap_draft",
+            refId: consentDraftId,
+            actionable: { kind: "consent" as const },
+            retentionDays: 365, // 수락 기록 계열 — 원본 기한 보존 (spec §5 예외)
+          }))
+        );
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "consent_request",
+          details: `양해 요청 발송 — 초안 ${body.draftId} → ${marked.recipients.join(", ")}`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, recipients: marked.recipients.length });
+      }
 
       case "draft_save": {
         try {

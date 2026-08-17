@@ -953,6 +953,7 @@ export interface SwapCandidatesAllResult {
 export type SwapRequestAction =
   | "candidates"
   | "candidates_all" // §14-2 v2.1: 소스 셀 1개 → 등록 전 주 후보 일괄 (그리드 인라인 하이라이트)
+  | "consent_request" // 양해 요청 발송 (notification_center_spec §4) — 초안 당사자들에게 수락 알림
   | "create"
   | "create_batch"
   | "my_list"

@@ -3,6 +3,7 @@
 import { createHash } from "crypto";
 import webpush from "web-push";
 import { adminDb } from "@/lib/firebase/admin";
+import { emitNotificationsBatch } from "@/lib/notifications/server";
 import { timetableChangesColRef } from "@/lib/timetable/server";
 import { TimetableChange } from "@/lib/timetable/types";
 
@@ -249,7 +250,10 @@ export async function notifyTimetableChanges(
   changes: TimetableChange[]
 ): Promise<void> {
   try {
-    if (!isWebPushConfigured() || changes.length === 0) return;
+    if (changes.length === 0) return;
+    // 푸시 미설정이어도 원장(알림 센터) 기록은 진행한다 — 푸시는 초인종, 원장이 본체
+    // (notification_center_spec §3). 발송 구간만 설정 여부로 가른다.
+    const pushConfigured = isWebPushConfigured();
 
     // revert 문서는 수신자 정보(swap/substitute/crossSwap)를 담지 않으므로
     // 원본 change를 로드해 "변경 취소" 문구로 합성한다 (server.ts revert 트랜잭션 구조 참조)
@@ -282,6 +286,26 @@ export async function notifyTimetableChanges(
         classLines.get(key)!.lines.push(a.line);
       }
     }
+
+    // 원장 기록 (notification_center_spec §3 ①) — 수업 변경의 모든 경로(승인·직권·통 이동·
+    // 되돌림)가 이 함수를 지나므로 여기가 단일 배선 지점이다. 교사만 — 학생은 반 단위라
+    // 원장 문서가 인원수만큼 불어나 푸시(초인종)로만 유지한다.
+    try {
+      await emitNotificationsBatch(
+        domain,
+        [...emailLines.entries()].map(([email, lines]) => ({
+          recipientEmail: email,
+          type: "lesson-changed" as const,
+          title: lines.length > 1 ? `${lines[0]} 외 ${lines.length - 1}건` : lines[0],
+          refType: "timetable_change",
+          refId: changes[0]?.id || "",
+        }))
+      );
+    } catch (e) {
+      console.error("[알림 센터] 수업 변경 원장 기록 실패(푸시는 계속):", (e as Error)?.message);
+    }
+
+    if (!pushConfigured) return;
 
     // 교사: 이메일 묶음 1회 조회 후 수신자별 페이로드
     const teacherSubs = await listSubsByEmails(domain, [...emailLines.keys()]);
