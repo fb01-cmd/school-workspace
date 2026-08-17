@@ -976,3 +976,9 @@
   - `bash scripts/check_ui_removals.sh 8d67ed7`:
     - 대시보드 대형 푸시 카드(`PushNotificationManager.tsx`)의 버튼 및 문구 삭제는 스펙 §6-1 지시된 통합/경량화에 따른 의도된 변경임.
     - `NotificationCenter.tsx` 헤더를 "알림 센터" → "알림"으로 변경하고 `PWAInstallGuideTab.tsx` / `PWAInstallPrompt.tsx`의 표현을 명명 규약대로 수정한 의도된 변경임.
+
+## [2026-08-18] Claude(Fable) → 사용자 (알림 센터 종결 — 실기기 확인 통과)
+- 변경 파일: development_roadmap.md(종결·잔여 2건 등재)·project_notes.md
+- 검증 상태: 실기기 확인 = 배지·목록·읽음 처리·입구 통일 전부 사용자 통과. 검수 = 삭제 소명 일치·tsc·명명 규약 일괄 적용 확인
+- 다음 할 일: 잔여 2건은 로드맵 상태 줄로 분리(TTL 콘솔 설정·프로필 승인 배선) — 착수 시점 자유
+- 주의: TTL 설정 전까지 알림 문서는 자연 누적되나 180일 보존 정책 내라 무해. 양해 수락 흐름의 실전 첫 사용은 실사용 재개 후 자연 발생 — 그때 consent_decide 감사 로그 확인 권장
