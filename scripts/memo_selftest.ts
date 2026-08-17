@@ -9,6 +9,7 @@ import {
   expandGroupEmails,
   resolveHideEligibility,
   resolveReplyContext,
+  resolveStarEligibility,
   resolveRecipients,
   resolveRetentionDays,
   validateMemoContent,
@@ -209,6 +210,38 @@ async function main() {
     // 발신자가 수신자이기도 한 자기 쪽지 — 안 읽었어도 발신자 자격으로 허용
     const selfMemo = { senderEmail: "a@x.kr", recipientEmails: ["a@x.kr"], reads: {} };
     expect("자기 쪽지는 발신자 자격으로 허용", resolveHideEligibility(selfMemo, "a@x.kr").ok);
+  }
+
+  console.log("\n── 즐겨찾기 (star/search spec §1-2) ──");
+  {
+    const memo = { senderEmail: "boss@x.kr", recipientEmails: ["a@x.kr"] };
+    expect("수신자 별표 허용(읽음 무관)", resolveStarEligibility(memo, "a@x.kr").ok);
+    expect("발신자 별표 허용", resolveStarEligibility(memo, "boss@x.kr").ok);
+    const outsider = resolveStarEligibility(memo, "c@x.kr");
+    expect("비당사자 별표 403", !outsider.ok && outsider.status === 403);
+    expect("대소문자 정규화", resolveStarEligibility(memo, "A@X.KR").ok);
+  }
+
+  console.log("\n── 검색 매칭 (star/search spec §2-3) ──");
+  {
+    const { memoMatchesSearch, parseSearchKeywords } = await import("../src/lib/memo/search_logic");
+    const t = {
+      title: "2학기 수행평가 일정 안내",
+      body: "수학과 수행평가는 9월 첫 주입니다.",
+      senderName: "김한별",
+      senderDisplayName: "김한별",
+      recipientSummary: "수학과 외 3명",
+    };
+    expect("제목 단일 키워드", memoMatchesSearch(t, "수행평가"));
+    expect("본문 매칭", memoMatchesSearch(t, "9월"));
+    expect("발신자 이름 매칭", memoMatchesSearch(t, "김한별"));
+    expect("다중 키워드 AND — 서로 다른 필드에 걸쳐도 참", memoMatchesSearch(t, "김한별 수행평가"));
+    expect("다중 키워드 AND — 하나라도 없으면 거짓", !memoMatchesSearch(t, "김한별 소풍"));
+    expect("대소문자 무시", memoMatchesSearch({ ...t, title: "NEIS 입력 안내" }, "neis"));
+    expect("빈 검색어는 항상 참", memoMatchesSearch(t, "   "));
+    expect("키워드 파싱 — 중복 제거·공백 분리", JSON.stringify(parseSearchKeywords("  A  a b ")) === JSON.stringify(["a", "b"]));
+    expect("수신자 요약 매칭(보낸쪽지함)", memoMatchesSearch(t, "외 3명"));
+    expect("표시 이름만 있고 스탬프 없어도 매칭", memoMatchesSearch({ title: "t", body: "b", senderDisplayName: "박새로이" }, "박새로이"));
   }
 
   console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);

@@ -1285,3 +1285,9 @@
 - 검증 상태: 문서 작업 — 기존 규칙 통과 쿼리 형태·색인 실측 전례·읽기 예산 규율 대조 후 작성
 - 다음 할 일: Claude — §5 순서 1·2 (star 액션·search_logic 순수 매칭·selftest + 즐겨찾기 쿼리 색인 실측 verify_memo_star). 실측 통과 후 Antigravity UI
 - 주의: ① 별표 값은 시각이 아니라 `true` — 사용자별 맵 키에는 복합 색인을 만들 수 없어 등호 쿼리가 유일한 성립 형태 ② **별표도 365일 파기 유지 확정**(사용자에게 묻지 않음 — 보존은 문서 단위 단일 약속, 개인 별표가 상대방의 파기 기대를 무력화할 수 없음) ③ 검색은 실행 시에만 전량 조회+5분 캐시 — 상시 구독 확장 금지, 읽기 추산 1회 300~600
+
+## [2026-08-18] Claude(Fable) → Antigravity/사용자 (즐겨찾기·검색 서버부 완결 — star/search spec §5 순서 1·2)
+- 변경 파일: src/lib/memo/logic.ts(starredBy·resolveStarEligibility)·src/lib/memo/search_logic.ts(신설 — 순수 매칭, UI 공유용)·src/app/api/memo/route.ts(star 액션)·scripts/memo_selftest.ts(별표 4+검색 10케이스)·scripts/verify_memo_star.ts(신설)·docs/memo_star_search_spec.md(실측 결과)
+- 검증 상태: memo_selftest ✅ 전판 / verify_memo_star ✅ (등호 쿼리 2개 **복합 색인 불요 실측 확정** — 정확도·흔적 0 포함) / tsc ✅ / build ✅(40/40)
+- 다음 할 일: Antigravity — UI (스펙 §1-5·§2-4, 인계 프롬프트는 답변 말미)
+- 주의: ① star 액션 = {action:"star", memoId, on:boolean} — 당사자만·읽음 무관·멱등 ② 즐겨찾기 탭 쿼리는 스펙 §1-3의 두 형태 **그대로**(orderBy 금지 — 붙이면 사용자별 복합 색인 문제가 되살아남, 정렬은 클라이언트) ③ 검색 필터는 search_logic.ts의 memoMatchesSearch를 임포트해서 쓸 것(자체 구현 금지 — selftest와 동일 로직 보장) ④ 검색 전량 조회는 기존 두 목록 쿼리 형태+startAfter 페이지(300), clientCache 5분

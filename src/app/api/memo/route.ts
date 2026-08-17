@@ -12,6 +12,7 @@ import {
   resolveHideEligibility,
   resolveRecipients,
   resolveReplyContext,
+  resolveStarEligibility,
   resolveRetentionDays,
   validateMemoContent,
 } from "@/lib/memo/logic";
@@ -32,10 +33,10 @@ import {
 import { listGroupMembers, listUsersInOUs } from "@/lib/google/workspace";
 import { notifyMemo } from "@/lib/push/webpush";
 import { emitNotificationsBatch } from "@/lib/notifications/server";
-import { FieldPath } from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse, after } from "next/server";
 
-type MemoAction = "send" | "read" | "recall" | "hide" | "attachment_quota";
+type MemoAction = "send" | "read" | "recall" | "hide" | "star" | "attachment_quota";
 
 const memoItemsColRef = (domain: string) =>
   adminDb.collection("memos").doc(domain).collection("items");
@@ -432,6 +433,35 @@ export async function POST(req: NextRequest) {
           await ref.update(new FieldPath("hiddenBy", email), Date.now());
         }
         return NextResponse.json({ success: true, action });
+      }
+
+      case "star": {
+        // 즐겨찾기 토글 (star/search spec §1-2) — 본인 표식일 뿐 상대 화면·수신확인에 영향 없음
+        const memoId = typeof body.memoId === "string" ? body.memoId.trim() : "";
+        if (!memoId || memoId.length > 128 || memoId.includes("/")) {
+          return NextResponse.json({ error: "쪽지 정보가 유효하지 않습니다." }, { status: 400 });
+        }
+        if (typeof body.on !== "boolean") {
+          return NextResponse.json({ error: "요청 형식이 유효하지 않습니다." }, { status: 400 });
+        }
+        const ref = memoItemsColRef(domain).doc(memoId);
+        const snap = await ref.get();
+        if (!snap.exists) {
+          return NextResponse.json({ error: "쪽지를 찾을 수 없습니다." }, { status: 404 });
+        }
+        const memo = snap.data() as MemoDoc;
+        const eligible = resolveStarEligibility(memo, email);
+        if (!eligible.ok) {
+          return NextResponse.json({ error: eligible.error }, { status: eligible.status });
+        }
+        // 멱등 — 값이 바뀔 때만 쓴다. 이메일 키에 점(.)이 있으므로 FieldPath 필수 (§1)
+        const currentlyOn = memo.starredBy?.[email] === true;
+        if (body.on && !currentlyOn) {
+          await ref.update(new FieldPath("starredBy", email), true);
+        } else if (!body.on && currentlyOn) {
+          await ref.update(new FieldPath("starredBy", email), FieldValue.delete());
+        }
+        return NextResponse.json({ success: true, action, on: body.on });
       }
 
       case "attachment_quota": {

@@ -35,6 +35,8 @@ export interface MemoDoc {
   recalledCount?: number;
   /** 본인 화면에서 감춘 사람 → 감춘 시각(ms) (§12-1 — 원본은 보존 기간까지 남는다). 키에 점(.) — FieldPath 필수 */
   hiddenBy?: Record<string, number>;
+  /** 별표한 사람 → true (star/search spec §1-1 — 값이 시각이 아닌 이유: 즐겨찾기함이 등호 쿼리라서) */
+  starredBy?: Record<string, true>;
   /** 스레드 뿌리 쪽지의 memoId — 답장에만 존재, 뿌리 자신에게는 없음 (reply spec §2) */
   threadId?: string;
   /** 직접 부모 쪽지의 memoId (reply spec §2) */
@@ -245,6 +247,25 @@ export function resolveHideEligibility(
   }
   if (!isSender && isRecipient && !memo.reads?.[me]) {
     return { ok: false, error: "읽은 뒤에 정리할 수 있습니다.", status: 400 };
+  }
+  return { ok: true };
+}
+
+// ── 즐겨찾기 (star/search spec §1-2) ────────────────────────────────────────
+
+/**
+ * 별표 자격 — 당사자(발신자 또는 수신자)면 됨. **읽음 여부 무관** — 별표는 본인 화면의
+ * 표식일 뿐 수신확인 의미론을 건드리지 않는다(hide의 읽음 조건과 다른 점).
+ */
+export function resolveStarEligibility(
+  memo: Pick<MemoDoc, "senderEmail" | "recipientEmails">,
+  email: string
+): { ok: true } | { ok: false; error: string; status: 403 } {
+  const me = email.trim().toLowerCase();
+  const isSender = (memo.senderEmail || "").toLowerCase() === me;
+  const isRecipient = Array.isArray(memo.recipientEmails) && memo.recipientEmails.includes(me);
+  if (!isSender && !isRecipient) {
+    return { ok: false, error: "이 쪽지의 당사자가 아닙니다.", status: 403 };
   }
   return { ok: true };
 }
