@@ -12,6 +12,9 @@ import {
   TimetableWeek,
   DirectPendingOverlayItem,
   DirectCommitBatchItemResult,
+  ConsentStatus,
+  SwapDraft,
+  SwapSourceSlot,
 } from "@/lib/timetable/types";
 import {
   DAY_LABEL,
@@ -48,6 +51,8 @@ export interface CartItem extends DirectPendingOverlayItem {
   counterpartName?: string;
   counterpartSubjectName?: string;
   lastError?: string;
+  consentStatus?: ConsentStatus;
+  consentNote?: string;
 }
 
 export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTabProps) {
@@ -75,7 +80,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const [loadingTimetable, setLoadingTimetable] = useState(false);
   const [timetableError, setTimetableError] = useState<string | null>(null);
 
-  const weekGridRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // 최근 반영된 주차 하이라이트
   const [recentlyUpdatedWeeks, setRecentlyUpdatedWeeks] = useState<string[]>([]);
 
   const [selectedSlot, setSelectedSlot] = useState<{
@@ -92,6 +97,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     subjectName: string;
     teacherName?: string;
     simul?: string;
+    venueKey?: string;
   } | null>(null);
 
   const [swapCandidateWeeks, setSwapCandidateWeeks] = useState<WeekCandidateGroup[]>([]);
@@ -100,6 +106,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
   const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null);
   const [selectedPartyEmail, setSelectedPartyEmail] = useState<string>("");
+  const weekGridRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const candidateParties = useMemo<CoordinationParty[]>(() => {
     if (!selectedCandidate?.coordination?.simul) return [];
@@ -133,6 +140,12 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const previewCacheRef = useRef<Map<string, TeacherTimetableCell[]>>(new Map());
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+
+  // 직권 양해 요청 (notification_center_spec §4 직권 동등성)
+  const [sendingConsentDraftId, setSendingConsentDraftId] = useState<string | null>(null);
+  const [requestingConsentDraft, setRequestingConsentDraft] = useState<CartItem | null>(null);
+  const [requestingConsentGroup, setRequestingConsentGroup] = useState<{ name: string; email: string; drafts: CartItem[] } | null>(null);
+  const [consentMessageInput, setConsentMessageInput] = useState<string>("");
 
   const [consolidatedShareData, setConsolidatedShareData] = useState<ConsolidatedShareData | null>(null);
   const consolidatedCardRef = useRef<HTMLDivElement>(null);
@@ -225,9 +238,102 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     } catch {}
   };
 
+  const fetchCartDrafts = async () => {
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "draft_list", directOnly: true }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && Array.isArray(data.drafts)) {
+        const loaded: CartItem[] = data.drafts.map((d: SwapDraft) => ({
+          id: d.id,
+          weekId: d.sourceWeekId,
+          targetWeekId: d.targetWeekId,
+          type: (d.candidate as any)?.type === "substitute" ? "substitute" : "swap",
+          source: d.source,
+          candidate: d.candidate,
+          sourceTeacherEmail: (d as any).sourceTeacherEmail,
+          sourceTeacherName: (d as any).sourceTeacherName,
+          counterpartEmail: d.candidate?.counterpartEmail,
+          counterpartName: d.candidate?.counterpartName,
+          counterpartSubjectName: d.candidate?.counterpartSubjectName,
+          consentStatus: d.consentStatus,
+          consentNote: d.consentNote,
+        }));
+        setCartItems(loaded);
+        return loaded;
+      }
+    } catch (err) {
+      console.error("Failed to load direct cart drafts:", err);
+    }
+    return [];
+  };
+
+  const handleSendConsentRequest = async (draftId: string, consentMessage?: string) => {
+    setSendingConsentDraftId(draftId);
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "consent_request",
+          draftId,
+          consentMessage: consentMessage?.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "양해 요청 전송에 실패했습니다.");
+      }
+      alert("상대 선생님께 양해 요청 알림을 보냈습니다.");
+      setRequestingConsentDraft(null);
+      setRequestingConsentGroup(null);
+      setConsentMessageInput("");
+      await fetchCartDrafts();
+    } catch (err: any) {
+      alert(`오류: ${err.message}`);
+    } finally {
+      setSendingConsentDraftId(null);
+    }
+  };
+
+  const handleSendConsentGroupRequest = async (
+    group: { name: string; email: string; drafts: CartItem[] },
+    consentMessage?: string
+  ) => {
+    setSendingConsentDraftId("group");
+    try {
+      for (const d of group.drafts) {
+        if (d.consentStatus !== "CONSENTED") {
+          await fetch("/api/timetable/requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "consent_request",
+              draftId: d.id,
+              consentMessage: consentMessage?.trim() || undefined,
+            }),
+          });
+        }
+      }
+      alert(`${group.name} 선생님께 양해 요청 알림을 보냈습니다.`);
+      setRequestingConsentDraft(null);
+      setRequestingConsentGroup(null);
+      setConsentMessageInput("");
+      await fetchCartDrafts();
+    } catch (err: any) {
+      alert(`오류: ${err.message}`);
+    } finally {
+      setSendingConsentDraftId(null);
+    }
+  };
+
   useEffect(() => {
     fetchTeachers();
     fetchWeeks();
+    fetchCartDrafts();
   }, [activeTermId]);
 
   const toPendingPayload = (items: CartItem[]): DirectPendingOverlayItem[] => {
@@ -290,10 +396,23 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     }
   };
 
-  const handleSelectTeacher = (email: string, name?: string) => {
+  const handleSelectTeacher = async (email: string, name?: string) => {
     let effectiveCart = cartItems;
     if (cartItems.length > 0 && email.toLowerCase() !== selectedTeacherEmail.toLowerCase()) {
       if (!confirm(`담기 목록 ${cartItems.length}건은 현재 선택된 교사 기준입니다. 교사를 전환하면 목록이 비워집니다. 계속할까요?`)) return;
+      try {
+        await Promise.all(
+          cartItems.map((item) =>
+            fetch("/api/timetable/requests", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "draft_delete", draftId: item.id }),
+            })
+          )
+        );
+      } catch (err) {
+        console.error("Failed to delete drafts on teacher change:", err);
+      }
       setCartItems([]);
       effectiveCart = [];
     }
@@ -457,33 +576,70 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     }
   };
 
-  const handleAddChainToCart = (chain: any) => {
+  const handleAddChainToCart = async (chain: any) => {
     if (!chain || !chain.steps || chain.steps.length === 0) return;
 
-    const newItems: CartItem[] = chain.steps.map((step: any, idx: number) => ({
-      id: `chain_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${idx}`,
-      weekId: step.weekId,
-      ...(step.targetWeekId ? { targetWeekId: step.targetWeekId } : {}),
-      type: step.type || "swap",
-      source: step.source,
-      candidate: step.candidate,
-      sourceTeacherEmail: step.sourceTeacherEmail || selectedTeacherEmail,
-      sourceTeacherName: step.sourceTeacherName || selectedTeacherName,
-      counterpartEmail: step.candidate?.counterpartEmail,
-      counterpartName: step.candidate?.counterpartName,
-      counterpartSubjectName: step.candidate?.counterpartSubjectName,
-    }));
+    try {
+      const addedItems: CartItem[] = [];
+      for (const step of chain.steps) {
+        const sourceSlot: SwapSourceSlot = {
+          grade: step.source.grade,
+          classNum: step.source.classNum,
+          day: step.source.day,
+          period: step.source.period,
+          subjectName: step.source.subjectName,
+        };
+        const teacherName = step.sourceTeacherName || selectedTeacherName;
+        const res = await fetch("/api/timetable/requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "draft_save",
+            draft: {
+              direct: true,
+              termId: activeTermId || "",
+              sourceWeekId: step.weekId,
+              ...(step.targetWeekId ? { targetWeekId: step.targetWeekId } : {}),
+              source: sourceSlot,
+              candidate: step.candidate,
+              note: `[직권 체인] ${teacherName} → ${step.candidate?.counterpartName || ""}`,
+            },
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.draft) {
+          const d: SwapDraft = data.draft;
+          addedItems.push({
+            id: d.id,
+            weekId: step.weekId,
+            ...(step.targetWeekId ? { targetWeekId: step.targetWeekId } : {}),
+            type: step.type || "swap",
+            source: sourceSlot,
+            candidate: step.candidate,
+            sourceTeacherEmail: step.sourceTeacherEmail || selectedTeacherEmail,
+            sourceTeacherName: step.sourceTeacherName || selectedTeacherName,
+            counterpartEmail: step.candidate?.counterpartEmail,
+            counterpartName: step.candidate?.counterpartName,
+            counterpartSubjectName: step.candidate?.counterpartSubjectName,
+            consentStatus: d.consentStatus || "NONE",
+            consentNote: d.consentNote,
+          });
+        }
+      }
 
-    const updatedCart = [...cartItems, ...newItems];
-    setCartItems(updatedCart);
-    setSuccessMsg(`🔗 징검다리 체인 (${chain.steps.length}단계)이 담기 목록에 순서대로 추가되었습니다.`);
-    setChainModalOpen(false);
-    setChainSourceSlot(null);
-    setChainTargetSlot(null);
+      const updatedCart = [...cartItems, ...addedItems];
+      setCartItems(updatedCart);
+      setSuccessMsg(`🔗 징검다리 체인 (${addedItems.length}단계)이 담기 목록에 순서대로 추가되었습니다.`);
+      setChainModalOpen(false);
+      setChainSourceSlot(null);
+      setChainTargetSlot(null);
 
-    fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
-    setSelectedSlot(null); setSourceLessonInfo(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]);
-    setSelectedCandidate(null); setCandidateError(null); setPreviewCells(null); setCounterpartSourceCells(null); setCounterpartTargetCells(null);
+      fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
+      setSelectedSlot(null); setSourceLessonInfo(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]);
+      setSelectedCandidate(null); setCandidateError(null); setPreviewCells(null); setCounterpartSourceCells(null); setCounterpartTargetCells(null);
+    } catch (err: any) {
+      alert(`체인 담기 오류: ${err.message}`);
+    }
   };
 
   const handleSlotClick = (
@@ -555,7 +711,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     fetchCandidates(weekId, cell.grade, cell.classNum, cell.day, cell.period, cell.subjectName);
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!selectedCandidate || !selectedSlot || !sourceLessonInfo) return;
 
     const sourceWeekId = selectedSlot.weekId;
@@ -579,44 +735,76 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       };
     } else {
       candidateSnapshot = {
+        type: "substitute",
         counterpartEmail: (selectedCandidate as SubstituteCandidate).teacherEmail,
         counterpartName: (selectedCandidate as SubstituteCandidate).teacherName,
         score: 0,
         penalties: [],
       };
     }
-
-    const newItem: CartItem = {
-      id: `cart_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      weekId: sourceWeekId,
-      ...(activeCandidateType === "swap" && targetWeekId ? { targetWeekId } : {}),
-      type: activeCandidateType,
-      source: {
-        grade: selectedSlot.grade,
-        classNum: selectedSlot.classNum,
-        day: selectedSlot.day,
-        period: selectedSlot.period,
-        subjectName: sourceLessonInfo.subjectName,
-      },
-      candidate: candidateSnapshot,
-      counterpartEmail,
-      counterpartName,
-      counterpartSubjectName,
+    const sourceSlot: SwapSourceSlot = {
+      grade: selectedSlot.grade,
+      classNum: selectedSlot.classNum,
+      day: selectedSlot.day,
+      period: selectedSlot.period,
+      subjectName: sourceLessonInfo.subjectName,
     };
 
-    const updatedCart = [...cartItems, newItem];
-    setCartItems(updatedCart);
-    setSuccessMsg(`🛒 [담기 완료] ${selectedSlot.grade}학년 ${selectedSlot.classNum}반 ${formatSlotWithDate(sourceWeekId, selectedSlot.day, selectedSlot.period)} 수업이 장바구니에 담겼습니다.`);
+    try {
+      const res = await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "draft_save",
+          draft: {
+            direct: true,
+            termId: activeTermId || "",
+            sourceWeekId,
+            ...(targetWeekId ? { targetWeekId } : {}),
+            source: sourceSlot,
+            candidate: candidateSnapshot,
+            note: `[직권] ${selectedTeacherName} → ${counterpartName || ""}`,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "담기 저장에 실패했습니다.");
+      }
 
-    fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
-    setSelectedSlot(null);
-    setSourceLessonInfo(null);
-    setSwapCandidateWeeks([]);
-    setSubstituteCandidates([]);
-    setSelectedCandidate(null);
-    setPreviewCells(null);
-    setCounterpartSourceCells(null);
-    setCounterpartTargetCells(null);
+      const savedDraft: SwapDraft = data.draft;
+      const newItem: CartItem = {
+        id: savedDraft.id,
+        weekId: sourceWeekId,
+        ...(activeCandidateType === "swap" && targetWeekId ? { targetWeekId } : {}),
+        type: activeCandidateType,
+        source: sourceSlot,
+        candidate: candidateSnapshot,
+        sourceTeacherEmail: selectedTeacherEmail,
+        sourceTeacherName: selectedTeacherName,
+        counterpartEmail,
+        counterpartName,
+        counterpartSubjectName,
+        consentStatus: savedDraft.consentStatus || "NONE",
+        consentNote: savedDraft.consentNote,
+      };
+
+      const updatedCart = [...cartItems, newItem];
+      setCartItems(updatedCart);
+      setSuccessMsg(`🛒 [담기 완료] ${selectedSlot.grade}학년 ${selectedSlot.classNum}반 ${formatSlotWithDate(sourceWeekId, selectedSlot.day, selectedSlot.period)} 수업이 장바구니에 담겼습니다.`);
+
+      fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
+      setSelectedSlot(null);
+      setSourceLessonInfo(null);
+      setSwapCandidateWeeks([]);
+      setSubstituteCandidates([]);
+      setSelectedCandidate(null);
+      setPreviewCells(null);
+      setCounterpartSourceCells(null);
+      setCounterpartTargetCells(null);
+    } catch (err: any) {
+      alert(`담기 오류: ${err.message}`);
+    }
   };
 
   // 담기 이탈 경고 (UX 스캔 §6-6 / backlog A2) — 담긴 항목이 있는 채로 페이지를 벗어나면 브라우저 확인
@@ -630,15 +818,37 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [cartItems.length]);
 
-  const handleRemoveCartItem = (id: string) => {
+  const handleRemoveCartItem = async (id: string) => {
+    try {
+      await fetch("/api/timetable/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "draft_delete", draftId: id }),
+      });
+    } catch (err) {
+      console.error("Failed to delete draft:", err);
+    }
     const updatedCart = cartItems.filter((item) => item.id !== id);
     setCartItems(updatedCart);
     fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, updatedCart);
   };
 
-  const handleClearCart = () => {
+  const handleClearCart = async () => {
     if (cartItems.length === 0) return;
     if (!confirm("담기 목록을 모두 비우시겠습니까?")) return;
+    try {
+      await Promise.all(
+        cartItems.map((item) =>
+          fetch("/api/timetable/requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "draft_delete", draftId: item.id }),
+          })
+        )
+      );
+    } catch (err) {
+      console.error("Failed to clear drafts:", err);
+    }
     setCartItems([]);
     fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, weeks, []);
   };
@@ -904,15 +1114,18 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       const payload = {
         action: "direct_commit_batch",
         items: cartItems.map((item) => ({
+          draftId: item.id,
           weekId: item.weekId,
           ...(item.targetWeekId ? { targetWeekId: item.targetWeekId } : {}),
           type: item.type,
           source: item.source,
           candidate: item.candidate,
           reason: { type: reasonType, note: reasonNote.trim() || undefined },
-          consent: item.candidate?.coordination
-            ? { confirmed: true, note: consentNoteInput || undefined }
-            : undefined,
+          consent: item.consentStatus === "CONSENTED"
+            ? { confirmed: true }
+            : (item.candidate?.coordination
+              ? { confirmed: true, note: consentNoteInput || undefined }
+              : undefined),
         })),
         reason: { type: reasonType, note: reasonNote.trim() || undefined },
       };
@@ -921,6 +1134,19 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       if (!res.ok || !data.success) throw new Error(data.error || "일괄 반영 처리 중 오류가 발생했습니다.");
       const results: DirectCommitBatchItemResult[] = data.results || [];
       const successIndices = new Set(results.filter((r) => r.ok).map((r) => r.index));
+
+      // 성공한 항목들의 서버 초안 삭제 정리
+      const successfulItems = cartItems.filter((_, idx) => successIndices.has(idx));
+      await Promise.all(
+        successfulItems.map((item) =>
+          fetch("/api/timetable/requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "draft_delete", draftId: item.id }),
+          }).catch(() => {})
+        )
+      );
+
       const remainingCart = cartItems
         .map((item, origIdx) => ({ item, origIdx }))
         .filter(({ origIdx }) => !successIndices.has(origIdx))
@@ -940,8 +1166,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     if (cartItems.length === 0) { setSubmitError("담긴 항목이 없습니다."); return; }
     if (reasonType === "기타" && !reasonNote.trim()) { setSubmitError("사유가 '기타'인 경우 상세 메모를 입력해 주세요."); return; }
 
-    const hasCoordination = cartItems.some((item) => !!item.candidate?.coordination);
-    if (hasCoordination) {
+    const hasUnconsentedCoordination = cartItems.some((item) => !!item.candidate?.coordination && item.consentStatus !== "CONSENTED");
+    if (hasUnconsentedCoordination) {
       setCartBatchModalOpen(true);
       setCartBatchConsentConfirmed(false);
       setCartBatchConsentNote("");
@@ -1496,11 +1722,32 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                   <div className="space-y-3">
                     <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                       {cartItems.map((item, idx) => (
-                        <div key={item.id} className="p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs space-y-1 relative group">
+                        <div key={item.id} className="p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs space-y-1.5 relative group">
                           <div className="flex items-center justify-between">
-                            <span className="font-bold text-gray-900">
-                              #{idx + 1} [{item.type === "swap" ? "맞교환" : "특별보강"}]
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-gray-900">
+                                #{idx + 1} [{item.type === "swap" ? "맞교환" : "특별보강"}]
+                              </span>
+                              {item.candidate.coordination && item.consentStatus !== "CONSENTED" && (
+                                <span className="text-[10px] text-red-600 font-black bg-red-100 px-1 rounded">⚠️ 양해 필요</span>
+                              )}
+                              {item.consentStatus === "REQUESTED" && (
+                                <span className="text-[10px] bg-blue-100 text-blue-900 border border-blue-300 font-bold px-1.5 py-0.5 rounded">
+                                  📨 양해 대기 중
+                                </span>
+                              )}
+                              {item.consentStatus === "CONSENTED" && (
+                                <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold px-1.5 py-0.5 rounded">
+                                  ✓ 알림으로 양해 받음
+                                </span>
+                              )}
+                              {item.consentStatus === "DECLINED" && (
+                                <span className="text-[10px] bg-rose-100 text-rose-900 border border-rose-300 font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                                  <span>❌ 어렵다고 답함</span>
+                                  {item.consentNote && <span className="font-normal text-rose-800">(사유: {item.consentNote})</span>}
+                                </span>
+                              )}
+                            </div>
                             <button
                               type="button"
                               onClick={() => handleRemoveCartItem(item.id)}
@@ -1514,34 +1761,71 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                           </div>
                           <div className="text-indigo-800 font-medium flex items-center justify-between">
                             <span>➔ {item.type === "swap" ? `${formatSlotWithDate(item.targetWeekId || item.weekId, item.candidate.targetDay, item.candidate.targetPeriod)} (${item.counterpartName})` : `${item.counterpartName} 교사 보강`}</span>
-                            {item.candidate.coordination && <span className="text-[10px] text-red-600 font-black bg-red-100 px-1 rounded">⚠️ 양해 필요</span>}
                           </div>
                           {item.lastError && <div className="text-[11px] text-red-600 bg-red-50 p-1 rounded font-semibold">⚠️ {item.lastError}</div>}
+
+                          {/* 양해 요청 버튼 */}
+                          {item.counterpartEmail && item.consentStatus !== "CONSENTED" && (
+                            <div className="pt-1 flex items-center justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRequestingConsentDraft(item);
+                                  setConsentMessageInput("");
+                                }}
+                                disabled={sendingConsentDraftId === item.id}
+                                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold rounded text-[11px] border border-amber-300 transition-colors shrink-0 disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>📨</span>
+                                <span>{item.consentStatus === "REQUESTED" ? "양해 다시 요청" : "양해 요청 보내기"}</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
 
-                    {/* 양해 이미지 공유 카드 발급 섹션 */}
+                    {/* 양해 이미지 공유 및 양해 요청 (상대 교사별) */}
                     {affectedTeachers.length > 0 && (
                       <div className="pt-2 border-t border-gray-100 space-y-2">
                         <div className="text-[11px] font-bold text-gray-700 flex items-center gap-1">
                           <span>📸</span>
-                          <span>양해 이미지 카드 복사 (상대 교사별):</span>
+                          <span>양해 이미지 카드 복사 / 알림 요청 (상대 교사별):</span>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                          {affectedTeachers.map((t) => (
-                            <button
-                              key={t.email}
-                              type="button"
-                              onClick={() => handleGenerateConsolidatedCard(t.email)}
-                              disabled={generatingShareFor === t.email}
-                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                            >
-                              <span>📋</span>
-                              <span>{t.name} ({t.count}건)</span>
-                              {generatingShareFor === t.email && <span className="animate-spin text-[10px]">⏳</span>}
-                            </button>
-                          ))}
+                          {affectedTeachers.map((t) => {
+                            const groupDrafts = cartItems.filter((ci) => ci.counterpartEmail?.toLowerCase() === t.email.toLowerCase());
+                            const allConsented = groupDrafts.length > 0 && groupDrafts.every((d) => d.consentStatus === "CONSENTED");
+                            const anyRequested = groupDrafts.some((d) => d.consentStatus === "REQUESTED");
+                            return (
+                              <div key={t.email} className="inline-flex items-center gap-1 bg-sky-50 border border-sky-200 rounded-lg p-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateConsolidatedCard(t.email)}
+                                  disabled={generatingShareFor === t.email}
+                                  title="양해 이미지 복사"
+                                  className="px-2 py-0.5 hover:bg-sky-100 border border-transparent text-sky-900 rounded text-xs font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                >
+                                  <span>📋</span>
+                                  <span>{t.name} ({t.count}건)</span>
+                                  {generatingShareFor === t.email && <span className="animate-spin text-[10px]">⏳</span>}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRequestingConsentGroup({ name: t.name, email: t.email, drafts: groupDrafts });
+                                    setConsentMessageInput("");
+                                  }}
+                                  disabled={!!sendingConsentDraftId || allConsented || groupDrafts.length === 0}
+                                  title="양해 요청 알림 보내기"
+                                  className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded text-[10px] font-bold transition-colors disabled:opacity-50 flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  <span>📨</span>
+                                  <span>{allConsented ? "수락됨" : anyRequested ? "다시 요청" : "요청"}</span>
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -1692,10 +1976,19 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       {/* 직권 일괄 반영 모달 */}
       {cartBatchModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-lg w-full p-6 space-y-4 animate-scale-up max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center gap-2 text-red-600 font-extrabold text-base border-b border-red-100 pb-3">
-              <span className="text-xl">⚠️</span>
-              <span>직권 일괄 반영 전 양해 확인</span>
+          <div className="bg-white rounded-2xl shadow-xl border border-red-200 max-w-lg w-full p-6 space-y-4 animate-scale-up max-h-[90vh] overflow-y-auto font-sans">
+            <div className="flex items-center justify-between border-b border-red-100 pb-3">
+              <h4 className="text-sm font-bold text-red-950 flex items-center gap-2">
+                <span className="text-red-600 font-extrabold text-base">⚠️</span>
+                <span>직권 일괄 반영 전 양해 확인</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setCartBatchModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
             </div>
 
             <div className="space-y-3">
@@ -1704,8 +1997,15 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                   기록을 강제하는 범위만 다를 뿐이다 (AGENTS.md 화면 문구 규칙 4). */}
               {cartItems.filter((d) => !!d.candidate?.coordination).map((item, iIdx) => (
                 <div key={item.id || iIdx} className="space-y-1">
-                  <div className="text-[11px] font-bold text-gray-900">
-                    항목 #{iIdx + 1}: {item.source.grade}-{item.source.classNum}반 {item.source.subjectName} ➔ {item.counterpartName}
+                  <div className="text-[11px] font-bold text-gray-900 flex items-center justify-between">
+                    <span>
+                      항목 #{iIdx + 1}: {item.source.grade}-{item.source.classNum}반 {item.source.subjectName} ➔ {item.counterpartName}
+                    </span>
+                    {item.consentStatus === "CONSENTED" && (
+                      <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                        ✓ 알림으로 양해 받음
+                      </span>
+                    )}
                   </div>
                   <CoordinationNoticeBlock
                     coordination={item.candidate.coordination}
@@ -1715,27 +2015,36 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
               ))}
             </div>
 
-            <div className="space-y-2 pt-2 border-t border-gray-100">
-              <label className="flex items-start gap-2 cursor-pointer bg-red-50/60 p-2.5 rounded-lg border border-red-200">
+            {cartItems.some((d) => !!d.candidate?.coordination && d.consentStatus !== "CONSENTED") ? (
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <label className="flex items-start gap-2 cursor-pointer bg-red-50/60 p-2.5 rounded-lg border border-red-200">
+                  <input
+                    type="checkbox"
+                    checked={cartBatchConsentConfirmed}
+                    onChange={(e) => setCartBatchConsentConfirmed(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500 cursor-pointer"
+                  />
+                  <span className="text-xs font-bold text-red-950">
+                    위 항목의 관련 선생님들께 사전 양해를 완료하였습니다 (필수)
+                  </span>
+                </label>
                 <input
-                  type="checkbox"
-                  checked={cartBatchConsentConfirmed}
-                  onChange={(e) => setCartBatchConsentConfirmed(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
+                  type="text"
+                  maxLength={200}
+                  value={cartBatchConsentNote}
+                  onChange={(e) => setCartBatchConsentNote(e.target.value)}
+                  placeholder="양해 메모 (선택, 예: 시간표 조정 사전 합의)"
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
                 />
-                <span className="text-xs font-bold text-red-950">
-                  위 항목의 관련 선생님들께 사전 양해를 완료하였습니다 (필수)
-                </span>
-              </label>
-              <input
-                type="text"
-                maxLength={200}
-                value={cartBatchConsentNote}
-                onChange={(e) => setCartBatchConsentNote(e.target.value)}
-                placeholder="양해 메모 (선택, 예: 시간표 조정 사전 합의)"
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
-              />
-            </div>
+              </div>
+            ) : (
+              <div className="pt-2 border-t border-gray-100">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2 text-xs font-bold text-emerald-900">
+                  <span className="text-emerald-600 font-extrabold">✓</span>
+                  <span>모든 양해 대상 항목의 양해가 알림으로 완료되었습니다.</span>
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
               <button
@@ -1748,10 +2057,86 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
               <button
                 type="button"
                 onClick={() => executeBatchCommit(cartBatchConsentNote.trim())}
-                disabled={submitting || !cartBatchConsentConfirmed}
+                disabled={
+                  submitting ||
+                  (cartItems.some((d) => !!d.candidate?.coordination && d.consentStatus !== "CONSENTED") && !cartBatchConsentConfirmed)
+                }
                 className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
               >
                 {submitting ? "일괄 반영 중..." : `양해 확인 및 ${cartItems.length}건 직권 반영`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📨 직권 양해 요청 모달 (부탁 말씀 한 줄 입력 다이얼로그) */}
+      {(requestingConsentDraft || requestingConsentGroup) && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-6 space-y-4 font-sans">
+            <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
+              <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <span>📨</span>
+                <span>양해 요청 보내기</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => {
+                  setRequestingConsentDraft(null);
+                  setRequestingConsentGroup(null);
+                  setConsentMessageInput("");
+                }}
+                className="text-gray-400 hover:text-gray-600 font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-600 leading-relaxed">
+              상대 선생님께 알림을 보내 사전 양해를 요청합니다. 전하실 부탁 말씀을 남기실 수 있습니다.
+            </p>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                <label htmlFor="direct-consent-message-input">부탁 말씀 (선택)</label>
+                <span className="text-[10px] text-gray-400 font-normal">{consentMessageInput.length}/200자</span>
+              </div>
+              <textarea
+                id="direct-consent-message-input"
+                maxLength={200}
+                rows={3}
+                value={consentMessageInput}
+                onChange={(e) => setConsentMessageInput(e.target.value)}
+                placeholder="예: 학사 일정에 따른 수업 시간표 조정을 위해 양해를 부탁드립니다."
+                className="w-full border border-gray-200 rounded-xl p-3 text-xs focus:ring-2 focus:ring-indigo-500 resize-none bg-white text-gray-900"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setRequestingConsentDraft(null);
+                  setRequestingConsentGroup(null);
+                  setConsentMessageInput("");
+                }}
+                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (requestingConsentDraft) {
+                    handleSendConsentRequest(requestingConsentDraft.id, consentMessageInput);
+                  } else if (requestingConsentGroup) {
+                    handleSendConsentGroupRequest(requestingConsentGroup, consentMessageInput);
+                  }
+                }}
+                disabled={!!sendingConsentDraftId}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs disabled:opacity-50 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                {sendingConsentDraftId ? "전송 중..." : "양해 요청 보내기"}
               </button>
             </div>
           </div>

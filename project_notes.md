@@ -1012,3 +1012,17 @@
 - 검증 상태: tsc ✅ / build ✅
 - 다음 할 일: Antigravity — 직권 화면(DirectSubstituteTab) 담기 목록을 서버 초안으로 전환 + 양해 왕복 UI (아래 주의 참조)
 - 주의: ① 담기 시 draft_save에 draft.direct=true로 저장, 목록은 draft_list {directOnly:true}(교사 포털과 자동 분리), 비우기/반영 성공 시 draft_delete ② 담기 카드에 [양해 요청 보내기](부탁 한 줄)·상태 배지 — 교사 포털 구현(00a7685)과 같은 패턴 재사용 ③ 반영(direct_commit·direct_commit_batch) 시 item.draftId 동봉하면 CONSENTED 초안은 양해 확인 다이얼로그 생략 가능(서버가 인정, method:"in-app" 기록) ④ 기존 "양해 이미지 만들기"는 존치(구두 양해 관행 보조) ⑤ 교사 전환 시 목록 비우기 규약은 direct 초안 삭제로 대체 구현
+
+## [2026-08-18] Antigravity → Claude/사용자 (직권 화면 서버 초안 전환 및 양해 왕복 UI 구현 완료)
+- **변경 파일**:
+  - `src/components/admin/timetable/DirectSubstituteTab.tsx`:
+    - **서버 초안 전환**: 담기(`handleAddToCart`, `handleAddChainToCart`) 시 `draft_save`에 `direct: true`로 서버 저장. 마운트 시 `draft_list` `{ directOnly: true }` 조회로 새로고침 후에도 담기 복원. 개별 삭제 및 전체 비우기 시 `draft_delete` 호출.
+    - **교사 전환 시 비움 규약**: 교사 전환 시 확인 후 서버 직권 초안을 `draft_delete`로 삭제 처리.
+    - **양해 왕복 UI**: 담기 카드에 양해 상태 배지(`REQUESTED` "📨 양해 대기 중", `CONSENTED` "✓ 알림으로 양해 받음", `DECLINED` "❌ 어렵다고 답함" + 사유) 및 `[📨 양해 요청 보내기]` 버튼 연동(부탁 한 줄 모달 포함).
+    - **상대 교사별 양해 바**: 기존 양해 이미지 카드 복사 기능 존치 + `[📨 요청]` 버튼을 통합하여 상대 교사별 일괄 알림 요청 지원.
+    - **일괄 반영 효력 연동**: `direct_commit_batch` 호출 시 `draftId` 동봉 및 `CONSENTED` 초안은 양해 확인 다이얼로그에서 수동 체크박스 숨김(`✓ 알림으로 양해 받음` 표시) 또는 생략 처리. 반영 성공 항목은 서버 직권 초안 자동 삭제 정리.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
+  - `bash scripts/check_ui_removals.sh f9bd523`:
+    - `DirectSubstituteTab.tsx`의 "양해 이미지 카드 복사 (상대 교사별):" 라벨이 신규 알림 요청 기능과 통합된 "양해 이미지 카드 복사 / 알림 요청 (상대 교사별):"로 확장된 정상 변경임.
