@@ -298,3 +298,36 @@ export function getCoordinationParties(coordination?: CandidateCoordination): Co
 
 
 
+
+// ═════════════════════════════════════════════════════════════
+// 참조 학기 우선순위 (development_roadmap §2, 2026-08-17 사용자 확정)
+// ═════════════════════════════════════════════════════════════
+
+/**
+ * 대상 학기의 참조 학기 후보를 우선순위대로 나열한다 — **단일 소재지**.
+ *
+ * 교육과정은 1년 주기라 과목 구성은 전 학기보다 **전년도 같은 학기**와 닮는다
+ * (사용자 원문: "교육과정이 같다면 사실 아예 과목명은 다 같을 거야").
+ * ① 전년도 같은 학기(전전학기) → ② 나머지 과거 학기 최신순. 미래 학기·대상 자신은 제외.
+ * 데이터 유무 검사는 호출자 몫이다(그리드·사전 등 요구 데이터가 소비처마다 다름) —
+ * 이 함수는 순서만 정한다. 전전학기 데이터가 없으면 자연히 다음 후보(전 학기)로 넘어간다.
+ */
+export function rankReferenceTerms(targetTermId: string, availableTermIds: string[]): string[] {
+  const m = (targetTermId || "").match(/^(\d{4})-([12])$/);
+  if (!m) return [];
+  const year = Number(m[1]);
+  const semester = Number(m[2]);
+  const ordinal = (id: string) => {
+    const mm = id.match(/^(\d{4})-([12])$/);
+    return mm ? Number(mm[1]) * 2 + Number(mm[2]) : NaN;
+  };
+  const targetOrd = ordinal(targetTermId);
+  const past = [...new Set(availableTermIds)]
+    .filter((id) => Number.isFinite(ordinal(id)) && ordinal(id) < targetOrd)
+    .sort((a, b) => ordinal(b) - ordinal(a)); // 최신 과거부터
+  const sameSeasonPrevYear = `${year - 1}-${semester}`;
+  return [
+    ...past.filter((id) => id === sameSeasonPrevYear),
+    ...past.filter((id) => id !== sameSeasonPrevYear),
+  ];
+}

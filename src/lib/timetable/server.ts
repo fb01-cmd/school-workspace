@@ -16,7 +16,7 @@ import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardVi
 import { cohortForGrade, expandCohortFixedBlocks, hoursFromPlanRows, validateCohortInput } from "./cohort";
 import { compileSectionsFromHours } from "./solver";
 import { SOFT_CODE_LABELS } from "./labels";
-import { applyRevisionOps, cloneClassGrids } from "./utils";
+import { applyRevisionOps, cloneClassGrids, rankReferenceTerms } from "./utils";
 export { applyRevisionOps, cloneClassGrids };
 import { buildNeisPrecheckReport, emptyNeisMapRegistry } from "./neis";
 import {
@@ -8069,6 +8069,23 @@ export async function buildBlankSolveInput(
 // ═════════════════════════════════════════════════════════════
 
 /**
+ * 참조 학기 선택 — rankReferenceTerms(전년도 같은 학기 우선) 순서에서 기초 그리드가
+ * 실재하는 첫 학기. 없으면 null (호출자가 폴백 결정). 데이터가 쌓이면 저절로 발효된다 —
+ * 2026-1을 넣는 순간 2027-1 준비의 참고가 2026-2에서 2026-1로 바뀐다.
+ */
+export async function pickReferenceTermWithGrids(
+  domain: string,
+  targetTermId: string
+): Promise<string | null> {
+  const terms = await loadAllTerms(domain);
+  for (const id of rankReferenceTerms(targetTermId, terms.map((t) => t.id))) {
+    const probe = await classGridsColRef(domain, id).limit(1).get();
+    if (!probe.empty) return id;
+  }
+  return null;
+}
+
+/**
  * 1. 신학기 초안 학기 생성 (term_create_draft, spec §1)
  */
 export async function createDraftTerm(
@@ -8601,7 +8618,12 @@ export async function finalizeHoursAssignmentJob(
   // 자기 검증의 정답지가 되는 순환 — 그때는 운영 학기 그리드를 참고("previous")로만 쓴다.
   const settingsForTier = await loadTimetableSettings(domain);
   const isOperatingTerm = settingsForTier.activeTermId === targetTermIdForSimul;
-  const evidenceTermId = isOperatingTerm ? targetTermIdForSimul : settingsForTier.activeTermId;
+  // 참고 학기 선택 = 참조 학기 우선순위 규칙 (utils.rankReferenceTerms, 2026-08-17 사용자 확정):
+  // 교육과정이 1년 주기라 전년도 같은 학기가 1순위, 없으면 과거 최신순. 그리드가 실재하는
+  // 첫 후보를 쓰고, 하나도 없으면 운영 학기로 폴백(현재 실물 = 축적 1학기 시절과 동일 동작).
+  const evidenceTermId = isOperatingTerm
+    ? targetTermIdForSimul
+    : (await pickReferenceTermWithGrids(domain, targetTermIdForSimul)) ?? settingsForTier.activeTermId;
   const evidenceTier: "same" | "previous" = isOperatingTerm ? "same" : "previous";
   const systemStatus = evidenceTermId
     ? await deriveSimulStatusFromSystem(domain, evidenceTermId).catch(() => ({

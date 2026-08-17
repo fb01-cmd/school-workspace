@@ -850,3 +850,9 @@
 - 검증 상태: tsc ✅ / build ✅ / verify_subject_dict 11항 ✅ / verify_hours_hwpx 회귀 ✅ / 감사 전 학기 0건(제거 전·후 동일) ✅
 - 다음 할 일: 없음 — 작업 7 전체 종결. 다음 배정표 불러오기·자동 작성에서 "임시 연결" 문구가 더는 안 뜨는 것이 정상
 - 주의: 제거 범위는 런타임 판정 3곳(시뮬 매처·venueProbe·솔버 구성원)뿐 — 관문 보조(후보 제안·조립 힌트·현황 대조)는 제안·고지 엔진으로 존치(4cac058 확정의 그 자리). subjectMatches/subjectStemLoose의 소비자는 이제 hoursAssignment(관문 계열)와 suggestCandidates뿐
+
+## [2026-08-17] Claude(Fable) → Antigravity/사용자 (참조 학기 우선순위 — 규칙·서버부 구현)
+- 변경 파일: src/lib/timetable/{utils,server}.ts·scripts/verify_reference_term.ts(신설)·development_roadmap.md
+- 검증 상태: tsc ✅ / build ✅ / verify_reference_term 5케이스 ✅ / verify_hours_hwpx 회귀 ✅
+- 다음 할 일: Antigravity — UI 기본 선택 2곳(시수 계획 "이전 학기에서 가져오기" 드롭다운·등록부 승계 fromTermId)을 utils.rankReferenceTerms 첫 후보로 기본 선택 (수동 변경은 그대로 가능해야 함)
+- 주의: ① 규칙은 순서만 정한다 — 데이터 유무는 호출자 판단(서버는 그리드 실재 검사) ② 현재 실물(2026-2만 축적)에서는 동작 변화 없음 — 2026-1 데이터가 들어오는 순간 2027-1 준비부터 저절로 발효 ③ 사용자가 2026-1 과거 데이터 투입 의향 표명 — 투입 시 컴시간 가져오기로 2026-1 학기 등록만 하면 됨(별도 코드 불요)
