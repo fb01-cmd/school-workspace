@@ -1133,3 +1133,9 @@
 - 검증 상태: tsc ✅ / build ✅(40/40). 실기기 재확인 = 사용자(3.5MB 테스트 이미지 재첨부 시 "첨부 이미지는 3.5MB 이하여야 합니다"가 카드 아래 보여야 함)
 - 다음 할 일: 사용자 실기기 확인 → 답장 서버부(Claude)
 - 주의: ③ 대용량 첨부는 전제 교정 포함해 로드맵에 기록 — 첨부는 이미 전부 Drive 저장, 한도는 업로드 통로(Vercel 4.5MB). 해법(업로드 세션 URL)은 일반 파일 첨부 단계와 한 묶음 판단
+
+## [2026-08-18] Claude(Fable) → Antigravity/사용자 (쪽지 답장 서버부 완결 — reply spec §8 순서 1)
+- 변경 파일: src/lib/memo/logic.ts(ReplyContext·resolveReplyContext·MemoDoc threadId/replyTo)·src/app/api/memo/route.ts(send에 replyToMemoId 분기)·scripts/memo_selftest.ts(답장 9케이스 확장)
+- 검증 상태: memo_selftest ✅ 전판 / tsc ✅ / build ✅(40/40)
+- 다음 할 일: Antigravity — 답장 UI (reply spec §3: 받은쪽지함 상세 [답장] 버튼·ComposeModal 고정 수신자 모드·상세 「주고받은 이력」 로컬 그룹핑·/m 이력 표시)
+- 주의: ① 답장 발송 = 기존 send에 replyToMemoId만 추가 — 수신자 입력은 서버가 무시하고 원 발신자 1인으로 강제(그룹 확장도 건너뜀), UI도 수신자 잠금으로 정직하게 ② 자격 = 부모 쪽지의 수신자 본인만(발신자 본인·비당사자·회수된 수신자 403) ③ 스레드 뷰는 전용 쿼리 금지 — 받은/보낸 onSnapshot 목록을 threadId로 로컬 그룹핑(규칙상 threadId 쿼리는 거부됨, limit 50 밖 이력은 안 보이는 한계 수용) ④ 응답에 threadId 에코 포함

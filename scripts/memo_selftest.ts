@@ -7,6 +7,7 @@ import {
   MEMO_DEFAULT_RETENTION_DAYS,
   computeRecall,
   expandGroupEmails,
+  resolveReplyContext,
   resolveRecipients,
   resolveRetentionDays,
   validateMemoContent,
@@ -140,6 +141,54 @@ async function main() {
     expect("수신자 0명이면 양쪽 다 빈 배열", r5.keep.length === 0 && r5.recalled.length === 0);
     const r6 = computeRecall({ recipientEmails: ["a@x.kr"] } as any);
     expect("reads 필드가 없어도 죽지 않는다", r6.recalled.length === 1);
+  }
+
+  console.log("\n── 답장 (reply spec §6) ──");
+  {
+    const root = {
+      id: "memo_root",
+      senderEmail: "boss@x.kr",
+      recipientEmails: ["a@x.kr", "b@x.kr"],
+    };
+
+    // 수신자 본인 — 통과, 수신자는 원 발신자 1인으로 강제, 뿌리 쪽지라 threadId = 부모 id
+    const ok = resolveReplyContext(root, "a@x.kr");
+    expect("수신자의 답장 통과", ok.ok);
+    if (ok.ok) {
+      expect("답장 수신자 = 원 발신자 1인", ok.ctx.recipientEmail === "boss@x.kr");
+      expect("뿌리 쪽지의 threadId = 부모 id", ok.ctx.threadId === "memo_root");
+      expect("replyTo = 부모 id", ok.ctx.replyTo === "memo_root");
+    }
+
+    // 답장의 답장 — threadId는 뿌리를 계승, replyTo는 직접 부모
+    const mid = {
+      id: "memo_reply1",
+      senderEmail: "a@x.kr",
+      recipientEmails: ["boss@x.kr"],
+      threadId: "memo_root",
+    };
+    const chained = resolveReplyContext(mid, "boss@x.kr");
+    expect(
+      "답장의 답장 — threadId 뿌리 계승·replyTo 직접 부모",
+      chained.ok && chained.ctx.threadId === "memo_root" && chained.ctx.replyTo === "memo_reply1"
+    );
+
+    // 발신자 본인(수신자 아님) — 자기 쪽지에 답장 불가
+    const bySender = resolveReplyContext(root, "boss@x.kr");
+    expect("발신자 본인의 답장 403", !bySender.ok && bySender.status === 403);
+
+    // 비당사자 — 403 (회수된 수신자도 recipientEmails에서 빠져 같은 경로로 거부)
+    const outsider = resolveReplyContext(root, "c@x.kr");
+    expect("비당사자의 답장 403", !outsider.ok && outsider.status === 403);
+
+    // 자기에게 보낸 쪽지 — 본인이 수신자이므로 허용(수신자 = 자신)
+    const selfMemo = { id: "m_self", senderEmail: "a@x.kr", recipientEmails: ["a@x.kr"] };
+    const selfReply = resolveReplyContext(selfMemo, "a@x.kr");
+    expect("자기 쪽지 답장 허용(수신자=자신)", selfReply.ok && selfReply.ctx.recipientEmail === "a@x.kr");
+
+    // 대소문자 정규화
+    const upper = resolveReplyContext(root, "A@X.KR");
+    expect("발신자 이메일 대소문자 정규화", upper.ok);
   }
 
   console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);

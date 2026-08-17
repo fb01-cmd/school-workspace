@@ -33,6 +33,10 @@ export interface MemoDoc {
   recalledAt?: number;
   /** 지금까지 회수된 인원 누계 — 보낸 이력이 왜곡되지 않게 남긴다 (§12-2) */
   recalledCount?: number;
+  /** 스레드 뿌리 쪽지의 memoId — 답장에만 존재, 뿌리 자신에게는 없음 (reply spec §2) */
+  threadId?: string;
+  /** 직접 부모 쪽지의 memoId (reply spec §2) */
+  replyTo?: string;
   /** 첨부 참조 (2단계 attachment spec §3-1) — 파일 실체는 hmnotice@ Drive, ≤5개 */
   attachments?: MemoAttachment[];
   /** 첨부 열람 권한 방식 — 전 교직원 공지만 domain (attachment spec §3-3) */
@@ -218,6 +222,41 @@ export function resolveRetentionDays(raw: unknown): number {
   const n = typeof raw === "number" ? Math.floor(raw) : NaN;
   if (!Number.isFinite(n) || n < 1 || n > 3650) return MEMO_DEFAULT_RETENTION_DAYS;
   return n;
+}
+
+// ── 답장 (reply spec §6) ─────────────────────────────────────────────────────
+
+export interface ReplyContext {
+  /** 스레드 뿌리 — 부모가 답장이면 계승, 뿌리면 부모 자신 */
+  threadId: string;
+  /** 직접 부모 */
+  replyTo: string;
+  /** 답장 수신자 = 원 쪽지 발신자 1인 (서버 강제 — 클라이언트 수신자 입력은 무시된다) */
+  recipientEmail: string;
+}
+
+/**
+ * 답장 자격·스레드 계승 판정 (reply spec §1·§6).
+ * - 자격 = 부모 쪽지의 수신자 본인뿐. 발신자 본인·비당사자는 403(회수된 수신자도
+ *   recipientEmails에서 빠져 있으므로 자연 거부 — 회수의 의미와 정합).
+ * - 자기에게 보낸 쪽지는 본인이 수신자이기도 하므로 답장(자신에게) 허용 — 무해.
+ */
+export function resolveReplyContext(
+  parent: Pick<MemoDoc, "senderEmail" | "recipientEmails" | "threadId"> & { id: string },
+  senderEmail: string
+): { ok: true; ctx: ReplyContext } | { ok: false; error: string; status: 403 } {
+  const me = senderEmail.trim().toLowerCase();
+  if (!Array.isArray(parent.recipientEmails) || !parent.recipientEmails.includes(me)) {
+    return { ok: false, error: "받은 쪽지에만 답장할 수 있습니다.", status: 403 };
+  }
+  return {
+    ok: true,
+    ctx: {
+      threadId: parent.threadId || parent.id,
+      replyTo: parent.id,
+      recipientEmail: (parent.senderEmail || "").trim().toLowerCase(),
+    },
+  };
 }
 
 // ── 회수 (§12-2) ──────────────────────────────────────────────────────────────

@@ -4,11 +4,13 @@ import { adminDb, verifyAuthAccess } from "@/lib/firebase/admin";
 import {
   MEMO_MAX_RECIPIENTS,
   MemoDoc,
+  ReplyContext,
   computeRecall,
   expandGroupEmails,
   isStudentOuPath,
   isValidEmailFormat,
   resolveRecipients,
+  resolveReplyContext,
   resolveRetentionDays,
   validateMemoContent,
 } from "@/lib/memo/logic";
@@ -112,9 +114,34 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: attIds.error }, { status: 400 });
         }
 
-        // 수신자 원자료 — 형식·개수 방어
-        const rawUsers: unknown = body.recipients?.users ?? [];
-        const rawGroups: unknown = body.recipients?.groups ?? [];
+        // 답장 (reply spec §6) — 수신자는 클라이언트 입력을 무시하고 원 쪽지 발신자 1인으로 서버가 강제
+        const replyToMemoId =
+          typeof body.replyToMemoId === "string" ? body.replyToMemoId.trim() : "";
+        if (
+          body.replyToMemoId !== undefined &&
+          (!replyToMemoId || replyToMemoId.length > 128 || replyToMemoId.includes("/"))
+        ) {
+          return NextResponse.json({ error: "답장 대상 쪽지 정보가 유효하지 않습니다." }, { status: 400 });
+        }
+        let replyCtx: ReplyContext | null = null;
+        if (replyToMemoId) {
+          const parentSnap = await memoItemsColRef(domain).doc(replyToMemoId).get();
+          if (!parentSnap.exists) {
+            return NextResponse.json({ error: "답장할 쪽지를 찾을 수 없습니다." }, { status: 404 });
+          }
+          const judged = resolveReplyContext(
+            { id: parentSnap.id, ...(parentSnap.data() as MemoDoc) },
+            email
+          );
+          if (!judged.ok) {
+            return NextResponse.json({ error: judged.error }, { status: judged.status });
+          }
+          replyCtx = judged.ctx;
+        }
+
+        // 수신자 원자료 — 형식·개수 방어 (답장이면 전부 건너뜀 — 후보는 원 발신자 1인)
+        const rawUsers: unknown = replyCtx ? [] : body.recipients?.users ?? [];
+        const rawGroups: unknown = replyCtx ? [] : body.recipients?.groups ?? [];
         if (!Array.isArray(rawUsers) || !Array.isArray(rawGroups)) {
           return NextResponse.json({ error: "수신자 형식이 유효하지 않습니다." }, { status: 400 });
         }
@@ -147,9 +174,10 @@ export async function POST(req: NextRequest) {
         }
 
         // 실존 대조 — users.list 전수 1회(캐시), 수신자 수와 무관하게 호출 고정 (스펙 §2-2·§2-3)
+        // 답장도 그대로 통과시킨다 — 원 발신자가 퇴직 등으로 빠졌으면 기존 오류로 정직하게 실패 (reply spec §6-3)
         const directory = await listUsersInOUs(["all"]);
         const resolved = resolveRecipients(
-          [...(rawUsers as string[]), ...groupUsers],
+          replyCtx ? [replyCtx.recipientEmail] : [...(rawUsers as string[]), ...groupUsers],
           directory,
           domain
         );
@@ -232,6 +260,7 @@ export async function POST(req: NextRequest) {
           ...(staged.attachments.length > 0
             ? { attachments: staged.attachments, attachmentShareMode }
             : {}),
+          ...(replyCtx ? { threadId: replyCtx.threadId, replyTo: replyCtx.replyTo } : {}),
         };
         const ref = memoItemsColRef(domain).doc();
         await ref.set(doc);
@@ -284,6 +313,7 @@ export async function POST(req: NextRequest) {
           ...(staged.attachments.length > 0
             ? { attachmentCount: staged.attachments.length, attachmentShareMode }
             : {}),
+          ...(replyCtx ? { threadId: replyCtx.threadId } : {}),
           excluded: {
             notFound: resolved.notFound.slice(0, 20),
             students: resolved.students.length,
