@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import { VenueGroup, SimulSlot, ClassGrid } from "@/lib/timetable/types";
 import { buildVenueMatcher } from "@/lib/timetable/venue";
 import { useAvailableClasses } from "./useAvailableClasses";
+import RegistryUnlockModal, { getStoredUnlockReason } from "./RegistryUnlockModal";
 
 interface VenueGroupTabProps {
   activeTermId?: string | null;
+  isOperating?: boolean;
+  isArchived?: boolean;
 }
 
 interface BaseConflict {
@@ -16,13 +19,17 @@ interface BaseConflict {
   users: string[];
 }
 
-export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
+export default function VenueGroupTab({ activeTermId, isOperating = false, isArchived = false }: VenueGroupTabProps) {
   const [groups, setGroups] = useState<VenueGroup[]>([]);
   const [baseConflicts, setBaseConflicts] = useState<BaseConflict[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // 잠금 해제 사유 모달 상태
+  const [unlockModalOpen, setUnlockModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<((reason: string) => Promise<void>) | null>(null);
 
   const { getClassesForGrade } = useAvailableClasses(activeTermId, { fallbackOnEmpty: true });
 
@@ -186,8 +193,12 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
     }
   };
 
-  const handleSaveGroup = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveGroup = async (e: React.FormEvent, reasonOverride?: string) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (isArchived) {
+      alert("지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+      return;
+    }
     if (!roomName.trim()) {
       alert("특별실명(장소)을 입력해 주세요.");
       return;
@@ -210,6 +221,8 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
       finalSubjects.push(subjectInput.trim());
     }
 
+    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
+
     setSaving(true);
     try {
       const payload: VenueGroup = {
@@ -231,10 +244,23 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
           action: "venue_save",
           venueGroup: payload,
           ...(editingGroupId ? { venueGroupId: editingGroupId } : {}),
+          ...(unlockReason ? { unlockReason } : {}),
         }),
       });
 
       const data = await res.json();
+      if (res.status === 423 || data.code === "registry-locked") {
+        if (data.termState === "archived") {
+          alert(data.error || "지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+          return;
+        }
+        setPendingAction(() => async (reason: string) => {
+          await handleSaveGroup(e, reason);
+        });
+        setUnlockModalOpen(true);
+        return;
+      }
+
       if (!res.ok || data.error) {
         throw new Error(data.error || "저장에 실패했습니다.");
       }
@@ -249,16 +275,37 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
     }
   };
 
-  const handleDeleteGroup = async (groupId: string, groupLabel: string) => {
-    if (!confirm(`'${groupLabel}' 특별실 배정을 삭제하시겠습니까?`)) return;
+  const handleDeleteGroup = async (groupId: string, groupLabel: string, reasonOverride?: string) => {
+    if (isArchived) {
+      alert("지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+      return;
+    }
+    if (!reasonOverride && !confirm(`'${groupLabel}' 특별실 배정을 삭제하시겠습니까?`)) return;
     setDeletingId(groupId);
+    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
     try {
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "venue_delete", venueGroupId: groupId }),
+        body: JSON.stringify({
+          action: "venue_delete",
+          venueGroupId: groupId,
+          ...(unlockReason ? { unlockReason } : {}),
+        }),
       });
       const data = await res.json();
+      if (res.status === 423 || data.code === "registry-locked") {
+        if (data.termState === "archived") {
+          alert(data.error || "지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+          return;
+        }
+        setPendingAction(() => async (reason: string) => {
+          await handleDeleteGroup(groupId, groupLabel, reason);
+        });
+        setUnlockModalOpen(true);
+        return;
+      }
+
       if (!res.ok || data.error) throw new Error(data.error || "삭제에 실패했습니다.");
       
       alert("배정이 삭제되었습니다.");
@@ -336,6 +383,16 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
                 <span>{editingGroupId ? "✏️ 특별실 배정 수정" : "➕ 신규 특별실 배정 추가"}</span>
+                {isOperating && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                    🔒 운영 학기 잠김
+                  </span>
+                )}
+                {isArchived && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
+                    🔒 열람 전용
+                  </span>
+                )}
               </h4>
               {editingGroupId && (
                 <button
@@ -605,10 +662,11 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
               )}
               <button
                 type="submit"
-                disabled={saving}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs disabled:opacity-50 transition-colors"
+                disabled={saving || isArchived}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs disabled:opacity-50 transition-colors flex items-center gap-1.5"
               >
-                {saving ? "저장 중..." : editingGroupId ? "💾 수정사항 저장" : "✨ 특별실 배정 등록"}
+                {isOperating && <span>🔒</span>}
+                <span>{saving ? "저장 중..." : editingGroupId ? "💾 수정사항 저장" : "✨ 특별실 배정 등록"}</span>
               </button>
             </div>
           </form>
@@ -814,10 +872,11 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
                           {grp.id && (
                             <button
                               onClick={() => handleDeleteGroup(grp.id!, grp.label)}
-                              disabled={deletingId === grp.id}
-                              className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold transition-colors"
+                              disabled={deletingId === grp.id || isArchived}
+                              className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1"
                             >
-                              {deletingId === grp.id ? "삭제중" : "삭제"}
+                              {isOperating && <span>🔒</span>}
+                              <span>{deletingId === grp.id ? "삭제중" : "삭제"}</span>
                             </button>
                           )}
                         </div>
@@ -855,6 +914,25 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
           </div>
         </div>
       </div>
+
+      {/* 잠금 해제 사유 입력 모달 */}
+      <RegistryUnlockModal
+        isOpen={unlockModalOpen}
+        onClose={() => {
+          setUnlockModalOpen(false);
+          setPendingAction(null);
+        }}
+        onConfirm={async (reason) => {
+          setUnlockModalOpen(false);
+          if (pendingAction) {
+            const actionToRun = pendingAction;
+            setPendingAction(null);
+            await actionToRun(reason);
+          }
+        }}
+        termId={activeTermId}
+        loading={saving || deletingId !== null}
+      />
     </div>
   );
 }

@@ -5,10 +5,13 @@ import { useAuth } from "@/context/AuthContext";
 import { ConsecutiveRule, ClassGrid } from "@/lib/timetable/types";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import { useAvailableClasses } from "./useAvailableClasses";
+import RegistryUnlockModal, { getStoredUnlockReason } from "./RegistryUnlockModal";
 
 interface ConsecutiveRuleTabProps {
   activeTermId?: string | null;
   periodsPerDay?: number;
+  isOperating?: boolean;
+  isArchived?: boolean;
 }
 
 // 클라이언트 전용 순수 판정 헬퍼 (서버 normSubject 규약 동일)
@@ -33,7 +36,12 @@ function isConsecutiveCell(
   return true;
 }
 
-export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: ConsecutiveRuleTabProps) {
+export default function ConsecutiveRuleTab({
+  activeTermId,
+  periodsPerDay = 7,
+  isOperating = false,
+  isArchived = false,
+}: ConsecutiveRuleTabProps) {
   const { userData } = useAuth();
   const domain = userData?.domain || userData?.email?.split("@")[1] || "hmh.or.kr";
 
@@ -45,6 +53,10 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // 잠금 해제 사유 모달 상태
+  const [unlockModalOpen, setUnlockModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<((reason: string) => Promise<void>) | null>(null);
 
   // Form states
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
@@ -179,8 +191,12 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
     setActive(rule.active !== false);
   };
 
-  const handleSaveRule = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveRule = async (e: React.FormEvent, reasonOverride?: string) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (isArchived) {
+      alert("지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+      return;
+    }
     if (!subjectName.trim()) {
       alert("대상 과목명을 입력해 주세요.");
       return;
@@ -206,6 +222,7 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
     }
 
     const finalTeacherEmail = teacherEmail.trim();
+    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
 
     setSaving(true);
     try {
@@ -227,10 +244,23 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
           action: "consecutive_rule_save",
           rule: payload,
           ...(editingRuleId ? { ruleId: editingRuleId } : {}),
+          ...(unlockReason ? { unlockReason } : {}),
         }),
       });
 
       const data = await res.json();
+      if (res.status === 423 || data.code === "registry-locked") {
+        if (data.termState === "archived") {
+          alert(data.error || "지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+          return;
+        }
+        setPendingAction(() => async (reason: string) => {
+          await handleSaveRule(e, reason);
+        });
+        setUnlockModalOpen(true);
+        return;
+      }
+
       if (!res.ok || data.error) {
         throw new Error(data.error || "저장에 실패했습니다.");
       }
@@ -245,16 +275,37 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
     }
   };
 
-  const handleDeleteRule = async (ruleId: string, labelText: string) => {
-    if (!confirm(`'${labelText}' 연속수업 규칙을 삭제하시겠습니까?`)) return;
+  const handleDeleteRule = async (ruleId: string, labelText: string, reasonOverride?: string) => {
+    if (isArchived) {
+      alert("지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+      return;
+    }
+    if (!reasonOverride && !confirm(`'${labelText}' 연속수업 규칙을 삭제하시겠습니까?`)) return;
     setDeletingId(ruleId);
+    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
     try {
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "consecutive_rule_delete", ruleId }),
+        body: JSON.stringify({
+          action: "consecutive_rule_delete",
+          ruleId,
+          ...(unlockReason ? { unlockReason } : {}),
+        }),
       });
       const data = await res.json();
+      if (res.status === 423 || data.code === "registry-locked") {
+        if (data.termState === "archived") {
+          alert(data.error || "지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+          return;
+        }
+        setPendingAction(() => async (reason: string) => {
+          await handleDeleteRule(ruleId, labelText, reason);
+        });
+        setUnlockModalOpen(true);
+        return;
+      }
+
       if (!res.ok || data.error) throw new Error(data.error || "삭제에 실패했습니다.");
 
       alert("규칙이 삭제되었습니다.");
@@ -300,6 +351,14 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
 
   return (
     <div className="space-y-6 font-sans">
+      {/* ㉯ 계열 탭 상단 안내 (스펙 §4 확정 문안) */}
+      {isOperating && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 text-xs text-blue-900 font-medium flex items-center gap-2 shadow-xs">
+          <span className="text-base">ℹ️</span>
+          <span>이 등록 내용은 시간표를 새로 짤 때 쓰입니다. 운영 중인 시간표에는 영향을 주지 않습니다.</span>
+        </div>
+      )}
+
       {/* 안내 박스 - 눈높이 문구로 정리 */}
       <div className="bg-sky-50 border border-sky-200 rounded-xl p-5 text-sky-900 text-xs leading-relaxed space-y-1">
         <div className="font-bold text-sm flex items-center gap-1.5 text-sky-900">
@@ -321,6 +380,16 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                 <span>{editingRuleId ? "✏️ 연속수업 규칙 수정" : "➕ 연속수업 규칙 등록"}</span>
+                {isOperating && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                    🔒 운영 학기 잠김
+                  </span>
+                )}
+                {isArchived && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
+                    🔒 열람 전용
+                  </span>
+                )}
               </h3>
               {editingRuleId && (
                 <button
@@ -516,10 +585,11 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
               {/* 제출 버튼 */}
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || isArchived}
                 className="w-full py-2.5 bg-sky-600 hover:bg-sky-700 disabled:bg-gray-400 text-white font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 text-xs"
               >
                 {saving && <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />}
+                {isOperating && <span>🔒</span>}
                 <span>{editingRuleId ? "연속수업 규칙 수정 저장" : "연속수업 규칙 등록"}</span>
               </button>
             </form>
@@ -751,10 +821,11 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
                           onClick={() =>
                             handleDeleteRule(rule.id!, `${rule.grade}학년 ${rule.subjectName} (${rule.pattern})`)
                           }
-                          disabled={deletingId === rule.id}
-                          className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded disabled:opacity-50"
+                          disabled={deletingId === rule.id || isArchived}
+                          className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded disabled:opacity-50 flex items-center gap-1"
                         >
-                          삭제
+                          {isOperating && <span>🔒</span>}
+                          <span>삭제</span>
                         </button>
                       </div>
                     </div>
@@ -765,6 +836,25 @@ export default function ConsecutiveRuleTab({ activeTermId, periodsPerDay = 7 }: 
           </div>
         </div>
       </div>
+
+      {/* 잠금 해제 사유 입력 모달 */}
+      <RegistryUnlockModal
+        isOpen={unlockModalOpen}
+        onClose={() => {
+          setUnlockModalOpen(false);
+          setPendingAction(null);
+        }}
+        onConfirm={async (reason) => {
+          setUnlockModalOpen(false);
+          if (pendingAction) {
+            const actionToRun = pendingAction;
+            setPendingAction(null);
+            await actionToRun(reason);
+          }
+        }}
+        termId={activeTermId}
+        loading={saving || deletingId !== null}
+      />
     </div>
   );
 }

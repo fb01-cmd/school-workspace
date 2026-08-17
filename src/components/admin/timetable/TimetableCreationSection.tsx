@@ -380,20 +380,47 @@ export default function TimetableCreationSection() {
         />
       )}
 
-      {activeTab === "simul" && <SimulGroupTab activeTermId={effectiveTermId} />}
+      {activeTab === "simul" && (
+        <SimulGroupTab
+          activeTermId={effectiveTermId}
+          isOperating={!!activeTermId && effectiveTermId === activeTermId}
+          isArchived={workingTerm?.status === "archived"}
+        />
+      )}
 
-      {activeTab === "venue" && <VenueGroupTab activeTermId={effectiveTermId} />}
+      {activeTab === "venue" && (
+        <VenueGroupTab
+          activeTermId={effectiveTermId}
+          isOperating={!!activeTermId && effectiveTermId === activeTermId}
+          isArchived={workingTerm?.status === "archived"}
+        />
+      )}
 
       {activeTab === "slot_ban" && (
-        <TeacherSlotBanTab activeTermId={effectiveTermId} periodsPerDay={periodsPerDay} />
+        <TeacherSlotBanTab
+          activeTermId={effectiveTermId}
+          periodsPerDay={periodsPerDay}
+          isOperating={!!activeTermId && effectiveTermId === activeTermId}
+          isArchived={workingTerm?.status === "archived"}
+        />
       )}
 
       {activeTab === "consecutive" && (
-        <ConsecutiveRuleTab activeTermId={effectiveTermId} periodsPerDay={periodsPerDay} />
+        <ConsecutiveRuleTab
+          activeTermId={effectiveTermId}
+          periodsPerDay={periodsPerDay}
+          isOperating={!!activeTermId && effectiveTermId === activeTermId}
+          isArchived={workingTerm?.status === "archived"}
+        />
       )}
 
       {activeTab === "coteaching" && (
-        <CoTeachingRuleTab activeTermId={effectiveTermId} periodsPerDay={periodsPerDay} />
+        <CoTeachingRuleTab
+          activeTermId={effectiveTermId}
+          periodsPerDay={periodsPerDay}
+          isOperating={!!activeTermId && effectiveTermId === activeTermId}
+          isArchived={workingTerm?.status === "archived"}
+        />
       )}
 
       {activeTab === "draft" && (

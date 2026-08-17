@@ -4,17 +4,24 @@ import { useEffect, useState } from "react";
 import { SimulGroup, SimulSlot, isSimulCell } from "@/lib/timetable/simul";
 import { ClassGrid } from "@/lib/timetable/types";
 import { useAvailableClasses } from "./useAvailableClasses";
+import RegistryUnlockModal, { getStoredUnlockReason } from "./RegistryUnlockModal";
 
 interface SimulGroupTabProps {
   activeTermId?: string | null;
+  isOperating?: boolean;
+  isArchived?: boolean;
 }
 
-export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
+export default function SimulGroupTab({ activeTermId, isOperating = false, isArchived = false }: SimulGroupTabProps) {
   const [groups, setGroups] = useState<SimulGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // 잠금 해제 사유 모달 상태
+  const [unlockModalOpen, setUnlockModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<((reason: string) => Promise<void>) | null>(null);
 
   const { getClassesForGrade } = useAvailableClasses(activeTermId, { fallbackOnEmpty: true });
 
@@ -172,8 +179,12 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
     }
   };
 
-  const handleSaveGroup = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveGroup = async (e: React.FormEvent, reasonOverride?: string) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (isArchived) {
+      alert("지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+      return;
+    }
     if (!label.trim()) {
       alert("그룹명을 입력해 주세요.");
       return;
@@ -191,6 +202,8 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
     if (subjectInput.trim() && !finalSubjects.includes(subjectInput.trim())) {
       finalSubjects.push(subjectInput.trim());
     }
+
+    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
 
     setSaving(true);
     try {
@@ -212,10 +225,23 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
           action: "simul_save",
           simulGroup: payload,
           ...(editingGroupId ? { simulGroupId: editingGroupId } : {}),
+          ...(unlockReason ? { unlockReason } : {}),
         }),
       });
 
       const data = await res.json();
+      if (res.status === 423 || data.code === "registry-locked") {
+        if (data.termState === "archived") {
+          alert(data.error || "지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+          return;
+        }
+        setPendingAction(() => async (reason: string) => {
+          await handleSaveGroup(e, reason);
+        });
+        setUnlockModalOpen(true);
+        return;
+      }
+
       if (!res.ok || data.error) {
         throw new Error(data.error || "저장에 실패했습니다.");
       }
@@ -230,16 +256,37 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
     }
   };
 
-  const handleDeleteGroup = async (groupId: string, groupLabel: string) => {
-    if (!confirm(`'${groupLabel}' 이동수업 그룹을 삭제하시겠습니까?`)) return;
+  const handleDeleteGroup = async (groupId: string, groupLabel: string, reasonOverride?: string) => {
+    if (isArchived) {
+      alert("지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+      return;
+    }
+    if (!reasonOverride && !confirm(`'${groupLabel}' 이동수업 그룹을 삭제하시겠습니까?`)) return;
     setDeletingId(groupId);
+    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
     try {
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "simul_delete", simulGroupId: groupId }),
+        body: JSON.stringify({
+          action: "simul_delete",
+          simulGroupId: groupId,
+          ...(unlockReason ? { unlockReason } : {}),
+        }),
       });
       const data = await res.json();
+      if (res.status === 423 || data.code === "registry-locked") {
+        if (data.termState === "archived") {
+          alert(data.error || "지난 학기의 편성 등록 내용은 열람만 가능합니다.");
+          return;
+        }
+        setPendingAction(() => async (reason: string) => {
+          await handleDeleteGroup(groupId, groupLabel, reason);
+        });
+        setUnlockModalOpen(true);
+        return;
+      }
+
       if (!res.ok || data.error) throw new Error(data.error || "삭제에 실패했습니다.");
       
       alert("그룹이 삭제되었습니다.");
@@ -290,6 +337,16 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
                 <span>{editingGroupId ? "✏️ 이동수업 그룹 수정" : "➕ 신규 이동수업 그룹 추가"}</span>
+                {isOperating && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                    🔒 운영 학기 잠김
+                  </span>
+                )}
+                {isArchived && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
+                    🔒 열람 전용
+                  </span>
+                )}
               </h4>
               {editingGroupId && (
                 <button
@@ -528,10 +585,11 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
               )}
               <button
                 type="submit"
-                disabled={saving}
-                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-xs disabled:opacity-50 transition-colors"
+                disabled={saving || isArchived}
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-xs disabled:opacity-50 transition-colors flex items-center gap-1.5"
               >
-                {saving ? "저장 중..." : editingGroupId ? "💾 수정사항 저장" : "✨ 이동수업 그룹 등록"}
+                {isOperating && <span>🔒</span>}
+                <span>{saving ? "저장 중..." : editingGroupId ? "💾 수정사항 저장" : "✨ 이동수업 그룹 등록"}</span>
               </button>
             </div>
           </form>
@@ -735,10 +793,11 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
                           {grp.id && (
                             <button
                               onClick={() => handleDeleteGroup(grp.id!, grp.label)}
-                              disabled={deletingId === grp.id}
-                              className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold transition-colors cursor-pointer"
+                              disabled={deletingId === grp.id || isArchived}
+                              className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
                             >
-                              {deletingId === grp.id ? "삭제중" : "삭제"}
+                              {isOperating && <span>🔒</span>}
+                              <span>{deletingId === grp.id ? "삭제중" : "삭제"}</span>
                             </button>
                           )}
                         </div>
@@ -776,6 +835,25 @@ export default function SimulGroupTab({ activeTermId }: SimulGroupTabProps) {
           </div>
         </div>
       </div>
+
+      {/* 잠금 해제 사유 입력 모달 */}
+      <RegistryUnlockModal
+        isOpen={unlockModalOpen}
+        onClose={() => {
+          setUnlockModalOpen(false);
+          setPendingAction(null);
+        }}
+        onConfirm={async (reason) => {
+          setUnlockModalOpen(false);
+          if (pendingAction) {
+            const actionToRun = pendingAction;
+            setPendingAction(null);
+            await actionToRun(reason);
+          }
+        }}
+        termId={activeTermId}
+        loading={saving || deletingId !== null}
+      />
     </div>
   );
 }

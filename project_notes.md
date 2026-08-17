@@ -881,3 +881,33 @@
 - 검증 상태: tsc ✅ / build ✅ / verify_registry_lock 5항 ✅(실데이터: 운영 2026-2 잠김·초안 2027-1 자유)
 - 다음 할 일: Antigravity — 스펙 §5대로 잠금 배지·사유 입력 다이얼로그(423 registry-locked 분기)·보관 학기 비활성·㉯ 계열 안내 문구
 - 주의: ① 잠금의 원본은 서버 가드 — UI는 423 응답으로 분기하는 것이 기본, 선제 배지만 activeTermId 비교 허용 ② 요청 계약 = 편집 10종에 unlockReason(2~200자) 동반, 문구는 스펙 §4의 확정 문안 사용 ③ **주의: 이 기능 배포 순간부터 운영 학기(2026-2) 등록부 편집은 사유 없이는 423으로 막힌다** — UI 배포 전까지 운영 학기 등록부를 편집할 일이 생기면 초안에서 하거나 UI 완성을 기다릴 것
+
+## [2026-08-18] Antigravity → Claude/사용자 (편성 등록부 잠금 UI 구현 완료)
+- **변경 파일**:
+  - `src/components/admin/timetable/RegistryUnlockModal.tsx` (신규):
+    - 스펙 §4 확정 문구(잠김 안내 ⓐ + 해제 경고 ⓑ)를 담은 사유 입력 다이얼로그(2~200자 실시간 카운터 및 유효성 검사).
+    - `sessionStorage` 기반 사유 캐싱(`getStoredUnlockReason`, `setStoredUnlockReason`, `clearStoredUnlockReason`)을 제공하여 편집 세션 동안 반복 입력 부담 완화.
+  - `src/components/admin/timetable/SimulGroupTab.tsx`:
+    - 저장(`simul_save`)/삭제(`simul_delete`) 시 423 (`code: "registry-locked"`) 응답 분기 처리 (`termState: "operating"` 시 모달 오픈 및 사유 첨부 재요청, `termState: "archived"` 시 열람 전용 안내).
+    - 운영 학기일 때 폼 헤더 및 저장/삭제 버튼에 `🔒` 자물쇠 배지 선제 표시, 보관 학기일 때 편집 비활성화.
+  - `src/components/admin/timetable/VenueGroupTab.tsx`:
+    - 특별실 저장(`venue_save`)/삭제(`venue_delete`) 423 응답 분기 처리 및 `🔒` 자물쇠 배지/보관 학기 비활성화.
+  - `src/components/admin/timetable/TeacherSlotBanTab.tsx`:
+    - ㉯ 계열 탭 상단 안내(스펙 §4 확정 문구 ⓒ: *"이 등록 내용은 시간표를 새로 짤 때 쓰입니다. 운영 중인 시간표에는 영향을 주지 않습니다."*) 상시 표시.
+    - 규칙 저장(`slot_ban_save`)/삭제(`slot_ban_delete`)/AI 말로 입력 일괄 저장 423 응답 분기 및 `🔒` 자물쇠 배지/보관 학기 비활성화.
+  - `src/components/admin/timetable/ConsecutiveRuleTab.tsx`:
+    - ㉯ 계열 탭 상단 안내(스펙 §4 확정 문구 ⓒ) 상시 표시.
+    - 연속수업 저장(`consecutive_rule_save`)/삭제(`consecutive_rule_delete`) 423 응답 분기 및 `🔒` 자물쇠 배지/보관 학기 비활성화.
+  - `src/components/admin/timetable/CoTeachingRuleTab.tsx`:
+    - ㉯ 계열 탭 상단 안내(스펙 §4 확정 문구 ⓒ) 상시 표시.
+    - 복수교사 저장(`co_teaching_rule_save`)/삭제(`co_teaching_rule_delete`) 423 응답 분기 및 `🔒` 자물쇠 배지/보관 학기 비활성화.
+  - `src/components/admin/timetable/TimetableCreationSection.tsx`:
+    - 5개 탭(`SimulGroupTab`, `VenueGroupTab`, `TeacherSlotBanTab`, `ConsecutiveRuleTab`, `CoTeachingRuleTab`)에 `isOperating={!!activeTermId && effectiveTermId === activeTermId}` 및 `isArchived={workingTerm?.status === "archived"}` prop 전달.
+- **규칙 준수**:
+  - `AGENTS.md` (ui-copy-rules): 개발 용어(registry-locked, unlockReason 등)나 메타문구(스펙 §, 컴시간 등) 화면 노출 없음, 스펙 §4 확정 문구 정확히 적용.
+  - 단일 원본 원칙: 잠금 판정은 서버 423 응답이 원본이며, UI는 응답에 따라 사유 다이얼로그 분기 처리.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (39/39 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 87f956d` ✅ (사라진 상호작용 없음)
+  - `npx tsx --env-file=.env.local scripts/verify_registry_lock.ts` ✅ (5개 케이스 전판 통과)
