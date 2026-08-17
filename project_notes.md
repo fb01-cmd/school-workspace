@@ -1308,3 +1308,9 @@
 - 검증 상태: memo_selftest ✅ 전판 / verify_memo_star ✅ (등호 쿼리 2개 **복합 색인 불요 실측 확정** — 정확도·흔적 0 포함) / tsc ✅ / build ✅(40/40)
 - 다음 할 일: Antigravity — UI (스펙 §1-5·§2-4, 인계 프롬프트는 답변 말미)
 - 주의: ① star 액션 = {action:"star", memoId, on:boolean} — 당사자만·읽음 무관·멱등 ② 즐겨찾기 탭 쿼리는 스펙 §1-3의 두 형태 **그대로**(orderBy 금지 — 붙이면 사용자별 복합 색인 문제가 되살아남, 정렬은 클라이언트) ③ 검색 필터는 search_logic.ts의 memoMatchesSearch를 임포트해서 쓸 것(자체 구현 금지 — selftest와 동일 로직 보장) ④ 검색 전량 조회는 기존 두 목록 쿼리 형태+startAfter 페이지(300), clientCache 5분
+
+## [2026-08-18] Claude(Fable) → 사용자 (즐겨찾기·검색 UI 검수 통과 — 후속 1건: 검색 범위 드롭다운)
+- 변경 파일: (검수만) 대상 = c2d2cec
+- 검증 상태: tsc ✅ / build ✅(40/40) / check_ui_removals 4812244 ✅ / memo_selftest ✅. 표적 확인 — 즐겨찾기 쿼리 2개가 스펙 §1-3 형태 그대로(FieldPath 등호·orderBy 없음), memoMatchesSearch 임포트 사용(자체 구현 0), 검색 전량 조회+5분 캐시. 게이트 전부 이행
+- 다음 할 일: ① Antigravity — 검색 범위 드롭다운(스펙 §2-4a, UI 완료 직후 채택된 개정이라 후속 분리) ② 사용자 실기기 확인(별표→즐겨찾기 탭·검색)
+- 주의: §2-4a는 c2d2cec 이후 개정 — 현행 배포본은 전량(1년) 검색이며 무해(실사용 초기 물량 소량), 드롭다운 합류 시 기본 3개월로 전환됨
