@@ -1452,12 +1452,13 @@ function ComposeModal({
                                 ✓ 완료
                               </span>
                             )}
-                            {item.status === "error" && (
-                              <span className="text-rose-600 font-bold truncate max-w-[80px]" title={item.error}>
-                                ⚠️ {item.error || "실패"}
-                              </span>
-                            )}
                           </div>
+                          {/* 실패 사유는 잘라내지 않는다 — 사용자가 사유를 보고 조치해야 한다 (2026-08-18 실기기 지적) */}
+                          {item.status === "error" && (
+                            <p className="text-[10px] text-rose-600 font-semibold leading-snug">
+                              ⚠️ {item.error || "업로드에 실패했습니다."}
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}

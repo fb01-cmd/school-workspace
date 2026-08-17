@@ -1127,3 +1127,9 @@
   - `npx tsc --noEmit` ✅ (0 errors)
   - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
   - `bash scripts/check_ui_removals.sh 2698774` ✅ (사라진 상호작용 없음)
+
+## [2026-08-18] Claude(Fable) → 사용자 (첨부 실패 사유 표시 수정 + 대용량 첨부 아이디어 기록)
+- 변경 파일: src/components/admin/MemoSection.tsx(실패 사유를 카드 하단 전체 폭 줄로 — 80px 말줄임 폐기)·development_roadmap.md(피드백 덤프 ②③ 등재)
+- 검증 상태: tsc ✅ / build ✅(40/40). 실기기 재확인 = 사용자(3.5MB 테스트 이미지 재첨부 시 "첨부 이미지는 3.5MB 이하여야 합니다"가 카드 아래 보여야 함)
+- 다음 할 일: 사용자 실기기 확인 → 답장 서버부(Claude)
+- 주의: ③ 대용량 첨부는 전제 교정 포함해 로드맵에 기록 — 첨부는 이미 전부 Drive 저장, 한도는 업로드 통로(Vercel 4.5MB). 해법(업로드 세션 URL)은 일반 파일 첨부 단계와 한 묶음 판단
