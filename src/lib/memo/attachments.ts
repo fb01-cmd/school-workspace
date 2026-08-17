@@ -15,12 +15,12 @@ const attachmentOwnerEmail = () =>
   process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL ||
   "hmnotice@hmh.or.kr";
 
-const folderCacheRef = () => adminDb.collection("platform_config").doc("attachment_folders");
+export const folderCacheRef = () => adminDb.collection("platform_config").doc("attachment_folders");
 const stagingRef = (fileId: string) => adminDb.collection("attachment_staging").doc(fileId);
 const memoRef = (domain: string, memoId: string) =>
   adminDb.collection("memos").doc(domain).collection("items").doc(memoId);
 
-function driveOrThrow(): Drive {
+export function driveOrThrow(): Drive {
   const drive = getDriveClient(attachmentOwnerEmail());
   if (!drive) throw new Error("Drive 클라이언트를 초기화하지 못했습니다(모의 모드).");
   return drive;

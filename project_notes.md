@@ -1236,3 +1236,9 @@
 - 검증 상태: tsc ✅ / build ✅(40/40) / check_ui_removals 6deedf7 ✅(사라진 상호작용 0) / memo_selftest ✅. 재스타일 diff에서 핸들러 수 이동 전후 동일 확인(기능 불변). 이번엔 커밋·push·핸드오버 게이트 전부 이행됨
 - 다음 할 일: 사용자 — 실기기 눈 확인(⑦은 사용자가 제기한 시각 문제라 최종 판정도 사용자 눈): 목록 행 경계·제목/본문 대비·상세의 본문 카드 구획·이력 박스 분리
 - 주의: 경미 1건(비차단) — 로드맵 ⑦ 항목을 덧붙임 아닌 덮어쓰기로 완료 처리(append-only 본문 규칙과 어긋남, 유실 내용은 없어 기록만). 다음부터는 완료 표시를 항목 뒤 추가 줄로
+
+## [2026-08-18] Claude(Fable) → 사용자 (쪽지 파기 크론 완결 — attachment spec §8 순서 5·1단계 §6 후행 크론)
+- 변경 파일: src/lib/memo/purge.ts(신설 — 만료 쪽지+첨부 Drive·staging 24h 고아·빈 지난달 폴더+캐시 키)·src/app/api/cron/daily-sync/route.ts(3번째 작업 통합)·src/lib/memo/attachments.ts(헬퍼 export)·scripts/verify_memo_purge.ts(신설)·personal_data_inventory.md(memos 행 갱신+쪽지 첨부 행 신설)·src/app/privacy/page.tsx(문안 정밀화 "첨부 링크"→"첨부 이미지", POLICY_VERSION 유지 — 자발 첨부·기준표 "문안만")·docs/memo_attachment_spec.md(§8-5 완료)
+- 검증 상태: verify_memo_purge ✅ 12케이스(실계정 — dryRun 무삭제→실파기 문서·파일·staging·폴더·캐시 전부 소멸·보류 0) / tsc ✅ / build ✅(40/40)
+- 다음 할 일: 없음(크론 자동) — 첫 실전 실행은 내일 daily-sync(03:00 KST). 확인하고 싶으면 Vercel 로그의 memoPurge 항목
+- 주의: ① 크론 슬롯 판단 = daily-sync 통합 채택, GitHub Actions 기각(스케줄러 이원화) ② Drive 삭제 실패 시 참조 문서를 남겨 다음 회차 재시도(참조 유실 = 영구 고아 방지) ③ 회차 상한 100건/100건 — 밀리면 다음 날 이어감 ④ 실전 첫 파기는 2027년 중반(365일 보존)이라 당분간 staging 고아·빈 폴더 정리만 동작

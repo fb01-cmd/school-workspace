@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runDisciplineSheetBridge } from "@/lib/discipline/bridge";
 import { runNeisCalendarSync } from "@/lib/timetable/server";
+import { runMemoPurge } from "@/lib/memo/purge";
 import { adminDb } from "@/lib/firebase/admin";
 
 export const maxDuration = 60;
@@ -21,9 +22,11 @@ const CRON_SECRET = process.env.CRON_SECRET;
  * - 두 작업은 **서로 독립** — 한쪽이 던져도 다른 쪽은 반드시 실행된다.
  * - 브리지는 킬 스위치(discipline_config.sheetBridgeEnabled)를 자체 확인하므로
  *   일몰(9/10) 후 스위치를 끄면 이 크론은 자연히 나이스 전용이 된다.
- * - ?dryRun=true 는 브리지에만 전달된다(나이스 동기화는 dryRun 미지원 — upsert 멱등).
+ * - ?dryRun=true 는 브리지·쪽지 파기에 전달된다(나이스 동기화는 dryRun 미지원 — upsert 멱등).
  * - 개별 수동 실행은 기존 경로가 그대로 담당한다:
  *   /api/discipline/cron/bridge, /api/timetable/cron/neis-calendar (스케줄만 여기로 이동).
+ * - 쪽지 파기(2026-08-18 합류, memo_spec §6·attachment spec §6): 같은 "하루 1회" 성격이라
+ *   세 번째 크론을 만들지 않고 여기 통합 — GitHub Actions 대안은 스케줄러 이원화라 기각.
  */
 export async function GET(req: NextRequest) {
   if (process.env.NODE_ENV === "production" && !CRON_SECRET) {
@@ -44,9 +47,11 @@ export async function GET(req: NextRequest) {
   const results: {
     bridge: { ok: boolean; detail: unknown };
     neis: { ok: boolean; detail: unknown };
+    memoPurge: { ok: boolean; detail: unknown };
   } = {
     bridge: { ok: false, detail: null },
     neis: { ok: false, detail: null },
+    memoPurge: { ok: false, detail: null },
   };
 
   // ── 1. 생활지도 시트 브리지 ──
@@ -67,7 +72,17 @@ export async function GET(req: NextRequest) {
     results.neis = { ok: false, detail: error.message };
   }
 
-  const anyFailed = !results.bridge.ok || !results.neis.ok;
+  // ── 3. 쪽지 파기 — 보존 만료 쪽지·첨부 Drive 파일·staging 고아·빈 월 폴더 (앞 작업 실패와 무관하게 실행) ──
+  try {
+    const domainRefs = await adminDb.collection("memos").listDocuments();
+    const domains = domainRefs.map((r) => r.id);
+    results.memoPurge = { ok: true, detail: await runMemoPurge(domains, { dryRun }) };
+  } catch (error: any) {
+    console.error("[Daily-Sync Cron] 쪽지 파기 실패:", error);
+    results.memoPurge = { ok: false, detail: error.message };
+  }
+
+  const anyFailed = !results.bridge.ok || !results.neis.ok || !results.memoPurge.ok;
   return NextResponse.json(
     { ...results, processedAt: new Date().toISOString() },
     { status: anyFailed ? 500 : 200 }
