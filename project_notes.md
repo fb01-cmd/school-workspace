@@ -924,3 +924,9 @@
   - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (39/39 pages prerendered)
   - `bash scripts/check_ui_removals.sh f9f5961` ✅ (사라진 상호작용 없음)
   - `npx tsx --env-file=.env.local scripts/verify_registry_lock.ts` ✅ (5개 케이스 전판 통과)
+
+## [2026-08-18] Claude(Fable) → 사용자 (알림 센터 스펙 작성 — 결정 권고안 확정 대기)
+- 변경 파일: docs/notification_center_spec.md(신설)·development_roadmap.md(상태 줄)
+- 검증 상태: 문서 작업 — 코드 무변경. 스펙 내 실코드 대조: userData 전역 실시간 구독 실재(배지 카운터 무임승차 근거)·webpush.ts 실재·SwapDraft.consentStatus 기호환(§13-3) 확인
+- 다음 할 일: 사용자 — 스펙의 [권고] 8건(ⓐ~ⓔ + 수락 ⓐ~ⓒ) 확정. 확정 후 §7 순서대로 Claude 서버 코어 착수
+- 주의: 쪽지 2단계(이미지 첨부)는 스펙 §8 분업상 서버부(Claude)가 UI보다 선행 — attach_upload 미구현 실측 확인, Antigravity UI 인계는 서버부 완성 후
