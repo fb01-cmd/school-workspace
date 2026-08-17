@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ClassGrid, TimetableCell } from "@/lib/timetable/types";
+import { useAvailableClasses } from "./useAvailableClasses";
 
 interface ClassTimetableTabProps {
   periodsPerDay?: number;
@@ -14,6 +15,9 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { getClassesForGrade } = useAvailableClasses();
+  const currentClasses = getClassesForGrade(selectedGrade, false);
 
   const DAYS = [
     { num: 1, label: "월요일" },
@@ -58,8 +62,16 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
   };
 
   useEffect(() => {
-    fetchClassTimetable(selectedGrade, selectedClassNum);
-  }, [selectedGrade, selectedClassNum]);
+    if (currentClasses.length > 0) {
+      if (!currentClasses.includes(selectedClassNum)) {
+        setSelectedClassNum(currentClasses[0]);
+      } else {
+        fetchClassTimetable(selectedGrade, selectedClassNum);
+      }
+    } else {
+      setClassGrid(null);
+    }
+  }, [selectedGrade, selectedClassNum, currentClasses]);
 
   // 특정 요일·교시의 수업 셀 찾기
   const getCellForSlot = (day: number, period: number): TimetableCell | null => {
@@ -96,7 +108,10 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
               key={g}
               onClick={() => {
                 setSelectedGrade(g);
-                setSelectedClassNum(1);
+                const classes = getClassesForGrade(g, false);
+                if (classes.length > 0 && !classes.includes(selectedClassNum)) {
+                  setSelectedClassNum(classes[0]);
+                }
               }}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 selectedGrade === g
@@ -109,12 +124,13 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
           ))}
         </div>
 
-        {/* 반 버튼 필터 (1~12반) */}
+        {/* 반 버튼 필터 */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs font-bold text-gray-700 mr-1">반 선택:</span>
-          {Array.from({ length: 12 }).map((_, idx) => {
-            const cNum = idx + 1;
-            return (
+          {currentClasses.length === 0 ? (
+            <span className="text-xs text-gray-400 py-1">등록된 반이 없습니다.</span>
+          ) : (
+            currentClasses.map((cNum) => (
               <button
                 key={cNum}
                 onClick={() => setSelectedClassNum(cNum)}
@@ -126,18 +142,29 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
               >
                 {cNum}
               </button>
-            );
-          })}
+            ))
+          )}
         </div>
       </div>
 
       {/* 학급 표시 배너 */}
       <div className="bg-indigo-50/60 border border-indigo-100 rounded-lg p-3 text-xs text-indigo-900 flex justify-between items-center">
         <div>
-          <span className="font-black text-indigo-950 text-sm">
-            {selectedGrade}학년 {selectedClassNum}반
-          </span>{" "}
-          기초시간표
+          {currentClasses.length > 0 ? (
+            <>
+              <span className="font-black text-indigo-950 text-sm">
+                {selectedGrade}학년 {selectedClassNum}반
+              </span>{" "}
+              기초시간표
+            </>
+          ) : (
+            <>
+              <span className="font-black text-indigo-950 text-sm">
+                {selectedGrade}학년
+              </span>{" "}
+              기초시간표 (등록된 반 없음)
+            </>
+          )}
         </div>
       </div>
 

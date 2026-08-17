@@ -871,6 +871,21 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     });
   }, [currentPlan, filterGrade, filterClassNum, filterSearch]);
 
+  // 배정표 행(currentPlan.rows)에서 학년별 실존 classNum 추출
+  const availableFilterClasses = useMemo(() => {
+    if (!currentPlan || !Array.isArray(currentPlan.rows)) return [];
+    const rows = currentPlan.rows;
+    const filtered = filterGrade === "all" ? rows : rows.filter((r) => r.grade === filterGrade);
+    const distinct = Array.from(
+      new Set(
+        filtered
+          .map((r) => Number(r.classNum))
+          .filter((c) => !isNaN(c) && c > 0)
+      )
+    ).sort((a, b) => a - b);
+    return distinct;
+  }, [currentPlan, filterGrade]);
+
   if (loading && !currentPlan) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
@@ -1214,7 +1229,18 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <select
                 value={filterGrade}
-                onChange={(e) => setFilterGrade(e.target.value === "all" ? "all" : parseInt(e.target.value, 10))}
+                onChange={(e) => {
+                  const nextGrade = e.target.value === "all" ? "all" : parseInt(e.target.value, 10);
+                  setFilterGrade(nextGrade);
+                  if (filterClassNum !== "all" && currentPlan?.rows) {
+                    const validClasses = currentPlan.rows
+                      .filter((r) => nextGrade === "all" || r.grade === nextGrade)
+                      .map((r) => Number(r.classNum));
+                    if (!validClasses.includes(filterClassNum)) {
+                      setFilterClassNum("all");
+                    }
+                  }
+                }}
                 className="px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 font-medium"
               >
                 <option value="all">학년 전체</option>
@@ -1229,9 +1255,13 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                 className="px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 font-medium"
               >
                 <option value="all">반 전체</option>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((c) => (
-                  <option key={c} value={c}>{c}반</option>
-                ))}
+                {availableFilterClasses.length === 0
+                  ? Array.from({ length: 12 }, (_, i) => i + 1).map((c) => (
+                      <option key={c} value={c}>{c}반</option>
+                    ))
+                  : availableFilterClasses.map((c) => (
+                      <option key={c} value={c}>{c}반</option>
+                    ))}
               </select>
 
               <input

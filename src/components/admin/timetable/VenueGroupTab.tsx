@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { VenueGroup, SimulSlot, ClassGrid } from "@/lib/timetable/types";
 import { buildVenueMatcher } from "@/lib/timetable/venue";
+import { useAvailableClasses } from "./useAvailableClasses";
 
 interface VenueGroupTabProps {
   activeTermId?: string | null;
@@ -22,6 +23,8 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const { getClassesForGrade } = useAvailableClasses(activeTermId, { fallbackOnEmpty: true });
 
   // Form states
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -399,7 +402,15 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
                 </label>
                 <select
                   value={grade}
-                  onChange={(e) => setGrade(parseInt(e.target.value))}
+                  onChange={(e) => {
+                    const nextGrade = parseInt(e.target.value);
+                    setGrade(nextGrade);
+                    const nextClasses = getClassesForGrade(nextGrade);
+                    setClassNums((prev) => {
+                      const valid = prev.filter((c) => nextClasses.includes(c));
+                      return valid.length > 0 ? valid : (nextClasses.length > 0 ? [nextClasses[0]] : []);
+                    });
+                  }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 >
                   <option value={1}>1학년</option>
@@ -413,24 +424,27 @@ export default function VenueGroupTab({ activeTermId }: VenueGroupTabProps) {
                   대상 학급(반) 선택 <span className="text-red-500">*</span>
                 </label>
                 <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 border border-gray-200 rounded-lg">
-                  {Array.from({ length: 12 }).map((_, idx) => {
-                    const cNum = idx + 1;
-                    const isSelected = classNums.includes(cNum);
-                    return (
-                      <button
-                        type="button"
-                        key={cNum}
-                        onClick={() => handleToggleClassNum(cNum)}
-                        className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
-                          isSelected
-                            ? "bg-emerald-600 text-white shadow-xs"
-                            : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-100"
-                        }`}
-                      >
-                        {cNum}반
-                      </button>
-                    );
-                  })}
+                  {getClassesForGrade(grade).length === 0 ? (
+                    <span className="text-xs text-gray-400 p-1">등록된 반이 없습니다.</span>
+                  ) : (
+                    getClassesForGrade(grade).map((cNum) => {
+                      const isSelected = classNums.includes(cNum);
+                      return (
+                        <button
+                          type="button"
+                          key={cNum}
+                          onClick={() => handleToggleClassNum(cNum)}
+                          className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                            isSelected
+                              ? "bg-emerald-600 text-white shadow-xs"
+                              : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-100"
+                          }`}
+                        >
+                          {cNum}반
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { CoTeachingRule, ClassGrid } from "@/lib/timetable/types";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
+import { useAvailableClasses } from "./useAvailableClasses";
 
 interface CoTeachingRuleTabProps {
   activeTermId?: string | null;
@@ -32,6 +33,8 @@ function isCoTeachingCell(
 export default function CoTeachingRuleTab({ activeTermId, periodsPerDay = 7 }: CoTeachingRuleTabProps) {
   const { userData } = useAuth();
   const domain = userData?.domain || userData?.email?.split("@")[1] || "hmh.or.kr";
+
+  const { getClassesForGrade } = useAvailableClasses(activeTermId, { fallbackOnEmpty: true });
 
   const [rules, setRules] = useState<CoTeachingRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,7 +167,8 @@ export default function CoTeachingRuleTab({ activeTermId, periodsPerDay = 7 }: C
   };
 
   const handleSelectAllClasses = () => {
-    setClassNums([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    const available = getClassesForGrade(grade);
+    setClassNums(available.length > 0 ? [...available] : [1]);
   };
 
   const handleEditClick = (rule: CoTeachingRule) => {
@@ -328,7 +332,14 @@ export default function CoTeachingRuleTab({ activeTermId, periodsPerDay = 7 }: C
                     <button
                       key={g}
                       type="button"
-                      onClick={() => setGrade(g)}
+                      onClick={() => {
+                        setGrade(g);
+                        const nextClasses = getClassesForGrade(g);
+                        setClassNums((prev) => {
+                          const valid = prev.filter((c) => nextClasses.includes(c));
+                          return valid.length > 0 ? valid : (nextClasses.length > 0 ? [nextClasses[0]] : []);
+                        });
+                      }}
                       className={`py-2 px-3 rounded-lg font-bold border text-center transition-all ${
                         grade === g
                           ? "bg-purple-600 text-white border-purple-600 shadow-sm"
@@ -347,34 +358,42 @@ export default function CoTeachingRuleTab({ activeTermId, periodsPerDay = 7 }: C
                   <label className="font-bold text-gray-700">
                     대상 반 선택 <span className="text-red-500">*</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={handleSelectAllClasses}
-                    className="text-[11px] font-semibold text-purple-700 hover:underline"
-                  >
-                    1~12반 전체 선택
-                  </button>
+                  {getClassesForGrade(grade).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSelectAllClasses}
+                      className="text-[11px] font-semibold text-purple-700 hover:underline"
+                    >
+                      {`${getClassesForGrade(grade)[0]}~${getClassesForGrade(grade)[getClassesForGrade(grade).length - 1]}반 전체 선택`}
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((num) => {
-                    const isSelected = classNums.includes(num);
-                    return (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => handleToggleClassNum(num)}
-                        className={`w-9 h-9 rounded-lg font-bold text-xs transition-all flex items-center justify-center border ${
-                          isSelected
-                            ? "bg-purple-600 text-white border-purple-600 shadow-xs"
-                            : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
-                        }`}
-                      >
-                        {num}반
-                      </button>
-                    );
-                  })}
+                  {getClassesForGrade(grade).length === 0 ? (
+                    <span className="text-xs text-gray-400 p-1">등록된 반이 없습니다.</span>
+                  ) : (
+                    getClassesForGrade(grade).map((num) => {
+                      const isSelected = classNums.includes(num);
+                      return (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => handleToggleClassNum(num)}
+                          className={`w-9 h-9 rounded-lg font-bold text-xs transition-all flex items-center justify-center border ${
+                            isSelected
+                              ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                              : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
+                          }`}
+                        >
+                          {num}반
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
-                <p className="text-[11px] text-gray-500 mt-1">선택된 반: {classNums.join(", ")}반</p>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  선택된 반: {classNums.length > 0 ? `${classNums.join(", ")}반` : "없음"}
+                </p>
               </div>
 
               {/* 과목명 */}

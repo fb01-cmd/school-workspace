@@ -369,6 +369,26 @@ async function handleView(req: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ term: termMeta, action, data: sorted });
       }
 
+      case "classes": {
+        // 학기(term.id) 기준 기초 시간표 그리드에서 실존 학년·반 목록 추출
+        const baseGrids = await getBaseGridsCached(domain, cacheVersion, term.id);
+        const gradeClassesMap: Record<number, number[]> = {};
+        for (const grid of baseGrids) {
+          if (typeof grid.grade === "number" && typeof grid.classNum === "number" && grid.grade > 0 && grid.classNum > 0) {
+            if (!gradeClassesMap[grid.grade]) {
+              gradeClassesMap[grid.grade] = [];
+            }
+            if (!gradeClassesMap[grid.grade].includes(grid.classNum)) {
+              gradeClassesMap[grid.grade].push(grid.classNum);
+            }
+          }
+        }
+        for (const grade in gradeClassesMap) {
+          gradeClassesMap[grade].sort((a, b) => a - b);
+        }
+        return NextResponse.json({ term: termMeta, action, data: gradeClassesMap });
+      }
+
       default:
         return NextResponse.json({ error: "지원하지 않는 action입니다." }, { status: 400 });
     }

@@ -1736,7 +1736,16 @@ export default function DraftAutoTab({
                       key={g}
                       onClick={() => {
                         setViewGrade(g);
-                        setViewClass(1);
+                        const available = Array.from(
+                          new Set(
+                            openDraft.currentGrids
+                              .filter((grid) => grid.grade === g)
+                              .map((grid) => grid.classNum)
+                          )
+                        ).sort((a, b) => a - b);
+                        if (available.length > 0 && !available.includes(viewClass)) {
+                          setViewClass(available[0]);
+                        }
                         setSelectedSlotA(null);
                       }}
                       className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
@@ -1749,10 +1758,14 @@ export default function DraftAutoTab({
                     </button>
                   ))}
                   <span className="text-xs font-bold text-gray-700 ml-3">반:</span>
-                  {Array.from({ length: 12 }, (_, i) => i + 1)
-                    .filter((c) =>
-                      openDraft.currentGrids.some((g) => g.grade === viewGrade && g.classNum === c)
+                  {Array.from(
+                    new Set(
+                      openDraft.currentGrids
+                        .filter((g) => g.grade === viewGrade)
+                        .map((g) => g.classNum)
                     )
+                  )
+                    .sort((a, b) => a - b)
                     .map((c) => (
                       <button
                         key={c}

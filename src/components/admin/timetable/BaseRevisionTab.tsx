@@ -7,6 +7,7 @@ import {
   TimetableBaseRevision,
   TimetableLesson,
 } from "@/lib/timetable/types";
+import { useAvailableClasses } from "./useAvailableClasses";
 
 interface BaseRevisionTabProps {
   activeTermId?: string | null;
@@ -19,11 +20,21 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const { getClassesForGrade } = useAvailableClasses(activeTermId, { fallbackOnEmpty: true });
+
   // 학급 및 기초시간표 그리드 상태
   const [selectedGrade, setSelectedGrade] = useState<number>(1);
   const [selectedClassNum, setSelectedClassNum] = useState<number>(1);
   const [baseGrid, setBaseGrid] = useState<ClassGrid | null>(null);
   const [loadingGrid, setLoadingGrid] = useState(false);
+
+  const currentClasses = getClassesForGrade(selectedGrade);
+
+  useEffect(() => {
+    if (currentClasses.length > 0 && !currentClasses.includes(selectedClassNum)) {
+      setSelectedClassNum(currentClasses[0]);
+    }
+  }, [currentClasses, selectedClassNum]);
 
   // 개정 편집 연산 (Draft ops) State
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
@@ -362,6 +373,10 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                     onClick={() => {
                       setSelectedGrade(g);
                       setSelectedSlotA(null);
+                      const classes = getClassesForGrade(g);
+                      if (classes.length > 0 && !classes.includes(selectedClassNum)) {
+                        setSelectedClassNum(classes[0]);
+                      }
                     }}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       selectedGrade === g
@@ -376,9 +391,10 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
 
               <div className="flex flex-wrap items-center gap-1">
                 <span className="text-xs font-bold text-gray-700 mr-1">반 선택:</span>
-                {Array.from({ length: 12 }).map((_, idx) => {
-                  const cNum = idx + 1;
-                  return (
+                {currentClasses.length === 0 ? (
+                  <span className="text-xs text-gray-400 py-1">등록된 반이 없습니다.</span>
+                ) : (
+                  currentClasses.map((cNum) => (
                     <button
                       key={cNum}
                       type="button"
@@ -394,8 +410,8 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                     >
                       {cNum}
                     </button>
-                  );
-                })}
+                  ))
+                )}
               </div>
             </div>
 
