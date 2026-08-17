@@ -1021,6 +1021,9 @@ function ComposeModal({
 
     if (imageFiles.length > 0) {
       e.preventDefault();
+      // 입력창과 Step 2 컨테이너 양쪽에 onPaste가 걸려 있다 — 전파를 끊지 않으면
+      // 입력창 붙여넣기가 버블링으로 컨테이너 핸들러를 한 번 더 태워 같은 이미지가 2장 붙는다.
+      e.stopPropagation();
       enqueueFiles(imageFiles);
     }
   };
