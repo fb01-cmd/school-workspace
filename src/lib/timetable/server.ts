@@ -8671,14 +8671,28 @@ export async function finalizeHoursAssignmentJob(
   const history = await loadSubjectNameHistory(domain).catch(() => []);
   const rowNames = [...asm.rows, ...(creative ? asm.creativeRows : [])].map((r) => r.subjectName);
   const simulStatusNames = mergedEntries.map((e) => (e.subject || "").trim()).filter(Boolean);
+  // 2단계 (spec §5): 대상 학기 등록부(이동수업·특별실)의 과목 표기도 관문에 올린다 —
+  // 승계 등록부가 작년 표기("인공Ⅱ")를 쓰는 실물에서, 여기서 확정(별칭)해야 소비자
+  // 정확 일치가 성립하고 "임시 연결" 안전망 고지가 사라진다.
+  const registryNames = [
+    ...simulGroups.filter((g) => g.active !== false).flatMap((g) => g.subjectNames || []),
+    ...venueGroups.filter((g) => g.active !== false).flatMap((g) => g.subjectNames || []),
+  ]
+    .map((n) => (n || "").trim())
+    .filter(Boolean);
   const subjectResolution = _resolveSubjectsForGate(
-    [...rowNames, ...simulStatusNames],
+    [...rowNames, ...simulStatusNames, ...registryNames],
     targetTerm?.subjects || [],
     history
   );
   const rowNameSet = new Set(rowNames.map((n) => n.trim()));
-  for (const item of subjectResolution)
-    if (!rowNameSet.has(item.rawName)) item.fromSimulStatus = true;
+  const simulStatusSet = new Set(simulStatusNames);
+  const registrySet = new Set(registryNames);
+  for (const item of subjectResolution) {
+    if (rowNameSet.has(item.rawName)) continue;
+    if (simulStatusSet.has(item.rawName)) item.fromSimulStatus = true;
+    if (registrySet.has(item.rawName)) item.fromRegistry = true;
+  }
   return {
     rows: asm.rows,
     creativeRows: creative ? asm.creativeRows : [],

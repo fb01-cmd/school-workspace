@@ -113,6 +113,10 @@ export interface SubjectResolutionItem {
   /** 배정표 행이 아니라 이동수업 현황 문서에서만 나온 표기 — 기존 "이동수업 현황 과목 연결"
    *  드롭다운을 관문으로 흡수하는 다리 (spec §6). UI는 출처를 문구로 구분해 준다. */
   fromSimulStatus?: boolean;
+  /** 배정표 행이 아니라 이동수업·특별실 등록부의 과목 표기에서만 나온 것 (spec §5 2단계) —
+   *  승계 등록부가 작년 표기("인공Ⅱ")를 쓰는 실물을 관문에서 확정해 임시 연결 고지를 없앤다.
+   *  fromSimulStatus와 같은 비차단·건너뛰기 규칙을 적용한다. */
+  fromRegistry?: boolean;
 }
 
 /**

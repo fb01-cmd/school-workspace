@@ -820,3 +820,9 @@
   - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 없음)
   - `npx tsx scripts/verify_subject_dict.ts` ✅ (11개 항목 전판 통과)
 
+
+## [2026-08-17] Claude(Fable) → Antigravity/사용자 (단일 사전 2단계 ① — 등록부 표기 관문 편입 + 폴백 제거 감사 도구)
+- 변경 파일: src/lib/timetable/{subjectDict,server}.ts·scripts/audit_subject_loose_binds.ts(신설)·docs/subject_dictionary_spec.md
+- 검증 상태: tsc ✅ / build ✅ / verify_subject_dict 11항 ✅ / 감사 실측 — 운영 2026-2 임시 연결 0건·초안 2027-1 14건(승계 등록부 작년 표기)
+- 다음 할 일: Antigravity — 관문 UI에 fromRegistry 항목 지원(아래 주의 ②③), 이후 사용자 배정표 재불러오기로 14건 확정 → 감사 0건 확인 → 폴백 제거 별도 커밋(Claude)
+- 주의: ① subjectResolution에 fromRegistry(이동수업·특별실 등록부 표기 유래) 신설 — fromSimulStatus와 같은 비차단·건너뛰기 규칙 ② 행 유래가 아닌 항목(fromSimulStatus·fromRegistry)의 new 상태는 create 선반영 금지, 기본 건너뛰기(등록부 표기가 독립 과목으로 오등록되는 사고 방지 — 스펙 §3-1) ③ 감사에서 「수탐A」↔「수탐B」 교차 오연결 위험 실측 — 폴백 제거가 안전 개선인 근거
