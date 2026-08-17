@@ -1107,3 +1107,9 @@
 - 검증 상태: tsc ✅ / build ✅(40/40) / check_ui_removals b17c1c7 ✅. 버그 = onPaste가 입력창과 Step 2 컨테이너 양쪽에 걸려 있어 입력창 붙여넣기가 버블링으로 두 번 처리 → 같은 이미지 2장 첨부·2회 업로드(enqueueFiles에 중복 방어 없음 실측). preventDefault는 전파를 막지 않음
 - 다음 할 일: 사용자 — 실기기 확인(이미지 복사 → 쪽지 본문에 Ctrl+V → 1장만 붙는지, 파일 선택 첨부·발송·썸네일도 겸사 확인)
 - 주의: 붙여넣기 구현 자체는 계약 준수(이미지 항목만 소비·텍스트 붙여넣기 무영향·기본 파일명 부여) — 비이미지(gif 등)는 업로드 단계에서 항목별 사유로 거부되는 기존 동선 그대로
+
+## [2026-08-18] Claude(Fable) → 사용자/Antigravity (쪽지 답장 스펙 확정 — memo_reply_spec.md)
+- 변경 파일: docs/memo_reply_spec.md(신설)·development_roadmap.md(스펙 완료 기록)
+- 검증 상태: 문서 작업 — 1단계 스펙 전문·2단계 첨부 스펙·현행 route/logic/rules 대조 후 작성
+- 다음 할 일: Claude — §8 순서 1 서버부(send에 replyToMemoId 검증·수신자 강제·threadId 스탬프 + selftest). 그 후 Antigravity UI(§3)
+- 주의: ① 답장 수신자 = 원 발신자 1인 **서버 강제**(전체 답장 제외 — 알림 피로·"쪽지는 업무용" 원칙) ② 스레드 전용 쿼리 금지 — firestore.rules상 증명 불가로 거부됨, 스레드 뷰는 받은/보낸 onSnapshot 목록의 threadId 로컬 그룹핑(§2에 수용 한계 명기) ③ 규칙·색인·알림·첨부·회수 전부 무변경 승계가 설계 목표(send 변형일 뿐)
