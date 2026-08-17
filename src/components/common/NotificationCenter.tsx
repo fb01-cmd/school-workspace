@@ -21,6 +21,17 @@ export interface NotificationItem {
   };
 }
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 function formatRelativeTime(timestamp: number): string {
   const now = Date.now();
   const diff = Math.max(0, now - timestamp);
@@ -68,10 +79,59 @@ export default function NotificationCenter() {
   const [error, setError] = useState<string | null>(null);
   const [decidingId, setDecidingId] = useState<string | null>(null);
 
+  // 푸시(기기로 바로 알림 받기) 설정 상태 (스펙 §6-1)
+  const [pushSupported, setPushSupported] = useState<boolean | null>(null);
+  const [pushEnabled, setPushEnabled] = useState<boolean>(false);
+  const [pushPublicKey, setPushPublicKey] = useState<string>("");
+  const [pushCanTest, setPushCanTest] = useState<boolean>(false);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">("default");
+  const [isPushSubscribed, setIsPushSubscribed] = useState<boolean>(false);
+  const [pushLoading, setPushLoading] = useState<boolean>(false);
+  const [pushMessage, setPushMessage] = useState<string | null>(null);
+  const [pushTesting, setPushTesting] = useState<boolean>(false);
+
   const panelRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const unreadCount = userData?.unreadNotifCount ?? 0;
+
+  // 푸시 지원 및 구독 상태 조회
+  useEffect(() => {
+    const initPush = async () => {
+      if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        setPushSupported(false);
+        return;
+      }
+      setPushSupported(true);
+      setPushPermission(Notification.permission);
+
+      try {
+        const res = await fetch("/api/push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "config" }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.enabled && data.publicKey) {
+            setPushEnabled(true);
+            setPushPublicKey(data.publicKey);
+            if (data.canTest) setPushCanTest(true);
+
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            const active = !!sub && Notification.permission === "granted";
+            setIsPushSubscribed(active);
+            window.dispatchEvent(new CustomEvent("push_status_changed", { detail: { isSubscribed: active } }));
+          }
+        }
+      } catch (err) {
+        console.error("[NotificationCenter] Push config check error:", err);
+      }
+    };
+
+    initPush();
+  }, []);
 
   const fetchAndMarkRead = async () => {
     setLoading(true);
@@ -115,6 +175,16 @@ export default function NotificationCenter() {
     }
   };
 
+  // 외부(배너 등)에서 알림 센터 열기 이벤트 수신
+  useEffect(() => {
+    const handleOpenNotifCenter = () => {
+      setIsOpen(true);
+      fetchAndMarkRead();
+    };
+    window.addEventListener("open_notification_center", handleOpenNotifCenter);
+    return () => window.removeEventListener("open_notification_center", handleOpenNotifCenter);
+  }, []);
+
   // Close on outside click
   useEffect(() => {
     if (!isOpen) return;
@@ -141,6 +211,100 @@ export default function NotificationCenter() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
+
+  // 기기로 바로 알림 받기 토글 핸들러 (스펙 §6-1)
+  const handleTogglePush = async () => {
+    if (pushLoading) return;
+    setPushLoading(true);
+    setPushMessage(null);
+
+    try {
+      if (isPushSubscribed) {
+        // 해제 로직
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          const endpoint = sub.endpoint;
+          await sub.unsubscribe();
+          await fetch("/api/push", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "unsubscribe", endpoint }),
+          });
+        }
+        setIsPushSubscribed(false);
+        window.dispatchEvent(new CustomEvent("push_status_changed", { detail: { isSubscribed: false } }));
+        setPushMessage("기기로 바로 알림 받기가 꺼졌습니다.");
+      } else {
+        // 구독 로직
+        const perm = await Notification.requestPermission();
+        setPushPermission(perm);
+        if (perm !== "granted") {
+          setPushMessage("브라우저 알림 권한이 허용되지 않았습니다.");
+          setPushLoading(false);
+          return;
+        }
+
+        const reg = await navigator.serviceWorker.ready;
+        const applicationServerKey = urlBase64ToUint8Array(pushPublicKey);
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey as any,
+        });
+
+        const res = await fetch("/api/push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "subscribe",
+            subscription: sub.toJSON(),
+          }),
+        });
+
+        if (res.ok) {
+          setIsPushSubscribed(true);
+          window.dispatchEvent(new CustomEvent("push_status_changed", { detail: { isSubscribed: true } }));
+          setPushMessage("✨ 기기로 바로 알림 받기가 켜졌습니다.");
+        } else {
+          const data = await res.json().catch(() => ({}));
+          setPushMessage(`설정 실패: ${data.error || "알 수 없는 오류"}`);
+        }
+      }
+    } catch (err: any) {
+      setPushMessage(`오류: ${err.message}`);
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
+  // 시험 알림 발송 핸들러
+  const handleTestPush = async () => {
+    if (pushTesting) return;
+    setPushTesting(true);
+    setPushMessage(null);
+    try {
+      const res = await fetch("/api/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test_send" }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const n = data.subscriptions ?? 0;
+        setPushMessage(
+          n > 0
+            ? `🧪 지금 로그인한 계정의 기기 ${n}대로 시험 알림을 보냈습니다.`
+            : "🧪 알림을 켠 기기가 없어 발송할 수 없습니다."
+        );
+      } else {
+        setPushMessage(`시험 발송 실패: ${data.error || "구독 정보가 없습니다."}`);
+      }
+    } catch (err: any) {
+      setPushMessage(`시험 발송 오류: ${err.message}`);
+    } finally {
+      setPushTesting(false);
+    }
+  };
 
   // 양해 수락/거절 핸들러 (스펙 §4)
   const handleDecide = async (notificationId: string, decision: "accepted" | "declined") => {
@@ -191,10 +355,7 @@ export default function NotificationCenter() {
 
     if (item.refType === "memo" || item.type === "memo") {
       if (isStudent) return;
-      if (pathname === "/m") {
-        // 이미 모바일 홈에 있음
-        return;
-      }
+      if (pathname === "/m") return;
       if (pathname === "/admin") {
         window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "memo" } }));
       } else {
@@ -255,7 +416,7 @@ export default function NotificationCenter() {
           window.dispatchEvent(new CustomEvent("teacher_portal_nav", { detail: { tab: "my_tt" } }));
         }, 50);
       } else if (pathname === "/m") {
-        // 모바일 홈의 시간표 카드 유지
+        // 모바일 홈
       } else {
         router.push("/admin");
         setTimeout(() => {
@@ -275,8 +436,8 @@ export default function NotificationCenter() {
         ref={buttonRef}
         type="button"
         onClick={handleToggle}
-        title="알림 센터"
-        aria-label="알림 센터"
+        title="알림"
+        aria-label="알림"
         className="relative p-2 rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
       >
         <span className="text-lg leading-none select-none">🔔</span>
@@ -297,7 +458,7 @@ export default function NotificationCenter() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-850/80 backdrop-blur-xs">
             <div className="flex items-center gap-2">
               <span className="text-sm">🔔</span>
-              <h2 className="text-sm font-bold text-gray-900 dark:text-white">알림 센터</h2>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">알림</h2>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -310,8 +471,8 @@ export default function NotificationCenter() {
             </div>
           </div>
 
-          {/* 패널 본문 */}
-          <div className="max-h-[440px] overflow-y-auto divide-y divide-gray-100 dark:divide-slate-800">
+          {/* 패널 본문 (알림 목록) */}
+          <div className="max-h-[380px] overflow-y-auto divide-y divide-gray-100 dark:divide-slate-800">
             {loading ? (
               <div className="py-12 px-4 text-center text-xs text-gray-500 dark:text-gray-400 space-y-2">
                 <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-indigo-600 border-t-transparent" />
@@ -436,6 +597,70 @@ export default function NotificationCenter() {
               })
             )}
           </div>
+
+          {/* 📲 패널 하단: 기기로 바로 알림 받기 통합 영역 (스펙 §6-1) */}
+          {pushSupported !== false && pushEnabled && (
+            <div className="border-t border-gray-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-850/90 p-3.5 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-gray-900 dark:text-white">기기로 바로 알림 받기</span>
+                    {isPushSubscribed && (
+                      <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded-full border border-emerald-200 dark:border-emerald-800">
+                        켜짐
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    꺼도 알림 목록에는 계속 쌓입니다.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {isPushSubscribed && pushCanTest && (
+                    <button
+                      type="button"
+                      onClick={handleTestPush}
+                      disabled={pushTesting}
+                      className="px-2 py-1 bg-white dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-slate-700 font-bold rounded-lg text-[11px] transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      {pushTesting ? "발송 중…" : "시험 알림"}
+                    </button>
+                  )}
+
+                  {/* 스위치 토글 */}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isPushSubscribed}
+                    onClick={handleTogglePush}
+                    disabled={pushLoading || pushPermission === "denied"}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 ${
+                      isPushSubscribed ? "bg-indigo-600" : "bg-gray-300 dark:bg-slate-700"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                        isPushSubscribed ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {pushPermission === "denied" && (
+                <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                  ⚠️ 브라우저 알림 권한이 차단되어 있습니다. 주소창 또는 브라우저 설정에서 알림을 허용해 주세요.
+                </p>
+              )}
+
+              {pushMessage && (
+                <p className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                  {pushMessage}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -956,3 +956,23 @@
   - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
   - `bash scripts/check_ui_removals.sh 63d94de` ✅ (사라진 상호작용 없음)
   - `npx tsx --env-file=.env.local scripts/verify_notifications.ts` ✅ (질의 경로 전판 통과)
+
+## [2026-08-18] Antigravity → Claude/사용자 (알림 입구 단일화 — 벨 패널 통합 및 푸시 안내 배너 경량화)
+- **배경**: 원장(벨)과 푸시 스위치(대시보드 카드)가 둘 다 "알림"으로 표기되어 발생하던 혼란을 해소하기 위해 입구를 벨 하나로 통일 (스펙 §6-1).
+- **변경 파일**:
+  - `src/components/common/NotificationCenter.tsx`:
+    - 패널 하단에 「기기로 바로 알림 받기」 스위치 토글 및 `[시험 알림]` 버튼 통합.
+    - 설명 한 줄: *"꺼도 알림 목록에는 계속 쌓입니다."* 표시.
+    - `open_notification_center` 커스텀 이벤트 리스너 추가.
+    - 명명 규약 준수: 패널 헤더는 "알림", 기기 푸시는 "기기로 바로 알림 받기"로 정립.
+  - `src/components/common/PushNotificationManager.tsx`:
+    - 기존 대형 카드에서 푸시 미설정 사용자에게만 노출되는 1줄 유도 배너(*"알림을 기기로도 받아보세요 →"*)로 경량화.
+    - 클릭 시 벨 패널을 열도록 연동(`open_notification_center`), 기기 알림 활성화 시 배너 자동 소멸.
+  - `src/components/pwa/PWAInstallPrompt.tsx`, `src/components/admin/PWAInstallGuideTab.tsx`:
+    - 앱 설치 안내 문구 내 "알림 받기" 표현을 "알림을 기기로도 받아보세요" 및 "기기로 바로 알림 받기"로 일관성 있게 갱신.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 8d67ed7`:
+    - 대시보드 대형 푸시 카드(`PushNotificationManager.tsx`)의 버튼 및 문구 삭제는 스펙 §6-1 지시된 통합/경량화에 따른 의도된 변경임.
+    - `NotificationCenter.tsx` 헤더를 "알림 센터" → "알림"으로 변경하고 `PWAInstallGuideTab.tsx` / `PWAInstallPrompt.tsx`의 표현을 명명 규약대로 수정한 의도된 변경임.

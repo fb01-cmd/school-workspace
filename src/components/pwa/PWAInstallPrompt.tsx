@@ -157,7 +157,7 @@ export function PWAInstallPrompt({ onOpenGuide }: PWAInstallPromptProps) {
                     4
                   </span>
                   <span>
-                    첫 화면의 "<strong className="text-indigo-600 dark:text-indigo-400">🔔 알림 받기</strong>" → 아이폰 확인 창에서 <strong className="text-indigo-600 dark:text-indigo-400">허용</strong>
+                    첫 화면의 "<strong className="text-indigo-600 dark:text-indigo-400">알림을 기기로도 받아보세요</strong>" 또는 상단 🔔 알림에서 <strong className="text-indigo-600 dark:text-indigo-400">기기로 바로 알림 받기</strong> 켜기 → 확인 창에서 <strong className="text-indigo-600 dark:text-indigo-400">허용</strong>
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
@@ -165,7 +165,7 @@ export function PWAInstallPrompt({ onOpenGuide }: PWAInstallPromptProps) {
                     5
                   </span>
                   <span>
-                    카드에 "<strong className="text-emerald-600 dark:text-emerald-400">알림 켜짐</strong>" 초록 표시가 보이면 완료
+                    "<strong className="text-emerald-600 dark:text-emerald-400">켜짐</strong>" 표시가 보이면 설정 완료
                   </span>
                 </li>
               </ol>

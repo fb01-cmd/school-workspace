@@ -147,10 +147,10 @@ export default function PWAInstallGuideTab() {
           <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3.5 border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between space-y-2">
             <div className="flex items-center space-x-2">
               <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0">4</span>
-              <span className="text-xs font-bold text-gray-900 dark:text-white">알림 받기 허용</span>
+              <span className="text-xs font-bold text-gray-900 dark:text-white">기기 알림 허용</span>
             </div>
             <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-normal">
-              첫 화면의 "<strong>🔔 알림 받기</strong>" → 아이폰 확인 창에서 <strong>허용</strong>
+              첫 화면의 "<strong>알림을 기기로도 받아보세요</strong>" 또는 상단 🔔 알림에서 <strong>기기로 바로 알림 받기</strong> 켜기 → 확인 창에서 <strong>허용</strong>
             </p>
           </div>
 
@@ -160,7 +160,7 @@ export default function PWAInstallGuideTab() {
               <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300">설정 완료</span>
             </div>
             <p className="text-[11px] text-emerald-800 dark:text-emerald-300 leading-normal">
-              카드에 "<strong>알림 켜짐</strong>" 초록 표시가 보이면 완료
+              스위치에 "<strong>켜짐</strong>" 초록 표시가 보이면 완료
             </p>
           </div>
         </div>
@@ -186,12 +186,12 @@ export default function PWAInstallGuideTab() {
           </a>
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-          아래 화면에서 <strong>[다음]</strong>을 누르며 실제 화면 그대로 따라 하시면 됩니다. 설치 → 작업표시줄 고정 → 컴퓨터 켤 때 자동 실행 → 알림 켜기까지 한 번에 끝납니다.
+          아래 화면에서 <strong>[다음]</strong>을 누르며 실제 화면 그대로 따라 하시면 됩니다. 설치 → 작업표시줄 고정 → 컴퓨터 켤 때 자동 실행 → 기기 알림 켜기까지 한 번에 끝납니다.
         </p>
         <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
           <strong>안드로이드 휴대폰</strong>을 쓰시면 이 따라하기 대신 아래 방법으로 하시면 됩니다 — 크롬으로 접속 →
           주소창 오른쪽 <strong>점 세 개(⋮)</strong> → <strong>&ldquo;앱 설치&rdquo;</strong>(또는 &ldquo;홈 화면에 추가&rdquo;) →
-          첫 화면의 <strong>&ldquo;알림 받기&rdquo;</strong>에서 <strong>허용</strong>. 휴대폰에는 작업표시줄·자동 실행이 없습니다.
+          첫 화면의 <strong>&ldquo;알림을 기기로도 받아보세요&rdquo;</strong>(또는 상단 🔔 알림)에서 <strong>기기로 바로 알림 받기</strong>를 <strong>허용</strong>. 휴대폰에는 작업표시줄·자동 실행이 없습니다.
         </p>
         <div className="rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm bg-white dark:bg-gray-800">
           <iframe
