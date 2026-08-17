@@ -51,8 +51,10 @@ export default function MobileMemoSection() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedThreadMemoId, setSelectedThreadMemoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showDeleteConfirmId, setShowDeleteConfirmId] = useState<string | null>(null);
 
-  // 받은쪽지함 구독
+  // 받은쪽지함 구독 (삭제된 항목 제외)
   useEffect(() => {
     if (!myEmail || !domain || notEligible) { setLoading(false); return; }
     setLoading(true);
@@ -63,10 +65,12 @@ export default function MobileMemoSection() {
       limit(50) // 스펙 §3 — 20으로 줄이면 안 읽은 쪽지가 창 밖으로 밀려 목록에서 사라진다
     );
     const unsub = onSnapshot(q, (snap) => {
-      const list: MemoItem[] = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as MemoDoc),
-      }));
+      const list: MemoItem[] = snap.docs
+        .map((d) => ({
+          id: d.id,
+          ...(d.data() as MemoDoc),
+        }))
+        .filter((m) => !m.hiddenBy?.[myEmail]);
       // 안읽은 쪽지 우선 정렬
       list.sort((a, b) => {
         const aUnread = !a.reads?.[myEmail] ? 1 : 0;
@@ -84,7 +88,7 @@ export default function MobileMemoSection() {
     return () => unsub();
   }, [myEmail, domain, notEligible]);
 
-  // 보낸쪽지함 구독 (주고받은 이력 로컬 그룹핑용 — reply spec §2·§3)
+  // 보낸쪽지함 구독 (주고받은 이력 로컬 그룹핑용 — reply spec §2·§3, 삭제된 항목 제외)
   useEffect(() => {
     if (!myEmail || !domain || notEligible) return;
     const q = query(
@@ -94,10 +98,12 @@ export default function MobileMemoSection() {
       limit(50)
     );
     const unsub = onSnapshot(q, (snap) => {
-      const list: MemoItem[] = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as MemoDoc),
-      }));
+      const list: MemoItem[] = snap.docs
+        .map((d) => ({
+          id: d.id,
+          ...(d.data() as MemoDoc),
+        }))
+        .filter((m) => !m.hiddenBy?.[myEmail]);
       setSentMemos(list);
     }, (err) => {
       console.error("[memo] 보낸쪽지함 구독 실패", err);
@@ -105,7 +111,30 @@ export default function MobileMemoSection() {
     return () => unsub();
   }, [myEmail, domain, notEligible]);
 
-  const allMemos = useMemo(() => [...inboxMemos, ...sentMemos], [inboxMemos, sentMemos]);
+  const allMemos = useMemo(
+    () => [...inboxMemos, ...sentMemos].filter((m) => !m.hiddenBy?.[myEmail]),
+    [inboxMemos, sentMemos, myEmail]
+  );
+
+  const handleDeleteMemo = async (memoId: string) => {
+    setDeletingId(memoId);
+    try {
+      const res = await fetch("/api/memo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "hide", memoId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "쪽지 삭제 실패");
+      setShowDeleteConfirmId(null);
+      if (expanded === memoId) setExpanded(null);
+      if (selectedThreadMemoId === memoId) setSelectedThreadMemoId(null);
+    } catch (e: any) {
+      alert(e.message || "삭제 중 오류가 발생했습니다.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleExpand = useCallback(
     async (memo: MemoItem) => {
@@ -190,10 +219,11 @@ export default function MobileMemoSection() {
             const isDisplayedSentByMe =
               displayedMemo.senderEmail.toLowerCase() === myEmail.toLowerCase();
 
-            // 이 쪽지의 스레드 이력 계산 (threadId 로컬 그룹핑 — reply spec §2·§3)
+            // 이 쪽지의 스레드 이력 계산 (threadId 로컬 그룹핑 — reply spec §2·§3, 삭제된 항목 배제)
             const currentThreadId = memo.threadId || memo.id;
             const threadMemosMap = new Map<string, MemoItem>();
             for (const m of allMemos) {
+              if (m.hiddenBy?.[myEmail]) continue;
               const mThreadId = m.threadId || m.id;
               if (mThreadId === currentThreadId) {
                 threadMemosMap.set(m.id, m);
@@ -202,6 +232,10 @@ export default function MobileMemoSection() {
             const threadMemos = Array.from(threadMemosMap.values()).sort(
               (a, b) => a.createdAt - b.createdAt
             );
+
+            const canDeleteDisplayed =
+              (displayedMemo.recipientEmails?.includes(myEmail) && !!displayedMemo.reads?.[myEmail]) ||
+              (displayedMemo.senderEmail.toLowerCase() === myEmail.toLowerCase());
 
             return (
               <li key={memo.id} className={isUnread ? "bg-indigo-50/20 dark:bg-indigo-950/20" : "bg-white dark:bg-slate-900"}>
@@ -253,8 +287,8 @@ export default function MobileMemoSection() {
                 {/* 상세 펼침 */}
                 {isOpen && (
                   <div className="px-4 pb-4 pt-2.5 bg-slate-100/70 dark:bg-slate-900/70 border-t border-slate-200 dark:border-slate-800 space-y-3">
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between flex-wrap gap-1 px-0.5">
-                      <span>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between flex-wrap gap-2 px-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {isDisplayedSentByMe ? (
                           <span className="font-semibold text-slate-700 dark:text-slate-200">내가 보낸 쪽지</span>
                         ) : (
@@ -264,8 +298,23 @@ export default function MobileMemoSection() {
                             </strong>
                           </span>
                         )}
-                      </span>
-                      <span className="text-slate-400">{formatFull(displayedMemo.createdAt)}</span>
+                        <span className="text-slate-400">{formatFull(displayedMemo.createdAt)}</span>
+                      </div>
+
+                      {canDeleteDisplayed && (
+                        <button
+                          type="button"
+                          onClick={() => setShowDeleteConfirmId(displayedMemo.id)}
+                          disabled={deletingId === displayedMemo.id}
+                          className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition-colors cursor-pointer"
+                          aria-label="쪽지 삭제"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          <span>{deletingId === displayedMemo.id ? "삭제 중…" : "삭제"}</span>
+                        </button>
+                      )}
                     </div>
 
                     {displayedMemo.id !== memo.id && (
@@ -385,6 +434,45 @@ export default function MobileMemoSection() {
             );
           })}
         </ul>
+      )}
+
+      {/* §12-1 삭제 확인 모달 */}
+      {showDeleteConfirmId && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-5 max-w-sm w-full space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">쪽지를 삭제하시겠습니까?</h4>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                  이 쪽지를 내 쪽지함에서 지울까요? 내 화면에서만 지워지며 상대방 화면과 기록은 남습니다.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirmId(null)}
+                disabled={!!deletingId}
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteMemo(showDeleteConfirmId)}
+                disabled={!!deletingId}
+                className="px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {deletingId ? "삭제 중…" : "삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

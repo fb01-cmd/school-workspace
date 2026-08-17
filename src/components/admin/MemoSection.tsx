@@ -542,10 +542,15 @@ function MemoDetailPanel({
   const [showRecallConfirm, setShowRecallConfirm] = useState(false);
   const [recallResult, setRecallResult] = useState<RecallResult | null>(null);
 
+  // §12-1 삭제(내 화면 감추기) 상태
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   // memo가 바뀌면(다른 쪽지 선택) 결과 및 확인 상태 초기화
   useEffect(() => {
     setRecallResult(null);
     setShowRecallConfirm(false);
+    setShowDeleteConfirm(false);
   }, [memo.id]);
 
   const handleRecall = async () => {
@@ -572,6 +577,25 @@ function MemoDetailPanel({
     }
   };
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/memo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "hide", memoId: memo.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "쪽지 삭제 실패");
+      setShowDeleteConfirm(false);
+      onClose();
+    } catch (e: any) {
+      alert(e.message || "삭제 중 오류가 발생했습니다.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // 내가 보낸 쪽지이고 아직 회수하지 않은 수신자가 있는지
   const isMine = tab === "sent" && memo.senderEmail === myEmail;
   const unreadCount = isMine
@@ -579,18 +603,24 @@ function MemoDetailPanel({
     : 0;
   const canRecall = isMine && unreadCount > 0 && !recalling;
 
+  // 삭제 자격: 받은쪽지함은 읽은 것만(서버 400 거부 방지), 보낸쪽지함은 내가 보낸 것 (§12-1)
+  const canDelete =
+    (tab === "inbox" && !!memo.reads?.[myEmail]) ||
+    (tab === "sent" && memo.senderEmail.toLowerCase() === myEmail.toLowerCase());
+
   // 주고받은 이력 계산 (threadId 로컬 그룹핑 — reply spec §2·§3)
   const currentThreadId = memo.threadId || memo.id;
   const threadMemos = useMemo(() => {
     const map = new Map<string, MemoItem>();
     for (const m of allMemos) {
+      if (m.hiddenBy?.[myEmail]) continue;
       const mThreadId = m.threadId || m.id;
       if (mThreadId === currentThreadId) {
         map.set(m.id, m);
       }
     }
     return Array.from(map.values()).sort((a, b) => a.createdAt - b.createdAt);
-  }, [allMemos, currentThreadId]);
+  }, [allMemos, currentThreadId, myEmail]);
 
   return (
     <div className="flex flex-col h-full bg-slate-50/40 relative">
@@ -650,6 +680,23 @@ function MemoDetailPanel({
                 {recalling ? "회수 중…" : `회수 (${unreadCount}명)`}
               </button>
             )}
+
+            {/* §12-1 삭제 버튼 (내 화면에서 감추기) */}
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={deleting}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:text-rose-600 rounded-lg transition-colors disabled:opacity-40 cursor-pointer"
+                aria-label="쪽지 삭제"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                {deleting ? "삭제 중…" : "삭제"}
+              </button>
+            )}
+
             <button
               onClick={onClose}
               className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
@@ -662,6 +709,45 @@ function MemoDetailPanel({
           </div>
         </div>
       </div>
+
+      {/* §12-1 삭제 확인 팝업/모달 */}
+      {showDeleteConfirm && (
+        <div className="absolute inset-0 z-20 bg-black/30 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-xl p-5 max-w-sm w-full space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-slate-100 text-slate-600 rounded-full flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">쪽지를 삭제하시겠습니까?</h4>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  이 쪽지를 내 쪽지함에서 지울까요? 내 화면에서만 지워지며 상대방 화면과 기록은 남습니다.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {deleting ? "삭제 중…" : "삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 회수 확인 팝업/모달 (개정 ① 반영) */}
       {showRecallConfirm && (
@@ -1746,8 +1832,11 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
     (tab === "inbox" ? inboxMemos : sentMemos).find((m) => m.id === selectedMemoId) || null;
   const loading = tab === "inbox" ? inboxLoading : sentLoading;
 
-  // 전체 쪽지 목록 (주고받은 이력 계산용 — reply spec §2·§3)
-  const allMemos = useMemo(() => [...inboxMemos, ...sentMemos], [inboxMemos, sentMemos]);
+  // 전체 쪽지 목록 (주고받은 이력 계산용 — reply spec §2·§3, 삭제된 항목 배제)
+  const allMemos = useMemo(
+    () => [...inboxMemos, ...sentMemos].filter((m) => !m.hiddenBy?.[myEmail]),
+    [inboxMemos, sentMemos, myEmail]
+  );
 
   // ── 받은쪽지함 구독
   useEffect(() => {
@@ -1760,7 +1849,11 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
       limit(50)
     );
     const unsub = onSnapshot(q, (snap) => {
-      setInboxMemos(snap.docs.map((d) => ({ id: d.id, ...(d.data() as MemoDoc) })));
+      setInboxMemos(
+        snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as MemoDoc) }))
+          .filter((m) => !m.hiddenBy?.[myEmail])
+      );
       setInboxLoading(false);
       setLoadError(null);
     }, (err) => {
@@ -1782,7 +1875,11 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
       limit(50)
     );
     const unsub = onSnapshot(q, (snap) => {
-      setSentMemos(snap.docs.map((d) => ({ id: d.id, ...(d.data() as MemoDoc) })));
+      setSentMemos(
+        snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as MemoDoc) }))
+          .filter((m) => !m.hiddenBy?.[myEmail])
+      );
       setSentLoading(false);
       setLoadError(null);
     }, (err) => {

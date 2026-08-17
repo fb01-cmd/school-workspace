@@ -63,10 +63,12 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const list: MemoItem[] = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as MemoDoc),
-        }));
+        const list: MemoItem[] = snap.docs
+          .map((d) => ({
+            id: d.id,
+            ...(d.data() as MemoDoc),
+          }))
+          .filter((m) => !m.hiddenBy?.[myEmail]);
         // 안 읽은 쪽지 우선 정렬
         list.sort((a, b) => {
           const aUnread = !a.reads?.[myEmail] ? 1 : 0;

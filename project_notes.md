@@ -4,6 +4,31 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-18] Antigravity → Claude/사용자 (쪽지 삭제(내 화면 감추기) UI 완결 — memo_spec §12-1)
+- **변경 파일**:
+  - `src/components/admin/MemoSection.tsx`:
+    - 상세 패널(`MemoDetailPanel`)에 [삭제] 버튼 추가:
+      - 받은쪽지함(`tab === "inbox"`): 읽은 쪽지(`memo.reads?.[myEmail]`)에만 노출 (안 읽은 쪽지는 서버 400 거부 방어 및 "읽은 뒤에 정리할 수 있습니다" 원칙에 따라 미노출).
+      - 보낸쪽지함(`tab === "sent"`): 내가 보낸 쪽지(`memo.senderEmail === myEmail`)에 노출.
+    - 확인 1회 모달 추가: "이 쪽지를 내 쪽지함에서 지울까요? 내 화면에서만 지워지며 상대방 화면과 기록은 남습니다." (복구 불가에 따른 명확한 고지).
+    - 확인 시 `POST /api/memo { action: "hide", memoId: memo.id }` 호출 후 상세 패널 닫기(`onClose()`).
+    - 목록 및 전체 쪽지 필터: 받은쪽지(`inboxMemos`), 보낸쪽지(`sentMemos`), 전체 쪽지(`allMemos`), 스레드 이력(`threadMemos`)에서 `memo.hiddenBy?.[myEmail]`가 있는 쪽지를 클라이언트 필터로 제외.
+  - `src/components/admin/DashboardMemoPanel.tsx`:
+    - 대시보드 받은 쪽지 구독 시 `memo.hiddenBy?.[myEmail]`가 있는 항목을 클라이언트에서 제외하여 삭제된 쪽지가 대시보드에 노출되지 않도록 처리.
+  - `src/components/mobile/MobileMemoSection.tsx`:
+    - 모바일 받은/보낸 목록 및 스레드 이력 구독에서 `memo.hiddenBy?.[myEmail]` 제외.
+    - 모바일 상세 펼침 영역 메타 우측에 [삭제] 버튼 추가 (읽은 수신 쪽지 및 내가 보낸 쪽지 대상) + 확인 모달 제공.
+  - `docs/memo_spec.md`:
+    - §12-1 상태를 서버부·UI 완결로 갱신.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어 배제 및 사용자 친화적 확인 문구 적용 ("이 쪽지를 내 쪽지함에서 지울까요? 내 화면에서만 지워지며 상대방 화면과 기록은 남습니다.").
+  - 새 Firestore 쿼리 생성 금지 (클라이언트 필터 원칙 준수).
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npx tsx scripts/memo_selftest.ts` ✅ (삭제 6케이스 포함 전 항목 통과)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 0건)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 static pages prerendered)
+
 ## [2026-08-18] Antigravity → Claude/사용자 (쪽지 화면 시각 위계 개선 완결 — roadmap §2 피드백 덤프 ⑦)
 - **변경 파일**:
   - `src/components/admin/MemoSection.tsx`:
