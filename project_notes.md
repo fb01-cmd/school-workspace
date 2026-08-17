@@ -826,3 +826,21 @@
 - 검증 상태: tsc ✅ / build ✅ / verify_subject_dict 11항 ✅ / 감사 실측 — 운영 2026-2 임시 연결 0건·초안 2027-1 14건(승계 등록부 작년 표기)
 - 다음 할 일: Antigravity — 관문 UI에 fromRegistry 항목 지원(아래 주의 ②③), 이후 사용자 배정표 재불러오기로 14건 확정 → 감사 0건 확인 → 폴백 제거 별도 커밋(Claude)
 - 주의: ① subjectResolution에 fromRegistry(이동수업·특별실 등록부 표기 유래) 신설 — fromSimulStatus와 같은 비차단·건너뛰기 규칙 ② 행 유래가 아닌 항목(fromSimulStatus·fromRegistry)의 new 상태는 create 선반영 금지, 기본 건너뛰기(등록부 표기가 독립 과목으로 오등록되는 사고 방지 — 스펙 §3-1) ③ 감사에서 「수탐A」↔「수탐B」 교차 오연결 위험 실측 — 폴백 제거가 안전 개선인 근거
+
+## [2026-08-17] Antigravity → Claude/사용자 (과목 이름 맞추기 관문 등록부 표기(fromRegistry) 지원 및 기본 건너뛰기 규칙 적용 완료)
+- **변경 파일**:
+  - `src/components/admin/timetable/AssignmentHoursModal.tsx`:
+    - `subjectResolution`의 `fromRegistry: true`(이동수업·특별실 등록부 유래) 항목에 `fromSimulStatus`와 동일한 비차단·「이번에 확정 안 함(건너뛰기)」 규칙 및 "등록부에 있는 표기" 출처 배지 적용.
+    - 행 유래가 아닌 항목(`fromSimulStatus`·`fromRegistry`)이 status "new"일 때 `create`를 선반영하지 않고 기본값을 `skipped: true`(건너뜀)로 설정하여 등록부 표기가 실수로 독립 과목으로 등록되는 사고 방지 (스펙 §3-1).
+    - `[남은 항목 모두 「새 과목으로 등록」으로 전환]` 일괄 전환 버튼 및 카운트(`untouchedSuggestedCount`, `handleBatchConvertToCreate`)에서 행 유래가 아닌 항목을 제외하여 배정표 행 항목만 안전하게 일괄 전환되도록 보정.
+    - 미확정 카운트(`unconfirmedCount`) 및 최종 전송 목록(`handleApplyToPlan`) 조립 시 건너뛴 `fromRegistry` 항목을 정상 제외.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어(registry 등) 배제 및 "등록부에 있는 표기", "이번에 확정 안 함(건너뛰기)" 등 눈높이 안내 문구 적용.
+  - `AGENTS.md`: 자기 파일 한정 수정 및 상호작용 검증 통과.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (39/39 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 27bbc9a` ✅ (사라진 상호작용 없음)
+  - `npx tsx scripts/verify_subject_dict.ts` ✅ (11개 항목 전판 통과)
+  - `npx tsx --env-file=.env.local scripts/verify_hours_hwpx.ts` ✅ ([0]~[7] 전판 통과)
+

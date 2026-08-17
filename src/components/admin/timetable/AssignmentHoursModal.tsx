@@ -576,10 +576,12 @@ export default function AssignmentHoursModal({
             };
           }
         } else if (item.status === "new") {
+          const isNonRow = item.fromSimulStatus || item.fromRegistry;
           initialConf[item.rawName] = {
             action: "create",
             canonicalName: item.rawName,
             shortName: item.suggestedShortName || item.rawName.replace(/\s+/g, "").slice(0, 2),
+            skipped: isNonRow ? true : false,
             userTouched: false,
           };
         }
@@ -641,7 +643,8 @@ export default function AssignmentHoursModal({
     let count = 0;
     for (const item of subjectResolutions) {
       const conf = subjectConfirmations[item.rawName];
-      if (item.fromSimulStatus && conf?.skipped) continue;
+      const isNonRow = item.fromSimulStatus || item.fromRegistry;
+      if (isNonRow && conf?.skipped) continue;
       if (!conf) {
         count++;
       } else if (conf.action === "link" && !conf.canonicalName) {
@@ -656,8 +659,8 @@ export default function AssignmentHoursModal({
   const untouchedSuggestedCount = useMemo(() => {
     let count = 0;
     for (const item of suggestedResolutions) {
+      if (item.fromSimulStatus || item.fromRegistry) continue;
       const conf = subjectConfirmations[item.rawName];
-      if (item.fromSimulStatus && conf?.skipped) continue;
       if (!conf?.userTouched) {
         count++;
       }
@@ -669,8 +672,8 @@ export default function AssignmentHoursModal({
     setSubjectConfirmations((prev) => {
       const next = { ...prev };
       for (const item of suggestedResolutions) {
+        if (item.fromSimulStatus || item.fromRegistry) continue;
         const conf = next[item.rawName];
-        if (item.fromSimulStatus && conf?.skipped) continue;
         if (conf?.userTouched) continue;
 
         next[item.rawName] = {
@@ -1013,7 +1016,8 @@ export default function AssignmentHoursModal({
     const finalConfirmations: SubjectConfirmation[] = [];
     for (const item of subjectResolutions) {
       const conf = subjectConfirmations[item.rawName];
-      if (item.fromSimulStatus && conf?.skipped) continue;
+      const isNonRow = item.fromSimulStatus || item.fromRegistry;
+      if (isNonRow && conf?.skipped) continue;
       if (conf && conf.action === "create" && conf.shortName?.trim()) {
         finalConfirmations.push({
           rawName: item.rawName,
@@ -1527,9 +1531,21 @@ export default function AssignmentHoursModal({
                               key={item.rawName}
                               className="px-2.5 py-1.5 bg-emerald-50/50 border border-emerald-200 rounded-lg flex items-center justify-between text-xs"
                             >
-                              <span className="font-bold text-gray-900 truncate" title={item.rawName}>
-                                {item.rawName}
-                              </span>
+                              <div className="flex items-center gap-1.5 truncate">
+                                <span className="font-bold text-gray-900 truncate" title={item.rawName}>
+                                  {item.rawName}
+                                </span>
+                                {item.fromSimulStatus && (
+                                  <span className="px-1 py-0.2 bg-blue-100 text-blue-800 rounded text-[9px] whitespace-nowrap">
+                                    현황
+                                  </span>
+                                )}
+                                {item.fromRegistry && (
+                                  <span className="px-1 py-0.2 bg-sky-100 text-sky-800 rounded text-[9px] whitespace-nowrap">
+                                    등록부
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[11px] text-emerald-700 font-mono">
                                 {item.resolved?.name}
                                 {item.resolved?.shortName && item.resolved.shortName !== item.resolved.name && ` (${item.resolved.shortName})`}
@@ -1570,7 +1586,8 @@ export default function AssignmentHoursModal({
                       <div className="space-y-2 divide-y divide-gray-100">
                         {suggestedResolutions.map((item) => {
                           const conf = subjectConfirmations[item.rawName];
-                          const isSkipped = item.fromSimulStatus && conf?.skipped;
+                          const isNonRow = !!(item.fromSimulStatus || item.fromRegistry);
+                          const isSkipped = isNonRow && conf?.skipped;
                           const isCreateMode = conf?.action === "create";
                           const historyCand = item.candidates.find((c) => c.via === "history");
 
@@ -1591,6 +1608,11 @@ export default function AssignmentHoursModal({
                                   {item.fromSimulStatus && (
                                     <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-medium text-[10px]">
                                       이동수업 현황 문서 표기
+                                    </span>
+                                  )}
+                                  {item.fromRegistry && (
+                                    <span className="px-1.5 py-0.5 bg-sky-100 text-sky-800 rounded font-medium text-[10px]">
+                                      등록부에 있는 표기
                                     </span>
                                   )}
                                   {historyCand && !isCreateMode && (
@@ -1614,6 +1636,7 @@ export default function AssignmentHoursModal({
                                       type="text"
                                       value={conf.shortName || ""}
                                       onChange={(e) => handleUpdateShortName(item.rawName, e.target.value)}
+                                      disabled={isSkipped}
                                       placeholder="2글자 약칭"
                                       className="w-24 px-2 py-1 bg-white border border-gray-300 rounded text-xs font-bold text-gray-900 text-center"
                                     />
@@ -1654,8 +1677,8 @@ export default function AssignmentHoursModal({
                                   </div>
                                 )}
 
-                                {/* 이동수업 현황 표기 전용: 이번에 확정 안 함 (건너뛰기) */}
-                                {item.fromSimulStatus && (
+                                {/* 이동수업 현황/등록부 표기 전용: 이번에 확정 안 함 (건너뛰기) */}
+                                {isNonRow && (
                                   <button
                                     type="button"
                                     onClick={() => handleToggleSkip(item.rawName)}
@@ -1691,7 +1714,8 @@ export default function AssignmentHoursModal({
                       <div className="space-y-2 divide-y divide-gray-100">
                         {newResolutions.map((item) => {
                           const conf = subjectConfirmations[item.rawName];
-                          const isSkipped = item.fromSimulStatus && conf?.skipped;
+                          const isNonRow = !!(item.fromSimulStatus || item.fromRegistry);
+                          const isSkipped = isNonRow && conf?.skipped;
                           const isLinkMode = conf?.action === "link";
 
                           return (
@@ -1710,6 +1734,11 @@ export default function AssignmentHoursModal({
                                   {item.fromSimulStatus && (
                                     <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-medium text-[10px]">
                                       이동수업 현황 문서 표기
+                                    </span>
+                                  )}
+                                  {item.fromRegistry && (
+                                    <span className="px-1.5 py-0.5 bg-sky-100 text-sky-800 rounded font-medium text-[10px]">
+                                      등록부에 있는 표기
                                     </span>
                                   )}
                                 </div>
@@ -1773,8 +1802,8 @@ export default function AssignmentHoursModal({
                                   </div>
                                 )}
 
-                                {/* 이동수업 현황 표기 전용: 이번에 확정 안 함 (건너뛰기) */}
-                                {item.fromSimulStatus && (
+                                {/* 이동수업 현황/등록부 표기 전용: 이번에 확정 안 함 (건너뛰기) */}
+                                {isNonRow && (
                                   <button
                                     type="button"
                                     onClick={() => handleToggleSkip(item.rawName)}
