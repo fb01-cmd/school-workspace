@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { VenueGroup, SimulSlot, ClassGrid } from "@/lib/timetable/types";
 import { buildVenueMatcher } from "@/lib/timetable/venue";
 import { useAvailableClasses } from "./useAvailableClasses";
-import RegistryUnlockModal, { getStoredUnlockReason } from "./RegistryUnlockModal";
+import RegistryUnlockModal from "./RegistryUnlockModal";
 
 interface VenueGroupTabProps {
   activeTermId?: string | null;
@@ -221,7 +221,7 @@ export default function VenueGroupTab({ activeTermId, isOperating = false, isArc
       finalSubjects.push(subjectInput.trim());
     }
 
-    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
+    const unlockReason = reasonOverride;
 
     setSaving(true);
     try {
@@ -282,7 +282,7 @@ export default function VenueGroupTab({ activeTermId, isOperating = false, isArc
     }
     if (!reasonOverride && !confirm(`'${groupLabel}' 특별실 배정을 삭제하시겠습니까?`)) return;
     setDeletingId(groupId);
-    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
+    const unlockReason = reasonOverride;
     try {
       const res = await fetch("/api/timetable/manage", {
         method: "POST",

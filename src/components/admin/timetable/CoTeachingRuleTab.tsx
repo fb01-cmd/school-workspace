@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { CoTeachingRule, ClassGrid } from "@/lib/timetable/types";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import { useAvailableClasses } from "./useAvailableClasses";
-import RegistryUnlockModal, { getStoredUnlockReason } from "./RegistryUnlockModal";
+import RegistryUnlockModal from "./RegistryUnlockModal";
 
 interface CoTeachingRuleTabProps {
   activeTermId?: string | null;
@@ -216,7 +216,7 @@ export default function CoTeachingRuleTab({
       return;
     }
 
-    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
+    const unlockReason = reasonOverride;
 
     setSaving(true);
     try {
@@ -275,7 +275,7 @@ export default function CoTeachingRuleTab({
     }
     if (!reasonOverride && !confirm(`'${labelText}' 복수교사 규칙을 삭제하시겠습니까?`)) return;
     setDeletingId(ruleId);
-    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
+    const unlockReason = reasonOverride;
     try {
       const res = await fetch("/api/timetable/manage", {
         method: "POST",

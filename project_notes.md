@@ -911,3 +911,16 @@
   - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (39/39 pages prerendered)
   - `bash scripts/check_ui_removals.sh 87f956d` ✅ (사라진 상호작용 없음)
   - `npx tsx --env-file=.env.local scripts/verify_registry_lock.ts` ✅ (5개 케이스 전판 통과)
+
+## [2026-08-18] Antigravity → Claude/사용자 (편성 등록부 잠금 해제 다이얼로그 동작 조임)
+- **배경**: 스펙 §4 ⓑ 해제 경고 원칙("이 변경은 이미 확정된 교체의 판정 근거를 바꿉니다")에 따라, 세션 사유가 있더라도 매 잠금 해제 편집 시 경고 다이얼로그(`RegistryUnlockModal`)를 반드시 표시하고 확인을 거쳐 진행하도록 동작 조임.
+- **변경 파일**:
+  - `docs/registry_lock_spec.md` (§5): "사유는 편집 세션 동안 기억하되 다이얼로그 창은 매번 표시하여 확인 후 진행하도록 한다"로 문구 수정.
+  - `src/components/admin/timetable/{SimulGroupTab,VenueGroupTab,TeacherSlotBanTab,ConsecutiveRuleTab,CoTeachingRuleTab}.tsx` (5개 탭 공통):
+    - 요청 전 `getStoredUnlockReason` 자동 동봉을 제거하고 모달에서 확인된 `reasonOverride`만 요청에 싣도록 변경.
+    - `getStoredUnlockReason`은 다이얼로그 오픈 시 기본값 프리필(1클릭 확인 편의)에만 전담.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (39/39 pages prerendered)
+  - `bash scripts/check_ui_removals.sh f9f5961` ✅ (사라진 상호작용 없음)
+  - `npx tsx --env-file=.env.local scripts/verify_registry_lock.ts` ✅ (5개 케이스 전판 통과)

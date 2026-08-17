@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { TeacherSlotBan, SimulSlot, SlotBanKind } from "@/lib/timetable/types";
 import type { AiFormalizeResult } from "@/lib/timetable/ai";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
-import RegistryUnlockModal, { getStoredUnlockReason } from "./RegistryUnlockModal";
+import RegistryUnlockModal from "./RegistryUnlockModal";
 
 interface TeacherSlotBanTabProps {
   activeTermId?: string | null;
@@ -165,7 +165,7 @@ export default function TeacherSlotBanTab({
       return;
     }
 
-    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
+    const unlockReason = reasonOverride;
 
     setSaving(true);
     try {
@@ -225,7 +225,7 @@ export default function TeacherSlotBanTab({
     }
     if (!reasonOverride && !confirm(`'${labelText}' 특별교사 금지 규칙을 삭제하시겠습니까?`)) return;
     setDeletingId(ruleId);
-    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
+    const unlockReason = reasonOverride;
     try {
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
@@ -317,7 +317,7 @@ export default function TeacherSlotBanTab({
     let lockedTermState: "operating" | "archived" = "operating";
     // 부분 실패 시 실패 항목만 다이얼로그에 남긴다 — 전체 재시도는 성공분을 중복 등록시킴
     const failedEntries: typeof aiFormalizeResult.entries = [];
-    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
+    const unlockReason = reasonOverride;
 
     for (const entry of aiFormalizeResult.entries) {
       try {

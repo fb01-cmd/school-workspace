@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { SimulGroup, SimulSlot, isSimulCell } from "@/lib/timetable/simul";
 import { ClassGrid } from "@/lib/timetable/types";
 import { useAvailableClasses } from "./useAvailableClasses";
-import RegistryUnlockModal, { getStoredUnlockReason } from "./RegistryUnlockModal";
+import RegistryUnlockModal from "./RegistryUnlockModal";
 
 interface SimulGroupTabProps {
   activeTermId?: string | null;
@@ -203,7 +203,7 @@ export default function SimulGroupTab({ activeTermId, isOperating = false, isArc
       finalSubjects.push(subjectInput.trim());
     }
 
-    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
+    const unlockReason = reasonOverride;
 
     setSaving(true);
     try {
@@ -263,7 +263,7 @@ export default function SimulGroupTab({ activeTermId, isOperating = false, isArc
     }
     if (!reasonOverride && !confirm(`'${groupLabel}' 이동수업 그룹을 삭제하시겠습니까?`)) return;
     setDeletingId(groupId);
-    const unlockReason = reasonOverride || getStoredUnlockReason(activeTermId);
+    const unlockReason = reasonOverride;
     try {
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
