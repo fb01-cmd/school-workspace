@@ -44,3 +44,40 @@ export function memoMatchesSearch(target: MemoSearchTarget, rawQuery: unknown): 
     .toLowerCase();
   return keywords.every((k) => haystack.includes(k));
 }
+
+// ── 검색 기간 범위 (docs/memo_star_search_spec.md §2-4a) ─────────
+
+export type MemoSearchRange = "3m" | "6m" | "1y";
+
+export const MEMO_SEARCH_RANGE_LABELS: Record<MemoSearchRange, string> = {
+  "3m": "최근 3개월",
+  "6m": "최근 6개월",
+  "1y": "최근 1년",
+};
+
+export const MEMO_SEARCH_RANGE_DAYS: Record<MemoSearchRange, number> = {
+  "3m": 90,
+  "6m": 180,
+  "1y": 365,
+};
+
+/** 범위(3m | 6m | 1y)와 기준 시각(nowMs, 기본값 Date.now())으로부터 createdAt >= 경계 시각(ms) 계산 */
+export function computeSearchRangeBoundary(
+  range: MemoSearchRange,
+  nowMs: number = Date.now()
+): number {
+  const days = MEMO_SEARCH_RANGE_DAYS[range] || 90;
+  return nowMs - days * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * 상위 캐시(더 넓은 범위)로부터 하위(좁은 범위) 쪽지 목록을 파생 필터링하는 순수 헬퍼.
+ * items 중 createdAt >= boundaryMs 인 항목만 필터하여 반환.
+ */
+export function filterMemosByRangeBoundary<T extends { createdAt: number }>(
+  items: T[],
+  boundaryMs: number
+): T[] {
+  return items.filter((item) => typeof item.createdAt === "number" && item.createdAt >= boundaryMs);
+}
+

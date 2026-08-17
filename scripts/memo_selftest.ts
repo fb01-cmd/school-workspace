@@ -244,6 +244,42 @@ async function main() {
     expect("표시 이름만 있고 스탬프 없어도 매칭", memoMatchesSearch({ title: "t", body: "b", senderDisplayName: "박새로이" }, "박새로이"));
   }
 
+  console.log("\n── 검색 범위 (§2-4a) ──");
+  {
+    const {
+      computeSearchRangeBoundary,
+      filterMemosByRangeBoundary,
+      MEMO_SEARCH_RANGE_LABELS,
+    } = await import("../src/lib/memo/search_logic");
+
+    const now = 1755475200000; // 기준 시각 고정
+    const b3m = computeSearchRangeBoundary("3m", now);
+    const b6m = computeSearchRangeBoundary("6m", now);
+    const b1y = computeSearchRangeBoundary("1y", now);
+
+    expect("3개월 경계 = now - 90일", b3m === now - 90 * 86400000);
+    expect("6개월 경계 = now - 180일", b6m === now - 180 * 86400000);
+    expect("1년 경계 = now - 365일", b1y === now - 365 * 86400000);
+    expect("라벨 확인", MEMO_SEARCH_RANGE_LABELS["3m"] === "최근 3개월" && MEMO_SEARCH_RANGE_LABELS["6m"] === "최근 6개월" && MEMO_SEARCH_RANGE_LABELS["1y"] === "최근 1년");
+
+    // 상위 캐시로부터 하위 범위 파생 필터링 검증
+    const sampleMemos = [
+      { id: "m1", createdAt: now - 10 * 86400000 },  // 10일 전 (3m, 6m, 1y 모두 포함)
+      { id: "m2", createdAt: now - 100 * 86400000 }, // 100일 전 (6m, 1y 포함, 3m 제외)
+      { id: "m3", createdAt: now - 200 * 86400000 }, // 200일 전 (1y 포함, 3m/6m 제외)
+      { id: "m4", createdAt: now - 400 * 86400000 }, // 400일 전 (전부 제외)
+    ];
+
+    const derived3m = filterMemosByRangeBoundary(sampleMemos, b3m);
+    const derived6m = filterMemosByRangeBoundary(sampleMemos, b6m);
+    const derived1y = filterMemosByRangeBoundary(sampleMemos, b1y);
+
+    expect("3개월 파생 필터 (90일 이내만)", derived3m.map((m) => m.id).join(",") === "m1");
+    expect("6개월 파생 필터 (180일 이내만)", derived6m.map((m) => m.id).join(",") === "m1,m2");
+    expect("1년 파생 필터 (365일 이내만)", derived1y.map((m) => m.id).join(",") === "m1,m2,m3");
+  }
+
+
   console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);
   process.exit(failed === 0 ? 0 : 1);
 }

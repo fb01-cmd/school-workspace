@@ -30,7 +30,14 @@ import {
   formatAttachmentSize,
   MEMO_ATTACHMENT_MAX_COUNT,
 } from "@/lib/memo/client_attachments";
-import { memoMatchesSearch, type MemoSearchTarget } from "@/lib/memo/search_logic";
+import {
+  memoMatchesSearch,
+  type MemoSearchTarget,
+  type MemoSearchRange,
+  MEMO_SEARCH_RANGE_LABELS,
+  computeSearchRangeBoundary,
+  filterMemosByRangeBoundary,
+} from "@/lib/memo/search_logic";
 import MemoAttachmentGrid from "@/components/common/MemoAttachmentGrid";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
@@ -1948,8 +1955,9 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
   const [starredLoading, setStarredLoading] = useState(false);
   const [starredError, setStarredError] = useState<string | null>(null);
 
-  // 검색 상태
+  // 검색 상태 (§2-4a 범위 드롭다운)
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchRange, setSearchRange] = useState<MemoSearchRange>("3m");
   const [searchLoading, setSearchLoading] = useState(false);
   const [allUserMemos, setAllUserMemos] = useState<MemoItem[] | null>(null);
 
@@ -2156,11 +2164,13 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "즐겨찾기 변경 실패");
 
-        // clientCache 최신화
-        const cacheKey = `memos:all_user:${myEmail}`;
-        const cached = getClientCache(cacheKey);
-        if (Array.isArray(cached)) {
-          setClientCache(cacheKey, updateList(cached));
+        // clientCache 최신화 (모든 범위 캐시 동기화)
+        for (const r of ["3m", "6m", "1y"] as const) {
+          const cacheKey = `memos:all_user:${myEmail}:${r}`;
+          const cached = getClientCache(cacheKey);
+          if (Array.isArray(cached)) {
+            setClientCache(cacheKey, updateList(cached));
+          }
         }
       } catch (err: any) {
         // 실패 롤백
@@ -2176,7 +2186,7 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
     [myEmail, allUserMemos]
   );
 
-  // ── 검색 실행: 전량 조회 및 clientCache (TTL 5분) 관리
+  // ── 검색 실행: 전량 조회 및 clientCache (TTL 5분) 범위별 관리 (§2-4a)
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (!trimmed) {
@@ -2185,26 +2195,52 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
     }
 
     let cancelled = false;
-    const loadAllMemosForSearch = async () => {
-      const cacheKey = `memos:all_user:${myEmail}`;
-      const cached = getClientCache(cacheKey);
-      if (Array.isArray(cached)) {
-        if (!cancelled) setAllUserMemos(cached);
+    const loadMemosForSearch = async () => {
+      const boundaryMs = computeSearchRangeBoundary(searchRange);
+      const exactCacheKey = `memos:all_user:${myEmail}:${searchRange}`;
+
+      // 1. 동일 범위 캐시 확인
+      const exactCached = getClientCache(exactCacheKey);
+      if (Array.isArray(exactCached)) {
+        if (!cancelled) {
+          setAllUserMemos(exactCached);
+          setSearchLoading(false);
+        }
         return;
       }
 
+      // 2. 더 넓은 범위 캐시로부터 파생 필터 (1y -> 6m -> 3m)
+      const widerRanges: MemoSearchRange[] =
+        searchRange === "3m" ? ["6m", "1y"] : searchRange === "6m" ? ["1y"] : [];
+
+      for (const wider of widerRanges) {
+        const widerKey = `memos:all_user:${myEmail}:${wider}`;
+        const widerCached = getClientCache(widerKey);
+        if (Array.isArray(widerCached)) {
+          const derived = filterMemosByRangeBoundary(widerCached, boundaryMs);
+          setClientCache(exactCacheKey, derived, 5 * 60 * 1000);
+          if (!cancelled) {
+            setAllUserMemos(derived);
+            setSearchLoading(false);
+          }
+          return;
+        }
+      }
+
+      // 3. 캐시 부재 시 확장/신규 Firestore 쿼리 실행
       setSearchLoading(true);
       try {
         const col = collection(db, "memos", domain, "items");
         const PAGE_SIZE = 300;
 
-        // 1. 받은 쪽지 전량
+        // 1. 받은 쪽지 (createdAt >= boundaryMs)
         const inboxList: MemoItem[] = [];
         let lastInboxDoc: any = null;
         while (true) {
           let q = query(
             col,
             where("recipientEmails", "array-contains", myEmail),
+            where("createdAt", ">=", boundaryMs),
             orderBy("createdAt", "desc"),
             limit(PAGE_SIZE)
           );
@@ -2212,6 +2248,7 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
             q = query(
               col,
               where("recipientEmails", "array-contains", myEmail),
+              where("createdAt", ">=", boundaryMs),
               orderBy("createdAt", "desc"),
               startAfter(lastInboxDoc),
               limit(PAGE_SIZE)
@@ -2226,13 +2263,14 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
           lastInboxDoc = snap.docs[snap.docs.length - 1];
         }
 
-        // 2. 보낸 쪽지 전량
+        // 2. 보낸 쪽지 (createdAt >= boundaryMs)
         const sentList: MemoItem[] = [];
         let lastSentDoc: any = null;
         while (true) {
           let q = query(
             col,
             where("senderEmail", "==", myEmail),
+            where("createdAt", ">=", boundaryMs),
             orderBy("createdAt", "desc"),
             limit(PAGE_SIZE)
           );
@@ -2240,6 +2278,7 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
             q = query(
               col,
               where("senderEmail", "==", myEmail),
+              where("createdAt", ">=", boundaryMs),
               orderBy("createdAt", "desc"),
               startAfter(lastSentDoc),
               limit(PAGE_SIZE)
@@ -2260,12 +2299,12 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
         }
         const all = Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt);
 
-        setClientCache(cacheKey, all, 5 * 60 * 1000);
+        setClientCache(exactCacheKey, all, 5 * 60 * 1000);
         if (!cancelled) {
           setAllUserMemos(all);
         }
       } catch (e) {
-        console.error("[memo] 검색용 전량 쪽지 조회 실패:", e);
+        console.error("[memo] 검색용 쪽지 조회 실패:", e);
       } finally {
         if (!cancelled) {
           setSearchLoading(false);
@@ -2273,11 +2312,11 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
       }
     };
 
-    loadAllMemosForSearch();
+    loadMemosForSearch();
     return () => {
       cancelled = true;
     };
-  }, [searchQuery, myEmail, domain]);
+  }, [searchQuery, searchRange, myEmail, domain]);
 
   // ── 현재 탭 및 검색 상태에 따른 목록 산출
   const isSearching = searchQuery.trim().length > 0;
@@ -2439,35 +2478,47 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
           </button>
         </div>
 
-        {/* 검색 입력란 (탭 줄 옆) */}
-        <div className="relative flex-1 max-w-xs min-w-[200px]">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="쪽지 검색 (제목, 내용, 이름)"
-            className="w-full pl-8 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
-          />
-          <svg
-            className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+        {/* 검색 및 범위 드롭다운 (탭 줄 옆, §2-4a) */}
+        <div className="flex items-center gap-1.5 flex-1 max-w-sm min-w-[260px]">
+          <select
+            value={searchRange}
+            onChange={(e) => setSearchRange(e.target.value as MemoSearchRange)}
+            className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all flex-shrink-0"
+            aria-label="검색 기간 범위"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-              aria-label="검색어 지우기"
+            <option value="3m">최근 3개월</option>
+            <option value="6m">최근 6개월</option>
+            <option value="1y">최근 1년</option>
+          </select>
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="쪽지 검색 (제목, 내용, 이름)"
+              className="w-full pl-8 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
+            />
+            <svg
+              className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                aria-label="검색어 지우기"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
         <button
@@ -2488,12 +2539,23 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
       <div className="flex-1 flex overflow-hidden">
         {/* 목록 패널 */}
         <div className={`flex flex-col border-r border-slate-200 overflow-hidden ${selectedMemo ? "w-80 flex-shrink-0" : "flex-1"}`}>
+          {/* 검색 결과 상단 안내 바 (§2-4a) */}
+          {isSearching && !loading && currentList.length > 0 && (
+            <div className="px-3.5 py-1.5 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between text-xs text-slate-500 font-medium flex-shrink-0">
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                {MEMO_SEARCH_RANGE_LABELS[searchRange]}에서 찾았습니다
+              </span>
+              <span className="text-[11px] text-slate-400 font-normal">{currentList.length}건</span>
+            </div>
+          )}
+
           {loading ? (
             <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
               <div className="animate-pulse flex items-center gap-2">
                 <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" />
                 {isSearching ? (
-                  <span>전체 쪽지에서 찾는 중…</span>
+                  <span>{MEMO_SEARCH_RANGE_LABELS[searchRange]} 쪽지에서 찾는 중…</span>
                 ) : (
                   <span>불러오는 중…</span>
                 )}
@@ -2509,15 +2571,44 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
               <svg className="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
-              <span className="text-sm">
-                {isSearching
-                  ? `'${searchQuery}'에 해당하는 쪽지가 없습니다.`
-                  : tab === "starred"
-                  ? "별표를 눌러 자주 찾는 쪽지를 모아두세요."
-                  : tab === "inbox"
-                  ? "받은 쪽지가 없습니다."
-                  : "보낸 쪽지가 없습니다."}
-              </span>
+              {isSearching ? (
+                <div className="space-y-1 max-w-xs">
+                  <p className="text-sm font-semibold text-slate-600">
+                    &apos;{searchQuery}&apos;에 해당하는 쪽지가 없습니다.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {searchRange !== "1y" ? "기간을 늘려 다시 찾아보세요" : "다른 검색어로 다시 찾아보세요"}
+                  </p>
+                  {searchRange !== "1y" && (
+                    <div className="flex items-center justify-center gap-1.5 pt-2">
+                      {searchRange === "3m" && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchRange("6m")}
+                          className="px-2.5 py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium rounded-md transition-colors border border-indigo-200 cursor-pointer"
+                        >
+                          최근 6개월로 검색
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setSearchRange("1y")}
+                        className="px-2.5 py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium rounded-md transition-colors border border-indigo-200 cursor-pointer"
+                      >
+                        최근 1년으로 검색
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span className="text-sm">
+                  {tab === "starred"
+                    ? "별표를 눌러 자주 찾는 쪽지를 모아두세요."
+                    : tab === "inbox"
+                    ? "받은 쪽지가 없습니다."
+                    : "보낸 쪽지가 없습니다."}
+                </span>
+              )}
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto">

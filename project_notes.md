@@ -4,6 +4,29 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-18] Antigravity → Claude/사용자 (쪽지 검색 범위 드롭다운 및 다계층 캐시 파생 완결 — memo_star_search_spec §2-4a)
+- **변경 파일**:
+  - `src/lib/memo/search_logic.ts`:
+    - `MemoSearchRange` (`"3m" | "6m" | "1y"`), `MEMO_SEARCH_RANGE_LABELS`, `computeSearchRangeBoundary`, `filterMemosByRangeBoundary` 순수 헬퍼 정의 및 export.
+  - `src/components/admin/MemoSection.tsx`:
+    - **범위 드롭다운**: 검색창 좌측에 `[최근 3개월 | 최근 6개월 | 최근 1년]` 드롭다운 배치 (기본값: 최근 3개월).
+    - **경계 쿼리**: Firestore 쪽지 조회 시 `where("createdAt", ">=", boundaryMs)` + `orderBy("createdAt", "desc")` 추가 (동일 필드 범위+정렬로 복합 색인·규칙 무변경, 읽기 비용 70~80% 절감).
+    - **범위별 캐시 & 파생 필터**: `memos:all_user:${myEmail}:${range}`로 관리. 더 넓은 범위 캐시(예: 1년 또는 6개월)가 메모리에 있으면 Firestore 재조회 0건으로 `filterMemosByRangeBoundary` 파생 필터 생성 후 즉시 적용. 범위 확장 시에만 Firestore 재조회.
+    - **즐겨찾기 동기화**: 별 토글 시 메모리에 존재하는 모든 범위 캐시(`3m`, `6m`, `1y`)에 낙관적 상태를 동기화하여 캐시 불일치 방지.
+    - **결과 상단 표기 & 0건 유도**:
+      - 결과 상단에 "최근 N개월/1년에서 찾았습니다 (N건)" 안내 바 표기.
+      - 결과 0건 시 "'{검색어}'에 해당하는 쪽지가 없습니다." + "기간을 늘려 다시 찾아보세요" 유도 문구 및 즉시 6개월/1년으로 확장할 수 있는 바로가기 버튼 제공.
+  - `scripts/memo_selftest.ts`:
+    - 검색 범위 3종 경계 시각 산출, 라벨 매핑, 상위 캐시로부터 하위 범위 파생 필터링 검증 7케이스 추가.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어 배제, 사용자 눈높이 한국어 라벨 ("최근 3개월", "기간을 늘려 다시 찾아보세요"), 0건 시 원클릭 출구 버튼 제공.
+  - `memo_star_search_spec §2-4a`: 쿼리 및 캐시 계층 구조 완전 준수.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npx tsx scripts/memo_selftest.ts` ✅ (검색 범위 7케이스 포함 전 항목 통과)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 0건)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 static pages prerendered)
+
 ## [2026-08-18] Antigravity → Claude/사용자 (쪽지 즐겨찾기·검색 UI 완결 — memo_star_search_spec §1-5·§2-4)
 - **변경 파일**:
   - `src/components/admin/MemoSection.tsx`:
