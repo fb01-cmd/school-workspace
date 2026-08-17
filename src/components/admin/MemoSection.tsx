@@ -409,32 +409,38 @@ function InboxRow({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-indigo-50/60 transition-colors flex items-center gap-3 ${
-        selected ? "bg-indigo-50" : ""
+      className={`w-full text-left px-4 py-3.5 border-b border-slate-200/80 hover:bg-indigo-50/60 transition-colors flex items-start gap-3 cursor-pointer ${
+        selected
+          ? "bg-indigo-50/90 border-l-4 border-l-indigo-600 -ml-[1px]"
+          : isUnread
+          ? "bg-slate-50/50"
+          : "bg-white"
       }`}
     >
       {/* 안읽음 인디케이터 */}
       <span
-        className={`flex-shrink-0 w-2 h-2 rounded-full ${
-          isUnread ? "bg-indigo-500" : "bg-transparent"
+        className={`flex-shrink-0 w-2.5 h-2.5 rounded-full mt-1 ${
+          isUnread ? "bg-indigo-600 ring-4 ring-indigo-100" : "bg-transparent"
         }`}
       />
       <div className="flex-1 min-w-0">
+        {/* 발신자 + 시각 (보조 톤) */}
         <div className="flex items-center justify-between gap-2">
           <span
-            className={`text-sm truncate ${
-              isUnread ? "font-bold text-slate-900" : "text-slate-600"
+            className={`text-xs truncate ${
+              isUnread ? "font-bold text-slate-700" : "text-slate-500 font-medium"
             }`}
           >
             {memo.senderName || memo.senderEmail}
           </span>
-          <span className="flex-shrink-0 text-xs text-slate-400">
+          <span className="flex-shrink-0 text-[11px] text-slate-400">
             {formatDate(memo.createdAt)}
           </span>
         </div>
+        {/* 제목 (주 톤) */}
         <p
-          className={`text-sm truncate mt-0.5 ${
-            isUnread ? "font-semibold text-slate-800" : "text-slate-500"
+          className={`text-sm truncate mt-1 ${
+            isUnread ? "font-bold text-slate-950" : "font-medium text-slate-700"
           }`}
         >
           {memo.title}
@@ -459,23 +465,29 @@ function SentRow({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-indigo-50/60 transition-colors flex items-center gap-3 ${
-        selected ? "bg-indigo-50" : ""
+      className={`w-full text-left px-4 py-3.5 border-b border-slate-200/80 hover:bg-indigo-50/60 transition-colors flex items-start gap-3 cursor-pointer ${
+        selected
+          ? "bg-indigo-50/90 border-l-4 border-l-indigo-600 -ml-[1px]"
+          : "bg-white"
       }`}
     >
-      <span className="flex-shrink-0 w-2 h-2 rounded-full bg-transparent" />
+      <span className="flex-shrink-0 w-2.5 h-2.5 rounded-full mt-1 bg-transparent" />
       <div className="flex-1 min-w-0">
+        {/* 받는 분 요약 + 시각 (보조 톤) */}
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm truncate text-slate-700 font-medium">
-            {memo.title}
+          <span className="text-xs truncate text-slate-500 font-medium">
+            받는 분: {memo.recipientSummary || `${total}명`}
           </span>
-          <span className="flex-shrink-0 text-xs text-slate-400">
+          <span className="flex-shrink-0 text-[11px] text-slate-400">
             {formatDate(memo.createdAt)}
           </span>
         </div>
-        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
-          <span>{memo.recipientSummary || `${total}명`}</span>
-          <span>·</span>
+        {/* 쪽지 제목 (주 톤) */}
+        <p className="text-sm font-semibold text-slate-800 truncate mt-1">
+          {memo.title}
+        </p>
+        {/* 읽음 및 회수 상태 뱃지 */}
+        <div className="text-xs text-slate-400 mt-1.5 flex items-center gap-1.5 flex-wrap">
           <span
             className={`font-semibold ${
               readCount === total && total > 0
@@ -492,7 +504,7 @@ function SentRow({
               <span className="font-semibold text-rose-500">{recalled}명에게서 회수함</span>
             </>
           )}
-        </p>
+        </div>
       </div>
     </button>
   );
@@ -581,52 +593,73 @@ function MemoDetailPanel({
   }, [allMemos, currentThreadId]);
 
   return (
-    <div className="flex flex-col h-full relative">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-        <h3 className="text-base font-bold text-slate-900 flex-1 mr-3 leading-snug">
-          {memo.title}
-        </h3>
-        <div className="flex items-center gap-2">
-          {/* 받은쪽지함: 답장 버튼 */}
-          {tab === "inbox" && onReply && (
-            <button
-              type="button"
-              onClick={onReply}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
-              aria-label="답장"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-              </svg>
-              <span>답장</span>
-            </button>
-          )}
+    <div className="flex flex-col h-full bg-slate-50/40 relative">
+      {/* 1. 제목 및 메타 영역 (상단 헤더 구획) */}
+      <div className="bg-white px-6 py-4 border-b border-slate-200 shadow-2xs">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            {/* 메타 정보: 작고 옅게 한 줄로 정리 */}
+            <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap mb-1.5">
+              {tab === "inbox" ? (
+                <span>
+                  보낸 사람: <strong className="text-slate-700 font-semibold">{memo.senderName || memo.senderEmail}</strong>
+                </span>
+              ) : (
+                <span>
+                  받는 사람: <strong className="text-slate-700 font-semibold">{memo.recipientSummary || `${memo.recipientCount}명`}</strong>
+                </span>
+              )}
+              <span className="text-slate-300">·</span>
+              <span className="text-slate-400">{formatFull(memo.createdAt)}</span>
+            </div>
+            {/* 제목: 선명한 주 톤 */}
+            <h3 className="text-lg font-bold text-slate-900 leading-snug tracking-tight">
+              {memo.title}
+            </h3>
+          </div>
 
-          {/* §12-2 회수 버튼 — 내가 보낸 쪽지, 안 읽은 수신자 있을 때만 표시 */}
-          {isMine && unreadCount > 0 && (
+          {/* 액션 버튼 */}
+          <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+            {/* 받은쪽지함: 답장 버튼 */}
+            {tab === "inbox" && onReply && (
+              <button
+                type="button"
+                onClick={onReply}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
+                aria-label="답장"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+                <span>답장</span>
+              </button>
+            )}
+
+            {/* §12-2 회수 버튼 — 내가 보낸 쪽지, 안 읽은 수신자 있을 때만 표시 */}
+            {isMine && unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowRecallConfirm(true)}
+                disabled={!canRecall}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors disabled:opacity-40 cursor-pointer"
+                aria-label="쪽지 회수"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+                {recalling ? "회수 중…" : `회수 (${unreadCount}명)`}
+              </button>
+            )}
             <button
-              type="button"
-              onClick={() => setShowRecallConfirm(true)}
-              disabled={!canRecall}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors disabled:opacity-40"
-              aria-label="쪽지 회수"
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+              aria-label="닫기"
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
-              {recalling ? "회수 중…" : `회수 (${unreadCount}명)`}
             </button>
-          )}
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded"
-            aria-label="닫기"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          </div>
         </div>
       </div>
 
@@ -651,14 +684,14 @@ function MemoDetailPanel({
               <button
                 type="button"
                 onClick={() => setShowRecallConfirm(false)}
-                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               >
                 취소
               </button>
               <button
                 type="button"
                 onClick={handleRecall}
-                className="px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors shadow-sm"
+                className="px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors shadow-sm cursor-pointer"
               >
                 회수
               </button>
@@ -667,27 +700,12 @@ function MemoDetailPanel({
         </div>
       )}
 
-      {/* 메타 */}
-      <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 text-xs text-slate-500 space-y-1">
-        {tab === "inbox" ? (
-          <div>
-            <span className="font-medium text-slate-700">{memo.senderName || memo.senderEmail}</span>
-            {" "}님이 보낸 쪽지
-          </div>
-        ) : (
-          <div>
-            받는 분: <span className="font-medium text-slate-700">{memo.recipientSummary || `${memo.recipientCount}명`}</span>
-          </div>
-        )}
-        <div>{formatFull(memo.createdAt)}</div>
-      </div>
-
-      {/* 본문 */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      {/* 2. 본문 및 보조 영역 스크롤 컨테이너 */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
         {/* §12-2 회수 결과 안내 (개정 ② 반영: 결과 카드 내 주의 문구 동반) */}
         {recallResult && (
           <div
-            className={`rounded-lg px-4 py-3 text-sm border ${
+            className={`rounded-xl px-4 py-3 text-sm border ${
               recallResult.type === "success"
                 ? "bg-rose-50 border-rose-200 text-rose-700"
                 : "bg-red-50 border-red-200 text-red-700"
@@ -718,47 +736,58 @@ function MemoDetailPanel({
 
         {/* §12-2 회수 주의 안내 — 회수 버튼이 보이는 동안 항상 표시 */}
         {isMine && unreadCount > 0 && !recallResult && (
-          <p className="text-xs text-slate-400 leading-relaxed">
+          <p className="text-xs text-slate-400 leading-relaxed px-1">
             이미 읽은 분의 쪽지는 회수되지 않습니다. 휴대전화 알림은 취소할 수 없습니다.
           </p>
         )}
 
-        <pre className="whitespace-pre-wrap text-sm text-slate-800 font-sans leading-relaxed">
-          {memo.body}
-        </pre>
+        {/* 본문 카드 구획 */}
+        <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-2xs space-y-4">
+          <pre className="whitespace-pre-wrap text-[15px] text-slate-800 font-sans leading-relaxed">
+            {memo.body}
+          </pre>
 
-        {/* 링크 */}
-        {memo.links && memo.links.length > 0 && (
-          <div className="space-y-1">
-            {memo.links.map((link, i) => (
-              <a
-                key={i}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 hover:underline"
-              >
-                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                </svg>
-                {link.label || link.url}
-              </a>
-            ))}
-          </div>
-        )}
-
-        {/* 첨부 이미지 그리드 */}
-        <MemoAttachmentGrid attachments={memo.attachments} />
-
-        {/* 주고받은 이력 (threadId 로컬 그룹핑 — 스펙 §3) */}
-        {threadMemos.length > 1 && (
-          <div className="border border-slate-200 rounded-lg overflow-hidden mt-4">
-            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-700">
-                주고받은 이력 ({threadMemos.length}건)
-              </span>
+          {/* 링크 */}
+          {memo.links && memo.links.length > 0 && (
+            <div className="pt-4 border-t border-slate-100 space-y-1.5">
+              <span className="text-xs font-semibold text-slate-400 block mb-1">첨부 링크</span>
+              {memo.links.map((link, i) => (
+                <a
+                  key={i}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 hover:underline"
+                >
+                  <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                  {link.label || link.url}
+                </a>
+              ))}
             </div>
-            <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
+          )}
+
+          {/* 첨부 이미지 그리드 */}
+          {memo.attachments && memo.attachments.length > 0 && (
+            <div className="pt-4 border-t border-slate-100">
+              <span className="text-xs font-semibold text-slate-400 block mb-2">첨부 이미지</span>
+              <MemoAttachmentGrid attachments={memo.attachments} />
+            </div>
+          )}
+        </div>
+
+        {/* 3. 주고받은 이력 (확실히 분리된 보조 영역) */}
+        {threadMemos.length > 1 && (
+          <div className="bg-slate-100/70 border border-slate-200/80 rounded-xl overflow-hidden shadow-2xs">
+            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200/80 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <span>주고받은 이력</span>
+                <span className="text-[11px] font-normal text-slate-500">({threadMemos.length}건)</span>
+              </span>
+              <span className="text-[11px] text-slate-400">클릭하여 해당 쪽지 확인</span>
+            </div>
+            <div className="divide-y divide-slate-200/60 max-h-60 overflow-y-auto bg-white/70">
               {threadMemos.map((item) => {
                 const isCurrent = item.id === memo.id;
                 const isSentByMe = item.senderEmail.toLowerCase() === myEmail.toLowerCase();
@@ -778,14 +807,14 @@ function MemoDetailPanel({
                     }}
                     className={`w-full text-left px-4 py-2.5 text-xs flex items-center justify-between gap-3 transition-colors ${
                       isCurrent
-                        ? "bg-indigo-50/80 font-bold text-indigo-950 cursor-default"
+                        ? "bg-indigo-50/90 font-bold text-indigo-950 cursor-default"
                         : "hover:bg-slate-50 text-slate-600 cursor-pointer"
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span
                         className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${
-                          isSentByMe ? "bg-slate-100 text-slate-600" : "bg-indigo-100 text-indigo-700"
+                          isSentByMe ? "bg-slate-200 text-slate-700" : "bg-indigo-100 text-indigo-700"
                         }`}
                       >
                         {senderLabel}
@@ -809,27 +838,30 @@ function MemoDetailPanel({
           </div>
         )}
 
-        {/* 보낸쪽지함: 받는 분별 읽음 표 (실시간 — 데모 핵심) */}
+        {/* 4. 보낸쪽지함: 받는 분별 읽음 표 (보조 영역) */}
         {tab === "sent" && (
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
-              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                읽음 현황
+          <div className="bg-slate-100/70 border border-slate-200/80 rounded-xl overflow-hidden shadow-2xs">
+            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200/80 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <span>읽음 현황</span>
+                <span className="text-[11px] font-normal text-slate-500">
+                  (총 {memo.recipientEmails?.length || memo.recipientCount || 0}명)
+                </span>
               </span>
             </div>
-            <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
+            <div className="divide-y divide-slate-200/60 max-h-60 overflow-y-auto bg-white/70">
               {(memo.recipientEmails || []).map((email) => {
                 const readAt = memo.reads?.[email];
                 const cleanEmail = email.toLowerCase();
                 const p = profileMap.get(cleanEmail);
                 const displayName = resolveMemoDisplayName(email, profileMap, gwsNameMap);
                 return (
-                  <div key={email} className="flex items-center justify-between px-4 py-2 text-sm">
+                  <div key={email} className="flex items-center justify-between px-4 py-2.5 text-sm">
                     <span className="text-slate-700 truncate mr-2 inline-flex items-center gap-1.5">
-                      <span>{displayName}</span>
+                      <span className="font-medium">{displayName}</span>
                       {p?.extension && (
                         <span className="text-xs text-slate-500 font-normal">
-                          {p.extension}
+                          ({p.extension})
                         </span>
                       )}
                     </span>

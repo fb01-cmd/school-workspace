@@ -4,6 +4,33 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-18] Antigravity → Claude/사용자 (쪽지 화면 시각 위계 개선 완결 — roadmap §2 피드백 덤프 ⑦)
+- **변경 파일**:
+  - `src/components/admin/MemoSection.tsx`:
+    - **목록 행 (`InboxRow`, `SentRow`)**:
+      - 행 간 경계선 강화 (`border-b border-slate-200/80`) 및 선택 상태 좌측 액센트 바 (`border-l-4 border-l-indigo-600 bg-indigo-50/90`).
+      - 발신자/수신자 요약은 윗줄 보조 톤(`text-xs text-slate-500 font-medium`) + 작성 시각(`text-[11px] text-slate-400`)으로 배치.
+      - 제목은 아랫줄 주 톤(`text-sm font-bold text-slate-950` / `font-semibold text-slate-800`)으로 명확한 타이포 대비 부여.
+      - 안 읽은 쪽지는 은은한 배경(`bg-slate-50/50`), 굵은 제목, 인디케이터 점(`w-2.5 h-2.5 bg-indigo-600 ring-4 ring-indigo-100`)으로 시각적 식별성 강화.
+    - **상세 패널 (`MemoDetailPanel`)**:
+      - **제목 및 메타 구획 (헤더)**: 상단 흰색 헤더 바에 발신자/수신자와 작성 시각을 작고 옅은 한 줄 메타로 통합(`보낸 사람: 홍길동 · 2026. 8. 18. 06:10`), 제목은 `text-lg font-bold text-slate-900` 주 톤으로 선명하게 분리.
+      - **본문 구획 (카드화)**: `bg-white rounded-xl border border-slate-200/90 p-6 shadow-2xs` 독립 카드로 구획하여 `text-[15px] leading-relaxed`의 쾌적한 가독성 확보. 링크 및 첨부 이미지는 카드 내부 하단 구분선 뒤에 안정적으로 수록.
+      - **보조 영역 구획 (주고받은 이력 & 읽음 현황)**: 본문 카드 아래 `bg-slate-100/70 border border-slate-200/80 rounded-xl` 보조 박스로 명확히 분리하여 본문과 혼동되지 않도록 구성.
+  - `src/components/mobile/MobileMemoSection.tsx`:
+    - 모바일 목록 구분선 강화 (`divide-slate-200 dark:divide-slate-800`) 및 안 읽음 배경/링 인디케이터 적용.
+    - 윗줄 발신자 보조 톤(`text-xs text-slate-500`) · 아랫줄 제목 주 톤(`text-sm font-semibold text-slate-900`) 대비 일관 적용.
+    - 상세 펼침 영역: 상단 한 줄 메타 정보, 독립된 본문 카드(`rounded-xl border p-4 text-[14px]`), 하단 주고받은 이력 보조 박스 분리.
+  - `development_roadmap.md`:
+    - §2 피드백 덤프 ⑦ 항목 완료 처리.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어 배제, 눈높이 한국어 라벨 유지 ("주고받은 이력", "읽음 현황", "현재 쪽지" 등).
+  - 과한 장식 배제 및 명확한 시각 위계(제목/본문/메타/이력 구획) 달성.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npx tsx scripts/memo_selftest.ts` ✅ (답장 9케이스 포함 전 항목 통과)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 0건)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 static pages prerendered)
+
 ## [2026-08-18] Antigravity → Claude/사용자 (어드민 대시보드 받은 쪽지 편입 완결 — roadmap §2 피드백 덤프 ⑤)
 - **변경 파일**:
   - `src/components/admin/DashboardMemoPanel.tsx` (신규):
