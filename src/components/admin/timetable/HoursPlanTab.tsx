@@ -15,6 +15,7 @@ import { expandCohortFixedBlocks, impliedHoursFromFixedBlocks } from "@/lib/time
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import AssignmentHoursModal, { parseIssueTarget, issueGuidance } from "./AssignmentHoursModal";
 import { SubjectConfirmation } from "@/lib/timetable/subjectDict";
+import { rankReferenceTerms } from "@/lib/timetable/utils";
 
 interface HoursPlanTabProps {
   activeTermId?: string | null;
@@ -150,7 +151,8 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
 
   // 진입 경로 / 모달 상태
-  const [deriveSourceTermId, setDeriveSourceTermId] = useState<string>(activeTermId || "");
+  const [deriveSourceTermId, setDeriveSourceTermId] = useState<string>("");
+  const [sourceTermTouched, setSourceTermTouched] = useState<boolean>(false);
   const [deriveLabel, setDeriveLabel] = useState<string>("");
   const [deriving, setDeriving] = useState(false);
 
@@ -182,6 +184,15 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     loadInitialData();
   }, [domain]);
 
+  // 작업 대상 학기(activeTermId) 변경 시 참조 학기 우선순위(rankReferenceTerms) 1순위로 기본값 설정 (수동 변경 전일 때)
+  useEffect(() => {
+    if (terms.length > 0 && activeTermId && !sourceTermTouched) {
+      const ranked = rankReferenceTerms(activeTermId, terms.map((t) => t.id));
+      const fallback = terms.find((t) => t.id === activeTermId)?.id || terms[0]?.id || "";
+      setDeriveSourceTermId(ranked[0] || fallback);
+    }
+  }, [activeTermId, terms, sourceTermTouched]);
+
   const loadInitialData = async () => {
     setLoading(true);
     setError(null);
@@ -208,9 +219,13 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
       });
       if (resSettings.ok) {
         const dataSettings = await resSettings.json();
-        setTerms(dataSettings.terms || []);
-        if (!deriveSourceTermId && dataSettings.terms && dataSettings.terms.length > 0) {
-          setDeriveSourceTermId(dataSettings.settings?.activeTermId || dataSettings.terms[0].id);
+        const loadedTerms: Array<{ id: string; name: string }> = dataSettings.terms || [];
+        setTerms(loadedTerms);
+        if (!sourceTermTouched && loadedTerms.length > 0) {
+          const targetTerm = activeTermId || dataSettings.settings?.activeTermId || "";
+          const ranked = rankReferenceTerms(targetTerm, loadedTerms.map((t) => t.id));
+          const fallback = dataSettings.settings?.activeTermId || loadedTerms[0].id;
+          setDeriveSourceTermId(ranked[0] || fallback);
         }
       }
 
@@ -954,7 +969,10 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
             <span className="font-bold text-indigo-900">🔄 이전 학기에서 가져오기:</span>
             <select
               value={deriveSourceTermId}
-              onChange={(e) => setDeriveSourceTermId(e.target.value)}
+              onChange={(e) => {
+                setDeriveSourceTermId(e.target.value);
+                setSourceTermTouched(true);
+              }}
               className="px-2.5 py-1.5 bg-white border border-indigo-200 rounded text-gray-800 font-medium"
             >
               {terms.map((t) => (

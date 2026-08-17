@@ -13,6 +13,7 @@ import BaseRevisionTab from "./BaseRevisionTab";
 import NeisBatchExportTab from "./NeisBatchExportTab";
 import HoursPlanTab from "./HoursPlanTab";
 import CurriculumCohortTab from "./CurriculumCohortTab";
+import { rankReferenceTerms } from "@/lib/timetable/utils";
 
 export default function TimetableCreationSection() {
   const {
@@ -45,6 +46,10 @@ export default function TimetableCreationSection() {
   const [inheriting, setInheriting] = useState(false);
   const [inheritMessage, setInheritMessage] = useState<string | null>(null);
 
+  // 등록부 승계 출발 학기 상태 (rankReferenceTerms 1순위 기본 선택)
+  const [inheritFromTermId, setInheritFromTermId] = useState<string>("");
+  const [inheritFromTouched, setInheritFromTouched] = useState<boolean>(false);
+
   // terms나 activeTermId 로드 시 초기 workingTermId 설정
   useEffect(() => {
     if (!workingTermId && terms && terms.length > 0) {
@@ -64,15 +69,31 @@ export default function TimetableCreationSection() {
   const isWorkingDraft = workingTerm?.status === "draft";
   const effectiveTermId = workingTerm?.id || activeTermId || "";
 
+  // 승계 가능한 후보 학기 목록 (작업 대상 학기 제외)
+  const inheritSourceTerms = terms.filter((t) => t.id !== effectiveTermId);
+  const rankedInheritTerms = rankReferenceTerms(effectiveTermId, terms.map((t) => t.id));
+  const fallbackInheritTermId = activeTerm?.id || inheritSourceTerms[0]?.id || "";
+  const effectiveInheritFromTermId =
+    inheritFromTermId || rankedInheritTerms[0] || fallbackInheritTermId;
+
+  // 작업 대상 학기가 바뀌면 수동 터치 리셋 및 1순위로 재동기화
+  useEffect(() => {
+    setInheritFromTouched(false);
+    const ranked = rankReferenceTerms(effectiveTermId, terms.map((t) => t.id));
+    const fallback = activeTermId || terms.find((t) => t.status === "active")?.id || terms.find((t) => t.id !== effectiveTermId)?.id || "";
+    setInheritFromTermId(ranked[0] || fallback);
+  }, [effectiveTermId, terms, activeTermId]);
+
   // 등록부 승계 복사 실행 (spec §3)
   const handleInheritRegistries = async () => {
-    if (!activeTerm || !workingTerm) return;
-    if (activeTerm.id === workingTerm.id) {
-      alert("현재 운영 중인 학기로는 가져올 수 없습니다.");
+    const selectedSource = terms.find((t) => t.id === effectiveInheritFromTermId);
+    if (!selectedSource || !workingTerm) return;
+    if (selectedSource.id === workingTerm.id) {
+      alert("동일한 학기로는 가져올 수 없습니다.");
       return;
     }
 
-    const confirmMsg = `현재 운영 중인 학기(${activeTerm.name || activeTerm.id})의 등록부 내용(이동수업, 특별실, 특별교사 금지, 연속수업, 복수교사, 고정시간)을 ${workingTerm.name || workingTerm.id} 초안으로 가져오시겠습니까?\n\n※ 대상 초안 학기에 기존 등록부가 1건이라도 있으면 안전을 위해 중단됩니다.`;
+    const confirmMsg = `${selectedSource.name || selectedSource.id}의 등록부 내용(이동수업, 특별실, 특별교사 금지, 연속수업, 복수교사)을 ${workingTerm.name || workingTerm.id} 초안으로 가져오시겠습니까?\n\n※ 대상 초안 학기에 기존 등록부가 1건이라도 있으면 안전을 위해 중단됩니다.`;
     if (!confirm(confirmMsg)) return;
 
     setInheriting(true);
@@ -83,7 +104,7 @@ export default function TimetableCreationSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "registry_inherit",
-          fromTermId: activeTerm.id,
+          fromTermId: selectedSource.id,
           toTermId: workingTerm.id,
         }),
       });
@@ -95,8 +116,7 @@ export default function TimetableCreationSection() {
           (c.venueGroups || 0) +
           (c.slotBans || 0) +
           (c.consecutiveRules || 0) +
-          (c.coTeachingRules || 0) +
-          (c.fixedBlocks || 0);
+          (c.coTeachingRules || 0);
         setInheritMessage(
           `이동수업 ${c.simulGroups || 0}건, 특별실 ${c.venueGroups || 0}건, 특별교사 금지 ${c.slotBans || 0}건, 연속수업 ${c.consecutiveRules || 0}건, 복수교사 ${c.coTeachingRules || 0}건 (총 ${total}건)을 성공적으로 가져왔습니다.`
         );
@@ -166,16 +186,33 @@ export default function TimetableCreationSection() {
           </select>
         </div>
 
-        {/* 초안 학기 승계 복사 버튼 (spec §3) */}
-        {isWorkingDraft && activeTerm && activeTerm.id !== workingTerm?.id && (
-          <button
-            type="button"
-            onClick={handleInheritRegistries}
-            disabled={inheriting}
-            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg border border-indigo-200 transition-colors flex items-center gap-1"
-          >
-            <span>📥 {inheriting ? "가져오는 중..." : `운영 학기(${activeTerm.name || activeTerm.id}) 등록 내용 가져오기`}</span>
-          </button>
+        {/* 초안 학기 승계 복사 바 (spec §3) */}
+        {isWorkingDraft && inheritSourceTerms.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-600 font-medium">등록 내용 가져오기:</span>
+            <select
+              value={effectiveInheritFromTermId}
+              onChange={(e) => {
+                setInheritFromTermId(e.target.value);
+                setInheritFromTouched(true);
+              }}
+              className="px-2 py-1 bg-gray-50 border border-gray-300 rounded-lg font-medium text-gray-800 text-xs focus:ring-2 focus:ring-indigo-500"
+            >
+              {inheritSourceTerms.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name || t.id} {t.status === "active" ? "(운영 중)" : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleInheritRegistries}
+              disabled={inheriting}
+              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg border border-indigo-200 transition-colors flex items-center gap-1"
+            >
+              <span>📥 {inheriting ? "가져오는 중..." : "가져오기"}</span>
+            </button>
+          </div>
         )}
       </div>
 

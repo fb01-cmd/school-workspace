@@ -856,3 +856,22 @@
 - 검증 상태: tsc ✅ / build ✅ / verify_reference_term 5케이스 ✅ / verify_hours_hwpx 회귀 ✅
 - 다음 할 일: Antigravity — UI 기본 선택 2곳(시수 계획 "이전 학기에서 가져오기" 드롭다운·등록부 승계 fromTermId)을 utils.rankReferenceTerms 첫 후보로 기본 선택 (수동 변경은 그대로 가능해야 함)
 - 주의: ① 규칙은 순서만 정한다 — 데이터 유무는 호출자 판단(서버는 그리드 실재 검사) ② 현재 실물(2026-2만 축적)에서는 동작 변화 없음 — 2026-1 데이터가 들어오는 순간 2027-1 준비부터 저절로 발효 ③ 사용자가 2026-1 과거 데이터 투입 의향 표명 — 투입 시 컴시간 가져오기로 2026-1 학기 등록만 하면 됨(별도 코드 불요)
+
+## [2026-08-17] Antigravity → Claude/사용자 (참조 학기 우선순위 규칙 UI 기본 선택 연동 완료)
+- **변경 파일**:
+  - `src/components/admin/timetable/HoursPlanTab.tsx`:
+    - `rankReferenceTerms`를 import하여 "🔄 이전 학기에서 가져오기" 드롭다운의 기본 선택값을 `rankReferenceTerms(activeTermId, terms.map(t => t.id))[0]`으로 설정 (후보 없으면 기존 기본값 유지).
+    - 사용자가 수동으로 드롭다운을 변경할 수 있도록 `sourceTermTouched` 플래그 관리 및 수동 선택값 보존.
+  - `src/components/admin/timetable/TimetableCreationSection.tsx`:
+    - `rankReferenceTerms`를 import하여 등록부 승계 영역에 출발 학기(`inheritFromTermId`) 선택 드롭다운 신설.
+    - 기본 선택값을 `rankReferenceTerms(effectiveTermId, terms.map(t => t.id))[0]`으로 설정 (후보 없으면 운영 학기 또는 기존 기본값 유지).
+    - 사용자가 수동으로 다른 학기를 선택해 승계 실행할 수 있도록 지원하고, 대상 학기 변경 시 새 대상에 맞게 1순위로 자동 재동기화.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어(rankReferenceTerms, fromTermId 등) 화면 노출 배제 및 눈높이 안내 문구 적용.
+  - `AGENTS.md`: 단일 원본 함수(`src/lib/timetable/utils.ts`의 `rankReferenceTerms`) 직접 import 사용 (규칙 복사 없음).
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (39/39 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 67fcd90` ✅ (사라진 상호작용 없음)
+  - `npx tsx scripts/verify_reference_term.ts` ✅ (5개 케이스 전판 통과)
+
