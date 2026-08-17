@@ -6726,6 +6726,7 @@ export async function listSwapDrafts(domain: string, userEmail: string): Promise
       reason: data.reason || undefined,
       note: data.note || "",
       consentStatus: data.consentStatus || "NONE",
+      consentNote: data.consentNote || undefined,
       createdAt: toMillis(data.createdAt) || Date.now(),
       updatedAt: toMillis(data.updatedAt) || Date.now(),
       conditional: !!data.conditional,

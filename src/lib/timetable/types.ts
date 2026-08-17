@@ -827,6 +827,7 @@ export interface SwapDraft {
   reason?: SwapRequestReason;
   note?: string;
   consentStatus: ConsentStatus;
+  consentNote?: string; // 당사자의 한 줄 사유 (DECLINED/CONSENTED)
   createdAt: number;
   updatedAt: number;
   conditional?: boolean; // 조건부 후보 여부 (2026-08-05)

@@ -988,3 +988,21 @@
 - 검증 상태: tsc ✅ / build ✅
 - 다음 할 일: Antigravity UI 4곳 — ① 양해 요청 다이얼로그(부탁 한 줄 입력, consentMessage) ② 알림 항목에 message 표시(제목 아래 회색 한 줄) ③ 거절 시 사유 입력(consent_decide body.note)·결과 알림에 사유 표시 ④ 담긴 요청 카드에 양해 상태 배지(REQUESTED 대기/CONSENTED ✓ 알림으로 양해 받음[수동 체크 대체 표시]/DECLINED 사유 표시)
 - 주의: ① 제출 효력은 서버가 판정(consentDraftId — create·create_batch 이미 전달 배선 완료) — UI는 CONSENTED면 체크박스 대신 "✓ 알림으로 양해 받음" 표시만 ② 수락 창구의 컨테이너(알림 vs 쪽지) 재검토 질문은 사용자 결정 대기 — Claude 권고는 알림 유지
+
+## [2026-08-18] Antigravity → Claude/사용자 (양해 왕복 화면 4곳 구현 완료)
+- **변경 파일**:
+  - `src/lib/timetable/types.ts`: `SwapDraft` 인터페이스에 `consentNote?: string` 필드 추가.
+  - `src/lib/timetable/server.ts`: `listSwapDrafts` 매핑에 `consentNote` 포함.
+  - `src/components/common/NotificationCenter.tsx`:
+    - 알림 항목에 `message` 필드 존재 시 제목 아래 인용구 스타일로 표시 (미니 쪽지).
+    - `[어렵습니다]` 클릭 시 사유 한 줄 입력(선택, 200자) 입력창 표출 및 `consent_decide` 호출 시 `note` 동봉.
+    - `consent-result` 알림 및 거절 항목에 사유(`actionable.note`) 표시.
+  - `src/components/admin/timetable/TeacherPortalSection.tsx`:
+    - 양해 카드 및 융합 바의 `[양해 요청 보내기]` 클릭 시 부탁 한 줄(선택, 200자) 입력 다이얼로그(`ConsentRequestModal`) 표출 및 `consent_request`에 `consentMessage` 동봉.
+    - 담긴 요청 카드에 양해 상태 배지 표출: `REQUESTED` "📨 양해 대기 중", `CONSENTED` "✓ 알림으로 양해 받음", `DECLINED` "❌ 어렵다고 답함" + `(사유: ...)` 표시.
+    - 단건/일괄 제출 확인 모달에서 `CONSENTED`인 항목은 수동 체크박스 숨김 처리 및 `✓ 알림으로 양해 받음` 배지 표시, 서버로 `consentDraftId` 전달.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
+  - `bash scripts/check_ui_removals.sh 9a15edd`:
+    - `TeacherPortalSection.tsx`의 "✅ 양해 수락됨", "❌ 양해 거절됨", "양해 수락 완료" 변경은 지시서에 명시된 "✓ 알림으로 양해 받음" 및 "❌ 어렵다고 답함" + 사유 표시로의 갱신에 따른 정상적인 변경임.

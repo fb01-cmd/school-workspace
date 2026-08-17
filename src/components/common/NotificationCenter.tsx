@@ -11,6 +11,7 @@ export interface NotificationItem {
   title: string;
   refType: string;
   refId: string;
+  message?: string;
   createdAt: number;
   read: boolean;
   readAt?: number;
@@ -18,6 +19,7 @@ export interface NotificationItem {
     kind: "consent";
     state: "pending" | "accepted" | "declined";
     decidedAt?: number;
+    note?: string;
   };
 }
 
@@ -78,6 +80,8 @@ export default function NotificationCenter() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [decliningNotifId, setDecliningNotifId] = useState<string | null>(null);
+  const [declineNoteInput, setDeclineNoteInput] = useState<string>("");
 
   // 푸시(기기로 바로 알림 받기) 설정 상태 (스펙 §6-1)
   const [pushSupported, setPushSupported] = useState<boolean | null>(null);
@@ -307,7 +311,7 @@ export default function NotificationCenter() {
   };
 
   // 양해 수락/거절 핸들러 (스펙 §4)
-  const handleDecide = async (notificationId: string, decision: "accepted" | "declined") => {
+  const handleDecide = async (notificationId: string, decision: "accepted" | "declined", note?: string) => {
     setDecidingId(notificationId);
     try {
       const res = await fetch("/api/notifications", {
@@ -317,6 +321,7 @@ export default function NotificationCenter() {
           action: "consent_decide",
           notificationId,
           decision,
+          note,
         }),
       });
       const data = await res.json();
@@ -333,6 +338,7 @@ export default function NotificationCenter() {
               actionable: {
                 ...it.actionable,
                 state: decision,
+                note,
                 decidedAt: Date.now(),
               },
             };
@@ -340,6 +346,8 @@ export default function NotificationCenter() {
           return it;
         })
       );
+      setDecliningNotifId(null);
+      setDeclineNoteInput("");
     } catch (err: any) {
       alert(`오류: ${err.message}`);
     } finally {
@@ -527,47 +535,100 @@ export default function NotificationCenter() {
                       {item.title}
                     </p>
 
+                    {/* 발신자의 부탁/사유 한 줄 메시지 (미니 쪽지) */}
+                    {item.message && (
+                      <p className="text-[11px] text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-slate-800/60 rounded-lg px-2.5 py-1.5 border border-gray-200/70 dark:border-slate-700/70 leading-relaxed break-words">
+                        &ldquo;{item.message}&rdquo;
+                      </p>
+                    )}
+
                     {/* 수락 창구 (Actionable 영역) */}
                     {item.actionable?.kind === "consent" && (
                       <div className="pt-1">
                         {isPendingAction ? (
-                          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl p-2.5 space-y-2">
-                            <p className="text-[11px] font-bold text-amber-900 dark:text-amber-200">
-                              상대 선생님의 양해 요청에 응답해 주세요:
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleDecide(item.id, "accepted")}
-                                disabled={isDeciding}
-                                className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center justify-center gap-1 cursor-pointer"
-                              >
-                                {isDeciding ? (
-                                  <span className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" />
-                                ) : (
-                                  <span>🤝</span>
-                                )}
-                                <span>양해합니다</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDecide(item.id, "declined")}
-                                disabled={isDeciding}
-                                className="flex-1 py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold transition-colors border border-gray-300 dark:border-slate-700 cursor-pointer"
-                              >
-                                <span>어렵습니다</span>
-                              </button>
+                          decliningNotifId === item.id ? (
+                            <div className="bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl p-3 space-y-2">
+                              <p className="text-xs font-bold text-rose-950 dark:text-rose-200">
+                                어려우신 사유를 남겨주시면 상대 선생님께 함께 전달됩니다:
+                              </p>
+                              <input
+                                type="text"
+                                maxLength={200}
+                                value={declineNoteInput}
+                                onChange={(e) => setDeclineNoteInput(e.target.value)}
+                                placeholder="사유 한 줄 입력 (선택, 최대 200자)"
+                                className="w-full border border-rose-200 dark:border-rose-800 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-rose-500"
+                              />
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDecliningNotifId(null);
+                                    setDeclineNoteInput("");
+                                  }}
+                                  className="px-3 py-1 text-xs font-bold text-gray-500 hover:text-gray-700 dark:text-gray-400 cursor-pointer"
+                                >
+                                  취소
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDecide(item.id, "declined", declineNoteInput.trim() || undefined)}
+                                  disabled={isDeciding}
+                                  className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  {isDeciding ? "처리 중..." : "어렵습니다 확정"}
+                                </button>
+                              </div>
                             </div>
-                          </div>
+                          ) : (
+                            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl p-2.5 space-y-2">
+                              <p className="text-[11px] font-bold text-amber-900 dark:text-amber-200">
+                                상대 선생님의 양해 요청에 응답해 주세요:
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDecide(item.id, "accepted")}
+                                  disabled={isDeciding}
+                                  className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                                >
+                                  {isDeciding ? (
+                                    <span className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" />
+                                  ) : (
+                                    <span>🤝</span>
+                                  )}
+                                  <span>양해합니다</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDecliningNotifId(item.id);
+                                    setDeclineNoteInput("");
+                                  }}
+                                  disabled={isDeciding}
+                                  className="flex-1 py-1.5 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold transition-colors border border-gray-300 dark:border-slate-700 cursor-pointer"
+                                >
+                                  <span>어렵습니다</span>
+                                </button>
+                              </div>
+                            </div>
+                          )
                         ) : item.actionable.state === "accepted" ? (
                           <div className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
                             <span>✅</span>
                             <span>양해 수락 완료</span>
                           </div>
                         ) : item.actionable.state === "declined" ? (
-                          <div className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800">
-                            <span>❌</span>
-                            <span>양해 거절됨</span>
+                          <div className="space-y-1">
+                            <div className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800">
+                              <span>❌</span>
+                              <span>양해 거절됨</span>
+                            </div>
+                            {item.actionable.note && (
+                              <p className="text-[11px] text-gray-500 dark:text-gray-400 pl-1">
+                                사유: {item.actionable.note}
+                              </p>
+                            )}
                           </div>
                         ) : null}
                       </div>

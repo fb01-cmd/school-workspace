@@ -624,20 +624,58 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
   // 양해 요청 보내기 (notification_center_spec §4, §5c-9-3)
   const [sendingConsentDraftId, setSendingConsentDraftId] = useState<string | null>(null);
+  const [requestingConsentDraft, setRequestingConsentDraft] = useState<SwapDraft | null>(null);
+  const [requestingConsentGroup, setRequestingConsentGroup] = useState<{ name: string; drafts: SwapDraft[] } | null>(null);
+  const [consentMessageInput, setConsentMessageInput] = useState<string>("");
 
-  const handleSendConsentRequest = async (draftId: string) => {
+  const handleSendConsentRequest = async (draftId: string, consentMessage?: string) => {
     setSendingConsentDraftId(draftId);
     try {
       const res = await fetch("/api/timetable/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "consent_request", draftId }),
+        body: JSON.stringify({
+          action: "consent_request",
+          draftId,
+          consentMessage: consentMessage?.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
         throw new Error(data.error || "양해 요청 전송에 실패했습니다.");
       }
       alert("상대 선생님께 양해 요청 알림을 보냈습니다.");
+      setRequestingConsentDraft(null);
+      setRequestingConsentGroup(null);
+      setConsentMessageInput("");
+      await refreshDrafts();
+    } catch (err: any) {
+      alert(`오류: ${err.message}`);
+    } finally {
+      setSendingConsentDraftId(null);
+    }
+  };
+
+  const handleSendConsentGroupRequest = async (group: { name: string; drafts: SwapDraft[] }, consentMessage?: string) => {
+    setSendingConsentDraftId("group");
+    try {
+      for (const d of group.drafts) {
+        if (d.consentStatus !== "CONSENTED") {
+          await fetch("/api/timetable/requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "consent_request",
+              draftId: d.id,
+              consentMessage: consentMessage?.trim() || undefined,
+            }),
+          });
+        }
+      }
+      alert(`${group.name} 선생님께 양해 요청 알림을 보냈습니다.`);
+      setRequestingConsentDraft(null);
+      setRequestingConsentGroup(null);
+      setConsentMessageInput("");
       await refreshDrafts();
     } catch (err: any) {
       alert(`오류: ${err.message}`);
@@ -843,7 +881,8 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
     const draft = confirmingDraft;
     const isCoordination = !!draft.candidate?.coordination;
     const isSimul = !!draft.candidate?.coordination?.simul;
-    if (isCoordination && !draftConsentConfirmed) {
+    const isConsented = draft.consentStatus === "CONSENTED";
+    if (isCoordination && !isConsented && !draftConsentConfirmed) {
       alert("당사자 사전 양해 확인란을 체크해 주세요.");
       return;
     }
@@ -862,7 +901,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               period: draft.candidate.targetPeriod,
             },
             reason: draftReason,
-            consent: { confirmed: true, note: draftConsentNote.trim() || undefined },
+            consentDraftId: draft.id,
+            consent: isConsented
+              ? { confirmed: true }
+              : { confirmed: true, note: draftConsentNote.trim() || undefined },
           }
         : {
             action: "create",
@@ -872,8 +914,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             source: draft.source,
             candidate: draft.candidate,
             reason: draftReason,
+            consentDraftId: draft.id,
             consent: isCoordination
-              ? { confirmed: true, note: draftConsentNote.trim() || undefined }
+              ? (isConsented ? { confirmed: true } : { confirmed: true, note: draftConsentNote.trim() || undefined })
               : undefined,
           };
 
@@ -1421,12 +1464,9 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   </button>
                   <button
                     type="button"
-                    onClick={async () => {
-                      for (const d of g.drafts) {
-                        if (d.consentStatus !== "CONSENTED") {
-                          await handleSendConsentRequest(d.id);
-                        }
-                      }
+                    onClick={() => {
+                      setRequestingConsentGroup(g);
+                      setConsentMessageInput("");
                     }}
                     disabled={!!sendingConsentDraftId || allConsented}
                     title="양해 요청 알림 보내기"
@@ -2598,12 +2638,15 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                         )}
                         {draft.consentStatus === "CONSENTED" && (
                           <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold px-1.5 py-0.5 rounded">
-                            ✅ 양해 수락됨
+                            ✓ 알림으로 양해 받음
                           </span>
                         )}
                         {draft.consentStatus === "DECLINED" && (
-                          <span className="text-[10px] bg-rose-100 text-rose-900 border border-rose-300 font-bold px-1.5 py-0.5 rounded">
-                            ❌ 양해 거절됨
+                          <span className="text-[10px] bg-rose-100 text-rose-900 border border-rose-300 font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                            <span>❌ 어렵다고 답함</span>
+                            {draft.consentNote && (
+                              <span className="font-normal text-rose-800">(사유: {draft.consentNote})</span>
+                            )}
                           </span>
                         )}
                         <span className="text-gray-400 text-[10px]">
@@ -2655,7 +2698,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
                     <button
                       type="button"
-                      onClick={() => handleSendConsentRequest(draft.id)}
+                      onClick={() => {
+                        setRequestingConsentDraft(draft);
+                        setConsentMessageInput("");
+                      }}
                       disabled={sendingConsentDraftId === draft.id || draft.consentStatus === "CONSENTED"}
                       className="py-1.5 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold rounded-lg text-xs border border-amber-300 transition-colors shrink-0 disabled:opacity-50 flex items-center gap-1 cursor-pointer"
                     >
@@ -2668,7 +2714,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                         {draft.consentStatus === "REQUESTED"
                           ? "양해 다시 요청"
                           : draft.consentStatus === "CONSENTED"
-                          ? "양해 수락 완료"
+                          ? "✓ 알림으로 양해 받음"
                           : "양해 요청 보내기"}
                       </span>
                     </button>
@@ -2763,26 +2809,33 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   coordination={confirmingDraft.candidate.coordination}
                   isReverse={!confirmingDraft.candidate.coordination.simul?.steps?.some((s) => s.classNum === confirmingDraft.source.classNum) && !!confirmingDraft.candidate.coordination.simul}
                 />
-                <div className="bg-red-50/60 border border-red-200 rounded-xl p-3 space-y-2 text-xs">
-                  <label className="flex items-start gap-2 cursor-pointer bg-white p-2.5 rounded-lg border border-red-200">
+                {confirmingDraft.consentStatus === "CONSENTED" ? (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2 text-xs font-bold text-emerald-900">
+                    <span className="text-emerald-600 font-extrabold">✓</span>
+                    <span>알림으로 양해 받음</span>
+                  </div>
+                ) : (
+                  <div className="bg-red-50/60 border border-red-200 rounded-xl p-3 space-y-2 text-xs">
+                    <label className="flex items-start gap-2 cursor-pointer bg-white p-2.5 rounded-lg border border-red-200">
+                      <input
+                        type="checkbox"
+                        checked={draftConsentConfirmed}
+                        onChange={(e) => setDraftConsentConfirmed(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500 cursor-pointer"
+                      />
+                      <span className="text-xs font-bold text-red-950">
+                        위 선생님들께 사전 양해를 완료하였음을 확인합니다 (필수)
+                      </span>
+                    </label>
                     <input
-                      type="checkbox"
-                      checked={draftConsentConfirmed}
-                      onChange={(e) => setDraftConsentConfirmed(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500 cursor-pointer"
+                      type="text"
+                      value={draftConsentNote}
+                      onChange={(e) => setDraftConsentNote(e.target.value)}
+                      placeholder="사전 양해 메모 (선택, 예: 시간표 조정 사전 합의)"
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
                     />
-                    <span className="text-xs font-bold text-red-950">
-                      위 선생님들께 사전 양해를 완료하였음을 확인합니다 (필수)
-                    </span>
-                  </label>
-                  <input
-                    type="text"
-                    value={draftConsentNote}
-                    onChange={(e) => setDraftConsentNote(e.target.value)}
-                    placeholder="사전 양해 메모 (선택, 예: 시간표 조정 사전 합의)"
-                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
-                  />
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2820,10 +2873,87 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               <button
                 type="button"
                 onClick={handleSubmitDraftConfirm}
-                disabled={submittingDraftId === confirmingDraft.id || (draftReason.type === "기타" && !draftReason.note?.trim()) || (!!confirmingDraft.candidate?.coordination && !draftConsentConfirmed)}
+                disabled={
+                  submittingDraftId === confirmingDraft.id ||
+                  (draftReason.type === "기타" && !draftReason.note?.trim()) ||
+                  (!!confirmingDraft.candidate?.coordination && confirmingDraft.consentStatus !== "CONSENTED" && !draftConsentConfirmed)
+                }
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
               >
                 {submittingDraftId === confirmingDraft.id ? "제출 중..." : "양해 확인 및 제출"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📨 양해 요청 모달 (부탁 말씀 한 줄 입력 다이얼로그) */}
+      {(requestingConsentDraft || requestingConsentGroup) && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-6 space-y-4 font-sans">
+            <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
+              <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <span>📨</span>
+                <span>양해 요청 보내기</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => {
+                  setRequestingConsentDraft(null);
+                  setRequestingConsentGroup(null);
+                  setConsentMessageInput("");
+                }}
+                className="text-gray-400 hover:text-gray-600 font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-600 leading-relaxed">
+              상대 선생님께 알림을 보내 사전 양해를 요청합니다. 전하실 부탁 말씀을 남기실 수 있습니다.
+            </p>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                <label htmlFor="consent-message-input">부탁 말씀 (선택)</label>
+                <span className="text-[10px] text-gray-400 font-normal">{consentMessageInput.length}/200자</span>
+              </div>
+              <textarea
+                id="consent-message-input"
+                maxLength={200}
+                rows={3}
+                value={consentMessageInput}
+                onChange={(e) => setConsentMessageInput(e.target.value)}
+                placeholder="예: 다음 주 출장으로 시간표 변경이 필요하여 양해를 부탁드립니다."
+                className="w-full border border-gray-200 rounded-xl p-3 text-xs focus:ring-2 focus:ring-indigo-500 resize-none bg-white text-gray-900"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setRequestingConsentDraft(null);
+                  setRequestingConsentGroup(null);
+                  setConsentMessageInput("");
+                }}
+                className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (requestingConsentDraft) {
+                    handleSendConsentRequest(requestingConsentDraft.id, consentMessageInput);
+                  } else if (requestingConsentGroup) {
+                    handleSendConsentGroupRequest(requestingConsentGroup, consentMessageInput);
+                  }
+                }}
+                disabled={!!sendingConsentDraftId}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs disabled:opacity-50 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                {sendingConsentDraftId ? "전송 중..." : "양해 요청 보내기"}
               </button>
             </div>
           </div>
@@ -2858,8 +2988,13 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                 .filter((d) => !!d.candidate?.coordination)
                 .map((d, dIdx) => (
                   <div key={d.id || dIdx} className="space-y-1">
-                    <div className="text-[11px] font-bold text-gray-900">
-                      항목 #{dIdx + 1}: {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} ➔ {d.candidate.counterpartName}
+                    <div className="text-[11px] font-bold text-gray-900 flex items-center justify-between">
+                      <span>항목 #{dIdx + 1}: {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} ➔ {d.candidate.counterpartName}</span>
+                      {d.consentStatus === "CONSENTED" && (
+                        <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          ✓ 알림으로 양해 받음
+                        </span>
+                      )}
                     </div>
                     <CoordinationNoticeBlock
                       coordination={d.candidate.coordination}
@@ -2868,26 +3003,35 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   </div>
                 ))}
 
-              <div className="pt-2 border-t border-gray-100 space-y-2">
-                <label className="flex items-start gap-2 cursor-pointer bg-red-50/60 p-2.5 rounded-lg border border-red-200">
+              {batchConfirmingDrafts.some((d) => !!d.candidate?.coordination && d.consentStatus !== "CONSENTED") ? (
+                <div className="pt-2 border-t border-gray-100 space-y-2">
+                  <label className="flex items-start gap-2 cursor-pointer bg-red-50/60 p-2.5 rounded-lg border border-red-200">
+                    <input
+                      type="checkbox"
+                      checked={batchConsentConfirmed}
+                      onChange={(e) => setBatchConsentConfirmed(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500 cursor-pointer"
+                    />
+                    <span className="text-xs font-bold text-red-950">
+                      위 항목의 관련 선생님들께 사전 양해를 완료하였음을 확인합니다 (필수)
+                    </span>
+                  </label>
                   <input
-                    type="checkbox"
-                    checked={batchConsentConfirmed}
-                    onChange={(e) => setBatchConsentConfirmed(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500 cursor-pointer"
+                    type="text"
+                    value={batchConsentNote}
+                    onChange={(e) => setBatchConsentNote(e.target.value)}
+                    placeholder="사전 양해 메모 (선택, 예: 시간표 조정 사전 합의)"
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
                   />
-                  <span className="text-xs font-bold text-red-950">
-                    위 항목의 관련 선생님들께 사전 양해를 완료하였음을 확인합니다 (필수)
-                  </span>
-                </label>
-                <input
-                  type="text"
-                  value={batchConsentNote}
-                  onChange={(e) => setBatchConsentNote(e.target.value)}
-                  placeholder="사전 양해 메모 (선택, 예: 시간표 조정 사전 합의)"
-                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 bg-white"
-                />
-              </div>
+                </div>
+              ) : (
+                <div className="pt-2 border-t border-gray-100">
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2 text-xs font-bold text-emerald-900">
+                    <span className="text-emerald-600 font-extrabold">✓</span>
+                    <span>모든 양해 대상 항목의 양해가 알림으로 완료되었습니다.</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
@@ -2901,7 +3045,10 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
               <button
                 type="button"
                 onClick={() => executeCreateBatchInTab(batchConfirmingDrafts, batchConsentNote)}
-                disabled={submittingBatch || !batchConsentConfirmed}
+                disabled={
+                  submittingBatch ||
+                  (batchConfirmingDrafts.some((d) => !!d.candidate?.coordination && d.consentStatus !== "CONSENTED") && !batchConsentConfirmed)
+                }
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
               >
                 {submittingBatch ? "제출 중..." : "양해 확인 및 일괄 제출"}
