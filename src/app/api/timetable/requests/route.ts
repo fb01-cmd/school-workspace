@@ -403,7 +403,9 @@ export async function POST(req: NextRequest) {
       }
 
       case "draft_list": {
-        const drafts = await listSwapDrafts(domain, auth.email);
+        const drafts = await listSwapDrafts(domain, auth.email, {
+          directOnly: !!body.directOnly, // 직권 담기 초안(일과계 화면)과 교사 초안 분리
+        });
         return NextResponse.json({ success: true, action, drafts });
       }
 

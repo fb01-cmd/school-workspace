@@ -3552,7 +3552,14 @@ export async function createSwapRequest(
     /** 알림 수락 경로 (notification_center_spec §4) — CONSENTED 초안이면 수동 체크를 대체 */
     consentDraftId?: string;
   },
-  options?: { skipManagerNotify?: boolean; direct?: boolean; batchId?: string }
+  options?: {
+    skipManagerNotify?: boolean;
+    direct?: boolean;
+    batchId?: string;
+    /** in-app 양해 초안의 기대 소유자 — 직권 흐름은 신청 명의(대상 교사)와 초안 소유자
+     *  (일과계 운영자)가 다르다 (notification_center_spec §4 직권 동등성). 기본 = 신청자. */
+    consentDraftOwner?: string;
+  }
 ): Promise<SwapRequest> {
   const reason = validateReason(params.reason);
   // 통 이동·체인은 전용 생성 함수(commitSimulGroupMove·createChainSwapRequest)를 쓴다.
@@ -3640,8 +3647,9 @@ export async function createSwapRequest(
       if (dSnap.exists) {
         const d = dSnap.data()!;
         const s = d.source || {};
+        const expectedOwner = (options?.consentDraftOwner || requesterEmail).toLowerCase();
         inAppConsent =
-          (d.requesterEmail || "").toLowerCase() === requesterEmail.toLowerCase() &&
+          (d.requesterEmail || "").toLowerCase() === expectedOwner &&
           s.grade === params.source.grade &&
           s.classNum === params.source.classNum &&
           s.day === params.source.day &&
@@ -5393,6 +5401,8 @@ export async function directCommit(
     targetWeekId?: string; // 교차 주 맞교환 (§4-3b)
     batchId?: string; // §14-4 직권 담기 일괄 반영 묶음 — 요청대장 묶음 표시와 감사 추적용
     consent?: SwapConsentInput; // 조율 필요 후보의 양해 확인 — §14-4 동등성 (직권도 양해는 받아야 함)
+    /** 알림 수락 경로 (notification_center_spec §4 직권 동등성) — 일과계 소유 CONSENTED 초안 */
+    consentDraftId?: string;
   }
 ): Promise<{ request: SwapRequest; change: TimetableChange }> {
   const week = await loadWeek(domain, params.weekId);
@@ -5412,8 +5422,10 @@ export async function directCommit(
       reason: params.reason,
       targetWeekId: params.targetWeekId,
       consent: params.consent,
+      consentDraftId: params.consentDraftId,
     },
-    { skipManagerNotify: true, direct: true, batchId: params.batchId }
+    // 직권은 신청 명의(대상 교사)와 초안 소유자(일과계)가 다르다 — 소유 기대를 운영자로
+    { skipManagerNotify: true, direct: true, batchId: params.batchId, consentDraftOwner: managerEmail }
   );
 
   try {
@@ -6609,6 +6621,9 @@ export async function saveSwapDraft(
     consentStatus: "NONE" as const,
     updatedAt: now,
     conditional: !!draftData.conditional,
+    // 직권 담기 초안 (notification_center_spec §4 직권 동등성) — 교사 포털 목록에서는 제외,
+    // 일과계 직권 화면 목록에서만 조회된다 (listSwapDrafts directOnly)
+    ...(draftData.direct ? { direct: true } : {}),
     ...(draftId ? {} : { createdAt: now }),
   };
 
@@ -6709,10 +6724,16 @@ export async function transitionDraftConsent(
   return (d.requesterEmail || "").toLowerCase() || null;
 }
 
-export async function listSwapDrafts(domain: string, userEmail: string): Promise<SwapDraft[]> {
+export async function listSwapDrafts(
+  domain: string,
+  userEmail: string,
+  options?: { directOnly?: boolean }
+): Promise<SwapDraft[]> {
   const colRef = swapDraftsColRef(domain);
   const snap = await colRef.where("requesterEmail", "==", userEmail).get();
-  const drafts: SwapDraft[] = snap.docs.map((doc) => {
+  const wantDirect = !!options?.directOnly;
+  const filtered = snap.docs.filter((doc) => !!doc.data().direct === wantDirect);
+  const drafts: SwapDraft[] = filtered.map((doc) => {
     const data = doc.data();
     return {
       id: doc.id,

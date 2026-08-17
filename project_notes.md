@@ -1006,3 +1006,9 @@
   - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
   - `bash scripts/check_ui_removals.sh 9a15edd`:
     - `TeacherPortalSection.tsx`의 "✅ 양해 수락됨", "❌ 양해 거절됨", "양해 수락 완료" 변경은 지시서에 명시된 "✓ 알림으로 양해 받음" 및 "❌ 어렵다고 답함" + 사유 표시로의 갱신에 따른 정상적인 변경임.
+
+## [2026-08-18] Claude(Fable) → Antigravity/사용자 (양해 왕복의 직권 동등성 — 서버 배선 완결)
+- 변경 파일: src/lib/timetable/{server,types}.ts·src/app/api/timetable/{manage,requests}/route.ts·docs/notification_center_spec.md
+- 검증 상태: tsc ✅ / build ✅
+- 다음 할 일: Antigravity — 직권 화면(DirectSubstituteTab) 담기 목록을 서버 초안으로 전환 + 양해 왕복 UI (아래 주의 참조)
+- 주의: ① 담기 시 draft_save에 draft.direct=true로 저장, 목록은 draft_list {directOnly:true}(교사 포털과 자동 분리), 비우기/반영 성공 시 draft_delete ② 담기 카드에 [양해 요청 보내기](부탁 한 줄)·상태 배지 — 교사 포털 구현(00a7685)과 같은 패턴 재사용 ③ 반영(direct_commit·direct_commit_batch) 시 item.draftId 동봉하면 CONSENTED 초안은 양해 확인 다이얼로그 생략 가능(서버가 인정, method:"in-app" 기록) ④ 기존 "양해 이미지 만들기"는 존치(구두 양해 관행 보조) ⑤ 교사 전환 시 목록 비우기 규약은 direct 초안 삭제로 대체 구현

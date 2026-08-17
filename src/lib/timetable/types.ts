@@ -828,9 +828,12 @@ export interface SwapDraft {
   note?: string;
   consentStatus: ConsentStatus;
   consentNote?: string; // 당사자의 한 줄 사유 (DECLINED/CONSENTED)
+  consentRequestMessage?: string; // 요청 때 보낸 부탁 한 줄
   createdAt: number;
   updatedAt: number;
   conditional?: boolean; // 조건부 후보 여부 (2026-08-05)
+  /** 직권 담기 초안 (일과계) — 교사 포털 목록과 분리 (notification_center_spec §4 직권 동등성) */
+  direct?: boolean;
 }
 
 // ── 주간 합성 (weekly.ts 출력) ────────────────────────────────
@@ -1028,6 +1031,7 @@ export interface ChainSearchChain {
 
 /** §14-4 직권 일괄 반영 항목 — direct_commit 단건과 동일 규약 + 항목별 사유 */
 export interface DirectCommitBatchItem extends DirectPendingOverlayItem {
+  draftId?: string; // 직권 담기 서버 초안 — 알림 수락 효력·반영 후 정리 (notification_center_spec §4)
   reason?: SwapRequestReason; // 없으면 일괄 반영의 공통 reason 적용
   consent?: SwapConsentInput; // 조율 필요 후보 항목의 양해 확인 — §14-4 동등성 (직권도 양해는 받아야 함)
 }
@@ -1070,7 +1074,8 @@ export interface SwapRequestApiRequest {
   simulMoveTarget?: { day: number; period: number };
   // 임시저장 (draft_save / draft_delete)
   draftId?: string;
-  consentMessage?: string; // 양해 요청(consent_request)에 붙이는 부탁 한 줄 (선택, 200자)
+  consentMessage?: string;
+  directOnly?: boolean; // draft_list — 직권 담기 초안만 조회 (일과계 화면 전용) // 양해 요청(consent_request)에 붙이는 부탁 한 줄 (선택, 200자)
   draft?: {
     termId?: string;
     sourceWeekId?: string;

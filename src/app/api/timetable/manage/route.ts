@@ -546,6 +546,7 @@ export async function POST(req: NextRequest) {
           reason: body.reason,
           targetWeekId: body.targetWeekId,
           consent: body.consent, // 조율 필요 후보 반영 시 필수 — 검증은 createSwapRequest (§14-4 동등성)
+          consentDraftId: body.draftId, // 알림 수락 경로 — 일과계 소유 CONSENTED 초안 (notification_center_spec §4)
         });
         await writeAuditLog({
           operatorEmail: auth.email,
@@ -733,6 +734,7 @@ export async function POST(req: NextRequest) {
               targetWeekId: item.targetWeekId,
               batchId,
               consent: item.consent, // 조율 필요 후보 항목의 양해 확인 (§14-4 동등성)
+              consentDraftId: item.draftId, // 알림 수락 경로 (notification_center_spec §4 직권 동등성)
             });
             await writeAuditLog({
               operatorEmail: auth.email,
