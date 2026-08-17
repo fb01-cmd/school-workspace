@@ -499,6 +499,8 @@ export interface ManageTimetableRequest {
   gradeDayPeriods?: Record<number, Record<number, number>>;
   planStatus?: "draft" | "ready";
   reviewNotes?: HoursPlanReviewNote[];
+  /** 편성 등록부 잠금 해제 사유 (registry_lock_spec §3) — 운영 학기 편집 10종 동반, 2~200자 */
+  unlockReason?: string;
   /** 관문 과목 확정 (subject_dictionary_spec §3-2) — hours_plan_save 동반 */
   subjectConfirmations?: Array<{
     rawName: string;

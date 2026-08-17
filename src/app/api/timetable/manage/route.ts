@@ -83,6 +83,8 @@ import {
   getHoursPlan,
   deriveHoursPlanFromGrids,
   saveHoursPlan,
+  assertRegistryEditable,
+  RegistryLockError,
   deleteHoursPlan,
   buildBlankSolveInput,
   createDraftTerm,
@@ -812,6 +814,8 @@ export async function POST(req: NextRequest) {
         }
         const v = validateSimulGroupPayload({ ...body.simulGroup, termId });
         if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+        // 편성 등록부 잠금 (registry_lock_spec §2) — 이하 편집 10종 공통
+        await assertRegistryEditable(domain, termId, auth.email, body.unlockReason, `동시수업 그룹 저장: ${v.group.label}`);
         const isUpdate = !!body.simulGroupId;
         const ref = isUpdate
           ? simulGroupsColRef(domain).doc(body.simulGroupId!)
@@ -853,6 +857,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "삭제할 그룹을 찾을 수 없습니다." }, { status: 404 });
         }
         const label = (snap.data() as any)?.label || body.simulGroupId;
+        await assertRegistryEditable(domain, (snap.data() as any)?.termId || "", auth.email, body.unlockReason, `동시수업 그룹 삭제: ${label}`);
         await ref.delete();
         await bumpTimetableCacheVersion(domain);
         await writeAuditLog({
@@ -903,6 +908,7 @@ export async function POST(req: NextRequest) {
         }
         const v = validateVenueGroupPayload({ ...body.venueGroup, termId });
         if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+        await assertRegistryEditable(domain, termId, auth.email, body.unlockReason, `특별실 배정 저장: ${v.group.roomName} — ${v.group.label}`);
         const isUpdate = !!body.venueGroupId;
         const ref = isUpdate
           ? venueGroupsColRef(domain).doc(body.venueGroupId!)
@@ -944,6 +950,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "삭제할 배정을 찾을 수 없습니다." }, { status: 404 });
         }
         const d = snap.data() as any;
+        await assertRegistryEditable(domain, d?.termId || "", auth.email, body.unlockReason, `특별실 배정 삭제: ${d?.roomName || ""} — ${d?.label || body.venueGroupId}`);
         await ref.delete();
         await bumpTimetableCacheVersion(domain);
         await writeAuditLog({
@@ -1134,6 +1141,7 @@ export async function POST(req: NextRequest) {
         if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
         const v = validateTeacherSlotBanPayload({ ...body.rule, termId });
         if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+        await assertRegistryEditable(domain, termId, auth.email, body.unlockReason, `특별교사 금지 규칙 저장: ${v.rule.teacherEmail}`);
         const isUpdate = !!body.ruleId;
         const ref = isUpdate
           ? teacherSlotBansColRef(domain).doc(body.ruleId!)
@@ -1161,6 +1169,7 @@ export async function POST(req: NextRequest) {
         const ref = teacherSlotBansColRef(domain).doc(body.ruleId);
         const snap = await ref.get();
         if (!snap.exists) return NextResponse.json({ error: "삭제할 규칙을 찾을 수 없습니다." }, { status: 404 });
+        await assertRegistryEditable(domain, (snap.data() as any)?.termId || "", auth.email, body.unlockReason, `특별교사 금지 규칙 삭제: ${body.ruleId}`);
         await ref.delete();
         await bumpTimetableCacheVersion(domain);
         await writeAuditLog({
@@ -1185,6 +1194,7 @@ export async function POST(req: NextRequest) {
         if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
         const v = validateConsecutiveRulePayload({ ...body.rule, termId });
         if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+        await assertRegistryEditable(domain, termId, auth.email, body.unlockReason, `연속수업 규칙 저장: ${v.rule.grade}학년 ${v.rule.subjectName}`);
         const isUpdate = !!body.ruleId;
         const ref = isUpdate
           ? consecutiveRulesColRef(domain).doc(body.ruleId!)
@@ -1212,6 +1222,7 @@ export async function POST(req: NextRequest) {
         const ref = consecutiveRulesColRef(domain).doc(body.ruleId);
         const snap = await ref.get();
         if (!snap.exists) return NextResponse.json({ error: "삭제할 규칙을 찾을 수 없습니다." }, { status: 404 });
+        await assertRegistryEditable(domain, (snap.data() as any)?.termId || "", auth.email, body.unlockReason, `연속수업 규칙 삭제: ${body.ruleId}`);
         await ref.delete();
         await bumpTimetableCacheVersion(domain);
         await writeAuditLog({
@@ -1236,6 +1247,7 @@ export async function POST(req: NextRequest) {
         if (!termId) return NextResponse.json({ error: "활성 학기가 없습니다." }, { status: 400 });
         const v = validateCoTeachingRulePayload({ ...body.rule, termId });
         if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+        await assertRegistryEditable(domain, termId, auth.email, body.unlockReason, `복수교사 규칙 저장: ${v.rule.grade}학년 ${v.rule.subjectName}`);
         const isUpdate = !!body.ruleId;
         const ref = isUpdate
           ? coTeachingRulesColRef(domain).doc(body.ruleId!)
@@ -1263,6 +1275,7 @@ export async function POST(req: NextRequest) {
         const ref = coTeachingRulesColRef(domain).doc(body.ruleId);
         const snap = await ref.get();
         if (!snap.exists) return NextResponse.json({ error: "삭제할 규칙을 찾을 수 없습니다." }, { status: 404 });
+        await assertRegistryEditable(domain, (snap.data() as any)?.termId || "", auth.email, body.unlockReason, `복수교사 규칙 삭제: ${body.ruleId}`);
         await ref.delete();
         await bumpTimetableCacheVersion(domain);
         await writeAuditLog({
@@ -1759,6 +1772,13 @@ export async function POST(req: NextRequest) {
     if (error instanceof AiCallError || error?.name === "AiCallError") {
       // AI 호출 실패는 눈높이 메시지 그대로 (fail-visible — phase9c_e_spec §4)
       return NextResponse.json({ error: error.message }, { status: error.statusCode || 502 });
+    }
+    if (error instanceof RegistryLockError || error?.name === "RegistryLockError") {
+      // 편성 등록부 잠금 (registry_lock_spec §2) — UI가 code·termState로 해제 다이얼로그 분기
+      return NextResponse.json(
+        { error: error.message, code: "registry-locked", termState: error.termState },
+        { status: 423 }
+      );
     }
     console.error("[POST /api/timetable/manage] Error:", error);
     return NextResponse.json(

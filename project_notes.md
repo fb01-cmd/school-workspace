@@ -875,3 +875,9 @@
   - `bash scripts/check_ui_removals.sh 67fcd90` ✅ (사라진 상호작용 없음)
   - `npx tsx scripts/verify_reference_term.ts` ✅ (5개 케이스 전판 통과)
 
+
+## [2026-08-18] Claude(Fable) → Antigravity/사용자 (편성 등록부 잠금 — 스펙+서버 가드 완결, UI 인계)
+- 변경 파일: docs/registry_lock_spec.md(신설)·src/lib/timetable/{server,types}.ts·src/app/api/timetable/manage/route.ts(편집 10종 배선)·scripts/verify_registry_lock.ts(신설)
+- 검증 상태: tsc ✅ / build ✅ / verify_registry_lock 5항 ✅(실데이터: 운영 2026-2 잠김·초안 2027-1 자유)
+- 다음 할 일: Antigravity — 스펙 §5대로 잠금 배지·사유 입력 다이얼로그(423 registry-locked 분기)·보관 학기 비활성·㉯ 계열 안내 문구
+- 주의: ① 잠금의 원본은 서버 가드 — UI는 423 응답으로 분기하는 것이 기본, 선제 배지만 activeTermId 비교 허용 ② 요청 계약 = 편집 10종에 unlockReason(2~200자) 동반, 문구는 스펙 §4의 확정 문안 사용 ③ **주의: 이 기능 배포 순간부터 운영 학기(2026-2) 등록부 편집은 사유 없이는 423으로 막힌다** — UI 배포 전까지 운영 학기 등록부를 편집할 일이 생기면 초안에서 하거나 UI 완성을 기다릴 것

@@ -8068,6 +8068,75 @@ export async function buildBlankSolveInput(
 // 학기 전환 (term_transition_spec) 액션 3종
 // ═════════════════════════════════════════════════════════════
 
+// ═════════════════════════════════════════════════════════════
+// 편성 등록부 잠금 (registry_lock_spec, 2026-08-16 사용자 확정 ⓐ~ⓔ)
+// ═════════════════════════════════════════════════════════════
+
+export class RegistryLockError extends Error {
+  statusCode = 423;
+  code = "registry-locked";
+  termState: "operating" | "archived";
+  constructor(message: string, termState: "operating" | "archived") {
+    super(message);
+    this.name = "RegistryLockError";
+    this.termState = termState;
+  }
+}
+
+/** 잠금 판정 순수 함수 (spec §1 매트릭스) — Firestore 무관, 검증 스크립트가 직접 시험한다.
+ *  allowed=false면 잠김, unlocked=true면 사유 해제 통과(감사 기록 대상). */
+export function judgeRegistryLock(
+  state: { operating: boolean; archived: boolean },
+  unlockReason: string | undefined
+): { allowed: boolean; unlocked: boolean; error?: { message: string; termState: "operating" | "archived" } } {
+  if (state.archived)
+    return {
+      allowed: false,
+      unlocked: false,
+      error: { message: "지난 학기의 편성 등록 내용은 열람만 가능합니다.", termState: "archived" },
+    };
+  if (!state.operating) return { allowed: true, unlocked: false }; // 초안 = 자유 편집
+  const reason = (unlockReason || "").trim();
+  if (reason.length >= 2 && reason.length <= 200) return { allowed: true, unlocked: true };
+  return {
+    allowed: false,
+    unlocked: false,
+    error: {
+      message:
+        "운영 중인 학기의 편성 등록 내용은 잠겨 있습니다. 이미 승인된 교체·이동의 판정 근거가 되기 때문입니다. 꼭 고쳐야 하면 사유를 입력하고 잠금을 해제해 주세요.",
+      termState: "operating",
+    },
+  };
+}
+
+/** 등록부 편집 잠금 가드 — 잠금의 단일 소재지(확정 ⓔ: UI 잠금은 표현일 뿐, 서버가 원본).
+ *  통과하지 못하면 RegistryLockError(423)를 던지고, 사유 해제 통과면 감사 로그를 남긴다. */
+export async function assertRegistryEditable(
+  domain: string,
+  termId: string,
+  operatorEmail: string,
+  unlockReason: string | undefined,
+  editSummary: string
+): Promise<void> {
+  const settings = await loadTimetableSettings(domain);
+  const operating = !!settings.activeTermId && settings.activeTermId === termId;
+  let archived = false;
+  if (!operating) {
+    const term = await loadTimetableTerm(domain, termId);
+    archived = term?.status === "archived";
+  }
+  const j = judgeRegistryLock({ operating, archived }, unlockReason);
+  if (!j.allowed) throw new RegistryLockError(j.error!.message, j.error!.termState);
+  if (j.unlocked)
+    await writeAuditLog({
+      operatorEmail,
+      targetEmail: domain,
+      action: "registry_lock_unlock_edit",
+      details: `운영 학기(${termId}) 편성 등록부 잠금 해제 편집 — 사유: ${(unlockReason || "").trim()} / 편집: ${editSummary}`,
+      status: "success",
+    });
+}
+
 /**
  * 참조 학기 선택 — rankReferenceTerms(전년도 같은 학기 우선) 순서에서 기초 그리드가
  * 실재하는 첫 학기. 없으면 null (호출자가 폴백 결정). 데이터가 쌓이면 저절로 발효된다 —
