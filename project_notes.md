@@ -1044,3 +1044,9 @@
   - `npx tsc --noEmit` ✅ (0 errors)
   - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (40/40 pages prerendered)
   - `bash scripts/check_ui_removals.sh 1168df6` ✅ (사라진 상호작용 없음)
+
+## [2026-08-18] Claude 체크포인트 — 이틀 스프린트 종료·새 창 전환점
+- **이번 창에서 완결된 트랙 (전부 실기기 확인 포함 종결)**: ① 작업 7 과목 이름 단일 사전 전체(스펙→코어→UI→실사고 4건 보수→§5 2단계 폴백 제거까지, subject_dictionary_spec) ② 참조 학기 우선순위(전전학기 규칙, utils.rankReferenceTerms) ③ 편성 등록부 잠금(registry_lock_spec, 서버 가드+UI+실측) ④ 알림 센터 전체(notification_center_spec — 원장·배지·입구 통일·수락 창구·미니 쪽지 왕복·직권 동등성·더 보기)
+- **결정된 원칙(신규)**: 실무자 관행에 처방 금지 / 알림=원장·푸시=초인종·입구는 벨 하나 / 양해는 "문구 달라도 프로세스 동일"(교사·일과계) / 독촉 대행 금지
+- **다음 작업(사용자 확정)**: 쪽지 2단계(이미지 첨부) — memo_attachment_spec §8 순서 1·2(서버: attach_upload·staging 대조·권한 부여·폴더 관리·검증)가 Claude 몫. **주의: 스펙 §5(양해 쪽지 전송 버튼)는 오늘 구현된 알림 양해 왕복과 겹침 — 착수 시 §5 존폐/축소를 먼저 판단할 것**
+- **잔여 소품**: TTL 콘솔 설정(사용자 콘솔 접속 시)·프로필 승인 알림 배선·양해 왕복 실기기 확인(상대 계정 필요)
