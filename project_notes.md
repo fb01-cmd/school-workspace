@@ -688,3 +688,9 @@
 - 새 규칙(④-4): .md 고친 커밋 전 `npx tsx scripts/check_ghost_markers.ts` — 신규 상태 표기가 잡히면 STATUS.md 행 확인 후 --rebaseline. 큐 등재 근거는 코드·실데이터만
 - 다음 할 일: STATUS.md 유령 방지 트랙 참조 (재고 소각은 지나가는 길에, 로드맵 다이어트는 Claude 별도 착수)
 - 주의: 8/15~17 기록 인용 시 archive/project_notes_2026-08-mid.md에서 날짜+제목으로 찾을 것
+
+## [2026-08-18] Claude(Fable) → 전원 (로드맵 다이어트 1차 — 완료 엔트리 본문 23블록 아카이브 이관)
+- 변경 파일: development_roadmap.md(160→119KB, 상태 줄+§R## 포인터 잔류)·archive/roadmap_2026-08.md(신설 51KB, 동결)·docs/ghost_marker_baseline.txt(66→63건 재기준)·STATUS.md(다이어트 행 갱신)
+- 검증 상태: 블록 무손실 ✅ — 아카이브 23블록을 포인터 자리에 되끼워 재조립한 결과가 이관 전 원본(HEAD)과 바이트 동일(sha256/16 c3c431d406b31bf9 = c3c431d406b31bf9, 다중집합 23=23, 포인터↔블록 일대일 True) / check_ghost_markers 신규 0 (notes 회전과 동일 방식)
+- 다음 할 일: STATUS.md 유령 방지 트랙 「로드맵 다이어트 2차」 행 참조 — 절반 목표는 대형 열린 엔트리(피드백 덤프 21KB·양해 묶음 13KB·브리지 8KB 등)가 닫혀야 도달 가능, 닫힐 때 같은 방식으로 추가 이관
+- 주의: ✅ 표기여도 STATUS 열린 항목과 얽힌 엔트리는 의도적으로 남김(6b 브리지[일몰 9/10]·과목 사전[작업 큐 #2]·양해 워크플로/개방[소품 실기기]·알림 센터 묶음[💡 2건이 본문 공유]·9c AI 보조[9c 진행 중]) — 산 것을 죽은 취급하지 않기 위함. 이관분 인용은 archive/roadmap_2026-08.md의 §R번호 또는 엔트리 제목으로(행 번호 금지). 이관 판정 시 코드 실측 4건 수행(/m 페이지·ics 라우트+구독 카드·iorad 재진입 탭·syncDerivedWeeksWithCalendar 실재 확인)
