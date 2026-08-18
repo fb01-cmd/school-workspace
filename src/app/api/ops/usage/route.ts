@@ -16,10 +16,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });
   }
 
-  const days = Number(new URL(req.url).searchParams.get("days") || 30);
+  const params = new URL(req.url).searchParams;
+  const days = Number(params.get("days") || 30);
+  // 「다시 확인」 버튼용 — 60초 캐시를 건너뛴다. 이게 없으면 사용자가 새로고침을 눌러도
+  // 1분 동안 같은 숫자가 나와 버튼이 고장난 것처럼 보인다.
+  const force = params.get("force") === "1";
 
   try {
-    const snapshot = await getUsageSnapshot({ days: Number.isFinite(days) ? days : 30 });
+    const snapshot = await getUsageSnapshot({ days: Number.isFinite(days) ? days : 30, force });
     // available:false도 200으로 내린다 — 고장이 아니라 "아직 안 켠 기능"이고,
     // 화면은 오류가 아니라 안내 카드를 그려야 한다(스펙 §3).
     return NextResponse.json({ success: true, ...snapshot });
