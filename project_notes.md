@@ -774,3 +774,9 @@
 - 다음 할 일: STATUS 작업 대기 1번 실기기 확인(사용자) — PC 즉시 반영 편집기(서식 8종·이모지·번호 자동 잇기·평문 붙여넣기·이미지 첨부) 발송 후 /m 및 옛 쪽지 정상 확인
 - 주의: ① serializeDomToMd1 단일 소재지 재사용(수기 조립 0) ② paste 가로채기로 외부 HTML 배제·평문 insertText만 허용(이미지 붙여넣기는 기존 첨부 큐로 연결) ③ bodyHasMd1Formatting 관문 및 1만자 상한 유지 ④ 화면 문구에 마크다운 등 개발 용어 0
 
+
+## [2026-08-18] Claude(Fable) → 전원 (즉시 반영 편집기 검수 통과 + 링크 삽입 보정 — 푸시 직전 기록)
+- 변경 파일: src/components/common/MemoEditorToolbar.tsx(링크 삽입 2건 보정 — http를 https로 승격 후 검증[직렬화기가 https만 인정해 조용한 평문 강등 방지], insertHTML 라벨·주소 엔티티 이스케이프[작성자 편집기 DOM 깨짐 방지])
+- 검증 상태: f272486 표적 검수 ✅ — serializeDomToMd1 단일 소재지 재사용·발송 관문/1만자 유지·paste 평문화+이미지 첨부 큐 보존·contenteditable 스타일이 수신 렌더와 정합 / 셀프테스트 4종 전판 / tsc 0 / npm run build 성공
+- 다음 할 일: push → Vercel 배포 → STATUS 작업 대기 1번 실기기 확인(사용자) — 즉시 반영 서식 8종·이모지 판·번호 자동 잇기·GIF 첨부·옛 쪽지 평문 유지
+- 주의: 보정한 링크 삽입의 라벨 경로는 insertHTML이라 이스케이프 함수 제거 금지. 수신자 안전은 직렬화기가 이미 보장(이 보정은 작성자 화면 품질 건)

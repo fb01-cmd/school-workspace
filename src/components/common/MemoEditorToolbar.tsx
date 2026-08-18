@@ -91,15 +91,23 @@ export default function MemoEditorToolbar({
     let url = window.prompt("연결할 웹 주소를 입력하세요 (https://)", "https://");
     if (!url) return;
     url = url.trim();
-    if (!/^https?:\/\//i.test(url)) {
-      url = `https://${url}`;
+    // 직렬화기(serializeDomToMd1)는 https만 링크로 인정한다 — 여기서 안 맞추면 발송 시
+    // 조용히 평문으로 강등돼 "링크를 보냈다"는 착각이 생긴다. http는 https로 올린다.
+    if (/^http:\/\//i.test(url)) url = "https://" + url.slice("http://".length);
+    else if (!/^https:\/\//i.test(url)) url = `https://${url}`;
+    if (url.length <= "https://".length || /\s/.test(url)) {
+      window.alert("웹 주소를 확인해 주세요. https://로 시작하는 주소만 넣을 수 있습니다.");
+      return;
     }
 
     if (selectedText) {
       document.execCommand("createLink", false, url);
     } else {
       const label = window.prompt("화면에 표시할 링크 이름을 입력하세요", "링크") || url;
-      const anchor = `<a href="${url}">${label}</a>`;
+      // 원문 그대로 insertHTML에 끼우면 따옴표·꺾쇠가 편집기 DOM을 깨뜨린다 — 엔티티로 봉인
+      const esc = (s: string) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      const anchor = `<a href="${esc(url)}">${esc(label)}</a>`;
       document.execCommand("insertHTML", false, anchor);
     }
     onContentChange?.();
