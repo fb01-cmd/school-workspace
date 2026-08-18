@@ -761,3 +761,9 @@
 - 검증 상태: tsc ✅ / 원인 코드 특정(래퍼 overflow-hidden이 absolute 팝오버를 칸 경계에서 절단) — 시각 확인은 배포 후 사용자 실기기(로그인 뒤 화면이라 미리보기 재현 불가)
 - 다음 할 일: STATUS 작업 대기 1번 실기기 확인에 이모지 판 잘림 해소 확인 포함
 - 주의: 편집 칸 래퍼에 overflow-hidden 재도입 금지(주석 명기) — 팝오버류가 다시 잘린다
+
+## [2026-08-18] Claude(Fable) → Antigravity (즉시 반영 편집기 전환 — 스펙 §7 개정 + 직렬화기 코어 완결)
+- 변경 파일: src/lib/memo/richtext_dom.ts(신설 — serializeDomToMd1 단일 소재지)·src/lib/memo/richtext.ts(escapeMd1Literal)·scripts/verify_memo_richtext_dom.ts(신설 20케이스)·docs/memo_richtext_spec.md(§7 개정·§12 순서 5)·development_roadmap.md·STATUS.md(작업 대기 재편)
+- 검증 상태: verify_memo_richtext_dom 20케이스 전판 ✅(이스케이프·중첩 바깥만·https 강등·번호 재매김·왕복 정합) / verify_memo_richtext 회귀 ✅ / tsc ✅
+- 다음 할 일: STATUS 작업 대기 1번(Antigravity) — contenteditable 배선·paste 평문화(insertText)·미리보기 토글 제거·serializeDomToMd1 재사용(재구현 금지). 완료 후 push는 사용자 결정, 실기기 확인은 2번 행
+- 주의: 즉시 반영 방식에선 이스케이프가 의무(사용자가 원문을 못 봄) — 직렬화기가 전담하므로 편집기에서 md1 문자열을 손으로 조립하지 말 것. 붙여넣기는 평문만(외부 서식 조용한 유실 방지)

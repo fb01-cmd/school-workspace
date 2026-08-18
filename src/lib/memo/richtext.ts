@@ -32,6 +32,11 @@ export const MEMO_CONTENT_FORMAT_MD1 = "md1" as const;
 
 const ESCAPABLE = new Set(["*", "_", "~", "[", "\\"]);
 
+/** 리터럴 텍스트를 md1 안전 문자열로 — 토큰 문자 앞에 `\` (직렬화기·편집기 공용, spec §7) */
+export function escapeMd1Literal(s: string): string {
+  return s.replace(/[\\*_~[]/g, (c) => "\\" + c);
+}
+
 /** `\*` 류를 리터럴로 되돌린다. 이스케이프 대상이 아닌 문자 앞의 `\`는 그대로 남긴다. */
 function unescapeMd1(s: string): string {
   let out = "";
