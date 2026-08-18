@@ -20,7 +20,12 @@ export type NotificationType =
   | "memo"
   | "admin-action"
   | "consent-request"
-  | "consent-result";
+  | "consent-result"
+  // 업무 지시 (phase8_tasks_spec §6) — 발송·기한 임박·재촉·철회·발신자향 상태 원장
+  | "task-assigned"
+  | "task-status"
+  | "task-due"
+  | "task-canceled";
 
 export interface NotificationDoc {
   recipientEmail: string;

@@ -861,3 +861,9 @@
 - 검증 상태: 스펙 문서 — 전제 전부 기존 확정 재료(로드맵 8/9 문답·재검토 6건·알림 센터 설계 예약·memo/richtext/attachment 전례) + 8/19 변수 4개
 - 다음 할 일: STATUS 작업 대기 1번 — 코어(Claude, 8월 내 권장): tasks 모델·rules·상태 머신 순수 함수·API·공유드라이브 프로비저닝·파일명 정규화·파기 크론 확장·셀프테스트 + 인벤토리 등재 + 대용량 세션 업로드 실측
 - 주의: 닫은 결정 4가지(§12 대응표) 재론 금지 — 거절 사유 필수·대리 없음·전 교직원 발신·발신자향 푸시 제거·수동 재촉 24h. 자동 반복 독촉은 원칙 위배로 영구 금지(§0-6). 제출물 저장은 업무 전용 공유드라이브 신설이지 명단 드라이브 재사용 아님
+
+## [2026-08-19] Claude(Fable) → Antigravity (Phase 8 코어 완결 — 화면 인계)
+- 변경 파일: src/lib/tasks/logic.ts·drive.ts·cron.ts(신설 3종)·src/app/api/tasks/route.ts·file/route.ts(신설 2종)·firestore.rules(tasks 블록)·src/lib/push/webpush.ts(notifyTask)·src/lib/notifications/server.ts(타입 4종)·src/app/api/cron/daily-sync/route.ts(6번째 작업)·scripts/tasks_selftest.ts(신설)·personal_data_inventory.md(2행)·docs 로드맵·STATUS
+- 검증 상태: tasks_selftest 31케이스 전판 ✅(상태 전이 조합·정규화 3갈래·KST 경계·재촉 제한) / tsc 0 / npm run build ✅(라우트 2종 등재) / 실계정·브라우저층(공유드라이브 첫 생성·세션 업로드 CORS·규칙 실배포)은 STATUS 작업 대기 2번으로 명시 분리
+- 다음 할 일: STATUS 작업 대기 1번(Antigravity) — 화면 3종+알림 수락 배선+대시보드 카드. 발송은 2상(prepare→form_upload→send), 제출은 ≤4MB multipart submit·초과는 submit_session_start/finish. 상태·정규화·검증을 화면에서 재구현 금지(전부 서버가 판정)
+- 주의: ① firestore.rules는 레포 수정만 됨 — 실배포 전엔 클라 직독이 거부되므로 화면 개발 중 직독 실패는 규칙 미배포부터 의심 ② 재촉·자동 알림 설계는 스펙 §6 확정 — 발신자향 푸시 추가 금지 ③ 공유드라이브는 첫 prepare 호출 때 자동 생성됨(사전 콘솔 작업 0)

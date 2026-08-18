@@ -145,6 +145,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // 업무 지시 (phase8_tasks_spec §2) — memo와 같은 자격·발신자/수신자 한정. 초안(수신자 0)은 발신자만
+    match /tasks/{domain}/items/{taskId} {
+      allow read: if isSchool()
+        && myUserDoc().role in ['teacher', 'super_admin']
+        && exists(/databases/$(database)/documents/teacher_profiles/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/teacher_profiles/$(request.auth.token.email)).data.departments.size() > 0
+        && (request.auth.token.email == resource.data.senderEmail
+            || request.auth.token.email in resource.data.recipientEmails);
+      allow write: if false;
+    }
+
     // ── 로그성 컬렉션 — 클라이언트는 읽기만, 조작 금지 ─────────
     // (서버가 admin SDK로 기록하므로 클라이언트 쓰기 불필요.
     //  audit_logs만 예외적으로 클라이언트 create 허용 — 화면에서 직접 기록하는

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runDisciplineSheetBridge } from "@/lib/discipline/bridge";
 import { runNeisCalendarSync } from "@/lib/timetable/server";
 import { runMemoPurge } from "@/lib/memo/purge";
+import { runTaskSweep } from "@/lib/tasks/cron";
 import { runUsageAlert } from "@/lib/ops/usage_alert";
 import { sweepSavingMode } from "@/lib/ops/saving_mode";
 import { recordCronRun } from "@/lib/ops/cron_heartbeat";
@@ -56,12 +57,14 @@ export async function GET(req: NextRequest) {
     memoPurge: { ok: boolean; detail: unknown };
     usageAlert: { ok: boolean; detail: unknown };
     savingSweep: { ok: boolean; detail: unknown };
+    taskSweep: { ok: boolean; detail: unknown };
   } = {
     bridge: { ok: false, detail: null },
     neis: { ok: false, detail: null },
     memoPurge: { ok: false, detail: null },
     usageAlert: { ok: false, detail: null },
     savingSweep: { ok: false, detail: null },
+    taskSweep: { ok: false, detail: null },
   };
 
   /** 알림 발신 도메인 — 나이스·사용량 경보가 공유한다 (없으면 학교 기본값) */
@@ -118,15 +121,26 @@ export async function GET(req: NextRequest) {
     results.savingSweep = { ok: false, detail: error.message };
   }
 
+  // ── 6. 업무 지시 — D-1 기한 리마인드 + 보존 만료 파기 (phase8_tasks_spec §6·§8) ──
+  try {
+    const taskDomainRefs = await adminDb.collection("tasks").listDocuments();
+    const taskDomains = taskDomainRefs.map((r) => r.id);
+    results.taskSweep = { ok: true, detail: await runTaskSweep(taskDomains, { dryRun }) };
+  } catch (error: any) {
+    console.error("[Daily-Sync Cron] 업무 리마인드·파기 실패:", error);
+    results.taskSweep = { ok: false, detail: error.message };
+  }
+
   const anyFailed =
     !results.bridge.ok ||
     !results.neis.ok ||
     !results.memoPurge.ok ||
     !results.usageAlert.ok ||
-    !results.savingSweep.ok;
+    !results.savingSweep.ok ||
+    !results.taskSweep.ok;
   // 심박 — 성공·실패·무작업을 가리지 않고 남긴다(cron_heartbeat.ts 주석의 사고 2건)
   await recordCronRun("daily-sync", {
-    summary: `브리지 ${results.bridge.ok ? "ok" : "실패"} · 나이스 ${results.neis.ok ? "ok" : "실패"} · 쪽지파기 ${results.memoPurge.ok ? "ok" : "실패"} · 사용량경보 ${results.usageAlert.ok ? "ok" : "실패"} · 절약정리 ${results.savingSweep.ok ? "ok" : "실패"}`,
+    summary: `브리지 ${results.bridge.ok ? "ok" : "실패"} · 나이스 ${results.neis.ok ? "ok" : "실패"} · 쪽지파기 ${results.memoPurge.ok ? "ok" : "실패"} · 사용량경보 ${results.usageAlert.ok ? "ok" : "실패"} · 절약정리 ${results.savingSweep.ok ? "ok" : "실패"} · 업무 ${results.taskSweep.ok ? "ok" : "실패"}`,
     hadError: anyFailed,
   });
 

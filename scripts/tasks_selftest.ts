@@ -1,0 +1,99 @@
+/**
+ * 업무 지시 순수 로직 셀프테스트 (phase8_tasks_spec §10) — 네트워크·Firestore 0회
+ * 실행: npx tsx scripts/tasks_selftest.ts
+ */
+import {
+  applyTaskTransition,
+  canNudge,
+  isDueTomorrowKST,
+  normalizeSubmissionFileName,
+  nudgeTargets,
+  validateTaskContent,
+  validateTaskFileName,
+  validateTaskFileSize,
+  TASK_NUDGE_INTERVAL_MS,
+  TASK_SERVER_UPLOAD_MAX_BYTES,
+} from "../src/lib/tasks/logic";
+
+let fails = 0;
+const check = (label: string, got: unknown, want: unknown) => {
+  const g = JSON.stringify(got);
+  const w = JSON.stringify(want);
+  const pass = g === w;
+  if (!pass) fails++;
+  console.log(`${pass ? "✅" : "❌"} ${label}${pass ? "" : `\n   got:  ${g}\n   want: ${w}`}`);
+};
+
+const NOW = 1_760_000_000_000;
+const baseTask = (kind: "confirm" | "submit", statuses: any = {}) => ({
+  kind,
+  statuses,
+  recipientEmails: ["a@hmh.or.kr", "b@hmh.or.kr"],
+  canceledAt: undefined,
+});
+
+// ── ① 상태 전이 전 조합 (§3) ──
+check("① 수락", applyTaskTransition(baseTask("confirm"), "a@hmh.or.kr", "accept", undefined, NOW), {
+  ok: true, next: { state: "ACCEPTED", at: NOW },
+});
+check("① 중복 수락 거부", applyTaskTransition(baseTask("confirm", { "a@hmh.or.kr": { state: "ACCEPTED", at: 1 } }), "a@hmh.or.kr", "accept", undefined, NOW).ok, false);
+check("① 거절 사유 없으면 거부", applyTaskTransition(baseTask("confirm"), "a@hmh.or.kr", "decline", "  ", NOW).ok, false);
+check("① 거절 사유 있으면 통과", applyTaskTransition(baseTask("confirm"), "a@hmh.or.kr", "decline", "출장 기간과 겹칩니다", NOW), {
+  ok: true, next: { state: "DECLINED", at: NOW, note: "출장 기간과 겹칩니다" },
+});
+check("① 거절 후 재수락 허용", applyTaskTransition(baseTask("confirm", { "a@hmh.or.kr": { state: "DECLINED", at: 1, note: "x" } }), "a@hmh.or.kr", "accept", undefined, NOW).ok, true);
+check("① 확인형 완료", applyTaskTransition(baseTask("confirm", { "a@hmh.or.kr": { state: "ACCEPTED", at: 1 } }), "a@hmh.or.kr", "done", undefined, NOW), {
+  ok: true, next: { state: "DONE", at: NOW },
+});
+check("① 제출형은 done 액션 거부", applyTaskTransition(baseTask("submit"), "a@hmh.or.kr", "done", undefined, NOW).ok, false);
+check("① 완료 취소 → 수락 상태로", applyTaskTransition(baseTask("confirm", { "a@hmh.or.kr": { state: "DONE", at: 1 } }), "a@hmh.or.kr", "undone", undefined, NOW), {
+  ok: true, next: { state: "ACCEPTED", at: NOW },
+});
+check("① 대상 아님 거부", applyTaskTransition(baseTask("confirm"), "x@hmh.or.kr", "accept", undefined, NOW).ok, false);
+check("① 철회된 업무 거부", applyTaskTransition({ ...baseTask("confirm"), canceledAt: 1 } as any, "a@hmh.or.kr", "accept", undefined, NOW).ok, false);
+check("① 완료 후 거절 불가", applyTaskTransition(baseTask("confirm", { "a@hmh.or.kr": { state: "DONE", at: 1 } }), "a@hmh.or.kr", "decline", "사유", NOW).ok, false);
+
+// ── ② 파일명 정규화 3갈래 (§5-3) ──
+check("② 담임", normalizeSubmissionFileName({
+  taskTitle: "현장체험 동의서", submitterName: "홍길동",
+  homeroom: { grade: 2, class: 3 }, departments: ["1학년부"], originalName: "제출본 최종.hwp",
+}), "2학년3반_홍길동_현장체험 동의서.hwp");
+check("② 부서(담임 아님)", normalizeSubmissionFileName({
+  taskTitle: "연수 신청", submitterName: "김교사", homeroom: null, departments: ["교무기획부"], originalName: "a.XLSX",
+}), "교무기획부_김교사_연수 신청.xlsx");
+check("② 소속 없음 생략", normalizeSubmissionFileName({
+  taskTitle: "설문", submitterName: "박교사", homeroom: null, departments: [], originalName: "x.pdf",
+}), "박교사_설문.pdf");
+check("② 금지 문자 정리", normalizeSubmissionFileName({
+  taskTitle: 'a/b:c*d?"<>|', submitterName: "이/름", homeroom: null, departments: null, originalName: "f.zip",
+}), "이_름_a_b_c_d_____.zip");
+
+// ── ③ 기한 임박 KST 경계 (§6) ──
+// 2026-08-19 00:00 KST = 2026-08-18 15:00 UTC
+const KST_0819_0000 = Date.UTC(2026, 7, 18, 15, 0, 0);
+check("③ 내일(8/20) 마감 → 리마인드", isDueTomorrowKST(KST_0819_0000 + 26 * 3600 * 1000, KST_0819_0000), true);
+check("③ 오늘(8/19) 마감 → 아님", isDueTomorrowKST(KST_0819_0000 + 2 * 3600 * 1000, KST_0819_0000), false);
+check("③ 모레(8/21) 마감 → 아님", isDueTomorrowKST(KST_0819_0000 + 50 * 3600 * 1000, KST_0819_0000), false);
+check("③ KST 자정 직전 경계", isDueTomorrowKST(KST_0819_0000 + 24 * 3600 * 1000 + 23 * 3600 * 1000 + 59 * 60 * 1000, KST_0819_0000), true);
+
+// ── ④ 재촉 24h 제한 (§6) ──
+check("④ 첫 재촉 허용", canNudge(undefined, NOW), true);
+check("④ 23시간 후 거부", canNudge(NOW - TASK_NUDGE_INTERVAL_MS + 3600 * 1000, NOW), false);
+check("④ 24시간 후 허용", canNudge(NOW - TASK_NUDGE_INTERVAL_MS, NOW), true);
+check("④ 재촉 대상 = 미완료·미거절만", nudgeTargets({
+  recipientEmails: ["a@hmh.or.kr", "b@hmh.or.kr", "c@hmh.or.kr"],
+  statuses: { "a@hmh.or.kr": { state: "DONE", at: 1 }, "b@hmh.or.kr": { state: "DECLINED", at: 1, note: "x" } },
+} as any), ["c@hmh.or.kr"]);
+
+// ── 검증·화이트리스트 ──
+check("검증: 기한 과거 거부", validateTaskContent({ title: "t", body: "", kind: "confirm", dueAt: NOW - 1, now: NOW }).ok, false);
+check("검증: 정상 통과", validateTaskContent({ title: "t", body: "b", kind: "submit", dueAt: NOW + 1000, now: NOW }).ok, true);
+check("화이트리스트: hwp 통과", validateTaskFileName("양식.hwp").ok, true);
+check("화이트리스트: exe 거부", validateTaskFileName("virus.exe").ok, false);
+check("화이트리스트: 확장자 없음 거부", validateTaskFileName("noext").ok, false);
+check("크기: 서버 경로 4MB 초과 거부", validateTaskFileSize(TASK_SERVER_UPLOAD_MAX_BYTES + 1, false).ok, false);
+check("크기: 세션 경로 10MB 이하 통과", validateTaskFileSize(9 * 1024 * 1024, true).ok, true);
+check("크기: 세션 경로 10MB 초과 거부", validateTaskFileSize(11 * 1024 * 1024, true).ok, false);
+
+console.log(fails ? `\n❌ 실패 ${fails}건` : "\n✅ 전판 통과");
+process.exit(fails ? 1 : 0);
