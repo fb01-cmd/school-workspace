@@ -15,6 +15,7 @@ import {
   pacificDayStartDaysAgo,
 } from "../src/lib/ops/usage_logic";
 import { clearUsageCache, getUsageSnapshot } from "../src/lib/ops/usage_query";
+import { fetchTotal } from "../src/lib/ops/monitoring";
 import { fetchDailyUsage } from "../src/lib/ops/usage_alert";
 
 let failed = 0;
@@ -59,6 +60,7 @@ async function main() {
 
   console.log("\n=== 2부. 실계정 스냅샷 ===\n");
   clearUsageCache();
+  const now = new Date();
   const snap = await getUsageSnapshot({ days: 30 });
   if (!snap.available) {
     console.log(`  ⚠️  지표 읽기 불가 — reason=${snap.reason}`);
@@ -83,6 +85,16 @@ async function main() {
   expect("시간별 합계 ≤ 오늘 누계 (완결 시간만 담으므로)", snap.hourly!.reduce((a, p) => a + p.reads, 0) <= t.reads);
   expect("음수 없음", [...snap.daily!, ...snap.hourly!].every((p) => p.reads >= 0 && p.writes >= 0 && p.deletes >= 0));
   expect("생성 시각이 현재", Math.abs(Date.now() - snap.generatedAt) < 120_000);
+
+  {
+    // 회귀 감시 — 진행 중인 하루의 합계가 물을 때마다 달라지면 안 된다.
+    // 구간 길이를 그대로 alignmentPeriod로 주던 시절 13,577 ↔ 47,477로 튀었고,
+    // 화면의 "오늘 사용량"이 경고와 정상을 오갔다(2026-08-18 사용자 신고).
+    const t0 = currentPacificDayStart(now);
+    const a = await fetchTotal("reads", t0, Date.now());
+    const b = await fetchTotal("reads", t0, Date.now());
+    expect("진행 중 하루 합계가 연속 호출에 안정", Math.abs(a - b) <= 50, `${a} vs ${b}`);
+  }
 
   console.log("\n=== 3부. 교차 대조 — 화면과 경보가 같은 숫자를 보는가 ===\n");
   const alert = await fetchDailyUsage();

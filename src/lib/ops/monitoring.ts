@@ -100,9 +100,21 @@ export async function fetchBuckets(
     .sort((a, b) => a.startMs - b.startMs);
 }
 
-/** 구간 전체 합계 1개 (버킷 1개짜리 특수형) */
+/**
+ * 구간 전체 합계.
+ *
+ * ⚠️ **구간 길이를 그대로 alignmentPeriod로 주면 안 된다** (2026-08-18 실사고).
+ * 진행 중인 하루처럼 길이가 어중간한 구간에서는 정렬이 맞지 않아 Monitoring이 버킷을
+ * 2개로 쪼개 돌려주고, 전부 더하면 **같은 구간을 두 번 세게 된다.**
+ * 실측: 같은 시각을 세 번 물었더니 13,577 → 47,477 → 13,577로 튀었다(시간별 합은
+ * 13,107로 안정). 화면의 "오늘 사용량"이 경고와 정상을 오가던 원인이 이것이다.
+ *
+ * 그래서 **작은 고정 간격으로 쪼개 더한다.** 간격이 작으면 경계 오차도 작고 버킷이
+ * 겹치지 않는다.
+ */
+const TOTAL_BUCKET_SECONDS = 300;
+
 export async function fetchTotal(metric: UsageMetric, startMs: number, endMs: number): Promise<number> {
-  const seconds = Math.max(60, Math.round((endMs - startMs) / 1000));
-  const buckets = await fetchBuckets(metric, startMs, endMs, seconds);
+  const buckets = await fetchBuckets(metric, startMs, endMs, TOTAL_BUCKET_SECONDS);
   return buckets.reduce((a, b) => a + b.value, 0);
 }

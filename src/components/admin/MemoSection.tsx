@@ -2496,9 +2496,16 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
             className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all flex-shrink-0"
             aria-label="검색 기간 범위"
           >
-            <option value="3m">최근 3개월</option>
-            <option value="6m">최근 6개월</option>
-            <option value="1y">최근 1년</option>
+            {/* 선택지를 직접 나열하지 않는다 — 사전에 범위를 추가해도 화면에 안 나타나
+                (절약 모드가 기본을 1개월로 바꿨는데 그 항목이 없어 화면은 3개월이라
+                 표시하면서 실제로는 1개월만 찾던 사고, 2026-08-18) */}
+            {(Object.keys(MEMO_SEARCH_RANGE_DAYS) as MemoSearchRange[])
+              .sort((a, b) => MEMO_SEARCH_RANGE_DAYS[a] - MEMO_SEARCH_RANGE_DAYS[b])
+              .map((r) => (
+                <option key={r} value={r}>
+                  {MEMO_SEARCH_RANGE_LABELS[r]}
+                </option>
+              ))}
           </select>
           <div className="relative flex-1">
             <input
@@ -2591,15 +2598,22 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
                   </p>
                   {searchRange !== "1y" && (
                     <div className="flex items-center justify-center gap-1.5 pt-2">
-                      {searchRange === "3m" && (
-                        <button
-                          type="button"
-                          onClick={() => setSearchRange("6m")}
-                          className="px-2.5 py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium rounded-md transition-colors border border-indigo-200 cursor-pointer"
-                        >
-                          최근 6개월로 검색
-                        </button>
-                      )}
+                      {(() => {
+                        // 한 단계 넓은 범위 (사전 기준 — 범위가 늘어도 따라온다)
+                        const wider = (Object.keys(MEMO_SEARCH_RANGE_DAYS) as MemoSearchRange[])
+                          .filter((r) => MEMO_SEARCH_RANGE_DAYS[r] > MEMO_SEARCH_RANGE_DAYS[searchRange])
+                          .sort((a, b) => MEMO_SEARCH_RANGE_DAYS[a] - MEMO_SEARCH_RANGE_DAYS[b])[0];
+                        if (!wider || wider === "1y") return null;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setSearchRange(wider)}
+                            className="px-2.5 py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium rounded-md transition-colors border border-indigo-200 cursor-pointer"
+                          >
+                            {MEMO_SEARCH_RANGE_LABELS[wider]}로 검색
+                          </button>
+                        );
+                      })()}
                       <button
                         type="button"
                         onClick={() => setSearchRange("1y")}
