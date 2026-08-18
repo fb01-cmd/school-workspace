@@ -9,6 +9,8 @@ import {
   UsageMetric,
   computeLevel,
   currentPacificDayStart,
+  formatKstPeriod,
+  kstResetHourLabel,
   pacificDayLabel,
   pacificDayStartDaysAgo,
 } from "./usage_logic";
@@ -51,7 +53,17 @@ export interface UsageSnapshot {
   /** 하루 무료 한도 (화면이 상수를 자체 정의하지 않도록 서버가 내려준다) */
   limits?: typeof FIRESTORE_FREE_DAILY;
   /** 진행 중인 오늘(태평양) — 자정부터 지금까지 누계 */
-  today?: DailyUsage & { level: 0 | 50 | 80; topMetric: UsageMetric; topPercent: number };
+  today?: DailyUsage & {
+    level: 0 | 50 | 80;
+    topMetric: UsageMetric;
+    topPercent: number;
+    /** 화면 표기용 — 한국 시간 구간 ("8월 17일 오후 4시 ~ 8월 18일 오후 4시") */
+    periodLabel: string;
+  };
+  /** 한도 초기화 시각 (한국 시간, 서머타임 반영) — 화면 문구가 숫자를 지어내지 않도록 */
+  resetHourLabel?: string;
+  /** 일별 막대 1개가 무엇인지 — 태평양 날짜를 그대로 보여 주면 날짜가 어긋나 보인다 */
+  dailyBarNote?: string;
   /** 완결된 최근 N일 (오래된 → 최신) */
   daily?: MetricPoint[];
   /** 오늘의 **완결된 시간대**만 (진행 중인 현재 1시간은 제외 — 부분 집계라 오해를 부른다) */
@@ -128,7 +140,15 @@ export async function getUsageSnapshot(
       generatedAt: nowMs,
       lagMinutes: METRIC_LAG_MINUTES,
       limits: FIRESTORE_FREE_DAILY,
-      today: { ...todayUsage, level, topMetric: top.metric, topPercent: top.percent },
+      today: {
+        ...todayUsage,
+        level,
+        topMetric: top.metric,
+        topPercent: top.percent,
+        periodLabel: formatKstPeriod(todayStart, todayStart + 24 * 3_600_000),
+      },
+      resetHourLabel: kstResetHourLabel(todayStart),
+      dailyBarNote: `막대 하나 = ${kstResetHourLabel(todayStart)}부터 다음 날 같은 시각까지 (한국 시간)`,
       daily: toPoints(pack(dailyBuckets), pacificDayLabel),
       hourly: toPoints(pack(hourlyBuckets), hourLabel),
     };

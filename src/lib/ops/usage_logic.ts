@@ -258,3 +258,36 @@ export function lastCompletePacificDay(now: Date): PacificDayWindow {
   const startMs = pacificMidnightUtcMs(prev.y, prev.m, prev.d);
   return { day: `${prev.y}-${pad2(prev.m)}-${pad2(prev.d)}`, startMs, endMs: todayStart };
 }
+
+/**
+ * 한도 주기를 **한국 시간 구간**으로 풀어 쓴다.
+ *
+ * 왜 필요한가 (2026-08-18 사용자 신고): 화면이 태평양 날짜를 그대로 "기준 일자"로
+ * 보여 주니, 한국 시간 8/18 새벽에 「오늘 사용량」의 기준 일자가 8/17이고 그래프
+ * 마지막 날은 8/16이라 **날짜가 셋 다 달라 보였다.** 내부적으로는 전부 맞는 값이지만
+ * 읽는 사람에게는 고장으로 보인다.
+ *
+ * 그래서 날짜 대신 **"몇 시부터 몇 시까지"**로 말한다. 한도가 초기화되는 시각은
+ * 서머타임에 따라 한국 시간 오후 4시 또는 5시라, 문자열을 짐작하지 않고 실제 경계
+ * 시각을 그대로 포맷한다.
+ */
+export function formatKstPeriod(startMs: number, endMs: number): string {
+  const fmt = (ms: number) =>
+    new Intl.DateTimeFormat("ko-KR", {
+      timeZone: "Asia/Seoul",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      hour12: true,
+    }).format(new Date(ms));
+  return `${fmt(startMs)} ~ ${fmt(endMs)}`;
+}
+
+/** 한도 초기화 시각을 한국 시간으로 (서머타임에 따라 오후 4시 또는 5시) */
+export function kstResetHourLabel(anyDayStartMs: number): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    hour: "numeric",
+    hour12: true,
+  }).format(new Date(anyDayStartMs));
+}

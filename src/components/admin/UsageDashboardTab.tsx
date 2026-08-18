@@ -21,6 +21,8 @@ export interface UsageSnapshot {
   detail?: string;
   generatedAt: number;
   lagMinutes: number;
+  resetHourLabel?: string;
+  dailyBarNote?: string;
   limits?: {
     reads: number;
     writes: number;
@@ -34,6 +36,8 @@ export interface UsageSnapshot {
     level: 0 | 50 | 80;
     topMetric: "reads" | "writes" | "deletes";
     topPercent: number;
+    /** 한국 시간 구간 문구 — 태평양 날짜를 그대로 보이면 날짜가 어긋나 보인다 */
+    periodLabel?: string;
   };
   daily?: MetricPoint[];
   hourly?: MetricPoint[];
@@ -397,7 +401,7 @@ export default function UsageDashboardTab() {
         <div className="bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded-xl p-3.5 flex items-center gap-3">
           <span className="text-lg shrink-0">⏰</span>
           <p className="text-indigo-900 dark:text-indigo-200 font-medium">
-            하루 사용량은 매일 오후 4시(한국 시간)에 0으로 초기화됩니다
+            사용량은 매일 {data?.resetHourLabel || "오후 4시"}(한국 시간)에 0으로 초기화됩니다 — 그때가 하루의 시작입니다
           </p>
         </div>
         <div className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
@@ -414,11 +418,11 @@ export default function UsageDashboardTab() {
           <div className="flex items-center gap-2">
             <span className="text-base">🎯</span>
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              오늘 사용량 (진행 중)
+              이번 사용 주기 (진행 중)
             </h3>
           </div>
           <span className="text-xs text-slate-500 dark:text-slate-400">
-            기준 일자: {today.day || "오늘"}
+            {today.periodLabel || `기준 일자: ${today.day}`}
           </span>
         </div>
 
@@ -497,6 +501,7 @@ export default function UsageDashboardTab() {
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               매일 완결된 일자별 사용량 및 한도 초과 여부를 관측합니다.
+              {data?.dailyBarNote ? ` ${data.dailyBarNote}` : ""}
             </p>
           </div>
 
