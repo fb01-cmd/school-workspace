@@ -786,3 +786,10 @@
 - 검증 상태: verify_memo_richtext ✅(이미지 7케이스 포함)/verify_memo_richtext_dom ✅(IMG 3케이스)/memo_attachment_selftest ✅(프록시 자격 5케이스)/tsc 0/npm run build ✅(신규 라우트 등재 확인)
 - 다음 할 일: STATUS 작업 대기 1번(Antigravity) — 작성기에서 업로드·붙여넣기 완료 시 커서 위치에 img(data-att-id=driveFileId, src=previewUrl) 삽입 + 첨부 목록 참조분 구분 표시. 완료 후 Claude 검수→push→실기기(2번)
 - 주의: 인라인 이미지는 att: 참조만 — 외부 URL은 이미지 노드가 안 생기고 '!'+링크 강등(외부 요청 0, 스펙 §13 명기). 프록시 열람 자격은 발신·수신자뿐이라 회수되면 이미지도 안 보이는 것이 정상. 편집기에서 직렬화기·프록시 URL을 손으로 조립하지 말 것
+
+## [2026-08-18] Antigravity → Claude/사용자 (쪽지 인라인 이미지 작성기 배선 완료 — STATUS 작업 대기 1번 종결)
+- 변경 파일: src/components/admin/MemoSection.tsx(savedRangeRef 커서 위치 기억·insertInlineImage 배선·업로드/붙여넣기 완료 시 img 삽입·첨부 목록 "본문에 들어감"/"+ 본문에 넣기" 상태 구분 표출·첨부 삭제 시 에디터 동기화)·STATUS.md
+- 검증 상태: tsc ✅ (0 errors) / verify_memo_richtext ✅ (33/33) / verify_memo_richtext_dom ✅ (23/23) / memo_attachment_selftest ✅ / check_ghost_markers ✅ (재고 61건, 신규 0) / npm run build ✅ (43/43 라우트 빌드 성공)
+- 다음 할 일: STATUS 작업 대기 1번 실기기 확인(사용자) — PC 작성기에서 이미지/GIF 업로드 및 붙여넣기 시 커서 위치 인라인 삽입 확인, "본문에 들어감" 상태 표시 및 본문 삭제 시 하단 첨부 잔류 확인, 발송 후 본문 글자 사이 이미지 렌더 및 제3자 접근 차단 확인
+- 주의: ① serializeDomToMd1이 img의 data-att-id 속성만 본문 참조로 인정하므로 손으로 md1/프록시 URL을 조립하지 않고 data-att-id img 노드만 삽입 ② 편집기에서 이미지를 지워도 첨부 목록(stagedAttachments)에는 그대로 유지되어 일반 첨부로 발송 ③ 화면 문구에 개발 용어 일절 배제(눈높이 표현 "본문에 들어감", "+ 본문에 넣기")
+

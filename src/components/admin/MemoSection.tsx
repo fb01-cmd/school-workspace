@@ -1252,9 +1252,99 @@ function ComposeModal({
   const [addSearchVal, setAddSearchVal] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const savedRangeRef = useRef<Range | null>(null);
 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+
+  // 편집기 커서/선택 영역 저장 — 외부 버튼 클릭·파일 다이얼로그 후에도 마지막 입력 위치 유지
+  const saveSelection = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editorRef.current) {
+      const range = sel.getRangeAt(0);
+      if (editorRef.current.contains(range.commonAncestorContainer)) {
+        savedRangeRef.current = range.cloneRange();
+      }
+    }
+  }, []);
+
+  const syncBodyMd1 = useCallback(() => {
+    if (editorRef.current) {
+      const md1 = serializeDomToMd1(editorRef.current);
+      setBodyMd1(md1);
+      return md1;
+    }
+    return "";
+  }, []);
+
+  // 편집기 커서 위치에 이미지 노드 삽입 (spec §13)
+  // serializeDomToMd1이 img의 data-att-id만 본문 참조로 인정하므로 data-att-id를 반드시 세팅한다.
+  const insertInlineImage = useCallback(
+    (attId: string, previewUrl: string, fileName: string) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+
+      const img = document.createElement("img");
+      img.setAttribute("data-att-id", attId);
+      img.setAttribute("src", previewUrl);
+      img.setAttribute("alt", fileName);
+      img.className = "max-w-full h-auto rounded-lg my-2 block";
+      img.style.maxWidth = "100%";
+      img.style.height = "auto";
+      img.style.display = "block";
+      img.style.margin = "0.5rem 0";
+      img.style.borderRadius = "0.5rem";
+
+      editor.focus();
+
+      const sel = window.getSelection();
+      let range: Range | null = null;
+
+      if (sel && sel.rangeCount > 0) {
+        const currentRange = sel.getRangeAt(0);
+        if (editor.contains(currentRange.commonAncestorContainer)) {
+          range = currentRange;
+        }
+      }
+
+      if (
+        !range &&
+        savedRangeRef.current &&
+        editor.contains(savedRangeRef.current.commonAncestorContainer)
+      ) {
+        range = savedRangeRef.current;
+      }
+
+      if (range) {
+        range.deleteContents();
+        range.insertNode(img);
+
+        // 이미지 뒤로 커서 이동
+        const after = document.createRange();
+        after.setStartAfter(img);
+        after.collapse(true);
+        sel?.removeAllRanges();
+        sel?.addRange(after);
+        savedRangeRef.current = after.cloneRange();
+      } else {
+        editor.appendChild(img);
+        const after = document.createRange();
+        after.setStartAfter(img);
+        after.collapse(true);
+        sel?.removeAllRanges();
+        sel?.addRange(after);
+        savedRangeRef.current = after.cloneRange();
+      }
+
+      syncBodyMd1();
+    },
+    [syncBodyMd1]
+  );
+
+  // 본문에서 참조 중인 첨부 ID 집합 실시간 추적 (spec §13)
+  const inlineAttachmentIds = useMemo(() => {
+    return new Set(collectMd1AttachmentIds(bodyMd1));
+  }, [bodyMd1]);
 
   // 부서별 구성원 목록 — deptOrder 순서대로, 소속 없는 계정 제외
   // 결함 5 수정: resolveDisplayName 헬퍼 통일 (p.name || email.split("@")[0] 각자 쓰던 것 제거)
@@ -1418,6 +1508,10 @@ function ComposeModal({
                 : a
             )
           );
+
+          // 업로드 완료 즉시 편집기 커서 위치에 이미지 노드 삽입 (spec §13)
+          const preview = item.previewUrl || uploaded.thumbnailLink || "";
+          insertInlineImage(uploaded.driveFileId, preview, safeName);
         } catch (err: any) {
           setStagedAttachments((prev) =>
             prev.map((a) =>
@@ -1482,18 +1576,17 @@ function ComposeModal({
       if (target?.previewUrl && target.previewUrl.startsWith("blob:")) {
         URL.revokeObjectURL(target.previewUrl);
       }
+      // 첨부 삭제 시 본문에 들어간 해당 이미지도 함께 정리
+      if (target?.attachment?.driveFileId && editorRef.current) {
+        const imgs = editorRef.current.querySelectorAll(
+          `img[data-att-id="${target.attachment.driveFileId}"]`
+        );
+        imgs.forEach((img) => img.remove());
+        setTimeout(syncBodyMd1, 0);
+      }
       return prev.filter((a) => a.id !== id);
     });
   };
-
-  const syncBodyMd1 = useCallback(() => {
-    if (editorRef.current) {
-      const md1 = serializeDomToMd1(editorRef.current);
-      setBodyMd1(md1);
-      return md1;
-    }
-    return "";
-  }, []);
 
   const handleEditorPaste = (e: React.ClipboardEvent) => {
     // 1. 이미지 클립보드 항목 감지 시 기존 첨부 업로드 파이프라인으로 연결
@@ -1529,6 +1622,7 @@ function ComposeModal({
     if (text) {
       document.execCommand("insertText", false, text);
       syncBodyMd1();
+      saveSelection();
     }
   };
 
@@ -1833,21 +1927,33 @@ function ComposeModal({
                     ref={editorRef}
                     contentEditable
                     suppressContentEditableWarning
-                    onInput={syncBodyMd1}
+                    onInput={() => {
+                      syncBodyMd1();
+                      saveSelection();
+                    }}
                     onPaste={handleEditorPaste}
+                    onSelect={saveSelection}
+                    onMouseUp={saveSelection}
+                    onBlur={saveSelection}
                     onKeyDown={(e) => {
                       if (e.ctrlKey || e.metaKey) {
                         if (["b", "B", "i", "I", "u", "U"].includes(e.key)) {
-                          setTimeout(syncBodyMd1, 0);
+                          setTimeout(() => {
+                            syncBodyMd1();
+                            saveSelection();
+                          }, 0);
                         }
                       }
                     }}
-                    onKeyUp={syncBodyMd1}
+                    onKeyUp={() => {
+                      syncBodyMd1();
+                      saveSelection();
+                    }}
                     role="textbox"
                     aria-multiline="true"
                     aria-label="쪽지 내용"
                     data-placeholder="내용을 입력하세요"
-                    className="w-full px-3.5 py-2.5 text-[15px] leading-relaxed min-h-[160px] max-h-[300px] overflow-y-auto focus:outline-none bg-white text-slate-800 font-sans rounded-b-lg empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1.5 [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:rounded-r-md [&_blockquote]:my-1.5 [&_blockquote]:text-slate-700 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic"
+                    className="w-full px-3.5 py-2.5 text-[15px] leading-relaxed min-h-[160px] max-h-[300px] overflow-y-auto focus:outline-none bg-white text-slate-800 font-sans rounded-b-lg empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1.5 [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:rounded-r-md [&_blockquote]:my-1.5 [&_blockquote]:text-slate-700 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-2 [&_img]:block"
                   />
                 </div>
               </div>
@@ -1937,71 +2043,104 @@ function ComposeModal({
 
                 {stagedAttachments.length > 0 && (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-2">
-                    {stagedAttachments.map((item) => (
-                      <div
-                        key={item.id}
-                        className={`relative flex flex-col bg-slate-50 border rounded-xl overflow-hidden text-xs transition-all ${
-                          item.status === "error"
-                            ? "border-rose-300 bg-rose-50/50"
-                            : item.status === "done"
-                            ? "border-slate-200"
-                            : "border-indigo-200 bg-indigo-50/30"
-                        }`}
-                      >
-                        {/* 썸네일 미리보기 영역 */}
-                        <div className="relative w-full h-24 bg-slate-100 flex items-center justify-center overflow-hidden">
-                          {item.previewUrl ? (
-                            <img
-                              src={item.previewUrl}
-                              alt={item.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="text-slate-400 text-xs">미리보기 없음</div>
-                          )}
+                    {stagedAttachments.map((item) => {
+                      const isInline =
+                        item.status === "done" && item.attachment
+                          ? inlineAttachmentIds.has(item.attachment.driveFileId)
+                          : false;
 
-                          {/* 상태 오버레이 (리사이즈 / 업로드 중) */}
-                          {(item.status === "resizing" || item.status === "uploading") && (
-                            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex flex-col items-center justify-center text-white gap-1 p-1">
-                              <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                              <span className="text-[10px] font-bold">{item.progressText || "처리 중…"}</span>
+                      return (
+                        <div
+                          key={item.id}
+                          className={`relative flex flex-col bg-slate-50 border rounded-xl overflow-hidden text-xs transition-all ${
+                            item.status === "error"
+                              ? "border-rose-300 bg-rose-50/50"
+                              : item.status === "done"
+                              ? isInline
+                                ? "border-indigo-300 bg-indigo-50/20"
+                                : "border-slate-200"
+                              : "border-indigo-200 bg-indigo-50/30"
+                          }`}
+                        >
+                          {/* 썸네일 미리보기 영역 */}
+                          <div className="relative w-full h-24 bg-slate-100 flex items-center justify-center overflow-hidden">
+                            {item.previewUrl ? (
+                              <img
+                                src={item.previewUrl}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="text-slate-400 text-xs">미리보기 없음</div>
+                            )}
+
+                            {/* 본문에 들어감 뱃지 (썸네일 좌측 상단) */}
+                            {isInline && (
+                              <div className="absolute top-1.5 left-1.5 bg-indigo-600/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-xs backdrop-blur-[1px]">
+                                본문에 들어감
+                              </div>
+                            )}
+
+                            {/* 상태 오버레이 (리사이즈 / 업로드 중) */}
+                            {(item.status === "resizing" || item.status === "uploading") && (
+                              <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex flex-col items-center justify-center text-white gap-1 p-1">
+                                <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                                <span className="text-[10px] font-bold">{item.progressText || "처리 중…"}</span>
+                              </div>
+                            )}
+
+                            {/* 삭제 버튼 */}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveAttachment(item.id)}
+                              className="absolute top-1 right-1 w-5 h-5 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                              title="삭제"
+                              aria-label="첨부 이미지 삭제"
+                            >
+                              ×
+                            </button>
+                          </div>
+
+                          {/* 파일 정보 및 상태 라벨 */}
+                          <div className="p-2 space-y-1">
+                            <p className="font-medium text-slate-800 truncate" title={item.name}>
+                              {item.name}
+                            </p>
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span>{formatAttachmentSize(item.size)}</span>
+                              {item.status === "done" && item.attachment && (
+                                isInline ? (
+                                  <span className="text-indigo-600 font-semibold">
+                                    ✓ 본문에 들어감
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      insertInlineImage(
+                                        item.attachment!.driveFileId,
+                                        item.previewUrl || item.attachment!.thumbnailLink || "",
+                                        item.name
+                                      )
+                                    }
+                                    className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded font-medium transition-colors cursor-pointer"
+                                    title="본문 커서 위치에 넣기"
+                                  >
+                                    + 본문에 넣기
+                                  </button>
+                                )
+                              )}
                             </div>
-                          )}
-
-                          {/* 삭제 버튼 */}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveAttachment(item.id)}
-                            className="absolute top-1 right-1 w-5 h-5 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
-                            title="삭제"
-                            aria-label="첨부 이미지 삭제"
-                          >
-                            ×
-                          </button>
-                        </div>
-
-                        {/* 파일 정보 및 상태 라벨 */}
-                        <div className="p-2 space-y-0.5">
-                          <p className="font-medium text-slate-800 truncate" title={item.name}>
-                            {item.name}
-                          </p>
-                          <div className="flex items-center justify-between text-[10px] text-slate-400">
-                            <span>{formatAttachmentSize(item.size)}</span>
-                            {item.status === "done" && (
-                              <span className="text-emerald-600 font-bold flex items-center gap-0.5">
-                                ✓ 완료
-                              </span>
+                            {/* 실패 사유는 잘라내지 않는다 — 사용자가 사유를 보고 조치해야 한다 (2026-08-18 실기기 지적) */}
+                            {item.status === "error" && (
+                              <p className="text-[10px] text-rose-600 font-semibold leading-snug">
+                                ⚠️ {item.error || "업로드에 실패했습니다."}
+                              </p>
                             )}
                           </div>
-                          {/* 실패 사유는 잘라내지 않는다 — 사용자가 사유를 보고 조치해야 한다 (2026-08-18 실기기 지적) */}
-                          {item.status === "error" && (
-                            <p className="text-[10px] text-rose-600 font-semibold leading-snug">
-                              ⚠️ {item.error || "업로드에 실패했습니다."}
-                            </p>
-                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
