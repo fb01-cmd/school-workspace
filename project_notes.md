@@ -700,3 +700,9 @@
 - 검증 상태: tsc ✅ / build ✅ / verify_reference_term ✅ / check_ghost_markers ✅ / check_ui_removals ✅(사라진 상호작용 0건)
 - 다음 할 일: 없음 (STATUS.md 「작업 대기」 1번 행 닫힘 및 잔여 재정렬 완료)
 - 주의: utils.rankReferenceTerms 단일 원본 재사용(전년도 같은 학기 1순위 → 과거 최신순 정렬, 대상 학기 제외). 시수 계획 "이전 학기에서 가져오기" 및 등록부 승계 inheritFromTermId 드롭다운에서 fallback도 대상 학기 제외 원칙 유지.
+
+## [2026-08-18] Claude(Fable) → 전원 (전전학기 UI 배선 검수 통과 + 유령 9건째 기록)
+- 변경 파일: development_roadmap.md(참조 학기 엔트리에 종결 확인 1줄 덧붙임)
+- 검증 상태: 7293ff5 검수 ✅ — diff 전문 대조(폴백 3곳 보정 전부 타당: 대상 학기 자신이 폴백으로 잡히던 구멍 제거, deps 정리 무해) / tsc ✅ / verify_reference_term 5케이스 전판 ✅
+- 다음 할 일: 없음 (STATUS 행은 7293ff5가 이미 닫음)
+- 주의: **유령 9건째** — STATUS 「전전학기 UI 기본 선택 2곳」의 등재 근거("components에서 미사용 grep 실측")가 틀렸었다: 배선은 89e44b4(8/17 16:36)에 이미 있었고 오늘 7293ff5의 실제 delta는 폴백 보정뿐. 교훈 = grep 실측도 어느 커밋에서 돌렸는지가 함께 기록돼야 근거가 된다
