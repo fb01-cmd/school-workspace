@@ -4,6 +4,22 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-18] Antigravity → Claude/사용자 (주 운영 목록 지난 주 기본 숨김·토글 및 이번 주 배지 완결)
+- **배경**: `development_roadmap.md` §2-④ 주 운영 목록에 지난 주가 계속 남아 이번 주가 밀리는 문제 해결 (CalendarManageTab 패턴 이식).
+- **변경 파일**:
+  - `src/components/admin/timetable/WeekManageTab.tsx`:
+    - `getTodayKSTISO()`, `getWeekEndISO()` 기준 과거 주 판정 (`주 시작일 + 6일(일요일) < 오늘(KST)` — 주말 경과 기준).
+    - `showPastWeeks` 상태 기본값 `false`로 지난 주 기본 숨김 적용.
+    - 헤더에 `지난 주 N개 숨김` 안내 및 목록 하단 `▼ 지난 주 N개 보기 / ▲ 지난 주 N개 숨기기` 토글 버튼 추가.
+    - 펼쳤을 때 지난 주 행 흐리게(`opacity-60`, `bg-gray-50/60`) 표시, 과거 주의 `⚙️ 휴업·시수 수정` 기능은 그대로 유지.
+    - 학기 말 등 모든 주가 과거인 경우 빈 목록 안내 및 `▼ 지난 주 N개 보기` 탈출구 버튼 제공.
+    - 이번 주 행(`시작일 <= 오늘(KST) <= 시작일 + 6일`)에 `이번 주` 배지 및 좌측 인디고 강조 테두리 적용.
+    - 정렬 순서(오름차순) 및 주 문서 삭제 방지 유지.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 0건 — empty state 조건부 텍스트 전환)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (42/42 static pages prerendered)
+
 ## [2026-08-18] Antigravity → Claude/사용자 (사용량 알림 받는 사람 관리 UI 및 알림 바로가기 권한 제약 완결)
 - **변경 파일**:
   - `src/components/admin/UsageDashboardTab.tsx`:

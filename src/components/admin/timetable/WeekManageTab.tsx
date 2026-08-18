@@ -10,6 +10,18 @@ interface WeekManageTabProps {
   onSettingsChange?: () => void;
 }
 
+/** KST 기준 오늘 날짜 (YYYY-MM-DD) — 서버/클라이언트 KST 동기화 */
+function getTodayKSTISO(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** 주 시작일(월요일)로부터 6일 뒤인 일요일 날짜 계산 (YYYY-MM-DD) */
+function getWeekEndISO(startDate: string): string {
+  const d = new Date(startDate + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 6);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function WeekManageTab({
   activeTermId,
   periodsPerDay = 7,
@@ -20,6 +32,9 @@ export default function WeekManageTab({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // 지난 주 숨김/표시 토글 상태 (기본 숨김)
+  const [showPastWeeks, setShowPastWeeks] = useState(false);
 
   // 공개 범위 설정 상태 (선택값 1~8주 = 오늘 주 포함 총 주수 / publishWeeksAhead = 선택값 - 1)
   const [selectedTotalWeeks, setSelectedTotalWeeks] = useState(publishWeeksAhead + 1);
@@ -141,6 +156,24 @@ export default function WeekManageTab({
 
   const DAY_NAMES = ["", "월", "화", "수", "목", "금"];
 
+  // KST 오늘 날짜 기준 지난 주 / 이번 주 판정
+  const todayKST = getTodayKSTISO();
+
+  // 지난 주 판정: 주 시작일 + 6일(일요일) < 오늘(KST) — 주말이 지나야 지난 주
+  const isPastWeek = (w: TimetableWeek) => {
+    const weekEnd = getWeekEndISO(w.startDate);
+    return weekEnd < todayKST;
+  };
+
+  // 이번 주 판정: 시작일 <= 오늘(KST) <= 시작일 + 6일(일요일)
+  const isCurrentWeek = (w: TimetableWeek) => {
+    const weekEnd = getWeekEndISO(w.startDate);
+    return w.startDate <= todayKST && todayKST <= weekEnd;
+  };
+
+  const pastWeeksCount = weeks.filter(isPastWeek).length;
+  const displayWeeks = showPastWeeks ? weeks : weeks.filter((w) => !isPastWeek(w));
+
   if (!activeTermId) {
     return (
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center text-amber-900">
@@ -224,15 +257,45 @@ export default function WeekManageTab({
 
       {/* 주 목록 테이블 */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="p-4 sm:px-6 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+            <span>📋 주 운영 목록 ({displayWeeks.length}개 주{pastWeeksCount > 0 && !showPastWeeks ? ` / 지난 주 ${pastWeeksCount}개 숨김` : ""})</span>
+          </h3>
+          <button
+            onClick={fetchWeeks}
+            disabled={loading}
+            className="text-xs text-indigo-600 hover:text-indigo-800 font-bold transition-colors shrink-0 cursor-pointer"
+          >
+            🔄 새로고침
+          </button>
+        </div>
+
         {loading ? (
           <div className="p-12 text-center text-xs font-semibold text-gray-500">
             <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-indigo-600 border-t-transparent mb-2"></div>
             <p>주 목록을 불러오는 중입니다...</p>
           </div>
-        ) : weeks.length === 0 ? (
-          <div className="p-12 text-center text-xs text-gray-500">
-            <p className="font-semibold mb-1">등록된 주가 없습니다.</p>
-            <p className="text-gray-400">학사일정을 등록하거나 교사 포털에 접속하면 주가 자동으로 파생됩니다.</p>
+        ) : displayWeeks.length === 0 ? (
+          <div className="p-12 text-center text-xs text-gray-500 space-y-2">
+            <p className="font-semibold">
+              {weeks.length > 0 && !showPastWeeks
+                ? "진행 예정인 주가 없습니다 (학기 내 모든 주가 지난 상태)."
+                : "등록된 주가 없습니다."}
+            </p>
+            {weeks.length === 0 && (
+              <p className="text-gray-400">학사일정을 등록하거나 교사 포털에 접속하면 주가 자동으로 파생됩니다.</p>
+            )}
+            {pastWeeksCount > 0 && !showPastWeeks && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPastWeeks(true)}
+                  className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer"
+                >
+                  ▼ 지난 주 {pastWeeksCount}개 보기
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -247,13 +310,38 @@ export default function WeekManageTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-gray-700">
-                {weeks.map((w) => {
+                {displayWeeks.map((w) => {
+                  const isCurrent = isCurrentWeek(w);
+                  const isPast = isPastWeek(w);
                   const holidayCount = (w.days || []).filter((d) => d.holiday).length;
                   const overrideCount = Array.isArray(w.dayOverrides) ? w.dayOverrides.length : 0;
                   return (
-                    <tr key={w.id} className="hover:bg-gray-50/80 transition-colors">
+                    <tr
+                      key={w.id}
+                      className={`transition-colors ${
+                        isCurrent
+                          ? "bg-indigo-50/40 hover:bg-indigo-50/70 border-l-4 border-l-indigo-600 font-medium"
+                          : isPast
+                          ? "bg-gray-50/60 hover:bg-gray-50 opacity-60 text-gray-500"
+                          : "hover:bg-gray-50/80 text-gray-700"
+                      }`}
+                    >
                       <td className="py-3.5 px-4 font-bold text-indigo-900">
-                        {w.startDate} ({w.id})
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span>
+                            {w.startDate} ({w.id})
+                          </span>
+                          {isCurrent && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white shadow-2xs">
+                              이번 주
+                            </span>
+                          )}
+                          {isPast && showPastWeeks && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">
+                              지난 주
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -303,7 +391,7 @@ export default function WeekManageTab({
                       <td className="py-3.5 px-4 text-right">
                         <button
                           onClick={() => openEditModal(w)}
-                          className="px-3 py-1.5 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-700 rounded-lg text-xs font-bold transition-colors"
+                          className="px-3 py-1.5 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
                         >
                           ⚙️ 휴업·시수 수정
                         </button>
@@ -313,6 +401,23 @@ export default function WeekManageTab({
                 })}
               </tbody>
             </table>
+
+            {/* 지난 주 토글 버튼 */}
+            {pastWeeksCount > 0 && (
+              <div className="p-4 bg-gray-50/60 border-t border-gray-100 text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowPastWeeks(!showPastWeeks)}
+                  className="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1.5 border border-gray-300 shadow-2xs cursor-pointer"
+                >
+                  <span>
+                    {showPastWeeks
+                      ? `▲ 지난 주 ${pastWeeksCount}개 숨기기`
+                      : `▼ 지난 주 ${pastWeeksCount}개 보기`}
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
