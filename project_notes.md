@@ -1546,3 +1546,10 @@
 - **신규 발견 ② (칩 등재, 미수정)**: 학생 전출 삭제 유예 붕괴 — lifecycle/cron의 학생 브랜치는 삭제를 저장된 deleteDueDate(기한+유예)로 발화하는데 자동 정지 시 재계산이 없어, 정지가 지연되면(교사 hjl@ 7일 지연 전례와 같은 유형) 정지 직후 삭제될 수 있다. 교사 브랜치(suspendedAt+30)는 정상 — **hjl@ 8/24 삭제 전제는 코드와 일치함을 확정**. 처방 방향은 칩 프롬프트에 기록
 - **잔여 확인 (진짜)**: 교사 전출 화면 정지 행의 D+N이 여전히 기한 기준(TeacherLifecycle.tsx:676, 「삭제 예정일」 미표시) — 8/18 나이스 엔트리의 UI 잔여가 아직 열려 있음 (Antigravity 몫)
 - 다음 할 일: ① 내일 아침 — 첫 실전 경보(playviolin@ 수신함)·파기 크론(Vercel 로그 memoPurge) 확인 ② 8/24 후 check_cron_health ③ 사용자 — 미push 커밋 배포 여부·9c-H 입력 경로 결정
+
+## [2026-08-18] Claude(Fable) → 사용자 (학생 전출 삭제 유예 붕괴 결함 수정 — 큐 점검 신규 발견 ② 종결)
+- 변경 파일: src/app/api/workspace/lifecycle/cron/route.ts(학생 삭제 판정)·src/components/admin/lifecycle/TransferOutTab.tsx(SUSPENDED 행 표기 동기화) — 커밋 63efa5d
+- 검증 상태: tsc ✅ / build ✅ / check_ui_removals ✅(사라진 상호작용 없음) / 실데이터 대조 ✅(읽기 5건 — 현행 태스크 3건 전부 정지 전 상태, 판정일 변화 0건 = 순수 예방 수정)
+- 판단 요지: 처방은 「suspendedAt 우선」이 아니라 **max(저장 deleteDueDate, suspendedAt+유예)** 로 확정 — suspendedAt 단독 우선이면 관리자 「즉시 정지」(조기 정지, deleteDueDate 미재계산 경로)에서 학생에게 메일로 안내된 삭제 예정일보다 조기 삭제될 수 있다. max는 늦은 정지엔 유예 보장, 이른 정지엔 안내일 준수 — 어느 쪽으로도 예고보다 이르게 삭제하지 않는다. 학생 셀프 조기 정지는 deleteDueDate를 재계산 저장하므로 충돌 없음. 유예일수는 크론이 이미 읽는 settings 스냅샷 재사용(Firestore 추가 읽기 0)
+- 다음 할 일: **Antigravity** — 학생 포털 문구 1건: student-portal/page.tsx:422 「영구 삭제 예정: 계정 일시정지 후 **7일** 경과 시」가 하드코딩이라 설정(transferOutSettings.deleteGraceDays)이 7이 아니게 바뀌면 어긋난다. get_student_transfer_status 응답 또는 설정값으로 치환할 것
+- 주의: 이 워크트리(claude/bold-perlman-05adb1)는 main 미병합 — 배포 반영은 병합 후. 검증 스크립트는 스크래치 전용으로 저장소에 안 남김
