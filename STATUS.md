@@ -35,8 +35,7 @@
 
 | # | 항목 | 담당 | 근거·확인 방법 | 최종 확인 |
 |---|---|---|---|---|
-| 1 | 과목 사전: 관문 흐름 실기기 확인 → 별칭 확정 후 폴백 제거(2단계) | 사용자 → Claude | 관문 UI 구현 흔적 실측(AssignmentHoursModal) — 실기기 확인 미기록. 폴백 제거는 subject_dictionary_spec §5 | 8/18 |
-| 2 | 대시보드 미처리 건수 카드 (승인 대기 N·생활지도 N·교체 신청 N) | Antigravity | admin/page.tsx 실측 — 카드 그리드는 순수 바로가기(건수 0곳), 건수는 메뉴 배지(pendingProfileCount) 1곳뿐 | 8/18 |
+| 1 | 대시보드 미처리 건수 카드 (승인 대기 N·생활지도 N·교체 신청 N) | Antigravity | admin/page.tsx 실측 — 카드 그리드는 순수 바로가기(건수 0곳), 건수는 메뉴 배지(pendingProfileCount) 1곳뿐 | 8/18 |
 
 ## 스펙 후보 (사용자가 고르면 Claude 착수 — 8월 내 Fable 여유 활용 권장)
 
