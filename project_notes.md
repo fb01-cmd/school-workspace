@@ -1421,3 +1421,9 @@
 - 검증 상태: verify_usage_dashboard 4부 전판 ✅(경계·서머타임 회귀 감시·스냅샷 정합·**교차 대조 36,882 일치**·캐시) / verify_saving_mode 순수 20건 + 실계정 사이클 ✅(흔적 0) / verify_usage_alert 리팩터 후 값 동일 ✅ / tsc ✅ / build ✅(42/42) / check_ui_removals 10888d7 — 표시 1건(fetchMetricSum)은 monitoring.ts 이전에 따른 정당 삭제(경보 값 불변 실측으로 소명)
 - 다음 할 일: **Antigravity** — ① 사용량 화면(usage_dashboard_spec §1·§4: 전체 화면 막대 3종·대시보드 한 줄 요약·알림 클릭 이동) ② 절약 모드 UI(saving_mode_spec §8 순서 2: 문서 구독 배선·super_admin 토글·상시 배너). 이어서 Claude — 절약 모드 순서 3(손잡이 결선)
 - 주의: ① **화면은 `limits`를 응답에서 받아 쓴다** — 한도 상수를 화면에서 재정의하지 말 것 ② **`available:false`일 때 0이나 빈 그래프를 그리지 말 것** — 안내 카드(사용량 0과 혼동 금지) ③ 화면 필수 문구 2개: 「하루 사용량은 매일 오후 4시(한국 시간)에 0으로 초기화됩니다」·「약 N분 전까지 반영된 숫자입니다」 — 없으면 반드시 고장으로 오인된다 ④ 시간별 합계 < 오늘 누계는 **정상**(완결 시간만 담음) ⑤ **firestore.rules 미배포** — 절약 모드 구독을 붙일 때 `firebase deploy --only firestore:rules` 동반 필요 ⑥ 오늘 밤 daily-sync에서 첫 실전 경보 발송 예정(8/16 74% → 단계 50)
+
+## [2026-08-18] Claude(Opus) → 사용자 (절약 모드 순서 3 결선 완결 — 이제 켜면 실제로 줄어든다)
+- 변경 파일: src/lib/timetable/{memoCache,server}.ts·src/lib/cache/clientCache.ts·src/lib/ops/saving_mode.ts(동기 접근자)·src/lib/memo/search_logic.ts(1m 추가·rangeFromDays)·src/components/admin/MemoSection.tsx·src/context/AuthContext.tsx·scripts/verify_saving_mode.ts·docs/saving_mode_spec.md(§10)
+- 검증 상태: verify_saving_mode ✅(결선 6건 포함 전판) / **verify_read_diet ✅**(동등성·커밋 직후 반영·revert 원상 — 최종선 불변 실측) / memo_selftest ✅ / tsc ✅ / build ✅(42/42) / check_ui_removals d8b4a26 — 표시 1건은 정적 ttlMs→동적 함수 교체(의도)
+- 다음 할 일: ① **사용자 — 배포 시 `firebase deploy --only firestore:rules` 필수**(구독이 거부되면 절약 모드가 영영 안 켜진다. 앱은 안 깨짐) ② 사용자 실기기 — 사용량 화면 숫자를 구글 콘솔과 눈으로 대조(순서 4, Claude는 로그인 불가) ③ Claude — 순서 5 효과 실측(절약 모드 켠 채 하루 → 전/후 비교)과 §2 표 4번(목록 실시간 구독) 판단
+- 주의: ① **모르는 상태의 기본값은 언제나 평시** — 설정 읽기 실패 시 절약 모드로 빠지지 않는다(사고로 켜진 상태가 더 나쁘다) ② 클라 캐시 수명은 **소급 적용하지 않는다** — 끄는 순간 전체 만료로 읽기가 튀는 것을 막는 의도적 결정 ③ 서버 손잡이는 최대 5분 지연 반영(화면 배너는 구독이라 즉시) ④ 검색 드롭다운에 「최근 1개월」이 상시 추가됐다(절약 모드와 무관하게 선택 가능) ⑤ **효과 실측 전까지 절약 폭은 추정치다** — 스펙 §2 표는 실측 후 갱신 대상
