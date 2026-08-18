@@ -1435,6 +1435,46 @@ export const listClassroomCourses = async (
 
 
 
+// 기간제 인수인계 — 공동교사 초대/제거 (substitute_handover_spec §3-4·§4)
+// 관리자 사칭으로 실행(도메인 관리자는 도메인 내 코스의 교사 명단을 관리할 수 있음).
+// 기존 classroom.rosters 스코프 범위 — 신규 스코프 없음.
+export const addCourseCoTeacher = async (courseId: string, teacherEmail: string) => {
+  if (isMock) return { courseId, userId: teacherEmail };
+  const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL;
+  const classroom = getClassroomClient(adminEmail || "");
+  if (!classroom) throw new Error("Classroom client not initialized.");
+  try {
+    const res = await classroom.courses.teachers.create({
+      courseId,
+      requestBody: { userId: teacherEmail },
+    });
+    return res.data;
+  } catch (error: any) {
+    // 이미 공동교사면 성공으로 간주 (재실행 멱등)
+    if (error?.code === 409 || error?.response?.status === 409) {
+      return { courseId, userId: teacherEmail, alreadyTeacher: true };
+    }
+    console.error(`Error adding co-teacher ${teacherEmail} to course ${courseId}:`, error);
+    throw error;
+  }
+};
+
+export const removeCourseCoTeacher = async (courseId: string, teacherEmail: string) => {
+  if (isMock) return true;
+  const adminEmail = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL;
+  const classroom = getClassroomClient(adminEmail || "");
+  if (!classroom) throw new Error("Classroom client not initialized.");
+  try {
+    await classroom.courses.teachers.delete({ courseId, userId: teacherEmail });
+    return true;
+  } catch (error: any) {
+    // 이미 명단에 없으면 성공으로 간주 (재실행 멱등)
+    if (error?.code === 404 || error?.response?.status === 404) return true;
+    console.error(`Error removing co-teacher ${teacherEmail} from course ${courseId}:`, error);
+    throw error;
+  }
+};
+
 // Create a new Classroom Course
 export const createClassroomCourse = async (courseName: string, sectionName: string, teacherEmail: string) => {
   if (isMock) {

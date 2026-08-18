@@ -812,3 +812,9 @@
 - 검증 상태: 스펙 문서 — 근거 전부 사용자 인터뷰 증언 + 컴시간 설명서 2종 전문 검색(pdftotext, 기간제·휴직·복직 0건 → 성명 등록부 이름 덮어쓰기가 컴시간의 실무 경로임을 §0-1에 기록)
 - 다음 할 일: STATUS 작업 대기 1번 — 마법사 코어(잔여 요일 변경 산출·치환 개정판 생성 순수 로직 + 서버 액션 + 클래스룸 공동교사 초대/제거, Classroom API 스코프 확인 포함) = Claude
 - 주의: 업무분장·휴직자 계정 조치·나이스는 범위 밖(실무 그대로 — 스펙 §1). 날 단위 인수가 요구사항이라 주 단위 단순화 금지(인터뷰 확정 — "오겠다고 한 날짜부터"). 클래스룸은 공동교사 초대이지 소유 이전 아님, 종료 시 제거까지가 한 쌍
+
+## [2026-08-18] Claude(Fable) → Antigravity (이관 마법사 코어 완결 — 화면 인계)
+- 변경 파일: src/lib/timetable/handover.ts(신설 — 순수 산출: 걸치는 주 의도·치환 ops·날짜 계획)·src/app/api/workspace/handover/route.ts(신설 — preview/commit, 수퍼어드민 단독)·src/lib/google/workspace.ts(공동교사 초대/제거 2종, 신규 스코프 0)·scripts/verify_handover.ts(신설 19케이스)·docs/substitute_handover_spec.md §8 완결 기록·STATUS.md
+- 검증 상태: verify_handover 19케이스 전판 ✅(요일 산술·잔여 요일 추출·공동수업 부분 치환·스탬프 미기록·역이관 대칭·날짜 계획 4갈래) / tsc 0 / npm run build ✅(신규 라우트 등재)
+- 다음 할 일: STATUS 작업 대기 1번(Antigravity) — 마법사 UI. preview 응답의 existingDraftId가 있으면 commit이 409로 거부됨을 화면에서 미리 안내할 것. 완료 후 Claude 검수→push→실기기(§7 시나리오)
+- 주의: 걸치는 주 커밋 = directCommit(substitute) 재사용이라 수신 교사에게 기존 보강 알림이 각 건마다 감. 개정판은 학기당 draft 1개 제약 — 마법사는 남의 초안을 절대 덮어쓰지 않고 중단(409). 클래스룸 조회 실패는 기능 저하로 수용(coursesError) — 마법사 진행 가능
