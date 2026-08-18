@@ -67,6 +67,10 @@ export async function GET(req: NextRequest) {
     // 모든 도메인의 전출 태스크를 순회
     const settingsSnap = await adminDb.collection("settings").get();
     const domains = settingsSnap.docs.map((d) => d.id);
+    // 학생 전출 삭제 판정용 도메인별 유예일수 — 위 스냅샷 재사용 (Firestore 추가 읽기 없음)
+    const deleteGraceDaysByDomain = new Map<string, number>(
+      settingsSnap.docs.map((d) => [d.id, Number(d.data()?.transferOutSettings?.deleteGraceDays) || 7])
+    );
 
     for (const domain of domains) {
       const studentsSnap = await adminDb.collection("transfer_out_tasks").doc(domain).collection("students").get();
@@ -106,11 +110,28 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        else if (task.status === "SUSPENDED" && task.deleteDueDate) {
-          const deleteDue = task.deleteDueDate.toDate
-            ? task.deleteDueDate.toDate()
-            : new Date(task.deleteDueDate);
-          const deleteDueStr = getKSTDateString(deleteDue);
+        else if (task.status === "SUSPENDED" && (task.deleteDueDate || task.suspendedAt)) {
+          // 삭제 판정일 = max(저장된 deleteDueDate, suspendedAt + 삭제유예일수).
+          // deleteDueDate는 태스크 생성 시 「정지 예정일 + 유예」로 박제된 값이라, 크론 중단 등으로
+          // 정지가 예정일보다 늦게 실행되면 저장값만으로는 정지 다음 날 삭제될 수 있다(정지 후 유예 붕괴).
+          // 정지 실행 시각 기준을 함께 계산하되 더 늦은 쪽을 취해, 늦은 정지에는 정지 후 유예를
+          // 보장하고 이른 수동 정지에는 학생에게 안내된 삭제 예정일을 그대로 지킨다.
+          // (학생 셀프 조기 정지는 deleteDueDate 자체를 재계산해 저장하므로 이 규칙과 충돌 없음)
+          const dueCandidates: string[] = [];
+          if (task.deleteDueDate) {
+            const deleteDue = task.deleteDueDate.toDate
+              ? task.deleteDueDate.toDate()
+              : new Date(task.deleteDueDate);
+            dueCandidates.push(getKSTDateString(deleteDue));
+          }
+          if (task.suspendedAt) {
+            const suspendedAt = task.suspendedAt.toDate
+              ? task.suspendedAt.toDate()
+              : new Date(task.suspendedAt);
+            const graceDays = deleteGraceDaysByDomain.get(domain) ?? 7;
+            dueCandidates.push(addDaysToKSTDateString(getKSTDateString(suspendedAt), graceDays));
+          }
+          const deleteDueStr = dueCandidates.reduce((a, b) => (a >= b ? a : b));
 
           if (deleteDueStr <= todayKSTStr) {
             try {
@@ -125,7 +146,7 @@ export async function GET(req: NextRequest) {
                 operatorName: "[자동 처리] 크론 스케줄러",
                 action: "전출/자퇴 계정 자동 영구삭제",
                 targetEmail: email,
-                details: `유예 기간 만료로 계정 자동 영구삭제 처리 (예정일: ${deleteDue.toLocaleDateString("ko-KR")})`,
+                details: `유예 기간 만료로 계정 자동 영구삭제 처리 (판정 기준일: ${deleteDueStr})`,
                 status: "success",
               });
               results.deleted.push(email);

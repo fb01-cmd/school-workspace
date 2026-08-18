@@ -272,6 +272,21 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
     }
   };
 
+  // 삭제 판정 기준일 — 크론과 동일 규칙: max(저장된 deleteDueDate, suspendedAt + 삭제유예일수).
+  // 정지가 예정일보다 늦게 실행된 문서는 저장값이 실제 삭제일보다 이르므로, 화면도 크론 기준으로 계산한다.
+  const getEffectiveDeleteDue = (task: TransferOutTask): Date | null => {
+    const toDate = (ts: any): Date | null => (ts ? (ts.toDate ? ts.toDate() : new Date(ts)) : null);
+    const stored = toDate(task.deleteDueDate);
+    const suspendedAt = toDate(task.suspendedAt);
+    let bySuspend: Date | null = null;
+    if (suspendedAt) {
+      bySuspend = new Date(suspendedAt);
+      bySuspend.setDate(bySuspend.getDate() + (deleteGraceDays || 7));
+    }
+    if (stored && bySuspend) return stored >= bySuspend ? stored : bySuspend;
+    return stored || bySuspend;
+  };
+
   return (
     <div className="space-y-6">
       {/* Description Panel */}
@@ -582,9 +597,9 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                           {task.status === "SUSPENDED" && (
                             <div className="space-y-0.5">
                               <div className="font-bold text-gray-700 flex items-center gap-1.5">
-                                🛑 {getDDay(task.deleteDueDate)}
+                                🛑 {getDDay(getEffectiveDeleteDue(task))}
                               </div>
-                              <div className="text-[10px] text-gray-500 font-medium">삭제 예정: {formatDate(task.deleteDueDate)}</div>
+                              <div className="text-[10px] text-gray-500 font-medium">삭제 예정: {formatDate(getEffectiveDeleteDue(task))}</div>
                             </div>
                           )}
 
