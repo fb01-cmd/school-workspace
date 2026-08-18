@@ -80,6 +80,31 @@ function updateCase(opts: {
 const TEACHER = { uid: TEACHER_UID, email: ME, role: "teacher" };
 const SUPER = { uid: ADMIN_UID, email: ADMIN, role: "super_admin" };
 
+/** platform_config/{doc} 에 대한 접근 케이스 (절약 모드 스위치 — saving_mode_spec §3) */
+function platformConfigCase(opts: {
+  title: string;
+  doc: string;
+  method: "get" | "update";
+  auth?: { uid: string; email: string; role: string };
+  expect: "ALLOW" | "DENY";
+}) {
+  return {
+    title: opts.title,
+    testCase: {
+      expectation: opts.expect,
+      functionMocks: opts.auth ? userDocMocks(opts.auth.uid, opts.auth.role) : [],
+      request: {
+        ...(opts.auth ? { auth: authToken(opts.auth.email, opts.auth.uid) } : {}),
+        method: opts.method,
+        path: `/databases/(default)/documents/platform_config/${opts.doc}`,
+        time: "2026-08-18T05:00:00Z",
+        ...(opts.method === "update" ? { resource: { data: { on: true } } } : {}),
+      },
+      ...(opts.method === "update" ? { resource: { data: { on: false } } } : {}),
+    },
+  };
+}
+
 const CASES = [
   updateCase({
     title: "① 본인이 내선번호만 수정 → 허용되어야 한다 (2계층 즉시 저장)",
@@ -157,6 +182,34 @@ const CASES = [
     docEmail: ME,
     auth: { uid: "uid_anon", email: "outsider@gmail.com", role: "teacher" },
     after: { ...BASE_PROFILE, extension: "5678", updatedBy: "outsider@gmail.com" },
+    expect: "DENY",
+  }),
+  // ── 절약 모드 스위치 (2026-08-18 추가 규칙) ──
+  platformConfigCase({
+    title: "절약: 교사가 절약 모드 스위치를 읽음 → 허용 (구독이 성립해야 레버가 퍼진다)",
+    doc: "saving_mode",
+    method: "get",
+    auth: TEACHER,
+    expect: "ALLOW",
+  }),
+  platformConfigCase({
+    title: "절약: 비로그인 사용자가 스위치를 읽음 → 거부",
+    doc: "saving_mode",
+    method: "get",
+    expect: "DENY",
+  }),
+  platformConfigCase({
+    title: "절약: 수퍼어드민이라도 클라이언트에서 직접 씀 → 거부 (쓰기는 서버 경유만)",
+    doc: "saving_mode",
+    method: "update",
+    auth: SUPER,
+    expect: "DENY",
+  }),
+  platformConfigCase({
+    title: "절약: 같은 컬렉션의 다른 문서(첨부 폴더 캐시) 읽기 → 거부 (예외는 스위치 1건뿐)",
+    doc: "attachment_folders",
+    method: "get",
+    auth: TEACHER,
     expect: "DENY",
   }),
 ];
