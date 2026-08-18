@@ -9,8 +9,9 @@
 ## 세션 시작 순서
 
 1. **[`AGENTS.md`](./AGENTS.md)** — 모든 공통 규칙 (필수)
-2. **[`development_roadmap.md`](./development_roadmap.md)** — 완료/미완료 Phase, 아이디어 목록
-3. **[`project_notes.md`](./project_notes.md)** — 미검증 사항, 아키텍처 결정, 핸드오버 누적 기록
+2. **[`STATUS.md`](./STATUS.md)** — **지금 열린 항목 대장 (단일 원본, AGENTS.md ④-3)** — 대기·잔여 판단은 여기서만
+3. **[`development_roadmap.md`](./development_roadmap.md)** — 완료/미완료 Phase, 아이디어 목록 (상태 문구는 일지 기록 — 낡았을 수 있음)
+4. **[`project_notes.md`](./project_notes.md)** — 미검증 사항, 아키텍처 결정, 핸드오버 누적 기록
 
 > **비용 주의**: 위 문서를 직접 훑는 것도 토큰 비용이다. Antigravity가 이미 맥락을 쥐고 있다면, 저장소를 스스로 탐색하는 대신 컨텍스트 팩(`AGENTS.md`의 협업 규칙 ⑦)으로 요약을 넘겨받는 편이 낫다.
 

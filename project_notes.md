@@ -1553,3 +1553,15 @@
 - 판단 요지: 처방은 「suspendedAt 우선」이 아니라 **max(저장 deleteDueDate, suspendedAt+유예)** 로 확정 — suspendedAt 단독 우선이면 관리자 「즉시 정지」(조기 정지, deleteDueDate 미재계산 경로)에서 학생에게 메일로 안내된 삭제 예정일보다 조기 삭제될 수 있다. max는 늦은 정지엔 유예 보장, 이른 정지엔 안내일 준수 — 어느 쪽으로도 예고보다 이르게 삭제하지 않는다. 학생 셀프 조기 정지는 deleteDueDate를 재계산 저장하므로 충돌 없음. 유예일수는 크론이 이미 읽는 settings 스냅샷 재사용(Firestore 추가 읽기 0)
 - 다음 할 일: **Antigravity** — 학생 포털 문구 1건: student-portal/page.tsx:422 「영구 삭제 예정: 계정 일시정지 후 **7일** 경과 시」가 하드코딩이라 설정(transferOutSettings.deleteGraceDays)이 7이 아니게 바뀌면 어긋난다. get_student_transfer_status 응답 또는 설정값으로 치환할 것
 - 주의: 이 워크트리(claude/bold-perlman-05adb1)는 main 미병합 — 배포 반영은 병합 후. 검증 스크립트는 스크래치 전용으로 저장소에 안 남김
+## [2026-08-18] Claude(Fable) → 전원 (STATUS.md 신설 — 대장·일지 분리로 유령 생산 구조 제거)
+- 변경 파일: STATUS.md(신설, 열린 항목 대장)·AGENTS.md(④-3 신설)·development_roadmap.md(머리 배너)·CLAUDE.md(세션 시작 순서에 STATUS.md 편입)
+- 배경: 오늘 하루 유령 4건(9월 질문지·3학년 이동수업 파일·시수표 입력 경로·과목 사전 관문 UI) — 전부 본문 속 상태 문구가 낡은 채 남은 것. ④-2의 상태 줄 1줄 예외로는 본문 유령을 못 잡아, 대장을 파일로 분리(사용자 지시 "낭비를 막게")
+- 새 규칙 요지(상세 AGENTS.md ④-3): ① 열린 항목 판단은 STATUS.md에서만 ② STATUS.md는 append-only 예외 — 닫힌 행은 지운다 ③ 완료·착수·결정 커밋에 STATUS.md 갱신 동반 ④ 행마다 확인 방법 필수
+- 초기 데이터: 오늘 큐 전수 점검(코드·커밋·원문 대조)의 검증 결과를 그대로 심음 — 진행 중 2·날짜 트리거 6·사용자 결정 3·작업 대기 2·경미 3
+- 주의: **Antigravity도 다음 세션부터 STATUS.md를 읽고 갱신해야 한다** — AGENTS.md를 세션 시작에 읽으므로 ④-3으로 전달되지만, 첫 커밋에서 STATUS.md 갱신 누락이 보이면 지적할 것
+
+## [2026-08-18] Claude(Fable) → 사용자 (전출 유예 트랙 검수·병합 — 종결)
+- 검수: Antigravity 3012ee8(포털 유예일수 하드코딩 해소) diff 전문 대조 ✅ — 설정값 연동·폴백 7이 서버(`|| 7`)와 일치, loadSettings 분리로 전출 학생도 졸업 태스크 조회 실패와 무관하게 설정 로드(개선). 삭제 8줄은 전부 이동(재추가)·치환분으로 사라진 상호작용 없음(수기 대조 — 본 저장소 스크립트 실행이 이 세션 권한상 불가)
+- 지적: 3012ee8에 ④-3 인계 게이트 누락 — project_notes 핸드오버 엔트리·검증 상태 기재 없음. 다음 Antigravity 세션에서 준수 요청
+- 병합: main(3012ee8·67c0676 포함) ← 이 브랜치 상호 병합 — project_notes 꼬리 append-append 충돌 1건은 양쪽 엔트리 전량 보존으로 해소. STATUS.md 「학생 전출 삭제 유예 결함 수정」 행 마감(수정 63efa5d + 검수 + 병합 완료)
+- 주의: main 반영은 본 저장소에서 `git merge claude/bold-perlman-05adb1` 한 번(빨리감기) — push(배포)는 여전히 사용자 결정

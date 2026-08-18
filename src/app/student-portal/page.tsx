@@ -50,6 +50,19 @@ export default function StudentPortal() {
     return getKSTDateString(tomorrow);
   };
 
+  const loadSettings = async () => {
+    if (!userData?.domain) return;
+    try {
+      const settingsRef = doc(db, "settings", userData.domain);
+      const settingsSnap = await getDoc(settingsRef);
+      if (settingsSnap.exists()) {
+        setSettings(settingsSnap.data());
+      }
+    } catch (err) {
+      console.error("Failed to load settings:", err);
+    }
+  };
+
   const loadGradTask = async () => {
     if (!userData?.email || !userData?.domain) return;
     try {
@@ -63,13 +76,6 @@ export default function StudentPortal() {
         if (!taskData.consentSubmitted && taskData.status === "PENDING") {
           setShowModal(true);
         }
-      }
-
-      // 2. Fetch settings to show dates
-      const settingsRef = doc(db, "settings", userData.domain);
-      const settingsSnap = await getDoc(settingsRef);
-      if (settingsSnap.exists()) {
-        setSettings(settingsSnap.data());
       }
     } catch (err) {
       console.error("Failed to load student graduation status:", err);
@@ -142,6 +148,7 @@ export default function StudentPortal() {
 
   useEffect(() => {
     if (userData) {
+      loadSettings();
       loadGradTask();
       loadTransferTask();
     }
@@ -285,6 +292,7 @@ export default function StudentPortal() {
 
   const suspendDateStr = getFormattedDateStr(settings?.graduationSettings?.suspendDate, "6월 1일");
   const deleteDateStr = getFormattedDateStr(settings?.graduationSettings?.deleteDate, "6월 30일");
+  const transferDeleteGraceDays = Number(settings?.transferOutSettings?.deleteGraceDays) || 7;
 
   return (
     <RouteGuard allowedRoles={["student"]}>
@@ -419,7 +427,7 @@ export default function StudentPortal() {
                     <p>데이터 백업을 완료하실 <strong>계정 정지 희망 날짜</strong>를 선택해 주세요.</p>
                     <p className="text-amber-800 mt-1 font-medium">
                       ▪ 최장 마지노선: <strong>{transferTask.maxSuspendDueDate ? getKSTDateString(transferTask.maxSuspendDueDate.toDate ? transferTask.maxSuspendDueDate.toDate() : new Date(transferTask.maxSuspendDueDate)) : getKSTDateString(transferTask.suspendDueDate?.toDate ? transferTask.suspendDueDate.toDate() : new Date(transferTask.suspendDueDate))}</strong><br />
-                      ▪ 영구 삭제 예정: 계정 일시정지 후 <strong>7일 경과 시</strong>
+                      ▪ 영구 삭제 예정: 계정 일시정지 후 <strong>{transferDeleteGraceDays}일 경과 시</strong>
                     </p>
                   </div>
 
