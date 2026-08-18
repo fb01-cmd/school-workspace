@@ -63,6 +63,8 @@ export default function AdminPage() {
   const [targetMemoId, setTargetMemoId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [pendingProfileCount, setPendingProfileCount] = useState(0);
+  const [pendingDisciplineCount, setPendingDisciplineCount] = useState<number | null>(null);
+  const [pendingSwapCount, setPendingSwapCount] = useState<number | null>(null);
   const [timetableSettings, setTimetableSettings] = useState<TimetableSettings | null>(null);
 
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
@@ -163,6 +165,53 @@ export default function AdminPage() {
     return () => unsub();
     // 인증 로딩이 끝난 뒤(userData 도착 후) 구독을 시작해야 함 — []이면 마운트 시 조기 return으로 영영 미구독
   }, [userData?.role]);
+
+  // 대시보드 미처리 건수 1회 집계 (클라이언트 캐시 5분 TTL 적용, 실시간 구독 미사용으로 Firestore 읽기 예산 보호)
+  useEffect(() => {
+    if (!userData || userData.role !== "super_admin") return;
+
+    // 1) 미처리 생활지도 건수
+    const cachedDiscipline = getClientCache("dashboard:pending_discipline");
+    if (cachedDiscipline !== null && cachedDiscipline !== undefined) {
+      setPendingDisciplineCount(Number(cachedDiscipline));
+    } else {
+      fetch("/api/discipline/stage-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list", onlyPending: true }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && Array.isArray(data.events)) {
+            const count = data.events.length;
+            setPendingDisciplineCount(count);
+            setClientCache("dashboard:pending_discipline", count, 5 * 60 * 1000);
+          }
+        })
+        .catch(() => {});
+    }
+
+    // 2) 교체 신청 대기 건수
+    const cachedSwap = getClientCache("dashboard:pending_swap");
+    if (cachedSwap !== null && cachedSwap !== undefined) {
+      setPendingSwapCount(Number(cachedSwap));
+    } else {
+      fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request_list", status: "PENDING" }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && Array.isArray(data.requests)) {
+            const count = data.requests.length;
+            setPendingSwapCount(count);
+            setClientCache("dashboard:pending_swap", count, 5 * 60 * 1000);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [userData]);
 
   const handleLogout = async () => {
     await logOut();
@@ -274,10 +323,116 @@ export default function AdminPage() {
             {isSuperAdmin && <AdminUsageSummaryBanner onNavigate={() => setActiveMenu("usage")} />}
             {isSuperAdmin && <MealCard />}
 
-            {/* super_admin 홈: 기존 관리 카드 그리드 유지 */}
+            {/* super_admin 홈: 관리 및 할 일 건수 카드 그리드 */}
             {isSuperAdmin ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* Users Widget */}
+                {/* 1. Profile Approvals Widget (할 일 건수 카드) */}
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-gray-900">프로필 승인</h3>
+                        {pendingProfileCount > 0 ? (
+                          <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full animate-pulse">
+                            승인 대기 {pendingProfileCount}건
+                          </span>
+                        ) : (
+                          <span className="bg-slate-100 text-slate-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                            대기 0건
+                          </span>
+                        )}
+                      </div>
+                      <span className="p-2 rounded-lg bg-amber-50 text-amber-600">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </span>
+                    </div>
+                    <p className="text-gray-500 text-sm mb-6">교직원 소속 부서, 직책, 담임 정보 등 프로필 변경 신청 내역을 검토하고 승인합니다.</p>
+                  </div>
+                  <div>
+                    <button
+                      onClick={() => setActiveMenu("profile_approvals")}
+                      className="w-full text-left text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1.5"
+                    >
+                      프로필 승인 바로가기 →
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Student Discipline Widget (할 일 건수 카드) */}
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-gray-900">학생 생활지도</h3>
+                        {pendingDisciplineCount !== null && (
+                          pendingDisciplineCount > 0 ? (
+                            <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full animate-pulse">
+                              미처리 {pendingDisciplineCount}건
+                            </span>
+                          ) : (
+                            <span className="bg-slate-100 text-slate-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                              미처리 0건
+                            </span>
+                          )
+                        )}
+                      </div>
+                      <span className="p-2 rounded-lg bg-blue-50 text-blue-600">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                        </svg>
+                      </span>
+                    </div>
+                    <p className="text-gray-500 text-sm mb-6">학생 생활지도 기록 입력, 단계 자동 계산 현황, 단계 처리함 및 학급 담임 배정을 종합 관리합니다.</p>
+                  </div>
+                  <div>
+                    <button
+                      onClick={() => setActiveMenu("discipline")}
+                      className="w-full text-left text-sm text-blue-600 hover:text-blue-800 font-semibold py-1.5"
+                    >
+                      생활지도 종합 관리 바로가기 →
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Timetable Operation Widget (할 일 건수 카드) */}
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-gray-900">시간표 운영</h3>
+                        {pendingSwapCount !== null && (
+                          pendingSwapCount > 0 ? (
+                            <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2.5 py-0.5 rounded-full animate-pulse">
+                              교체 신청 {pendingSwapCount}건
+                            </span>
+                          ) : (
+                            <span className="bg-slate-100 text-slate-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                              대기 0건
+                            </span>
+                          )
+                        )}
+                      </div>
+                      <span className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </span>
+                    </div>
+                    <p className="text-gray-500 text-sm mb-6">주간 시간표 일과 운영, 결보강 및 교사 간 수업 교환 신청 내역을 검토하고 승인합니다.</p>
+                  </div>
+                  <div>
+                    <button
+                      onClick={() => setActiveMenu("timetable_operation")}
+                      className="w-full text-left text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1.5"
+                    >
+                      시간표 운영 바로가기 →
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. Users Widget */}
                 <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
                   <div>
                     <div className="flex items-center justify-between mb-4">
@@ -300,7 +455,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Groups Widget */}
+                {/* 5. Groups Widget */}
                 <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
                   <div>
                     <div className="flex items-center justify-between mb-4">
@@ -323,7 +478,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* OU Mapping Widget */}
+                {/* 6. OU Mapping Widget */}
                 <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
                   <div>
                     <div className="flex items-center justify-between mb-4">
@@ -346,7 +501,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Classroom Widget */}
+                {/* 7. Classroom Widget */}
                 <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
                   <div>
                     <div className="flex items-center justify-between mb-4">
@@ -365,29 +520,6 @@ export default function AdminPage() {
                       className="w-full text-left text-sm text-pink-600 hover:text-pink-800 font-semibold py-1.5"
                     >
                       수업 생성 및 학생 배정 →
-                    </button>
-                  </div>
-                </div>
-
-                {/* Student Discipline Widget */}
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-bold text-gray-900">학생 생활지도</h3>
-                      <span className="p-2 rounded-lg bg-blue-50 text-blue-600">
-                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-                        </svg>
-                      </span>
-                    </div>
-                    <p className="text-gray-500 text-sm mb-6">학생 생활지도 기록 입력, 단계 자동 계산 현황, 단계 처리함 및 학급 담임 배정을 종합 관리합니다.</p>
-                  </div>
-                  <div>
-                    <button
-                      onClick={() => setActiveMenu("discipline")}
-                      className="w-full text-left text-sm text-blue-600 hover:text-blue-800 font-semibold py-1.5"
-                    >
-                      생활지도 종합 관리 바로가기 →
                     </button>
                   </div>
                 </div>
