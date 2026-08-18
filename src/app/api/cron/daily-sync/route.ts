@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runDisciplineSheetBridge } from "@/lib/discipline/bridge";
 import { runNeisCalendarSync } from "@/lib/timetable/server";
 import { runMemoPurge } from "@/lib/memo/purge";
+import { runUsageAlert } from "@/lib/ops/usage_alert";
 import { adminDb } from "@/lib/firebase/admin";
 
 export const maxDuration = 60;
@@ -27,6 +28,9 @@ const CRON_SECRET = process.env.CRON_SECRET;
  *   /api/discipline/cron/bridge, /api/timetable/cron/neis-calendar (스케줄만 여기로 이동).
  * - 쪽지 파기(2026-08-18 합류, memo_spec §6·attachment spec §6): 같은 "하루 1회" 성격이라
  *   세 번째 크론을 만들지 않고 여기 통합 — GitHub Actions 대안은 스케줄러 이원화라 기각.
+ * - 사용량 조기 경보(2026-08-18 합류, roadmap §2): 전일(태평양) Firestore 사용량을 읽어
+ *   무료 한도 50%·80% 초과 시 최고 관리자에게 알림. 지표 읽기 권한이 없으면 no-op이라
+ *   현재는 아무 일도 하지 않는다(권한 부여 시 재배포 없이 켜진다 — usage_alert.ts 주석).
  */
 export async function GET(req: NextRequest) {
   if (process.env.NODE_ENV === "production" && !CRON_SECRET) {
@@ -48,11 +52,22 @@ export async function GET(req: NextRequest) {
     bridge: { ok: boolean; detail: unknown };
     neis: { ok: boolean; detail: unknown };
     memoPurge: { ok: boolean; detail: unknown };
+    usageAlert: { ok: boolean; detail: unknown };
   } = {
     bridge: { ok: false, detail: null },
     neis: { ok: false, detail: null },
     memoPurge: { ok: false, detail: null },
+    usageAlert: { ok: false, detail: null },
   };
+
+  /** 알림 발신 도메인 — 나이스·사용량 경보가 공유한다 (없으면 학교 기본값) */
+  let targetDomain = "hmh.or.kr";
+  try {
+    const settingsSnap = await adminDb.collection("timetable_settings").get();
+    targetDomain = settingsSnap.docs.map((d) => d.id)[0] || targetDomain;
+  } catch {
+    // 설정 조회 실패는 치명적이지 않다 — 기본 도메인으로 진행
+  }
 
   // ── 1. 생활지도 시트 브리지 ──
   try {
@@ -64,8 +79,6 @@ export async function GET(req: NextRequest) {
 
   // ── 2. 나이스 학사일정 동기화 (브리지 실패와 무관하게 실행) ──
   try {
-    const settingsSnap = await adminDb.collection("timetable_settings").get();
-    const targetDomain = settingsSnap.docs.map((d) => d.id)[0] || "hmh.or.kr";
     results.neis = { ok: true, detail: await runNeisCalendarSync(targetDomain) };
   } catch (error: any) {
     console.error("[Daily-Sync Cron] 나이스 학사일정 동기화 실패:", error);
@@ -82,7 +95,17 @@ export async function GET(req: NextRequest) {
     results.memoPurge = { ok: false, detail: error.message };
   }
 
-  const anyFailed = !results.bridge.ok || !results.neis.ok || !results.memoPurge.ok;
+  // ── 4. Firestore 사용량 조기 경보 (앞 작업 실패와 무관하게 실행) ──
+  // 지표 읽기 권한이 없으면 available:false로 조용히 지나간다 — 가짜 경보를 내지 않는다.
+  try {
+    results.usageAlert = { ok: true, detail: await runUsageAlert(targetDomain, { dryRun }) };
+  } catch (error: any) {
+    console.error("[Daily-Sync Cron] 사용량 경보 실패:", error);
+    results.usageAlert = { ok: false, detail: error.message };
+  }
+
+  const anyFailed =
+    !results.bridge.ok || !results.neis.ok || !results.memoPurge.ok || !results.usageAlert.ok;
   return NextResponse.json(
     { ...results, processedAt: new Date().toISOString() },
     { status: anyFailed ? 500 : 200 }
