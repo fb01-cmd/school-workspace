@@ -104,6 +104,27 @@ export function validateAttachmentIds(
   return { ok: true, ids };
 }
 
+/**
+ * 인라인 이미지 바이트 프록시의 열람 자격 판정 (richtext spec §13) — 순수.
+ * 발신자·수신자만, 그리고 그 쪽지에 실제로 달린 첨부만 통과.
+ * 회수로 수신 목록에서 빠진 사람은 쪽지와 함께 이미지 접근도 잃는다(의도된 정합).
+ */
+export function resolveAttachmentViewEligibility(
+  memo: { senderEmail?: string; recipientEmails?: string[]; attachments?: MemoAttachment[] } | null | undefined,
+  requesterEmail: string,
+  driveFileId: string
+): { ok: true; mimeType: string; size: number } | { ok: false; status: 403 | 404 } {
+  if (!memo) return { ok: false, status: 404 };
+  const att = (memo.attachments || []).find((a) => a.driveFileId === driveFileId);
+  if (!att) return { ok: false, status: 404 };
+  const me = requesterEmail.trim().toLowerCase();
+  const allowed =
+    (memo.senderEmail || "").toLowerCase() === me ||
+    (memo.recipientEmails || []).some((r) => r.toLowerCase() === me);
+  if (!allowed) return { ok: false, status: 403 };
+  return { ok: true, mimeType: att.mimeType, size: att.size };
+}
+
 /** 개별 reader 부여 vs 도메인 내부 링크 공유 판정 (§3-3) — 전 교직원 공지만 도메인 공유 */
 export function decideAttachmentShareMode(
   recipientCount: number,

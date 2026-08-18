@@ -7,6 +7,7 @@ import {
   parseInlineMd1,
   stripMd1,
   bodyHasMd1Formatting,
+  collectMd1AttachmentIds,
 } from "../src/lib/memo/richtext";
 import { validateMemoContent, MEMO_MAX_BODY } from "../src/lib/memo/logic";
 
@@ -88,6 +89,27 @@ check("⑧ 10,000자 경계 파싱 완료", parseMd1(long).length >= 1, true);
 check("⑨ 서식 없음 판정", bodyHasMd1Formatting("그냥 * 별표 문장"), false);
 check("⑨ 서식 있음 판정", bodyHasMd1Formatting("*기울임* 문장"), true);
 check("⑨ 블록만 있어도 서식", bodyHasMd1Formatting("- 목록"), true);
+
+// ⑪ 인라인 이미지 — 첨부 참조만 성립, 외부 URL 불성립 (spec §13)
+check("⑪ 첨부 참조 성립", parseInlineMd1("앞 ![주간표](att:abc-123_XY) 뒤"), [
+  { kind: "text", text: "앞 " },
+  { kind: "image", label: "주간표", attachmentId: "abc-123_XY" },
+  { kind: "text", text: " 뒤" },
+]);
+check("⑪ 빈 라벨 허용", parseInlineMd1("![](att:id1)"), [
+  { kind: "image", label: "", attachmentId: "id1" },
+]);
+// 외부 URL은 이미지 노드가 절대 생기지 않는다(외부 이미지 요청 0) — '!'+일반 링크로 강등
+check("⑪ 외부 URL 불성립 — 이미지 아님, '!'+링크 강등", parseInlineMd1("![x](https://evil.com/a.png)"), [
+  { kind: "text", text: "!" },
+  { kind: "link", label: "x", href: "https://evil.com/a.png" },
+]);
+check("⑪ 이상 id 불성립", parseInlineMd1("![x](att:a/b)"), [
+  { kind: "text", text: "![x](att:a/b)" },
+]);
+check("⑪ strip: 라벨/[이미지]", stripMd1("![주간표](att:id1) ![](att:id2)"), "주간표 [이미지]");
+check("⑪ collect: 참조 id 수집·중복 제거", collectMd1AttachmentIds("![](att:a)\n- ![x](att:b)\n> ![](att:a)"), ["a", "b"]);
+check("⑪ 이미지도 서식으로 판정", bodyHasMd1Formatting("![](att:a)"), true);
 
 // ⑩ 서버 화이트리스트 — contentFormat은 "md1"만, 그 외 400 (logic.ts)
 const base = { title: "t", body: "b" };

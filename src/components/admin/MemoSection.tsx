@@ -46,6 +46,7 @@ import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import {
   MEMO_CONTENT_FORMAT_MD1,
   bodyHasMd1Formatting,
+  collectMd1AttachmentIds,
 } from "@/lib/memo/richtext";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
 import { MEMO_MAX_BODY } from "@/lib/memo/logic";
@@ -1033,7 +1034,7 @@ function MemoDetailPanel({
         {/* 본문 카드 구획 */}
         <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-2xs space-y-4">
           {memo.contentFormat === "md1" ? (
-            <MemoRichBody body={memo.body} />
+            <MemoRichBody body={memo.body} memoId={memo.id} />
           ) : (
             <pre className="whitespace-pre-wrap text-[15px] text-slate-800 font-sans leading-relaxed">
               {memo.body}
@@ -1061,13 +1062,20 @@ function MemoDetailPanel({
             </div>
           )}
 
-          {/* 첨부 이미지 그리드 */}
-          {memo.attachments && memo.attachments.length > 0 && (
-            <div className="pt-4 border-t border-slate-100">
-              <span className="text-xs font-semibold text-slate-400 block mb-2">첨부 이미지</span>
-              <MemoAttachmentGrid attachments={memo.attachments} />
-            </div>
-          )}
+          {/* 첨부 이미지 그리드 — 본문에 참조된 첨부는 중복 표시하지 않는다 (richtext spec §13) */}
+          {(() => {
+            const inlineIds =
+              memo.contentFormat === "md1" ? collectMd1AttachmentIds(memo.body) : [];
+            const gridAtts = (memo.attachments || []).filter(
+              (a) => !inlineIds.includes(a.driveFileId)
+            );
+            return gridAtts.length > 0 ? (
+              <div className="pt-4 border-t border-slate-100">
+                <span className="text-xs font-semibold text-slate-400 block mb-2">첨부 이미지</span>
+                <MemoAttachmentGrid attachments={gridAtts} />
+              </div>
+            ) : null;
+          })()}
         </div>
 
         {/* 3. 주고받은 이력 (확실히 분리된 보조 영역) */}

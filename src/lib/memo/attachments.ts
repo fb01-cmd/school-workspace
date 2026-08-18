@@ -26,6 +26,16 @@ export function driveOrThrow(): Drive {
   return drive;
 }
 
+/** 첨부 원본 바이트 — 인라인 이미지 프록시용 (richtext spec §13). 권한 검사는 호출부(라우트) 몫 */
+export async function downloadMemoAttachment(driveFileId: string): Promise<Buffer> {
+  const drive = driveOrThrow();
+  const res = await drive.files.get(
+    { fileId: driveFileId, alt: "media" },
+    { responseType: "arraybuffer" }
+  );
+  return Buffer.from(res.data as ArrayBuffer);
+}
+
 // ── 폴더 관리 (§2) ──────────────────────────────────────────────
 
 async function findOrCreateFolder(

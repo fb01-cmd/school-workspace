@@ -12,6 +12,7 @@
 import {
   MEMO_ATTACHMENT_MAX_BYTES,
   decideAttachmentShareMode,
+  resolveAttachmentViewEligibility,
   sanitizeAttachmentName,
   sniffImageMime,
   validateAttachmentIds,
@@ -70,6 +71,23 @@ async function pureTests() {
   expect("첨부 id 6개 거부", !validateAttachmentIds(["a", "b", "c", "d", "e", "f"]).ok);
   expect("경로 문자 포함 id 거부", !validateAttachmentIds(["ab/cd"]).ok);
   expect("중복 id 병합", (() => { const r = validateAttachmentIds(["x", "x"]); return r.ok && r.ids.length === 1; })());
+
+  {
+    // 인라인 이미지 프록시 열람 자격 (richtext spec §13)
+    const memo = {
+      senderEmail: "sender@hmh.or.kr",
+      recipientEmails: ["r1@hmh.or.kr", "r2@hmh.or.kr"],
+      attachments: [{ driveFileId: "f1", name: "a.png", mimeType: "image/png", size: 10, webViewLink: "x" }],
+    };
+    expect("프록시 자격: 발신자 통과", resolveAttachmentViewEligibility(memo, "sender@hmh.or.kr", "f1").ok);
+    expect("프록시 자격: 수신자 통과(대소문자 무시)", resolveAttachmentViewEligibility(memo, "R1@hmh.or.kr", "f1").ok);
+    const outsider = resolveAttachmentViewEligibility(memo, "other@hmh.or.kr", "f1");
+    expect("프록시 자격: 제3자 403", !outsider.ok && outsider.status === 403);
+    const wrongAtt = resolveAttachmentViewEligibility(memo, "r1@hmh.or.kr", "f2");
+    expect("프록시 자격: 남의 쪽지 첨부 id 404", !wrongAtt.ok && wrongAtt.status === 404);
+    const noMemo = resolveAttachmentViewEligibility(null, "r1@hmh.or.kr", "f1");
+    expect("프록시 자격: 쪽지 없음 404", !noMemo.ok && noMemo.status === 404);
+  }
 
   expect("수신 20/교직원 60 → 개별 권한", decideAttachmentShareMode(20, 60) === "individual");
   expect("수신 55/교직원 60 → 도메인 공유", decideAttachmentShareMode(55, 60) === "domain");

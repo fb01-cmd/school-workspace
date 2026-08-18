@@ -15,7 +15,7 @@
  * - 목록 번호는 DOM 순서로 1부터 다시 매긴다 (원본 start 속성이 있으면 그 값부터).
  */
 
-import { escapeMd1Literal } from "./richtext";
+import { ATTACHMENT_ID_RE, escapeMd1Literal } from "./richtext";
 
 /** 브라우저 Node와 셀프테스트 목 객체가 함께 만족하는 최소 모양 */
 export interface Md1DomNode {
@@ -87,6 +87,15 @@ function serializeInline(node: Md1DomNode): string {
       const label = plainText(node);
       if (isHttpsUrl(href) && label) return `[${label}](${href})`;
       return label; // https 아니면 라벨 평문 강등 (파서 기준과 동일)
+    }
+    case "IMG": {
+      // 인라인 이미지는 첨부 참조(data-att-id)만 성립 — 외부 src의 IMG는 버린다 (spec §13)
+      const attId = node.getAttribute ? node.getAttribute("data-att-id") : null;
+      if (attId && ATTACHMENT_ID_RE.test(attId)) {
+        const alt = (node.getAttribute && node.getAttribute("alt")) || "";
+        return `![${escapeMd1Literal(alt)}](att:${attId})`;
+      }
+      return "";
     }
     default:
       // SPAN·FONT 등 알 수 없는 요소는 투명 통과

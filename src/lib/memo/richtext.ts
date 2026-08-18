@@ -17,7 +17,9 @@ export type RichInline =
   | { kind: "italic"; text: string }
   | { kind: "underline"; text: string }
   | { kind: "strike"; text: string }
-  | { kind: "link"; label: string; href: string };
+  | { kind: "link"; label: string; href: string }
+  // 인라인 이미지 = 이 쪽지 첨부의 참조만 (spec §13 — 외부 URL은 문법 불성립)
+  | { kind: "image"; label: string; attachmentId: string };
 
 export type RichBlock =
   | { kind: "paragraph"; children: RichInline[] } // 빈 줄 = children []
@@ -79,6 +81,8 @@ const INLINE_MARKERS: ReadonlyArray<{
 ];
 
 const LINK_MAX_URL = 2048; // memo_spec §1 links 기존 상한 승계
+/** Drive 파일 id 형태 — 인라인 이미지 참조 검증 (파서·직렬화기 공용, spec §13) */
+export const ATTACHMENT_ID_RE = /^[A-Za-z0-9_-]{1,200}$/;
 
 export function parseInlineMd1(line: string): RichInline[] {
   const nodes: RichInline[] = [];
@@ -124,6 +128,29 @@ export function parseInlineMd1(line: string): RichInline[] {
       break;
     }
     if (matched) continue;
+
+    // 인라인 이미지 ![라벨](att:첨부ID) — 이 쪽지 첨부의 참조만 성립 (spec §13)
+    if (ch === "!" && line[i + 1] === "[") {
+      const labelClose = findUnescaped(line, "]", i + 2);
+      if (labelClose >= i + 2 && line[labelClose + 1] === "(") {
+        const refClose = line.indexOf(")", labelClose + 2);
+        const ref = refClose >= 0 ? line.slice(labelClose + 2, refClose) : "";
+        const m = /^att:(.+)$/.exec(ref);
+        if (refClose >= 0 && m && ATTACHMENT_ID_RE.test(m[1])) {
+          flush();
+          nodes.push({
+            kind: "image",
+            label: unescapeMd1(line.slice(i + 2, labelClose)),
+            attachmentId: m[1],
+          });
+          i = refClose + 1;
+          continue;
+        }
+      }
+      buf += "!";
+      i += 1;
+      continue;
+    }
 
     // 링크 [라벨](https://…) — https만, 공백·초과 길이는 불성립 → 평문 (spec §3)
     if (ch === "[") {
@@ -216,7 +243,30 @@ export function parseMd1(body: string): RichBlock[] {
 // ── 평문 강등 (spec §5) — 목록 발췌·향후 알림 강등의 공용 원본 ──
 
 function inlineText(nodes: RichInline[]): string {
-  return nodes.map((n) => (n.kind === "link" ? n.label : n.text)).join("");
+  return nodes
+    .map((n) => {
+      if (n.kind === "link") return n.label;
+      if (n.kind === "image") return n.label || "[이미지]";
+      return n.text;
+    })
+    .join("");
+}
+
+/** 본문이 참조하는 첨부 id 목록 — 상세 그리드 중복 숨김·작성기 배선용 (spec §13) */
+export function collectMd1AttachmentIds(body: string): string[] {
+  const ids = new Set<string>();
+  for (const block of parseMd1(body)) {
+    const inlines: RichInline[][] =
+      block.kind === "paragraph"
+        ? [block.children]
+        : block.kind === "quote"
+          ? block.lines
+          : block.items;
+    for (const line of inlines) {
+      for (const n of line) if (n.kind === "image") ids.add(n.attachmentId);
+    }
+  }
+  return Array.from(ids);
 }
 
 export function stripMd1(body: string): string {

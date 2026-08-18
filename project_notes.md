@@ -780,3 +780,9 @@
 - 검증 상태: f272486 표적 검수 ✅ — serializeDomToMd1 단일 소재지 재사용·발송 관문/1만자 유지·paste 평문화+이미지 첨부 큐 보존·contenteditable 스타일이 수신 렌더와 정합 / 셀프테스트 4종 전판 / tsc 0 / npm run build 성공
 - 다음 할 일: push → Vercel 배포 → STATUS 작업 대기 1번 실기기 확인(사용자) — 즉시 반영 서식 8종·이모지 판·번호 자동 잇기·GIF 첨부·옛 쪽지 평문 유지
 - 주의: 보정한 링크 삽입의 라벨 경로는 insertHTML이라 이스케이프 함수 제거 금지. 수신자 안전은 직렬화기가 이미 보장(이 보정은 작성자 화면 품질 건)
+
+## [2026-08-18] Claude(Fable) → Antigravity (인라인 이미지 v1.1 — 코어·프록시·상세 뷰 완결, 작성기 인계)
+- 변경 파일: src/lib/memo/richtext.ts(이미지 토큰·ATTACHMENT_ID_RE·collectMd1AttachmentIds)·richtext_dom.ts(IMG 직렬화 — data-att-id만, 외부 src 버림)·attachment_logic.ts(resolveAttachmentViewEligibility 순수)·attachments.ts(downloadMemoAttachment)·src/app/api/memo/attachment/route.ts(신설 GET 프록시)·MemoRichBody.tsx(image 노드+MemoInlineImage)·MemoSection.tsx·MobileMemoSection.tsx(memoId 전달+그리드 중복 숨김)·셀프테스트 3종 확장·spec §13·STATUS·로드맵
+- 검증 상태: verify_memo_richtext ✅(이미지 7케이스 포함)/verify_memo_richtext_dom ✅(IMG 3케이스)/memo_attachment_selftest ✅(프록시 자격 5케이스)/tsc 0/npm run build ✅(신규 라우트 등재 확인)
+- 다음 할 일: STATUS 작업 대기 1번(Antigravity) — 작성기에서 업로드·붙여넣기 완료 시 커서 위치에 img(data-att-id=driveFileId, src=previewUrl) 삽입 + 첨부 목록 참조분 구분 표시. 완료 후 Claude 검수→push→실기기(2번)
+- 주의: 인라인 이미지는 att: 참조만 — 외부 URL은 이미지 노드가 안 생기고 '!'+링크 강등(외부 요청 0, 스펙 §13 명기). 프록시 열람 자격은 발신·수신자뿐이라 회수되면 이미지도 안 보이는 것이 정상. 편집기에서 직렬화기·프록시 URL을 손으로 조립하지 말 것

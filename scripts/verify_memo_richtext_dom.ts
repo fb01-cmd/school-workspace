@@ -68,6 +68,23 @@ check("⑥ 루트 직속 텍스트", serializeDomToMd1(root(t("맨몸 텍스트"
 check("⑥ SPAN 투명 통과", serializeDomToMd1(root(el("div", [el("span", [t("x")])]))), "x");
 check("⑥ 끝 빈 줄 제거", serializeDomToMd1(root(el("div", [t("a")]), el("div", []))), "a");
 
+// ⑧ 인라인 이미지 IMG — data-att-id만 성립, 외부 src는 버림 (spec §13)
+check(
+  "⑧ IMG 참조 직렬화",
+  serializeDomToMd1(root(el("div", [t("앞 "), el("img", [], { "data-att-id": "abc_1-X", alt: "주간표" }), t(" 뒤")]))),
+  "앞 ![주간표](att:abc_1-X) 뒤"
+);
+check(
+  "⑧ 외부 src IMG는 버림",
+  serializeDomToMd1(root(el("div", [t("a"), el("img", [], { src: "https://evil.com/x.png" }), t("b")]))),
+  "ab"
+);
+check(
+  "⑧ IMG 왕복",
+  parseMd1(serializeDomToMd1(root(el("div", [el("img", [], { "data-att-id": "id9", alt: "표" })])))),
+  [{ kind: "paragraph", children: [{ kind: "image", label: "표", attachmentId: "id9" }] }]
+);
+
 // ⑦ 왕복 정합 — 직렬화 결과를 파서에 넣으면 같은 구조
 check(
   "⑦ 왕복: 굵게+목록",

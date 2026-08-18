@@ -16,6 +16,7 @@ import { db } from "@/lib/firebase/config";
 import type { MemoDoc } from "@/lib/memo/logic";
 import MemoAttachmentGrid from "@/components/common/MemoAttachmentGrid";
 import MemoRichBody from "@/components/common/MemoRichBody";
+import { collectMd1AttachmentIds } from "@/lib/memo/richtext";
 
 type MemoItem = MemoDoc & { id: string };
 
@@ -329,6 +330,7 @@ export default function MobileMemoSection() {
                       {displayedMemo.contentFormat === "md1" ? (
                         <MemoRichBody
                           body={displayedMemo.body}
+                          memoId={displayedMemo.id}
                           className="space-y-2 text-[14px] text-slate-800 dark:text-slate-200 font-sans leading-relaxed break-words"
                         />
                       ) : (
@@ -357,12 +359,21 @@ export default function MobileMemoSection() {
                         </div>
                       )}
 
-                      {displayedMemo.attachments && displayedMemo.attachments.length > 0 && (
-                        <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800">
-                          <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">첨부 이미지</span>
-                          <MemoAttachmentGrid attachments={displayedMemo.attachments} />
-                        </div>
-                      )}
+                      {(() => {
+                        const inlineIds =
+                          displayedMemo.contentFormat === "md1"
+                            ? collectMd1AttachmentIds(displayedMemo.body)
+                            : [];
+                        const gridAtts = (displayedMemo.attachments || []).filter(
+                          (a) => !inlineIds.includes(a.driveFileId)
+                        );
+                        return gridAtts.length > 0 ? (
+                          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                            <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">첨부 이미지</span>
+                            <MemoAttachmentGrid attachments={gridAtts} />
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
 
                     {/* 주고받은 이력 (threadId 로컬 그룹핑 — reply spec §2·§3, 모바일에는 답장 버튼 없음) */}
