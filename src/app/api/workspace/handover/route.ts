@@ -21,6 +21,7 @@ import {
   applyRevisionDraft,
   currentMondayISO,
   directCommit,
+  loadActiveTerm,
   loadBaseGridsForWeek,
   loadBaseRevisions,
   loadWeek,
@@ -41,9 +42,10 @@ async function loadProfile(email: string) {
 
 /** 마법사 공통 계산 — preview·commit이 같은 코드를 탄다 (§3) */
 async function computePlan(domain: string, fromEmail: string, toEmail: string, date: string) {
-  const settingsSnap = await adminDb.collection("settings").doc(domain).get();
-  const termId = settingsSnap.data()?.activeTermId as string | undefined;
-  if (!termId) throw new Error("운영 중인 학기가 없습니다. 학기를 먼저 활성화해 주세요.");
+  // 운영 학기의 단일 원본은 timetable_settings (일반 settings 문서가 아님 — 8/18 실기기에서 발견한 오독)
+  const activeTerm = await loadActiveTerm(domain);
+  if (!activeTerm?.id) throw new Error("운영 중인 학기가 없습니다. 학기를 먼저 활성화해 주세요.");
+  const termId = activeTerm.id;
 
   const plan = planHandoverDates(date, currentMondayISO());
 

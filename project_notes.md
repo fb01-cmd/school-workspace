@@ -831,3 +831,9 @@
 - 검증 상태: dd5d530 표적 검수 ✅ — API 전담(시간표 재계산 0)·existingDraftId 사전 차단+실행 버튼 비활성·프로필/부서 안내·coursesError 건너뛰기·방향 이원화 전부 계약 준수. **검수가 잡은 결함은 제 코어 쪽**: 복직(remove)에서 코스 목록은 기간제(from) 기준인데 제거 대상을 복직 교사(to)로 잘못 지정 — 복직 교사가 자기 클래스룸에서 제거될 뻔(마법사 화면 덕에 드러난 방향 오류). 보정 후 셀프테스트 3종·tsc·build 전판 ✅
 - 다음 할 일: push → 배포 → STATUS 작업 대기 1번 실기기(spec §7 시나리오 — 시험 계정 이관→대조→역이관→원상)
 - 주의: 역이관의 의미론 고정 — from=떠나는 기간제, to=복직 교사. 클래스룸 invite는 to에게, remove는 from에게. 이 방향을 바꾸면 §7 ④ 대칭이 깨진다
+
+## [2026-08-18] Claude(Fable) → 전원 (이관 마법사 실기기 1건 즉응 — 운영 학기 오독 보정)
+- 변경 파일: src/app/api/workspace/handover/route.ts(운영 학기 출처를 settings→timetable_settings/loadActiveTerm으로 보정)
+- 검증 상태: 실기기에서 "운영 중인 학기가 없습니다" 오탐 재현(사용자 스크린샷) → 원인 = 운영 학기 단일 원본은 timetable_settings인데 일반 settings 문서에서 읽음 / 보정 후 tsc·build·verify_handover 전판 ✅
+- 다음 할 일: 사용자 재시도 — 미리보기(지상인→이현준, 8/24) 진행
+- 주의: 학기 참조는 loadActiveTerm 단일 경로 — settings 문서에서 activeTermId를 찾지 말 것 (셀프테스트가 못 잡는 라우트 배선층은 실기기 미리보기가 관문이라는 실증 사례)
