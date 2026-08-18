@@ -767,3 +767,10 @@
 - 검증 상태: verify_memo_richtext_dom 20케이스 전판 ✅(이스케이프·중첩 바깥만·https 강등·번호 재매김·왕복 정합) / verify_memo_richtext 회귀 ✅ / tsc ✅
 - 다음 할 일: STATUS 작업 대기 1번(Antigravity) — contenteditable 배선·paste 평문화(insertText)·미리보기 토글 제거·serializeDomToMd1 재사용(재구현 금지). 완료 후 push는 사용자 결정, 실기기 확인은 2번 행
 - 주의: 즉시 반영 방식에선 이스케이프가 의무(사용자가 원문을 못 봄) — 직렬화기가 전담하므로 편집기에서 md1 문자열을 손으로 조립하지 말 것. 붙여넣기는 평문만(외부 서식 조용한 유실 방지)
+
+## [2026-08-18] Antigravity → Claude/사용자 (쪽지 즉시 반영 편집기 배선 완료 — STATUS 작업 대기 1번 종결)
+- 변경 파일: src/components/common/MemoEditorToolbar.tsx(WYSIWYG execCommand 연동·미리보기 토글 제거)·src/components/admin/MemoSection.tsx(contenteditable 입력창 전환·serializeDomToMd1 연동·붙여넣기 평문화+이미지 첨부 보존)·STATUS.md
+- 검증 상태: tsc ✅ (0 errors) / verify_memo_richtext_dom ✅ (20/20) / verify_memo_richtext ✅ (26/26) / memo_selftest ✅ / check_ui_removals 0b7772e ✅ (소명 완료) / check_ghost_markers ✅ (신규 상태 표기 0)
+- 다음 할 일: STATUS 작업 대기 1번 실기기 확인(사용자) — PC 즉시 반영 편집기(서식 8종·이모지·번호 자동 잇기·평문 붙여넣기·이미지 첨부) 발송 후 /m 및 옛 쪽지 정상 확인
+- 주의: ① serializeDomToMd1 단일 소재지 재사용(수기 조립 0) ② paste 가로채기로 외부 HTML 배제·평문 insertText만 허용(이미지 붙여넣기는 기존 첨부 큐로 연결) ③ bodyHasMd1Formatting 관문 및 1만자 상한 유지 ④ 화면 문구에 마크다운 등 개발 용어 0
+

@@ -47,6 +47,8 @@ import {
   MEMO_CONTENT_FORMAT_MD1,
   bodyHasMd1Formatting,
 } from "@/lib/memo/richtext";
+import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
+import { MEMO_MAX_BODY } from "@/lib/memo/logic";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -1234,15 +1236,14 @@ function ComposeModal({
   }, [replyToMemo]);
 
   const [title, setTitle] = useState(initialTitle);
-  const [body, setBody] = useState("");
-  const [editorMode, setEditorMode] = useState<"edit" | "preview">("edit");
+  const [bodyMd1, setBodyMd1] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
   const [links, setLinks] = useState<{ url: string; label?: string }[]>([]);
   const [stagedAttachments, setStagedAttachments] = useState<StagedAttachment[]>([]);
   const [addSearchVal, setAddSearchVal] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -1477,6 +1478,52 @@ function ComposeModal({
     });
   };
 
+  const syncBodyMd1 = useCallback(() => {
+    if (editorRef.current) {
+      const md1 = serializeDomToMd1(editorRef.current);
+      setBodyMd1(md1);
+      return md1;
+    }
+    return "";
+  }, []);
+
+  const handleEditorPaste = (e: React.ClipboardEvent) => {
+    // 1. 이미지 클립보드 항목 감지 시 기존 첨부 업로드 파이프라인으로 연결
+    const items = e.clipboardData?.items;
+    if (items) {
+      const imageFiles: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            const namedFile = new File(
+              [file],
+              file.name && file.name !== "image.png" ? file.name : "붙여넣은 이미지.png",
+              { type: file.type }
+            );
+            imageFiles.push(namedFile);
+          }
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        enqueueFiles(imageFiles);
+        return;
+      }
+    }
+
+    // 2. 텍스트 붙여넣기는 외부 서식(HTML)을 배제하고 평문만 삽입
+    e.preventDefault();
+    e.stopPropagation();
+    const text = e.clipboardData.getData("text/plain");
+    if (text) {
+      document.execCommand("insertText", false, text);
+      syncBodyMd1();
+    }
+  };
+
   // 발송 (확인창 없음 — §11-1)
   const handleSend = async () => {
     const isUploading = stagedAttachments.some(
@@ -1492,6 +1539,16 @@ function ComposeModal({
       return;
     }
 
+    const md1 = syncBodyMd1();
+    if (!md1.trim()) {
+      setError("내용을 입력해 주세요.");
+      return;
+    }
+    if (md1.length > MEMO_MAX_BODY) {
+      setError(`내용은 ${MEMO_MAX_BODY.toLocaleString()}자 이내여야 합니다.`);
+      return;
+    }
+
     setError(""); setSending(true);
     try {
       const userEmails = chips.map((c) => c.email);
@@ -1499,7 +1556,7 @@ function ComposeModal({
         .filter((a) => a.status === "done" && a.attachment)
         .map((a) => a.attachment!.driveFileId);
 
-      const isMd1 = bodyHasMd1Formatting(body);
+      const isMd1 = bodyHasMd1Formatting(md1);
       const contentFormat = isMd1 ? MEMO_CONTENT_FORMAT_MD1 : undefined;
 
       const res = await fetch("/api/memo", {
@@ -1509,7 +1566,7 @@ function ComposeModal({
           action: "send",
           replyToMemoId: isReply ? replyToMemo.id : undefined,
           title,
-          body,
+          body: md1,
           contentFormat,
           links: links.length > 0 ? links : undefined,
           attachments: driveFileIds.length > 0 ? driveFileIds : undefined,
@@ -1532,7 +1589,7 @@ function ComposeModal({
     (a) => a.status === "resizing" || a.status === "uploading"
   );
   const recipientCount = chips.length;
-  const canSend = recipientCount > 0 && title.trim() && body.trim() && !sending && !isUploading;
+  const canSend = recipientCount > 0 && title.trim() && bodyMd1.trim() && !sending && !isUploading;
 
   // ── 검색 후보 목록 (teacher_profiles 기반 로컬 필터, 이름 매칭)
   // 결함 5 수정: resolveDisplayName 헬퍼 통일
@@ -1753,95 +1810,37 @@ function ComposeModal({
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-sm font-semibold text-slate-700">내용</label>
                   <span className="text-xs text-slate-400">
-                    {body.length.toLocaleString()} / 10,000자
+                    {bodyMd1.length.toLocaleString()} / 10,000자
                   </span>
                 </div>
 
                 {/* overflow-hidden 금지 — 이모지 피커 팝오버가 칸 경계에서 잘린다 (2026-08-18 실기기 신고) */}
                 <div className="rounded-lg border border-slate-300 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent">
                   <MemoEditorToolbar
-                    textareaRef={bodyTextareaRef}
-                    body={body}
-                    setBody={setBody}
-                    mode={editorMode}
-                    setMode={setEditorMode}
+                    editorRef={editorRef}
+                    onContentChange={syncBodyMd1}
                   />
 
-                  {editorMode === "edit" ? (
-                    <textarea
-                      ref={bodyTextareaRef}
-                      value={body}
-                      onChange={(e) => setBody(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.ctrlKey || e.metaKey) {
-                          if (e.key === "b" || e.key === "B") {
-                            e.preventDefault();
-                            const el = bodyTextareaRef.current;
-                            if (el) {
-                              const start = el.selectionStart;
-                              const end = el.selectionEnd;
-                              const sel = el.value.substring(start, end);
-                              const rep = sel ? `**${sel}**` : `**굵은 텍스트**`;
-                              const next = el.value.substring(0, start) + rep + el.value.substring(end);
-                              setBody(next);
-                              setTimeout(() => {
-                                el.focus();
-                                if (sel) el.setSelectionRange(start + 2, start + 2 + sel.length);
-                                else el.setSelectionRange(start + 2, start + 8);
-                              }, 0);
-                            }
-                          } else if (e.key === "i" || e.key === "I") {
-                            e.preventDefault();
-                            const el = bodyTextareaRef.current;
-                            if (el) {
-                              const start = el.selectionStart;
-                              const end = el.selectionEnd;
-                              const sel = el.value.substring(start, end);
-                              const rep = sel ? `*${sel}*` : `*기울임 텍스트*`;
-                              const next = el.value.substring(0, start) + rep + el.value.substring(end);
-                              setBody(next);
-                              setTimeout(() => {
-                                el.focus();
-                                if (sel) el.setSelectionRange(start + 1, start + 1 + sel.length);
-                                else el.setSelectionRange(start + 1, start + 8);
-                              }, 0);
-                            }
-                          } else if (e.key === "u" || e.key === "U") {
-                            e.preventDefault();
-                            const el = bodyTextareaRef.current;
-                            if (el) {
-                              const start = el.selectionStart;
-                              const end = el.selectionEnd;
-                              const sel = el.value.substring(start, end);
-                              const rep = sel ? `__${sel}__` : `__밑줄 텍스트__`;
-                              const next = el.value.substring(0, start) + rep + el.value.substring(end);
-                              setBody(next);
-                              setTimeout(() => {
-                                el.focus();
-                                if (sel) el.setSelectionRange(start + 2, start + 2 + sel.length);
-                                else el.setSelectionRange(start + 2, start + 8);
-                              }, 0);
-                            }
-                          }
+                  <div
+                    ref={editorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={syncBodyMd1}
+                    onPaste={handleEditorPaste}
+                    onKeyDown={(e) => {
+                      if (e.ctrlKey || e.metaKey) {
+                        if (["b", "B", "i", "I", "u", "U"].includes(e.key)) {
+                          setTimeout(syncBodyMd1, 0);
                         }
-                      }}
-                      onPaste={handlePaste}
-                      maxLength={10000}
-                      rows={6}
-                      placeholder="내용을 입력하세요"
-                      className="w-full px-3 py-2 text-sm border-0 focus:outline-none resize-none bg-white block rounded-b-lg"
-                    />
-                  ) : (
-                    <div className="w-full px-4 py-3 min-h-[154px] max-h-[260px] overflow-y-auto bg-slate-50/60 rounded-b-lg">
-                      {body.trim() ? (
-                        <MemoRichBody body={body} />
-                      ) : (
-                        <p className="text-sm text-slate-400 italic">
-                          내용을 입력하면 여기에 서식이 적용된 모습으로 표시됩니다.
-                        </p>
-                      )}
-                    </div>
-                  )}
+                      }
+                    }}
+                    onKeyUp={syncBodyMd1}
+                    role="textbox"
+                    aria-multiline="true"
+                    aria-label="쪽지 내용"
+                    data-placeholder="내용을 입력하세요"
+                    className="w-full px-3.5 py-2.5 text-[15px] leading-relaxed min-h-[160px] max-h-[300px] overflow-y-auto focus:outline-none bg-white text-slate-800 font-sans rounded-b-lg empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1.5 [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:rounded-r-md [&_blockquote]:my-1.5 [&_blockquote]:text-slate-700 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic"
+                  />
                 </div>
               </div>
 
