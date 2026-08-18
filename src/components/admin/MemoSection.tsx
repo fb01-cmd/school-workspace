@@ -1757,7 +1757,8 @@ function ComposeModal({
                   </span>
                 </div>
 
-                <div className="rounded-lg border border-slate-300 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent overflow-hidden">
+                {/* overflow-hidden 금지 — 이모지 피커 팝오버가 칸 경계에서 잘린다 (2026-08-18 실기기 신고) */}
+                <div className="rounded-lg border border-slate-300 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent">
                   <MemoEditorToolbar
                     textareaRef={bodyTextareaRef}
                     body={body}
@@ -1828,10 +1829,10 @@ function ComposeModal({
                       maxLength={10000}
                       rows={6}
                       placeholder="내용을 입력하세요"
-                      className="w-full px-3 py-2 text-sm border-0 focus:outline-none resize-none bg-white block"
+                      className="w-full px-3 py-2 text-sm border-0 focus:outline-none resize-none bg-white block rounded-b-lg"
                     />
                   ) : (
-                    <div className="w-full px-4 py-3 min-h-[154px] max-h-[260px] overflow-y-auto bg-slate-50/60">
+                    <div className="w-full px-4 py-3 min-h-[154px] max-h-[260px] overflow-y-auto bg-slate-50/60 rounded-b-lg">
                       {body.trim() ? (
                         <MemoRichBody body={body} />
                       ) : (

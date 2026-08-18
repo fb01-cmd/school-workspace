@@ -319,7 +319,7 @@ export default function MemoEditorToolbar({
       {showEmojiPicker && (
         <div
           ref={emojiPickerRef}
-          className="absolute left-2 top-full mt-1 z-30 w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-2.5 animate-in fade-in zoom-in-95 duration-100 text-slate-800"
+          className="absolute left-2 top-full mt-1 z-30 w-80 bg-white border border-slate-200 rounded-xl shadow-xl p-2.5 animate-in fade-in zoom-in-95 duration-100 text-slate-800"
         >
           {/* 카테고리 탭 */}
           <div className="flex items-center border-b border-slate-100 pb-1.5 mb-2 gap-1 overflow-x-auto">
@@ -340,7 +340,7 @@ export default function MemoEditorToolbar({
           </div>
 
           {/* 이모지 그리드 */}
-          <div className="grid grid-cols-5 gap-1.5 max-h-36 overflow-y-auto p-1">
+          <div className="grid grid-cols-6 gap-1.5 max-h-56 overflow-y-auto p-1">
             {EMOJI_CATEGORIES[activeCategory].emojis.map((emoji) => (
               <button
                 key={emoji}

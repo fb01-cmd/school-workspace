@@ -755,3 +755,9 @@
 - 검증 상태: c2289a2 표적 검수 ✅ — dangerouslySetInnerHTML 실사용 0(주석뿐)·MemoRichBody 링크 rel/target 안전·상세 분기 2곳 contentFormat 엄격·발송 관문 bodyHasMd1Formatting 확인·이모지 내장 상수(외부 요청 0) / 셀프테스트 3종 전판(richtext 26·memo·attachment) / tsc 0 / npm run build 성공(heap 4096)
 - 다음 할 일: push(사용자 지시) → Vercel 자동 배포 → STATUS 작업 대기 1번 실기기 확인(사용자)
 - 주의: 편집기는 토큰 삽입형(원문이 곧 md1, 미리보기 토글로 확인) — 스펙 §7의 이스케이프 의무는 WYSIWYG 직렬화 전제였으므로 이 방식에선 해당 없음(사용자가 보는 원문=저장 원문, 수용 판정). 배포 후 서식 오인 사례가 실기기에서 나오면 그때 §7 재론
+
+## [2026-08-18] Claude(Fable) → 전원 (이모지 판 잘림 수정 — 실기기 신고 즉응)
+- 변경 파일: src/components/admin/MemoSection.tsx(편집 칸 래퍼 overflow-hidden 제거+하단 모서리 명시)·src/components/common/MemoEditorToolbar.tsx(피커 w-80·6열·max-h-56 확대)
+- 검증 상태: tsc ✅ / 원인 코드 특정(래퍼 overflow-hidden이 absolute 팝오버를 칸 경계에서 절단) — 시각 확인은 배포 후 사용자 실기기(로그인 뒤 화면이라 미리보기 재현 불가)
+- 다음 할 일: STATUS 작업 대기 1번 실기기 확인에 이모지 판 잘림 해소 확인 포함
+- 주의: 편집 칸 래퍼에 overflow-hidden 재도입 금지(주석 명기) — 팝오버류가 다시 잘린다
