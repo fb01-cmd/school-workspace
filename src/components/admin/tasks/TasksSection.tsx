@@ -197,7 +197,7 @@ export default function TasksSection({ initialTaskId }: Props) {
         if (!res.ok || !data.success) {
           throw new Error(data.error || "파일 제출에 실패했습니다.");
         }
-        alert("과제 제출이 완료되었습니다.");
+        alert("제출이 완료되었습니다.");
       } else {
         // 4MB 초과: resumable session 경로 (§5-4)
         setSubmitProgress("대용량 업로드 세션을 연결하는 중…");

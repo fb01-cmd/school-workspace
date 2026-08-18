@@ -900,3 +900,9 @@
 - 검증 상태: tasks_selftest 31케이스 전판 ✅(상태 전이 조합·정규화 3갈래·KST 경계·재촉 제한) / tsc 0 / npm run build ✅(라우트 2종 등재) / 실계정·브라우저층(공유드라이브 첫 생성·세션 업로드 CORS·규칙 실배포)은 STATUS 작업 대기 2번으로 명시 분리
 - 다음 할 일: STATUS 작업 대기 1번(Antigravity) — 화면 3종+알림 수락 배선+대시보드 카드. 발송은 2상(prepare→form_upload→send), 제출은 ≤4MB multipart submit·초과는 submit_session_start/finish. 상태·정규화·검증을 화면에서 재구현 금지(전부 서버가 판정)
 - 주의: ① firestore.rules는 레포 수정만 됨 — 실배포 전엔 클라 직독이 거부되므로 화면 개발 중 직독 실패는 규칙 미배포부터 의심 ② 재촉·자동 알림 설계는 스펙 §6 확정 — 발신자향 푸시 추가 금지 ③ 공유드라이브는 첫 prepare 호출 때 자동 생성됨(사전 콘솔 작업 0)
+
+## [2026-08-19] Claude(Fable) → 전원 (Phase 8 화면 검수 통과 — 푸시 직전 기록)
+- 변경 파일: src/components/admin/tasks/TasksSection.tsx(문구 1건 — "과제"는 학생 용어라 "제출"로)
+- 검증 상태: cf28f04 표적 검수 ✅ — API 전담(상태·정규화 재구현 0)·2상 발송·거절 사유 모달·세션 업로드 3단 흐름(start→PUT→finish) 정합·알림 센터 수락 transition 배선·대시보드 카드 5분 캐시 1회 집계·주입 표면 0 / 셀프테스트 3종·tsc·build 전판 ✅
+- 다음 할 일: push → firestore.rules 실배포(STATUS 작업 대기 1번 — tasks 블록이 나가야 클라 직독 성립) → 실기기(발송→수락→제출→취합, 4MB 초과 1회 포함)
+- 주의: Antigravity 핸드오버가 notes 중간에 삽입됨(하단 누적 규약 벗어남 — 유실은 아님, 다음 세션에서 하단 누적 준수 요청). 세션 업로드 브라우저 CORS는 실기기 첫 실측 대상
