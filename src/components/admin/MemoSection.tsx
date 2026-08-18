@@ -1277,6 +1277,34 @@ function ComposeModal({
     return "";
   }, []);
 
+  // Range 유효성 검사 — 비동기 업로드 중 본문 편집으로 Range가 DOM에서 떨어졌는지 확인
+  const isRangeValid = useCallback((r: Range | null): boolean => {
+    if (!r || !editorRef.current) return false;
+    try {
+      const container = r.commonAncestorContainer;
+      if (!container || !container.isConnected || !editorRef.current.contains(container)) {
+        return false;
+      }
+      if (!r.startContainer.isConnected || !r.endContainer.isConnected) {
+        return false;
+      }
+      const maxStart =
+        r.startContainer.nodeType === Node.TEXT_NODE
+          ? (r.startContainer.textContent?.length ?? 0)
+          : r.startContainer.childNodes.length;
+      const maxEnd =
+        r.endContainer.nodeType === Node.TEXT_NODE
+          ? (r.endContainer.textContent?.length ?? 0)
+          : r.endContainer.childNodes.length;
+      if (r.startOffset > maxStart || r.endOffset > maxEnd) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   // 편집기 커서 위치에 이미지 노드 삽입 (spec §13)
   // serializeDomToMd1이 img의 data-att-id만 본문 참조로 인정하므로 data-att-id를 반드시 세팅한다.
   const insertInlineImage = useCallback(
@@ -1295,50 +1323,50 @@ function ComposeModal({
       img.style.margin = "0.5rem 0";
       img.style.borderRadius = "0.5rem";
 
+      // 본문 끝 img 뒤에 커서를 둘 수 없는 contenteditable 특성 대응 — 빈 줄(div>br)을 두고 캐럿 이동
+      const lineBreakDiv = document.createElement("div");
+      lineBreakDiv.appendChild(document.createElement("br"));
+
       editor.focus();
 
       const sel = window.getSelection();
-      let range: Range | null = null;
+      let targetRange: Range | null = null;
 
+      // 1. 현재 selection이 유효한지 확인
       if (sel && sel.rangeCount > 0) {
         const currentRange = sel.getRangeAt(0);
-        if (editor.contains(currentRange.commonAncestorContainer)) {
-          range = currentRange;
+        if (isRangeValid(currentRange)) {
+          targetRange = currentRange;
         }
       }
 
-      if (
-        !range &&
-        savedRangeRef.current &&
-        editor.contains(savedRangeRef.current.commonAncestorContainer)
-      ) {
-        range = savedRangeRef.current;
+      // 2. 저장해 둔 savedRangeRef 유효성 확인
+      if (!targetRange && isRangeValid(savedRangeRef.current)) {
+        targetRange = savedRangeRef.current;
       }
 
-      if (range) {
-        range.deleteContents();
-        range.insertNode(img);
-
-        // 이미지 뒤로 커서 이동
-        const after = document.createRange();
-        after.setStartAfter(img);
-        after.collapse(true);
-        sel?.removeAllRanges();
-        sel?.addRange(after);
-        savedRangeRef.current = after.cloneRange();
+      if (targetRange) {
+        targetRange.deleteContents();
+        // lineBreakDiv를 먼저 넣고 그 앞에 img를 넣어 img -> lineBreakDiv 순서로 배치
+        targetRange.insertNode(lineBreakDiv);
+        targetRange.insertNode(img);
       } else {
+        // 비동기 사이 본문 편집으로 Range가 무효화되었거나 없는 경우 본문 맨 끝에 폴백 삽입
         editor.appendChild(img);
-        const after = document.createRange();
-        after.setStartAfter(img);
-        after.collapse(true);
-        sel?.removeAllRanges();
-        sel?.addRange(after);
-        savedRangeRef.current = after.cloneRange();
+        editor.appendChild(lineBreakDiv);
       }
+
+      // 캐럿을 img 바로 뒤의 빈 줄(lineBreakDiv) 안으로 이동
+      const nextRange = document.createRange();
+      nextRange.setStart(lineBreakDiv, 0);
+      nextRange.collapse(true);
+      sel?.removeAllRanges();
+      sel?.addRange(nextRange);
+      savedRangeRef.current = nextRange.cloneRange();
 
       syncBodyMd1();
     },
-    [syncBodyMd1]
+    [isRangeValid, syncBodyMd1]
   );
 
   // 본문에서 참조 중인 첨부 ID 집합 실시간 추적 (spec §13)
@@ -1573,10 +1601,8 @@ function ComposeModal({
   const handleRemoveAttachment = (id: string) => {
     setStagedAttachments((prev) => {
       const target = prev.find((a) => a.id === id);
-      if (target?.previewUrl && target.previewUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(target.previewUrl);
-      }
-      // 첨부 삭제 시 본문에 들어간 해당 이미지도 함께 정리
+
+      // 1. 편집기 DOM에서 해당 이미지를 먼저 제거 (깨진 이미지 깜빡임 방지)
       if (target?.attachment?.driveFileId && editorRef.current) {
         const imgs = editorRef.current.querySelectorAll(
           `img[data-att-id="${target.attachment.driveFileId}"]`
@@ -1584,6 +1610,12 @@ function ComposeModal({
         imgs.forEach((img) => img.remove());
         setTimeout(syncBodyMd1, 0);
       }
+
+      // 2. 편집기 img 제거 후 blob URL 해제
+      if (target?.previewUrl && target.previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+
       return prev.filter((a) => a.id !== id);
     });
   };
