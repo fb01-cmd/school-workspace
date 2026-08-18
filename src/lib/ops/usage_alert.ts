@@ -52,15 +52,37 @@ export async function fetchDailyUsage(now = new Date()): Promise<UsageFetchResul
   }
 }
 
-/** 경보 수신자 = 최고 관리자 전원 (일반 교사에게 보낼 성격이 아니다) */
-async function findAdminEmails(): Promise<string[]> {
-  const snap = await adminDb.collection("users").where("role", "==", "super_admin").get();
+/**
+ * 경보 수신자.
+ *
+ * ⚠️ **role == "super_admin" 으로 뽑으면 안 된다** (2026-08-18 실측으로 확인된 함정).
+ * 이 학교에서 수퍼어드민 4개는 전부 **상시 로그인하지 않는 계정**이다:
+ *   - admin@·admin2@·admin3@ = 관리자 3인의 **권한 전용** 계정(평소엔 각자 일반 계정 사용)
+ *   - fb01@ = 플랫폼 운영 계정
+ * 즉 role로 뽑은 수신자에게 보내면 **아무도 보지 못한다.** 알림은 조용히 성공하고
+ * 사람은 영영 모르는, 가장 나쁜 형태의 실패다.
+ *
+ * 그래서 수신자는 **사람이 지정한 목록**을 우선한다 —
+ * `platform_config/usage_alert.recipients` (이메일 배열, 상시 쓰는 일반 계정).
+ * 목록이 없을 때만 super_admin으로 폴백하고, 그 사실을 요약에 남긴다.
+ */
+async function findAlertRecipients(): Promise<{ emails: string[]; source: "configured" | "role-fallback" }> {
+  const snap = await stateRef().get();
+  const configured = snap.exists ? (snap.data() || {}).recipients : null;
+  if (Array.isArray(configured)) {
+    const emails = configured
+      .filter((e): e is string => typeof e === "string" && e.includes("@"))
+      .map((e) => e.trim().toLowerCase());
+    if (emails.length) return { emails: [...new Set(emails)], source: "configured" };
+  }
+
+  const users = await adminDb.collection("users").where("role", "==", "super_admin").get();
   const emails = new Set<string>();
-  snap.forEach((d) => {
+  users.forEach((d) => {
     const email = (d.data() || {}).email;
     if (typeof email === "string" && email.includes("@")) emails.add(email.trim().toLowerCase());
   });
-  return [...emails];
+  return { emails: [...emails], source: "role-fallback" };
 }
 
 async function readState(): Promise<AlertState> {
@@ -91,6 +113,11 @@ export interface UsageAlertSummary {
   /** 실제로 만든 알림 수 */
   emitted: number;
   recipients: number;
+  /**
+   * 수신자를 어디서 얻었는가. `role-fallback`이면 **사람이 못 볼 가능성이 높다** —
+   * 이 학교의 super_admin은 전부 상시 로그인하지 않는 계정이다(findAlertRecipients 주석).
+   */
+  recipientSource?: "configured" | "role-fallback";
 }
 
 /**
@@ -138,8 +165,9 @@ export async function runUsageAlert(
     return base;
   }
 
-  const admins = await findAdminEmails();
+  const { emails: admins, source } = await findAlertRecipients();
   base.recipients = admins.length;
+  base.recipientSource = source;
   if (!admins.length) {
     // 상태는 진전시키지 않는다 — 수신자가 생기면 그때 알려야 한다
     return { ...base, decision: `${decision.reason} · 수신자 없음(super_admin 0명) — 발송 보류` };
