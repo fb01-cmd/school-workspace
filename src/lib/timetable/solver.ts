@@ -1579,6 +1579,8 @@ export function solveTimetable(input: SolverInput): SolverResult {
 // 실측(2026-08-11): 시드별 소프트 38~47점 편차 — 고정 시드 목록을 전부 돌려 최적 해를 뽑는다.
 // 시드별 결정론이 그대로 유지되므로 포트폴리오 전체도 결정론 (같은 입력·같은 목록 = 같은 출력).
 
+// 시드 확대 실험 (2026-08-18 실측): 16개 추가(소수 17~79)해 24개로 돌려도 30점 미만 시드
+// 없음(신규 최선 71=31점, 8개 최선 1=30점 유지). 편성 시간만 25초→82초로 늘어 8개 유지.
 export const DEFAULT_SEED_PORTFOLIO = [1, 2, 3, 5, 7, 11, 13, 42];
 
 export interface PortfolioRanking {
