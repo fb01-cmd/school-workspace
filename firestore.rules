@@ -185,6 +185,20 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ── platform_config — 플랫폼 운영 설정 ────────────────────
+    // 기본은 잠금(첨부 폴더 캐시·사용량 경보 상태 등은 서버 전용).
+    // 예외 1건: 절약 모드 스위치는 로그인 사용자가 **읽기만** 한다 —
+    // 클라이언트가 이 문서를 구독해야 켜는 즉시 전 화면에 퍼진다
+    // (로그인 시 1회 프리페치로는 이미 접속 중인 교사에게 안 닿아 위급 레버 자격 미달).
+    // 쓰기는 언제나 서버(admin SDK) 경유 — /api/ops/saving-mode 가 super_admin을 확인한다.
+    match /platform_config/saving_mode {
+      allow read: if isSchool();
+      allow write: if false;
+    }
+    match /platform_config/{document=**} {
+      allow read, write: if false;
+    }
+
     // ── 그 외 전부 차단 (deny-by-default) ─────────────────────
     match /{document=**} {
       allow read, write: if false;

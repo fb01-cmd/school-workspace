@@ -3,6 +3,7 @@ import { runDisciplineSheetBridge } from "@/lib/discipline/bridge";
 import { runNeisCalendarSync } from "@/lib/timetable/server";
 import { runMemoPurge } from "@/lib/memo/purge";
 import { runUsageAlert } from "@/lib/ops/usage_alert";
+import { sweepSavingMode } from "@/lib/ops/saving_mode";
 import { adminDb } from "@/lib/firebase/admin";
 
 export const maxDuration = 60;
@@ -53,11 +54,13 @@ export async function GET(req: NextRequest) {
     neis: { ok: boolean; detail: unknown };
     memoPurge: { ok: boolean; detail: unknown };
     usageAlert: { ok: boolean; detail: unknown };
+    savingSweep: { ok: boolean; detail: unknown };
   } = {
     bridge: { ok: false, detail: null },
     neis: { ok: false, detail: null },
     memoPurge: { ok: false, detail: null },
     usageAlert: { ok: false, detail: null },
+    savingSweep: { ok: false, detail: null },
   };
 
   /** 알림 발신 도메인 — 나이스·사용량 경보가 공유한다 (없으면 학교 기본값) */
@@ -104,8 +107,22 @@ export async function GET(req: NextRequest) {
     results.usageAlert = { ok: false, detail: error.message };
   }
 
+  // ── 5. 절약 모드 자동 해제 (24시간 경과분 문서 정리) ──
+  // 적용 자체는 읽는 쪽이 시간으로 판정하므로, 이 크론이 늦어도 사용자는 제때 평시로
+  // 돌아간다 — 여기서는 문서만 정리한다(saving_mode.ts sweepSavingMode 주석).
+  try {
+    results.savingSweep = { ok: true, detail: dryRun ? { skipped: "dryRun" } : await sweepSavingMode() };
+  } catch (error: any) {
+    console.error("[Daily-Sync Cron] 절약 모드 정리 실패:", error);
+    results.savingSweep = { ok: false, detail: error.message };
+  }
+
   const anyFailed =
-    !results.bridge.ok || !results.neis.ok || !results.memoPurge.ok || !results.usageAlert.ok;
+    !results.bridge.ok ||
+    !results.neis.ok ||
+    !results.memoPurge.ok ||
+    !results.usageAlert.ok ||
+    !results.savingSweep.ok;
   return NextResponse.json(
     { ...results, processedAt: new Date().toISOString() },
     { status: anyFailed ? 500 : 200 }
