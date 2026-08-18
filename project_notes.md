@@ -718,3 +718,9 @@
 - 검증 상태: tsc ✅ / build ✅ / check_ghost_markers ✅ / check_ui_removals ✅(사라진 상호작용 0건)
 - 다음 할 일: 없음 (STATUS.md 「작업 대기」 행 닫힘 완료)
 - 주의: 프로필 승인 대기(기존 onSnapshot 재사용)·미처리 생활지도(POST /api/discipline/stage-events 5분 캐시 1회 집계)·교체 신청 대기(POST /api/timetable/manage 5분 캐시 1회 집계)로 Firestore 읽기 예산 엄격 보호. 기존 카드 및 바로가기 액션 전원 보존.
+
+## [2026-08-18] Claude(Fable) → 전원 (쪽지 서식·이모지·GIF 갈래 스펙 확정)
+- 변경 파일: docs/memo_richtext_spec.md(신설)·development_roadmap.md(상태 줄 🔜 + 확정 기록 1줄)·STATUS.md(스펙 후보→작업 대기 1번 전환, 소품 행 GIF 포인터)
+- 검증 상태: 스펙 문서라 코드 무변경 / 전제 실측 3건 ✅ — notifyMemo 푸시=제목만(평문 발췌 배선 불요 확정), dangerouslySetInnerHTML 저장소 0건, 첨부 화이트리스트·바이트 서명 단일 소재지(attachment_logic.ts)
+- 다음 할 일: STATUS 작업 대기 1번 — 서식 v1 코어(richtext.ts 파서·strip·contentFormat 스탬프+셀프테스트)는 Claude, 이어 편집기·렌더는 Antigravity (스펙 §12)
+- 주의: 핵심 결정 = md1 서브셋 저장·contentFormat 부재=평문(옛 쪽지 재해석 금지)·렌더는 React 노드만(HTML 주입 표면 0 유지). 이모지는 이미 성립이라 별도 단계 아님. Tenor GIF 검색은 보류 확정(재론 = 기관 채택 이후) — 큐에 올리지 말 것
