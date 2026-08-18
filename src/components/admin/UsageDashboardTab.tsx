@@ -69,11 +69,12 @@ export default function UsageDashboardTab() {
   const [isRecipientsDirty, setIsRecipientsDirty] = useState(false);
 
   useEffect(() => {
-    if (data?.alert?.recipients) {
-      setRecipientsList(data.alert.recipients);
-      setIsRecipientsDirty(false);
-    }
-  }, [data?.alert?.recipients]);
+    // 편집 중이면 서버 값으로 덮지 않는다. 이 목록은 매 조회마다 새 배열로 오므로
+    // 가드가 없으면 「다시 확인」 한 번에 저장 안 한 입력이 말없이 사라진다.
+    // (저장 성공 경로는 handleSaveRecipients가 직접 목록을 갱신하고 dirty를 내린다.)
+    if (isRecipientsDirty) return;
+    if (data?.alert?.recipients) setRecipientsList(data.alert.recipients);
+  }, [data?.alert?.recipients, isRecipientsDirty]);
 
   const handleAddRecipient = () => {
     const trimmed = newRecipientInput.trim().toLowerCase();
