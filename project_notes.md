@@ -4,6 +4,39 @@
 > 2026-08-14 이전은 [`archive/project_notes_2026-08.md`](./archive/project_notes_2026-08.md)·[`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다
 > (원문 그대로, 블록 무손실 대조 완료). 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-19] Antigravity → Claude/사용자 (Phase 8 업무 지시 화면 구현 완결 — spec §7, STATUS.md 작업 대기 1번)
+- **배경**: `docs/phase8_tasks_spec.md` §7 화면 IA 및 코어(커밋 `8903cc1`) 기반으로 업무 작성/발송(2상 흐름), 보낸 업무 현황판(단일 문서 onSnapshot), 내 할 일(확인형/제출형 2경로), 모바일(/m) 할 일/제출, 알림 센터 수락 배선, 대시보드 할 일 카드를 완결.
+- **구현 파일**:
+  - `src/components/admin/tasks/TaskRecipientPickerModal.tsx` (신규):
+    - 부서별 체크박스 트리 + 이름 검색 자동완성 + 수신자 칩/요약문구 생성.
+  - `src/components/admin/tasks/TaskComposerModal.tsx` (신규):
+    - 2상 흐름 (Step 1: prepare -> Step 2: form_upload [최대 5개, <=4MB] -> send [발송 전에는 초안으로 수신자에게 미노출]).
+  - `src/components/admin/tasks/TaskStatusBoard.tsx` (신규):
+    - 내가 낸 업무 실시간 onSnapshot 구독, 수신자별 상태 표, 수락/완료 집계 칩, 재촉(`nudge` — 24h 제한 눈높이 안내), 제출함 Drive 폴더 열기, 철회(`cancel`).
+  - `src/components/admin/tasks/TasksSection.tsx` (신규):
+    - PC 메인 화면: `📥 내 할 일` 탭 / `📤 보낸 업무 현황` 탭 / `+ 새 업무 보내기`.
+    - 내 할 일 뷰: 기한순/상태 필터, 확인형(수락/완료체크/거절사유입력/완료취소), 제출형(양식 다운로드, <=4MB `submit` multipart / >4MB `submit_session_start` -> 브라우저 PUT -> `submit_session_finish`, 파일 교체 재제출).
+  - `src/components/admin/DashboardTaskCard.tsx` (신규):
+    - 대시보드 "내 할 일 N건" 미완료 건수 카드 (5분 클라이언트 캐시 TTL).
+  - `src/components/mobile/MobileTasksSection.tsx` (신규):
+    - `/m` 모바일 내 할 일 섹션 (열람 + 완료 체크 + 모바일 사진/파일 제출 실수요 대응).
+  - `src/components/common/NotificationCenter.tsx`:
+    - `task-assigned` 알림에 [업무 수락] 버튼 (`transition accept`) 배선 및 수락 완료 뱃지 전환.
+    - `task-*` 뱃지 및 바로가기 딥링크(`admin_navigate` detail `{ menu: "tasks", taskId }`) 연결.
+  - `src/app/admin/page.tsx`:
+    - 사이드바 `교직원 공통 도구`에 `쪽지` 바로 아래 `📌 업무 관리 (할 일)` 메뉴 탭 연결.
+    - 대시보드 위젯 카드 및 일반 교사 홈 화면에 `DashboardTaskCard` 추가.
+  - `src/app/m/page.tsx`:
+    - 모바일 메인에 `MobileTasksSection` 연결 (쪽지와 시간표 사이).
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어(state machine, payload, session url 등) 배제, 교직원 눈높이 한국어 사용.
+  - 서버 계약: `/api/tasks` 액션 및 `/api/tasks/file`만 호출, 시간표/상태 판정/파일명 정규화 재구현 0건.
+- **검증 상태**:
+  - `npx tsx scripts/tasks_selftest.ts` ✅ (31케이스 전판 통과)
+  - `npx tsx scripts/check_ghost_markers.ts` ✅ (신규 상태 표기 0건)
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (46/46 static pages prerendered)
+
 ## [2026-08-18] Antigravity → Claude/사용자 (교사 전출 화면 정지 행 삭제 예정일 및 D-Day 표기 완결)
 - **배경**: `project_notes.md` 8/18 큐 전수 점검 잔여 확인 항목. 교사 전출 대기 현황(`TeacherLifecycle.tsx`)에서 계정 정지(`SUSPENDED`)된 행의 D-Day가 기한 선택일 기준으로 계산되어 오해를 부르던 문제 해결.
 - **변경 파일**:

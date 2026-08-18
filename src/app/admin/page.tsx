@@ -39,6 +39,7 @@ const TeacherPortalSection = dynamic(() => import("@/components/admin/timetable/
 const PolicyAckStatusTab = dynamic(() => import("@/components/admin/PolicyAckStatusTab"), { loading: TabLoading });
 const PWAInstallGuideTab = dynamic(() => import("@/components/admin/PWAInstallGuideTab"), { loading: TabLoading });
 const MemoSection = dynamic(() => import("@/components/admin/MemoSection"), { loading: TabLoading });
+const TasksSection = dynamic(() => import("@/components/admin/tasks/TasksSection"), { loading: TabLoading });
 const UsageDashboardTab = dynamic(() => import("@/components/admin/UsageDashboardTab"), { loading: TabLoading });
 import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt";
 import MealCard from "@/components/common/MealCard";
@@ -47,6 +48,7 @@ import PushNotificationManager from "@/components/common/PushNotificationManager
 import NotificationCenter from "@/components/common/NotificationCenter";
 import MyTimetableCard from "@/components/admin/MyTimetableCard";
 import DashboardMemoPanel from "@/components/admin/DashboardMemoPanel";
+import DashboardTaskCard from "@/components/admin/DashboardTaskCard";
 
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { TimetableSettings } from "@/lib/timetable/types";
@@ -54,13 +56,14 @@ import { TimetableSettings } from "@/lib/timetable/types";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable_operation" | "timetable_creation" | "my_timetable" | "policy_ack" | "pwa_guide" | "memo" | "usage";
+type MenuType = "home" | "users" | "groups" | "settings" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable_operation" | "timetable_creation" | "my_timetable" | "policy_ack" | "pwa_guide" | "memo" | "tasks" | "usage";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
   const router = useRouter();
   const [activeMenu, setActiveMenu] = useState<MenuType>("home");
   const [targetMemoId, setTargetMemoId] = useState<string | null>(null);
+  const [targetTaskId, setTargetTaskId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [pendingProfileCount, setPendingProfileCount] = useState(0);
   const [pendingDisciplineCount, setPendingDisciplineCount] = useState<number | null>(null);
@@ -101,6 +104,9 @@ export default function AdminPage() {
       if (e.detail?.menu) {
         if (e.detail.memoId !== undefined) {
           setTargetMemoId(e.detail.memoId);
+        }
+        if (e.detail.taskId !== undefined) {
+          setTargetTaskId(e.detail.taskId);
         }
         setActiveMenu(e.detail.menu);
       }
@@ -242,10 +248,17 @@ export default function AdminPage() {
     setActiveMenu("memo");
   };
 
+  const handleNavigateToTasks = (taskId?: string) => {
+    setTargetTaskId(taskId || null);
+    setActiveMenu("tasks");
+  };
+
   const renderContent = () => {
     switch (activeMenu) {
       case "memo":
         return <MemoSection initialMemoId={targetMemoId} />;
+      case "tasks":
+        return <TasksSection initialTaskId={targetTaskId} />;
       case "users":
         return <UserList />;
       case "profile_approvals":
@@ -523,11 +536,15 @@ export default function AdminPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* 8. Tasks Widget */}
+                <DashboardTaskCard onNavigate={() => setActiveMenu("tasks")} />
               </div>
             ) : (
-              /* 일반 교사(role teacher) 홈: 넓은 화면 2단 그리드(좌: 시간표+급식, 우: 받은 쪽지), 좁은 화면 세로 스택 (2026-08-18 피드백 덤프 ⑤) */
+              /* 일반 교사(role teacher) 홈: 넓은 화면 2단 그리드(좌: 시간표+급식+할일, 우: 받은 쪽지), 좁은 화면 세로 스택 (2026-08-18 피드백 덤프 ⑤) */
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+                  <DashboardTaskCard onNavigate={() => setActiveMenu("tasks")} />
                   <MyTimetableCard onNavigateToMyTimetable={() => setActiveMenu("my_timetable")} />
                   <MealCard />
                 </div>
@@ -605,6 +622,22 @@ export default function AdminPage() {
                     >
                       <span>✉️</span>
                       <span>쪽지</span>
+                    </button>
+
+                    {/* 업무 관리 — 쪽지 바로 아래, 전 교직원 (phase8_tasks_spec §7) */}
+                    <button
+                      onClick={() => {
+                        setTargetTaskId(null);
+                        setActiveMenu("tasks");
+                      }}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        activeMenu === "tasks"
+                          ? "bg-indigo-800 text-white font-bold shadow-sm"
+                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span>📌</span>
+                      <span>업무 관리</span>
                     </button>
 
                     {/* 내 시간표 (교사 최다 사용 메뉴 — 홈 바로 아래 이동) */}

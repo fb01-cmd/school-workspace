@@ -9,6 +9,7 @@ import NotificationCenter from "@/components/common/NotificationCenter";
 import MealCard from "@/components/common/MealCard";
 import TodayTimetableCard from "@/components/mobile/TodayTimetableCard";
 import MobileMemoSection from "@/components/mobile/MobileMemoSection";
+import MobileTasksSection from "@/components/mobile/MobileTasksSection";
 import { resolveDisplayName } from "@/lib/org/displayName";
 
 export default function MobileTeacherHome() {
@@ -62,13 +63,16 @@ export default function MobileTeacherHome() {
           {/* 2. 알림 켜기 */}
           <PushNotificationManager />
 
-          {/* 3. 쪽지 — 안읽은 쪽지 우선 목록 (spec §4-2, 쓰기 없음) */}
+          {/* 3. 내 할 일 (phase8_tasks_spec §7, 열람 + 완료 체크 + 파일/사진 제출) */}
+          <MobileTasksSection />
+
+          {/* 4. 쪽지 — 안읽은 쪽지 우선 목록 (spec §4-2, 쓰기 없음) */}
           <MobileMemoSection />
 
-          {/* 4. 오늘·내일 내 시간표 */}
+          {/* 5. 오늘·내일 내 시간표 */}
           <TodayTimetableCard />
 
-          {/* 5. 오늘 급식 */}
+          {/* 6. 오늘 급식 */}
           <MealCard />
 
           {/* 5. PC 화면 링크 */}

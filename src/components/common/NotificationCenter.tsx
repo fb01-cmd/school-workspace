@@ -7,7 +7,17 @@ import { useRouter, usePathname } from "next/navigation";
 export interface NotificationItem {
   id: string;
   recipientEmail: string;
-  type: "lesson-changed" | "request-resolved" | "memo" | "admin-action" | "consent-request" | "consent-result";
+  type:
+    | "lesson-changed"
+    | "request-resolved"
+    | "memo"
+    | "admin-action"
+    | "consent-request"
+    | "consent-result"
+    | "task-assigned"
+    | "task-status"
+    | "task-due"
+    | "task-canceled";
   title: string;
   refType: string;
   refId: string;
@@ -68,6 +78,14 @@ function getNotificationTypeBadge(type: string, refType?: string) {
       return { icon: "🤝", label: "양해 요청", bg: "bg-amber-50 text-amber-800 border-amber-300" };
     case "consent-result":
       return { icon: "📨", label: "양해 결과", bg: "bg-indigo-50 text-indigo-700 border-indigo-200" };
+    case "task-assigned":
+      return { icon: "📌", label: "업무 지시", bg: "bg-blue-50 text-blue-800 border-blue-300" };
+    case "task-status":
+      return { icon: "📊", label: "업무 상태", bg: "bg-purple-50 text-purple-700 border-purple-200" };
+    case "task-due":
+      return { icon: "⏰", label: "기한 임박", bg: "bg-amber-50 text-amber-800 border-amber-300" };
+    case "task-canceled":
+      return { icon: "🚫", label: "업무 철회", bg: "bg-gray-50 text-gray-600 border-gray-200" };
     default:
       return { icon: "🔔", label: "알림", bg: "bg-gray-50 text-gray-700 border-gray-200" };
   }
@@ -88,6 +106,8 @@ export default function NotificationCenter() {
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [decliningNotifId, setDecliningNotifId] = useState<string | null>(null);
   const [declineNoteInput, setDeclineNoteInput] = useState<string>("");
+  const [acceptingTaskId, setAcceptingTaskId] = useState<string | null>(null);
+  const [acceptedTaskIds, setAcceptedTaskIds] = useState<Set<string>>(new Set());
 
   // 푸시(기기로 바로 알림 받기) 설정 상태 (스펙 §6-1)
   const [pushSupported, setPushSupported] = useState<boolean | null>(null);
@@ -391,11 +411,49 @@ export default function NotificationCenter() {
     }
   };
 
+  // 업무 지시 수락 핸들러 (phase8_tasks_spec §6, §7)
+  const handleAcceptTask = async (taskId: string) => {
+    setAcceptingTaskId(taskId);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "transition",
+          taskId,
+          transition: "accept",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "업무 수락에 실패했습니다.");
+      }
+      setAcceptedTaskIds((prev) => new Set(prev).add(taskId));
+    } catch (err: any) {
+      alert(`오류: ${err.message}`);
+    } finally {
+      setAcceptingTaskId(null);
+    }
+  };
+
   // 딥링크 이동 핸들러
   const handleDeepLink = (item: NotificationItem) => {
     setIsOpen(false);
     const role = userData?.role;
     const isStudent = role === "student";
+
+    if (item.refType === "task" || item.type?.startsWith("task-")) {
+      if (isStudent) return;
+      if (pathname === "/admin") {
+        window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "tasks", taskId: item.refId } }));
+      } else {
+        router.push("/admin");
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "tasks", taskId: item.refId } }));
+        }, 150);
+      }
+      return;
+    }
 
     if (item.refType === "usage_alert") {
       if (role !== "super_admin") return;
@@ -683,6 +741,32 @@ export default function NotificationCenter() {
                       </div>
                     )}
 
+                    {/* 업무 지시 수락 창구 (phase8_tasks_spec §6, §7) */}
+                    {item.type === "task-assigned" && item.refId && (
+                      <div className="pt-1">
+                        {acceptedTaskIds.has(item.refId) ? (
+                          <div className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                            <span>✅</span>
+                            <span>업무 수락 완료</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleAcceptTask(item.refId)}
+                            disabled={acceptingTaskId === item.refId}
+                            className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors shadow-xs inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            {acceptingTaskId === item.refId ? (
+                              <span className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" />
+                            ) : (
+                              <span>🤝</span>
+                            )}
+                            <span>업무 수락하기</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {/* 원본 바로가기 (딥링크) — usage_alert는 super_admin에게만 노출 */}
                     {!(item.refType === "usage_alert" && userData?.role !== "super_admin") && (
                       <div className="flex items-center justify-end pt-1">
@@ -694,6 +778,8 @@ export default function NotificationCenter() {
                           <span>
                             {item.refType === "usage_alert"
                               ? "사용량 바로가기"
+                              : item.refType === "task" || item.type?.startsWith("task-")
+                              ? "업무 관리 바로가기"
                               : item.refType === "memo" || item.type === "memo"
                               ? "쪽지함 바로가기"
                               : item.refType === "swap_request" || item.type === "request-resolved"
