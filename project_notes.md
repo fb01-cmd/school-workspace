@@ -730,3 +730,9 @@
 - 검증 상태: verify_memo_richtext 26케이스 전판 ✅(인라인 4종·미닫힘 평문·이스케이프·https만·선점 규칙·블록 묶기·strip·경계·스탬프 관문) / tsc ✅ / memo_selftest 회귀 전판 ✅
 - 다음 할 일: STATUS 작업 대기 1번 — MemoRichBody 매핑 컴포넌트(노드→React, dangerouslySetInnerHTML 금지), 상세 뷰 2곳 contentFormat 분기, 편집기 툴바 8종+이모지 피커(산출 계약 = 스펙 §7: 유효 md1 + 리터럴 이스케이프 + bodyHasMd1Formatting false면 contentFormat 미포함), 목록 발췌 stripMd1
 - 주의: **Tenor 판정 갱신** — 직전 핸드오버의 "보류 확정·큐에 올리지 말 것"은 사용자 반증(학교 구글 챗에 GIF 검색 내장·일상 사용, 실기기 스크린샷)으로 **감점 논거 철회, 후순위 별건**으로 완화(스펙 §1 갱신). 선행은 여전히 GIF 첨부(§9). 옛 쪽지(contentFormat 부재)는 어떤 화면에서도 parseMd1에 넣지 말 것 — 평문 <pre> 경로 유지가 하위호환의 핵심
+
+## [2026-08-18] Claude(Fable) → 전원 (인라인 이미지 v1.1 설계 방향 기록 — 사용자 발상)
+- 변경 파일: docs/memo_richtext_spec.md(§13 신설·§10 포인터)·development_roadmap.md(아이디어 즉시 기록 1줄)
+- 검증 상태: 문서만 — 코드 무변경 (모바일 걸림돌 아님 판정은 §0 기존 실측 3건에 근거)
+- 다음 할 일: 착수는 서식 v1 화면(STATUS 작업 대기 1번) 완료 후 사용자 결정 — 코어는 이미지 참조 토큰 1종 추가(Claude, 소규모)
+- 주의: 인라인 이미지는 첨부의 참조(att:ID)만 성립 — 외부 URL 이미지는 추적 픽셀·IP 유출 표면이라 파서 수준 불성립로 확정(스펙 §13). 구현 시 이 선을 넘지 말 것
