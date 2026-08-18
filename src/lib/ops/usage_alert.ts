@@ -192,3 +192,70 @@ export async function runUsageAlert(
   }
   return base;
 }
+
+// ── 수신자 관리 (어드민 화면에서 편집) ──────────────────────────────────
+
+export const MAX_ALERT_RECIPIENTS = 10;
+
+export interface RecipientsView {
+  recipients: string[];
+  /** configured = 사람이 지정함 / role-fallback = 아직 미지정이라 자동 추정 중 */
+  source: "configured" | "role-fallback";
+  /** 자동 추정 상태라 아무도 못 볼 수 있다는 경고를 화면이 띄울지 */
+  needsAttention: boolean;
+}
+
+export async function getAlertRecipients(): Promise<RecipientsView> {
+  const { emails, source } = await findAlertRecipients();
+  return { recipients: emails, source, needsAttention: source === "role-fallback" };
+}
+
+export interface SetRecipientsResult {
+  ok: boolean;
+  error?: string;
+  view?: RecipientsView;
+}
+
+/**
+ * 수신자 목록 저장.
+ *
+ * **플랫폼에 실재하는 계정만 받는다.** 오타나 없는 주소를 허용하면 알림이 만들어지고도
+ * 아무도 못 보는 상태가 된다 — 이 기능이 존재하는 이유가 바로 그 실패였다(2026-08-18).
+ * 조용히 무시하지 않고 어느 주소가 문제인지 돌려준다.
+ */
+export async function setAlertRecipients(input: unknown): Promise<SetRecipientsResult> {
+  if (!Array.isArray(input)) return { ok: false, error: "주소 목록이 필요합니다." };
+
+  const cleaned = [
+    ...new Set(
+      input
+        .filter((e): e is string => typeof e === "string")
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean)
+    ),
+  ];
+  if (cleaned.length > MAX_ALERT_RECIPIENTS) {
+    return { ok: false, error: `받는 사람은 ${MAX_ALERT_RECIPIENTS}명까지 지정할 수 있습니다.` };
+  }
+
+  const malformed = cleaned.filter((e) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+  if (malformed.length) {
+    return { ok: false, error: `주소 형식이 올바르지 않습니다: ${malformed.join(", ")}` };
+  }
+
+  // 실재 확인 — 없는 계정에 보내면 알림은 생기고 아무도 못 본다
+  const unknown: string[] = [];
+  for (const email of cleaned) {
+    const snap = await adminDb.collection("users").where("email", "==", email).limit(1).get();
+    if (snap.empty) unknown.push(email);
+  }
+  if (unknown.length) {
+    return {
+      ok: false,
+      error: `이 플랫폼에 로그인한 적 없는 계정입니다: ${unknown.join(", ")} — 한 번 로그인한 뒤 다시 지정해 주세요.`,
+    };
+  }
+
+  await stateRef().set({ recipients: cleaned }, { merge: true });
+  return { ok: true, view: await getAlertRecipients() };
+}
