@@ -4,8 +4,8 @@
 export const MEMO_MAX_ATTACHMENTS = 5;
 /** 클라이언트 리사이즈 상한과 동일 — 서버 재검증 기준 (§3-2) */
 export const MEMO_ATTACHMENT_MAX_BYTES = Math.floor(3.5 * 1024 * 1024);
-/** v1 = 이미지만 (§0-2) — 일반 파일은 실수요 후 이 목록 한 줄 확장으로 연다 */
-export const MEMO_ATTACHMENT_MIME_WHITELIST = ["image/png", "image/jpeg", "image/webp"];
+/** v1 = 이미지만 (§0-2) — 일반 파일은 실수요 후 이 목록 한 줄 확장으로 연다. GIF는 richtext spec §9 (2026-08-18) */
+export const MEMO_ATTACHMENT_MIME_WHITELIST = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 export const MEMO_ATTACHMENT_NAME_MAX = 100;
 /** 수신 집합이 전 교직원의 이 비율 이상이면 개별 권한 대신 도메인 내부 링크 공유 (§3-3 예외) */
 export const MEMO_ATTACHMENT_DOMAIN_SHARE_RATIO = 0.9;
@@ -31,7 +31,7 @@ export function sanitizeAttachmentName(raw: unknown): string {
 }
 
 /** 실제 바이트 서명(magic bytes)으로 이미지 형식 판별 — 선언 MIME 위장 차단 (§3-2 서버 재검증) */
-export function sniffImageMime(bytes: Uint8Array): "image/png" | "image/jpeg" | "image/webp" | null {
+export function sniffImageMime(bytes: Uint8Array): "image/png" | "image/jpeg" | "image/webp" | "image/gif" | null {
   if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
     return "image/png";
   }
@@ -45,6 +45,13 @@ export function sniffImageMime(bytes: Uint8Array): "image/png" | "image/jpeg" | 
   ) {
     return "image/webp";
   }
+  if (
+    bytes.length >= 6 &&
+    bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38 && // "GIF8"
+    (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61 // "7a" | "9a" (GIF87a/GIF89a)
+  ) {
+    return "image/gif";
+  }
   return null;
 }
 
@@ -57,7 +64,7 @@ export function validateAttachmentUpload(input: {
     typeof input.mimeType === "string" ? input.mimeType.trim().toLowerCase() : "";
   const normalized = declared === "image/jpg" ? "image/jpeg" : declared;
   if (!MEMO_ATTACHMENT_MIME_WHITELIST.includes(normalized)) {
-    return { ok: false, error: "이미지 파일(PNG·JPG·WEBP)만 첨부할 수 있습니다." };
+    return { ok: false, error: "이미지 파일(PNG·JPG·WEBP·GIF)만 첨부할 수 있습니다." };
   }
   if (input.bytes.length === 0) {
     return { ok: false, error: "빈 파일은 첨부할 수 없습니다." };

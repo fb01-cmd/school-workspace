@@ -15,22 +15,31 @@ export function formatAttachmentSize(bytes: number): string {
 
 /**
  * 캔버스 리사이즈 및 3.5MB 검증
- * - 지원 형식: PNG, JPEG, JPG, WEBP
+ * - 지원 형식: PNG, JPEG, JPG, WEBP, GIF
  * - 최대 변 2000px (비율 유지)
  * - PNG: 원본 유지 (2000px 이하이고 3.5MB 이하면 원본 그대로, 초과 시 캔버스 PNG 리사이즈)
+ * - GIF: 캔버스 금지 — 첫 프레임만 남아 움직임이 죽는다. 3.5MB 이하 원본 통과, 초과 거부 (richtext spec §9)
  * - JPEG/WEBP: JPEG 품질 0.85
  * - 최종 바이트 3.5MB 이하 검증
  */
 export async function resizeAndValidateImage(file: File): Promise<{ blob: Blob; safeName: string }> {
-  const allowedMimes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+  const allowedMimes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
   const type = file.type.toLowerCase();
 
   // MIME 확장자 예외 처리 (파일 타입이 비었거나 일반적인 경우)
   const ext = file.name.split(".").pop()?.toLowerCase();
-  const isAllowedExt = ext && ["png", "jpg", "jpeg", "webp"].includes(ext);
+  const isAllowedExt = ext && ["png", "jpg", "jpeg", "webp", "gif"].includes(ext);
 
   if (!allowedMimes.includes(type) && !isAllowedExt) {
-    throw new Error("이미지 파일(PNG·JPG·WEBP)만 첨부할 수 있습니다.");
+    throw new Error("이미지 파일(PNG·JPG·WEBP·GIF)만 첨부할 수 있습니다.");
+  }
+
+  const isGif = type === "image/gif" || ext === "gif";
+  if (isGif) {
+    if (file.size > MEMO_ATTACHMENT_MAX_BYTES) {
+      throw new Error("움직이는 이미지(GIF)는 3.5MB 이하만 첨부할 수 있습니다.");
+    }
+    return { blob: file, safeName: file.name };
   }
 
   const isPng = type === "image/png" || ext === "png";

@@ -736,3 +736,9 @@
 - 검증 상태: 문서만 — 코드 무변경 (모바일 걸림돌 아님 판정은 §0 기존 실측 3건에 근거)
 - 다음 할 일: 착수는 서식 v1 화면(STATUS 작업 대기 1번) 완료 후 사용자 결정 — 코어는 이미지 참조 토큰 1종 추가(Claude, 소규모)
 - 주의: 인라인 이미지는 첨부의 참조(att:ID)만 성립 — 외부 URL 이미지는 추적 픽셀·IP 유출 표면이라 파서 수준 불성립로 확정(스펙 §13). 구현 시 이 선을 넘지 말 것
+
+## [2026-08-18] Claude(Fable) → 전원 (GIF 첨부 완결 — 사용자 결정으로 소품 큐에서 앞당김)
+- 변경 파일: src/lib/memo/attachment_logic.ts(화이트리스트+GIF87a/89a 서명)·src/lib/memo/client_attachments.ts(GIF 원본 통과 분기)·src/components/admin/MemoSection.tsx(accept 1줄)·scripts/memo_attachment_selftest.ts(GIF 4케이스)·docs/memo_richtext_spec.md §9·personal_data_inventory.md("GIF 포함")·development_roadmap.md(관찰 항목 종결)·STATUS.md(소품 행 GIF 제거)
+- 검증 상태: memo_attachment_selftest 1부 전판 ✅(GIF 통과·PNG 바이트 위장 거부·서명 2종) / tsc ✅ / 2부 실계정은 PNG만 올리는 사이클이라 재실행 생략(증명력 无) — GIF 실기기 확인은 사용자 몫
+- 다음 할 일: 사용자 실기기 — GIF 1장 첨부 발송 후 수신 측에서 클릭 재생 확인 (목록 미리보기는 정지 썸네일이 정상)
+- 주의: GIF는 캔버스 경로를 타면 움직임이 죽는다 — 향후 첨부 코드 수정 시 isGif 분기(client_attachments) 앞단 유지. 글자 사이 재생은 v1.1 인라인 이미지(§13)에서

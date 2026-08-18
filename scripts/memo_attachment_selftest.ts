@@ -32,6 +32,8 @@ const TINY_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
   "base64"
 );
+// 1×1 투명 GIF89a (유효한 실제 GIF 바이트 — richtext spec §9)
+const TINY_GIF = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
 
 async function pureTests() {
   console.log("── 1부: 순수 검증 로직 ──");
@@ -40,8 +42,12 @@ async function pureTests() {
   expect("정상 PNG 통과", pngOk.ok);
   expect("image/jpg 별칭 정규화 후 서명 불일치 거부",
     !validateAttachmentUpload({ name: "a.jpg", mimeType: "image/jpg", bytes: TINY_PNG }).ok);
-  expect("화이트리스트 밖 MIME 거부(gif)",
+  expect("정상 GIF 통과 (richtext spec §9)",
+    validateAttachmentUpload({ name: "a.gif", mimeType: "image/gif", bytes: TINY_GIF }).ok);
+  expect("GIF 선언 + PNG 바이트 위장 거부",
     !validateAttachmentUpload({ name: "a.gif", mimeType: "image/gif", bytes: TINY_PNG }).ok);
+  expect("화이트리스트 밖 MIME 거부(bmp)",
+    !validateAttachmentUpload({ name: "a.bmp", mimeType: "image/bmp", bytes: TINY_PNG }).ok);
   expect("선언 MIME과 바이트 서명 불일치 거부(PNG 바이트를 jpeg로 선언)",
     !validateAttachmentUpload({ name: "a.jpg", mimeType: "image/jpeg", bytes: TINY_PNG }).ok);
   expect("빈 파일 거부", !validateAttachmentUpload({ name: "a.png", mimeType: "image/png", bytes: new Uint8Array(0) }).ok);
@@ -52,6 +58,8 @@ async function pureTests() {
   }
   expect("서명 판별: png", sniffImageMime(TINY_PNG) === "image/png");
   expect("서명 판별: jpeg", sniffImageMime(new Uint8Array([0xff, 0xd8, 0xff, 0xe0])) === "image/jpeg");
+  expect("서명 판별: gif (GIF89a)", sniffImageMime(TINY_GIF) === "image/gif");
+  expect("서명 판별: GIF87a", sniffImageMime(new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x37, 0x61])) === "image/gif");
   expect("서명 판별: 텍스트는 null", sniffImageMime(new TextEncoder().encode("hello world!")) === null);
 
   expect("파일명 경로 구분자 치환", sanitizeAttachmentName("../etc/passwd.png") === ".._etc_passwd.png");
