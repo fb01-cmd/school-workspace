@@ -9,6 +9,12 @@ export interface MetricPoint {
   deletes: number;
 }
 
+export interface AlertRecipientsInfo {
+  recipients: string[];
+  source: "configured" | "role-fallback";
+  needsAttention: boolean;
+}
+
 export interface UsageSnapshot {
   available: boolean;
   reason?: string;
@@ -31,6 +37,7 @@ export interface UsageSnapshot {
   };
   daily?: MetricPoint[];
   hourly?: MetricPoint[];
+  alert?: AlertRecipientsInfo;
 }
 
 type MetricKey = "reads" | "writes" | "deletes";
@@ -52,6 +59,84 @@ export default function UsageDashboardTab() {
   const [selectedHourlyMetric, setSelectedHourlyMetric] = useState<MetricKey>("reads");
   const [hoveredDailyIndex, setHoveredDailyIndex] = useState<number | null>(null);
   const [hoveredHourlyIndex, setHoveredHourlyIndex] = useState<number | null>(null);
+
+  // 알림 수신자 관리 상태
+  const [recipientsList, setRecipientsList] = useState<string[]>([]);
+  const [newRecipientInput, setNewRecipientInput] = useState("");
+  const [savingRecipients, setSavingRecipients] = useState(false);
+  const [recipientError, setRecipientError] = useState<string | null>(null);
+  const [recipientSuccess, setRecipientSuccess] = useState<string | null>(null);
+  const [isRecipientsDirty, setIsRecipientsDirty] = useState(false);
+
+  useEffect(() => {
+    if (data?.alert?.recipients) {
+      setRecipientsList(data.alert.recipients);
+      setIsRecipientsDirty(false);
+    }
+  }, [data?.alert?.recipients]);
+
+  const handleAddRecipient = () => {
+    const trimmed = newRecipientInput.trim().toLowerCase();
+    if (!trimmed) return;
+    setRecipientError(null);
+    setRecipientSuccess(null);
+
+    if (recipientsList.includes(trimmed)) {
+      setRecipientError("이미 추가된 계정입니다.");
+      return;
+    }
+    if (recipientsList.length >= 10) {
+      setRecipientError("받는 사람은 최대 10명까지 지정할 수 있습니다.");
+      return;
+    }
+
+    const next = [...recipientsList, trimmed];
+    setRecipientsList(next);
+    setNewRecipientInput("");
+    setIsRecipientsDirty(true);
+  };
+
+  const handleRemoveRecipient = (emailToRemove: string) => {
+    setRecipientError(null);
+    setRecipientSuccess(null);
+    const next = recipientsList.filter((e) => e !== emailToRemove);
+    setRecipientsList(next);
+    setIsRecipientsDirty(true);
+  };
+
+  const handleSaveRecipients = async () => {
+    if (savingRecipients) return;
+    setSavingRecipients(true);
+    setRecipientError(null);
+    setRecipientSuccess(null);
+
+    try {
+      const res = await fetch("/api/ops/usage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_recipients",
+          recipients: recipientsList,
+        }),
+      });
+      const resData = await res.json();
+      if (!res.ok) {
+        setRecipientError(resData.error || "수신자 목록을 저장하지 못했습니다.");
+        return;
+      }
+
+      if (resData.alert) {
+        setData((prev) => (prev ? { ...prev, alert: resData.alert } : prev));
+        setRecipientsList(resData.alert.recipients || []);
+      }
+      setIsRecipientsDirty(false);
+      setRecipientSuccess("알림 받는 사람 목록이 저장되었습니다.");
+    } catch (err: any) {
+      setRecipientError(err.message || "저장 중 오류가 발생했습니다.");
+    } finally {
+      setSavingRecipients(false);
+    }
+  };
 
   const handleToggleSavingMode = async () => {
     if (isSavingToggling) return;
@@ -617,7 +702,155 @@ export default function UsageDashboardTab() {
         )}
       </div>
 
-      {/* 4. 데이터 절약 모드 관리 (super_admin 전용) */}
+      {/* 4. 알림 받는 사람 관리 (super_admin 전용) */}
+      {userData?.role === "super_admin" && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5">
+                <span className="text-lg">📬</span>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  알림 받는 사람
+                </h3>
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                    data?.alert?.source === "configured"
+                      ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800"
+                      : "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800"
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      data?.alert?.source === "configured" ? "bg-emerald-500" : "bg-amber-500"
+                    }`}
+                  />
+                  <span>
+                    {data?.alert?.source === "configured" ? "직접 지정됨" : "자동 추정 중"}
+                  </span>
+                </span>
+                <span className="text-xs text-slate-400 font-medium">
+                  ({recipientsList.length}명 / 최대 10명)
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                데이터베이스 일일 사용량이 50% 또는 80%에 도달했을 때 경보 알림을 수신할 선생님 계정을 지정합니다.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveRecipients}
+              disabled={savingRecipients || (!isRecipientsDirty && data?.alert?.source === "configured")}
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors shadow-xs flex items-center justify-center gap-2 shrink-0 cursor-pointer disabled:opacity-50 ${
+                isRecipientsDirty || data?.alert?.source === "role-fallback"
+                  ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed"
+              }`}
+            >
+              {savingRecipients ? (
+                <>
+                  <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-current border-t-transparent" />
+                  <span>저장 중...</span>
+                </>
+              ) : (
+                <span>설정 저장</span>
+              )}
+            </button>
+          </div>
+
+          {/* 자동 추정(미지정) 상태 경고 안내 */}
+          {data?.alert?.needsAttention && (
+            <div className="bg-amber-500/10 dark:bg-amber-500/15 border border-amber-300 dark:border-amber-700/60 rounded-xl p-4 space-y-1.5 text-xs text-amber-900 dark:text-amber-200">
+              <div className="flex items-center gap-2 font-bold text-sm text-amber-950 dark:text-amber-100">
+                <span>⚠️</span>
+                <span>알림 수신자 지정 필요</span>
+              </div>
+              <p className="leading-relaxed">
+                아직 받는 사람을 정하지 않아 자동으로 추정하고 있습니다. 이 계정들은 평소 로그인하지 않아 알림을 못 볼 수 있습니다.
+              </p>
+              <p className="text-amber-800/80 dark:text-amber-300/80 font-medium">
+                👉 평소 업무 시 자주 로그인하시는 선생님의 이메일 계정을 아래에 추가하여 저장해 주세요.
+              </p>
+            </div>
+          )}
+
+          {/* 칩(Chip) 목록 */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2 min-h-[42px] p-2 bg-slate-50 dark:bg-slate-850/50 rounded-xl border border-slate-200/70 dark:border-slate-800">
+              {recipientsList.length === 0 ? (
+                <span className="text-xs text-slate-400 px-2 py-1">
+                  등록된 수신자가 없습니다. 아래 입력창에서 계정을 추가해 주세요.
+                </span>
+              ) : (
+                recipientsList.map((email) => (
+                  <div
+                    key={email}
+                    className="inline-flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-2xs group"
+                  >
+                    <span>{email}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveRecipient(email)}
+                      className="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-md transition-colors cursor-pointer"
+                      title={`${email} 삭제`}
+                    >
+                      <span className="text-xs">✕</span>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* 주소 입력창 + 추가 버튼 */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <input
+              type="email"
+              value={newRecipientInput}
+              onChange={(e) => {
+                setNewRecipientInput(e.target.value);
+                setRecipientError(null);
+                setRecipientSuccess(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddRecipient();
+                }
+              }}
+              placeholder="이메일 주소 입력 (예: teacher@hmh.or.kr)"
+              disabled={recipientsList.length >= 10}
+              className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={handleAddRecipient}
+              disabled={recipientsList.length >= 10 || !newRecipientInput.trim()}
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold transition-colors shadow-2xs shrink-0 cursor-pointer"
+            >
+              추가
+            </button>
+          </div>
+
+          {/* 에러 메시지 (서버 error 문구 그대로 표시) */}
+          {recipientError && (
+            <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-medium rounded-xl p-3 flex items-center gap-2">
+              <span>⚠️</span>
+              <p className="leading-snug">{recipientError}</p>
+            </div>
+          )}
+
+          {/* 성공 메시지 */}
+          {recipientSuccess && (
+            <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-xl p-3 flex items-center gap-2">
+              <span>✅</span>
+              <p className="leading-snug">{recipientSuccess}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 5. 데이터 절약 모드 관리 (super_admin 전용) */}
       {userData?.role === "super_admin" && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">

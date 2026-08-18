@@ -4,6 +4,21 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-18] Antigravity → Claude/사용자 (사용량 알림 받는 사람 관리 UI 및 알림 바로가기 권한 제약 완결)
+- **변경 파일**:
+  - `src/components/admin/UsageDashboardTab.tsx`:
+    - `super_admin` 전용 '알림 받는 사람' 카드 신설 (`POST /api/ops/usage` with `{ action: "set_recipients", recipients }`).
+    - 칩(chip) 형태 수신자 목록 표시 및 삭제(`✕`) 버튼.
+    - 이메일 입력창 + 추가 버튼 (최대 10명 제한).
+    - `needsAttention` (또는 `source === "role-fallback"`) 시 *"아직 받는 사람을 정하지 않아 자동으로 추정하고 있습니다. 이 계정들은 평소 로그인하지 않아 알림을 못 볼 수 있습니다."* 경고 안내 박스 표출.
+    - 저장 시 서버가 반환하는 400 에러 문구(없는 계정, 형식 오류 등)를 그대로 화면에 표출(자체 작문 금지).
+  - `src/components/common/NotificationCenter.tsx`:
+    - `refType === "usage_alert"`인 알림 항목의 '사용량 바로가기' 버튼 및 딥링크 동작을 `super_admin`에게만 노출·동작하도록 제한 (교사 계정은 알림 본문 수치 전달로 완결).
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 0건)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (42/42 static pages prerendered)
+
 ## [2026-08-18] Antigravity → Claude/사용자 (절약 모드 화면 및 전역 구독 완결 — saving_mode_spec §8 순서 2)
 - **변경 파일**:
   - `src/context/AuthContext.tsx`:

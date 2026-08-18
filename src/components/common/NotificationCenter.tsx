@@ -398,6 +398,7 @@ export default function NotificationCenter() {
     const isStudent = role === "student";
 
     if (item.refType === "usage_alert") {
+      if (role !== "super_admin") return;
       if (pathname === "/admin") {
         window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "usage" } }));
       } else {
@@ -682,27 +683,29 @@ export default function NotificationCenter() {
                       </div>
                     )}
 
-                    {/* 원본 바로가기 (딥링크) */}
-                    <div className="flex items-center justify-end pt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleDeepLink(item)}
-                        className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 hover:underline inline-flex items-center gap-1 cursor-pointer"
-                      >
-                        <span>
-                          {item.refType === "usage_alert"
-                            ? "사용량 바로가기"
-                            : item.refType === "memo" || item.type === "memo"
-                            ? "쪽지함 바로가기"
-                            : item.refType === "swap_request" || item.type === "request-resolved"
-                            ? "내 신청 바로가기"
-                            : item.refType === "swap_draft"
-                            ? "담긴 요청 바로가기"
-                            : "내 시간표 바로가기"}
-                        </span>
-                        <span>→</span>
-                      </button>
-                    </div>
+                    {/* 원본 바로가기 (딥링크) — usage_alert는 super_admin에게만 노출 */}
+                    {!(item.refType === "usage_alert" && userData?.role !== "super_admin") && (
+                      <div className="flex items-center justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDeepLink(item)}
+                          className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>
+                            {item.refType === "usage_alert"
+                              ? "사용량 바로가기"
+                              : item.refType === "memo" || item.type === "memo"
+                              ? "쪽지함 바로가기"
+                              : item.refType === "swap_request" || item.type === "request-resolved"
+                              ? "내 신청 바로가기"
+                              : item.refType === "swap_draft"
+                              ? "담긴 요청 바로가기"
+                              : "내 시간표 바로가기"}
+                          </span>
+                          <span>→</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })
