@@ -6,6 +6,7 @@ import { updateMasterRosterSheet } from "@/lib/google/sheets";
 import { purgeDisciplineDataForStudent } from "@/lib/discipline/server";
 import { mapConcurrent } from "@/lib/concurrency";
 import { reconcileUserDocsWithWorkspace, type ReconcileUserDocsResult } from "@/lib/auth/reconcileUserDocs";
+import { recordCronRun } from "@/lib/ops/cron_heartbeat";
 
 // Vercel 함수 실행 시간 한도 명시 (졸업 시즌 피크의 대량 알림·정지·삭제 대비).
 // 미설정 시 플랜 기본값(10초대)이 적용되어 도중에 잘리면 뒷순번 학생이 미처리된다.
@@ -747,6 +748,14 @@ export async function GET(req: NextRequest) {
       dbg(`[Retention] 파기 스텝 오류: ${retentionErr.message}`);
     }
 
+    // 심박 — **아무 일도 안 했어도** 남긴다. 이 크론은 할 일이 없으면 감사 로그를
+    // 쓰지 않아, 조용히 멈춰도 아무도 몰랐다(2026-08-18 실측: 교사 전출 자동 정지가
+    // 기한보다 7일 늦게 실행됐고 한 달이 지나도록 발견되지 않았다).
+    await recordCronRun("lifecycle", {
+      summary: `정지 ${results.suspended.length} · 삭제 ${results.deleted.length} · 안내 ${results.warned.length} · 오류 ${results.errors.length}`,
+      hadError: results.errors.length > 0,
+    });
+
     return NextResponse.json({
       success: true,
       processedAt: results.processedAt,
@@ -760,6 +769,8 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("[Cron] 자동 처리 중 오류 발생:", err);
+    // 실패도 "돌긴 돌았다"로 남긴다 — 침묵과 실패를 구분하지 못하면 진단이 불가능하다
+    await recordCronRun("lifecycle", { summary: `실행 실패: ${String(err.message).slice(0, 200)}`, hadError: true });
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

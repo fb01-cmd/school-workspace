@@ -4,6 +4,7 @@ import { runNeisCalendarSync } from "@/lib/timetable/server";
 import { runMemoPurge } from "@/lib/memo/purge";
 import { runUsageAlert } from "@/lib/ops/usage_alert";
 import { sweepSavingMode } from "@/lib/ops/saving_mode";
+import { recordCronRun } from "@/lib/ops/cron_heartbeat";
 import { adminDb } from "@/lib/firebase/admin";
 
 export const maxDuration = 60;
@@ -123,6 +124,12 @@ export async function GET(req: NextRequest) {
     !results.memoPurge.ok ||
     !results.usageAlert.ok ||
     !results.savingSweep.ok;
+  // 심박 — 성공·실패·무작업을 가리지 않고 남긴다(cron_heartbeat.ts 주석의 사고 2건)
+  await recordCronRun("daily-sync", {
+    summary: `브리지 ${results.bridge.ok ? "ok" : "실패"} · 나이스 ${results.neis.ok ? "ok" : "실패"} · 쪽지파기 ${results.memoPurge.ok ? "ok" : "실패"} · 사용량경보 ${results.usageAlert.ok ? "ok" : "실패"} · 절약정리 ${results.savingSweep.ok ? "ok" : "실패"}`,
+    hadError: anyFailed,
+  });
+
   return NextResponse.json(
     { ...results, processedAt: new Date().toISOString() },
     { status: anyFailed ? 500 : 200 }
