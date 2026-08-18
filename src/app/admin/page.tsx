@@ -38,8 +38,10 @@ const TeacherPortalSection = dynamic(() => import("@/components/admin/timetable/
 const PolicyAckStatusTab = dynamic(() => import("@/components/admin/PolicyAckStatusTab"), { loading: TabLoading });
 const PWAInstallGuideTab = dynamic(() => import("@/components/admin/PWAInstallGuideTab"), { loading: TabLoading });
 const MemoSection = dynamic(() => import("@/components/admin/MemoSection"), { loading: TabLoading });
+const UsageDashboardTab = dynamic(() => import("@/components/admin/UsageDashboardTab"), { loading: TabLoading });
 import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt";
 import MealCard from "@/components/common/MealCard";
+import AdminUsageSummaryBanner from "@/components/admin/AdminUsageSummaryBanner";
 import PushNotificationManager from "@/components/common/PushNotificationManager";
 import NotificationCenter from "@/components/common/NotificationCenter";
 import MyTimetableCard from "@/components/admin/MyTimetableCard";
@@ -51,7 +53,7 @@ import { TimetableSettings } from "@/lib/timetable/types";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable_operation" | "timetable_creation" | "my_timetable" | "policy_ack" | "pwa_guide" | "memo";
+type MenuType = "home" | "users" | "groups" | "settings" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable_operation" | "timetable_creation" | "my_timetable" | "policy_ack" | "pwa_guide" | "memo" | "usage";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
@@ -228,6 +230,8 @@ export default function AdminPage() {
         return <AuditLogViewer />;
       case "policy_ack":
         return isSuperAdmin ? <PolicyAckStatusTab /> : null;
+      case "usage":
+        return isSuperAdmin ? <UsageDashboardTab /> : null;
       case "pwa_guide":
         return <PWAInstallGuideTab />;
       case "roster":
@@ -266,6 +270,7 @@ export default function AdminPage() {
 
             {/* 알림 카드는 공통 최상단. 급식은 교사 홈에선 시간표 아래로 (2026-08-07 사용자 지시) */}
             <PushNotificationManager />
+            {isSuperAdmin && <AdminUsageSummaryBanner onNavigate={() => setActiveMenu("usage")} />}
             {isSuperAdmin && <MealCard />}
 
             {/* super_admin 홈: 기존 관리 카드 그리드 유지 */}
@@ -715,6 +720,18 @@ export default function AdminPage() {
                           </button>
 
                           <button
+                            onClick={() => setActiveMenu("usage")}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              activeMenu === "usage"
+                                ? "bg-indigo-800 text-white font-bold shadow-sm"
+                                : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            <span>📊</span>
+                            <span>사용량</span>
+                          </button>
+
+                          <button
                             onClick={() => setActiveMenu("logs")}
                             className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                               activeMenu === "logs"
@@ -873,6 +890,7 @@ export default function AdminPage() {
                 {activeMenu === "forms" && "생활지도 기록 작성"}
                 {activeMenu === "logs" && "작업 감사 로그"}
                 {activeMenu === "policy_ack" && "개인정보 처리 안내 고지 현황"}
+                {activeMenu === "usage" && "사용량"}
                 {activeMenu === "pwa_guide" && "앱으로 설치하기 안내"}
                 {activeMenu === "roster" && "학급 명렬표 인쇄 & 관리"}
                 {activeMenu === "classroom" && "구글 클래스룸 학생 즉시 배정"}

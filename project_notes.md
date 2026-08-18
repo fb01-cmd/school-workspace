@@ -4,6 +4,40 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-18] Antigravity → Claude/사용자 (사용량 모니터링 화면 완결 — usage_dashboard_spec §7 순서 3)
+- **변경 파일**:
+  - `src/components/admin/UsageDashboardTab.tsx`:
+    - **오늘 진행 현황 (3종 막대)**: 조회(`reads`), 저장(`writes`), 삭제(`deletes`) 지표별 사용 건수, 서버 제공 일일 한도(`limits`) 대비 백분율, 단계별 뱃지(정상/주의/경고), 프로그레스 바.
+    - **최근 30일 일자별 추세 차트**: 지표별 전환 탭(조회/저장/삭제), 일자별 막대 그래프 + 무료 일일 한도 기준선 점선, 호버 툴팁, 30일 일평균/최고치/한도 통계 박스.
+    - **오늘 시간대별 사용량 막대**: 완결된 1시간 단위 막대 그래프, 피크 시간대 시각적 강조, "완결된 시간대만 집계되므로 시간대별 합계가 오늘 누계보다 작은 것은 정상" 안내.
+    - **필수 고지 문구 2종**:
+      - *"하루 사용량은 매일 오후 4시(한국 시간)에 0으로 초기화됩니다"*
+      - *"최근 5분 이내 사용량은 아직 반영되지 않았을 수 있습니다"* (`lagMinutes` 연동)
+    - **`available: false` 대응**: 0이나 빈 그래프를 그리지 않고 무엇이 필요한지/설정 위치(구글 클라우드 콘솔 IAM 모니터링 편집자 역할 부여 등)를 설명하는 안내 카드 및 "다시 확인" 버튼 제공.
+    - **다시 확인 버튼**: `GET /api/ops/usage?days=30&force=1` 파라미터로 호출하여 60초 캐시 우회 즉시 갱신.
+  - `src/components/admin/AdminUsageSummaryBanner.tsx`:
+    - super_admin 사용자에게만 홈 상단에 노출되는 한 줄 요약 배너.
+    - `available: false` 시 "사용량을 아직 볼 수 없습니다 (설정 확인하기 →)" 중립 문구 표출.
+    - `available: true` 시 "🟢 오늘 사용량 20% · 정상 (상세보기 →)" 형태 표출.
+    - 클릭 시 `usage` 메뉴로 즉시 전환. `days=30` 호출로 서버 캐시 공유.
+  - `src/app/admin/page.tsx`:
+    - `MenuType`에 `"usage"` 추가, `UsageDashboardTab` 다이내믹 로딩 등록, `AdminUsageSummaryBanner` 홈 상단 배치.
+    - 사이드바 `🔐 관리자 전용` > `⚙️ 시스템 설정` 하위에 「📊 사용량」 버튼 추가.
+    - 헤더 타이틀 매핑 추가.
+  - `src/components/common/NotificationCenter.tsx`:
+    - 알림 항목의 `refType === "usage_alert"`인 경우 클릭 시 `/admin` 이동 및 `menu: "usage"` 전환 이벤트 디스패치.
+    - 바로가기 텍스트 "사용량 바로가기", 뱃지 "📊 사용량" 연결.
+  - `docs/usage_dashboard_spec.md`:
+    - §7 분업 표 및 §9 구현 기록에 순서 3 완료 갱신.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어(API, 쿼터, Cloud Monitoring, UTC, Firestore 등) 일체 배제, 사용자 눈높이 직관적인 한글 라벨 사용.
+  - 서버 `limits` 값 직접 사용 (화면 상수 재정의 0건).
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npx tsx --env-file=.env.local scripts/verify_usage_dashboard.ts` ✅ (경계·스냅샷·교차대조·캐시 4부 전판 통과)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 0건)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (42/42 static pages prerendered)
+
 ## [2026-08-18] Antigravity → Claude/사용자 (쪽지 검색 범위 드롭다운 및 다계층 캐시 파생 완결 — memo_star_search_spec §2-4a)
 - **변경 파일**:
   - `src/lib/memo/search_logic.ts`:

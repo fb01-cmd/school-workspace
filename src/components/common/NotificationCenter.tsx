@@ -51,7 +51,10 @@ function formatRelativeTime(timestamp: number): string {
   return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
 
-function getNotificationTypeBadge(type: string) {
+function getNotificationTypeBadge(type: string, refType?: string) {
+  if (refType === "usage_alert") {
+    return { icon: "📊", label: "사용량", bg: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/60" };
+  }
   switch (type) {
     case "lesson-changed":
       return { icon: "🗓️", label: "수업 변경", bg: "bg-blue-50 text-blue-700 border-blue-200" };
@@ -394,6 +397,18 @@ export default function NotificationCenter() {
     const role = userData?.role;
     const isStudent = role === "student";
 
+    if (item.refType === "usage_alert") {
+      if (pathname === "/admin") {
+        window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "usage" } }));
+      } else {
+        router.push("/admin");
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "usage" } }));
+        }, 150);
+      }
+      return;
+    }
+
     if (item.refType === "memo" || item.type === "memo") {
       if (isStudent) return;
       if (pathname === "/m") return;
@@ -539,7 +554,7 @@ export default function NotificationCenter() {
               </div>
             ) : (
               items.map((item) => {
-                const badge = getNotificationTypeBadge(item.type);
+                const badge = getNotificationTypeBadge(item.type, item.refType);
                 const isPendingAction = item.actionable?.kind === "consent" && item.actionable.state === "pending";
                 const isDeciding = decidingId === item.id;
 
@@ -675,7 +690,9 @@ export default function NotificationCenter() {
                         className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 hover:underline inline-flex items-center gap-1 cursor-pointer"
                       >
                         <span>
-                          {item.refType === "memo" || item.type === "memo"
+                          {item.refType === "usage_alert"
+                            ? "사용량 바로가기"
+                            : item.refType === "memo" || item.type === "memo"
                             ? "쪽지함 바로가기"
                             : item.refType === "swap_request" || item.type === "request-resolved"
                             ? "내 신청 바로가기"
