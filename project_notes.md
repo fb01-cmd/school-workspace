@@ -837,3 +837,9 @@
 - 검증 상태: 실기기에서 "운영 중인 학기가 없습니다" 오탐 재현(사용자 스크린샷) → 원인 = 운영 학기 단일 원본은 timetable_settings인데 일반 settings 문서에서 읽음 / 보정 후 tsc·build·verify_handover 전판 ✅
 - 다음 할 일: 사용자 재시도 — 미리보기(지상인→이현준, 8/24) 진행
 - 주의: 학기 참조는 loadActiveTerm 단일 경로 — settings 문서에서 activeTermId를 찾지 말 것 (셀프테스트가 못 잡는 라우트 배선층은 실기기 미리보기가 관문이라는 실증 사례)
+
+## [2026-08-18] Claude(Fable) → 전원 (이관 마법사 교사 검색에 학생 노출 — 실기기 신고 즉응)
+- 변경 파일: src/components/admin/AutocompleteInput.tsx(teachersOnly 옵션 — 학생 OU(/학생 프리픽스) 후보 제외, 캐시·폴백 공용 matchUser로 통합)·src/components/admin/lifecycle/SubstituteHandoverWizard.tsx(교사 검색 3필드 전부 적용)
+- 검증 상태: tsc ✅ / 실기기 재확인은 사용자(배포 후 학번 검색 시 학생 미노출)
+- 다음 할 일: 없음 — 기존 다른 화면의 AutocompleteInput은 전체 검색 의도라 무변경
+- 주의: teachersOnly 기본값 false — 사용자 전체관리 등 기존 소비처 동작 불변

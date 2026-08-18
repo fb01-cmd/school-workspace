@@ -9,6 +9,8 @@ interface AutocompleteInputProps {
   onSelect: (email: string, name?: string) => void;
   className?: string;
   inputRef?: React.RefObject<HTMLInputElement | null>;
+  /** 교직원 검색용 — 학생 OU 계정을 후보에서 제외 (기간제 이관 마법사 등, 2026-08-18 실기기 신고) */
+  teachersOnly?: boolean;
 }
 
 export default function AutocompleteInput({
@@ -18,6 +20,7 @@ export default function AutocompleteInput({
   type,
   domain,
   onSelect,
+  teachersOnly = false,
   className = "",
   inputRef,
 }: AutocompleteInputProps) {
@@ -65,21 +68,24 @@ export default function AutocompleteInput({
       
       const lowerQuery = value.toLowerCase().trim();
 
+      // 학생 OU 제외 (teachersOnly) — 표기·경로 판정은 orgUnitPath 프리픽스
+      const matchUser = (u: any) => {
+        if (teachersOnly && String(u.orgUnitPath || "").startsWith("/학생")) return false;
+        const email = (u.primaryEmail || "").toLowerCase();
+        const givenName = (u.name?.givenName || "").toLowerCase();
+        const familyName = (u.name?.familyName || "").toLowerCase();
+        const fullName = familyName + givenName;
+        return (
+          email.includes(lowerQuery) ||
+          givenName.includes(lowerQuery) ||
+          familyName.includes(lowerQuery) ||
+          fullName.includes(lowerQuery)
+        );
+      };
+
       if (cachedUsers) {
         // 캐시 히트: 로컬 메모리 필터링 (1ms)
-        const filtered = cachedUsers.filter((u: any) => {
-          const email = (u.primaryEmail || "").toLowerCase();
-          const givenName = (u.name?.givenName || "").toLowerCase();
-          const familyName = (u.name?.familyName || "").toLowerCase();
-          const fullName = familyName + givenName;
-
-          return (
-            email.includes(lowerQuery) ||
-            givenName.includes(lowerQuery) ||
-            familyName.includes(lowerQuery) ||
-            fullName.includes(lowerQuery)
-          );
-        });
+        const filtered = cachedUsers.filter(matchUser);
 
         setSuggestions(filtered.slice(0, 10));
       } else {
@@ -96,19 +102,7 @@ export default function AutocompleteInput({
               const { setClientCache } = require("@/lib/cache/clientCache");
               setClientCache("users:all", data.users);
               
-              const filtered = data.users.filter((u: any) => {
-                const email = (u.primaryEmail || "").toLowerCase();
-                const givenName = (u.name?.givenName || "").toLowerCase();
-                const familyName = (u.name?.familyName || "").toLowerCase();
-                const fullName = familyName + givenName;
-
-                return (
-                  email.includes(lowerQuery) ||
-                  givenName.includes(lowerQuery) ||
-                  familyName.includes(lowerQuery) ||
-                  fullName.includes(lowerQuery)
-                );
-              });
+              const filtered = data.users.filter(matchUser);
               setSuggestions(filtered.slice(0, 10));
             }
           })

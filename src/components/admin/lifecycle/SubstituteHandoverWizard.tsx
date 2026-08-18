@@ -313,6 +313,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
             </label>
             <AutocompleteInput
               type="user"
+              teachersOnly
               value={fromQuery}
               onChange={(val) => {
                 setFromQuery(val);
@@ -342,6 +343,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
             </label>
             <AutocompleteInput
               type="user"
+              teachersOnly
               value={toQuery}
               onChange={(val) => {
                 setToQuery(val);
@@ -604,6 +606,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
                     <div className="ml-6 mt-2">
                       <AutocompleteInput
                         type="user"
+                        teachersOnly
                         value={customHomeroomQuery}
                         onChange={(val) => {
                           setCustomHomeroomQuery(val);
