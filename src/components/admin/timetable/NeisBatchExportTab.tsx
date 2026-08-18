@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import JSZip from "jszip";
 import {
   NeisMapRegistry,
   NeisPrecheckReport,
@@ -8,6 +9,8 @@ import {
   NeisPrecheckSubjectIssue,
   NeisPrecheckTeacherIssue,
   NeisPrecheckPairIssue,
+  NeisCsvBundle,
+  NeisCsvFile,
 } from "@/lib/timetable/types";
 
 interface DraftSummary {
@@ -73,6 +76,12 @@ export default function NeisBatchExportTab({ activeTermId }: NeisBatchExportTabP
   const [precheckTarget, setPrecheckTarget] = useState<NeisPrecheckTarget | null>(null);
   const [precheckLoading, setPrecheckLoading] = useState(false);
   const [precheckError, setPrecheckError] = useState<string | null>(null);
+
+  // ── 나이스 파일 일괄 생성 상태 ──
+  const [bundle, setBundle] = useState<NeisCsvBundle | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [showClassList, setShowClassList] = useState(false);
 
   // ── 체크 상태 (W2·W3 자가 확인) ──
   // 현재 registry 기반으로 초기화, 저장 전 로컬 토글
@@ -205,6 +214,86 @@ export default function NeisBatchExportTab({ activeTermId }: NeisBatchExportTabP
       return next;
     });
     setMapSaved(false);
+  };
+
+  // ── ZIP 파일 다운로드 ──
+  const downloadZipBundle = useCallback(async (b: NeisCsvBundle, label: string) => {
+    const zip = new JSZip();
+    for (const file of b.files) {
+      zip.file(`기초시간표(${file.label}).csv`, file.csv);
+    }
+    const blob = await zip.generateAsync({ type: "blob" });
+    const safeLabel = (label || "시간표").replace(/[/\\?%*:|"<>]/g, "_");
+    const zipFilename = `기초시간표_나이스_${safeLabel}.zip`;
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = zipFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  // ── 개별 학급 CSV 다운로드 ──
+  const downloadSingleCsv = useCallback((file: NeisCsvFile) => {
+    const filename = `기초시간표(${file.label}).csv`;
+    const blob = new Blob([file.csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  // ── 나이스 파일 일괄 생성 및 다운로드 실행 ──
+  const executeExport = async () => {
+    setExportLoading(true);
+    setExportError(null);
+
+    const body =
+      targetKind === "term"
+        ? { action: "neis_csv", termId: activeTermId || undefined }
+        : { action: "neis_csv", draftId: selectedDraftId };
+
+    try {
+      const res = await api(body);
+      if (!res.success) {
+        setExportError(res.error || "나이스 파일 생성에 실패했습니다.");
+        if (res.report) {
+          setReport(res.report);
+        }
+        if (res.target) {
+          setPrecheckTarget(res.target);
+        }
+        setExportLoading(false);
+        return;
+      }
+
+      const bundleData: NeisCsvBundle = res.bundle;
+      const targetData: NeisPrecheckTarget = res.target;
+      setBundle(bundleData);
+      if (res.report) {
+        setReport(res.report);
+      }
+      if (targetData) {
+        setPrecheckTarget(targetData);
+      }
+
+      // 자동으로 ZIP 다운로드 실행
+      await downloadZipBundle(
+        bundleData,
+        targetData?.label || (targetKind === "term" ? "현재학기" : "초안")
+      );
+    } catch (err: any) {
+      setExportError(err?.message || "파일 생성 중 오류가 발생했습니다.");
+    } finally {
+      setExportLoading(false);
+    }
   };
 
   return (
@@ -504,21 +593,118 @@ export default function NeisBatchExportTab({ activeTermId }: NeisBatchExportTabP
         )}
       </div>
 
-      {/* ── 4. CSV 일괄 생성 스텁 ── */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-        <div>
-          <h4 className="text-xs font-bold text-slate-800">📄 나이스 일괄 입력 CSV 파일 생성</h4>
-          <p className="text-[11px] text-slate-500">
-            사전 검증이 완료된 기초시간표 데이터를 나이스 업로드용 CSV 형식으로 직렬화합니다.
-          </p>
+      {/* ── 4. 나이스 파일 일괄 생성 ── */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+          <div>
+            <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <span>📄 나이스 일괄 입력 파일 생성</span>
+              {bundle && (
+                <span className="text-xs px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  생성 완료 ({bundle.files.length}개 학급)
+                </span>
+              )}
+            </h4>
+            <p className="text-xs text-slate-500 mt-0.5">
+              사전 검증이 완료된 기초시간표 데이터를 나이스 일괄 등록 양식 파일로 생성하고 압축 파일(ZIP)로 내려받습니다.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {bundle && (
+              <button
+                type="button"
+                onClick={() =>
+                  downloadZipBundle(
+                    bundle,
+                    precheckTarget?.label || (targetKind === "term" ? "현재학기" : "초안")
+                  )
+                }
+                className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
+              >
+                <span>📦 압축 파일 다시 받기</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={executeExport}
+              disabled={exportLoading || (targetKind === "draft" && !selectedDraftId)}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+            >
+              <span>{exportLoading ? "파일 생성 중..." : "📥 나이스 파일 생성 및 받기"}</span>
+            </button>
+          </div>
         </div>
-        <button
-          disabled
-          title="나이스 양식 서식 확정 후 지원 예정입니다"
-          className="px-4 py-2 bg-slate-300 text-slate-500 text-xs font-bold rounded-lg cursor-not-allowed shrink-0"
-        >
-          CSV 내보내기 (준비 중)
-        </button>
+
+        {/* 400 에러 또는 예외 에러 표시 (서버 문구 그대로 노출) */}
+        {exportError && (
+          <div className="bg-rose-50 border border-rose-200 rounded-lg p-3.5 text-xs text-rose-900 font-medium whitespace-pre-line leading-relaxed">
+            {exportError}
+          </div>
+        )}
+
+        {/* 복수 교사 수업 안내 */}
+        {bundle && bundle.multiTeacherAll.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 space-y-2 text-xs text-amber-950">
+            <div className="font-bold flex items-center gap-1.5 text-amber-900">
+              <span>ℹ️ 복수 교사 수업 안내 ({bundle.multiTeacherAll.length}건)</span>
+            </div>
+            <p className="text-[11px] text-amber-800 leading-relaxed">
+              교사가 2명 이상 배정된 수업은 나이스 등록 양식 규약에 따라 <strong>첫 번째 교사만 파일에 반영</strong>되었습니다.
+            </p>
+            <div className="flex flex-wrap gap-1.5 pt-0.5 max-h-32 overflow-y-auto">
+              {bundle.multiTeacherAll.map((item, idx) => (
+                <span
+                  key={idx}
+                  className="px-2 py-0.5 bg-white border border-amber-300 text-amber-900 rounded text-[11px] font-semibold shadow-2xs"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 생성된 학급별 파일 목록 (개별 내려받기 지원) */}
+        {bundle && bundle.files.length > 0 && (
+          <div className="border border-slate-200 rounded-xl bg-white p-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <h5 className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                <span>학급별 개별 파일 목록 ({bundle.files.length}개)</span>
+                <span className="text-[11px] font-normal text-slate-500">
+                  필요한 경우 특정 학급 파일만 개별로 받을 수 있습니다.
+                </span>
+              </h5>
+              <button
+                type="button"
+                onClick={() => setShowClassList((prev) => !prev)}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                {showClassList ? "목록 접기 ▲" : "목록 펼치기 ▼"}
+              </button>
+            </div>
+
+            {showClassList && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-2 pt-1 max-h-60 overflow-y-auto">
+                {bundle.files.map((file) => (
+                  <button
+                    key={file.label}
+                    type="button"
+                    onClick={() => downloadSingleCsv(file)}
+                    className="flex items-center justify-between p-2 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition-colors text-xs text-left group"
+                    title={`${file.label} 파일 개별 내려받기`}
+                  >
+                    <span className="font-bold text-slate-800 group-hover:text-indigo-700">
+                      {file.label}
+                    </span>
+                    <span className="text-slate-400 group-hover:text-indigo-600 text-xs">
+                      ⬇️
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

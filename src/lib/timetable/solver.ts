@@ -1011,10 +1011,38 @@ export function solveTimetable(input: SolverInput): SolverResult {
    *  컴시간·사람 손의 통상 규칙(과목은 요일에 분산)을 배치 규칙으로 올린다.
    *  예외 — 고정 슬롯 섹션(창체 금5·6처럼 등록부가 같은 날을 지정)과 동시수업 섹션
    *  (등록부 슬롯이 같은 날 2개일 수 있음)은 무제한. 주당 시수 > 요일 수면 불가피분만 허용. */
+  /**
+   * 이 섹션이 **구조적으로 쓸 수 있는 요일 수**.
+   *
+   * ⚠️ 전체 요일 수로 나누면 안 된다 (2026-08-18 실측 결함): 하루가 통째로 막힌 교사의
+   * 섹션은 쓸 수 있는 요일이 그만큼 적은데, 한도를 전체 요일로 계산하면 "5일에 하루씩"
+   * 같은 불가능한 요구가 되어 **배정 불가**가 난다. 자가 테스트 「배정금지 회피」가 정확히
+   * 이 지형이었고, 일과계 질문지에서 이미 요일 통짜 제약(금1 실무회의 13명)이 나왔으므로
+   * 11월 실전에서 실제로 터질 수 있었다.
+   *
+   * 금지·허용 슬롯은 풀이 중에 변하지 않으므로 한 번만 계산한다(점유는 세지 않는다 —
+   * 동적 상황까지 반영하면 한도가 흔들려 탐색이 불안정해진다).
+   */
+  const usableDayCount = (s: SolverSection): number => {
+    let n = 0;
+    for (let day = 1; day <= 5; day++) {
+      const maxP = gdp[s.grade]?.[day] || 0;
+      if (maxP <= 0) continue;
+      for (let p = 1; p <= maxP; p++) {
+        const slot = `${day}-${p}`;
+        if (s.bannedSlots.has(slot)) continue;
+        if (s.allowedSlots && !s.allowedSlots.has(slot)) continue;
+        n++;
+        break;
+      }
+    }
+    return n;
+  };
+
   const dayLimit = sections.map((s, i) => {
     if (hasPattern[i]) return 1;
     if (s.kind !== "plain" || (s.fixedSlots && s.fixedSlots.length)) return Infinity;
-    const days = Math.max(1, Object.keys(gdp[s.grade] || {}).length);
+    const days = Math.max(1, usableDayCount(s));
     return Math.max(1, Math.ceil(s.occurrences / days));
   });
   const soft: SoftState = {
@@ -1106,13 +1134,28 @@ export function solveTimetable(input: SolverInput): SolverResult {
   }
 
   /** 슬롯 후보가 물리적으로 가능한가 (하드 전 항목) */
-  function feasible(sectionIdx: number, day: number, start: number, len: number): boolean {
+  function feasible(
+    sectionIdx: number,
+    day: number,
+    start: number,
+    len: number,
+    /**
+     * 요일 분산 한도를 무시한다. **분산은 선호지 하드 제약이 아니다** — 이걸 지키려다
+     * 배치 자체를 못 하면 본말전도다(2026-08-18: 교사가 하루 통째로 막히면 그 반의 그
+     * 요일을 다른 과목이 메워야 하는데, 분산 한도가 그것까지 막아 배정 불가가 났다).
+     * 우선순위: ① 분산 지키며 배치 ② 분산 넘겨서라도 배치 ③ 남을 밀어내고 배치.
+     */
+    relaxDayLimit = false
+  ): boolean {
     const s = sections[sectionIdx];
     const maxP = gdp[s.grade]?.[day] || 0;
     if (start < 1 || start + len - 1 > maxP) return false;
     // 요일당 배치 한도 — 패턴 섹션 1회(연속 길이 붕괴 방지) + 일반 섹션 과목 분산 (위 dayLimit 주석)
-    if ((sectionDayCount.get(sectionIdx)?.get(day) || 0) >= dayLimit[sectionIdx])
-      return false;
+    // 패턴 섹션의 1회 제한은 완화 대상이 아니다 — 그건 H9(연속 길이) 보호라 성격이 다르다.
+    if (!(relaxDayLimit && !hasPattern[sectionIdx])) {
+      if ((sectionDayCount.get(sectionIdx)?.get(day) || 0) >= dayLimit[sectionIdx])
+        return false;
+    }
     for (let p = start; p < start + len; p++) {
       const slot = `${day}-${p}`;
       if (s.bannedSlots.has(slot)) return false;
@@ -1124,13 +1167,17 @@ export function solveTimetable(input: SolverInput): SolverResult {
     return true;
   }
 
-  function candidateSlots(sectionIdx: number, len: number): Array<{ day: number; start: number }> {
+  function candidateSlots(
+    sectionIdx: number,
+    len: number,
+    relaxDayLimit = false
+  ): Array<{ day: number; start: number }> {
     const s = sections[sectionIdx];
     const out: Array<{ day: number; start: number }> = [];
     for (let day = 1; day <= 5; day++) {
       const maxP = gdp[s.grade]?.[day] || 0;
       for (let start = 1; start + len - 1 <= maxP; start++) {
-        if (feasible(sectionIdx, day, start, len)) out.push({ day, start });
+        if (feasible(sectionIdx, day, start, len, relaxDayLimit)) out.push({ day, start });
       }
     }
     return out;
@@ -1260,6 +1307,22 @@ export function solveTimetable(input: SolverInput): SolverResult {
     if (direct.length) {
       const c = direct[Math.floor(rng() * direct.length)];
       japply({ sectionIdx: p.sectionIdx, occIdx: p.occIdx, len: p.len, day: c.day, start: c.start }, 1);
+      return true;
+    }
+    // ② 분산 한도를 넘겨서라도 배치 — 남을 밀어내는 것(③)보다 덜 파괴적이다.
+    //    소프트 점수(S4 과목 중복)에는 그대로 반영되므로 국소 탐색이 나중에 되돌릴 여지가 남는다.
+    const relaxed = candidateSlots(p.sectionIdx, p.len, true);
+    if (relaxed.length) {
+      let pick = relaxed[0];
+      let minCost = Infinity;
+      for (const c of relaxed) {
+        const cost = slotCost(p.sectionIdx, c.day, c.start, p.len);
+        if (cost < minCost) {
+          minCost = cost;
+          pick = c;
+        }
+      }
+      japply({ sectionIdx: p.sectionIdx, occIdx: p.occIdx, len: p.len, day: pick.day, start: pick.start }, 1);
       return true;
     }
     if (depth <= 0) return false;
