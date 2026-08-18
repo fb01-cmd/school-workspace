@@ -41,6 +41,13 @@ import {
   filterMemosByRangeBoundary,
 } from "@/lib/memo/search_logic";
 import MemoAttachmentGrid from "@/components/common/MemoAttachmentGrid";
+import MemoRichBody from "@/components/common/MemoRichBody";
+import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
+import {
+  MEMO_CONTENT_FORMAT_MD1,
+  bodyHasMd1Formatting,
+  stripMd1,
+} from "@/lib/memo/richtext";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -1024,9 +1031,13 @@ function MemoDetailPanel({
 
         {/* 본문 카드 구획 */}
         <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-2xs space-y-4">
-          <pre className="whitespace-pre-wrap text-[15px] text-slate-800 font-sans leading-relaxed">
-            {memo.body}
-          </pre>
+          {memo.contentFormat === "md1" ? (
+            <MemoRichBody body={memo.body} />
+          ) : (
+            <pre className="whitespace-pre-wrap text-[15px] text-slate-800 font-sans leading-relaxed">
+              {memo.body}
+            </pre>
+          )}
 
           {/* 링크 */}
           {memo.links && memo.links.length > 0 && (
@@ -1225,12 +1236,14 @@ function ComposeModal({
 
   const [title, setTitle] = useState(initialTitle);
   const [body, setBody] = useState("");
+  const [editorMode, setEditorMode] = useState<"edit" | "preview">("edit");
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
   const [links, setLinks] = useState<{ url: string; label?: string }[]>([]);
   const [stagedAttachments, setStagedAttachments] = useState<StagedAttachment[]>([]);
   const [addSearchVal, setAddSearchVal] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -1487,6 +1500,9 @@ function ComposeModal({
         .filter((a) => a.status === "done" && a.attachment)
         .map((a) => a.attachment!.driveFileId);
 
+      const isMd1 = bodyHasMd1Formatting(body);
+      const contentFormat = isMd1 ? MEMO_CONTENT_FORMAT_MD1 : undefined;
+
       const res = await fetch("/api/memo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1495,6 +1511,7 @@ function ComposeModal({
           replyToMemoId: isReply ? replyToMemo.id : undefined,
           title,
           body,
+          contentFormat,
           links: links.length > 0 ? links : undefined,
           attachments: driveFileIds.length > 0 ? driveFileIds : undefined,
           recipientSummary: isReply ? (chips[0]?.label || "") : buildSummary(chips),
@@ -1734,16 +1751,98 @@ function ComposeModal({
 
               {/* 내용 */}
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">내용</label>
-                <textarea
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  onPaste={handlePaste}
-                  maxLength={10000}
-                  rows={5}
-                  placeholder="내용을 입력하세요"
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-semibold text-slate-700">내용</label>
+                  <span className="text-xs text-slate-400">
+                    {body.length.toLocaleString()} / 10,000자
+                  </span>
+                </div>
+
+                <div className="rounded-lg border border-slate-300 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent overflow-hidden">
+                  <MemoEditorToolbar
+                    textareaRef={bodyTextareaRef}
+                    body={body}
+                    setBody={setBody}
+                    mode={editorMode}
+                    setMode={setEditorMode}
+                  />
+
+                  {editorMode === "edit" ? (
+                    <textarea
+                      ref={bodyTextareaRef}
+                      value={body}
+                      onChange={(e) => setBody(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.ctrlKey || e.metaKey) {
+                          if (e.key === "b" || e.key === "B") {
+                            e.preventDefault();
+                            const el = bodyTextareaRef.current;
+                            if (el) {
+                              const start = el.selectionStart;
+                              const end = el.selectionEnd;
+                              const sel = el.value.substring(start, end);
+                              const rep = sel ? `**${sel}**` : `**굵은 텍스트**`;
+                              const next = el.value.substring(0, start) + rep + el.value.substring(end);
+                              setBody(next);
+                              setTimeout(() => {
+                                el.focus();
+                                if (sel) el.setSelectionRange(start + 2, start + 2 + sel.length);
+                                else el.setSelectionRange(start + 2, start + 8);
+                              }, 0);
+                            }
+                          } else if (e.key === "i" || e.key === "I") {
+                            e.preventDefault();
+                            const el = bodyTextareaRef.current;
+                            if (el) {
+                              const start = el.selectionStart;
+                              const end = el.selectionEnd;
+                              const sel = el.value.substring(start, end);
+                              const rep = sel ? `*${sel}*` : `*기울임 텍스트*`;
+                              const next = el.value.substring(0, start) + rep + el.value.substring(end);
+                              setBody(next);
+                              setTimeout(() => {
+                                el.focus();
+                                if (sel) el.setSelectionRange(start + 1, start + 1 + sel.length);
+                                else el.setSelectionRange(start + 1, start + 8);
+                              }, 0);
+                            }
+                          } else if (e.key === "u" || e.key === "U") {
+                            e.preventDefault();
+                            const el = bodyTextareaRef.current;
+                            if (el) {
+                              const start = el.selectionStart;
+                              const end = el.selectionEnd;
+                              const sel = el.value.substring(start, end);
+                              const rep = sel ? `__${sel}__` : `__밑줄 텍스트__`;
+                              const next = el.value.substring(0, start) + rep + el.value.substring(end);
+                              setBody(next);
+                              setTimeout(() => {
+                                el.focus();
+                                if (sel) el.setSelectionRange(start + 2, start + 2 + sel.length);
+                                else el.setSelectionRange(start + 2, start + 8);
+                              }, 0);
+                            }
+                          }
+                        }
+                      }}
+                      onPaste={handlePaste}
+                      maxLength={10000}
+                      rows={6}
+                      placeholder="내용을 입력하세요"
+                      className="w-full px-3 py-2 text-sm border-0 focus:outline-none resize-none bg-white block"
+                    />
+                  ) : (
+                    <div className="w-full px-4 py-3 min-h-[154px] max-h-[260px] overflow-y-auto bg-slate-50/60">
+                      {body.trim() ? (
+                        <MemoRichBody body={body} />
+                      ) : (
+                        <p className="text-sm text-slate-400 italic">
+                          내용을 입력하면 여기에 서식이 적용된 모습으로 표시됩니다.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* 링크 */}

@@ -15,6 +15,7 @@ import {
 import { db } from "@/lib/firebase/config";
 import type { MemoDoc } from "@/lib/memo/logic";
 import MemoAttachmentGrid from "@/components/common/MemoAttachmentGrid";
+import MemoRichBody from "@/components/common/MemoRichBody";
 
 type MemoItem = MemoDoc & { id: string };
 
@@ -325,9 +326,16 @@ export default function MobileMemoSection() {
 
                     {/* 본문 카드 구획 */}
                     <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-700/80 p-4 shadow-2xs space-y-3">
-                      <pre className="whitespace-pre-wrap text-[14px] text-slate-800 dark:text-slate-200 font-sans leading-relaxed">
-                        {displayedMemo.body}
-                      </pre>
+                      {displayedMemo.contentFormat === "md1" ? (
+                        <MemoRichBody
+                          body={displayedMemo.body}
+                          className="space-y-2 text-[14px] text-slate-800 dark:text-slate-200 font-sans leading-relaxed break-words"
+                        />
+                      ) : (
+                        <pre className="whitespace-pre-wrap text-[14px] text-slate-800 dark:text-slate-200 font-sans leading-relaxed">
+                          {displayedMemo.body}
+                        </pre>
+                      )}
 
                       {displayedMemo.links && displayedMemo.links.length > 0 && (
                         <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 space-y-1">

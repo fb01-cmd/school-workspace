@@ -742,3 +742,10 @@
 - 검증 상태: memo_attachment_selftest 1부 전판 ✅(GIF 통과·PNG 바이트 위장 거부·서명 2종) / tsc ✅ / 2부 실계정은 PNG만 올리는 사이클이라 재실행 생략(증명력 无) — GIF 실기기 확인은 사용자 몫
 - 다음 할 일: 사용자 실기기 — GIF 1장 첨부 발송 후 수신 측에서 클릭 재생 확인 (목록 미리보기는 정지 썸네일이 정상)
 - 주의: GIF는 캔버스 경로를 타면 움직임이 죽는다 — 향후 첨부 코드 수정 시 isGif 분기(client_attachments) 앞단 유지. 글자 사이 재생은 v1.1 인라인 이미지(§13)에서
+
+## [2026-08-18] Antigravity → Claude/사용자 (쪽지 서식 v1 화면부 구현 완료 — STATUS 작업 대기 1번 종결)
+- 변경 파일: src/components/common/MemoRichBody.tsx(신설 — parseMd1 노드→React 매핑, dangerouslySetInnerHTML 0)·src/components/common/MemoEditorToolbar.tsx(신설 — 8종 서식 버튼+내장 상수 이모지 피커+미리보기 토글)·src/components/admin/MemoSection.tsx(상세 MemoRichBody 분기, 툴바·피커·단축키·contentFormat 스탬프)·src/components/mobile/MobileMemoSection.tsx(상세 MemoRichBody 분기)·STATUS.md
+- 검증 상태: tsc ✅ (0 errors) / verify_memo_richtext ✅ (26/26) / memo_selftest ✅ / check_ui_removals 57c2c2a ✅ (사라진 상호작용 0) / check_ghost_markers ✅ (신규 상태 표기 0)
+- 다음 할 일: 사용자 실기기 확인 — PC에서 서식 쪽지 작성·발송(굵게/기울임/밑줄/취소선/목록/인용/링크/이모지) → 폰(/m)에서 열람 확인 + 옛 쪽지(평문 pre) 그대로 유지 확인
+- 주의: ① dangerouslySetInnerHTML 사용 0건 유지(XSS 구조 차단) ② contentFormat === "md1"일 때만 MemoRichBody 렌더, 부재 시 기존 pre 평문 경로 엄격 유지 ③ 발송 시 bodyHasMd1Formatting(body)가 false면 contentFormat을 보내지 않음(평문 발송) ④ 화면 문구에 마크다운 등 개발 용어 일절 배제
+
