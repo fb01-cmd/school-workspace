@@ -33,6 +33,8 @@ import {
 import {
   memoMatchesSearch,
   type MemoSearchTarget,
+  MEMO_SEARCH_RANGE_DAYS,
+  rangeFromDays,
   type MemoSearchRange,
   MEMO_SEARCH_RANGE_LABELS,
   computeSearchRangeBoundary,
@@ -1939,7 +1941,7 @@ interface MemoSectionProps {
 }
 
 export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
-  const { user, userData, teacherProfile, schoolSettings } = useAuth();
+  const { user, userData, teacherProfile, schoolSettings, savingMode } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "";
   /**
@@ -1957,7 +1959,11 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
 
   // 검색 상태 (§2-4a 범위 드롭다운)
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchRange, setSearchRange] = useState<MemoSearchRange>("3m");
+  // 기본 선택 범위는 절약 모드 손잡이에서 온다 (평시 3개월, 절약 시 1개월).
+  // 사용자가 직접 고른 뒤에는 덮어쓰지 않는다 — 화면이 제멋대로 되돌아가면 안 된다.
+  const [searchRange, setSearchRange] = useState<MemoSearchRange>(() =>
+    rangeFromDays(savingMode.knobs.memoSearchDefaultDays)
+  );
   const [searchLoading, setSearchLoading] = useState(false);
   const [allUserMemos, setAllUserMemos] = useState<MemoItem[] | null>(null);
 
@@ -2209,16 +2215,20 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
         return;
       }
 
-      // 2. 더 넓은 범위 캐시로부터 파생 필터 (1y -> 6m -> 3m)
-      const widerRanges: MemoSearchRange[] =
-        searchRange === "3m" ? ["6m", "1y"] : searchRange === "6m" ? ["1y"] : [];
+      // 2. 더 넓은 범위 캐시로부터 파생 필터 (넓은 것부터 좁은 순)
+      // 일수 기준으로 계산한다 — 범위 종류가 늘어도(1m 추가 등) 손댈 필요가 없다.
+      const widerRanges: MemoSearchRange[] = (
+        Object.keys(MEMO_SEARCH_RANGE_DAYS) as MemoSearchRange[]
+      )
+        .filter((r) => MEMO_SEARCH_RANGE_DAYS[r] > MEMO_SEARCH_RANGE_DAYS[searchRange])
+        .sort((a, b) => MEMO_SEARCH_RANGE_DAYS[a] - MEMO_SEARCH_RANGE_DAYS[b]);
 
       for (const wider of widerRanges) {
         const widerKey = `memos:all_user:${myEmail}:${wider}`;
         const widerCached = getClientCache(widerKey);
         if (Array.isArray(widerCached)) {
           const derived = filterMemosByRangeBoundary(widerCached, boundaryMs);
-          setClientCache(exactCacheKey, derived, 5 * 60 * 1000);
+          setClientCache(exactCacheKey, derived);
           if (!cancelled) {
             setAllUserMemos(derived);
             setSearchLoading(false);

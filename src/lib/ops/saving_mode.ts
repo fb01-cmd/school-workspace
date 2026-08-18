@@ -7,8 +7,10 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/firebase/audit-server";
 import {
+  KNOBS_NORMAL,
   ResolvedSavingMode,
   SAVING_MODE_OFF,
+  SavingKnobs,
   SavingModeState,
   resolveSavingMode,
 } from "./saving_logic";
@@ -33,6 +35,55 @@ export async function readSavingModeState(): Promise<SavingModeState> {
 /** 지금 실제로 적용되는 상태 — 서버 경로에서 손잡이 값을 물을 때 쓴다 */
 export async function getSavingMode(now = Date.now()): Promise<ResolvedSavingMode> {
   return resolveSavingMode(await readSavingModeState(), now);
+}
+
+// ── 서버 경로용 동기 접근자 (결선, 스펙 §8 순서 3) ──────────────────────
+//
+// 캐시 수명 판정 같은 **동기 지점**에서 손잡이 값을 물어야 하는데, 매번 Firestore를
+// 읽으면 절약하려다 읽기를 늘리는 자가당착이 된다. 그래서 마지막으로 읽은 값을
+// 모듈에 들고 있다가 5분마다 백그라운드로만 갱신한다.
+//
+// 비용: 인스턴스당 최대 288 읽기/일(5분 주기). 이 접근자를 부르는 요청은 후보 계산
+// 경로(요청당 240+ 읽기)뿐이라 상대 비용은 무시할 수 있다.
+// 지연: 켜고 최대 5분 뒤에 서버 쪽 손잡이가 반응한다 — 위급 조치가 초 단위로 급하지는
+// 않으므로 수용한다(화면 배너는 구독이라 즉시 뜬다).
+const KNOB_CACHE_TTL_MS = 5 * 60 * 1000;
+let knobCache: { knobs: SavingKnobs; at: number } = { knobs: KNOBS_NORMAL, at: 0 };
+let knobRefreshInFlight = false;
+
+function refreshKnobsSoon() {
+  if (knobRefreshInFlight) return;
+  knobRefreshInFlight = true;
+  readSavingModeState()
+    .then((state) => {
+      knobCache = { knobs: resolveSavingMode(state, Date.now()).knobs, at: Date.now() };
+    })
+    .catch(() => {
+      // 읽기 실패 시 평시 값을 유지한다 — 절약 모드를 "모르면 켜진 것으로" 취급하지 않는다
+      knobCache = { knobs: KNOBS_NORMAL, at: Date.now() };
+    })
+    .finally(() => {
+      knobRefreshInFlight = false;
+    });
+}
+
+/**
+ * 동기 손잡이 조회. 첫 호출은 평시 값을 돌려주고 갱신을 예약한다 —
+ * **모르는 상태의 기본값은 언제나 평시**다(절약 모드가 사고로 켜져 있는 것보다 낫다).
+ */
+export function getKnobsCached(now = Date.now()): SavingKnobs {
+  if (now - knobCache.at > KNOB_CACHE_TTL_MS) refreshKnobsSoon();
+  return knobCache.knobs;
+}
+
+/** 토글 직후 즉시 반영 — 켠 사람이 다음 요청에서 5분을 기다리지 않도록 */
+function primeKnobCache(resolved: ResolvedSavingMode, now: number) {
+  knobCache = { knobs: resolved.knobs, at: now };
+}
+
+/** 검증용 — 캐시를 비운다 */
+export function clearKnobCache() {
+  knobCache = { knobs: KNOBS_NORMAL, at: 0 };
 }
 
 export interface ToggleResult {
@@ -63,7 +114,9 @@ export async function setSavingMode(
     status: "success",
   }).catch(() => {});
 
-  return { state, resolved: resolveSavingMode(state, now) };
+  const resolved = resolveSavingMode(state, now);
+  primeKnobCache(resolved, now);
+  return { state, resolved };
 }
 
 export interface SavingSweepSummary {
@@ -89,6 +142,7 @@ export async function sweepSavingMode(now = Date.now()): Promise<SavingSweepSumm
       details: "24시간 경과로 데이터 절약 모드 자동 해제",
       status: "success",
     }).catch(() => {});
+    primeKnobCache(resolveSavingMode(SAVING_MODE_OFF, now), now);
     return { turnedOff: 1, active: false };
   }
   return { turnedOff: 0, active: r.active };

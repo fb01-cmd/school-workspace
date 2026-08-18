@@ -47,15 +47,17 @@ export function memoMatchesSearch(target: MemoSearchTarget, rawQuery: unknown): 
 
 // ── 검색 기간 범위 (docs/memo_star_search_spec.md §2-4a) ─────────
 
-export type MemoSearchRange = "3m" | "6m" | "1y";
+export type MemoSearchRange = "1m" | "3m" | "6m" | "1y";
 
 export const MEMO_SEARCH_RANGE_LABELS: Record<MemoSearchRange, string> = {
+  "1m": "최근 1개월",
   "3m": "최근 3개월",
   "6m": "최근 6개월",
   "1y": "최근 1년",
 };
 
 export const MEMO_SEARCH_RANGE_DAYS: Record<MemoSearchRange, number> = {
+  "1m": 30,
   "3m": 90,
   "6m": 180,
   "1y": 365,
@@ -81,3 +83,17 @@ export function filterMemosByRangeBoundary<T extends { createdAt: number }>(
   return items.filter((item) => typeof item.createdAt === "number" && item.createdAt >= boundaryMs);
 }
 
+
+/**
+ * 절약 모드 손잡이(일수) → 범위 키. 화면 기본 선택을 정할 때 쓴다.
+ * 스펙 §5(정직성): 좁아진 범위는 **드롭다운에 실제로 선택돼 보여야** 한다 —
+ * "3개월"이라 표시하면서 1개월만 뒤지는 구현 금지.
+ */
+export function rangeFromDays(days: number): MemoSearchRange {
+  const entries = Object.entries(MEMO_SEARCH_RANGE_DAYS) as [MemoSearchRange, number][];
+  const exact = entries.find(([, d]) => d === days);
+  if (exact) return exact[0];
+  // 정확히 맞는 값이 없으면 요청한 일수를 넘지 않는 가장 넓은 범위
+  const under = entries.filter(([, d]) => d <= days).sort((a, b) => b[1] - a[1])[0];
+  return under ? under[0] : "1m";
+}

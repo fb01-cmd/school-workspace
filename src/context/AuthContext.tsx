@@ -6,6 +6,7 @@ import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
 import { UserData, handleUserRoles } from "@/lib/firebase/auth";
 import PolicyAckModal from "@/components/policy/PolicyAckModal";
+import { setClientCacheDefaultTtl } from "@/lib/cache/clientCache";
 import {
   KNOBS_NORMAL,
   ResolvedSavingMode,
@@ -302,6 +303,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (unsubscribeSavingMode) unsubscribeSavingMode();
     };
   }, []);
+
+  // 절약 모드 손잡이 → 클라이언트 캐시 기본 수명 (docs/saving_mode_spec.md §8 순서 3)
+  // 이미 저장된 항목은 소급되지 않는다 — 끄는 순간 캐시가 한꺼번에 만료돼 되레 읽기가
+  // 튀는 것을 막기 위한 clientCache 쪽 결정이다.
+  useEffect(() => {
+    setClientCacheDefaultTtl(savingMode.knobs.clientCacheTtlMs);
+  }, [savingMode.knobs.clientCacheTtlMs]);
 
   // 활성 상태일 때 남은 시간(remainingMs) 주기적 갱신 및 24시간 자동 만료 카운트다운
   useEffect(() => {

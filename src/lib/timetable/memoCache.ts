@@ -20,7 +20,11 @@ export interface MemoStore {
 }
 
 export function createMemoStore(opts: {
-  ttlMs: number;
+  /**
+   * 수명(ms). **함수로 주면 매 조회 시 평가된다** — 절약 모드(docs/saving_mode_spec.md)가
+   * 실행 중에 수명을 늘릴 수 있어야 해서 열어 둔 자리다. 숫자를 주면 종전과 동일.
+   */
+  ttlMs: number | (() => number);
   maxEntries: number;
   /** 환경변수 이름 — 값이 "off"면 캐시를 통째로 끈다 (킬스위치) */
   killSwitchEnv?: string;
@@ -35,8 +39,9 @@ export function createMemoStore(opts: {
         return fn();
       }
       const now = Date.now();
+      const ttlMs = typeof opts.ttlMs === "function" ? opts.ttlMs() : opts.ttlMs;
       const hit = store.get(key);
-      if (hit && now - hit.at < opts.ttlMs) {
+      if (hit && now - hit.at < ttlMs) {
         opts.onOutcome?.("hit");
         return hit.promise as Promise<T>;
       }

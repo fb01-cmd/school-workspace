@@ -15,7 +15,11 @@ import {
   buildSavingBannerText,
   resolveSavingMode,
 } from "../src/lib/ops/saving_logic";
+import { MEMO_SEARCH_RANGE_DAYS, rangeFromDays } from "../src/lib/memo/search_logic";
+import { createMemoStore } from "../src/lib/timetable/memoCache";
 import {
+  clearKnobCache,
+  getKnobsCached,
   getSavingMode,
   readSavingModeState,
   savingModeRef,
@@ -92,6 +96,28 @@ async function main() {
     expect("꺼져 있으면 배너 없음", buildSavingBannerText(resolveSavingMode(SAVING_MODE_OFF, T0)) === null);
   }
 
+  console.log("\n[결선 — 손잡이가 실제로 움직이는가 (순서 3)]");
+  {
+    // 시간표 후보 캐시: createMemoStore가 수명을 **매 조회 시** 평가해야 절약 모드가 먹는다
+    let ttl = KNOBS_NORMAL.timetableCacheTtlMs;
+    let calls = 0;
+    const store = createMemoStore({ ttlMs: () => ttl, maxEntries: 8 });
+    await store.memo("k", async () => ++calls);
+    await store.memo("k", async () => ++calls);
+    expect("평시: 두 번째 조회는 캐시 적중", calls === 1);
+    ttl = 0; // 수명 0 = 즉시 만료 (동적 평가가 안 되면 계속 적중한다)
+    await store.memo("k", async () => ++calls);
+    expect("수명이 실행 중에 바뀌면 즉시 반영(동적 평가)", calls === 2, `calls=${calls}`);
+  }
+  {
+    const range = rangeFromDays(KNOBS_SAVING.memoSearchDefaultDays);
+    expect("절약 손잡이(30일)가 실재하는 범위로 매핑", range === "1m", range);
+    expect("그 범위의 일수가 손잡이와 일치", MEMO_SEARCH_RANGE_DAYS[range] === KNOBS_SAVING.memoSearchDefaultDays);
+    const normal = rangeFromDays(KNOBS_NORMAL.memoSearchDefaultDays);
+    expect("평시 손잡이(90일)는 3개월", normal === "3m", normal);
+    expect("중간값은 넘지 않는 가장 넓은 범위로", rangeFromDays(120) === "3m", rangeFromDays(120));
+  }
+
   console.log("\n=== 2부. 실계정 사이클 ===\n");
   const before = await readSavingModeState();
   console.log(`  (시작 상태: on=${before.on})`);
@@ -118,6 +144,14 @@ async function main() {
 
     await setSavingMode(false, "verify-script@hmh.or.kr");
     expect("끄기 후 평시 값", (await getSavingMode()).knobs === KNOBS_NORMAL);
+
+    // 서버 동기 접근자 — 캐시 프라임과 안전 기본값
+    clearKnobCache();
+    expect("캐시가 비면 평시 값을 준다(모르면 평시)", getKnobsCached() === KNOBS_NORMAL);
+    await setSavingMode(true, "verify-script@hmh.or.kr");
+    expect("켠 직후 동기 접근자가 즉시 절약 값(5분 대기 없음)", getKnobsCached() === KNOBS_SAVING);
+    await setSavingMode(false, "verify-script@hmh.or.kr");
+    expect("끈 직후 동기 접근자가 즉시 평시 값", getKnobsCached() === KNOBS_NORMAL);
   } finally {
     // 흔적 0 — 시작 상태로 되돌린다
     if (before.on) await savingModeRef().set(before);

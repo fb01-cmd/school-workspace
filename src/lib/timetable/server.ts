@@ -10,6 +10,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 import { bumpTimetableCacheVersion, getTimetableCacheVersion } from "./cacheVersion";
 import { createMemoStore } from "./memoCache";
+import { getKnobsCached } from "@/lib/ops/saving_mode";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
 import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardViolationKey, normSubject, teacherKeyOf, validateTimetable } from "./validate";
@@ -2384,7 +2385,11 @@ export async function synthesizeWeek(
 // bump함은 2026-08-16 전수 확인(23개 지점, directCommit은 approve 위임으로 커버).
 // 킬스위치도 view와 공유: TIMETABLE_VIEW_CACHE=off 면 전부 fresh.
 const advisoryStore = createMemoStore({
-  ttlMs: 10 * 60 * 1000, // viewCache와 동일 안전망 — 정상 신선도는 버전 키가 보장
+  // 평시 10분(viewCache와 동일 안전망 — 정상 신선도는 버전 키가 보장).
+  // 절약 모드가 켜지면 늘어난다 — 이 경로가 1순위 비용원이라(클릭당 240+ 읽기,
+  // 8/8·8/15 소진 사고 둘 다 여기) 절약 레버의 첫 번째 손잡이다.
+  // 낡아도 안전한 근거는 위 주석 그대로: 무효화는 TTL이 아니라 캐시 버전 키가 한다.
+  ttlMs: () => getKnobsCached().timetableCacheTtlMs,
   maxEntries: 64,
   killSwitchEnv: "TIMETABLE_VIEW_CACHE",
 });
