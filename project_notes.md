@@ -749,3 +749,9 @@
 - 다음 할 일: 사용자 실기기 확인 — PC에서 서식 쪽지 작성·발송(굵게/기울임/밑줄/취소선/목록/인용/링크/이모지) → 폰(/m)에서 열람 확인 + 옛 쪽지(평문 pre) 그대로 유지 확인
 - 주의: ① dangerouslySetInnerHTML 사용 0건 유지(XSS 구조 차단) ② contentFormat === "md1"일 때만 MemoRichBody 렌더, 부재 시 기존 pre 평문 경로 엄격 유지 ③ 발송 시 bodyHasMd1Formatting(body)가 false면 contentFormat을 보내지 않음(평문 발송) ④ 화면 문구에 마크다운 등 개발 용어 일절 배제
 
+
+## [2026-08-18] Claude(Fable) → 전원 (서식 v1 화면부 검수 통과 + 배포 전 점검 — 푸시 직전 기록)
+- 변경 파일: src/components/admin/MemoSection.tsx(미사용 stripMd1 import 정리 — 목록 행이 제목만 표시라 현재 소비처 없음)·STATUS.md(작업 대기 = 실기기 확인 행)
+- 검증 상태: c2289a2 표적 검수 ✅ — dangerouslySetInnerHTML 실사용 0(주석뿐)·MemoRichBody 링크 rel/target 안전·상세 분기 2곳 contentFormat 엄격·발송 관문 bodyHasMd1Formatting 확인·이모지 내장 상수(외부 요청 0) / 셀프테스트 3종 전판(richtext 26·memo·attachment) / tsc 0 / npm run build 성공(heap 4096)
+- 다음 할 일: push(사용자 지시) → Vercel 자동 배포 → STATUS 작업 대기 1번 실기기 확인(사용자)
+- 주의: 편집기는 토큰 삽입형(원문이 곧 md1, 미리보기 토글로 확인) — 스펙 §7의 이스케이프 의무는 WYSIWYG 직렬화 전제였으므로 이 방식에선 해당 없음(사용자가 보는 원문=저장 원문, 수용 판정). 배포 후 서식 오인 사례가 실기기에서 나오면 그때 §7 재론

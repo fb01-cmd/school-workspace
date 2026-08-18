@@ -46,7 +46,6 @@ import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import {
   MEMO_CONTENT_FORMAT_MD1,
   bodyHasMd1Formatting,
-  stripMd1,
 } from "@/lib/memo/richtext";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
