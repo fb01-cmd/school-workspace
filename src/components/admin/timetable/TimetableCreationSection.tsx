@@ -72,7 +72,7 @@ export default function TimetableCreationSection() {
   // 승계 가능한 후보 학기 목록 (작업 대상 학기 제외)
   const inheritSourceTerms = terms.filter((t) => t.id !== effectiveTermId);
   const rankedInheritTerms = rankReferenceTerms(effectiveTermId, terms.map((t) => t.id));
-  const fallbackInheritTermId = activeTerm?.id || inheritSourceTerms[0]?.id || "";
+  const fallbackInheritTermId = inheritSourceTerms.find((t) => t.status === "active")?.id || inheritSourceTerms[0]?.id || "";
   const effectiveInheritFromTermId =
     inheritFromTermId || rankedInheritTerms[0] || fallbackInheritTermId;
 
@@ -80,9 +80,9 @@ export default function TimetableCreationSection() {
   useEffect(() => {
     setInheritFromTouched(false);
     const ranked = rankReferenceTerms(effectiveTermId, terms.map((t) => t.id));
-    const fallback = activeTermId || terms.find((t) => t.status === "active")?.id || terms.find((t) => t.id !== effectiveTermId)?.id || "";
+    const fallback = inheritSourceTerms.find((t) => t.status === "active")?.id || inheritSourceTerms[0]?.id || "";
     setInheritFromTermId(ranked[0] || fallback);
-  }, [effectiveTermId, terms, activeTermId]);
+  }, [effectiveTermId, terms]);
 
   // 등록부 승계 복사 실행 (spec §3)
   const handleInheritRegistries = async () => {

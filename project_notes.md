@@ -694,3 +694,9 @@
 - 검증 상태: 블록 무손실 ✅ — 아카이브 23블록을 포인터 자리에 되끼워 재조립한 결과가 이관 전 원본(HEAD)과 바이트 동일(sha256/16 c3c431d406b31bf9 = c3c431d406b31bf9, 다중집합 23=23, 포인터↔블록 일대일 True) / check_ghost_markers 신규 0 (notes 회전과 동일 방식)
 - 다음 할 일: STATUS.md 유령 방지 트랙 「로드맵 다이어트 2차」 행 참조 — 절반 목표는 대형 열린 엔트리(피드백 덤프 21KB·양해 묶음 13KB·브리지 8KB 등)가 닫혀야 도달 가능, 닫힐 때 같은 방식으로 추가 이관
 - 주의: ✅ 표기여도 STATUS 열린 항목과 얽힌 엔트리는 의도적으로 남김(6b 브리지[일몰 9/10]·과목 사전[작업 큐 #2]·양해 워크플로/개방[소품 실기기]·알림 센터 묶음[💡 2건이 본문 공유]·9c AI 보조[9c 진행 중]) — 산 것을 죽은 취급하지 않기 위함. 이관분 인용은 archive/roadmap_2026-08.md의 §R번호 또는 엔트리 제목으로(행 번호 금지). 이관 판정 시 코드 실측 4건 수행(/m 페이지·ics 라우트+구독 카드·iorad 재진입 탭·syncDerivedWeeksWithCalendar 실재 확인)
+
+## [2026-08-18] Antigravity → Claude/사용자 (전전학기 참조 UI 기본 선택 2곳 배선 완결 — STATUS.md 작업 대기 1번 종결)
+- 변경 파일: src/components/admin/timetable/HoursPlanTab.tsx·src/components/admin/timetable/TimetableCreationSection.tsx·STATUS.md
+- 검증 상태: tsc ✅ / build ✅ / verify_reference_term ✅ / check_ghost_markers ✅ / check_ui_removals ✅(사라진 상호작용 0건)
+- 다음 할 일: 없음 (STATUS.md 「작업 대기」 1번 행 닫힘 및 잔여 재정렬 완료)
+- 주의: utils.rankReferenceTerms 단일 원본 재사용(전년도 같은 학기 1순위 → 과거 최신순 정렬, 대상 학기 제외). 시수 계획 "이전 학기에서 가져오기" 및 등록부 승계 inheritFromTermId 드롭다운에서 fallback도 대상 학기 제외 원칙 유지.

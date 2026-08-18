@@ -188,7 +188,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
   useEffect(() => {
     if (terms.length > 0 && activeTermId && !sourceTermTouched) {
       const ranked = rankReferenceTerms(activeTermId, terms.map((t) => t.id));
-      const fallback = terms.find((t) => t.id === activeTermId)?.id || terms[0]?.id || "";
+      const fallback = terms.find((t) => t.id !== activeTermId)?.id || terms[0]?.id || "";
       setDeriveSourceTermId(ranked[0] || fallback);
     }
   }, [activeTermId, terms, sourceTermTouched]);
@@ -224,7 +224,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         if (!sourceTermTouched && loadedTerms.length > 0) {
           const targetTerm = activeTermId || dataSettings.settings?.activeTermId || "";
           const ranked = rankReferenceTerms(targetTerm, loadedTerms.map((t) => t.id));
-          const fallback = dataSettings.settings?.activeTermId || loadedTerms[0].id;
+          const fallback = loadedTerms.find((t) => t.id !== targetTerm)?.id || loadedTerms[0]?.id || "";
           setDeriveSourceTermId(ranked[0] || fallback);
         }
       }
