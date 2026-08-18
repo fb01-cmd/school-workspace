@@ -58,6 +58,9 @@ const baseModel = (over: Partial<TimetableConstraintModel> = {}): TimetableConst
   ...over,
 });
 
+/** 내부 추정 ≠ 공식 점수 수집 — 포트폴리오가 추정으로 시드를 뽑으므로 어긋나면 나쁜 시드를
+ *  선발한다 (2026-08-18 실측: S4 내부 가중이 추정에 새어 39≠32 → 최적 28 시드 탈락) */
+const estimateMismatches: string[] = [];
 function solveAndValidate(grids: ClassGrid[], model: TimetableConstraintModel, seed = 7) {
   const withHours = { ...model, hours: deriveHoursFromGrids(grids) };
   const sections = compileSectionsFromGrids(grids, withHours);
@@ -68,7 +71,12 @@ function solveAndValidate(grids: ClassGrid[], model: TimetableConstraintModel, s
     seed,
     localSearchIterations: 2000,
   });
-  return { result, report: validateTimetable(result.grids, withHours) };
+  const report = validateTimetable(result.grids, withHours);
+  if (result.stats.softScoreEstimate !== report.soft.total)
+    estimateMismatches.push(
+      `추정 ${result.stats.softScoreEstimate} ≠ 실측 ${report.soft.total} (seed ${seed})`
+    );
+  return { result, report };
 }
 
 console.log("── 솔버 자가 테스트 ──");
@@ -216,6 +224,10 @@ console.log("── 솔버 자가 테스트 ──");
   const b = solveAndValidate(grids, baseModel(), 11);
   expect("같은 시드 = 같은 출력", JSON.stringify(a.result.grids) === JSON.stringify(b.result.grids));
 }
+
+// 7) 내부 추정 = 공식 점수 — 위 전 케이스에서 수집 (포트폴리오 시드 선발의 전제)
+expect("내부 추정 = 공식 소프트 점수 (전 케이스)", estimateMismatches.length === 0,
+  estimateMismatches.join("; "));
 
 console.log(failed === 0 ? "\n✅ 솔버 자가 테스트 전부 통과" : `\n❌ 실패 ${failed}건`);
 process.exit(failed === 0 ? 0 : 1);

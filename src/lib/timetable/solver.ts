@@ -1028,6 +1028,12 @@ export function solveTimetable(input: SolverInput): SolverResult {
     classSubjects: new Map(),
   };
   let softScore = 0;
+  /** softScore 중 S4(classDayPenalty) 몫 — 내부 가중(×S4_INTERNAL_WEIGHT)이 실린 값.
+   *  softScoreEstimate 보고 시 이 몫만 가중을 벗겨 공식 점수(validateTimetable) 등가로
+   *  되돌린다. 2ea8a49 이전엔 dayLimit 하드 필터가 S4를 0으로 보장해 가중 차이가 안 보였지만,
+   *  relaxDayLimit 폴백이 S4를 허용하면서 추정(가중)과 실측(공식)이 어긋났고, 포트폴리오가
+   *  어긋난 추정으로 나쁜 시드를 뽑았다 (실측: 추정 39/실측 32 시드를 선발해 실측 30 시드를 놓쳤다). */
+  let softScoreS4 = 0;
 
   // S4(학급 과목 중복) 집계 대상 과목 — 전원 가상 교사(창체·SLAT 자리표시) 수업은 검사기와 동일하게 제외
   const subjectsOf = (s: SolverSection, ck: string): string[] =>
@@ -1060,12 +1066,13 @@ export function solveTimetable(input: SolverInput): SolverResult {
     const s = sections[occ.sectionIdx];
     // 소프트 delta: 영향 받는 (교사,day)·(학급,day)의 전후 점수 차
     let before = 0;
+    let beforeS4 = 0;
     for (const tk of s.teacherKeys) {
       const snap = teacherDaySnapshot(tk, occ.day);
       before += teacherDayPenalty(snap.periods, snap.subjects, L);
     }
     for (const ck of s.classKeys)
-      before += classDayPenalty(nested(soft.classSubjects, ck, occ.day));
+      beforeS4 += classDayPenalty(nested(soft.classSubjects, ck, occ.day));
 
     for (let p = occ.start; p < occ.start + occ.len; p++) {
       const slot = `${occ.day}-${p}`;
@@ -1094,13 +1101,15 @@ export function solveTimetable(input: SolverInput): SolverResult {
     }
 
     let after = 0;
+    let afterS4 = 0;
     for (const tk of s.teacherKeys) {
       const snap = teacherDaySnapshot(tk, occ.day);
       after += teacherDayPenalty(snap.periods, snap.subjects, L);
     }
     for (const ck of s.classKeys)
-      after += classDayPenalty(nested(soft.classSubjects, ck, occ.day));
-    softScore += after - before;
+      afterS4 += classDayPenalty(nested(soft.classSubjects, ck, occ.day));
+    softScore += after + afterS4 - (before + beforeS4);
+    softScoreS4 += afterS4 - beforeS4;
 
     if (!sectionDayCount.has(occ.sectionIdx)) sectionDayCount.set(occ.sectionIdx, new Map());
     bump(sectionDayCount.get(occ.sectionIdx)!, occ.day, dir);
@@ -1285,7 +1294,12 @@ export function solveTimetable(input: SolverInput): SolverResult {
     else unplacedFinal.push(p);
   }
 
-  function tryPlaceWithEjection(p: Pending, depth: number): boolean {
+  function tryPlaceWithEjection(
+    p: Pending,
+    depth: number,
+    allowRelaxed = true,
+    maxBlockers = 2
+  ): boolean {
     const mark = ejectJournal.length;
     const direct = candidateSlots(p.sectionIdx, p.len);
     if (direct.length) {
@@ -1295,19 +1309,23 @@ export function solveTimetable(input: SolverInput): SolverResult {
     }
     // ② 분산 한도를 넘겨서라도 배치 — 남을 밀어내는 것(③)보다 덜 파괴적이다.
     //    소프트 점수(S4 과목 중복)에는 그대로 반영되므로 국소 탐색이 나중에 되돌릴 여지가 남는다.
-    const relaxed = candidateSlots(p.sectionIdx, p.len, true);
-    if (relaxed.length) {
-      let pick = relaxed[0];
-      let minCost = Infinity;
-      for (const c of relaxed) {
-        const cost = slotCost(p.sectionIdx, c.day, c.start, p.len);
-        if (cost < minCost) {
-          minCost = cost;
-          pick = c;
+    //    (⑥-b 보수 패스는 allowRelaxed=false로 이 지름길을 막아 ③까지 가게 한다 —
+    //     여기서 또 relax하면 위반을 그 자리에 도로 놓고 성공을 보고하기 때문)
+    if (allowRelaxed) {
+      const relaxed = candidateSlots(p.sectionIdx, p.len, true);
+      if (relaxed.length) {
+        let pick = relaxed[0];
+        let minCost = Infinity;
+        for (const c of relaxed) {
+          const cost = slotCost(p.sectionIdx, c.day, c.start, p.len);
+          if (cost < minCost) {
+            minCost = cost;
+            pick = c;
+          }
         }
+        japply({ sectionIdx: p.sectionIdx, occIdx: p.occIdx, len: p.len, day: pick.day, start: pick.start }, 1);
+        return true;
       }
-      japply({ sectionIdx: p.sectionIdx, occIdx: p.occIdx, len: p.len, day: pick.day, start: pick.start }, 1);
-      return true;
     }
     if (depth <= 0) return false;
     const s = sections[p.sectionIdx];
@@ -1337,7 +1355,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
             if (o !== undefined) blockerKeys.add(String(o));
           }
         }
-        if (!legal || blockerKeys.size === 0 || blockerKeys.size > 2) continue;
+        if (!legal || blockerKeys.size === 0 || blockerKeys.size > maxBlockers) continue;
         const blockerIdxs = [...blockerKeys].map(Number);
         if (blockerIdxs.some((bi) => sections[bi].kind === "fixed")) continue;
         // 걸림돌의 해당 슬롯 occurrence 수집
@@ -1378,6 +1396,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
     rollbackTo(mark);
     return false;
   }
+
 
   // ── ⑦ 국소 탐색: 이동 + 학급 내 맞교환 힐클라임 (소프트 개선, 하드 유지) ──
   // 학급 그리드가 만석이면(실측: 34/34) 빈 슬롯 이동은 성립하지 않는다 —
@@ -1463,6 +1482,46 @@ export function solveTimetable(input: SolverInput): SolverResult {
     }
   }
 
+  // ── ⑦-b 분산 한도 위반 보수: relax 폴백이 남긴 같은 날 중복(S4)을 ejection으로 재배치 ──
+  // 그리디 relax 폴백(② 위)은 배정 불가를 막는 값이지만 같은 날 중복을 남긴다. 국소 탐색(⑦)은
+  // 빈 슬롯 이동·단일 학급 맞교환뿐이라 만석 그리드·동시수업(다학급) 섹션의 중복은 못 푼다.
+  // 여기서는 위반 occurrence를 빼고 한도 준수로만(직접 또는 걸림돌 밀어내기) 다시 놓아 본다.
+  // 소프트가 엄격히 좋아질 때만 채택, 아니면 저널로 원위치 — 하드 0·전 배치·결정론 불변.
+  // ⚠️ 반드시 국소 탐색 **뒤**에 두어야 한다 (2026-08-18 실측): 앞에 두면 rng 스트림을
+  // 소모해 국소 탐색의 무작위 궤적 전체가 바뀌고, 실데이터 소프트가 30→35로 오히려 나빠졌다.
+  {
+    const viol: Occurrence[] = [];
+    for (const [, occ] of placed) {
+      if ((sectionDayCount.get(occ.sectionIdx)?.get(occ.day) || 0) > dayLimit[occ.sectionIdx])
+        viol.push(occ);
+    }
+    viol.sort((a, b) => a.sectionIdx - b.sectionIdx || a.occIdx - b.occIdx);
+    for (const v of viol) {
+      const cur = placed.get(`${v.sectionIdx}:${v.occIdx}`);
+      if (!cur) continue;
+      // 앞선 보수가 이 섹션을 옮겨 위반이 이미 해소됐을 수 있다 — 현재 상태로 재판정
+      if ((sectionDayCount.get(cur.sectionIdx)?.get(cur.day) || 0) <= dayLimit[cur.sectionIdx])
+        continue;
+      const mark = ejectJournal.length;
+      const softBefore = softScore;
+      japply(cur, -1);
+      if (
+        // 걸림돌 상한 4 — 동시수업(다학급) 섹션은 슬롯당 걸림돌이 기본 상한 2를 넘기 쉬워
+        // 보수에서만 넓힌다. 2026-08-18 실데이터에선 2·4 모두 개선 0(잔여 S4 2건은 한도 내
+        // 재배치 여지가 없는 구조적 잔여)이었지만, 가드가 있어 넓혀도 해가 없고 다른
+        // 입력에선 잡을 수 있어 유지한다.
+        !tryPlaceWithEjection(
+          { sectionIdx: cur.sectionIdx, occIdx: cur.occIdx, len: cur.len, tier: 0 },
+          2,
+          false,
+          4
+        ) ||
+        softScore >= softBefore
+      )
+        rollbackTo(mark);
+    }
+  }
+
   // ── 그리드 출력 ──
   const gridMap = new Map<string, ClassGrid>();
   const allClassKeys = new Set<string>();
@@ -1508,7 +1567,9 @@ export function solveTimetable(input: SolverInput): SolverResult {
       placedGreedy,
       placedByEjection,
       localSearchAccepted: accepted,
-      softScoreEstimate: softScore,
+      // S4 내부 가중을 벗겨 공식 점수 등가로 보고 — classDayPenalty는 S4만 담고 그 점수는
+      // 전부 (n-1)×S4_INTERNAL_WEIGHT 꼴이라 나눗셈이 정확히 떨어진다.
+      softScoreEstimate: softScore - softScoreS4 + softScoreS4 / S4_INTERNAL_WEIGHT,
     },
   };
 }
@@ -1522,7 +1583,7 @@ export const DEFAULT_SEED_PORTFOLIO = [1, 2, 3, 5, 7, 11, 13, 42];
 
 export interface PortfolioRanking {
   seed: number;
-  soft: number; // 내부 추정치 (검사기 점수와 일치 실측 — 공식 판정은 validateTimetable)
+  soft: number; // 내부 추정치, 공식 점수 등가로 환산된 값 (S4 내부 가중 제거 — 공식 판정은 validateTimetable)
   unplacedHours: number;
 }
 
