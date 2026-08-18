@@ -6,11 +6,12 @@ import { db } from "@/lib/firebase/config";
 import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import { invalidateClientCache } from "@/lib/cache/clientCache";
+import SubstituteHandoverWizard from "@/components/admin/lifecycle/SubstituteHandoverWizard";
 
 // ─────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────
-type SectionId = "enroll" | "transfer" | "ob";
+type SectionId = "enroll" | "transfer" | "ob" | "handover";
 
 interface TeacherTransferTask {
   email: string;
@@ -67,14 +68,15 @@ export default function TeacherLifecycle() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">교직원 계정 및 생애주기 관리</h2>
-        <p className="text-sm text-gray-500 mt-1">교사 전입(계정 생성 및 자동 그룹 가입), 전출(보안 즉시 해제 및 기한 설정), 명예퇴임(OB 보존실 이동) 처리를 담당합니다.</p>
+        <p className="text-sm text-gray-500 mt-1">교사 전입(계정 생성 및 자동 그룹 가입), 전출(보안 즉시 해제 및 기한 설정), 명예퇴임(OB 보존실 이동), 기간제 교사 수업·담임·클래스룸 일괄 이관을 담당합니다.</p>
       </div>
 
       {/* Section Selector */}
-      <div className="flex gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <SectionBtn active={section === "enroll"} onClick={() => setSection("enroll")} icon="➕" title="교직원 전입 (신규 등록)" desc="계정 생성 + 지정 그룹 자동 가입" />
         <SectionBtn active={section === "transfer"} onClick={() => setSection("transfer")} icon="🚪" title="교직원 전출 관리" desc="보안 즉시 해제 + 기한 설정 관리" />
         <SectionBtn active={section === "ob"} onClick={() => setSection("ob")} icon="🏅" title="명예퇴임 처리" desc="OB 보존실 이동 + 계정 영구 보존" />
+        <SectionBtn active={section === "handover"} onClick={() => setSection("handover")} icon="🔄" title="기간제 인수인계" desc="수업·시간표·담임·클래스룸 일괄 이관" />
       </div>
 
       {/* Content */}
@@ -86,6 +88,9 @@ export default function TeacherLifecycle() {
       )}
       {section === "ob" && (
         <OBTeacherPanel domain={domain} operatorEmail={operatorEmail} operatorName={operatorName} settingsOBPath={settingsOBPath} />
+      )}
+      {section === "handover" && (
+        <SubstituteHandoverWizard domain={domain} operatorEmail={operatorEmail} />
       )}
     </div>
   );

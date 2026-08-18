@@ -818,3 +818,10 @@
 - 검증 상태: verify_handover 19케이스 전판 ✅(요일 산술·잔여 요일 추출·공동수업 부분 치환·스탬프 미기록·역이관 대칭·날짜 계획 4갈래) / tsc 0 / npm run build ✅(신규 라우트 등재)
 - 다음 할 일: STATUS 작업 대기 1번(Antigravity) — 마법사 UI. preview 응답의 existingDraftId가 있으면 commit이 409로 거부됨을 화면에서 미리 안내할 것. 완료 후 Claude 검수→push→실기기(§7 시나리오)
 - 주의: 걸치는 주 커밋 = directCommit(substitute) 재사용이라 수신 교사에게 기존 보강 알림이 각 건마다 감. 개정판은 학기당 draft 1개 제약 — 마법사는 남의 초안을 절대 덮어쓰지 않고 중단(409). 클래스룸 조회 실패는 기능 저하로 수용(coursesError) — 마법사 진행 가능
+
+## [2026-08-18] Antigravity → Claude/사용자 (기간제 담당 일괄 이관 마법사 화면 구현 완료 — STATUS 작업 대기 1번 종결)
+- 변경 파일: src/components/admin/lifecycle/SubstituteHandoverWizard.tsx(신설 — 5단계 마법사: 대상/인수일 선택→미리보기 및 draft/프로필/부서 검증 안내→담임 승계 및 부서 배치→클래스룸 초대/내보내기→실행 요약 보고)·src/components/admin/lifecycle/TeacherLifecycle.tsx(4번째 섹션 버튼 및 패널 연결)·STATUS.md
+- 검증 상태: tsc ✅ (0 errors) / verify_handover ✅ (19/19) / check_ghost_markers ✅ (재고 61건, 신규 0) / npm run build ✅ (44/44 라우트 빌드 성공)
+- 다음 할 일: STATUS 작업 대기 1번 실기기 확인(사용자) — 시험 계정으로 기간제 부임 이관 실행(걸치는 주 직권 보강+다음 주 개정판+담임 승계+부서 배치+클래스룸 초대) 후 주간 시간표·내 시간표·나이스 목록 확인 → 복직 역이관 실행 후 원상 복귀 및 클래스룸 내보내기 확인
+- 주의: ① 클라이언트에서 시간표 계산 재구현 0(POST /api/workspace/handover의 preview/commit 전담) ② existingDraftId 존재 시 초안 충돌 경고 및 커밋 사전 차단 ③ toProfileExists false 또는 부서 미배치 시 안내 및 부서 자동 배치 옵션 제공 ④ 클래스룸 오류 시 건너뛰기 허용 ⑤ 화면 문구 개발 용어 일절 배제
+
