@@ -1011,38 +1011,15 @@ export function solveTimetable(input: SolverInput): SolverResult {
    *  컴시간·사람 손의 통상 규칙(과목은 요일에 분산)을 배치 규칙으로 올린다.
    *  예외 — 고정 슬롯 섹션(창체 금5·6처럼 등록부가 같은 날을 지정)과 동시수업 섹션
    *  (등록부 슬롯이 같은 날 2개일 수 있음)은 무제한. 주당 시수 > 요일 수면 불가피분만 허용. */
-  /**
-   * 이 섹션이 **구조적으로 쓸 수 있는 요일 수**.
-   *
-   * ⚠️ 전체 요일 수로 나누면 안 된다 (2026-08-18 실측 결함): 하루가 통째로 막힌 교사의
-   * 섹션은 쓸 수 있는 요일이 그만큼 적은데, 한도를 전체 요일로 계산하면 "5일에 하루씩"
-   * 같은 불가능한 요구가 되어 **배정 불가**가 난다. 자가 테스트 「배정금지 회피」가 정확히
-   * 이 지형이었고, 일과계 질문지에서 이미 요일 통짜 제약(금1 실무회의 13명)이 나왔으므로
-   * 11월 실전에서 실제로 터질 수 있었다.
-   *
-   * 금지·허용 슬롯은 풀이 중에 변하지 않으므로 한 번만 계산한다(점유는 세지 않는다 —
-   * 동적 상황까지 반영하면 한도가 흔들려 탐색이 불안정해진다).
-   */
-  const usableDayCount = (s: SolverSection): number => {
-    let n = 0;
-    for (let day = 1; day <= 5; day++) {
-      const maxP = gdp[s.grade]?.[day] || 0;
-      if (maxP <= 0) continue;
-      for (let p = 1; p <= maxP; p++) {
-        const slot = `${day}-${p}`;
-        if (s.bannedSlots.has(slot)) continue;
-        if (s.allowedSlots && !s.allowedSlots.has(slot)) continue;
-        n++;
-        break;
-      }
-    }
-    return n;
-  };
-
   const dayLimit = sections.map((s, i) => {
     if (hasPattern[i]) return 1;
     if (s.kind !== "plain" || (s.fixedSlots && s.fixedSlots.length)) return Infinity;
-    const days = Math.max(1, usableDayCount(s));
+    // ⚠️ 여기서 "쓸 수 있는 요일"로 나누고 싶어지지만 **그러지 말 것** (2026-08-18 실측).
+    // 금지가 있는 섹션의 한도를 넓히면 그만큼 같은 날 중복이 허용돼 소프트 점수가
+    // 무너진다 — 백지 편성 실측에서 28점 → 38점(기준선 39에 육박)으로 나빠졌다.
+    // 하루가 통째로 막혀 배치가 불가능해지는 문제는 한도를 넓혀서가 아니라
+    // **배치 실패 시 한도를 넘겨서라도 놓는 폴백**(feasible의 relaxDayLimit)으로 푼다.
+    const days = Math.max(1, Object.keys(gdp[s.grade] || {}).length);
     return Math.max(1, Math.ceil(s.occurrences / days));
   });
   const soft: SoftState = {
@@ -1246,8 +1223,15 @@ export function solveTimetable(input: SolverInput): SolverResult {
     }
     const p = pending.splice(best, 1)[0];
     if (!bestCands.length) {
-      stuck.push(p);
-      continue;
+      // 분산 한도 **때문에만** 막힌 경우엔 넘겨서라도 놓는다. 한도는 선호지 하드가 아니며,
+      // 여기서 미루면 뒤에 남는 슬롯이 실제 점유로 막혀 나중 폴백이 손쓸 수 없게 된다
+      // (2026-08-18: 폴백을 ejection 단계에만 두었더니 이미 막다른 길이라 소용없었다).
+      // 슬롯 선택은 아래 공통 경로가 소프트 비용 최소로 고르므로 품질 손해는 국소적이다.
+      bestCands = candidateSlots(p.sectionIdx, p.len, true);
+      if (!bestCands.length) {
+        stuck.push(p);
+        continue;
+      }
     }
     // 슬롯 선택: 소프트 delta 최소, 동률은 rng
     let chosen = bestCands[0];

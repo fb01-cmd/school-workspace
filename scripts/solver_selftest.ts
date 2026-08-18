@@ -117,6 +117,47 @@ console.log("── 솔버 자가 테스트 ──");
   );
 }
 
+// 3-b) 구조적으로 못 채우는 슬롯 — **조용히 빠뜨리지 않고 미배정으로 보고**하는가
+//      이 장난감 세계는 빈칸이 없다(30슬롯 = 30수업). 전 교사가 같은 교시를 못 쓰면
+//      그 칸은 어떤 배치로도 채울 수 없다 — 즉 진짜 배정 불가다.
+//      (일과계 질문지의 「금1 실무회의 13명」은 이 모양이지만 실제 학교는 빈칸 여유가
+//       있어 성립한다. 여유 없는 세계로는 그 상황을 재현할 수 없다는 점을 여기 남긴다.)
+//      요구 성질: 못 하는 것을 **못 했다고 보고**할 것. 조용히 사라지면 사람이 모른다.
+{
+  const grids = buildBase();
+  const ban = (email: string, name: string) => ({
+    termId: "t", teacherEmail: email, teacherName: name, kind: "assign" as const,
+    slots: [{ day: 5, period: 1 }], active: true,
+  });
+  const model = baseModel({
+    teacherSlotBans: [ban("a@x.kr", "가교사"), ban("b@x.kr", "나교사"), ban("c@x.kr", "다교사")],
+  });
+  const { result, report } = solveAndValidate(grids, model);
+  expect(
+    "채울 수 없는 슬롯은 미배정으로 보고 (조용한 유실 없음)",
+    result.unplaced.length > 0 && !report.hard.some((v) => v.code === "H5"),
+    JSON.stringify({ unplaced: result.unplaced.length, h5: report.hard.filter((v) => v.code === "H5").length })
+  );
+}
+
+// 3-c) 하루 통째 금지 + 주당 시수 = 요일 수 — 2026-08-18 실측 결함의 최소 재현
+//      전체 요일 수로 한도를 계산하면 "5일에 하루씩"이 되어 4일밖에 못 쓰는 교사가 막힌다.
+{
+  const grids = buildBase();
+  const model = baseModel({
+    teacherSlotBans: [
+      { termId: "t", teacherEmail: "b@x.kr", teacherName: "나교사", kind: "assign",
+        slots: [{ day: 3, period: 1 }, { day: 3, period: 2 }, { day: 3, period: 3 }], active: true },
+    ],
+  });
+  const { result } = solveAndValidate(grids, model);
+  expect(
+    "하루 통째 금지여도 전 배치 (쓸 수 있는 요일로 한도 계산)",
+    result.unplaced.length === 0,
+    JSON.stringify(result.unplaced)
+  );
+}
+
 // 4) 동시수업 동기 배치 — 두 학급이 같은 슬롯에 함께 움직여야 (H7 0)
 {
   const D = { email: "d@x.kr", name: "라교사" };
