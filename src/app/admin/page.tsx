@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import MyProfileCard from "@/components/admin/MyProfileCard";
 import ClassroomCleanupBanner from "@/components/admin/ClassroomCleanupBanner";
+import SavingModeBanner from "@/components/common/SavingModeBanner";
 
 const TabLoading = () => (
   <div className="p-8 text-center text-slate-500 font-medium">
@@ -918,7 +919,8 @@ export default function AdminPage() {
             /* 쪽지는 패딩/max-width 없이 꽉 채움 (목록+상세 2열 레이아웃).
                ClassroomCleanupBanner는 모든 메뉴에서 노출되어야 하므로(결정 #5) 여기도 포함. */
             <main className="flex-1 overflow-hidden flex flex-col">
-              <div className="px-4 pt-3 pb-0">
+              <div className="px-4 pt-3 pb-0 space-y-3">
+                <SavingModeBanner />
                 <ClassroomCleanupBanner onNavigate={() => setActiveMenu("classroom_cleanup")} />
               </div>
               <MemoSection />
@@ -926,6 +928,7 @@ export default function AdminPage() {
           ) : (
             <main className="flex-1 overflow-auto p-8">
               <div className="max-w-6xl mx-auto space-y-4">
+                <SavingModeBanner />
                 {/* 학기말 정리 알림 배너: 어느 메뉴에 있든(홈 포함) 항상 노출 — 클래스룸 메뉴에 직접 들어가야만 보이면 결정 #5의 "안 가본 사람도 알게 한다"는 목적이 무력화됨 */}
                 <ClassroomCleanupBanner onNavigate={() => setActiveMenu("classroom_cleanup")} />
                 {renderContent()}

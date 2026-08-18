@@ -4,6 +4,31 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-18] Antigravity → Claude/사용자 (절약 모드 화면 및 전역 구독 완결 — saving_mode_spec §8 순서 2)
+- **변경 파일**:
+  - `src/context/AuthContext.tsx`:
+    - `platform_config/saving_mode` 문서를 `onSnapshot`으로 실시간 구독하여 앱 전역 `savingMode` 상태로 제공.
+    - 활성화 시 남은 시간(`remainingMs`) 15초 주기 갱신 및 24시간 자동 만료 카운트다운 타이머 포함.
+  - `src/components/common/SavingModeBanner.tsx`:
+    - 절약 모드 켜짐 시 상시 배너 컴포넌트 신설.
+    - 배너 문구: 서버 및 `saving_logic.ts`의 `buildSavingBannerText` 그대로 사용 ("지금은 데이터 사용을 줄이는 중입니다. N시간 M분 뒤 자동으로 원래대로 돌아갑니다.").
+    - `super_admin` 권한 시 [절약 모드 끄기] 버튼 표시 및 `POST /api/ops/saving-mode { on: false }` 연동.
+  - `src/components/admin/UsageDashboardTab.tsx`:
+    - `super_admin` 전용 '데이터 절약 모드' 관리 카드 추가.
+    - 현재 모드(절약 모드 켜짐 / 평시 모드) 뱃지, 설명 문구, 토글 버튼([절약 모드 켜기] / [절약 모드 끄기]), 켜진 경우 상세 배너 표출.
+  - `src/app/admin/page.tsx`:
+    - 관리자 메인 화면 및 쪽지함 상단에 `SavingModeBanner` 배치.
+  - `docs/saving_mode_spec.md`:
+    - §8 순서 2 완료 갱신 및 배포 시 `firebase deploy --only firestore:rules` 동반 주의사항 기록.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어(캐시, TTL, 쿼터, API 등) 일체 배제, 직관적인 한글 라벨 사용.
+  - `platform_config/saving_mode` `onSnapshot` 구독으로 켜는 즉시 접속 중인 교사에게 실시간 전파.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npx tsx --env-file=.env.local scripts/verify_saving_mode.ts` ✅ (순수 판정 + 실계정 사이클 전판 통과)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 0건)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (42/42 static pages prerendered)
+
 ## [2026-08-18] Antigravity → Claude/사용자 (사용량 모니터링 화면 완결 — usage_dashboard_spec §7 순서 3)
 - **변경 파일**:
   - `src/components/admin/UsageDashboardTab.tsx`:

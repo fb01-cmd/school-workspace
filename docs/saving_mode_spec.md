@@ -83,7 +83,7 @@
 | 순서 | 내용 | 담당 | 선행 |
 |---|---|---|---|
 | 1 | 파생 로직(순수) + 설정 문서 + 서버 토글 API + rules | **Claude ✅ 2026-08-18** | — |
-| 2 | 구독 배선 + 관리자 토글 UI + 상시 배너 | Antigravity | 1 |
+| 2 | 구독 배선 + 관리자 토글 UI + 상시 배너 | **Antigravity ✅ 2026-08-18** | 1 |
 | 3 | 각 손잡이 실제 결선(시간표 캐시·클라 캐시·검색 범위) | Claude | 1 |
 | 4 | 24시간 자동 해제 daily-sync 합류 | Claude | 1 |
 | 5 | 효과 실측(전/후 비교)·§2 표 갱신·4번 손잡이 판단 | Claude → 사용자 | 사용량 화면 |
@@ -92,11 +92,16 @@
 
 ---
 
-## §9 구현 기록 (2026-08-18, 순서 1 완료)
+## §9 구현 기록 (2026-08-18, 순서 1·2 완료)
 
 - 구현: `src/lib/ops/saving_logic.ts`(순수 — 손잡이 값·자동 해제 판정·배너 문구) · `saving_mode.ts`(설정 문서 읽기/쓰기·감사 로그·크론 정리) · `src/app/api/ops/saving-mode/route.ts`(GET 상태 / POST 토글, super_admin) · `firestore.rules`(saving_mode 읽기 허용, 그 외 platform_config 명시 잠금) · daily-sync 5번째 작업.
 - **자동 해제를 읽는 쪽에서 판정한다** — 크론이 문서를 끄기 전이라도 24시간이 지나면 즉시 평시로 돌아간다. 크론에만 맡기면 최대 하루 동안 불필요한 저하가 남는다. 검증에서 백데이트 문서가 크론 실행 전에 이미 적용되지 않음을 실측했다.
 - 손잡이 값은 **일수·밀리초 같은 원시값**으로 둔다(`memoSearchDefaultDays: 90 → 30`). 범위 키(`3m`)로 두면 지금 없는 `1m`을 만들어야 하고, 그러면 순서 1이 사용자 화면(드롭다운 선택지)을 건드리게 된다 — 결선은 순서 3의 일이다.
-- 검증: `scripts/verify_saving_mode.ts` — 순수 판정 20건 + 실계정 사이클(켜기→백데이트→크론 정리→원복, 흔적 0) 전판 통과. tsc ✅ / build ✅(42/42).
-- **rules는 아직 배포하지 않았다.** 클라이언트 구독(순서 2, Antigravity)이 붙을 때 함께 배포하면 된다 — 지금은 읽는 쪽이 없다.
-- 남은 것 = 순서 2(구독 배선·토글 UI·배너) Antigravity, 순서 3(각 손잡이 실제 결선) Claude.
+- 검증: `scripts/verify_saving_mode.ts` — 순수 판정 20건 + 실계정 사이클(켜기→백데이트→크론 정리→원복, 흔적 0) 전판 통과.
+- **화면 구현 완결 (순서 2, Antigravity)**:
+  - `src/context/AuthContext.tsx`: `platform_config/saving_mode` 문서의 `onSnapshot` 실시간 구독을 AuthProvider에 배선하여 로그인 사용자 전원에게 전역 전파. 활성 시 남은 시간 카운트다운 타이머 포함.
+  - `src/components/common/SavingModeBanner.tsx`: 절약 모드 켜짐 시 상시 배너 표출 (`buildSavingBannerText` 문구 그대로 사용), `super_admin` 대상 [절약 모드 끄기] 버튼 포함.
+  - `src/components/admin/UsageDashboardTab.tsx`: `super_admin` 전용 데이터 절약 모드 관리 카드(켜기/끄기 토글 버튼, 상태 뱃지, 설명) 추가. `POST /api/ops/saving-mode` 연동.
+  - `src/app/admin/page.tsx`: 상단 레이아웃(일반 화면 및 쪽지함)에 `SavingModeBanner` 마운트.
+- **남은 것 = 순서 3(각 손잡이 실제 결선, Claude) / 순서 4(자동 해제 daily-sync 합류, Claude)**.
+- ⚠️ **배포 주의사항**: 배포 시 `firebase deploy --only firestore:rules`가 반드시 함께 실행되어야 클라이언트의 `platform_config/saving_mode` 구독이 허용된다.

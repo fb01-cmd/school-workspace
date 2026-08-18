@@ -6,6 +6,12 @@ import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
 import { UserData, handleUserRoles } from "@/lib/firebase/auth";
 import PolicyAckModal from "@/components/policy/PolicyAckModal";
+import {
+  KNOBS_NORMAL,
+  ResolvedSavingMode,
+  SavingModeState,
+  resolveSavingMode,
+} from "@/lib/ops/saving_logic";
 
 export interface TeacherProfile {
   email: string;
@@ -60,9 +66,16 @@ interface AuthContextType {
   schoolSettings: SchoolSettings | null;
   orgUnits: OrgUnit[];
   teacherProfile: TeacherProfile | null;
+  savingMode: ResolvedSavingMode;
   loading: boolean;
   refreshUserData?: () => Promise<void>;
 }
+
+const DEFAULT_SAVING_MODE: ResolvedSavingMode = {
+  active: false,
+  staleOn: false,
+  knobs: KNOBS_NORMAL,
+};
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -70,6 +83,7 @@ const AuthContext = createContext<AuthContextType>({
   schoolSettings: null,
   orgUnits: [],
   teacherProfile: null,
+  savingMode: DEFAULT_SAVING_MODE,
   loading: true,
 });
 
@@ -81,6 +95,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [schoolSettings, setSchoolSettings] = useState<SchoolSettings | null>(null);
   const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
+  const [savingMode, setSavingModeState] = useState<ResolvedSavingMode>(DEFAULT_SAVING_MODE);
   const [loading, setLoading] = useState(true);
 
   // 프리페치는 uid당 1회만 실행 (user 문서 스냅샷이 다시 발화할 때마다
@@ -91,6 +106,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let unsubscribeDoc: (() => void) | null = null;
     let unsubscribeSettings: (() => void) | null = null;
     let unsubscribeTeacherProfile: (() => void) | null = null;
+    let unsubscribeSavingMode: (() => void) | null = null;
 
     const unsubscribeAuth = onIdTokenChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -103,6 +119,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } catch (tokenErr) {
           console.error("쿠키 토큰 설정 실패:", tokenErr);
         }
+
+        // 절약 모드 실시간 구독 (docs/saving_mode_spec.md §3)
+        // 로그인 1회 조회가 아니라 onSnapshot 구독 — 켜는 즉시 접속 중인 교사에게 전파
+        if (unsubscribeSavingMode) unsubscribeSavingMode();
+        const savingModeRef = doc(db, "platform_config", "saving_mode");
+        unsubscribeSavingMode = onSnapshot(
+          savingModeRef,
+          (snap) => {
+            if (snap.exists()) {
+              const raw = snap.data() as SavingModeState;
+              setSavingModeState(resolveSavingMode(raw, Date.now()));
+            } else {
+              setSavingModeState(DEFAULT_SAVING_MODE);
+            }
+          },
+          (err) => {
+            // 미배포 시 권한 오류 등으로 조용히 fallback
+            console.warn("[AuthContext] saving_mode subscription notice:", err.message);
+          }
+        );
 
         // Listen to user data from Firestore in real-time
         // onIdTokenChanged는 토큰 갱신(약 1시간)마다 재호출되므로,
@@ -248,11 +284,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setSchoolSettings(null);
         setOrgUnits([]);
         setTeacherProfile(null);
+        setSavingModeState(DEFAULT_SAVING_MODE);
         prefetchedUidRef.current = null; // 재로그인 시 프리페치 다시 실행되도록
         setLoading(false);
         if (unsubscribeDoc) unsubscribeDoc();
         if (unsubscribeSettings) unsubscribeSettings();
         if (unsubscribeTeacherProfile) unsubscribeTeacherProfile();
+        if (unsubscribeSavingMode) unsubscribeSavingMode();
       }
     });
 
@@ -261,8 +299,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (unsubscribeDoc) unsubscribeDoc();
       if (unsubscribeSettings) unsubscribeSettings();
       if (unsubscribeTeacherProfile) unsubscribeTeacherProfile();
+      if (unsubscribeSavingMode) unsubscribeSavingMode();
     };
   }, []);
+
+  // 활성 상태일 때 남은 시간(remainingMs) 주기적 갱신 및 24시간 자동 만료 카운트다운
+  useEffect(() => {
+    if (!savingMode.active || !savingMode.expiresAt) return;
+    const interval = setInterval(() => {
+      const now = Date.now();
+      if (now >= savingMode.expiresAt!) {
+        setSavingModeState((prev) => ({
+          ...prev,
+          active: false,
+          staleOn: true,
+          remainingMs: 0,
+          knobs: KNOBS_NORMAL,
+        }));
+      } else {
+        setSavingModeState((prev) => ({
+          ...prev,
+          remainingMs: Math.max(0, prev.expiresAt! - now),
+        }));
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [savingMode.active, savingMode.expiresAt]);
 
   const refreshUserData = async () => {
     if (user) {
@@ -275,7 +337,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, userData, schoolSettings, orgUnits, teacherProfile, loading, refreshUserData }}>
+    <AuthContext.Provider value={{ user, userData, schoolSettings, orgUnits, teacherProfile, savingMode, loading, refreshUserData }}>
       {children}
       {user && userData && <PolicyAckModal />}
     </AuthContext.Provider>

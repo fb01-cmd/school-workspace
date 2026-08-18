@@ -1,6 +1,6 @@
-"use client";
-
 import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { buildSavingBannerText } from "@/lib/ops/saving_logic";
 
 export interface MetricPoint {
   label: string;
@@ -42,14 +42,37 @@ const METRIC_NAMES: Record<MetricKey, { name: string; desc: string; color: strin
 };
 
 export default function UsageDashboardTab() {
+  const { savingMode, userData } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isSavingToggling, setIsSavingToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<UsageSnapshot | null>(null);
   const [selectedDailyMetric, setSelectedDailyMetric] = useState<MetricKey>("reads");
   const [selectedHourlyMetric, setSelectedHourlyMetric] = useState<MetricKey>("reads");
   const [hoveredDailyIndex, setHoveredDailyIndex] = useState<number | null>(null);
   const [hoveredHourlyIndex, setHoveredHourlyIndex] = useState<number | null>(null);
+
+  const handleToggleSavingMode = async () => {
+    if (isSavingToggling) return;
+    const nextState = !savingMode.active;
+    setIsSavingToggling(true);
+    try {
+      const res = await fetch("/api/ops/saving-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ on: nextState }),
+      });
+      const resData = await res.json();
+      if (!res.ok) {
+        alert(resData.error || "절약 모드 상태를 변경하지 못했습니다.");
+      }
+    } catch (err: any) {
+      alert(`오류: ${err.message}`);
+    } finally {
+      setIsSavingToggling(false);
+    }
+  };
 
   const fetchUsageData = useCallback(async (force = false) => {
     if (force) {
@@ -593,6 +616,75 @@ export default function UsageDashboardTab() {
           </div>
         )}
       </div>
+
+      {/* 4. 데이터 절약 모드 관리 (super_admin 전용) */}
+      {userData?.role === "super_admin" && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5">
+                <span className="text-lg">⚡</span>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  데이터 절약 모드
+                </h3>
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                    savingMode.active
+                      ? "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      savingMode.active ? "bg-amber-500 animate-pulse" : "bg-slate-400"
+                    }`}
+                  />
+                  <span>{savingMode.active ? "절약 모드 켜짐" : "평시 모드"}</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                사용량이 급증하거나 한도 소진 위험이 발생할 때 데이터 조회를 일시 최적화합니다. 켜면 24시간 동안 유지된 후 자동으로 꺼집니다.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleToggleSavingMode}
+              disabled={isSavingToggling}
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors shadow-xs flex items-center justify-center gap-2 shrink-0 cursor-pointer disabled:opacity-50 ${
+                savingMode.active
+                  ? "bg-rose-600 hover:bg-rose-700 text-white"
+                  : "bg-amber-500 hover:bg-amber-600 text-slate-950"
+              }`}
+            >
+              {isSavingToggling ? (
+                <>
+                  <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-current border-t-transparent" />
+                  <span>처리 중...</span>
+                </>
+              ) : savingMode.active ? (
+                <span>절약 모드 끄기</span>
+              ) : (
+                <span>절약 모드 켜기</span>
+              )}
+            </button>
+          </div>
+
+          {savingMode.active && (
+            <div className="bg-amber-500/10 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-900/50 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200 font-medium">
+              <div className="flex items-center gap-2">
+                <span>ℹ️</span>
+                <span>{buildSavingBannerText(savingMode)}</span>
+              </div>
+              {savingMode.turnedOnBy && (
+                <span className="text-[11px] text-amber-700 dark:text-amber-400 shrink-0">
+                  (설정자: {savingMode.turnedOnBy})
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
