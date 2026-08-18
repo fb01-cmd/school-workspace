@@ -744,7 +744,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
             </div>
             <p className="text-xs text-gray-500 mb-3">
               {isReturn
-                ? `선택한 클래스룸에서 ${previewData.toName} 선생님을 공동교사 목록에서 내보냅니다.`
+                ? `선택한 클래스룸에서 ${previewData.fromName} 선생님을 공동교사 목록에서 내보냅니다.`
                 : `선택한 클래스룸에 ${previewData.toName} 선생님을 공동교사로 초대합니다.`}
             </p>
 
