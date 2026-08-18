@@ -105,6 +105,50 @@ function platformConfigCase(opts: {
   };
 }
 
+
+/** tasks/{domain}/items 읽기 케이스 (phase8_tasks_spec §2 — 발신자·수신자만) */
+function taskReadCase(opts: {
+  title: string;
+  auth: { uid: string; email: string; role: string };
+  taskData: Record<string, unknown>;
+  profileDepartments?: string[];
+  expect: "ALLOW" | "DENY";
+}) {
+  const depts = opts.profileDepartments ?? ["교무기획부"];
+  return {
+    title: opts.title,
+    testCase: {
+      expectation: opts.expect,
+      functionMocks: [
+        ...userDocMocks(opts.auth.uid, opts.auth.role),
+        {
+          function: "exists",
+          args: [{ exact_value: `/databases/(default)/documents/teacher_profiles/${opts.auth.email}` }],
+          result: { value: true },
+        },
+        {
+          function: "get",
+          args: [{ exact_value: `/databases/(default)/documents/teacher_profiles/${opts.auth.email}` }],
+          result: { value: { data: { departments: depts } } },
+        },
+      ],
+      request: {
+        auth: authToken(opts.auth.email, opts.auth.uid),
+        method: "get",
+        path: "/databases/(default)/documents/tasks/hmh.or.kr/items/T1",
+        time: "2026-08-19T05:00:00Z",
+      },
+      resource: { data: opts.taskData },
+    },
+  };
+}
+
+const TASK_DOC = {
+  senderEmail: "sender@hmh.or.kr",
+  recipientEmails: ["teacher@hmh.or.kr", "other@hmh.or.kr"],
+  title: "업무",
+};
+
 const CASES = [
   updateCase({
     title: "① 본인이 내선번호만 수정 → 허용되어야 한다 (2계층 즉시 저장)",
@@ -210,6 +254,32 @@ const CASES = [
     doc: "attachment_folders",
     method: "get",
     auth: TEACHER,
+    expect: "DENY",
+  }),
+
+  taskReadCase({
+    title: "업무: 수신자가 읽음 → 허용",
+    auth: TEACHER,
+    taskData: TASK_DOC,
+    expect: "ALLOW",
+  }),
+  taskReadCase({
+    title: "업무: 발신자가 읽음 → 허용 (수신 목록에 없어도)",
+    auth: { uid: TEACHER_UID, email: "sender@hmh.or.kr", role: "teacher" },
+    taskData: { ...TASK_DOC, recipientEmails: ["other@hmh.or.kr"] },
+    expect: "ALLOW",
+  }),
+  taskReadCase({
+    title: "업무: 제3자가 읽음 → 거부",
+    auth: { uid: TEACHER_UID, email: "stranger@hmh.or.kr", role: "teacher" },
+    taskData: TASK_DOC,
+    expect: "DENY",
+  }),
+  taskReadCase({
+    title: "업무: 부서 미배치 계정 → 거부 (조직도 등록 자격 게이트)",
+    auth: TEACHER,
+    taskData: TASK_DOC,
+    profileDepartments: [],
     expect: "DENY",
   }),
 ];
