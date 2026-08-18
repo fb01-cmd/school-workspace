@@ -281,10 +281,12 @@ export async function POST(req: NextRequest) {
     }
 
     // 5) 클래스룸 공동교사 (invite = 인수 / remove = 복직 §4)
+    // 방향 주의(검수 지적): 복직(remove)에서 코스 목록은 기간제(fromEmail) 기준으로 뽑히고,
+    // 내보낼 사람도 떠나는 기간제(fromEmail)다 — toEmail(복직 교사)은 자기 코스의 원 교사라 건드리지 않는다.
     for (const courseId of courseIds) {
       try {
         if (courseAction === "invite") await addCourseCoTeacher(courseId, toEmail);
-        else await removeCourseCoTeacher(courseId, toEmail);
+        else await removeCourseCoTeacher(courseId, fromEmail);
         summary.courses.done++;
       } catch (e: any) {
         summary.courses.failed.push(`${courseId}: ${e?.message || e}`);
