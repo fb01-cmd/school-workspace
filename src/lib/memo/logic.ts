@@ -10,6 +10,7 @@ export const MEMO_DEFAULT_RETENTION_DAYS = 365;
 export const MEMO_GROUP_MAX_DEPTH = 3;
 
 import type { AttachmentShareMode, MemoAttachment } from "./attachment_logic";
+import { MEMO_CONTENT_FORMAT_MD1 } from "./richtext";
 
 export interface MemoLink {
   url: string;
@@ -45,6 +46,8 @@ export interface MemoDoc {
   attachments?: MemoAttachment[];
   /** 첨부 열람 권한 방식 — 전 교직원 공지만 domain (attachment spec §3-3) */
   attachmentShareMode?: AttachmentShareMode;
+  /** 본문 서식 — "md1"일 때만 서식 렌더. 부재 = 평문, 절대 재해석 금지 (richtext spec §2) */
+  contentFormat?: typeof MEMO_CONTENT_FORMAT_MD1;
   /** 권한 부여 실패분 잔존 — 다음 발송·크론이 재시도 (attachment spec §3-3) */
   permissionPending?: boolean;
 }
@@ -62,6 +65,8 @@ export type MemoContent = {
   body: string;
   links: MemoLink[];
   recipientSummary: string;
+  /** 본문 서식 — "md1"일 때만 존재. 부재 = 평문 (richtext spec §2) */
+  contentFormat?: typeof MEMO_CONTENT_FORMAT_MD1;
 };
 
 export function validateMemoContent(input: {
@@ -69,6 +74,7 @@ export function validateMemoContent(input: {
   body?: unknown;
   links?: unknown;
   recipientSummary?: unknown;
+  contentFormat?: unknown;
 }): { ok: true; content: MemoContent } | { ok: false; error: string } {
   const title = typeof input.title === "string" ? input.title.trim() : "";
   if (!title) return { ok: false, error: "제목을 입력해 주세요." };
@@ -100,7 +106,22 @@ export function validateMemoContent(input: {
       ? input.recipientSummary.trim().slice(0, MEMO_MAX_SUMMARY)
       : "";
 
-  return { ok: true, content: { title, body, links, recipientSummary } };
+  // 본문 형식 화이트리스트 — 부재(평문) 또는 "md1"만 (richtext spec §2)
+  if (input.contentFormat !== undefined && input.contentFormat !== MEMO_CONTENT_FORMAT_MD1)
+    return { ok: false, error: "지원하지 않는 본문 형식입니다." };
+
+  return {
+    ok: true,
+    content: {
+      title,
+      body,
+      links,
+      recipientSummary,
+      ...(input.contentFormat === MEMO_CONTENT_FORMAT_MD1
+        ? { contentFormat: MEMO_CONTENT_FORMAT_MD1 }
+        : {}),
+    },
+  };
 }
 
 // ── 그룹 확장 (서버가 직접 — 클라이언트가 펼친 목록을 믿지 않는다) ──

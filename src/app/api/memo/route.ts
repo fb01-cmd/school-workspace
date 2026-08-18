@@ -263,6 +263,9 @@ export async function POST(req: NextRequest) {
             ? { attachments: staged.attachments, attachmentShareMode }
             : {}),
           ...(replyCtx ? { threadId: replyCtx.threadId, replyTo: replyCtx.replyTo } : {}),
+          ...(validated.content.contentFormat
+            ? { contentFormat: validated.content.contentFormat }
+            : {}),
         };
         const ref = memoItemsColRef(domain).doc();
         await ref.set(doc);

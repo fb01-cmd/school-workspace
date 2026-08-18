@@ -1,0 +1,247 @@
+/**
+ * 쪽지 서식 md1 — 파서·평문 강등의 단일 소재지 (memo_richtext_spec §3~§5)
+ *
+ * 원칙: HTML은 어디에도 없다. parseMd1은 순수 데이터(노드 트리)만 만들고,
+ * 렌더 컴포넌트는 이 노드를 React children으로만 흘린다 — 주입 표면 0 (spec §4).
+ * React 무의존 순수 모듈이라 셀프테스트(scripts/verify_memo_richtext.ts) 가능.
+ *
+ * 하위호환의 핵심: 이 파서는 contentFormat === "md1" 문서에만 적용한다.
+ * 필드 부재(평문) 쪽지를 여기에 넣어 재해석하지 않는다 (spec §2 — 호출부 책임).
+ */
+
+// ── 노드 타입 (spec §4) ──────────────────────────────────────
+
+export type RichInline =
+  | { kind: "text"; text: string }
+  | { kind: "bold"; text: string }
+  | { kind: "italic"; text: string }
+  | { kind: "underline"; text: string }
+  | { kind: "strike"; text: string }
+  | { kind: "link"; label: string; href: string };
+
+export type RichBlock =
+  | { kind: "paragraph"; children: RichInline[] } // 빈 줄 = children []
+  | { kind: "bulletList"; items: RichInline[][] }
+  | { kind: "orderedList"; start: number; items: RichInline[][] }
+  | { kind: "quote"; lines: RichInline[][] };
+
+/** 본문 형식 화이트리스트 — 서버 검증·클라 분기 공용 (spec §2) */
+export const MEMO_CONTENT_FORMAT_MD1 = "md1" as const;
+
+// ── 이스케이프 (spec §3) ─────────────────────────────────────
+
+const ESCAPABLE = new Set(["*", "_", "~", "[", "\\"]);
+
+/** `\*` 류를 리터럴로 되돌린다. 이스케이프 대상이 아닌 문자 앞의 `\`는 그대로 남긴다. */
+function unescapeMd1(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\\" && i + 1 < s.length && ESCAPABLE.has(s[i + 1])) {
+      out += s[i + 1];
+      i++;
+    } else {
+      out += s[i];
+    }
+  }
+  return out;
+}
+
+/** from부터 marker의 다음 비이스케이프 출현 위치. 없으면 -1. */
+function findUnescaped(line: string, marker: string, from: number): number {
+  let p = from;
+  while (p <= line.length - marker.length) {
+    if (line[p] === "\\") {
+      p += 2;
+      continue;
+    }
+    if (line.startsWith(marker, p)) return p;
+    p += 1;
+  }
+  return -1;
+}
+
+// ── 인라인 파서 (spec §3 — 중첩 미지원, 먼저 열린 토큰이 이긴다) ──
+
+const INLINE_MARKERS: ReadonlyArray<{
+  marker: string;
+  kind: "bold" | "underline" | "strike" | "italic";
+}> = [
+  // 2문자 마커를 1문자보다 먼저 검사한다 (`**`가 `*` 둘로 쪼개지지 않게)
+  { marker: "**", kind: "bold" },
+  { marker: "__", kind: "underline" },
+  { marker: "~~", kind: "strike" },
+  { marker: "*", kind: "italic" },
+];
+
+const LINK_MAX_URL = 2048; // memo_spec §1 links 기존 상한 승계
+
+export function parseInlineMd1(line: string): RichInline[] {
+  const nodes: RichInline[] = [];
+  let buf = "";
+  const flush = () => {
+    if (buf) {
+      nodes.push({ kind: "text", text: buf });
+      buf = "";
+    }
+  };
+
+  let i = 0;
+  while (i < line.length) {
+    const ch = line[i];
+
+    // 이스케이프 — 대상 문자면 리터럴 수용, 아니면 `\` 자체가 리터럴
+    if (ch === "\\") {
+      if (i + 1 < line.length && ESCAPABLE.has(line[i + 1])) {
+        buf += line[i + 1];
+        i += 2;
+      } else {
+        buf += "\\";
+        i += 1;
+      }
+      continue;
+    }
+
+    // 서식 마커 — 닫히고 내용이 비지 않아야 토큰, 아니면 여는 표시 그대로 평문 (spec §3)
+    let matched = false;
+    for (const { marker, kind } of INLINE_MARKERS) {
+      if (!line.startsWith(marker, i)) continue;
+      const close = findUnescaped(line, marker, i + marker.length);
+      const content = close >= 0 ? line.slice(i + marker.length, close) : "";
+      if (close >= 0 && content.length > 0) {
+        flush();
+        nodes.push({ kind, text: unescapeMd1(content) });
+        i = close + marker.length;
+      } else {
+        buf += marker;
+        i += marker.length;
+      }
+      matched = true;
+      break;
+    }
+    if (matched) continue;
+
+    // 링크 [라벨](https://…) — https만, 공백·초과 길이는 불성립 → 평문 (spec §3)
+    if (ch === "[") {
+      const labelClose = findUnescaped(line, "]", i + 1);
+      if (labelClose > i + 1 && line[labelClose + 1] === "(") {
+        const urlClose = line.indexOf(")", labelClose + 2);
+        const url = urlClose >= 0 ? line.slice(labelClose + 2, urlClose) : "";
+        if (
+          urlClose >= 0 &&
+          url.startsWith("https://") &&
+          url.length > "https://".length &&
+          url.length <= LINK_MAX_URL &&
+          !/\s/.test(url)
+        ) {
+          flush();
+          nodes.push({ kind: "link", label: unescapeMd1(line.slice(i + 1, labelClose)), href: url });
+          i = urlClose + 1;
+          continue;
+        }
+      }
+      buf += "[";
+      i += 1;
+      continue;
+    }
+
+    buf += ch;
+    i += 1;
+  }
+  flush();
+  return nodes;
+}
+
+// ── 블록 파서 (spec §3 — 연속 항목은 목록/인용 하나로 묶는다) ──
+
+const BULLET_RE = /^- (.*)$/;
+const ORDERED_RE = /^(\d+)\. (.*)$/;
+const QUOTE_RE = /^> (.*)$/;
+
+export function parseMd1(body: string): RichBlock[] {
+  const lines = body.split("\n");
+  const blocks: RichBlock[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (BULLET_RE.test(line)) {
+      const items: RichInline[][] = [];
+      while (i < lines.length) {
+        const m = BULLET_RE.exec(lines[i]);
+        if (!m) break;
+        items.push(parseInlineMd1(m[1]));
+        i++;
+      }
+      blocks.push({ kind: "bulletList", items });
+      continue;
+    }
+
+    const om = ORDERED_RE.exec(line);
+    if (om) {
+      const start = parseInt(om[1], 10);
+      const items: RichInline[][] = [];
+      while (i < lines.length) {
+        const m = ORDERED_RE.exec(lines[i]);
+        if (!m) break;
+        items.push(parseInlineMd1(m[2]));
+        i++;
+      }
+      blocks.push({ kind: "orderedList", start, items });
+      continue;
+    }
+
+    if (QUOTE_RE.test(line)) {
+      const quoteLines: RichInline[][] = [];
+      while (i < lines.length) {
+        const m = QUOTE_RE.exec(lines[i]);
+        if (!m) break;
+        quoteLines.push(parseInlineMd1(m[1]));
+        i++;
+      }
+      blocks.push({ kind: "quote", lines: quoteLines });
+      continue;
+    }
+
+    blocks.push({ kind: "paragraph", children: parseInlineMd1(line) });
+    i++;
+  }
+  return blocks;
+}
+
+// ── 평문 강등 (spec §5) — 목록 발췌·향후 알림 강등의 공용 원본 ──
+
+function inlineText(nodes: RichInline[]): string {
+  return nodes.map((n) => (n.kind === "link" ? n.label : n.text)).join("");
+}
+
+export function stripMd1(body: string): string {
+  const lines: string[] = [];
+  for (const block of parseMd1(body)) {
+    switch (block.kind) {
+      case "paragraph":
+        lines.push(inlineText(block.children));
+        break;
+      case "bulletList":
+        for (const item of block.items) lines.push(inlineText(item));
+        break;
+      case "orderedList":
+        for (const item of block.items) lines.push(inlineText(item));
+        break;
+      case "quote":
+        for (const l of block.lines) lines.push(inlineText(l));
+        break;
+    }
+  }
+  // 공백 정리 — 연속 빈 줄은 하나로, 양끝은 잘라낸다
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * 본문에 서식이 실제로 있는가 — 편집기의 contentFormat 스탬프 판단용 (spec §7:
+ * 토큰이 실제로 없으면 평문으로 보낸다). 서식 없는 쪽지를 md1로 승격하지 않는 관문.
+ */
+export function bodyHasMd1Formatting(body: string): boolean {
+  return parseMd1(body).some(
+    (b) => b.kind !== "paragraph" || b.children.some((n) => n.kind !== "text")
+  );
+}

@@ -724,3 +724,9 @@
 - 검증 상태: 스펙 문서라 코드 무변경 / 전제 실측 3건 ✅ — notifyMemo 푸시=제목만(평문 발췌 배선 불요 확정), dangerouslySetInnerHTML 저장소 0건, 첨부 화이트리스트·바이트 서명 단일 소재지(attachment_logic.ts)
 - 다음 할 일: STATUS 작업 대기 1번 — 서식 v1 코어(richtext.ts 파서·strip·contentFormat 스탬프+셀프테스트)는 Claude, 이어 편집기·렌더는 Antigravity (스펙 §12)
 - 주의: 핵심 결정 = md1 서브셋 저장·contentFormat 부재=평문(옛 쪽지 재해석 금지)·렌더는 React 노드만(HTML 주입 표면 0 유지). 이모지는 이미 성립이라 별도 단계 아님. Tenor GIF 검색은 보류 확정(재론 = 기관 채택 이후) — 큐에 올리지 말 것
+
+## [2026-08-18] Claude(Fable) → Antigravity (쪽지 서식 v1 코어 완결 + Tenor 판정 갱신)
+- 변경 파일: src/lib/memo/richtext.ts(신설 — parseMd1·stripMd1·bodyHasMd1Formatting 단일 소재지)·src/lib/memo/logic.ts(contentFormat 화이트리스트 검증)·src/app/api/memo/route.ts(발송 시 스탬프)·scripts/verify_memo_richtext.ts(신설)·docs/memo_richtext_spec.md·development_roadmap.md·STATUS.md
+- 검증 상태: verify_memo_richtext 26케이스 전판 ✅(인라인 4종·미닫힘 평문·이스케이프·https만·선점 규칙·블록 묶기·strip·경계·스탬프 관문) / tsc ✅ / memo_selftest 회귀 전판 ✅
+- 다음 할 일: STATUS 작업 대기 1번 — MemoRichBody 매핑 컴포넌트(노드→React, dangerouslySetInnerHTML 금지), 상세 뷰 2곳 contentFormat 분기, 편집기 툴바 8종+이모지 피커(산출 계약 = 스펙 §7: 유효 md1 + 리터럴 이스케이프 + bodyHasMd1Formatting false면 contentFormat 미포함), 목록 발췌 stripMd1
+- 주의: **Tenor 판정 갱신** — 직전 핸드오버의 "보류 확정·큐에 올리지 말 것"은 사용자 반증(학교 구글 챗에 GIF 검색 내장·일상 사용, 실기기 스크린샷)으로 **감점 논거 철회, 후순위 별건**으로 완화(스펙 §1 갱신). 선행은 여전히 GIF 첨부(§9). 옛 쪽지(contentFormat 부재)는 어떤 화면에서도 parseMd1에 넣지 말 것 — 평문 <pre> 경로 유지가 하위호환의 핵심
