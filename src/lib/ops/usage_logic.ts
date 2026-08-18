@@ -218,6 +218,34 @@ export interface PacificDayWindow {
   endMs: number;
 }
 
+/** 태평양 기준 오늘(진행 중) 자정의 UTC ms */
+export function currentPacificDayStart(now: Date): number {
+  const t = pacificParts(now);
+  return pacificMidnightUtcMs(t.y, t.m, t.d);
+}
+
+/** 태평양 날짜 라벨 (YYYY-MM-DD) */
+export function pacificDayLabel(atMs: number): string {
+  const p = pacificParts(new Date(atMs));
+  return `${p.y}-${pad2(p.m)}-${pad2(p.d)}`;
+}
+
+/**
+ * 태평양 기준 오늘로부터 `days`일 **전 날짜의 자정** UTC ms.
+ * 고정 86400초를 빼지 않고 **달력 날짜로 물러난 뒤 자정을 다시 계산**한다 —
+ * 서머타임 전환이 낀 구간에서 86400초 산술은 자정에서 1시간 어긋나고,
+ * 그러면 24시간 버킷이 전부 밀려 날짜별 수치가 통째로 틀린다(이 파일 상단 경고).
+ */
+export function pacificDayStartDaysAgo(now: Date, days: number): number {
+  const t = pacificParts(now);
+  const shifted = new Date(Date.UTC(t.y, t.m - 1, t.d - days));
+  return pacificMidnightUtcMs(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth() + 1,
+    shifted.getUTCDate()
+  );
+}
+
 /**
  * 「마지막으로 완결된 태평양 날짜」의 구간을 돌려준다.
  * 진행 중인 날을 쓰지 않는 이유: 부분 집계라 항상 낮게 보여 경보가 늦는다.

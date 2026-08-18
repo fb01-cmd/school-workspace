@@ -10,7 +10,6 @@
 // (roles/monitoring.viewer) 부여 + Cloud Monitoring API 사용 설정.
 // 그래서 이 모듈은 **권한이 없으면 조용히 no-op**이고(가짜 경보를 내지 않는다),
 // 권한이 생기는 순간 재배포 없이 스스로 동작하기 시작한다.
-import { google } from "googleapis";
 import { adminDb } from "@/lib/firebase/admin";
 import { emitNotificationsBatch } from "@/lib/notifications/server";
 import {
@@ -18,24 +17,17 @@ import {
   AlertState,
   DailyUsage,
   EMPTY_ALERT_STATE,
-  UsageMetric,
   UsageRatio,
   buildAlertText,
   computeLevel,
   decideEmit,
   lastCompletePacificDay,
 } from "./usage_logic";
+import { UnavailableReason, fetchTotal, toUnavailable } from "./monitoring";
 
 const stateRef = () => adminDb.collection("platform_config").doc("usage_alert");
 
-const METRIC_TYPE: Record<UsageMetric, string> = {
-  reads: "firestore.googleapis.com/document/read_count",
-  writes: "firestore.googleapis.com/document/write_count",
-  deletes: "firestore.googleapis.com/document/delete_count",
-};
-
-/** 지표를 읽을 수 없는 이유 — 경보 부재와 "사용량 0"을 절대 혼동하지 않기 위해 분리한다 */
-export type UnavailableReason = "no-credentials" | "permission-denied" | "api-error";
+export type { UnavailableReason };
 
 export interface UsageFetchResult {
   available: boolean;
@@ -44,66 +36,19 @@ export interface UsageFetchResult {
   usage?: DailyUsage;
 }
 
-function monitoringClient() {
-  const privateKey = process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  const clientEmail = process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL;
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-  if (!privateKey || !clientEmail || !projectId) return null;
-
-  // subject(사칭) 없음 — Workspace 사용자 자원이 아니라 GCP 프로젝트 자원이다
-  const auth = new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey,
-    scopes: ["https://www.googleapis.com/auth/monitoring.read"],
-  });
-  return { api: google.monitoring({ version: "v3", auth }), projectId };
-}
-
-/** 하루치 합계 1종 조회 — 시계열이 여러 개(데이터베이스별)면 전부 더한다 */
-async function fetchMetricSum(
-  api: ReturnType<typeof google.monitoring>,
-  projectId: string,
-  metric: UsageMetric,
-  startMs: number,
-  endMs: number
-): Promise<number> {
-  const res = await api.projects.timeSeries.list({
-    name: `projects/${projectId}`,
-    filter: `metric.type="${METRIC_TYPE[metric]}"`,
-    "interval.startTime": new Date(startMs).toISOString(),
-    "interval.endTime": new Date(endMs).toISOString(),
-    "aggregation.alignmentPeriod": "86400s",
-    "aggregation.perSeriesAligner": "ALIGN_SUM",
-    "aggregation.crossSeriesReducer": "REDUCE_SUM",
-  });
-  let total = 0;
-  for (const series of res.data.timeSeries || []) {
-    for (const point of series.points || []) {
-      const v = point.value || {};
-      total += Number(v.int64Value ?? v.doubleValue ?? 0);
-    }
-  }
-  return total;
-}
-
 /** 마지막 완결 태평양 날짜의 사용량 — 권한이 없으면 available:false (0이 아니다) */
 export async function fetchDailyUsage(now = new Date()): Promise<UsageFetchResult> {
-  const client = monitoringClient();
-  if (!client) return { available: false, reason: "no-credentials" };
-
   const { day, startMs, endMs } = lastCompletePacificDay(now);
   try {
     const [reads, writes, deletes] = await Promise.all([
-      fetchMetricSum(client.api, client.projectId, "reads", startMs, endMs),
-      fetchMetricSum(client.api, client.projectId, "writes", startMs, endMs),
-      fetchMetricSum(client.api, client.projectId, "deletes", startMs, endMs),
+      fetchTotal("reads", startMs, endMs),
+      fetchTotal("writes", startMs, endMs),
+      fetchTotal("deletes", startMs, endMs),
     ]);
     return { available: true, usage: { day, reads, writes, deletes } };
   } catch (err: any) {
-    const code = err?.code ?? err?.response?.status;
-    const detail = String(err?.message || err).slice(0, 300);
-    if (code === 403 || code === 401) return { available: false, reason: "permission-denied", detail };
-    return { available: false, reason: "api-error", detail };
+    const u = toUnavailable(err);
+    return { available: false, reason: u.reason, detail: u.detail };
   }
 }
 
