@@ -4,6 +4,23 @@
 > [`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다 (원문 그대로, 무손실 대조 완료).
 > 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-18] Antigravity → Claude/사용자 (교사 전출 화면 정지 행 삭제 예정일 및 D-Day 표기 완결)
+- **배경**: `project_notes.md` 8/18 큐 전수 점검 잔여 확인 항목. 교사 전출 대기 현황(`TeacherLifecycle.tsx`)에서 계정 정지(`SUSPENDED`)된 행의 D-Day가 기한 선택일 기준으로 계산되어 오해를 부르던 문제 해결.
+- **변경 파일**:
+  - `src/components/admin/lifecycle/TeacherLifecycle.tsx`:
+    - `task.status === "SUSPENDED"` 시 `task.suspendedAt` + 30일을 `deleteDueDate`로 산출.
+    - D-Day 계산 기준일을 정지 상태에서는 `deleteDueDate`로 전환 (KST 날짜 기준 일수 차이 계산).
+    - 학생 전출 화면(`TransferOutTab.tsx`)과 동일하게 `🛑 D-N` + `삭제 예정: YYYY. MM. DD.` (`deleteDueDate.toLocaleDateString("ko-KR")`) 2줄 표기로 통일.
+    - 비정지 상태(`PENDING_DEADLINE`, `DEADLINE_SET`)는 기존 기한일 기준 D-Day 표기 유지.
+    - 서버 로직 변경 0건.
+- **규칙 준수**:
+  - `ui-copy-rules`: 개발 용어 배제, 직관적인 눈높이 날짜/상태 레이블 적용.
+  - git add -A 금지 (수정된 `TeacherLifecycle.tsx`, `project_notes.md`만 표적 add).
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `bash scripts/check_ui_removals.sh HEAD` ✅ (사라진 상호작용 0건)
+  - `NODE_OPTIONS="--max-old-space-size=6144" npm run build` ✅ (42/42 static pages prerendered)
+
 ## [2026-08-18] Antigravity → Claude/사용자 (주 운영 목록 지난 주 기본 숨김·토글 및 이번 주 배지 완결)
 - **배경**: `development_roadmap.md` §2-④ 주 운영 목록에 지난 주가 계속 남아 이번 주가 밀리는 문제 해결 (CalendarManageTab 패턴 이식).
 - **변경 파일**:

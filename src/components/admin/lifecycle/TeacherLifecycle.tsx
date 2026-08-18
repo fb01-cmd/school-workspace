@@ -644,13 +644,24 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                   const deadline = task.deadlineDate
                     ? (task.deadlineDate.toDate ? task.deadlineDate.toDate() : new Date(task.deadlineDate))
                     : null;
+                  const suspendedAt = task.suspendedAt
+                    ? (task.suspendedAt.toDate ? task.suspendedAt.toDate() : new Date(task.suspendedAt))
+                    : null;
+                  let deleteDueDate: Date | null = null;
+                  if (task.status === "SUSPENDED" && suspendedAt) {
+                    const d = new Date(suspendedAt);
+                    d.setDate(d.getDate() + 30);
+                    deleteDueDate = d;
+                  }
+
+                  const targetDate = task.status === "SUSPENDED" ? deleteDueDate : deadline;
                   let dDay: number | null = null;
-                  if (deadline) {
+                  if (targetDate) {
                     const todayStr = getKSTDateString(new Date());
-                    const deadlineStr = getKSTDateString(deadline);
+                    const targetStr = getKSTDateString(targetDate);
                     const todayTime = new Date(todayStr).getTime();
-                    const deadlineTime = new Date(deadlineStr).getTime();
-                    dDay = Math.round((deadlineTime - todayTime) / (1000 * 60 * 60 * 24));
+                    const targetTime = new Date(targetStr).getTime();
+                    dDay = Math.round((targetTime - todayTime) / (1000 * 60 * 60 * 24));
                   }
                   const st = STATUS_LABEL[task.status] || { label: task.status, color: "bg-gray-100 text-gray-600" };
                   return (
@@ -671,7 +682,20 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                         {deadline ? deadline.toLocaleDateString("ko-KR") : "미설정"}
                       </td>
                       <td className="py-3">
-                        {dDay !== null ? (
+                        {task.status === "SUSPENDED" ? (
+                          deleteDueDate ? (
+                            <div className="space-y-0.5">
+                              <div className="font-bold text-gray-700 flex items-center gap-1.5">
+                                🛑 {dDay !== null ? (dDay > 0 ? `D-${dDay}` : dDay === 0 ? "D-Day" : `D+${Math.abs(dDay)}`) : "-"}
+                              </div>
+                              <div className="text-[10px] text-gray-500 font-medium">
+                                삭제 예정: {deleteDueDate.toLocaleDateString("ko-KR")}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )
+                        ) : dDay !== null ? (
                           <span className={`font-bold ${dDay <= 7 ? "text-red-600" : dDay <= 30 ? "text-orange-600" : "text-gray-600"}`}>
                             {dDay > 0 ? `D-${dDay}` : dDay === 0 ? "D-Day" : `D+${Math.abs(dDay)}`}
                           </span>
