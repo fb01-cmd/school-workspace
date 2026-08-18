@@ -19,12 +19,13 @@ import { compileSectionsFromHours } from "./solver";
 import { SOFT_CODE_LABELS } from "./labels";
 import { applyRevisionOps, cloneClassGrids, rankReferenceTerms } from "./utils";
 export { applyRevisionOps, cloneClassGrids };
-import { buildNeisPrecheckReport, emptyNeisMapRegistry } from "./neis";
+import { buildNeisCsvBundle, buildNeisPrecheckReport, emptyNeisMapRegistry } from "./neis";
 import {
   ClassCellIssue,
   ClassGrid,
   NeisMapRegistry,
   NeisPrecheckReport,
+  NeisCsvBundle,
   NeisPrecheckTarget,
   FreeTeacher,
   IntermediateClassGrid,
@@ -7353,6 +7354,38 @@ export async function computeNeisPrecheck(
     loadAllClassGrids(domain, opts.termId),
   ]);
   return {
+    report: buildNeisPrecheckReport(grids, registry),
+    target: { kind: "term", id: opts.termId, label: term?.name || opts.termId },
+  };
+}
+
+/**
+ * 학기 또는 초안을 대상으로 나이스 CSV 묶음 생성 (phase9c_f_spec F-2).
+ * precheck와 **같은 대상 해석·같은 등록부**를 쓴다 — 두 곳이 갈리면 "검사는 통과했는데
+ * 파일은 다른 것"이 된다. 리포트를 함께 돌려주어 호출부가 B1로 막을 수 있게 한다.
+ */
+export async function computeNeisCsvBundle(
+  domain: string,
+  opts: { termId?: string; draftId?: string }
+): Promise<{ bundle: NeisCsvBundle; target: NeisPrecheckTarget; report: NeisPrecheckReport }> {
+  const registry = await loadNeisMapRegistry(domain);
+
+  if (opts.draftId) {
+    const { meta, currentGrids } = await getDraft(domain, opts.draftId);
+    return {
+      bundle: buildNeisCsvBundle(currentGrids, registry),
+      report: buildNeisPrecheckReport(currentGrids, registry),
+      target: { kind: "draft", id: opts.draftId, label: meta.label },
+    };
+  }
+  if (!opts.termId) throw new Error("대상 학기(termId) 또는 초안(draftId)이 필요합니다.");
+
+  const [term, grids] = await Promise.all([
+    loadTimetableTerm(domain, opts.termId),
+    loadAllClassGrids(domain, opts.termId),
+  ]);
+  return {
+    bundle: buildNeisCsvBundle(grids, registry),
     report: buildNeisPrecheckReport(grids, registry),
     target: { kind: "term", id: opts.termId, label: term?.name || opts.termId },
   };

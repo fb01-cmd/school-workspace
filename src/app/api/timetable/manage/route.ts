@@ -70,6 +70,7 @@ import {
   DraftOpConflictError,
   loadNeisMapRegistry,
   saveNeisMapRegistry,
+  computeNeisCsvBundle,
   computeNeisPrecheck,
   loadTimetableTerm,
   computeAiDiagnosis,
@@ -1511,6 +1512,41 @@ export async function POST(req: NextRequest) {
           draftId: body.draftId,
         });
         return NextResponse.json({ success: true, action, report, target });
+      }
+
+      // ── 나이스 CSV 일괄 생성 (phase9c_f_spec F-2 — 2026-08-18 배선) ──
+      // 변환기는 2026-08-14에 실물 대조로 확정됐으나 호출부가 없어 화면 버튼이
+      // "준비 중"으로 잠겨 있었다. 이것이 컴시간 완전 대체의 네 번째 축이다.
+      case "neis_csv": {
+        const termId = body.termId || settings.activeTermId;
+        if (!body.draftId && !termId) {
+          return NextResponse.json(
+            { error: "대상 학기(termId) 또는 초안(draftId)이 필요합니다." },
+            { status: 400 }
+          );
+        }
+        const { bundle, report, target } = await computeNeisCsvBundle(domain, {
+          termId: termId || undefined,
+          draftId: body.draftId,
+        });
+
+        // 🔴 B1 차단 — 나이스명이 확정되지 않은 과목이 하나라도 있으면 내보내지 않는다.
+        // 그대로 내보내면 플랫폼 과목명이 파일에 박혀 나이스가 거부하거나, 더 나쁘게는
+        // **틀린 과목으로 등재된다.** 되돌리기가 어려운 쪽이므로 경고가 아니라 차단이다.
+        if (!report.readyForExport) {
+          return NextResponse.json(
+            {
+              error: `나이스 등재명이 정해지지 않은 과목이 ${report.blockers.unmappedSubjects.length}개 있습니다. 먼저 「검사」에서 과목 이름을 맞춘 뒤 내보내 주세요.`,
+              report,
+              target,
+            },
+            { status: 400 }
+          );
+        }
+        if (!bundle.files.length) {
+          return NextResponse.json({ error: "내보낼 학급이 없습니다." }, { status: 400 });
+        }
+        return NextResponse.json({ success: true, action, bundle, target, report });
       }
 
       // ── Phase 9c-E AI 보조 (phase9c_e_spec §4) ──

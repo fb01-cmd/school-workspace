@@ -392,7 +392,8 @@ export type ManageAction =
   // ── Phase 9c-F NEIS 일괄 내보내기 (phase9c_f_spec §4) ──
   | "neis_map_get"   // 매핑 등록부 + 학기 과목 seed
   | "neis_map_save"  // 등록부 전체 교체 (sanitize·감사 로그)
-  | "neis_precheck"  // 사전 검증 리포트 (termId 또는 draftId 대상)
+  | "neis_precheck"
+  | "neis_csv"  // 사전 검증 리포트 (termId 또는 draftId 대상)
   // ── Phase 9c-E AI 보조층 (phase9c_e_spec §4) ──
   | "ai_diagnose"    // E1 불능 진단 (draftId 대상, 표시 전용, 키 미설정 시 enabled:false)
   | "ai_formalize"   // E2 선호 정식화 (aiText → slot_ban 제안, 저장은 UI 확인 후 slot_ban_save로만)
@@ -1482,6 +1483,25 @@ export interface NeisPrecheckReport {
 }
 
 /** neis_precheck 응답의 대상 표식 */
+// ── 나이스 CSV 내보내기 (phase9c_f_spec F-2) ──
+export interface NeisCsvFile {
+  /** 학급 라벨 (1-1 등) */
+  label: string;
+  grade: number;
+  classNum: number;
+  /** BOM 포함 UTF-8 CSV 본문 */
+  csv: string;
+  unmapped: string[];
+  multiTeacher: string[];
+}
+
+export interface NeisCsvBundle {
+  files: NeisCsvFile[];
+  /** 전 학급 합집합 — 화면이 한 번에 경고할 수 있도록 */
+  unmappedAll: string[];
+  multiTeacherAll: string[];
+}
+
 export interface NeisPrecheckTarget {
   kind: "term" | "draft";
   id: string;

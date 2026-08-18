@@ -12,6 +12,8 @@
 
 import {
   ClassGrid,
+  NeisCsvBundle,
+  NeisCsvFile,
   NeisMapRegistry,
   NeisPrecheckPairIssue,
   NeisPrecheckReport,
@@ -345,5 +347,55 @@ export function buildNeisTimetableCsv(
     csv: "﻿" + lines.join("\r\n"),
     unmapped: [...unmapped].sort(),
     multiTeacher: [...multiTeacher].sort(),
+  };
+}
+
+// ── 학급별 CSV 일괄 생성 (phase9c_f_spec F-2 배선, 2026-08-18) ──
+//
+// 변환기(`buildNeisTimetableCsv`)는 2026-08-14에 실물 대조까지 끝났는데 **호출부가 없어
+// 화면 버튼이 "준비 중"으로 잠겨 있었다.** 잠금 사유였던 "나이스 양식 확보"는 같은 날
+// 해소됐고(deferred_backlog_2026-08-14 §A7), 이 함수가 그 마지막 배선이다.
+//
+// 컴시간 완전 대체의 네 축(①생성 ②검증 ③수동조정 ④나이스 내보내기) 중 ④가 여기서 닫힌다.
+
+
+/**
+ * 전 학급 CSV를 한 번에 만든다.
+ *
+ * ⚠️ **B1(나이스명 미확정 과목)이 남아 있으면 호출하지 말 것.** 그 상태로 내보내면
+ * 플랫폼 과목명이 그대로 파일에 박혀 나이스가 거부하거나, 더 나쁘게는 **틀린 과목으로
+ * 등재된다.** 호출부(서버 액션)가 precheck의 `readyForExport`로 먼저 막는다.
+ */
+export function buildNeisCsvBundle(grids: ClassGrid[], registry: NeisMapRegistry): NeisCsvBundle {
+  const mapped = new Map<string, string>();
+  for (const row of registry.subjects || []) {
+    const neisName = (row.neisName || "").trim();
+    if (neisName) mapped.set(normSubject(row.platformName), neisName);
+  }
+  const neisNameOf = (platformSubject: string) => mapped.get(normSubject(platformSubject)) || null;
+
+  const unmappedAll = new Set<string>();
+  const multiTeacherAll = new Set<string>();
+  const files: NeisCsvFile[] = [];
+
+  for (const grid of grids || []) {
+    const r = buildNeisTimetableCsv(grid, neisNameOf);
+    r.unmapped.forEach((u) => unmappedAll.add(u));
+    r.multiTeacher.forEach((m) => multiTeacherAll.add(m));
+    files.push({
+      label: `${grid.grade}-${grid.classNum}`,
+      grade: grid.grade,
+      classNum: grid.classNum,
+      csv: r.csv,
+      unmapped: r.unmapped,
+      multiTeacher: r.multiTeacher,
+    });
+  }
+
+  files.sort((a, b) => a.grade - b.grade || a.classNum - b.classNum);
+  return {
+    files,
+    unmappedAll: [...unmappedAll].sort((a, b) => a.localeCompare(b, "ko")),
+    multiTeacherAll: [...multiTeacherAll].sort((a, b) => a.localeCompare(b, "ko")),
   };
 }

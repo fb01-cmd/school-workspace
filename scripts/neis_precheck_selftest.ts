@@ -14,6 +14,7 @@ import {
   neisPairKey,
   sanitizeNeisMapPayload,
 } from "../src/lib/timetable/neis";
+import { buildNeisCsvBundle } from "../src/lib/timetable/neis";
 
 const A = { email: "a@x.kr", name: "가교사" };
 const B = { email: "b@x.kr", name: "나교사" };
@@ -166,6 +167,23 @@ console.log("── 기초시간표 CSV 형식 ──");
   expect("미매핑 과목 보고", r.unmapped.includes("통합과학"), r.unmapped.join(","));
   expect("복수 교사 보고", r.multiTeacher.length === 1, r.multiTeacher.join(","));
   expect("복수 교사는 첫 사람만 기재", lines[3].includes("(가교사)") && !lines[3].includes("나교사"), lines[3]);
+}
+
+// ── 묶음 생성 (F-2 배선, 2026-08-18) ──
+{
+  const reg = { subjects: [{ platformName: "수학", neisName: "수학Ⅰ" }], confirmedTeachers: [], confirmedPairs: [] } as any;
+  const gridA: any = { grade: 1, classNum: 2, cells: [{ day: 1, period: 1, lessons: [{ subjectName: "수학", teachers: [{ email: "a@x.kr", name: "김교사" }] }] }] };
+  const gridB: any = { grade: 1, classNum: 1, cells: [{ day: 1, period: 1, lessons: [{ subjectName: "수학", teachers: [{ email: "a@x.kr", name: "김교사" }] }] }] };
+  const bundle = buildNeisCsvBundle([gridA, gridB], reg);
+  expect("묶음 — 학급 수만큼 파일", bundle.files.length === 2);
+  expect("묶음 — 학년·반 오름차순 정렬", bundle.files[0].label === "1-1" && bundle.files[1].label === "1-2");
+  expect("묶음 — 각 파일이 BOM으로 시작", bundle.files.every((f: any) => f.csv.charCodeAt(0) === 0xfeff));
+  expect("묶음 — 매핑된 이름 사용", bundle.files[0].csv.includes("수학Ⅰ(김교사)"));
+  expect("묶음 — 미매핑 합집합 비어 있음", bundle.unmappedAll.length === 0);
+
+  const reg2 = { subjects: [], confirmedTeachers: [], confirmedPairs: [] } as any;
+  const b2 = buildNeisCsvBundle([gridB], reg2);
+  expect("묶음 — 미매핑 과목이 합집합에 모임", b2.unmappedAll.includes("수학"));
 }
 
 console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);
