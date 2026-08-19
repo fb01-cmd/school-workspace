@@ -44,10 +44,10 @@ function IndeterminateCheckbox({
         id={id}
         checked={checked}
         onChange={onChange}
-        className="sr-only"
+        className="sr-only peer"
       />
       <span
-        className={`w-3.5 h-3.5 rounded flex items-center justify-center border transition-all ${
+        className={`w-3.5 h-3.5 rounded flex items-center justify-center border transition-all peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500 peer-focus-visible:ring-offset-1 ${
           checked
             ? "bg-indigo-600 border-indigo-600 text-white shadow-2xs"
             : indeterminate
@@ -137,36 +137,29 @@ export default function HubOrgTree({
   };
 
   // Load teacher profiles using centralized loader (which uses roster_index cache / org_index)
-  const fetchProfiles = useCallback(async () => {
+  // 결함 6 수정: 취소 가드 복원 — 언마운트 후 setState 방지 및 [다시 시도] 연타 방어
+  const fetchProfiles = useCallback(async (signal?: { cancelled: boolean }) => {
     setLoading(true);
     setError(null);
     try {
       const items = await loadTeacherProfiles();
+      if (signal?.cancelled) return;
       setProfiles(items);
       onProfilesLoaded?.(items);
     } catch (err) {
+      if (signal?.cancelled) return;
       console.error("조직도 명단 조회 실패:", err);
       setError("명단을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
-      setLoading(false);
+      if (!signal?.cancelled) setLoading(false);
     }
   }, [onProfilesLoaded]);
 
   useEffect(() => {
-    fetchProfiles();
+    const signal = { cancelled: false };
+    fetchProfiles(signal);
+    return () => { signal.cancelled = true; };
   }, [fetchProfiles]);
-
-  // Initial department expansion: expand my own department(s), collapse all if no department (Directive 11 / Feedback 14)
-  useEffect(() => {
-    if (departmentOrder.length > 0) {
-      const myDepts = new Set(teacherProfile?.departments || []);
-      const initial: Record<string, boolean> = {};
-      departmentOrder.forEach((d) => {
-        initial[d] = myDepts.size > 0 ? myDepts.has(d) : false;
-      });
-      setExpandedDepts(initial);
-    }
-  }, [departmentOrder, teacherProfile?.departments]);
 
   // Tree data structure
   const structuredTree = useMemo(() => {
@@ -197,24 +190,35 @@ export default function HubOrgTree({
       .sort((a, b) => a.localeCompare(b, "ko"));
     const allDepts = [...departmentOrder, ...unregDepts];
 
-    const result: { deptName: string; members: TeacherProfile[]; allDeptMembers: TeacherProfile[] }[] = [];
+    // 결함 7 수정: members/allDeptMembers 분리 제거 — 검색 필터 잔재 정리
+    const result: { deptName: string; members: TeacherProfile[] }[] = [];
 
     allDepts.forEach((d) => {
-      const allMembers = sortMembersForDept(d, deptMap[d] || [], {
+      const sorted = sortMembersForDept(d, deptMap[d] || [], {
         getName: (p) => getDisplayName(p),
       });
 
-      if (allMembers.length > 0) {
-        result.push({
-          deptName: d,
-          members: allMembers,
-          allDeptMembers: allMembers,
-        });
+      if (sorted.length > 0) {
+        result.push({ deptName: d, members: sorted });
       }
     });
 
     return result;
   }, [profiles, departmentOrder, activeEmails, gwsNameMap]);
+
+  // Initial department expansion: expand my own department(s), collapse all if no department
+  // 결함 5 수정: structuredTree 기준으로 돌려 미등록 부서도 포함
+  useEffect(() => {
+    if (structuredTree.length > 0) {
+      const myDepts = new Set(teacherProfile?.departments || []);
+      const initial: Record<string, boolean> = {};
+      structuredTree.forEach(({ deptName }) => {
+        initial[deptName] = myDepts.size > 0 ? myDepts.has(deptName) : false;
+      });
+      setExpandedDepts(initial);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structuredTree.length, teacherProfile?.departments]);
 
   // Flat search results (Directive 6 / Feedback 4-1 / spec §2-1-1)
   const flatSearchResults = useMemo(() => {
@@ -380,7 +384,7 @@ export default function HubOrgTree({
             <p className="text-slate-500">{error}</p>
             <button
               type="button"
-              onClick={fetchProfiles}
+              onClick={() => fetchProfiles()}
               className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-100 font-semibold cursor-pointer transition-colors"
             >
               다시 시도
@@ -446,9 +450,9 @@ export default function HubOrgTree({
             표시할 조직 정보가 없습니다.
           </div>
         ) : (
-          structuredTree.map(({ deptName, members, allDeptMembers }) => {
+          structuredTree.map(({ deptName, members }) => {
             const isExpanded = !!expandedDepts[deptName];
-            const allDeptEmails = allDeptMembers.map((m) => (m.email || "").toLowerCase());
+            const allDeptEmails = members.map((m) => (m.email || "").toLowerCase());
             const selectedCountInDept = allDeptEmails.filter((e) => selectedEmails.has(e)).length;
             const isAllDeptSelected =
               allDeptEmails.length > 0 && selectedCountInDept === allDeptEmails.length;
@@ -482,8 +486,8 @@ export default function HubOrgTree({
                           }`}
                         >
                           {selectedCountInDept > 0
-                            ? `${selectedCountInDept}/${allDeptMembers.length}`
-                            : allDeptMembers.length}
+                            ? `${selectedCountInDept}/${members.length}`
+                            : members.length}
                         </span>
                         <span className="text-[10px] text-slate-400">{isExpanded ? "▲" : "▼"}</span>
                       </div>
@@ -496,7 +500,7 @@ export default function HubOrgTree({
                   <div className="divide-y divide-slate-50 px-1 py-0.5">
                     {members.length === 0 ? (
                       <div className="py-2 text-center text-[11px] text-slate-400">
-                        {searchQuery ? "일치하는 선생님이 없습니다." : "소속 교직원이 없습니다."}
+                        소속 교직원이 없습니다.
                       </div>
                     ) : (
                       members.map((teacher) => {
@@ -586,13 +590,8 @@ export default function HubOrgTree({
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-4 w-full max-w-[280px] space-y-3 animate-in zoom-in-95 duration-100">
             <div className="flex items-start justify-between">
               <div>
-                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                  <span>{getDisplayName(popoverTeacher)}</span>
-                  {popoverTeacher.isDeptHead && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-                      부서장
-                    </span>
-                  )}
+                <h4 className="text-sm font-bold text-slate-900">
+                  {getDisplayName(popoverTeacher)}
                 </h4>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {popoverTeacher.position || "교직원"}
@@ -608,11 +607,24 @@ export default function HubOrgTree({
             </div>
 
             <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-              <div className="flex justify-between">
-                <span className="text-slate-400">소속 부서</span>
-                <span className="font-semibold text-slate-800 text-right">
-                  {popoverTeacher.departments?.join(", ") || "-"}
-                </span>
+              {/* 결함 4 수정: 부서 목록에서 해당 부서 옆에만 부서장 표시 */}
+              <div>
+                <span className="text-slate-400 block mb-0.5">소속 부서</span>
+                <div className="space-y-0.5">
+                  {(popoverTeacher.departments || []).map((d) => (
+                    <div key={d} className="flex items-center gap-1.5">
+                      <span className="font-semibold text-slate-800 text-xs">{d}</span>
+                      {!!popoverTeacher.deptHeadMap?.[d] && (
+                        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-800">
+                          부서장
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                  {(!popoverTeacher.departments || popoverTeacher.departments.length === 0) && (
+                    <span className="font-semibold text-slate-800 text-xs">-</span>
+                  )}
+                </div>
               </div>
               {popoverTeacher.homeroom?.grade && popoverTeacher.homeroom?.class && (
                 <div className="flex justify-between">
