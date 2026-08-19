@@ -1145,3 +1145,16 @@
 - 주의: 이건 Antigravity 영역(화면) 파일을 Claude가 고친 건이다 — 배포 직전 점검에서 발견했고 사용자가 실기기 확인 대기 중이라 왕복을 줄였다 (AGENTS.md §3-2 사전 고지 갈음)
 
 `bc1ffd0`이 삼항 조건을 `"hub"`로 고쳐 사이드바 진입은 해결됐으나, **홈 대시보드의 업무 카드가 아직 `setActiveMenu("tasks")`를 불러** 좁은 컨테이너 분기로 들어갔다(2곳, page.tsx:354·566). 같은 결함의 다른 문이다. → `setInitialHubCategory("tasks") + setActiveMenu("hub")`로 교체하고, 이제 아무도 `activeMenu`를 `"tasks"`로 두지 않으므로 `renderContent()`의 죽은 `case "tasks"`도 제거. 확인 방법: `grep 'setActiveMenu("tasks")\|case "tasks"' src/app/admin/page.tsx` 결과 0건.
+
+## [2026-08-19] Claude 진단 — 홈 「내 할 일」 카드가 목록을 안 그린다 (사용자 실기기 보고)
+
+- 변경 파일: `STATUS.md` (진단만, 코드 수정은 Antigravity 몫)
+- 검증 상태: 코드 실증 — `DashboardTaskCard.tsx:41-58` `getDocs` 결과를 순회하며 **세기만 하고 문서를 버린다**(`setPendingCount(count)`), 렌더부(:75~:98)는 건수 + 링크뿐
+- 다음 할 일: STATUS 작업 대기 2번 (Antigravity)
+- 주의: **오늘 작업의 회귀가 아니다** — `cf28f04`(Phase 8 대시보드 최초 구현)부터 줄곧 건수 전용이었다. 다만 오늘 메뉴 흡수로 링크 문구가 낡았고, 옆 쪽지 패널과의 비대칭이 눈에 띄게 됐다
+
+**둘이 겹쳐 있다.** ① **오늘 생긴 것** — 링크 문구 「업무 관리 바로가기」가 **없어진 메뉴**를 가리킨다(흡수로 사라짐). ② **원래 있던 것** — 카드가 목록을 안 그린다. 옆 `DashboardMemoPanel`은 그리고, 모바일 `MobileTasksSection`도 그린다. 사용자 지적("모바일에선 잘 뜨는데 PC가 이래")이 정확하다.
+
+**읽기 비용은 늘지 않는다** — 카드는 이미 `where("recipientEmails","array-contains",myEmail)`로 문서를 전부 받아 놓고 세기만 한 뒤 버린다. 목록을 그리는 데 추가 조회가 0이다.
+
+**단 쿼리 모양은 고쳐야 한다(§2-⑩ 목표 규모)**: 현재 쿼리에 `limit`도 기한 창도 없어 보존 365일이 쌓일수록 악화된다(읽기 다이어트 3번과 같은 계열). `TasksSection`의 내 할 일 쿼리(`dueAt >= windowStart` + `orderBy dueAt asc` + `limit(100)`, :185-188)와 **같은 모양으로 맞추면 기존 복합 색인을 그대로 쓰고 표시 집합도 일치**한다.
