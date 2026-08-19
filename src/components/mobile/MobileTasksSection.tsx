@@ -5,6 +5,8 @@ import {
   collection,
   query,
   where,
+  orderBy,
+  limit,
   onSnapshot,
 } from "firebase/firestore";
 import type { TaskDoc, TaskRecipientStatus, TaskSubmission } from "@/lib/tasks/logic";
@@ -116,10 +118,15 @@ export default function MobileTasksSection() {
     }
     setLoading(true);
     setLoadError(null);
-    // 기한창(dueAt 범위) 금지 — 복합 색인 요구 실측 (TasksSection 동일 주석 참조, 5번 치명 계열)
+    // 90일 기한창 + 서버 정렬 + 상한 (복합 색인 2026-08-19 콘솔 생성·probe 확인 후 재적용 —
+    // TasksSection 동일 주석 참조. 90일 이전 열람은 PC 전체 탭의 [지난 업무 보기] 사용)
+    const windowStart = Date.now() - 90 * 24 * 3600 * 1000;
     const q = query(
       collection(db, "tasks", domain, "items"),
-      where("recipientEmails", "array-contains", myEmail)
+      where("recipientEmails", "array-contains", myEmail),
+      where("dueAt", ">=", windowStart),
+      orderBy("dueAt", "asc"),
+      limit(100)
     );
     const unsub = onSnapshot(
       q,

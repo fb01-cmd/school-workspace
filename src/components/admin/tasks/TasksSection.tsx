@@ -10,7 +10,10 @@ import {
   collection,
   query,
   where,
+  orderBy,
+  limit,
   onSnapshot,
+  getDocs,
 } from "firebase/firestore";
 import type { TaskDoc, TaskRecipientStatus, TaskSubmission } from "@/lib/tasks/logic";
 import MemoRichBody from "@/components/common/MemoRichBody";
@@ -82,6 +85,34 @@ export default function TasksSection({ initialTaskId }: Props) {
     setPageSize(25);
   }, [filter]);
 
+  // 90일 이전 기록 — 상시 구독 밖, 버튼 클릭 시 1회 조회 (기한창 재적용의 열람 출구)
+  const [olderTasks, setOlderTasks] = useState<TaskItem[]>([]);
+  const [olderLoaded, setOlderLoaded] = useState(false);
+  const [olderLoading, setOlderLoading] = useState(false);
+  const loadOlderTasks = async () => {
+    if (olderLoading || olderLoaded || !myEmail || !domain) return;
+    setOlderLoading(true);
+    try {
+      const windowStart = Date.now() - 90 * 24 * 3600 * 1000;
+      const snap = await getDocs(
+        query(
+          collection(db, "tasks", domain, "items"),
+          where("recipientEmails", "array-contains", myEmail),
+          where("dueAt", "<", windowStart),
+          orderBy("dueAt", "desc"),
+          limit(100)
+        )
+      );
+      setOlderTasks(snap.docs.map((d) => ({ id: d.id, ...(d.data() as TaskDoc) })));
+      setOlderLoaded(true);
+    } catch (err) {
+      console.error("[tasks] 지난 업무 조회 실패", err);
+      alert("지난 업무를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setOlderLoading(false);
+    }
+  };
+
   // 상세 펼침 상태
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(initialTaskId || null);
 
@@ -131,7 +162,9 @@ export default function TasksSection({ initialTaskId }: Props) {
     }
   }, [initialTaskId]);
 
-  // 내 할 일 목록 실시간 구독 (다이어트 3번: 90일 기한창 적용)
+  // 내 할 일 목록 실시간 구독 — 90일 기한창 + 서버 정렬 + 상한 (다이어트 3번 재적용:
+  // recipientEmails 배열 + dueAt 복합 색인을 사용자가 2026-08-19 콘솔 생성, admin probe INDEX_OK 확인 후 적용.
+  // 90일 이전 기록은 아래 loadOlderTasks(1회 조회)로 열람 — 구독 상시 비용에서 제외)
   useEffect(() => {
     if (!myEmail || !domain) {
       setLoading(false);
@@ -139,12 +172,13 @@ export default function TasksSection({ initialTaskId }: Props) {
     }
     setLoading(true);
     setLoadError(null);
-    // 기한창(dueAt 범위) 금지 — array-contains + 다른 필드 범위는 복합 색인 요구로
-    // FAILED_PRECONDITION (2026-08-19 검수 실측, 5번 치명과 동일 계열). 색인 생성(사용자 콘솔 1회) 전까지
-    // array-contains 단독만 허용. 색인 등록 후 기한창+orderBy+limit 일괄 적용 예정 — STATUS 참조.
+    const windowStart = Date.now() - 90 * 24 * 3600 * 1000;
     const q = query(
       collection(db, "tasks", domain, "items"),
-      where("recipientEmails", "array-contains", myEmail)
+      where("recipientEmails", "array-contains", myEmail),
+      where("dueAt", ">=", windowStart),
+      orderBy("dueAt", "asc"),
+      limit(100)
     );
     const unsub = onSnapshot(
       q,
@@ -168,9 +202,10 @@ export default function TasksSection({ initialTaskId }: Props) {
     return () => unsub();
   }, [myEmail, domain]);
 
-  // 필터링된 목록
+  // 필터링된 목록 (구독분 + 불러온 90일 이전 기록)
   const filteredTasks = useMemo(() => {
-    return inboxTasks.filter((t) => {
+    const combined = olderTasks.length > 0 ? [...inboxTasks, ...olderTasks] : inboxTasks;
+    return combined.filter((t) => {
       const isCanceled = !!t.canceledAt;
       const status = t.statuses?.[myEmail]?.state || "PENDING";
 
@@ -181,7 +216,7 @@ export default function TasksSection({ initialTaskId }: Props) {
       if (filter === "done") return status === "DONE";
       return true;
     });
-  }, [inboxTasks, filter, myEmail]);
+  }, [inboxTasks, olderTasks, filter, myEmail]);
 
   // 클라이언트 페이지네이션 (지시서 33번: 전체/완료/철회 탭 대상)
   const visibleTasks = useMemo(() => {
@@ -1148,6 +1183,23 @@ export default function TasksSection({ initialTaskId }: Props) {
                     더 보기 ({filteredTasks.length - visibleTasks.length}개 남음) ↓
                   </button>
                 </div>
+              )}
+
+              {/* 90일 이전 기록 열람 출구 — 상시 구독 밖 1회 조회 (기한창 재적용, 진행할 일 탭 제외) */}
+              {filter !== "pending" && !hasMoreTasks && !olderLoaded && (
+                <div className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={loadOlderTasks}
+                    disabled={olderLoading}
+                    className="px-6 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 font-semibold text-xs rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {olderLoading ? "불러오는 중…" : "지난 업무 보기 (90일 이전)"}
+                  </button>
+                </div>
+              )}
+              {filter !== "pending" && olderLoaded && olderTasks.length === 0 && (
+                <p className="pt-2 text-center text-xs text-slate-400">90일 이전 기록이 없습니다.</p>
               )}
             </div>
           )}
