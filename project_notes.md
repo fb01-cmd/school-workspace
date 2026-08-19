@@ -1136,3 +1136,12 @@
 **[결함 1건 — 레이아웃 컨테이너 불일치]** `src/app/admin/page.tsx:1099`의 삼항이 **`activeMenu === "memo"`만** 전체폭 분기로 보내는데, 실제 메뉴 값은 `"hub"`라 else 분기(`max-w-6xl mx-auto p-8`, `overflow-auto`)로 간다. 허브 루트는 `w-full h-full flex flex-col min-h-0`(:180)이라 **높이가 잡힌 부모**를 전제한다 → 폭이 1152px로 잘리고 `h-full`이 auto 높이 부모에 걸려 **좌·우 독립 스크롤이 무력화**될 것으로 보인다(조직도 88행이 그대로 늘어나 페이지가 길어짐). **이것은 코드 판단이며 화면으로 확인하지 않았다.** 처방 = 삼항 조건을 `activeMenu === "hub"`로 교체. 곁가지: 이제 아무도 `setActiveMenu("memo")`를 부르지 않으므로 그 분기와 `renderContent()`의 `case "memo"`는 죽은 코드다 — 함께 정리.
 
 **수용한 스펙 이탈 1건**: §2-3은 허브가 하위 탭을 직접 그리도록 했으나, 구현은 하위 탭을 기존 섹션의 자체 탭바에 맡기고 허브는 `initialTab`으로 조종만 한다. **중복 컨트롤·상태 desync를 피하는 쪽이라 이 편이 낫다** — 스펙을 구현에 맞춘다(발송 후 자동 전환은 prop 변경 → `useEffect` 경로로 동작 확인).
+
+## [2026-08-19] Claude 배포 직전 점검 — 좁은 컨테이너로 가는 두 번째 문 차단
+
+- 변경 파일: `src/app/admin/page.tsx`
+- 검증 상태: tsc ✅ / build ✅ 47/47 / check_ui_removals ✅ (기준 bc1ffd0)
+- 다음 할 일: 푸시 → Vercel 배포 → 사용자 실기기 확인 (STATUS 작업 대기 2번)
+- 주의: 이건 Antigravity 영역(화면) 파일을 Claude가 고친 건이다 — 배포 직전 점검에서 발견했고 사용자가 실기기 확인 대기 중이라 왕복을 줄였다 (AGENTS.md §3-2 사전 고지 갈음)
+
+`bc1ffd0`이 삼항 조건을 `"hub"`로 고쳐 사이드바 진입은 해결됐으나, **홈 대시보드의 업무 카드가 아직 `setActiveMenu("tasks")`를 불러** 좁은 컨테이너 분기로 들어갔다(2곳, page.tsx:354·566). 같은 결함의 다른 문이다. → `setInitialHubCategory("tasks") + setActiveMenu("hub")`로 교체하고, 이제 아무도 `activeMenu`를 `"tasks"`로 두지 않으므로 `renderContent()`의 죽은 `case "tasks"`도 제거. 확인 방법: `grep 'setActiveMenu("tasks")\|case "tasks"' src/app/admin/page.tsx` 결과 0건.

@@ -268,8 +268,6 @@ export default function AdminPage() {
     switch (activeMenu) {
       case "hub":
         return <MessagingHub initialCategory={initialHubCategory} initialTaskId={targetTaskId} initialMemoId={targetMemoId} />;
-      case "tasks":
-        return <MessagingHub initialCategory="tasks" initialTaskId={targetTaskId} />;
       case "users":
         return <UserList />;
       case "profile_approvals":
@@ -351,7 +349,7 @@ export default function AdminPage() {
               <div className="space-y-6">
                 {/* 상단 개인 업무 및 쪽지 영역 */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                  <DashboardTaskCard onNavigate={() => setActiveMenu("tasks")} />
+                  <DashboardTaskCard onNavigate={() => { setInitialHubCategory("tasks"); setActiveMenu("hub"); }} />
                   <DashboardMemoPanel onNavigateToMemo={handleNavigateToMemo} />
                 </div>
 
@@ -563,7 +561,7 @@ export default function AdminPage() {
               /* 일반 교사(role teacher) 홈: 넓은 화면 2단 그리드(좌: 시간표+급식+할일, 우: 받은 쪽지), 좁은 화면 세로 스택 (2026-08-18 피드백 덤프 ⑤) */
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-                  <DashboardTaskCard onNavigate={() => setActiveMenu("tasks")} />
+                  <DashboardTaskCard onNavigate={() => { setInitialHubCategory("tasks"); setActiveMenu("hub"); }} />
                   <MyTimetableCard onNavigateToMyTimetable={() => setActiveMenu("my_timetable")} />
                   <MealCard />
                 </div>
