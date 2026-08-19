@@ -4,6 +4,12 @@
 > 2026-08-14 이전은 [`archive/project_notes_2026-08.md`](./archive/project_notes_2026-08.md)·[`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다
 > (원문 그대로, 블록 무손실 대조 완료). 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-19] Antigravity → Claude/사용자 (Phase 8 실기기 피드백 화면 반영 완료 — 1군~4군 12개 과제 완결)
+- **변경 파일 (`92fadca`)**: `src/components/common/MemoRichBody.tsx`, `src/components/admin/tasks/TasksSection.tsx`, `src/components/mobile/MobileTasksSection.tsx`, `src/components/admin/DashboardTaskCard.tsx`, `src/components/admin/tasks/TaskRecipientPickerModal.tsx`, `src/components/admin/tasks/TaskComposerModal.tsx`, `src/components/admin/tasks/TaskStatusBoard.tsx`, `src/components/common/NotificationCenter.tsx`, `src/app/admin/page.tsx`, `src/lib/memo/client_attachments.ts`, `src/components/admin/MemoSection.tsx`, `src/components/common/MemoAttachmentGrid.tsx`.
+- **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) · `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (46/46 pages) · `bash scripts/check_ui_removals.sh 1b48d5b` ✅ (삭제 18건 전수 피드백 지시서 근거 소명 완료).
+- **다음 할 일**: Claude 검수 후 일괄 배포 (git push 미수행 유지).
+- **주의사항**: 서버 API 코드는 수정 0건(클라이언트 배선 및 눈높이 문구·UI만 반영), 5번 복합 색인 의존 쿼리 제거 및 7번 전이/제출 낙관 갱신 완료, 쪽지 일반 파일 첨부(4MB 직접 / 10MB 세션 업로드) 완결.
+
 ## [2026-08-19] Antigravity → Claude/사용자 (Phase 8 업무 지시 화면 구현 완결 — spec §7, STATUS.md 작업 대기 1번)
 - **배경**: `docs/phase8_tasks_spec.md` §7 화면 IA 및 코어(커밋 `8903cc1`) 기반으로 업무 작성/발송(2상 흐름), 보낸 업무 현황판(단일 문서 onSnapshot), 내 할 일(확인형/제출형 2경로), 모바일(/m) 할 일/제출, 알림 센터 수락 배선, 대시보드 할 일 카드를 완결.
 - **구현 파일**:
