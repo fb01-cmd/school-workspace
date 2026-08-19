@@ -1490,8 +1490,9 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        // Firebase Auth 구버전 UID 충돌 사전 방지
-        await deleteAuthUserByEmail(teacherEmail);
+        // stale Firebase Auth 정리는 `createUser` 안에서 **생성 성공 뒤** 수행한다.
+        // 여기서 선제 호출하던 것을 2026-08-19에 제거했다 — 이유는 users 라우트의
+        // 같은 자리 주석 참조 (중복 생성 실패 시 멀쩡한 계정의 권한 문서가 지워졌다).
 
         // GWS 계정 생성 (초기 패스워드: 고정값)
         const tempPassword = "1234abcd!!!!";

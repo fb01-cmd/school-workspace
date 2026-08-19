@@ -291,9 +291,11 @@ export async function POST(req: NextRequest) {
         );
       }
       try {
-        // 계정 생성 전, GWS 고유 ID 변경에 따른 Firebase Auth 로그인 충돌 방지를 위해 stale 계정 선제 정리
-        await deleteAuthUserByEmail(email);
-
+        // stale Firebase Auth 정리는 `createUser` 안에서 **생성 성공 뒤** 수행한다.
+        // 여기서 선제 호출하던 것을 2026-08-19에 제거했다 — deleteAuthUserByEmail은
+        // Firestore `users` 문서(=role의 원본)도 함께 지우므로, 중복 이메일이라
+        // 생성이 409로 실패하는 경우 **멀쩡한 사용자만 권한을 잃었다**
+        // (실측: users 문서 1건 → insert 409 → 0건. notes 「[2026-08-19] 순서 교정 실증」)
         const user = await createUser(email, firstName, lastName, orgUnitPath, password, !!changePasswordAtNextLogin);
         await writeAuditLog({
           operatorEmail: adminEmail,
