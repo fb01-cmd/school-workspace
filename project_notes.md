@@ -1123,3 +1123,16 @@
   - 원본 88건 / 색인 88건 대조 결과: 빠진 사람 0건, 유령 0건, 내용 불일치 0건
   - 색인 문서 정상 사용 가능(`isRosterIndexUsable: true`) 확인 ✅
 
+
+## [2026-08-19] Claude 표적 검수 — 규칙 배포(2d2324d) + 「쪽지·업무」 화면(c5ec9ab)
+
+- 변경 파일: 없음(검수만) · `project_notes.md`
+- 검증 상태: tsc ✅ / build ✅ 47/47 / check_ui_removals — 사라진 4건(쪽지·업무 관리·홈 (대시보드)·📌) 전부 지시서에 있던 것 ✅ / **규칙 배포 독립 확인 ✅** (`publish_firestore_rules.ts` 재실행 → "저장소 파일과 이미 동일" = 배포본과 저장소 일치, 인계 주장 검증됨)
+- 다음 할 일: **Antigravity — 아래 결함 1건 수정 후 실기기 확인**
+- 주의: 스펙 §8 검증표 중 **6~10·13(실기기 항목)은 아직 미확인**이다. 코드 검수만 끝난 상태다
+
+**통과 (코드 실증)**: §8-1 허브 4파일 `onSnapshot` 0건 · §5 `loadTeacherProfiles()` 경유(색인 경로 자동 승계) · §8-4 `noDept`·빈 소속 제외 · §8-11 목록은 기존 `MemoSection`/`TasksSection` 재사용(추가 prop `initialTab` 1개뿐 — ①-1 준수), 업무 작성기는 기존 4개 액션 전부 보존(대용량 세션 포함), 첨부·서식은 공용 모듈 재사용 · §8-12 `menu:"memo"/"tasks"` 별칭 라우팅 + `initialMemoId`/`initialTaskId` 전달(기존 미전달 결함도 해소) · §8-13 삼항 조건부 렌더(CSS 숨김 아님 — 비활성 탭 구독 없음) · §8-14 기본 tasks/inbox·작성기 기본 task·전환 시 `sharedTitle`/`sharedBody` 보존 · §8-15 새 확인창 0건 · §1-2-5 홈 문구 2곳 정리.
+
+**[결함 1건 — 레이아웃 컨테이너 불일치]** `src/app/admin/page.tsx:1099`의 삼항이 **`activeMenu === "memo"`만** 전체폭 분기로 보내는데, 실제 메뉴 값은 `"hub"`라 else 분기(`max-w-6xl mx-auto p-8`, `overflow-auto`)로 간다. 허브 루트는 `w-full h-full flex flex-col min-h-0`(:180)이라 **높이가 잡힌 부모**를 전제한다 → 폭이 1152px로 잘리고 `h-full`이 auto 높이 부모에 걸려 **좌·우 독립 스크롤이 무력화**될 것으로 보인다(조직도 88행이 그대로 늘어나 페이지가 길어짐). **이것은 코드 판단이며 화면으로 확인하지 않았다.** 처방 = 삼항 조건을 `activeMenu === "hub"`로 교체. 곁가지: 이제 아무도 `setActiveMenu("memo")`를 부르지 않으므로 그 분기와 `renderContent()`의 `case "memo"`는 죽은 코드다 — 함께 정리.
+
+**수용한 스펙 이탈 1건**: §2-3은 허브가 하위 탭을 직접 그리도록 했으나, 구현은 하위 탭을 기존 섹션의 자체 탭바에 맡기고 허브는 `initialTab`으로 조종만 한다. **중복 컨트롤·상태 desync를 피하는 쪽이라 이 편이 낫다** — 스펙을 구현에 맞춘다(발송 후 자동 전환은 prop 변경 → `useEffect` 경로로 동작 확인).
