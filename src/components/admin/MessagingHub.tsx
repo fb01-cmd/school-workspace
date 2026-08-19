@@ -172,17 +172,22 @@ export default function MessagingHub({
   // 개별 칩 제거 — 마지막 1명을 지워 0명이 될 때만 초안 유실 경고 (결함 2)
   const handleRemoveEmail = useCallback((email: string) => {
     const clean = email.toLowerCase();
-    setSelectedEmails((prev) => {
-      if (prev.size === 1 && prev.has(clean) && hasDraftRef.current) {
-        if (!window.confirm("작성 중인 내용이나 첨부 파일이 있습니다. 수신자를 모두 지우면 보내는 화면을 떠나게 됩니다. 계속하시겠습니까?")) {
-          return prev;
-        }
+    // 확인창은 updater **밖**에서 띄운다. setState의 updater는 순수 함수여야 하고
+    // React가 재실행할 수 있어(StrictMode·동시성 리베이스) 안에 두면 창이 두 번 뜬다.
+    // 같은 파일의 handleClearSelection(:147)도 밖에서 묻는다 — 패턴을 맞춘다.
+    // 마지막 한 명을 지울 때만 묻는다: 여러 명 중 하나를 빼는 건 흔한 조작이다.
+    const isLastOne = selectedEmails.size === 1 && selectedEmails.has(clean);
+    if (isLastOne && hasDraftRef.current) {
+      if (!window.confirm("작성 중인 내용이나 첨부 파일이 있습니다. 수신자를 모두 지우면 보내는 화면을 떠나게 됩니다. 계속하시겠습니까?")) {
+        return;
       }
+    }
+    setSelectedEmails((prev) => {
       const next = new Set(prev);
       next.delete(clean);
       return next;
     });
-  }, []);
+  }, [selectedEmails]);
 
   // 업무 작성 -> 쪽지 작성 전환 (결함 1)
   const handleSwitchToMemo = useCallback(() => {

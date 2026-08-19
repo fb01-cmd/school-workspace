@@ -1503,3 +1503,23 @@ createUser 실패(예상대로): 409 Entity already exists.
 | `24344@` | GWS 계정 · Auth 레코드(uid `QyX8…`) · users 문서 1건 |
 
 재대조 결과 두 이메일 모두 Auth 레코드 0건. 24 시리즈 일련번호 343·344가 다시 비었다.
+
+## [2026-08-20] 작성 폼 복구 3라운드 종결 — 데이터 유실 2건 해소, 검수 통과
+
+- 변경 파일: `src/components/admin/MessagingHub.tsx`(Claude 1곳) · 그 외 Antigravity(`c31a796`)
+- 검증 상태: `tsc` 0건 ✅ / `build` 47/47 ✅ / `check_ui_removals` **사라진 상호작용 0건** ✅ / 실기기 확인은 배포 후
+- 다음 할 일: 배포 → 실기기에서 서식 버튼·이미지 붙여넣기·전환 시 경고 확인
+- 주의: 전환·비우기 경로의 확인창은 **발송 경로가 아니다**(memo_spec §11-1 금지선 유지 — 발송에는 여전히 확인창 0건)
+
+### 해소 확인
+
+- **결함 1(상단 띠 전환 우회)**: 상단 띠 버튼 2개가 이제 `handleSwitchToTask/Memo`를 탄다(`:315`·`:327`). 작성기 안 버튼도 같은 함수를 받으므로(`:346`·`:361`) **확인창이 한 곳에서만 뜬다** — `activeComposer` 동일 시 조기 반환 가드로 중복도 막았다
+- **결함 2(첨부 미계수)**: `hasDraftRef` 판정에 첨부·양식 파일 포함(쪽지 `:71` / 업무 `:82`). `handleRemoveEmail`에도 **마지막 한 명일 때만** 뜨는 가드 추가
+- **결함 3(att: 유출)**: 업무 전환 시 본문의 `![…](att:…)`를 제거하고 넘긴다
+- **5~10**: 남은 슬롯만큼만 추가(원본 방식 복원) · `resizing` 상태 적용 · 업무 `accept` 제거(원본에 없던 것) · 「최대 5개」 상시 표시 · `saveSelection` 배선 8곳 · 확인 문구를 「함께 넘어가지 않습니다」로 정정
+
+### Claude가 직접 고친 1건 — 확인창이 updater 안에 있었다
+
+`MessagingHub.tsx:173-185` — `window.confirm`이 `setSelectedEmails`의 **updater 함수 안**에 있었다. updater는 순수 함수여야 하고 React가 재실행할 수 있어(StrictMode 개발 이중 호출·동시성 리베이스) **확인창이 두 번 뜰 수 있다.** 게다가 같은 파일의 `handleClearSelection`(`:147`)은 updater **밖**에서 묻고 있어 패턴이 어긋나 있었다. 확인을 밖으로 빼고 `selectedEmails`를 의존성에 넣었다.
+
+> **이 안티패턴은 이 파일에서 두 번째다.** 2026-08-19 검수에서 `setDeptSources`가 같은 updater 안에 있던 것을 지적했고, 그때는 파생 전환으로 자연 해소됐다. **같은 자리에 다른 형태로 재발했다** — updater 안에서는 setState도 confirm도 부르지 않는다는 것을 규칙으로 삼을 만하다.
