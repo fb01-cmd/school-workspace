@@ -996,3 +996,9 @@
 - 구현 요지: 서버 쿼리(`orderBy("createdAt", "desc") + limit(50)`)를 유지하면서 onSnapshot 수신 즉시 클라이언트 재정렬 — ① 마감 미경과 업무(!canceledAt && dueAt >= now)를 D-day 빠른 순(`dueAt` asc, 같으면 `createdAt` desc)으로 상단 배치 ② 마감 경과(dueAt < now) 및 철회 업무는 그 아래 최신순(`dueAt` desc, 같으면 `createdAt` desc)으로 배치. 초기 선택 `selectedTaskId`도 정렬된 첫 번째 업무로 자연스럽게 동기화.
 - 다음 할 일: Claude 검수 후 일괄 푸시 및 배포 (git push 금지 준수)
 - 주의: 서버 복합 색인 요구를 발생시키지 않고 순수 클라이언트 정렬로 구현 완료
+
+## [2026-08-19] Claude(Fable) → 전원 (색인 생성 확인 → 기한창 재적용 + 37번 검수 통과·배포)
+- 변경 파일: TasksSection·MobileTasksSection(90일 창+orderBy+limit(100) 재적용, PC 전체·완료 탭 [지난 업무 보기] 1회 조회 출구) / STATUS
+- 검증 상태: 사용자 콘솔 색인 생성 → admin probe INDEX_OK 실측 → 재적용 / 37번(5e1d7b3) 검수 통과(처방 정렬 그대로, 삭제 0) / tsc·build·check_ui_removals 전판 / 다이어트 3 완결 — 인계받은 읽기 다이어트 4건 전부 종료
+- 다음 할 일: 실기기 확인(STATUS 작업 대기 1번 — 정렬·90일 창·지난 업무 버튼) / 통합 허브 스펙(사용자 지시 대기)
+- 주의: 구 STATUS 작업 대기 1번(spec §10 실기기 시나리오)은 배치 1~3 과정에서 전 항목 실측 완료(확인형·제출형 왕복, 4MB 초과 세션, 공유드라이브 자동 생성·제출함 Drive 육안 확인)로 종결 — 행 삭제 사유 기록
