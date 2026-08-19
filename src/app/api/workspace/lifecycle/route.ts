@@ -25,6 +25,25 @@ import { isProtectedAccountEmail } from "@/lib/auth/blockedOu";
 import { FieldValue } from "firebase-admin/firestore";
 import { mapConcurrent, mapConcurrentSettled } from "@/lib/concurrency";
 import { DEFAULT_TEACHER_GROUPS } from "@/lib/org/teacherGroups";
+import { buildRosterIndex } from "@/lib/org/roster_index";
+
+/**
+ * 명단 색인 재조립 — 교직원 프로필을 서버에서 지우거나 되살린 뒤 반드시 부른다.
+ * (docs/roster_index_spec.md §2-1 갈래 ②)
+ *
+ * ⚠️ 프로필 쓰기가 **전부 끝난 뒤 한 번만** 부른다. 비원자 다중 문서 쓰기 중간에 부르면
+ *    반쪽 상태가 색인에 박힌다.
+ * 재조립 실패가 생애주기 작업 자체를 되돌리게 하지는 않는다 — 하루 1회 보정이 흡수한다.
+ */
+async function rebuildRosterIndexSafely(teacherEmail: string, builtBy: string): Promise<void> {
+  try {
+    const domain = teacherEmail.split("@")[1]?.toLowerCase();
+    if (!domain) return;
+    await buildRosterIndex(domain, { builtBy, force: true });
+  } catch (err: any) {
+    console.warn(`[roster_index] 재조립 실패(계속 진행) — ${builtBy}:`, err?.message);
+  }
+}
 
 // Vercel 함수 실행 시간 한도 명시 — 신입생 일괄 생성·졸업생 일괄 정지/삭제 등
 // 수백 명 단위 작업이 플랜 기본값(10초대)에 잘리지 않도록.
@@ -1631,6 +1650,9 @@ export async function POST(req: NextRequest) {
         } catch (profErr: any) {
           console.warn(`전출 등록: 조직도 프로필 정리 실패(계속 진행) — ${profileKey}:`, profErr?.message);
         }
+        // 명단 색인 재조립 — 프로필·pending 정리가 **전부 끝난 뒤 한 번만** (roster_index_spec §2-1).
+        // 빠뜨리면 떠난 교사가 조직도·쪽지·업무 수신자에 유령으로 남는다.
+        await rebuildRosterIndexSafely(teacherEmail, "lifecycle:transfer_register");
 
         // Firestore에 전출 작업 등록 (originalOU·보관 프로필 포함)
         await taskRef.set({
@@ -1787,6 +1809,8 @@ export async function POST(req: NextRequest) {
         } catch (profErr: any) {
           console.warn(`전출 취소: 조직도 프로필 복원 실패(계속 진행):`, profErr?.message);
         }
+        // 복원도 재조립 대상이다 — 되살린 사람이 색인에 없으면 명단에서 계속 안 보인다.
+        await rebuildRosterIndexSafely(teacherEmail, "lifecycle:transfer_cancel");
 
         // 2. Firestore 전출 큐 삭제
         await taskRef.delete();
@@ -2074,6 +2098,8 @@ export async function POST(req: NextRequest) {
         } catch (profErr: any) {
           console.warn(`명예퇴임: 조직도 프로필 정리 실패(계속 진행):`, profErr?.message);
         }
+        // 보관소 이동 + 삭제가 끝난 뒤 한 번만 (비원자 쌍이라 중간에 부르면 반쪽이 색인에 박힌다)
+        await rebuildRosterIndexSafely(teacherEmail, "lifecycle:honorary_retirement");
 
         await writeAuditLog({
           operatorEmail: adminEmail,

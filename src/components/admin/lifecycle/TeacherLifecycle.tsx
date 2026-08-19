@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase/config";
 import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 import AutocompleteInput from "@/components/admin/AutocompleteInput";
 import { invalidateClientCache } from "@/lib/cache/clientCache";
+import { invalidateTeacherProfilesCache } from "@/lib/org/roster";
 import SubstituteHandoverWizard from "@/components/admin/lifecycle/SubstituteHandoverWizard";
 
 // ─────────────────────────────────────────────────────
@@ -362,6 +363,10 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
       const data = await res.json();
       if (data.success) {
         invalidateClientCache("users:all");
+        // 전출·복원·명퇴는 서버가 teacher_profiles를 지우거나 되살린다 — 명단 캐시도 함께
+        // 비워야 열려 있는 화면에 떠난 교사가 최대 5분간 유령으로 남지 않는다.
+        // (roster_index_spec §2-1 전수 대조에서 발견한 기존 누락)
+        invalidateTeacherProfilesCache();
         alert("전출 취소 처리가 완료되었습니다.");
         loadQueue();
       } else {
@@ -455,6 +460,10 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
       setResult(data);
       if (data.success) {
         invalidateClientCache("users:all");
+        // 전출·복원·명퇴는 서버가 teacher_profiles를 지우거나 되살린다 — 명단 캐시도 함께
+        // 비워야 열려 있는 화면에 떠난 교사가 최대 5분간 유령으로 남지 않는다.
+        // (roster_index_spec §2-1 전수 대조에서 발견한 기존 누락)
+        invalidateTeacherProfilesCache();
         setTransferQuery("");
         setTransferEmail("");
         setTransferName("");
@@ -768,6 +777,10 @@ function OBTeacherPanel({ domain, operatorEmail, operatorName, settingsOBPath }:
       setResult(data);
       if (data.success) {
         invalidateClientCache("users:all");
+        // 전출·복원·명퇴는 서버가 teacher_profiles를 지우거나 되살린다 — 명단 캐시도 함께
+        // 비워야 열려 있는 화면에 떠난 교사가 최대 5분간 유령으로 남지 않는다.
+        // (roster_index_spec §2-1 전수 대조에서 발견한 기존 누락)
+        invalidateTeacherProfilesCache();
         setObQuery("");
         setObEmail("");
         setObName("");

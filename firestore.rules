@@ -84,6 +84,18 @@ service cloud.firestore {
         && request.resource.data.updatedBy == request.auth.token.email;
     }
 
+    // ── org_index/{domain} — 교직원 명단 색인 (docs/roster_index_spec.md §4) ──
+    // teacher_profiles 89건 전수 읽기를 문서 1건 읽기로 바꾸는 서버 생성 사본.
+    // 읽기는 원본과 **동일 등급**(isTeacher) — 같은 내용이므로 더 열지도 덜 열지도 않는다.
+    // 학생은 읽을 수 없다(isSchool이 아니다 — 내선번호·담임 배정이 들어 있다).
+    // ⚠️ 쓰기는 절대 열지 않는다. 열면 교사 1명이 전원의 명단을 바꿀 수 있다 —
+    //    원본은 승인제로 잠겨 있는데 사본이 뒷문이 되는 형태다.
+    //    서버(admin SDK)는 규칙을 우회하므로 이 false에도 정상 갱신된다.
+    match /org_index/{domain} {
+      allow read: if isTeacher();
+      allow write: if false;
+    }
+
     // ── teacher_profiles_pending/{email} — 프로필 승인 대기 ────
     match /teacher_profiles_pending/{email} {
       allow read: if isTeacher();

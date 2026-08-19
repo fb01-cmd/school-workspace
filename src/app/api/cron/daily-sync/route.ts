@@ -3,6 +3,7 @@ import { runDisciplineSheetBridge } from "@/lib/discipline/bridge";
 import { runNeisCalendarSync } from "@/lib/timetable/server";
 import { runMemoPurge } from "@/lib/memo/purge";
 import { runTaskSweep } from "@/lib/tasks/cron";
+import { buildRosterIndex } from "@/lib/org/roster_index";
 import { runUsageAlert } from "@/lib/ops/usage_alert";
 import { runNameSync } from "@/lib/ops/name_sync";
 import { sweepSavingMode } from "@/lib/ops/saving_mode";
@@ -59,6 +60,7 @@ export async function GET(req: NextRequest) {
     usageAlert: { ok: boolean; detail: unknown };
     savingSweep: { ok: boolean; detail: unknown };
     taskSweep: { ok: boolean; detail: unknown };
+    rosterIndex: { ok: boolean; detail: unknown };
     nameSync: { ok: boolean; detail: unknown };
   } = {
     bridge: { ok: false, detail: null },
@@ -68,6 +70,7 @@ export async function GET(req: NextRequest) {
     savingSweep: { ok: false, detail: null },
     taskSweep: { ok: false, detail: null },
     nameSync: { ok: false, detail: null },
+    rosterIndex: { ok: false, detail: null },
   };
 
   /** 알림 발신 도메인 — 나이스·사용량 경보가 공유한다 (없으면 학교 기본값) */
@@ -142,6 +145,21 @@ export async function GET(req: NextRequest) {
     results.nameSync = { ok: false, detail: error.message };
   }
 
+  // ── 8. 교직원 명단 색인 보정 (roster_index_spec §2-2) ──
+  // ⚠️ 반드시 7번(이름 동기화) **뒤**여야 한다. 앞에 두면 그날 바뀐 이름이 색인에
+  //    24시간 동안 반영되지 않는다. 순서가 곧 정확성인 자리다.
+  // 이 작업은 §2-1 호출 실패분·새 쓰기 경로 누락·일회성 스크립트 수정을 전부 흡수하는
+  // 백스톱이므로 조건 없이(force) 돌린다.
+  try {
+    results.rosterIndex = {
+      ok: true,
+      detail: dryRun ? { skipped: "dryRun" } : await buildRosterIndex(targetDomain, { builtBy: "daily-sync", force: true }),
+    };
+  } catch (error: any) {
+    console.error("[Daily-Sync Cron] 명단 색인 보정 실패:", error);
+    results.rosterIndex = { ok: false, detail: error.message };
+  }
+
   const anyFailed =
     !results.bridge.ok ||
     !results.neis.ok ||
@@ -149,10 +167,11 @@ export async function GET(req: NextRequest) {
     !results.usageAlert.ok ||
     !results.savingSweep.ok ||
     !results.taskSweep.ok ||
-    !results.nameSync.ok;
+    !results.nameSync.ok ||
+    !results.rosterIndex.ok;
   // 심박 — 성공·실패·무작업을 가리지 않고 남긴다(cron_heartbeat.ts 주석의 사고 2건)
   await recordCronRun("daily-sync", {
-    summary: `브리지 ${results.bridge.ok ? "ok" : "실패"} · 나이스 ${results.neis.ok ? "ok" : "실패"} · 쪽지파기 ${results.memoPurge.ok ? "ok" : "실패"} · 사용량경보 ${results.usageAlert.ok ? "ok" : "실패"} · 절약정리 ${results.savingSweep.ok ? "ok" : "실패"} · 업무 ${results.taskSweep.ok ? "ok" : "실패"} · 이름동기화 ${results.nameSync.ok ? "ok" : "실패"}`,
+    summary: `브리지 ${results.bridge.ok ? "ok" : "실패"} · 나이스 ${results.neis.ok ? "ok" : "실패"} · 쪽지파기 ${results.memoPurge.ok ? "ok" : "실패"} · 사용량경보 ${results.usageAlert.ok ? "ok" : "실패"} · 절약정리 ${results.savingSweep.ok ? "ok" : "실패"} · 업무 ${results.taskSweep.ok ? "ok" : "실패"} · 이름동기화 ${results.nameSync.ok ? "ok" : "실패"} · 명단색인 ${results.rosterIndex.ok ? "ok" : "실패"}`,
     hadError: anyFailed,
   });
 

@@ -1069,3 +1069,14 @@
 **0fdb1bf 검수 = 통과.** `loadTeacherProfiles`가 원시 `name`을 그대로 반환하고 `email` 소문자화만 남겼다 → ProfileApprovals의 `data.name || email` 분기 복원, OrgChartTree·TaskRecipientPickerModal은 `resolveDisplayName` 경유라 영향 없음. 표시 이름 단일 원본이 `displayName.ts`로 정리됐다.
 
 **사용자 메모 (2026-08-19)**: 홈 메뉴는 더 이상 대시보드 역할이 아니다(관리자 화면 제외) → 「(대시보드)」 부제 제거. 두 곳(page.tsx:625 사이드바, :1066 상단 제목 「어드민 홈 대시보드」 — 후자는 일반 교사에게 "어드민"이 노출되던 자리). 허브 사이드바 작업과 동반 처리하도록 스펙 §1-2-5에 등재.
+
+## [2026-08-19] Claude 코어 구현 — 교직원 명단 색인 (roster_index)
+
+- 변경 파일: `src/lib/org/roster_index.ts`·`roster_index_shared.ts`(신규) · `src/app/api/org/roster/route.ts`(신규) · `src/lib/org/roster.ts` · `src/app/api/workspace/lifecycle/route.ts` · `.../handover/route.ts` · `src/app/api/cron/daily-sync/route.ts` · `src/components/admin/lifecycle/TeacherLifecycle.tsx` · `firestore.rules` · `personal_data_inventory.md` · `scripts/verify_roster_index.ts`·`roster_index_selftest.ts`(신규) · `docs/roster_index_spec.md`(신규)
+- 검증 상태: tsc ✅ / build ✅(47/47, `/api/org/roster` 등록 확인) / 셀프테스트 ✅ 14/14 / **실데이터 대조 ✅ 88건 빠짐 0·유령 0·불일치 0, 25,323 bytes(한도의 2.5%)** / check_ui_removals ✅
+- 다음 할 일: **firestore.rules 배포가 선행**(미배포면 클라가 색인을 못 읽어 폴백 = 절감 0, 깨지지는 않음). 그 뒤 STATUS 2번 화면(Antigravity)
+- 주의: 색인은 **사본**이다. 프로필 쓰기 뒤 재조립을 빠뜨리면 떠난 교사가 명단에 유령으로 남는다 — 새 쓰기 경로를 만들 때 스펙 §2-1 표를 확인할 것
+
+**전수 대조가 스펙의 전제를 깼다 (기록 가치 있음).** 초안은 "프로필 쓰기 화면은 전부 `invalidateTeacherProfilesCache()`를 부르니 헬퍼 하나에 얹으면 된다"고 썼는데, 13개 쓰기 경로를 실제로 훑어 보니 **거짓**이었다 — lifecycle 전출 삭제·전출 취소 복원·명퇴 삭제 3경로는 `users:all`만 무효화하고 프로필 캐시는 건드리지 않는다. 헬퍼에만 얹었다면 **하필 삭제 경로에서 색인이 안 갱신되어** 떠난 교사가 조직도·쪽지·업무 수신자에 남았을 것이다. 갈래를 셋으로 나눠 각각 다른 장치로 잡았다(클라 4 = 헬퍼 / 서버 5 = buildRosterIndex 직접 await / 스크립트 6 = 하루 1회 보정). 곁가지로 그 3경로의 클라이언트 캐시 무효화 누락도 함께 고쳤다(기존 결함).
+
+**순서가 곧 정확성인 자리 3곳** — ① 재조립은 프로필 쓰기 `await` **뒤**에만(앞이면 옛 값이 색인에 박혀 다음 보정까지 진실 행세) ② 비원자 다중 문서 쓰기(담임 승계 2건·명퇴 보관→삭제)는 **묶음이 끝난 뒤 한 번만** ③ daily-sync에서 색인 보정은 반드시 **이름 동기화 뒤**(앞이면 그날 바뀐 이름이 24시간 안 보임).

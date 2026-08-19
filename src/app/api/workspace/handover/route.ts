@@ -29,6 +29,7 @@ import {
   synthesizeWeek,
 } from "@/lib/timetable/server";
 import { NextRequest, NextResponse } from "next/server";
+import { buildRosterIndex } from "@/lib/org/roster_index";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -279,6 +280,18 @@ export async function POST(req: NextRequest) {
       if (fromDepts.length > 0) {
         await profileRef(toEmail).set({ departments: fromDepts }, { merge: true });
         summary.departmentsAssigned = true;
+      }
+    }
+
+    // 4-1) 명단 색인 재조립 — 담임 승계(3)와 조직도 배치(4)가 **둘 다 끝난 뒤 한 번만**
+    // (docs/roster_index_spec.md §2-1 갈래 ②). 담임 승계는 두 문서를 비원자로 고치므로
+    // 중간에 부르면 "담임이 둘"인 반쪽 상태가 색인에 박힌다.
+    if (summary.homeroomMoved || summary.departmentsAssigned) {
+      try {
+        const domain = fromEmail.split("@")[1]?.toLowerCase();
+        if (domain) await buildRosterIndex(domain, { builtBy: "handover", force: true });
+      } catch (err: any) {
+        console.warn("[roster_index] 이관 후 재조립 실패(계속 진행):", err?.message);
       }
     }
 
