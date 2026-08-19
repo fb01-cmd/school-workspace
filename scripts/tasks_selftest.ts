@@ -17,6 +17,7 @@ import {
   TASK_DRAFT_ORPHAN_MS,
   TASK_FILE_MAX_BYTES,
   TASK_NUDGE_INTERVAL_MS,
+  TASK_NO_DUE_AT,
   TASK_SERVER_UPLOAD_MAX_BYTES,
 } from "../src/lib/tasks/logic";
 
@@ -131,6 +132,41 @@ check("고아: 발송된 업무(수신>0)는 절대 대상 아님", isOrphanDraf
   check("셀프: 폴더 미생성 (양식·제출함 없음)", doc.formFolderId === undefined && doc.submitFolderId === undefined, true);
   check("셀프: 완료 전이 동작", applyTaskTransition(doc, "me@hmh.or.kr", "done", undefined, NOW + 1).ok, true);
   check("셀프: 고아 초안 스윕 대상 아님 (수신 1명)", isOrphanDraft(doc, NOW + 100 * TASK_DRAFT_ORPHAN_MS), false);
+}
+
+// ── 기한 없는 셀프 할 일 (task_no_due_spec) ──────────────────────
+{
+  const NOW = Date.UTC(2026, 7, 20, 3, 0, 0);
+
+  const ok = validateTaskContent({ title: "교실 열쇠 반납", body: "", kind: "confirm", noDue: true, now: NOW });
+  check("기한없음: 검증 통과", ok.ok, true);
+  if (ok.ok) {
+    check("기한없음: dueAt = 센티널", ok.content.dueAt, TASK_NO_DUE_AT);
+    check("기한없음: noDue 플래그 실림", ok.content.noDue, true);
+  }
+
+  // dueAt 검증 자체를 건너뛴다 — 과거 값을 줘도 통과해야 한다(센티널이 덮어쓴다)
+  const past = validateTaskContent({ title: "메모", body: "", kind: "confirm", noDue: true, dueAt: NOW - 999, now: NOW });
+  check("기한없음: 과거 dueAt 을 줘도 센티널로 덮인다", past.ok && past.content.dueAt === TASK_NO_DUE_AT, true);
+
+  // noDue 없으면 기존 규칙 그대로
+  check("기한있음: dueAt 없으면 거부(기존 유지)", validateTaskContent({ title: "x", body: "", kind: "confirm", now: NOW }).ok, false);
+  check("기한있음: 과거 dueAt 거부(기존 유지)", validateTaskContent({ title: "x", body: "", kind: "confirm", dueAt: NOW - 1, now: NOW }).ok, false);
+  check("기한없음: noDue=false 는 기한 필수(기존 유지)", validateTaskContent({ title: "x", body: "", kind: "confirm", noDue: false, now: NOW }).ok, false);
+
+  const doc = buildSelfTaskDoc({
+    email: "me@hmh.or.kr", name: "나", title: "교재 확인", body: "",
+    dueAt: TASK_NO_DUE_AT, noDue: true, now: NOW, retentionDays: 365,
+  });
+  check("기한없음: 문서에 noDue 실림", doc.noDue, true);
+  check("기한없음: 문서 dueAt = 센티널", doc.dueAt, TASK_NO_DUE_AT);
+
+  // 센티널이 각 창(window) 밖에 있는지 — 이게 "코드 안 고쳐도 저절로 맞는" 근거다
+  check("기한없음: D-1 리마인드 창(now~+48h) 밖", TASK_NO_DUE_AT > NOW + 48 * 3600 * 1000, true);
+  check("기한없음: 내일 판정 아님", isDueTomorrowKST(TASK_NO_DUE_AT, NOW), false);
+  check("기한없음: 「지난 업무」 창(< now-90d) 밖", TASK_NO_DUE_AT < NOW - 90 * 24 * 3600 * 1000, false);
+  check("기한없음: 「내 할 일」 창(>= now-90d) 안 — 목록에 뜬다", TASK_NO_DUE_AT >= NOW - 90 * 24 * 3600 * 1000, true);
+  check("기한없음: 오름차순에서 기한 있는 것보다 뒤", TASK_NO_DUE_AT > NOW + 365 * 24 * 3600 * 1000, true);
 }
 
 console.log(fails ? `\n❌ 실패 ${fails}건` : "\n✅ 전판 통과");

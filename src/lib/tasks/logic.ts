@@ -12,6 +12,21 @@ export const TASK_SERVER_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
 export const TASK_FILE_MAX_BYTES = 30 * 1024 * 1024;
 /** 재촉 최소 간격 (§6 — 업무당 24시간 1회) */
 export const TASK_NUDGE_INTERVAL_MS = 24 * 3600 * 1000;
+/**
+ * 「기한 없음」 센티널 (task_no_due_spec §1-2) — 2100-01-01.
+ *
+ * `dueAt: null`을 쓰지 않는 이유: 「내 할 일」·모바일·홈 카드 세 목록이 전부 `dueAt`을
+ * 범위 조건으로 걸어 조회하므로(`where("dueAt", ">=", windowStart)`), 값이 없으면 세 곳
+ * 모두에서 문서가 통째로 빠진다. 먼 미래 값을 넣으면 ⓐ 같은 쿼리가 그대로 집어 오고
+ * ⓑ `orderBy asc`에서 저절로 맨 뒤에 오며(= 스펙 A안 배치) ⓒ D-1 리마인드 스윕
+ * (`cron.ts` — now~+48h 창)과 「지난 업무」(`dueAt < windowStart`)에 영원히 안 걸린다.
+ * 새 색인·추가 읽기·스윕 변경이 전부 0건이 된다.
+ *
+ * **대가**: 화면이 `noDue`를 안 보고 `dueAt`으로 계산하면 「2100.01.01까지」가 샌다.
+ * 표시 경로는 반드시 `noDue`를 먼저 본다(스펙 §1-3 — 고쳐야 할 4곳이 명시돼 있다).
+ * 값을 2100년으로 잡은 것도 의도다 — 새어 나가도 죽지 않고 **눈에 띄게 이상해 보인다.**
+ */
+export const TASK_NO_DUE_AT = Date.UTC(2100, 0, 1);
 
 export type TaskKind = "confirm" | "submit";
 export type TaskRecipientState = "PENDING" | "ACCEPTED" | "DECLINED" | "DONE";
@@ -46,7 +61,13 @@ export interface TaskDoc {
   body: string;
   contentFormat?: "md1";
   kind: TaskKind;
+  /** 기한 없는 항목은 `TASK_NO_DUE_AT` 센티널이 들어간다 — 화면은 `dueAt` 대신 `noDue`를 먼저 본다 */
   dueAt: number;
+  /**
+   * 기한 없는 셀프 할 일 (task_no_due_spec §1-2). **이것이 계약이고 `dueAt` 센티널은 구현 세부다.**
+   * 셀프 등록에만 허용된다 — 남에게 보내는 업무는 서버가 거부한다(같은 스펙 §2-3).
+   */
+  noDue?: boolean;
   recipientEmails: string[];
   recipientCount: number;
   recipientSummary: string;
@@ -70,11 +91,13 @@ export function validateTaskContent(input: {
   body?: unknown;
   kind?: unknown;
   dueAt?: unknown;
+  /** 기한 없는 셀프 할 일 — true면 dueAt 검증을 건너뛰고 센티널을 쓴다 (task_no_due_spec §2-1) */
+  noDue?: unknown;
   contentFormat?: unknown;
   recipientSummary?: unknown;
   now: number;
 }):
-  | { ok: true; content: { title: string; body: string; kind: TaskKind; dueAt: number; contentFormat?: "md1"; recipientSummary: string } }
+  | { ok: true; content: { title: string; body: string; kind: TaskKind; dueAt: number; noDue?: true; contentFormat?: "md1"; recipientSummary: string } }
   | { ok: false; error: string } {
   const title = typeof input.title === "string" ? input.title.trim() : "";
   if (!title) return { ok: false, error: "업무명을 입력해 주세요." };
@@ -87,9 +110,13 @@ export function validateTaskContent(input: {
   if (input.kind !== "confirm" && input.kind !== "submit")
     return { ok: false, error: "업무 유형이 유효하지 않습니다." };
 
-  const dueAt = typeof input.dueAt === "number" ? input.dueAt : NaN;
-  if (!Number.isFinite(dueAt)) return { ok: false, error: "기한을 지정해 주세요." };
-  if (dueAt <= input.now) return { ok: false, error: "기한은 지금보다 뒤여야 합니다." };
+  // 기한 없음: dueAt 검증을 건너뛰고 센티널을 박는다. 호출부가 이 값을 그대로 문서에 쓴다.
+  const noDue = input.noDue === true;
+  const dueAt = noDue ? TASK_NO_DUE_AT : typeof input.dueAt === "number" ? input.dueAt : NaN;
+  if (!noDue) {
+    if (!Number.isFinite(dueAt)) return { ok: false, error: "기한을 지정해 주세요." };
+    if (dueAt <= input.now) return { ok: false, error: "기한은 지금보다 뒤여야 합니다." };
+  }
 
   if (input.contentFormat !== undefined && input.contentFormat !== "md1")
     return { ok: false, error: "지원하지 않는 본문 형식입니다." };
@@ -104,6 +131,7 @@ export function validateTaskContent(input: {
       body,
       kind: input.kind,
       dueAt,
+      ...(noDue ? { noDue: true as const } : {}),
       recipientSummary,
       ...(input.contentFormat === "md1" ? { contentFormat: "md1" as const } : {}),
     },
@@ -185,6 +213,8 @@ export function buildSelfTaskDoc(params: {
   body: string;
   contentFormat?: "md1";
   dueAt: number;
+  /** 기한 없는 셀프 할 일 — dueAt 은 이미 센티널이어야 한다 (validateTaskContent 가 넣어 준다) */
+  noDue?: boolean;
   now: number;
   retentionDays: number;
 }): TaskDoc {
@@ -197,6 +227,7 @@ export function buildSelfTaskDoc(params: {
     ...(params.contentFormat === "md1" ? { contentFormat: "md1" as const } : {}),
     kind: "confirm", // 확인형 강제 — 클라이언트 입력과 무관
     dueAt: params.dueAt,
+    ...(params.noDue ? { noDue: true } : {}),
     recipientEmails: [email],
     recipientCount: 1,
     recipientSummary: "본인",

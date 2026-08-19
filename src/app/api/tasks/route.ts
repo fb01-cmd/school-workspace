@@ -188,7 +188,16 @@ export async function POST(req: NextRequest) {
     switch (action) {
       case "prepare": {
         // 2상 발송의 1상 — 초안 생성 + 폴더 프로비저닝 (§5-1). 수신자 없는 초안은 발신자만 읽는다(rules)
-        const validated = validateTaskContent({ ...body, now: Date.now() });
+        // 기한 없음은 셀프 등록 전용이다 (task_no_due_spec §0 전제 1) — 화면에서 막는 것으로
+        // 충분하지 않다. 기한 없는 업무를 남에게 보내는 것은 "말로 시키기"의 재현이라
+        // 이 기능의 취지와 충돌하므로 서버가 지킨다.
+        if (body.noDue === true) {
+          return NextResponse.json(
+            { error: "기한 없는 업무는 본인 할 일에만 등록할 수 있습니다." },
+            { status: 400 }
+          );
+        }
+        const validated = validateTaskContent({ ...body, noDue: undefined, now: Date.now() });
         if (!validated.ok) return NextResponse.json({ error: validated.error }, { status: 400 });
         const now = Date.now();
         const retentionSnap = await adminDb.collection("settings").doc(domain).get();
@@ -221,7 +230,14 @@ export async function POST(req: NextRequest) {
         // 확인형 강제(buildSelfTaskDoc이 kind 입력을 받지 않는다). 폴더·알림·감사 로그 없음 —
         // 자기 자신에게 보내는 푸시는 소음이고, D-1 리마인드는 스윕이 동일하게 챙긴다.
         const now = Date.now();
-        const validated = validateTaskContent({ ...body, kind: "confirm", recipientSummary: "본인", now });
+        // 기한 없음 허용 지점 (task_no_due_spec §2) — validateTaskContent가 센티널을 넣어 준다
+        const validated = validateTaskContent({
+          ...body,
+          kind: "confirm",
+          recipientSummary: "본인",
+          noDue: body.noDue === true,
+          now,
+        });
         if (!validated.ok) return NextResponse.json({ error: validated.error }, { status: 400 });
         const retentionSnap = await adminDb.collection("settings").doc(domain).get();
         const retentionDays = Number(retentionSnap.data()?.taskRetentionDays) || TASK_DEFAULT_RETENTION_DAYS;
@@ -234,6 +250,7 @@ export async function POST(req: NextRequest) {
             body: validated.content.body,
             contentFormat: validated.content.contentFormat,
             dueAt: validated.content.dueAt,
+            noDue: validated.content.noDue,
             now,
             retentionDays,
           })
