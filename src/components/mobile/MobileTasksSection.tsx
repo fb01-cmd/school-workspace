@@ -1,8 +1,5 @@
 "use client";
 
-// 모바일 내 할 일 섹션 — docs/phase8_tasks_spec.md §7
-// 열람 + 완료 체크 + 모바일 파일/사진 제출 (사진 제출 실수요 대응)
-
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
@@ -10,8 +7,6 @@ import {
   collection,
   query,
   where,
-  orderBy,
-  limit,
   onSnapshot,
 } from "firebase/firestore";
 import type { TaskDoc, TaskRecipientStatus, TaskSubmission } from "@/lib/tasks/logic";
@@ -55,6 +50,18 @@ export default function MobileTasksSection() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // 셀프 등록 ([내 할 일 추가] 미니 입력 — 피드백 15번)
+  const [isSelfAddOpen, setIsSelfAddOpen] = useState(false);
+  const [selfTitle, setSelfTitle] = useState("");
+  const [selfDueDate, setSelfDueDate] = useState(() => {
+    const d = new Date(Date.now() + 3 * 24 * 3600 * 1000 + 9 * 3600 * 1000);
+    return d.toISOString().slice(0, 10);
+  });
+  const [selfDueTime, setSelfDueTime] = useState("17:00");
+  const [selfBody, setSelfBody] = useState("");
+  const [selfSubmitting, setSelfSubmitting] = useState(false);
 
   // 액션 상태
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -65,18 +72,17 @@ export default function MobileTasksSection() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 내 할 일 구독
+  // 내 할 일 구독 — 복합 색인 orderBy 제거 + 클라이언트 정렬 (피드백 5번)
   useEffect(() => {
     if (!myEmail || !domain || notEligible) {
       setLoading(false);
       return;
     }
     setLoading(true);
+    setLoadError(null);
     const q = query(
       collection(db, "tasks", domain, "items"),
-      where("recipientEmails", "array-contains", myEmail),
-      orderBy("dueAt", "asc"),
-      limit(30)
+      where("recipientEmails", "array-contains", myEmail)
     );
     const unsub = onSnapshot(
       q,
@@ -88,19 +94,21 @@ export default function MobileTasksSection() {
           }))
           .filter((t) => !t.canceledAt); // 철회된 항목 제외
 
-        // 미완료 항목 우선 정렬
+        // 미완료 항목 우선, 그 다음 기한 오름차순 정렬
         list.sort((a, b) => {
           const aDone = a.statuses?.[myEmail]?.state === "DONE" ? 1 : 0;
           const bDone = b.statuses?.[myEmail]?.state === "DONE" ? 1 : 0;
           if (aDone !== bDone) return aDone - bDone;
-          return a.dueAt - b.dueAt;
+          return (a.dueAt || 0) - (b.dueAt || 0);
         });
 
         setTasks(list);
         setLoading(false);
+        setLoadError(null);
       },
       (err) => {
         console.error("[tasks] 모바일 할 일 구독 실패", err);
+        setLoadError("할 일 목록을 불러오지 못했습니다. 새로고침해 주세요.");
         setLoading(false);
       }
     );
@@ -114,7 +122,53 @@ export default function MobileTasksSection() {
     }).length;
   }, [tasks, myEmail]);
 
-  // 상태 전이 액션
+  // 셀프 등록 핸들러 (피드백 15번)
+  const handleSelfAdd = async () => {
+    if (!selfTitle.trim()) {
+      alert("할 일 제목을 입력해 주세요.");
+      return;
+    }
+    if (!selfDueDate || !selfDueTime) {
+      alert("기한 날짜와 시각을 지정해 주세요.");
+      return;
+    }
+    const [y, m, d] = selfDueDate.split("-").map(Number);
+    const [hh, mm] = selfDueTime.split(":").map(Number);
+    const dueAt = Date.UTC(y, m - 1, d, hh - 9, mm, 0, 0);
+    if (dueAt <= Date.now()) {
+      alert("기한은 현재 시각보다 이후여야 합니다.");
+      return;
+    }
+
+    setSelfSubmitting(true);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "self_add",
+          title: selfTitle.trim(),
+          dueAt,
+          body: selfBody.trim() || undefined,
+          contentFormat: selfBody.trim() ? "md1" : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "할 일을 추가하지 못했습니다.");
+      }
+
+      setSelfTitle("");
+      setSelfBody("");
+      setIsSelfAddOpen(false);
+    } catch (err: any) {
+      alert(err.message || "할 일 등록 중 오류가 발생했습니다.");
+    } finally {
+      setSelfSubmitting(false);
+    }
+  };
+
+  // 상태 전이 액션 — 피드백 7번 즉시 낙관 갱신
   const handleTransition = async (taskId: string, action: "accept" | "done" | "undone" | "decline", note?: string) => {
     setActionLoadingId(taskId);
     try {
@@ -132,6 +186,22 @@ export default function MobileTasksSection() {
       if (!res.ok || !data.success) {
         throw new Error(data.error || "처리에 실패했습니다.");
       }
+
+      if (data.status) {
+        setTasks((prev) =>
+          prev.map((t) => {
+            if (t.id !== taskId) return t;
+            return {
+              ...t,
+              statuses: {
+                ...t.statuses,
+                [myEmail]: data.status,
+              },
+            };
+          })
+        );
+      }
+
       if (action === "decline") {
         setDecliningId(null);
         setDeclineReason("");
@@ -143,7 +213,7 @@ export default function MobileTasksSection() {
     }
   };
 
-  // 모바일 파일/사진 제출
+  // 모바일 파일/사진 제출 — 피드백 7번 즉시 낙관 갱신
   const handleMobileSubmit = async (taskId: string, file: File) => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
@@ -167,6 +237,21 @@ export default function MobileTasksSection() {
         const data = await res.json();
         if (!res.ok || !data.success) {
           throw new Error(data.error || "제출에 실패했습니다.");
+        }
+
+        if (data.submission) {
+          const nextStatus: TaskRecipientStatus = { state: "DONE", at: Date.now() };
+          setTasks((prev) =>
+            prev.map((t) =>
+              t.id === taskId
+                ? {
+                    ...t,
+                    statuses: { ...t.statuses, [myEmail]: nextStatus },
+                    submissions: { ...t.submissions, [myEmail]: data.submission },
+                  }
+                : t
+            )
+          );
         }
         alert("제출이 완료되었습니다.");
       } else {
@@ -214,6 +299,20 @@ export default function MobileTasksSection() {
           throw new Error(finishData.error || "제출 완료 검증 실패");
         }
 
+        if (finishData.submission) {
+          const nextStatus: TaskRecipientStatus = { state: "DONE", at: Date.now() };
+          setTasks((prev) =>
+            prev.map((t) =>
+              t.id === taskId
+                ? {
+                    ...t,
+                    statuses: { ...t.statuses, [myEmail]: nextStatus },
+                    submissions: { ...t.submissions, [myEmail]: finishData.submission },
+                  }
+                : t
+            )
+          );
+        }
         alert("제출이 완료되었습니다.");
       }
     } catch (err: any) {
@@ -240,10 +339,33 @@ export default function MobileTasksSection() {
             </span>
           )}
         </div>
-        <span className="text-[11px] text-slate-400 dark:text-slate-500">
-          미완료 {pendingCount} / 전체 {tasks.length}건
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsSelfAddOpen(true)}
+            className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+          >
+            + 추가
+          </button>
+          <span className="text-[11px] text-slate-400 dark:text-slate-500">
+            미완료 {pendingCount} / 전체 {tasks.length}건
+          </span>
+        </div>
       </div>
+
+      {/* 구독 오류 안내 블록 (피드백 5번 조용한 실패 금지) */}
+      {loadError && (
+        <div className="p-3 bg-rose-50 border-b border-rose-200 text-xs text-rose-800 font-semibold flex items-center justify-between">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="text-rose-700 underline font-bold ml-2"
+          >
+            새로고침
+          </button>
+        </div>
+      )}
 
       {/* 목록 */}
       {loading ? (
@@ -277,19 +399,28 @@ export default function MobileTasksSection() {
                       isDone
                         ? "bg-emerald-500"
                         : isPending
-                        ? "bg-indigo-600 ring-2 ring-indigo-200 dark:ring-indigo-800"
+                        ? "bg-amber-500 ring-2 ring-amber-200 dark:ring-amber-800"
                         : "bg-blue-400"
                     }`}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1.5 text-[11px] mb-0.5">
-                      <span className="text-slate-500 dark:text-slate-400 font-medium">
-                        {task.senderName} 선생님
-                      </span>
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="text-slate-500 dark:text-slate-400 font-medium">
+                          {task.selfAssigned ? "본인 등록" : `${task.senderName} 선생님`}
+                        </span>
+                        {task.selfAssigned && (
+                          <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1 py-0.2 rounded font-bold">
+                            내가 등록
+                          </span>
+                        )}
+                      </div>
                       <span
                         className={`font-bold ${
                           isDone
                             ? "text-emerald-600"
+                            : isPending
+                            ? "text-amber-600 font-extrabold"
                             : remaining.isPast
                             ? "text-slate-400"
                             : remaining.isUrgent
@@ -297,7 +428,7 @@ export default function MobileTasksSection() {
                             : "text-indigo-600 dark:text-indigo-400"
                         }`}
                       >
-                        {isDone ? "완료됨" : remaining.text}
+                        {isDone ? "완료됨" : isPending ? "수락 전" : remaining.text}
                       </span>
                     </div>
                     <p className={`text-sm truncate ${isDone ? "text-slate-500 dark:text-slate-400 line-through" : "font-bold text-slate-900 dark:text-white"}`}>
@@ -324,14 +455,14 @@ export default function MobileTasksSection() {
                       </span>
                     </div>
 
-                    {/* 지시 본문 */}
+                    {/* 내용 (피드백 8번 '내용' + 피드백 6,9번 autolink) */}
                     {task.body && (
                       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-700/80 p-3 text-xs text-slate-800 dark:text-slate-200">
-                        {task.contentFormat === "md1" ? (
-                          <MemoRichBody body={task.body} className="text-xs space-y-1.5" />
-                        ) : (
-                          <p className="whitespace-pre-wrap leading-relaxed">{task.body}</p>
-                        )}
+                        <MemoRichBody
+                          body={task.body}
+                          isPlain={task.contentFormat !== "md1"}
+                          className="text-xs space-y-1.5 font-sans leading-relaxed"
+                        />
                       </div>
                     )}
 
@@ -480,6 +611,88 @@ export default function MobileTasksSection() {
             );
           })}
         </ul>
+      )}
+
+      {/* [내 할 일 추가] 셀프 등록 모달 (피드백 15번) */}
+      {isSelfAddOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 max-w-xs w-full space-y-3 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1">
+                <span>📝</span>
+                <span>내 할 일 추가</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setIsSelfAddOpen(false)}
+                className="text-slate-400 text-xs p-1"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">할 일 제목 *</label>
+                <input
+                  type="text"
+                  value={selfTitle}
+                  onChange={(e) => setSelfTitle(e.target.value)}
+                  placeholder="예: 교과진도표 작성"
+                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  maxLength={100}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">마감 날짜 *</label>
+                  <input
+                    type="date"
+                    value={selfDueDate}
+                    onChange={(e) => setSelfDueDate(e.target.value)}
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">마감 시각 *</label>
+                  <input
+                    type="time"
+                    value={selfDueTime}
+                    onChange={(e) => setSelfDueTime(e.target.value)}
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">내용 (선택)</label>
+                <textarea
+                  rows={2}
+                  value={selfBody}
+                  onChange={(e) => setSelfBody(e.target.value)}
+                  placeholder="메모를 입력하세요"
+                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  maxLength={1000}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsSelfAddOpen(false)}
+                className="px-3 py-1.5 text-xs text-slate-500"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSelfAdd}
+                disabled={selfSubmitting || !selfTitle.trim()}
+                className="px-3.5 py-1.5 text-xs bg-indigo-600 text-white font-bold rounded-lg disabled:opacity-50"
+              >
+                {selfSubmitting ? "등록 중…" : "등록"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 거절 사유 모달 */}

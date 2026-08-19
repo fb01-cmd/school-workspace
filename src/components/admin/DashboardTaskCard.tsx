@@ -20,6 +20,7 @@ export default function DashboardTaskCard({ onNavigate }: Props) {
   const domain = myEmail.split("@")[1] || "hmh.or.kr";
 
   const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     if (!myEmail || !domain) return;
@@ -49,9 +50,11 @@ export default function DashboardTaskCard({ onNavigate }: Props) {
           }
         });
         setPendingCount(count);
+        setLoadError(false);
         setClientCache(CACHE_KEY, count, 5 * 60 * 1000);
       })
       .catch(() => {
+        setLoadError(true);
         setPendingCount(0);
       });
   }, [myEmail, domain]);
@@ -62,7 +65,11 @@ export default function DashboardTaskCard({ onNavigate }: Props) {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <h3 className="text-lg font-bold text-slate-900">내 할 일</h3>
-            {pendingCount !== null && (
+            {loadError ? (
+              <span className="bg-rose-50 text-rose-700 text-xs font-semibold px-2.5 py-0.5 rounded-full">
+                불러오지 못함
+              </span>
+            ) : pendingCount !== null && (
               pendingCount > 0 ? (
                 <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2.5 py-0.5 rounded-full animate-pulse">
                   미완료 {pendingCount}건
@@ -79,7 +86,7 @@ export default function DashboardTaskCard({ onNavigate }: Props) {
           </span>
         </div>
         <p className="text-slate-500 text-sm mb-6">
-          내게 배분된 업무 지시 목록을 확인하고 완료 체크 또는 서식 파일을 제출합니다.
+          내게 배분된 업무 목록을 확인하고 완료 체크 또는 서식 파일을 제출합니다.
         </p>
       </div>
       <div>

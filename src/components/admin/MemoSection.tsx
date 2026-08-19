@@ -26,8 +26,9 @@ import type { TeacherProfile } from "@/context/AuthContext";
 import type { MemoAttachment } from "@/lib/memo/attachment_logic";
 import {
   resizeAndValidateImage,
-  uploadAttachmentFile,
+  uploadAttachment,
   formatAttachmentSize,
+  isImageFile,
   MEMO_ATTACHMENT_MAX_COUNT,
 } from "@/lib/memo/client_attachments";
 import {
@@ -1374,8 +1375,7 @@ function ComposeModal({
     return new Set(collectMd1AttachmentIds(bodyMd1));
   }, [bodyMd1]);
 
-  // 부서별 구성원 목록 — deptOrder 순서대로, 소속 없는 계정 제외
-  // 결함 5 수정: resolveDisplayName 헬퍼 통일 (p.name || email.split("@")[0] 각자 쓰던 것 제거)
+  // 부서별 구성원 목록 — deptOrder 순서대로, 조직도 정렬 단일 원본 규칙(부장 우선 -> 담임 반 순 -> 가나다)
   const sections: DeptSection[] = deptOrder
     .map((dept) => {
       const members: DeptMember[] = [];
@@ -1383,9 +1383,29 @@ function ComposeModal({
         if (p.departments?.includes(dept)) {
           members.push({ email, name: resolveMemoDisplayName(email, profileMap, gwsNameMap), extension: p.extension });
         }
-
       });
-      members.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+      const gradeMatch = dept.match(/^([1-3])학년/);
+      members.sort((a, b) => {
+        const profA = profileMap.get(a.email.toLowerCase());
+        const profB = profileMap.get(b.email.toLowerCase());
+        const aIsHead = !!profA?.deptHeadMap?.[dept] || (profA?.departments?.length === 1 && !!profA?.isDeptHead);
+        const bIsHead = !!profB?.deptHeadMap?.[dept] || (profB?.departments?.length === 1 && !!profB?.isDeptHead);
+        if (aIsHead && !bIsHead) return -1;
+        if (!aIsHead && bIsHead) return 1;
+        if (gradeMatch) {
+          const gradeNum = Number(gradeMatch[1]);
+          const aIsHomeroom = !!profA?.isHomeroom && Number(profA?.homeroom?.grade) === gradeNum;
+          const bIsHomeroom = !!profB?.isHomeroom && Number(profB?.homeroom?.grade) === gradeNum;
+          if (aIsHomeroom && !bIsHomeroom) return -1;
+          if (!aIsHomeroom && bIsHomeroom) return 1;
+          if (aIsHomeroom && bIsHomeroom) {
+            const aClass = Number(profA?.homeroom?.class || 0);
+            const bClass = Number(profB?.homeroom?.class || 0);
+            if (aClass !== bClass) return aClass - bClass;
+          }
+        }
+        return a.name.localeCompare(b.name, "ko");
+      });
       return { dept, members };
     })
     .filter((s) => s.members.length > 0);
@@ -1474,31 +1494,34 @@ function ComposeModal({
     setLinkUrl(""); setLinkLabel(""); setError("");
   };
 
-  // 이미지 파일 배열을 받아 리사이즈 & 업로드 큐에 추가하는 공통 함수
+  // 파일(이미지+일반 파일) 배열을 받아 전처리 & 업로드 큐에 추가하는 공통 함수 (피드백 10번)
   const enqueueFiles = (fileList: File[]) => {
     if (!fileList || fileList.length === 0) return;
 
     const currentCount = stagedAttachments.length;
     if (currentCount >= MEMO_ATTACHMENT_MAX_COUNT) {
-      setError(`이미지는 최대 ${MEMO_ATTACHMENT_MAX_COUNT}장까지 첨부할 수 있습니다.`);
+      setError(`파일은 최대 ${MEMO_ATTACHMENT_MAX_COUNT}개까지 첨부할 수 있습니다.`);
       return;
     }
 
     const availableSlots = MEMO_ATTACHMENT_MAX_COUNT - currentCount;
     if (fileList.length > availableSlots) {
-      setError(`이미지는 최대 ${MEMO_ATTACHMENT_MAX_COUNT}장까지 첨부할 수 있습니다. (초과분 제외)`);
+      setError(`파일은 최대 ${MEMO_ATTACHMENT_MAX_COUNT}개까지 첨부할 수 있습니다. (초과분 제외)`);
     }
 
     const selectedFiles = fileList.slice(0, availableSlots);
 
-    const newItems: StagedAttachment[] = selectedFiles.map((file) => ({
-      id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      name: file.name,
-      size: file.size,
-      previewUrl: typeof window !== "undefined" ? URL.createObjectURL(file) : undefined,
-      status: "resizing",
-      progressText: "리사이즈 중…",
-    }));
+    const newItems: StagedAttachment[] = selectedFiles.map((file) => {
+      const isImg = isImageFile(file.name, file.type);
+      return {
+        id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        name: file.name,
+        size: file.size,
+        previewUrl: isImg && typeof window !== "undefined" ? URL.createObjectURL(file) : undefined,
+        status: isImg && file.size <= 4 * 1024 * 1024 ? "resizing" : "uploading",
+        progressText: isImg && file.size <= 4 * 1024 * 1024 ? "최적화 중…" : "업로드 중…",
+      };
+    });
 
     setStagedAttachments((prev) => [...prev, ...newItems]);
     setError("");
@@ -1509,19 +1532,12 @@ function ComposeModal({
 
       (async () => {
         try {
-          // 1. 캔버스 리사이즈(최대 변 2000px, JPEG 0.85, PNG 원본 유지) 및 3.5MB 검증
-          const { blob, safeName } = await resizeAndValidateImage(file);
-
-          setStagedAttachments((prev) =>
-            prev.map((a) =>
-              a.id === item.id
-                ? { ...a, name: safeName, size: blob.size, status: "uploading", progressText: "업로드 중…" }
-                : a
-            )
-          );
-
-          // 2. 서버 업로드 (POST /api/memo multipart, 필드명 file)
-          const uploaded = await uploadAttachmentFile(blob, safeName);
+          // 업로드 헬퍼 호출 (4MB 이하 multipart 또는 4MB~10MB 세션 업로드 자동 처리)
+          const uploaded = await uploadAttachment(file, (msg) => {
+            setStagedAttachments((prev) =>
+              prev.map((a) => (a.id === item.id ? { ...a, progressText: msg } : a))
+            );
+          });
 
           setStagedAttachments((prev) =>
             prev.map((a) =>
@@ -1537,9 +1553,11 @@ function ComposeModal({
             )
           );
 
-          // 업로드 완료 즉시 편집기 커서 위치에 이미지 노드 삽입 (spec §13)
-          const preview = item.previewUrl || uploaded.thumbnailLink || "";
-          insertInlineImage(uploaded.driveFileId, preview, safeName);
+          // 이미지인 경우에만 본문 커서 위치에 이미지 노드 삽입 (피드백 10번: 비이미지 파일은 제외)
+          if (isImageFile(file.name, file.type)) {
+            const preview = item.previewUrl || uploaded.thumbnailLink || "";
+            insertInlineImage(uploaded.driveFileId, preview, file.name);
+          }
         } catch (err: any) {
           setStagedAttachments((prev) =>
             prev.map((a) =>
@@ -2038,12 +2056,12 @@ function ComposeModal({
                 )}
               </div>
 
-              {/* 이미지 첨부 (최대 5장) */}
+              {/* 파일 첨부 (최대 5개, 피드백 10번) */}
               <div>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  accept="image/*,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.zip,.txt"
                   multiple
                   onChange={handleFilesSelected}
                   className="hidden"
@@ -2051,9 +2069,9 @@ function ComposeModal({
 
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-                    <span>이미지 첨부</span>
+                    <span>파일 첨부</span>
                     <span className="text-xs font-normal text-slate-400">
-                      ({stagedAttachments.length}/{MEMO_ATTACHMENT_MAX_COUNT}장, 장당 3.5MB 이하)
+                      ({stagedAttachments.length}/{MEMO_ATTACHMENT_MAX_COUNT}개, 개당 10MB 이하)
                     </span>
                   </label>
                   {stagedAttachments.length < MEMO_ATTACHMENT_MAX_COUNT && (
@@ -2065,19 +2083,20 @@ function ComposeModal({
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                       </svg>
-                      <span>이미지 추가</span>
+                      <span>파일 추가</span>
                     </button>
                   )}
                 </div>
                 <p className="text-xs text-slate-400 mb-1.5">
-                  복사한 이미지를 붙여넣어도 됩니다.
+                  이미지나 문서(한글·오피스·PDF·압축 등) 파일을 첨부할 수 있습니다.
                 </p>
 
                 {stagedAttachments.length > 0 && (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-2">
                     {stagedAttachments.map((item) => {
+                      const isImg = isImageFile(item.name);
                       const isInline =
-                        item.status === "done" && item.attachment
+                        item.status === "done" && item.attachment && isImg
                           ? inlineAttachmentIds.has(item.attachment.driveFileId)
                           : false;
 
@@ -2094,19 +2113,22 @@ function ComposeModal({
                               : "border-indigo-200 bg-indigo-50/30"
                           }`}
                         >
-                          {/* 썸네일 미리보기 영역 */}
+                          {/* 미리보기 / 파일 아이콘 영역 */}
                           <div className="relative w-full h-24 bg-slate-100 flex items-center justify-center overflow-hidden">
-                            {item.previewUrl ? (
+                            {isImg && item.previewUrl ? (
                               <img
                                 src={item.previewUrl}
                                 alt={item.name}
                                 className="w-full h-full object-cover"
                               />
                             ) : (
-                              <div className="text-slate-400 text-xs">미리보기 없음</div>
+                              <div className="flex flex-col items-center justify-center gap-1 text-slate-400">
+                                <span className="text-2xl">📄</span>
+                                <span className="text-[10px] text-slate-500 font-medium">일반 파일</span>
+                              </div>
                             )}
 
-                            {/* 본문에 들어감 뱃지 (썸네일 좌측 상단) */}
+                            {/* 본문에 들어감 뱃지 (썸네일 좌측 상단 — 이미지 전용) */}
                             {isInline && (
                               <div className="absolute top-1.5 left-1.5 bg-indigo-600/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-xs backdrop-blur-[1px]">
                                 본문에 들어감
@@ -2127,7 +2149,7 @@ function ComposeModal({
                               onClick={() => handleRemoveAttachment(item.id)}
                               className="absolute top-1 right-1 w-5 h-5 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
                               title="삭제"
-                              aria-label="첨부 이미지 삭제"
+                              aria-label="첨부 파일 삭제"
                             >
                               ×
                             </button>
@@ -2140,7 +2162,7 @@ function ComposeModal({
                             </p>
                             <div className="flex items-center justify-between text-[10px] text-slate-400">
                               <span>{formatAttachmentSize(item.size)}</span>
-                              {item.status === "done" && item.attachment && (
+                              {item.status === "done" && item.attachment && isImg && (
                                 isInline ? (
                                   <span className="text-indigo-600 font-semibold">
                                     ✓ 본문에 들어감

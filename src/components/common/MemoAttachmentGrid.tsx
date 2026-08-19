@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { MemoAttachment } from "@/lib/memo/attachment_logic";
-import { formatAttachmentSize } from "@/lib/memo/client_attachments";
+import { formatAttachmentSize, isImageFile } from "@/lib/memo/client_attachments";
 
 interface MemoAttachmentGridProps {
   attachments?: MemoAttachment[];
@@ -10,7 +10,35 @@ interface MemoAttachmentGridProps {
 
 function AttachmentCard({ attachment }: { attachment: MemoAttachment }) {
   const [imgError, setImgError] = useState(false);
+  const isImage = isImageFile(attachment.name, attachment.mimeType);
 
+  if (!isImage) {
+    // 일반 파일 카드 (다운로드/뷰어 링크)
+    return (
+      <a
+        href={attachment.webViewLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={`${attachment.name} (${formatAttachmentSize(attachment.size)}) - 열기/다운로드`}
+        className="group flex items-center gap-2.5 p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/30 transition-all text-left"
+      >
+        <div className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-lg flex-shrink-0">
+          📄
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+            {attachment.name}
+          </p>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            {formatAttachmentSize(attachment.size)} · 클릭하여 열기
+          </p>
+        </div>
+        <span className="text-slate-400 text-xs flex-shrink-0 group-hover:text-indigo-600">↓</span>
+      </a>
+    );
+  }
+
+  // 이미지 카드
   return (
     <a
       href={attachment.webViewLink}
@@ -59,17 +87,33 @@ function AttachmentCard({ attachment }: { attachment: MemoAttachment }) {
 export default function MemoAttachmentGrid({ attachments }: MemoAttachmentGridProps) {
   if (!attachments || attachments.length === 0) return null;
 
+  const images = attachments.filter((a) => isImageFile(a.name, a.mimeType));
+  const generalFiles = attachments.filter((a) => !isImageFile(a.name, a.mimeType));
+
   return (
-    <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+    <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
       <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
-        <span>🖼️</span>
-        <span>첨부 이미지 ({attachments.length}장)</span>
+        <span>📎</span>
+        <span>첨부 파일 ({attachments.length}개)</span>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-        {attachments.map((att, idx) => (
-          <AttachmentCard key={att.driveFileId || idx} attachment={att} />
-        ))}
-      </div>
+
+      {/* 일반 파일 목록 */}
+      {generalFiles.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {generalFiles.map((att, idx) => (
+            <AttachmentCard key={att.driveFileId || idx} attachment={att} />
+          ))}
+        </div>
+      )}
+
+      {/* 이미지 그리드 */}
+      {images.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          {images.map((att, idx) => (
+            <AttachmentCard key={att.driveFileId || idx} attachment={att} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

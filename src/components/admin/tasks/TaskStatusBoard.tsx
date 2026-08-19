@@ -94,10 +94,12 @@ export default function TaskStatusBoard() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const list: TaskItem[] = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as TaskDoc),
-        }));
+        const list: TaskItem[] = snap.docs
+          .map((d) => ({
+            id: d.id,
+            ...(d.data() as TaskDoc),
+          }))
+          .filter((t) => (t.recipientCount || t.recipientEmails?.length || 0) > 0); // 초안 제외 (피드백 4-a)
         setTasks(list);
         if (list.length > 0 && !selectedTaskId) {
           setSelectedTaskId(list[0].id);
@@ -129,7 +131,7 @@ export default function TaskStatusBoard() {
     return () => unsub();
   }, [domain, selectedTaskId]);
 
-  // 재촉 (nudge)
+  // 리마인드 알림 (nudge — 피드백 11번)
   const handleNudge = async () => {
     if (!selectedTask) return;
     setNudging(true);
@@ -141,11 +143,11 @@ export default function TaskStatusBoard() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "재촉 알림 발송에 실패했습니다.");
+        throw new Error(data.error || "리마인드 알림 발송에 실패했습니다.");
       }
-      alert(`미완료 선생님 ${data.nudged}분께 재촉 알림을 발송했습니다.`);
+      alert(`미완료 선생님 ${data.nudged}분께 리마인드 알림을 발송했습니다.`);
     } catch (err: any) {
-      alert(err.message || "재촉 처리 중 오류가 발생했습니다.");
+      alert(err.message || "리마인드 알림 처리 중 오류가 발생했습니다.");
     } finally {
       setNudging(false);
     }
@@ -184,7 +186,7 @@ export default function TaskStatusBoard() {
         <span className="text-3xl block opacity-60">📭</span>
         <h3 className="text-sm font-bold text-slate-800">보낸 업무가 없습니다.</h3>
         <p className="text-xs text-slate-500">
-          우측 상단의 [+ 새 업무 보내기] 버튼을 눌러 업무를 지시해 보세요.
+          우측 상단의 [+ 업무 등록] 버튼을 눌러 업무를 등록하고 전달해 보세요.
         </p>
       </div>
     );
@@ -207,6 +209,12 @@ export default function TaskStatusBoard() {
     else pendingCount++;
   });
 
+  const [showSelfTasks, setShowSelfTasks] = useState(false);
+
+  // 셀프 등록 업무와 일반 업무 분리 (피드백 15번)
+  const normalTasks = tasks.filter((t) => !t.selfAssigned);
+  const selfTasks = tasks.filter((t) => !!t.selfAssigned);
+
   const dueInfo = selectedTask ? formatRemainingTime(selectedTask.dueAt) : null;
   const isCanceled = !!selectedTask?.canceledAt;
 
@@ -214,9 +222,9 @@ export default function TaskStatusBoard() {
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       {/* 좌측: 보낸 업무 목록 사이드 */}
       <div className="lg:col-span-4 space-y-2">
-        <div className="text-xs font-bold text-slate-500 px-1 mb-2">보낸 업무 목록 ({tasks.length}건)</div>
+        <div className="text-xs font-bold text-slate-500 px-1 mb-2">보낸 업무 목록 ({normalTasks.length}건)</div>
         <div className="space-y-2 max-h-[75vh] overflow-y-auto pr-1">
-          {tasks.map((task) => {
+          {normalTasks.map((task) => {
             const isSelected = selectedTaskId === task.id;
             const remaining = formatRemainingTime(task.dueAt);
             const taskDone = Object.values(task.statuses || {}).filter((s) => s.state === "DONE").length;
@@ -276,6 +284,43 @@ export default function TaskStatusBoard() {
               </button>
             );
           })}
+
+          {/* 셀프 등록한 할 일 접힘 그룹 (피드백 15번) */}
+          {selfTasks.length > 0 && (
+            <div className="pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setShowSelfTasks(!showSelfTasks)}
+                className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <span>📝 내가 등록한 할 일 ({selfTasks.length}건)</span>
+                <span className="text-[10px]">{showSelfTasks ? "▲ 접기" : "▼ 펼치기"}</span>
+              </button>
+              {showSelfTasks && (
+                <div className="space-y-1.5 mt-1.5">
+                  {selfTasks.map((task) => {
+                    const isSelected = selectedTaskId === task.id;
+                    const remaining = formatRemainingTime(task.dueAt);
+                    return (
+                      <button
+                        key={task.id}
+                        type="button"
+                        onClick={() => setSelectedTaskId(task.id)}
+                        className={`w-full text-left p-2.5 rounded-lg border transition-all cursor-pointer text-xs ${
+                          isSelected
+                            ? "bg-indigo-50 border-indigo-500 font-bold"
+                            : "bg-slate-50/70 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        <div className="truncate text-slate-800">{task.title}</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">{remaining.text}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -295,6 +340,11 @@ export default function TaskStatusBoard() {
                 >
                   {selectedTask.kind === "submit" ? "📁 제출형 업무" : "✅ 확인형 업무"}
                 </span>
+                {selectedTask.selfAssigned && (
+                  <span className="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-full">
+                    내가 등록한 할 일
+                  </span>
+                )}
                 {isCanceled ? (
                   <span className="bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full">
                     철회된 업무
@@ -323,9 +373,9 @@ export default function TaskStatusBoard() {
             </div>
 
             {/* 발신자 제어 버튼들 */}
-            {!isCanceled && (
+            {!isCanceled && !selectedTask.selfAssigned && (
               <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                {/* 재촉 버튼 */}
+                {/* 리마인드 알림 버튼 (피드백 11번) */}
                 <button
                   type="button"
                   onClick={handleNudge}
@@ -334,7 +384,7 @@ export default function TaskStatusBoard() {
                   className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold transition-colors disabled:opacity-40 cursor-pointer flex items-center gap-1.5"
                 >
                   <span>📢</span>
-                  <span>{nudging ? "발송 중…" : "미완료자 재촉"}</span>
+                  <span>{nudging ? "발송 중…" : "리마인드 알림"}</span>
                 </button>
 
                 {/* 제출함 폴더 열기 (제출형) */}
@@ -362,20 +412,15 @@ export default function TaskStatusBoard() {
             )}
           </div>
 
-          {/* 지시 내용 카드 */}
+          {/* 내용 카드 (피드백 8번 '내용' + 피드백 6,9번 MemoRichBody autolink) */}
           {selectedTask.body && (
             <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 space-y-2">
-              <div className="text-xs font-bold text-slate-500">지시 및 안내 내용</div>
-              {selectedTask.contentFormat === "md1" ? (
-                <MemoRichBody
-                  body={selectedTask.body}
-                  className="text-xs text-slate-800 leading-relaxed font-sans"
-                />
-              ) : (
-                <p className="text-xs text-slate-800 whitespace-pre-wrap leading-relaxed">
-                  {selectedTask.body}
-                </p>
-              )}
+              <div className="text-xs font-bold text-slate-500">내용</div>
+              <MemoRichBody
+                body={selectedTask.body}
+                isPlain={selectedTask.contentFormat !== "md1"}
+                className="text-xs text-slate-800 leading-relaxed font-sans"
+              />
             </div>
           )}
 
@@ -428,9 +473,9 @@ export default function TaskStatusBoard() {
             </div>
 
             <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-3">
-              <div className="text-[11px] text-amber-700 font-bold">대기 / 거절</div>
+              <div className="text-[11px] text-amber-700 font-bold">수락 전 / 거절</div>
               <div className="text-base font-extrabold text-amber-900 mt-0.5">
-                대기 {pendingCount} · 거절 {declinedCount}
+                수락 전 {pendingCount} · 거절 {declinedCount}
               </div>
             </div>
           </div>
@@ -487,8 +532,8 @@ export default function TaskStatusBoard() {
                               )}
                             </div>
                           ) : (
-                            <span className="inline-flex items-center gap-1 font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                              대기 중
+                            <span className="inline-flex items-center gap-1 font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                              수락 전
                             </span>
                           )}
                         </td>
@@ -522,15 +567,14 @@ export default function TaskStatusBoard() {
         </div>
       )}
 
-      {/* 철회 확인 모달 */}
+      {/* 철회 확인 모달 (피드백 12번 진행 상황 경고) */}
       {showCancelModal && selectedTask && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-sm w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div>
               <h4 className="text-sm font-bold text-slate-900">업무를 철회하시겠습니까?</h4>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                이 업무를 철회하면 선생님들의 할 일 목록에서 사라지며, 취합이 종료됩니다.
-                (선생님들이 이미 제출한 파일은 보존 기간까지 안전하게 보관됩니다)
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed bg-amber-50 p-2.5 rounded-xl border border-amber-200 font-medium">
+                ⚠️ 이미 수락 {acceptedCount}명 · 완료 {doneCount}명이 있습니다. 철회하면 전원의 할 일에서 사라지며, 제출물은 보존 기간까지 남습니다.
               </p>
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">

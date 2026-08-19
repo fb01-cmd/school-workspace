@@ -70,6 +70,45 @@ function buildRecipientSummary(chips: RecipientChip[]): string {
   return rest > 0 ? `${first} 외 ${rest}명` : first;
 }
 
+function sortMembersForDept(
+  deptName: string,
+  members: DeptMember[],
+  profileMap: Map<string, TeacherProfile>
+): DeptMember[] {
+  const gradeMatch = deptName.match(/^([1-3])학년/);
+
+  return [...members].sort((a, b) => {
+    const profA = profileMap.get(a.email.toLowerCase());
+    const profB = profileMap.get(b.email.toLowerCase());
+
+    const aIsHead = !!profA?.deptHeadMap?.[deptName] || (profA?.departments?.length === 1 && !!profA?.isDeptHead);
+    const bIsHead = !!profB?.deptHeadMap?.[deptName] || (profB?.departments?.length === 1 && !!profB?.isDeptHead);
+
+    // 1. 부장 우선
+    if (aIsHead && !bIsHead) return -1;
+    if (!aIsHead && bIsHead) return 1;
+
+    // 2. 학년부인 경우 담임 반 순
+    if (gradeMatch) {
+      const gradeNum = Number(gradeMatch[1]);
+      const aIsHomeroom = !!profA?.isHomeroom && Number(profA?.homeroom?.grade) === gradeNum;
+      const bIsHomeroom = !!profB?.isHomeroom && Number(profB?.homeroom?.grade) === gradeNum;
+
+      if (aIsHomeroom && !bIsHomeroom) return -1;
+      if (!aIsHomeroom && bIsHomeroom) return 1;
+
+      if (aIsHomeroom && bIsHomeroom) {
+        const aClass = Number(profA?.homeroom?.class || 0);
+        const bClass = Number(profB?.homeroom?.class || 0);
+        if (aClass !== bClass) return aClass - bClass;
+      }
+    }
+
+    // 3. 나머지 가나다순
+    return a.name.localeCompare(b.name, "ko");
+  });
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -88,7 +127,7 @@ export default function TaskRecipientPickerModal({
   initialSelectedEmails = [],
   onConfirm,
 }: Props) {
-  const { userData, teacherProfile } = useAuth();
+  const { userData, teacherProfile, schoolSettings } = useAuth();
   const domain = userData?.domain || "hmh.or.kr";
   const myDepts = teacherProfile?.departments || [];
 
@@ -109,7 +148,7 @@ export default function TaskRecipientPickerModal({
       .catch(() => setLoading(false));
   }, [isOpen, initialSelectedEmails]);
 
-  // 부서별 목록 구성
+  // 부서별 목록 구성 (조직도 단일 원본 순서 + sortMembersForDept 정렬)
   const deptSections: DeptSection[] = useMemo(() => {
     const map = new Map<string, DeptMember[]>();
     for (const [email, p] of profileMap.entries()) {
@@ -124,14 +163,22 @@ export default function TaskRecipientPickerModal({
         });
       }
     }
+
+    const deptOrder = schoolSettings?.departments || [];
+    const orderedDepts = [
+      ...deptOrder.filter((d) => map.has(d)),
+      ...Array.from(map.keys()).filter((d) => !deptOrder.includes(d) && d !== "미지정"),
+      ...(map.has("미지정") ? ["미지정"] : []),
+    ];
+
     const result: DeptSection[] = [];
-    for (const [dept, members] of map.entries()) {
-      members.sort((a, b) => a.name.localeCompare(b.name, "ko"));
-      result.push({ dept, members });
+    for (const dept of orderedDepts) {
+      const members = map.get(dept) || [];
+      const sortedMembers = sortMembersForDept(dept, members, profileMap);
+      result.push({ dept, members: sortedMembers });
     }
-    result.sort((a, b) => a.dept.localeCompare(b.dept, "ko"));
     return result;
-  }, [profileMap]);
+  }, [profileMap, schoolSettings?.departments]);
 
   // 검색 후보
   const searchCandidates: LocalSearchCandidate[] = useMemo(() => {
@@ -149,12 +196,12 @@ export default function TaskRecipientPickerModal({
     return list;
   }, [profileMap]);
 
-  // 초기 부서 펼침
+  // 초기 부서 펼침 (내 소속 부서만 — 피드백 2번)
   useEffect(() => {
     if (deptSections.length > 0 && expandedDepts.size === 0) {
       const initial = new Set(
         deptSections
-          .filter((s) => myDepts.includes(s.dept) || s.dept === deptSections[0]?.dept)
+          .filter((s) => myDepts.includes(s.dept))
           .map((s) => s.dept)
       );
       setExpandedDepts(initial);
@@ -230,13 +277,12 @@ export default function TaskRecipientPickerModal({
     onClose();
   };
 
-  // 검색 결과
+  // 검색 결과 (이름만 검색 — 피드백 3번)
   const filteredCandidates = searchQuery.trim()
     ? searchCandidates.filter(
         (c) =>
-          (c.name.includes(searchQuery.trim()) ||
-            (c.extension && c.extension.includes(searchQuery.trim())) ||
-            c.email.includes(searchQuery.trim())) &&
+          (c.name.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+            c.email.toLowerCase().includes(searchQuery.trim().toLowerCase())) &&
           !selectedEmails.has(c.email)
       ).slice(0, 8)
     : [];
@@ -266,13 +312,13 @@ export default function TaskRecipientPickerModal({
 
         {/* 본문 그리드 */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* 이름 검색 입력 */}
+          {/* 이름 검색 입력 (피드백 3번 문구) */}
           <div className="relative">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="선생님 이름 또는 내선번호로 검색…"
+              placeholder="선생님 이름으로 검색…"
               className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 bg-white"
             />
             {filteredCandidates.length > 0 && (

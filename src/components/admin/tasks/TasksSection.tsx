@@ -10,7 +10,6 @@ import {
   collection,
   query,
   where,
-  orderBy,
   onSnapshot,
 } from "firebase/firestore";
 import type { TaskDoc, TaskRecipientStatus, TaskSubmission } from "@/lib/tasks/logic";
@@ -63,10 +62,22 @@ export default function TasksSection({ initialTaskId }: Props) {
   // 내 할 일 목록
   const [inboxTasks, setInboxTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "pending" | "done" | "canceled">("pending");
 
   // 상세 펼침 상태
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(initialTaskId || null);
+
+  // 셀프 등록 ([내 할 일 추가] 미니 입력 — 피드백 15번)
+  const [isSelfAddOpen, setIsSelfAddOpen] = useState(false);
+  const [selfTitle, setSelfTitle] = useState("");
+  const [selfDueDate, setSelfDueDate] = useState(() => {
+    const d = new Date(Date.now() + 3 * 24 * 3600 * 1000 + 9 * 3600 * 1000);
+    return d.toISOString().slice(0, 10);
+  });
+  const [selfDueTime, setSelfDueTime] = useState("17:00");
+  const [selfBody, setSelfBody] = useState("");
+  const [selfSubmitting, setSelfSubmitting] = useState(false);
 
   // 거절 모달
   const [decliningTaskId, setDecliningTaskId] = useState<string | null>(null);
@@ -86,30 +97,34 @@ export default function TasksSection({ initialTaskId }: Props) {
     }
   }, [initialTaskId]);
 
-  // 내 할 일 목록 구독
+  // 내 할 일 목록 구독 — 복합 색인 요구 orderBy 제거 + 클라이언트 정렬 (피드백 5번)
   useEffect(() => {
     if (!myEmail || !domain) {
       setLoading(false);
       return;
     }
     setLoading(true);
+    setLoadError(null);
     const q = query(
       collection(db, "tasks", domain, "items"),
-      where("recipientEmails", "array-contains", myEmail),
-      orderBy("dueAt", "asc")
+      where("recipientEmails", "array-contains", myEmail)
     );
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const list: TaskItem[] = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as TaskDoc),
-        }));
+        const list: TaskItem[] = snap.docs
+          .map((d) => ({
+            id: d.id,
+            ...(d.data() as TaskDoc),
+          }))
+          .sort((a, b) => (a.dueAt || 0) - (b.dueAt || 0));
         setInboxTasks(list);
         setLoading(false);
+        setLoadError(null);
       },
       (err) => {
         console.error("[tasks] 내 할 일 구독 실패", err);
+        setLoadError("할 일 목록을 불러오지 못했습니다. 새로고침해 주세요.");
         setLoading(false);
       }
     );
@@ -140,7 +155,53 @@ export default function TasksSection({ initialTaskId }: Props) {
     }).length;
   }, [inboxTasks, myEmail]);
 
-  // 상태 전이 액션 (accept, done, undone, decline)
+  // 셀프 등록 핸들러 (피드백 15번)
+  const handleSelfAdd = async () => {
+    if (!selfTitle.trim()) {
+      alert("할 일 제목을 입력해 주세요.");
+      return;
+    }
+    if (!selfDueDate || !selfDueTime) {
+      alert("기한 날짜와 시각을 지정해 주세요.");
+      return;
+    }
+    const [y, m, d] = selfDueDate.split("-").map(Number);
+    const [hh, mm] = selfDueTime.split(":").map(Number);
+    const dueAt = Date.UTC(y, m - 1, d, hh - 9, mm, 0, 0);
+    if (dueAt <= Date.now()) {
+      alert("기한은 현재 시각보다 이후여야 합니다.");
+      return;
+    }
+
+    setSelfSubmitting(true);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "self_add",
+          title: selfTitle.trim(),
+          dueAt,
+          body: selfBody.trim() || undefined,
+          contentFormat: selfBody.trim() ? "md1" : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "할 일을 추가하지 못했습니다.");
+      }
+
+      setSelfTitle("");
+      setSelfBody("");
+      setIsSelfAddOpen(false);
+    } catch (err: any) {
+      alert(err.message || "할 일 등록 중 오류가 발생했습니다.");
+    } finally {
+      setSelfSubmitting(false);
+    }
+  };
+
+  // 상태 전이 액션 (accept, done, undone, decline) — 피드백 7번 즉시 낙관 갱신
   const handleTransition = async (taskId: string, action: "accept" | "done" | "undone" | "decline", note?: string) => {
     setTransitionLoading(true);
     try {
@@ -159,6 +220,22 @@ export default function TasksSection({ initialTaskId }: Props) {
         throw new Error(data.error || "상태 변경에 실패했습니다.");
       }
 
+      // 피드백 7번: 응답의 status 즉시 로컬 반영
+      if (data.status) {
+        setInboxTasks((prev) =>
+          prev.map((t) => {
+            if (t.id !== taskId) return t;
+            return {
+              ...t,
+              statuses: {
+                ...t.statuses,
+                [myEmail]: data.status,
+              },
+            };
+          })
+        );
+      }
+
       if (action === "decline") {
         setDecliningTaskId(null);
         setDeclineReason("");
@@ -170,7 +247,7 @@ export default function TasksSection({ initialTaskId }: Props) {
     }
   };
 
-  // 파일 제출 처리 (<=4MB: multipart / >4MB: resumable session)
+  // 파일 제출 처리 (<=4MB: multipart / >4MB: resumable session) — 피드백 7번 즉시 낙관 갱신
   const handleSubmitFile = async (taskId: string, file: File) => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
@@ -196,6 +273,21 @@ export default function TasksSection({ initialTaskId }: Props) {
         const data = await res.json();
         if (!res.ok || !data.success) {
           throw new Error(data.error || "파일 제출에 실패했습니다.");
+        }
+
+        if (data.submission) {
+          const nextStatus: TaskRecipientStatus = { state: "DONE", at: Date.now() };
+          setInboxTasks((prev) =>
+            prev.map((t) =>
+              t.id === taskId
+                ? {
+                    ...t,
+                    statuses: { ...t.statuses, [myEmail]: nextStatus },
+                    submissions: { ...t.submissions, [myEmail]: data.submission },
+                  }
+                : t
+            )
+          );
         }
         alert("제출이 완료되었습니다.");
       } else {
@@ -243,6 +335,20 @@ export default function TasksSection({ initialTaskId }: Props) {
           throw new Error(finishData.error || "제출 완료 검증에 실패했습니다.");
         }
 
+        if (finishData.submission) {
+          const nextStatus: TaskRecipientStatus = { state: "DONE", at: Date.now() };
+          setInboxTasks((prev) =>
+            prev.map((t) =>
+              t.id === taskId
+                ? {
+                    ...t,
+                    statuses: { ...t.statuses, [myEmail]: nextStatus },
+                    submissions: { ...t.submissions, [myEmail]: finishData.submission },
+                  }
+                : t
+            )
+          );
+        }
         alert("대용량 파일 제출이 완료되었습니다.");
       }
     } catch (err: any) {
@@ -301,13 +407,13 @@ export default function TasksSection({ initialTaskId }: Props) {
             </button>
           </div>
 
-          {/* 새 업무 작성 버튼 */}
+          {/* 업무 등록 버튼 (피드백 15번 명칭) */}
           <button
             type="button"
             onClick={() => setIsComposerOpen(true)}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
           >
-            <span>+ 새 업무 보내기</span>
+            <span>+ 업무 등록</span>
           </button>
         </div>
       </div>
@@ -315,51 +421,76 @@ export default function TasksSection({ initialTaskId }: Props) {
       {/* ── 탭 1: 내 할 일 ── */}
       {activeTab === "inbox" && (
         <div className="space-y-4">
-          {/* 필터 칩 */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          {/* 구독 오류 안내 블록 (피드백 5번 조용한 실패 금지) */}
+          {loadError && (
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-semibold flex items-center justify-between">
+              <span>{loadError}</span>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="text-rose-700 underline font-bold ml-2"
+              >
+                새로고침
+              </button>
+            </div>
+          )}
+
+          {/* 필터 칩 및 셀프 등록 버튼 */}
+          <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 text-xs">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setFilter("pending")}
+                className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
+                  filter === "pending"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                미완료 할 일 ({pendingCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter("done")}
+                className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
+                  filter === "done"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                완료됨 / 거절
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter("all")}
+                className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
+                  filter === "all"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                전체 보기 ({inboxTasks.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter("canceled")}
+                className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
+                  filter === "canceled"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                철회된 업무
+              </button>
+            </div>
+
+            {/* 내 할 일 추가 버튼 (피드백 15번) */}
             <button
               type="button"
-              onClick={() => setFilter("pending")}
-              className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
-                filter === "pending"
-                  ? "bg-indigo-600 text-white"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
+              onClick={() => setIsSelfAddOpen(true)}
+              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-full transition-colors cursor-pointer border border-slate-200"
             >
-              미완료 할 일 ({pendingCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter("done")}
-              className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
-                filter === "done"
-                  ? "bg-indigo-600 text-white"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              완료됨 / 거절
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter("all")}
-              className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
-                filter === "all"
-                  ? "bg-indigo-600 text-white"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              전체 보기 ({inboxTasks.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter("canceled")}
-              className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
-                filter === "canceled"
-                  ? "bg-indigo-600 text-white"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              철회된 업무
+              <span>+ 내 할 일 추가</span>
             </button>
           </div>
 
@@ -420,7 +551,14 @@ export default function TasksSection({ initialTaskId }: Props) {
                             </span>
                           ) : (
                             <span className="bg-amber-50 text-amber-800 border border-amber-200 font-bold px-2 py-0.5 rounded-full animate-pulse">
-                              도달 (확인 필요)
+                              수락 전
+                            </span>
+                          )}
+
+                          {/* 내가 등록한 업무 뱃지 (피드백 15번) */}
+                          {task.selfAssigned && (
+                            <span className="bg-slate-100 text-slate-700 border border-slate-200 font-bold px-2 py-0.5 rounded-full text-[11px]">
+                              내가 등록
                             </span>
                           )}
 
@@ -456,7 +594,11 @@ export default function TasksSection({ initialTaskId }: Props) {
                         </h3>
 
                         <div className="text-xs text-slate-500">
-                          보낸 분: <strong className="text-slate-700">{task.senderName}</strong> 선생님 · {formatFull(task.createdAt)}
+                          {task.selfAssigned ? (
+                            <span>본인 등록 · {formatFull(task.createdAt)}</span>
+                          ) : (
+                            <span>보낸 분: <strong className="text-slate-700">{task.senderName}</strong> 선생님 · {formatFull(task.createdAt)}</span>
+                          )}
                         </div>
                       </div>
 
@@ -475,20 +617,15 @@ export default function TasksSection({ initialTaskId }: Props) {
                     {/* 카드 펼침 세부 내용 및 액션 영역 */}
                     {isExpanded && (
                       <div className="px-4 sm:px-5 pb-5 pt-2 border-t border-slate-100 bg-slate-50/50 space-y-4">
-                        {/* 지시 본문 */}
+                        {/* 본문 (피드백 8번 '내용'으로 통일 + 피드백 6,9번 MemoRichBody autolink) */}
                         {task.body && (
                           <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-1.5 shadow-2xs">
-                            <div className="text-xs font-bold text-slate-500">지시 및 안내 내용</div>
-                            {task.contentFormat === "md1" ? (
-                              <MemoRichBody
-                                body={task.body}
-                                className="text-xs text-slate-800 leading-relaxed font-sans"
-                              />
-                            ) : (
-                              <p className="text-xs text-slate-800 whitespace-pre-wrap leading-relaxed">
-                                {task.body}
-                              </p>
-                            )}
+                            <div className="text-xs font-bold text-slate-500">내용</div>
+                            <MemoRichBody
+                              body={task.body}
+                              isPlain={task.contentFormat !== "md1"}
+                              className="text-xs text-slate-800 leading-relaxed font-sans"
+                            />
                           </div>
                         )}
 
@@ -711,6 +848,98 @@ export default function TasksSection({ initialTaskId }: Props) {
           setActiveTab("sent");
         }}
       />
+
+      {/* [내 할 일 추가] 셀프 등록 모달 (피드백 15번) */}
+      {isSelfAddOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h4 className="text-base font-bold text-slate-900 flex items-center gap-1.5">
+                <span>📝</span>
+                <span>내 할 일 추가</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setIsSelfAddOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  할 일 제목 <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={selfTitle}
+                  onChange={(e) => setSelfTitle(e.target.value)}
+                  placeholder="예: 2학기 교과진도표 작성"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900 font-medium"
+                  maxLength={100}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    마감 날짜 <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={selfDueDate}
+                    onChange={(e) => setSelfDueDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    마감 시각 <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="time"
+                    value={selfDueTime}
+                    onChange={(e) => setSelfDueTime(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">메모/내용 (선택)</label>
+                <textarea
+                  rows={3}
+                  value={selfBody}
+                  onChange={(e) => setSelfBody(e.target.value)}
+                  placeholder="유의사항이나 메모를 자유롭게 적어두세요."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900"
+                  maxLength={1000}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsSelfAddOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSelfAdd}
+                disabled={selfSubmitting || !selfTitle.trim()}
+                className="px-5 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 cursor-pointer shadow-2xs"
+              >
+                {selfSubmitting ? "등록 중…" : "등록하기"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 거절 사유 입력 모달 */}
       {decliningTaskId && (

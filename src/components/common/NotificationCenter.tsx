@@ -79,7 +79,7 @@ function getNotificationTypeBadge(type: string, refType?: string) {
     case "consent-result":
       return { icon: "📨", label: "양해 결과", bg: "bg-indigo-50 text-indigo-700 border-indigo-200" };
     case "task-assigned":
-      return { icon: "📌", label: "업무 지시", bg: "bg-blue-50 text-blue-800 border-blue-300" };
+      return { icon: "📌", label: "업무", bg: "bg-blue-50 text-blue-800 border-blue-300" };
     case "task-status":
       return { icon: "📊", label: "업무 상태", bg: "bg-purple-50 text-purple-700 border-purple-200" };
     case "task-due":

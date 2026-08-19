@@ -4,13 +4,21 @@
 // 인라인 이미지는 첨부 참조만 — 바이트는 자체 프록시(/api/memo/attachment, 쿠키 인증) 경유.
 
 import React, { useState } from "react";
-import { parseMd1, type RichBlock, type RichInline } from "@/lib/memo/richtext";
+import {
+  parseMd1,
+  autolinkBlocks,
+  parsePlainAutolink,
+  type RichBlock,
+  type RichInline,
+} from "@/lib/memo/richtext";
 
 interface MemoRichBodyProps {
   body: string;
   className?: string;
   /** 인라인 이미지 프록시 URL용 — 상세 뷰에서 전달. 없으면 이미지는 라벨 평문으로 강등 */
   memoId?: string;
+  /** 평문 문서인 경우 true 지정 시 md1 문법을 해석하지 않고 줄바꿈 유지 + https 링크만 자동 연결 */
+  isPlain?: boolean;
 }
 
 function MemoInlineImage({
@@ -143,8 +151,8 @@ function renderBlock(block: RichBlock, key: number | string, memoId?: string): R
   }
 }
 
-export default function MemoRichBody({ body, className, memoId }: MemoRichBodyProps) {
-  const blocks = parseMd1(body);
+export default function MemoRichBody({ body, className, memoId, isPlain }: MemoRichBodyProps) {
+  const blocks = isPlain ? parsePlainAutolink(body) : autolinkBlocks(parseMd1(body));
 
   return (
     <div

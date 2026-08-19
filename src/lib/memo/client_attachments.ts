@@ -1,10 +1,17 @@
-// 쪽지 2단계 — 클라이언트 이미지 첨부 전처리 및 업로드 헬퍼 (docs/memo_attachment_spec.md §3-2·§4)
+// 쪽지 2단계 — 클라이언트 파일(이미지+일반 파일) 첨부 전처리 및 업로드 헬퍼 (docs/memo_attachment_spec.md §3-2·§4, 피드백 10번)
 
 import type { MemoAttachment } from "./attachment_logic";
-export type { MemoAttachment };
+import {
+  MEMO_MAX_ATTACHMENTS,
+  MEMO_ATTACHMENT_MAX_BYTES,
+  MEMO_ATTACHMENT_SESSION_MAX_BYTES,
+  MEMO_FILE_EXT_WHITELIST,
+  memoFileExt,
+} from "./attachment_logic";
 
-export const MEMO_ATTACHMENT_MAX_COUNT = 5;
-export const MEMO_ATTACHMENT_MAX_BYTES = Math.floor(3.5 * 1024 * 1024); // 3.5MB
+export type { MemoAttachment };
+export { MEMO_MAX_ATTACHMENTS, MEMO_ATTACHMENT_MAX_BYTES, MEMO_ATTACHMENT_SESSION_MAX_BYTES };
+export const MEMO_ATTACHMENT_MAX_COUNT = MEMO_MAX_ATTACHMENTS;
 
 /** 파일 크기 포맷팅 (예: 450 KB, 1.2 MB) */
 export function formatAttachmentSize(bytes: number): string {
@@ -13,31 +20,25 @@ export function formatAttachmentSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** 이미지 파일 여부 판별 */
+export function isImageFile(name: string, mimeType?: string): boolean {
+  const ext = memoFileExt(name);
+  if (["png", "jpg", "jpeg", "webp", "gif"].includes(ext)) return true;
+  if (mimeType && mimeType.startsWith("image/")) return true;
+  return false;
+}
+
 /**
- * 캔버스 리사이즈 및 3.5MB 검증
- * - 지원 형식: PNG, JPEG, JPG, WEBP, GIF
- * - 최대 변 2000px (비율 유지)
- * - PNG: 원본 유지 (2000px 이하이고 3.5MB 이하면 원본 그대로, 초과 시 캔버스 PNG 리사이즈)
- * - GIF: 캔버스 금지 — 첫 프레임만 남아 움직임이 죽는다. 3.5MB 이하 원본 통과, 초과 거부 (richtext spec §9)
- * - JPEG/WEBP: JPEG 품질 0.85
- * - 최종 바이트 3.5MB 이하 검증
+ * 캔버스 리사이즈 및 이미지 검증 (이미지 전용)
  */
 export async function resizeAndValidateImage(file: File): Promise<{ blob: Blob; safeName: string }> {
-  const allowedMimes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
+  const ext = memoFileExt(file.name);
   const type = file.type.toLowerCase();
-
-  // MIME 확장자 예외 처리 (파일 타입이 비었거나 일반적인 경우)
-  const ext = file.name.split(".").pop()?.toLowerCase();
-  const isAllowedExt = ext && ["png", "jpg", "jpeg", "webp", "gif"].includes(ext);
-
-  if (!allowedMimes.includes(type) && !isAllowedExt) {
-    throw new Error("이미지 파일(PNG·JPG·WEBP·GIF)만 첨부할 수 있습니다.");
-  }
 
   const isGif = type === "image/gif" || ext === "gif";
   if (isGif) {
     if (file.size > MEMO_ATTACHMENT_MAX_BYTES) {
-      throw new Error("움직이는 이미지(GIF)는 3.5MB 이하만 첨부할 수 있습니다.");
+      throw new Error("움직이는 이미지(GIF)는 4MB 이하만 첨부할 수 있습니다.");
     }
     return { blob: file, safeName: file.name };
   }
@@ -59,7 +60,7 @@ export async function resizeAndValidateImage(file: File): Promise<{ blob: Blob; 
       const maxDim = 2000;
       const needsScale = width > maxDim || height > maxDim;
 
-      // PNG이고 리사이즈가 불필요하며 3.5MB 이하면 파일 원본 유지 (§3-2)
+      // PNG이고 리사이즈가 불필요하며 4MB 이하면 원본 유지
       if (isPng && !needsScale && file.size <= MEMO_ATTACHMENT_MAX_BYTES) {
         resolve({ blob: file, safeName: file.name });
         return;
@@ -84,7 +85,6 @@ export async function resizeAndValidateImage(file: File): Promise<{ blob: Blob; 
         return;
       }
 
-      // 흰색 배경 채움 (JPEG 변환 시 투명 영역 검은색 변환 방지)
       if (!isPng) {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, width, height);
@@ -102,7 +102,7 @@ export async function resizeAndValidateImage(file: File): Promise<{ blob: Blob; 
             return;
           }
           if (blob.size > MEMO_ATTACHMENT_MAX_BYTES) {
-            reject(new Error("첨부 이미지는 3.5MB 이하여야 합니다."));
+            reject(new Error("첨부 이미지는 4MB 이하여야 합니다."));
             return;
           }
           resolve({ blob, safeName: file.name });
@@ -122,21 +122,113 @@ export async function resizeAndValidateImage(file: File): Promise<{ blob: Blob; 
 }
 
 /**
- * 첨부 1건 업로드 (POST /api/memo multipart/form-data)
+ * 첨부 파일 1건 업로드 (<=4MB: 직접 multipart, 4MB~10MB: 세션 업로드)
  */
-export async function uploadAttachmentFile(fileBlob: Blob, fileName: string): Promise<MemoAttachment> {
-  const formData = new FormData();
-  formData.append("file", fileBlob, fileName);
-
-  const res = await fetch("/api/memo", {
-    method: "POST",
-    body: formData,
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.success || !data.attachment) {
-    throw new Error(data.error || "이미지 업로드에 실패했습니다.");
+export async function uploadAttachment(
+  file: File,
+  onProgress?: (msg: string) => void
+): Promise<MemoAttachment> {
+  const ext = memoFileExt(file.name);
+  if (!ext || !MEMO_FILE_EXT_WHITELIST.includes(ext)) {
+    throw new Error("허용되지 않는 파일 형식입니다. (한글·오피스·PDF·압축·이미지 파일만 가능)");
   }
 
-  return data.attachment as MemoAttachment;
+  if (file.size > MEMO_ATTACHMENT_SESSION_MAX_BYTES) {
+    throw new Error("첨부 파일은 최대 10MB 이하만 가능합니다.");
+  }
+
+  // 1. 이미지이고 4MB 이하인 경우 리사이즈/전처리
+  let uploadBlob: Blob = file;
+  let uploadName: string = file.name;
+
+  if (isImageFile(file.name, file.type)) {
+    if (file.size <= MEMO_ATTACHMENT_MAX_BYTES) {
+      onProgress?.("이미지 최적화 중…");
+      const prepared = await resizeAndValidateImage(file);
+      uploadBlob = prepared.blob;
+      uploadName = prepared.safeName;
+    }
+  }
+
+  // 2. 4MB 이하: 서버 직접 multipart 업로드
+  if (uploadBlob.size <= MEMO_ATTACHMENT_MAX_BYTES) {
+    onProgress?.("파일 올리는 중…");
+    const formData = new FormData();
+    formData.append("file", uploadBlob, uploadName);
+
+    const res = await fetch("/api/memo", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success || !data.attachment) {
+      throw new Error(data.error || "파일 업로드에 실패했습니다.");
+    }
+    return data.attachment as MemoAttachment;
+  }
+
+  // 3. 4MB 초과 10MB 이하: 구글 드라이브 Resumable Session 직접 업로드
+  onProgress?.("대용량 업로드 준비 중…");
+  const startRes = await fetch("/api/memo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "attach_session_start",
+      name: uploadName,
+      size: uploadBlob.size,
+      mimeType: file.type || "application/octet-stream",
+    }),
+  });
+
+  const startData = await startRes.json().catch(() => ({}));
+  if (!startRes.ok || !startData.success || !startData.sessionUrl) {
+    throw new Error(startData.error || "대용량 업로드 세션을 시작하지 못했습니다.");
+  }
+
+  onProgress?.("드라이브에 전송 중…");
+  const uploadRes = await fetch(startData.sessionUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+      "Content-Range": `bytes 0-${uploadBlob.size - 1}/${uploadBlob.size}`,
+    },
+    body: uploadBlob,
+  });
+
+  if (!uploadRes.ok) {
+    throw new Error("드라이브 직접 전송에 실패했습니다.");
+  }
+
+  const uploadResultJson = await uploadRes.json().catch(() => ({}));
+  const driveFileId = uploadResultJson.id;
+  if (!driveFileId) {
+    throw new Error("드라이브 파일 ID를 확인하지 못했습니다.");
+  }
+
+  onProgress?.("첨부 마무리 중…");
+  const finishRes = await fetch("/api/memo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "attach_session_finish",
+      driveFileId,
+      name: uploadName,
+      size: uploadBlob.size,
+      mimeType: file.type || "application/octet-stream",
+    }),
+  });
+
+  const finishData = await finishRes.json().catch(() => ({}));
+  if (!finishRes.ok || !finishData.success || !finishData.attachment) {
+    throw new Error(finishData.error || "첨부 마무리에 실패했습니다.");
+  }
+
+  return finishData.attachment as MemoAttachment;
+}
+
+/** 하위 호환용 래퍼 */
+export async function uploadAttachmentFile(fileBlob: Blob, fileName: string): Promise<MemoAttachment> {
+  const f = new File([fileBlob], fileName, { type: fileBlob.type });
+  return uploadAttachment(f);
 }

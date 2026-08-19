@@ -336,10 +336,18 @@ export default function AdminPage() {
             {isSuperAdmin && <AdminUsageSummaryBanner onNavigate={() => setActiveMenu("usage")} />}
             {isSuperAdmin && <MealCard />}
 
-            {/* super_admin 홈: 관리 및 할 일 건수 카드 그리드 */}
+            {/* super_admin 홈: 상단 개인 업무·쪽지 영역 및 관리 위젯 그리드 (피드백 13번) */}
             {isSuperAdmin ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* 1. Profile Approvals Widget (할 일 건수 카드) */}
+              <div className="space-y-6">
+                {/* 상단 개인 업무 및 쪽지 영역 */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                  <DashboardTaskCard onNavigate={() => setActiveMenu("tasks")} />
+                  <DashboardMemoPanel onNavigateToMemo={handleNavigateToMemo} />
+                </div>
+
+                {/* 관리자 위젯 그리드 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* 1. Profile Approvals Widget (할 일 건수 카드) */}
                 <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
                   <div>
                     <div className="flex items-center justify-between mb-4">
@@ -536,11 +544,9 @@ export default function AdminPage() {
                     </button>
                   </div>
                 </div>
-
-                {/* 8. Tasks Widget */}
-                <DashboardTaskCard onNavigate={() => setActiveMenu("tasks")} />
               </div>
-            ) : (
+            </div>
+          ) : (
               /* 일반 교사(role teacher) 홈: 넓은 화면 2단 그리드(좌: 시간표+급식+할일, 우: 받은 쪽지), 좁은 화면 세로 스택 (2026-08-18 피드백 덤프 ⑤) */
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 <div className="lg:col-span-7 xl:col-span-8 space-y-6">

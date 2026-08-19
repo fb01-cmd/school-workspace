@@ -5,9 +5,12 @@
 // 양식 업로드 (form_upload, 최대 5개, <=4MB)
 // 2상: send (수신자 지정 및 최종 발송) — 발송 전에는 초안으로 수신자에게 미노출
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import TaskRecipientPickerModal, { RecipientChip } from "./TaskRecipientPickerModal";
 import type { TaskFormFile, TaskKind } from "@/lib/tasks/logic";
+import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
+import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
+import { bodyHasMd1Formatting } from "@/lib/memo/richtext";
 
 interface Props {
   isOpen: boolean;
@@ -29,6 +32,15 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
   });
   const [dueTime, setDueTime] = useState("17:00");
   const [body, setBody] = useState("");
+
+  // 편집기 ref (MemoEditorToolbar 및 contenteditable 연동 — 피드백 9번)
+  const editorRef = useRef<HTMLDivElement>(null);
+  const syncBodyMd1 = useCallback(() => {
+    if (editorRef.current) {
+      const md1 = serializeDomToMd1(editorRef.current);
+      setBody(md1);
+    }
+  }, []);
 
   // 2단계 데이터
   const [preparedTaskId, setPreparedTaskId] = useState<string | null>(null);
@@ -76,14 +88,16 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
     setLoading(true);
     setError(null);
     try {
+      const finalBody = body.trim();
+      const hasMd1 = bodyHasMd1Formatting(finalBody);
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "prepare",
           title: title.trim(),
-          body: body.trim(),
-          contentFormat: "md1",
+          body: finalBody,
+          contentFormat: hasMd1 ? "md1" : undefined,
           kind,
           dueAt,
           recipientSummary: "",
@@ -204,7 +218,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
           <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <span>📌</span>
-              <span>새 업무 지시 보내기</span>
+              <span>업무 등록</span>
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               선생님들께 완료 확인이나 파일 제출을 요청하는 업무를 배분합니다.
@@ -329,18 +343,30 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
                 </p>
               </div>
 
-              {/* 지시 내용 */}
+              {/* 내용 (피드백 8번 명칭 + 피드백 9번 MemoEditorToolbar 서식 편집기) */}
               <div>
                 <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                  지시 및 안내 내용
+                  내용
                 </label>
-                <textarea
-                  rows={6}
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  placeholder="업무 지시 내용, 유의사항, 제출 방법 등을 적어주세요."
-                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900"
-                />
+                <div className="rounded-xl border border-slate-300 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent">
+                  <MemoEditorToolbar
+                    editorRef={editorRef}
+                    onContentChange={syncBodyMd1}
+                  />
+                  <div
+                    ref={editorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={syncBodyMd1}
+                    onPaste={syncBodyMd1}
+                    onKeyUp={syncBodyMd1}
+                    role="textbox"
+                    aria-multiline="true"
+                    aria-label="업무 내용"
+                    data-placeholder="업무 내용, 유의사항, 제출 방법 등을 적어주세요."
+                    className="w-full px-3.5 py-2.5 text-sm leading-relaxed min-h-[140px] max-h-[260px] overflow-y-auto focus:outline-none bg-white text-slate-900 font-sans empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1.5 [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:rounded-r-md [&_blockquote]:my-1.5 [&_blockquote]:text-slate-700 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic"
+                  />
+                </div>
               </div>
             </div>
           )}
