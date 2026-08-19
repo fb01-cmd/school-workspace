@@ -456,7 +456,7 @@ export default function HubTaskComposer({
         {/* Body Editor */}
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1.5">
-            지시 내용 및 안내 사항
+            내용
           </label>
           <div className="border border-slate-300 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent">
             <MemoEditorToolbar
@@ -466,9 +466,11 @@ export default function HubTaskComposer({
             <div
               ref={editorRef}
               contentEditable
+              suppressContentEditableWarning
+              spellCheck={false}
               onInput={syncBodyMd1}
               onBlur={syncBodyMd1}
-              data-placeholder="지시 내용이나 전달 사항을 입력해 주세요."
+              data-placeholder="업무 내용, 유의사항, 제출 방법 등을 적어주세요."
               className="w-full px-3.5 py-2.5 text-sm leading-relaxed min-h-[140px] max-h-[260px] overflow-y-auto focus:outline-none bg-white text-slate-900 font-sans empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1.5 [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:rounded-r-md [&_blockquote]:my-1.5 [&_blockquote]:text-slate-700 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic"
             />
           </div>

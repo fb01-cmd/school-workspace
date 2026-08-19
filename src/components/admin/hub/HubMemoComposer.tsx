@@ -57,11 +57,6 @@ export default function HubMemoComposer({
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [uploadProgressMsg, setUploadProgressMsg] = useState<string | null>(null);
 
-  const [links, setLinks] = useState<{ url: string; title?: string }[]>([]);
-  const [newLinkUrl, setNewLinkUrl] = useState("");
-  const [newLinkTitle, setNewLinkTitle] = useState("");
-  const [isAddingLink, setIsAddingLink] = useState(false);
-
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -129,22 +124,6 @@ export default function HubMemoComposer({
     setAttachments((prev) => prev.filter((a) => a.driveFileId !== driveFileId));
   };
 
-  const handleAddLink = () => {
-    if (!newLinkUrl.trim()) return;
-    let url = newLinkUrl.trim();
-    if (!/^https?:\/\//i.test(url)) {
-      url = "https://" + url;
-    }
-    setLinks((prev) => [...prev, { url, title: newLinkTitle.trim() || undefined }]);
-    setNewLinkUrl("");
-    setNewLinkTitle("");
-    setIsAddingLink(false);
-  };
-
-  const handleRemoveLink = (index: number) => {
-    setLinks((prev) => prev.filter((_, i) => i !== index));
-  };
-
   // Send memo (no confirmation modal per memo_spec §11-1)
   const handleSend = async () => {
     if (!canSend) return;
@@ -176,7 +155,6 @@ export default function HubMemoComposer({
           title: title.trim() || undefined,
           body: finalBody,
           contentFormat: hasMd1 ? MEMO_CONTENT_FORMAT_MD1 : undefined,
-          links: links.length > 0 ? links : undefined,
           attachments: driveFileIds.length > 0 ? driveFileIds : undefined,
           recipientSummary,
           recipients: { users: userList, groups: [] },
@@ -291,6 +269,8 @@ export default function HubMemoComposer({
             <div
               ref={editorRef}
               contentEditable
+              suppressContentEditableWarning
+              spellCheck={false}
               onInput={syncBodyMd1}
               onBlur={syncBodyMd1}
               data-placeholder="쪽지 내용을 입력해 주세요."
@@ -299,146 +279,57 @@ export default function HubMemoComposer({
           </div>
         </div>
 
-        {/* Attachments & Links Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Attachments */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-slate-700">
-                첨부 파일 {attachments.length > 0 && `(${attachments.length}/${MEMO_MAX_ATTACHMENTS})`}
-              </label>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingFiles || attachments.length >= MEMO_MAX_ATTACHMENTS}
-                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-50 cursor-pointer flex items-center gap-1"
-              >
-                <span>+ 파일 첨부</span>
-              </button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                multiple
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-            </div>
-
-            {attachments.length > 0 ? (
-              <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200 max-h-36 overflow-y-auto">
-                {attachments.map((file) => (
-                  <div
-                    key={file.driveFileId}
-                    className="flex items-center justify-between px-3 py-1.5 bg-white rounded-lg border border-slate-200 text-xs"
-                  >
-                    <span className="truncate text-slate-800 font-medium">
-                      {isImageFile(file.name) ? "🖼️" : "📄"} {file.name}
-                      <span className="text-slate-400 text-[10px] ml-1.5">
-                        ({formatAttachmentSize(file.size)})
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveAttachment(file.driveFileId)}
-                      className="text-slate-400 hover:text-rose-600 font-bold ml-2 cursor-pointer p-0.5"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-3 text-center text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                {uploadProgressMsg || (uploadingFiles ? "파일 올리는 중..." : "첨부된 파일이 없습니다.")}
-              </div>
-            )}
+        {/* Attachments */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-slate-700">
+              첨부 파일 {attachments.length > 0 && `(${attachments.length}/${MEMO_MAX_ATTACHMENTS})`}
+            </label>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingFiles || attachments.length >= MEMO_MAX_ATTACHMENTS}
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-50 cursor-pointer flex items-center gap-1"
+            >
+              <span>+ 파일 첨부</span>
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+            />
           </div>
 
-          {/* Links */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-slate-700">
-                웹 링크 {links.length > 0 && `(${links.length})`}
-              </label>
-              {!isAddingLink && (
-                <button
-                  type="button"
-                  onClick={() => setIsAddingLink(true)}
-                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer flex items-center gap-1"
+          {attachments.length > 0 ? (
+            <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200 max-h-36 overflow-y-auto">
+              {attachments.map((file) => (
+                <div
+                  key={file.driveFileId}
+                  className="flex items-center justify-between px-3 py-1.5 bg-white rounded-lg border border-slate-200 text-xs"
                 >
-                  <span>+ 링크 추가</span>
-                </button>
-              )}
-            </div>
-
-            {isAddingLink && (
-              <div className="p-2.5 bg-slate-50 border border-indigo-200 rounded-xl space-y-2 mb-2">
-                <input
-                  type="text"
-                  value={newLinkUrl}
-                  onChange={(e) => setNewLinkUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-900"
-                />
-                <input
-                  type="text"
-                  value={newLinkTitle}
-                  onChange={(e) => setNewLinkTitle(e.target.value)}
-                  placeholder="링크 설명/제목 (선택 사항)"
-                  className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-900"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddingLink(false);
-                      setNewLinkUrl("");
-                      setNewLinkTitle("");
-                    }}
-                    className="px-2.5 py-1 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
-                  >
-                    취소
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAddLink}
-                    disabled={!newLinkUrl.trim()}
-                    className="px-3 py-1 bg-indigo-600 text-white font-bold text-xs rounded-lg hover:bg-indigo-700 disabled:opacity-50 cursor-pointer"
-                  >
-                    추가
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {links.length > 0 ? (
-              <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200 max-h-36 overflow-y-auto">
-                {links.map((link, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between px-3 py-1.5 bg-white rounded-lg border border-slate-200 text-xs"
-                  >
-                    <span className="truncate text-indigo-600 underline font-medium">
-                      🔗 {link.title || link.url}
+                  <span className="truncate text-slate-800 font-medium">
+                    {isImageFile(file.name) ? "🖼️" : "📄"} {file.name}
+                    <span className="text-slate-400 text-[10px] ml-1.5">
+                      ({formatAttachmentSize(file.size)})
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveLink(idx)}
-                      className="text-slate-400 hover:text-rose-600 font-bold ml-2 cursor-pointer p-0.5"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              !isAddingLink && (
-                <div className="py-3 text-center text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                  추가된 링크가 없습니다.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAttachment(file.driveFileId)}
+                    className="text-slate-400 hover:text-rose-600 font-bold ml-2 cursor-pointer p-0.5"
+                  >
+                    ✕
+                  </button>
                 </div>
-              )
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-3 text-center text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+              {uploadProgressMsg || (uploadingFiles ? "파일 올리는 중..." : "첨부된 파일이 없습니다.")}
+            </div>
+          )}
         </div>
       </div>
 
