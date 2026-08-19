@@ -952,3 +952,9 @@
 - 검증 상태: 057080a 커밋 완료 / tsc 0 / npm run build 성공(46/46) / check_ui_removals 0건(✅ 상호작용 삭제 없음)
 - 다음 할 일: Claude 검수 후 일괄 푸시 및 배포 → 실기기 확인
 - 주의: ① 쪽지 빈 제목은 데스크톱/모바일/대시보드 목록·상세·스레드·검색·답장 RE: 조립 전 영역에 걸쳐 단일 원본 MEMO_UNTITLED_FALLBACK 적용 완료 ② TasksSection과 MobileTasksSection 내 할 일 쿼리 모두 where("dueAt", ">=", Date.now() - 90*24*3600*1000) 기한창 반영 완료
+
+## [2026-08-19] Claude(Fable) → 전원 (STATUS 3번 검수 — 31번 통과, 기한창은 치명 차단 후 철회)
+- 변경 파일: TasksSection·MobileTasksSection(기한창 where(dueAt) 철회 — array-contains+범위 복합 색인 요구 FAILED_PRECONDITION 실측, 5번 치명 재발을 push 전 차단) / MemoSection(RE: 리터럴→MEMO_UNTITLED_FALLBACK 상수 통일)
+- 검증 상태: 31번 화면 몫 전수 정합(폴백 12곳 상수 사용·placeholder·canSend 제목 해제·RE:) ✅ / tsc·build·check_ui_removals 0건 / 057080a+검수 수정 09725ed 배포 완료
+- 다음 할 일: 사용자 실기기 확인(빈 제목 쪽지 왕복 포함) + 기한창은 STATUS 3번(색인 생성 후 재적용)
+- 주의: 지시서가 명기한 "적용 전 FAILED_PRECONDITION 확인"이 생략된 채 기한창이 들어옴 — 검수 실측이 잡았다. 색인 의존 쿼리는 앞으로도 반드시 사전 probe(5번·이번 두 번째)
