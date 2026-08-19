@@ -189,13 +189,8 @@ export default function MobileTasksSection() {
   const noDueTasks = useMemo(() => {
     return filteredTasks
       .filter((t) => !!t.noDue)
-      .sort((a, b) => {
-        const aDone = a.statuses?.[myEmail]?.state === "DONE" ? 1 : 0;
-        const bDone = b.statuses?.[myEmail]?.state === "DONE" ? 1 : 0;
-        if (aDone !== bDone) return aDone - bDone;
-        return (b.createdAt || 0) - (a.createdAt || 0);
-      });
-  }, [filteredTasks, myEmail]);
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }, [filteredTasks]);
 
   const sortedFilteredTasks = useMemo(() => {
     return [...dueTasks, ...noDueTasks];
