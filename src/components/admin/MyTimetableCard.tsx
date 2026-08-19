@@ -61,38 +61,29 @@ export default function MyTimetableCard({ onNavigateToMyTimetable }: MyTimetable
   const totalHours = cells.length;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-shadow hover:shadow-md">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-indigo-950 to-indigo-900 px-5 py-3.5 text-white flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <span className="text-xl">🗓️</span>
+    <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-sm font-bold flex items-center gap-2">
-              이번 주 내 시간표
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-slate-800">이번 주 내 시간표</h3>
               {weekInfo?.startDate && (
-                <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-indigo-800/80 text-indigo-200 border border-indigo-700/50">
+                <span className="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2 py-0.5 rounded-full">
                   {weekInfo.startDate} 주간
                 </span>
               )}
-            </h3>
-            <p className="text-[11px] text-indigo-200 mt-0.5">
-              이번 주 총 <span className="font-bold text-amber-300">{totalHours}시간</span> 수업이 배정되어 있습니다.
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              이번 주 총 <span className="font-semibold text-slate-700">{totalHours}시간</span> 수업이 배정되어 있습니다.
             </p>
           </div>
+          <span className="p-2 rounded-xl bg-indigo-50 text-indigo-600 text-xl">
+            🗓️
+          </span>
         </div>
-        {onNavigateToMyTimetable && (
-          <button
-            onClick={onNavigateToMyTimetable}
-            className="text-xs text-indigo-100 hover:text-white bg-indigo-800/70 hover:bg-indigo-700 border border-indigo-700/60 px-3 py-1.5 rounded-lg font-bold transition-all shadow-2xs flex items-center gap-1"
-          >
-            <span>시간표 상세 · 맞교환 신청</span>
-            <span>→</span>
-          </button>
-        )}
-      </div>
 
-      {/* Content */}
-      <div className="p-4">
+        {/* Content */}
         {loading ? (
           <div className="py-10 text-center text-xs text-indigo-500 font-medium animate-pulse flex items-center justify-center gap-2">
             <span className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce"></span>
@@ -103,8 +94,9 @@ export default function MyTimetableCard({ onNavigateToMyTimetable }: MyTimetable
             <p className="font-semibold">{error}</p>
             {onNavigateToMyTimetable && (
               <button
+                type="button"
                 onClick={onNavigateToMyTimetable}
-                className="mt-2 text-xs text-indigo-600 hover:underline font-bold"
+                className="mt-2 text-xs text-indigo-600 hover:underline font-bold cursor-pointer"
               >
                 "내 시간표" 메뉴로 직접 이동하기 →
               </button>
@@ -180,6 +172,19 @@ export default function MyTimetableCard({ onNavigateToMyTimetable }: MyTimetable
           </div>
         )}
       </div>
+
+      {/* Footer Link */}
+      {onNavigateToMyTimetable && (
+        <div className="pt-3">
+          <button
+            type="button"
+            onClick={onNavigateToMyTimetable}
+            className="w-full text-left text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1 cursor-pointer"
+          >
+            시간표 상세 · 맞교환 신청 →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
