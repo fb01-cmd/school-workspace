@@ -34,15 +34,37 @@ function IndeterminateCheckbox({
   }, [indeterminate]);
 
   return (
-    <input
-      type="checkbox"
-      ref={ref}
-      id={id}
+    <label
       title={title}
-      checked={checked}
-      onChange={onChange}
-      className={`rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer ${className}`}
-    />
+      className={`relative inline-flex items-center justify-center cursor-pointer select-none ${className}`}
+    >
+      <input
+        type="checkbox"
+        ref={ref}
+        id={id}
+        checked={checked}
+        onChange={onChange}
+        className="sr-only"
+      />
+      <span
+        className={`w-3.5 h-3.5 rounded flex items-center justify-center border transition-all ${
+          checked
+            ? "bg-indigo-600 border-indigo-600 text-white shadow-2xs"
+            : indeterminate
+            ? "bg-white border-indigo-400 shadow-2xs"
+            : "bg-white border-slate-300 hover:border-slate-400"
+        }`}
+      >
+        {checked && (
+          <svg className="w-2.5 h-2.5 fill-none stroke-white stroke-2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+        {!checked && indeterminate && (
+          <span className="w-2 h-0.5 bg-indigo-500 rounded-full" />
+        )}
+      </span>
+    </label>
   );
 }
 
@@ -51,6 +73,7 @@ interface HubOrgTreeProps {
   onToggleEmail: (email: string) => void;
   onToggleDept: (deptName: string, memberEmails: string[]) => void;
   onClearSelection: () => void;
+  onSelectAll?: (emails: string[]) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onProfilesLoaded?: (profiles: TeacherProfile[]) => void;
@@ -61,6 +84,7 @@ export default function HubOrgTree({
   onToggleEmail,
   onToggleDept,
   onClearSelection,
+  onSelectAll,
   isCollapsed,
   onToggleCollapse,
   onProfilesLoaded,
@@ -218,6 +242,37 @@ export default function HubOrgTree({
     return matched;
   }, [searchQuery, profiles, activeEmails, gwsNameMap]);
 
+  // All valid deduped active teacher emails (Directive 5 / Feedback 7 / spec §2-1-2)
+  const allValidTeacherEmails = useMemo(() => {
+    const seen = new Set<string>();
+    profiles.forEach((p) => {
+      const email = (p.email || "").toLowerCase();
+      if (!email) return;
+      if (activeEmails && !activeEmails.has(email)) return;
+      if (p.noDept || !p.departments || p.departments.length === 0) return;
+      seen.add(email);
+    });
+    return Array.from(seen);
+  }, [profiles, activeEmails]);
+
+  const totalValidCount = allValidTeacherEmails.length;
+  const isAllSchoolSelected =
+    totalValidCount > 0 && allValidTeacherEmails.every((e) => selectedEmails.has(e));
+
+  const handleToggleAllSchool = () => {
+    if (isAllSchoolSelected) {
+      onClearSelection();
+    } else {
+      if (onSelectAll) {
+        onSelectAll(allValidTeacherEmails);
+      } else {
+        allValidTeacherEmails.forEach((e) => {
+          if (!selectedEmails.has(e)) onToggleEmail(e);
+        });
+      }
+    }
+  };
+
   const toggleDeptExpand = (dept: string) => {
     setExpandedDepts((prev) => ({
       ...prev,
@@ -292,6 +347,24 @@ export default function HubOrgTree({
             </button>
           )}
         </div>
+
+        {/* 효명고 전체 선택 버튼 (Directive 5 / Feedback 7 / spec §2-1-2) */}
+        {!searchQuery.trim() && totalValidCount > 0 && (
+          <div className="mt-2 pt-2 border-t border-slate-200/80">
+            <button
+              type="button"
+              onClick={handleToggleAllSchool}
+              className={`w-full py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-between border ${
+                isAllSchoolSelected
+                  ? "bg-indigo-50 border-indigo-200 text-indigo-800 hover:bg-indigo-100/80"
+                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100/70"
+              }`}
+            >
+              <span>{isAllSchoolSelected ? `전체 해제 (${totalValidCount}명)` : `효명고 전체 선택 (${totalValidCount}명)`}</span>
+              <span className="text-[10px] text-slate-400">{isAllSchoolSelected ? "✕" : "✓"}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Roster Tree or Flat Search Results list */}
@@ -389,8 +462,16 @@ export default function HubOrgTree({
                     >
                       <span className="text-xs font-bold text-slate-800 truncate">{deptName}</span>
                       <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700">
-                          {allDeptMembers.length}
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                            selectedCountInDept > 0
+                              ? "bg-indigo-100 text-indigo-700"
+                              : "bg-slate-200 text-slate-700"
+                          }`}
+                        >
+                          {selectedCountInDept > 0
+                            ? `${selectedCountInDept}/${allDeptMembers.length}`
+                            : allDeptMembers.length}
                         </span>
                         <span className="text-[10px] text-slate-400">{isExpanded ? "▲" : "▼"}</span>
                       </div>

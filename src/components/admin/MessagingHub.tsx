@@ -138,6 +138,11 @@ export default function MessagingHub({
     setSharedBody("");
   }, []);
 
+  // 전체 선택 (효명고 전체 선택)
+  const handleSelectAll = useCallback((emails: string[]) => {
+    setSelectedEmails(new Set(emails.map((e) => e.toLowerCase())));
+  }, []);
+
   // 개별 칩 제거
   const handleRemoveEmail = useCallback((email: string) => {
     setSelectedEmails((prev) => {
@@ -195,6 +200,7 @@ export default function MessagingHub({
           onToggleEmail={handleToggleEmail}
           onToggleDept={handleToggleDept}
           onClearSelection={handleClearSelection}
+          onSelectAll={handleSelectAll}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={toggleSidebarCollapse}
           onProfilesLoaded={setProfiles}
