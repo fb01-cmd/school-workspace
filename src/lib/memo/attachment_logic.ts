@@ -1,11 +1,27 @@
 // 쪽지 2단계 — 첨부 검증 순수 로직 (docs/memo_attachment_spec.md §0·§2·§3)
 // 이 파일은 네트워크·Firestore 무의존이다 — selftest(scripts/memo_attachment_selftest.ts)가 직접 임포트한다.
 
+import { TASK_FILE_EXT_WHITELIST, TASK_FILE_MAX_BYTES, TASK_SERVER_UPLOAD_MAX_BYTES } from "@/lib/tasks/logic";
+
 export const MEMO_MAX_ATTACHMENTS = 5;
-/** 클라이언트 리사이즈 상한과 동일 — 서버 재검증 기준 (§3-2) */
-export const MEMO_ATTACHMENT_MAX_BYTES = Math.floor(3.5 * 1024 * 1024);
-/** v1 = 이미지만 (§0-2) — 일반 파일은 실수요 후 이 목록 한 줄 확장으로 연다. GIF는 richtext spec §9 (2026-08-18) */
+/** 서버 경유 업로드 상한 — 업무와 동일 4MB (2026-08-19 피드백 10번: 초과분은 세션 업로드 경로) */
+export const MEMO_ATTACHMENT_MAX_BYTES = TASK_SERVER_UPLOAD_MAX_BYTES;
+/** 세션 업로드(대용량) 절대 상한 — 업무 파일 상한 승계 (10MB) */
+export const MEMO_ATTACHMENT_SESSION_MAX_BYTES = TASK_FILE_MAX_BYTES;
+/**
+ * 일반 파일 확장 (2026-08-19 피드백 10번) — 업무 파일 목록 재사용 + GIF 유지
+ * (GIF는 업무에서만 제외 — richtext spec §9의 쪽지 GIF는 실수요). 실행 파일류는 목록 밖 = 차단.
+ */
+export const MEMO_FILE_EXT_WHITELIST = [...TASK_FILE_EXT_WHITELIST, "gif"];
+/** 이미지 MIME (바이트 서명 검증 대상) — v1 이미지 전용 시절의 화이트리스트, 이제 이미지 판별용 */
 export const MEMO_ATTACHMENT_MIME_WHITELIST = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+const IMAGE_EXT_TO_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
 export const MEMO_ATTACHMENT_NAME_MAX = 100;
 /** 수신 집합이 전 교직원의 이 비율 이상이면 개별 권한 대신 도메인 내부 링크 공유 (§3-3 예외) */
 export const MEMO_ATTACHMENT_DOMAIN_SHARE_RATIO = 0.9;
@@ -55,28 +71,67 @@ export function sniffImageMime(bytes: Uint8Array): "image/png" | "image/jpeg" | 
   return null;
 }
 
+/** 파일명 확장자 — 화이트리스트 대조용 (업무 validateTaskFileName과 같은 규칙) */
+export function memoFileExt(name: unknown): string {
+  const n = typeof name === "string" ? name.trim() : "";
+  const m = /\.([A-Za-z0-9]{1,10})$/.exec(n);
+  return m ? m[1].toLowerCase() : "";
+}
+
+/**
+ * 서버 경유 업로드 검증 (§3-2 + 2026-08-19 일반 파일 확장).
+ * 이미지는 종전대로 바이트 서명이 확장자와 일치해야 통과(선언 MIME 위장 차단 유지).
+ * 비이미지(한글·오피스 등)는 바이트 서명 판별이 불가하므로 확장자 화이트리스트 + 크기만 —
+ * 업무 파일 경로(validateTaskFileName)와 같은 수준의 방어다.
+ */
 export function validateAttachmentUpload(input: {
   name: unknown;
   mimeType: unknown;
   bytes: Uint8Array;
 }): { ok: true; safeName: string; mimeType: string } | { ok: false; error: string } {
-  const declared =
-    typeof input.mimeType === "string" ? input.mimeType.trim().toLowerCase() : "";
-  const normalized = declared === "image/jpg" ? "image/jpeg" : declared;
-  if (!MEMO_ATTACHMENT_MIME_WHITELIST.includes(normalized)) {
-    return { ok: false, error: "이미지 파일(PNG·JPG·WEBP·GIF)만 첨부할 수 있습니다." };
+  const ext = memoFileExt(input.name);
+  if (!ext || !MEMO_FILE_EXT_WHITELIST.includes(ext)) {
+    return { ok: false, error: "허용되지 않는 파일 형식입니다. (한글·오피스·PDF·압축·이미지 파일만)" };
   }
   if (input.bytes.length === 0) {
     return { ok: false, error: "빈 파일은 첨부할 수 없습니다." };
   }
   if (input.bytes.length > MEMO_ATTACHMENT_MAX_BYTES) {
-    return { ok: false, error: "첨부 이미지는 3.5MB 이하여야 합니다." };
+    return { ok: false, error: "4MB가 넘는 파일은 대용량 업로드로 올려 주세요." };
   }
-  const sniffed = sniffImageMime(input.bytes);
-  if (!sniffed || sniffed !== normalized) {
-    return { ok: false, error: "이미지 파일이 손상되었거나 형식이 올바르지 않습니다." };
+  const expectedImageMime = IMAGE_EXT_TO_MIME[ext];
+  if (expectedImageMime) {
+    const sniffed = sniffImageMime(input.bytes);
+    if (!sniffed || sniffed !== expectedImageMime) {
+      return { ok: false, error: "이미지 파일이 손상되었거나 형식이 올바르지 않습니다." };
+    }
+    return { ok: true, safeName: sanitizeAttachmentName(input.name), mimeType: sniffed };
   }
-  return { ok: true, safeName: sanitizeAttachmentName(input.name), mimeType: sniffed };
+  const declared = typeof input.mimeType === "string" ? input.mimeType.trim().toLowerCase() : "";
+  return {
+    ok: true,
+    safeName: sanitizeAttachmentName(input.name),
+    mimeType: declared || "application/octet-stream",
+  };
+}
+
+/** 세션 업로드(대용량) 시작 검증 — 확장자 화이트리스트 + 10MB 상한 (피드백 10번, 업무 §5-4 이식) */
+export function validateAttachmentSessionStart(input: {
+  name: unknown;
+  size: unknown;
+}): { ok: true; safeName: string; ext: string } | { ok: false; error: string } {
+  const ext = memoFileExt(input.name);
+  if (!ext || !MEMO_FILE_EXT_WHITELIST.includes(ext)) {
+    return { ok: false, error: "허용되지 않는 파일 형식입니다. (한글·오피스·PDF·압축·이미지 파일만)" };
+  }
+  const size = typeof input.size === "number" ? input.size : NaN;
+  if (!Number.isFinite(size) || size <= 0) {
+    return { ok: false, error: "빈 파일은 첨부할 수 없습니다." };
+  }
+  if (size > MEMO_ATTACHMENT_SESSION_MAX_BYTES) {
+    return { ok: false, error: "첨부 파일은 10MB 이하여야 합니다." };
+  }
+  return { ok: true, safeName: sanitizeAttachmentName(input.name), ext };
 }
 
 /** 발송 payload의 attachments — driveFileId 문자열 배열만 받는다(메타데이터는 staging이 원본, §3-2) */
@@ -99,7 +154,7 @@ export function validateAttachmentIds(
     ids.push(id);
   }
   if (ids.length > MEMO_MAX_ATTACHMENTS) {
-    return { ok: false, error: `이미지는 ${MEMO_MAX_ATTACHMENTS}장까지 첨부할 수 있습니다.` };
+    return { ok: false, error: `파일은 ${MEMO_MAX_ATTACHMENTS}개까지 첨부할 수 있습니다.` };
   }
   return { ok: true, ids };
 }

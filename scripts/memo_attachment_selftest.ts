@@ -11,11 +11,13 @@
  */
 import {
   MEMO_ATTACHMENT_MAX_BYTES,
+  MEMO_ATTACHMENT_SESSION_MAX_BYTES,
   decideAttachmentShareMode,
   resolveAttachmentViewEligibility,
   sanitizeAttachmentName,
   sniffImageMime,
   validateAttachmentIds,
+  validateAttachmentSessionStart,
   validateAttachmentUpload,
 } from "../src/lib/memo/attachment_logic";
 
@@ -55,8 +57,26 @@ async function pureTests() {
   {
     const over = new Uint8Array(MEMO_ATTACHMENT_MAX_BYTES + 1);
     over.set(TINY_PNG.subarray(0, 8), 0); // PNG 서명만 흉내
-    expect("3.5MB 초과 거부", !validateAttachmentUpload({ name: "a.png", mimeType: "image/png", bytes: over }).ok);
+    expect("서버 경로 4MB 초과 거부", !validateAttachmentUpload({ name: "a.png", mimeType: "image/png", bytes: over }).ok);
   }
+
+  // 일반 파일 확장 (2026-08-19 피드백 10번 — 업무 파일 목록 재사용 + GIF 유지)
+  const hwpBytes = new TextEncoder().encode("HWP Document File dummy");
+  expect("일반 파일: hwp 통과 (바이트 서명 검증 없음 — 확장자 화이트리스트)",
+    (() => { const r = validateAttachmentUpload({ name: "제출 양식.hwp", mimeType: "application/x-hwp", bytes: hwpBytes }); return r.ok && r.mimeType === "application/x-hwp"; })());
+  expect("일반 파일: 선언 MIME 없으면 octet-stream 폴백",
+    (() => { const r = validateAttachmentUpload({ name: "a.zip", mimeType: "", bytes: hwpBytes }); return r.ok && r.mimeType === "application/octet-stream"; })());
+  expect("일반 파일: exe 거부", !validateAttachmentUpload({ name: "virus.exe", mimeType: "application/octet-stream", bytes: hwpBytes }).ok);
+  expect("일반 파일: 확장자 없음 거부", !validateAttachmentUpload({ name: "noext", mimeType: "text/plain", bytes: hwpBytes }).ok);
+  expect("일반 파일: 이미지 확장자는 여전히 서명 검증 (png 확장자 + 텍스트 바이트 거부)",
+    !validateAttachmentUpload({ name: "fake.png", mimeType: "image/png", bytes: hwpBytes }).ok);
+
+  // 세션 업로드(대용량) 시작 검증 (피드백 10번 — 업무 §5-4 이식)
+  expect("세션: hwp 10MB 이하 통과", validateAttachmentSessionStart({ name: "a.hwp", size: 9 * 1024 * 1024 }).ok);
+  expect("세션: 10MB 초과 거부", !validateAttachmentSessionStart({ name: "a.hwp", size: MEMO_ATTACHMENT_SESSION_MAX_BYTES + 1 }).ok);
+  expect("세션: exe 거부", !validateAttachmentSessionStart({ name: "a.exe", size: 1024 }).ok);
+  expect("세션: 빈 파일 거부", !validateAttachmentSessionStart({ name: "a.pdf", size: 0 }).ok);
+  expect("세션: gif 통과 (쪽지는 GIF 유지)", validateAttachmentSessionStart({ name: "a.gif", size: 5 * 1024 * 1024 }).ok);
   expect("서명 판별: png", sniffImageMime(TINY_PNG) === "image/png");
   expect("서명 판별: jpeg", sniffImageMime(new Uint8Array([0xff, 0xd8, 0xff, 0xe0])) === "image/jpeg");
   expect("서명 판별: gif (GIF89a)", sniffImageMime(TINY_GIF) === "image/gif");

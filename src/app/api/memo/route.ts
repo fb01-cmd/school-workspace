@@ -19,15 +19,18 @@ import {
 import {
   decideAttachmentShareMode,
   validateAttachmentIds,
+  validateAttachmentSessionStart,
   validateAttachmentUpload,
 } from "@/lib/memo/attachment_logic";
 import {
+  createMemoUploadSession,
   deleteStagingDocs,
   finalizeMemoAttachments,
   getAttachmentQuota,
   resolveStagedAttachments,
   retryPendingAttachmentGrants,
   revokeAttachmentAccess,
+  stageSessionUploadedAttachment,
   uploadMemoAttachment,
 } from "@/lib/memo/attachments";
 import { listGroupMembers, listUsersInOUs } from "@/lib/google/workspace";
@@ -36,7 +39,15 @@ import { emitNotificationsBatch } from "@/lib/notifications/server";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse, after } from "next/server";
 
-type MemoAction = "send" | "read" | "recall" | "hide" | "star" | "attachment_quota";
+type MemoAction =
+  | "send"
+  | "read"
+  | "recall"
+  | "hide"
+  | "star"
+  | "attach_session_start"
+  | "attach_session_finish"
+  | "attachment_quota";
 
 const memoItemsColRef = (domain: string) =>
   adminDb.collection("memos").doc(domain).collection("items");
@@ -76,7 +87,7 @@ export async function POST(req: NextRequest) {
       const form = await req.formData().catch(() => null);
       const file = form?.get("file");
       if (!(file instanceof File)) {
-        return NextResponse.json({ error: "첨부할 이미지를 확인하지 못했습니다." }, { status: 400 });
+        return NextResponse.json({ error: "첨부할 파일을 확인하지 못했습니다." }, { status: 400 });
       }
       const buffer = Buffer.from(await file.arrayBuffer());
       const checked = validateAttachmentUpload({ name: file.name, mimeType: file.type, bytes: buffer });
@@ -95,7 +106,7 @@ export async function POST(req: NextRequest) {
       } catch (e: any) {
         console.error("[api/memo] 첨부 업로드 실패:", e?.message || e);
         return NextResponse.json(
-          { error: "이미지 업로드에 실패했습니다. 잠시 후 다시 시도해 주세요." },
+          { error: "파일 업로드에 실패했습니다. 잠시 후 다시 시도해 주세요." },
           { status: 502 }
         );
       }
@@ -465,6 +476,30 @@ export async function POST(req: NextRequest) {
           await ref.update(new FieldPath("starredBy", email), FieldValue.delete());
         }
         return NextResponse.json({ success: true, action, on: body.on });
+      }
+
+      case "attach_session_start": {
+        // 대용량(>4MB, ≤10MB) 첨부 — Drive 재개 업로드 세션 발급 (피드백 10번, 업무 §5-4 이식)
+        const checked = validateAttachmentSessionStart({ name: body.fileName, size: Number(body.size) });
+        if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
+        const origin = req.headers.get("origin") || req.nextUrl.origin;
+        const sessionUrl = await createMemoUploadSession({
+          safeName: checked.safeName,
+          mimeType: typeof body.mimeType === "string" ? body.mimeType : "application/octet-stream",
+          origin,
+        });
+        return NextResponse.json({ success: true, action, sessionUrl });
+      }
+
+      case "attach_session_finish": {
+        // 업로드 완료 재검증 → staging 등재 — 이후 발송·권한·파기는 서버 경유 첨부와 동일 경로
+        const fileId = typeof body.driveFileId === "string" ? body.driveFileId.trim() : "";
+        if (!fileId || fileId.length > 200 || fileId.includes("/")) {
+          return NextResponse.json({ error: "업로드된 파일을 확인하지 못했습니다." }, { status: 400 });
+        }
+        const staged = await stageSessionUploadedAttachment({ fileId, uploaderEmail: email, domain });
+        if (!staged.ok) return NextResponse.json({ error: staged.error }, { status: 400 });
+        return NextResponse.json({ success: true, action, attachment: staged.attachment });
       }
 
       case "attachment_quota": {

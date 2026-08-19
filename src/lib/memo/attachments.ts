@@ -4,7 +4,12 @@ import { Readable } from "stream";
 import { adminDb } from "@/lib/firebase/admin";
 import { getDriveClient } from "@/lib/google/workspace";
 import { FieldValue } from "firebase-admin/firestore";
-import { AttachmentShareMode, MemoAttachment } from "./attachment_logic";
+import { google } from "googleapis";
+import {
+  AttachmentShareMode,
+  MemoAttachment,
+  validateAttachmentSessionStart,
+} from "./attachment_logic";
 
 type Drive = NonNullable<ReturnType<typeof getDriveClient>>;
 
@@ -136,6 +141,106 @@ export async function uploadMemoAttachment(params: {
     createdAt: Date.now(),
   });
   return attachment;
+}
+
+// ── 대용량 세션 업로드 (2026-08-19 피드백 10번 — 업무 §5-4 경로 이식) ──────────
+//
+// 4MB(서버 본문 한도) 초과 파일은 서버가 Drive 재개 업로드 세션 URL을 발급하고
+// 브라우저가 그 URL로 직접 PUT한다 — DWD 키는 서버 밖으로 나가지 않는다.
+// 완료 후 서버가 메타를 재검증해 staging에 올리기 전까지는 첨부로 치지 않는다.
+
+/** 세션 발급 — 파일은 서버 경유와 같은 월 폴더에 `대기_` 접두로 생긴다 */
+export async function createMemoUploadSession(params: {
+  safeName: string;
+  mimeType: string;
+  origin: string;
+}): Promise<string> {
+  const drive = driveOrThrow();
+  const folderId = await getMemoMonthFolderId(drive);
+  const privateKey = process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_PRIVATE_KEY!.replace(/\\n/g, "\n");
+  const auth = new google.auth.JWT({
+    email: process.env.GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL,
+    key: privateKey,
+    scopes: ["https://www.googleapis.com/auth/drive"],
+    subject: attachmentOwnerEmail(), // 소유는 업무(관리자)와 달리 hmnotice@ — 기존 첨부 모델 그대로
+  });
+  const token = await auth.getAccessToken();
+  if (!token.token) throw new Error("업로드 토큰 발급에 실패했습니다.");
+  const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token.token}`,
+      "Content-Type": "application/json; charset=UTF-8",
+      "X-Upload-Content-Type": params.mimeType || "application/octet-stream",
+      Origin: params.origin,
+    },
+    body: JSON.stringify({ name: `대기_${params.safeName}`, parents: [folderId] }),
+  });
+  const location = res.headers.get("location");
+  if (!res.ok || !location) throw new Error(`업로드 세션 발급 실패 (${res.status})`);
+  return location;
+}
+
+/**
+ * 세션 업로드 완료 검증 + staging 등재 — 이후 발송 흐름(resolveStagedAttachments·
+ * finalizeMemoAttachments·파기)은 서버 경유 첨부와 완전히 동일하게 탄다.
+ * 검증: ① 파일이 실재하고 쪽지 첨부 월 폴더 안(폴더 캐시 대조 — 월 전환 직후도 통과)
+ * ② 확장자 화이트리스트·10MB 상한 재검증. mimeType은 Drive가 내용으로 판별한 값을 쓴다.
+ */
+export async function stageSessionUploadedAttachment(params: {
+  fileId: string;
+  uploaderEmail: string;
+  domain: string;
+}): Promise<{ ok: true; attachment: MemoAttachment } | { ok: false; error: string }> {
+  const drive = driveOrThrow();
+  let meta;
+  try {
+    const res = await drive.files.get({
+      fileId: params.fileId,
+      fields: "id, name, size, parents, mimeType, webViewLink, thumbnailLink",
+    });
+    meta = res.data;
+  } catch {
+    return { ok: false, error: "업로드된 파일을 확인하지 못했습니다." };
+  }
+  const cacheSnap = await folderCacheRef().get();
+  const ids = cacheSnap.data()?.ids || {};
+  const memoFolderIds = new Set(
+    Object.entries(ids)
+      .filter(([k]) => k.startsWith("쪽지/"))
+      .map(([, v]) => v as string)
+  );
+  const parents = meta.parents || [];
+  if (!parents.some((p) => memoFolderIds.has(p))) {
+    return { ok: false, error: "업로드된 파일을 확인하지 못했습니다." };
+  }
+  const rawName = (meta.name || "").replace(/^대기_/, "");
+  const size = Number(meta.size) || 0;
+  const checked = validateAttachmentSessionStart({ name: rawName, size });
+  if (!checked.ok) {
+    // 검증 탈락 원본은 남겨두지 않는다 — staging에 못 오른 파일은 발송 불가라 잔존물일 뿐
+    await drive.files.delete({ fileId: params.fileId }).catch(() => {});
+    return { ok: false, error: checked.error };
+  }
+  const attachment: MemoAttachment = {
+    driveFileId: meta.id!,
+    name: checked.safeName,
+    mimeType: meta.mimeType || "application/octet-stream",
+    size,
+    webViewLink: meta.webViewLink || "",
+    ...(meta.thumbnailLink ? { thumbnailLink: meta.thumbnailLink } : {}),
+  };
+  await stagingRef(attachment.driveFileId).set({
+    uploaderEmail: params.uploaderEmail,
+    domain: params.domain,
+    name: attachment.name,
+    mimeType: attachment.mimeType,
+    size: attachment.size,
+    webViewLink: attachment.webViewLink,
+    thumbnailLink: attachment.thumbnailLink || null,
+    createdAt: Date.now(),
+  });
+  return { ok: true, attachment };
 }
 
 /**

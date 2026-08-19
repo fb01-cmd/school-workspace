@@ -8,6 +8,9 @@ import {
   stripMd1,
   bodyHasMd1Formatting,
   collectMd1AttachmentIds,
+  autolinkText,
+  autolinkBlocks,
+  parsePlainAutolink,
 } from "../src/lib/memo/richtext";
 import { validateMemoContent, MEMO_MAX_BODY } from "../src/lib/memo/logic";
 
@@ -116,6 +119,46 @@ const base = { title: "t", body: "b" };
 check("⑩ md1 수용", (validateMemoContent({ ...base, contentFormat: "md1" }) as any).content.contentFormat, "md1");
 check("⑩ 부재 = 평문(필드 없음)", "contentFormat" in (validateMemoContent(base) as any).content, false);
 check("⑩ 이상값 거부", (validateMemoContent({ ...base, contentFormat: "html" }) as any).ok, false);
+
+// ⑫ bare URL 자동 링크 (spec §10 승격 — 2026-08-19 피드백 6번, 쪽지·업무 공용)
+check("⑫ 문장 속 URL 승격", autolinkText("자료는 https://docs.google.com/d/abc 참고"), [
+  { kind: "text", text: "자료는 " },
+  { kind: "link", label: "https://docs.google.com/d/abc", href: "https://docs.google.com/d/abc" },
+  { kind: "text", text: " 참고" },
+]);
+check("⑫ http는 불성립 (https만 — 기존 링크 규칙 동일)", autolinkText("http://a.com 확인"), [
+  { kind: "text", text: "http://a.com 확인" },
+]);
+check("⑫ 꼬리 문장부호 제외", autolinkText("(https://a.com/x)."), [
+  { kind: "text", text: "(" },
+  { kind: "link", label: "https://a.com/x", href: "https://a.com/x" },
+  { kind: "text", text: ")." },
+]);
+check("⑫ URL 2개", autolinkText("https://a.com/1 그리고 https://b.com/2").filter((n) => n.kind === "link").length, 2);
+check("⑫ https:// 만 있으면 불성립", autolinkText("주소는 https:// 입니다"), [
+  { kind: "text", text: "주소는 https:// 입니다" },
+]);
+check("⑫ 2048자 초과 불성립", autolinkText("https://a.com/" + "x".repeat(2100))[0].kind, "text");
+check("⑫ md1 경로: text 노드만 승격, 명시 링크는 그대로", autolinkBlocks(parseMd1("[라벨](https://x.com/1) https://y.com/2")), [
+  {
+    kind: "paragraph",
+    children: [
+      { kind: "link", label: "라벨", href: "https://x.com/1" },
+      { kind: "text", text: " " },
+      { kind: "link", label: "https://y.com/2", href: "https://y.com/2" },
+    ],
+  },
+]);
+check("⑫ md1 경로: 목록 항목 안 URL", autolinkBlocks(parseMd1("- https://a.com/x")), [
+  { kind: "bulletList", items: [[{ kind: "link", label: "https://a.com/x", href: "https://a.com/x" }]] },
+]);
+check("⑫ 평문 경로: md1 토큰 미해석 + URL만 링크", parsePlainAutolink("**굵게 아님**\nhttps://a.com/x"), [
+  { kind: "paragraph", children: [{ kind: "text", text: "**굵게 아님**" }] },
+  { kind: "paragraph", children: [{ kind: "link", label: "https://a.com/x", href: "https://a.com/x" }] },
+]);
+check("⑫ 평문 경로: 빈 줄 보존", parsePlainAutolink("a\n\nb").length, 3);
+check("⑫ 스탬프 무영향: bare URL만으로 md1 승격 안 됨", bodyHasMd1Formatting("https://a.com/x 보세요"), false);
+check("⑫ strip 무영향: 저장·강등 경로는 종전 그대로", stripMd1("https://a.com/x 보세요"), "https://a.com/x 보세요");
 
 console.log(fails ? `\n❌ 실패 ${fails}건` : "\n✅ 전판 통과");
 process.exit(fails ? 1 : 0);

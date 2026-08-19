@@ -300,3 +300,59 @@ export function bodyHasMd1Formatting(body: string): boolean {
     (b) => b.kind !== "paragraph" || b.children.some((n) => n.kind !== "text")
   );
 }
+
+// ── bare URL 자동 링크 (spec §10 v1.1 승격 — 2026-08-19 실기기 피드백 6번) ──
+//
+// 붙여넣은 https 주소를 링크 노드로 승격한다. 렌더 직전의 후처리라 parseMd1의
+// 결과(저장 형식·stripMd1 강등·bodyHasMd1Formatting 스탬프 판단)는 바꾸지 않는다 —
+// 평문에 URL이 있다고 md1로 승격되는 부작용을 여기서 차단한다.
+// 안전 규칙은 명시 링크와 동일: https만, 공백 불가, 2048자 이하.
+
+const AUTOLINK_RE = /https:\/\/[^\s]+/g;
+/** URL 꼬리에 붙은 문장부호(마침표·쉼표·닫는 괄호류)는 링크에서 제외한다 */
+const AUTOLINK_TRAILING_RE = /[.,;:!?"'）」』>\]})]+$/;
+
+/** 리터럴 텍스트 하나를 text·link 노드 열로 분해 — 평문 렌더 경로의 최소 단위 */
+export function autolinkText(text: string): RichInline[] {
+  const nodes: RichInline[] = [];
+  let last = 0;
+  for (const m of text.matchAll(AUTOLINK_RE)) {
+    let url = m[0].replace(AUTOLINK_TRAILING_RE, "");
+    if (url.length <= "https://".length || url.length > LINK_MAX_URL) continue;
+    if (m.index > last) nodes.push({ kind: "text", text: text.slice(last, m.index) });
+    nodes.push({ kind: "link", label: url, href: url });
+    last = m.index + url.length;
+  }
+  if (last < text.length) nodes.push({ kind: "text", text: text.slice(last) });
+  if (nodes.length === 0 && text.length === 0) return [];
+  return nodes.length ? nodes : [{ kind: "text", text }];
+}
+
+function autolinkInlines(nodes: RichInline[]): RichInline[] {
+  return nodes.flatMap((n) => (n.kind === "text" ? autolinkText(n.text) : [n]));
+}
+
+/** md1 렌더 경로용 — parseMd1 결과의 text 노드만 링크로 승격 (명시 링크·이미지는 그대로) */
+export function autolinkBlocks(blocks: RichBlock[]): RichBlock[] {
+  return blocks.map((b) => {
+    switch (b.kind) {
+      case "paragraph":
+        return { ...b, children: autolinkInlines(b.children) };
+      case "bulletList":
+        return { ...b, items: b.items.map(autolinkInlines) };
+      case "orderedList":
+        return { ...b, items: b.items.map(autolinkInlines) };
+      case "quote":
+        return { ...b, lines: b.lines.map(autolinkInlines) };
+    }
+  });
+}
+
+/**
+ * 평문 렌더 경로용 — md1 토큰을 해석하지 않고 줄 = 문단으로만 나눈 뒤 URL만 링크로.
+ * contentFormat 부재 문서를 재해석하지 않는다는 하위호환 원칙(spec §2)은 그대로다 —
+ * 서식 해석이 아니라 렌더 표현(클릭 가능)만 바꾼다.
+ */
+export function parsePlainAutolink(body: string): RichBlock[] {
+  return body.split("\n").map((line) => ({ kind: "paragraph" as const, children: autolinkText(line) }));
+}
