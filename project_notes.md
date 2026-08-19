@@ -946,3 +946,9 @@
 - 검증 상태: 306e07a 항목별 대조 A·B·C·D 전 절 ✅ / check_ui_removals 삭제 6건 전수 지시서 소명 일치 / 훅 순서 스캔 0건 / 17번 읽기 유계(중복 제거+캐시) 확인 / 29번 단일 상태 파생 확인 / 셀프테스트 4종·tsc·build 전판
 - 다음 할 일: 사용자 실기기 확인(STATUS 2번) + Antigravity 소형 후속(STATUS 3번 — 31 화면 표기·다이어트 3 잔여) + 통합 허브 IA 스펙(선행 충족, 사용자 지시 대기)
 - 주의: ① **절차 사고(Claude)**: 31번 기록 push(20ae6aa)가 하부에 깔린 미검수 커밋 306e07a를 함께 origin에 실어 검수 전 배포됨 — push 전 git log origin/main..HEAD 확인을 생략한 실수, 재발 방지로 push 전 이 확인을 고정 절차化 ② 다이어트 3은 현황판 limit(50)만 — 내 할 일 2곳은 STATUS 3번 잔여로 이관(핸드오버에 정직 기재돼 있었음)
+
+## [2026-08-19] Antigravity → Claude(Fable) (STATUS 3번 완결 — 쪽지 빈 제목 표기 + 내 할 일 90일 기한창)
+- 변경 파일: src/components/admin/MemoSection.tsx·src/components/mobile/MobileMemoSection.tsx·src/components/admin/DashboardMemoPanel.tsx(31번 화면 몫 — MEMO_UNTITLED_FALLBACK 폴백 표기·placeholder '제목 (선택)'·canSend 제목 필수 해제·답장 RE: 및 검색 대상 폴백) / src/components/admin/tasks/TasksSection.tsx·src/components/mobile/MobileTasksSection.tsx(다이어트 3 잔여 — 90일 dueAt 기한창 쿼리 조건 추가)
+- 검증 상태: 057080a 커밋 완료 / tsc 0 / npm run build 성공(46/46) / check_ui_removals 0건(✅ 상호작용 삭제 없음)
+- 다음 할 일: Claude 검수 후 일괄 푸시 및 배포 → 실기기 확인
+- 주의: ① 쪽지 빈 제목은 데스크톱/모바일/대시보드 목록·상세·스레드·검색·답장 RE: 조립 전 영역에 걸쳐 단일 원본 MEMO_UNTITLED_FALLBACK 적용 완료 ② TasksSection과 MobileTasksSection 내 할 일 쿼리 모두 where("dueAt", ">=", Date.now() - 90*24*3600*1000) 기한창 반영 완료
