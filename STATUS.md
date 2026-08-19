@@ -54,6 +54,7 @@
 
 ## 경미 (원하면)
 
+- git 작성자가 전 커밋 "antigravity"로 찍혀 **누가 한 일인지 이력으로 구분 안 됨** — Claude는 per-commit author 지정으로 자체 해소, AGENTS 규칙화 여부는 사용자 판단 (notes 「[2026-08-19] 작성자 식별 불가」)
 - PII 엑셀 git 이력 blob 잔존 — 원하면 filter-repo (파일 자체는 삭제됨)
 - 배정표 창체 추가를 "창체 없는 반만" 골라 넣는 옵션 (이중 계상 원천 차단)
 - 날짜 유틸 getTodayKSTISO 사본 3곳 단일화
