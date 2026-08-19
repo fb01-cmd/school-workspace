@@ -4,6 +4,27 @@
 > 2026-08-14 이전은 [`archive/project_notes_2026-08.md`](./archive/project_notes_2026-08.md)·[`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다
 > (원문 그대로, 블록 무손실 대조 완료). 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-19] Antigravity → Claude/사용자 (배치 1 2차 검수 후속 수정 완결 — hub_batch1_review2.md)
+- **배경**: `docs/hub_batch1_review2.md` 지시사항 수행 (순서 1·2·3 및 시간표 카드 톤 통일, 1-B 대기).
+- **구현 및 커밋 내역 (4개 덩어리)**:
+  1. `6db22d4`: **1-A (재직 필터 통과 명단 넘기기)** —
+     - `HubOrgTree.tsx`에서 트리가 그리는 것과 완전히 동일한 재직 필터 통과 집합(`validProfiles`)을 `onProfilesLoaded`로 전달.
+     - 컴포저의 부서 소속 판정(`every()`)이 퇴직/전출 잔존 프로필로 인해 영원히 false가 되는 구멍 차단.
+  2. `7f78604`: **결함 4 & 결함 6 (팝오버 부서장 조건 단일화 + 내부 reqSeqRef 경합 방어)** —
+     - 결함 4: 팝오버 부서장 배지 판정식에 `(departments.length === 1 && isDeptHead)` 폴백을 추가하여 트리 행(`:506`) 및 `sort.ts`와 삼위일체 일치.
+     - 결함 6: 호출자 의존적인 `signal` 매개변수를 완전히 제거하고 컴포넌트 내부 `reqSeqRef` 기반으로 요청 시퀀스를 자체 발급·대조. [다시 시도] 연타 및 언마운트 시의 setState 호출을 무조건 차단.
+  3. `d24c841`: **1-C (사본 추출) & 잔여 a·b** —
+     - 1-C: `deriveRecipientChips` 함수를 `src/lib/org/recipients.ts`로 추출하여 `HubTaskComposer`와 `HubMemoComposer`의 45줄 중복 블록 제거.
+     - 잔여 a: `HubOrgTree.tsx`의 도달 불가능한 `members.length === 0` 삼항 분기 정리.
+     - 잔여 b: 부서 펼침 `useEffect`의 의존성을 안정 키 `deptKey`(`structuredTree.map(t => t.deptName).join("|")`)로 변경.
+  4. `238d16b`: **추가 (실기기 신고 — 시간표 카드 홈 톤 통일)** —
+     - `src/components/admin/MyTimetableCard.tsx`: 어두운 그라디언트 헤더를 제거하고 `rounded-2xl p-6` 흰색 카드 레이아웃으로 변경.
+     - 시간표 표 본문은 유지하고, 「시간표 상세 · 맞교환 신청 →」 링크를 바닥으로 배치하여 「내 할 일」·「받은 쪽지」 카드와 톤 통일.
+- **검증 결과**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (47/47 정적 페이지 생성)
+  - `bash scripts/check_ui_removals.sh bbbb56d` ✅ (의도된 삭제 전수 소명 완료)
+
 ## [2026-08-19] Antigravity → Claude/사용자 (쪽지·업무 피드백 배치 1 완결 — hub_batch1_directive.md 11개 항목 반영)
 - **배경**: `docs/hub_batch1_directive.md` 및 `docs/hub_feedback_2026-08-19.md` 기반 피드백 배치 1 처리 (지시서 항목 1~12 / 피드백 2·3·5·7·8·9·10·11·12·13·14).
 - **구현 및 커밋 내역 (5개 덩어리)**:
