@@ -134,7 +134,7 @@ export async function uploadAttachment(
   }
 
   if (file.size > MEMO_ATTACHMENT_SESSION_MAX_BYTES) {
-    throw new Error("첨부 파일은 최대 10MB 이하만 가능합니다.");
+    throw new Error("첨부 파일은 최대 30MB 이하만 가능합니다.");
   }
 
   // 1. 이미지이고 4MB 이하인 경우 리사이즈/전처리

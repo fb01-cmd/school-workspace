@@ -6,7 +6,7 @@ import { TASK_FILE_EXT_WHITELIST, TASK_FILE_MAX_BYTES, TASK_SERVER_UPLOAD_MAX_BY
 export const MEMO_MAX_ATTACHMENTS = 5;
 /** 서버 경유 업로드 상한 — 업무와 동일 4MB (2026-08-19 피드백 10번: 초과분은 세션 업로드 경로) */
 export const MEMO_ATTACHMENT_MAX_BYTES = TASK_SERVER_UPLOAD_MAX_BYTES;
-/** 세션 업로드(대용량) 절대 상한 — 업무 파일 상한 승계 (10MB) */
+/** 세션 업로드(대용량) 절대 상한 — 업무 파일 상한 승계 (30MB, 2026-08-19 상향) */
 export const MEMO_ATTACHMENT_SESSION_MAX_BYTES = TASK_FILE_MAX_BYTES;
 /**
  * 일반 파일 확장 (2026-08-19 피드백 10번) — 업무 파일 목록 재사용 + GIF 유지
@@ -129,7 +129,7 @@ export function validateAttachmentSessionStart(input: {
     return { ok: false, error: "빈 파일은 첨부할 수 없습니다." };
   }
   if (size > MEMO_ATTACHMENT_SESSION_MAX_BYTES) {
-    return { ok: false, error: "첨부 파일은 10MB 이하여야 합니다." };
+    return { ok: false, error: "첨부 파일은 30MB 이하여야 합니다." };
   }
   return { ok: true, safeName: sanitizeAttachmentName(input.name), ext };
 }

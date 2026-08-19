@@ -217,7 +217,7 @@ export default function MobileTasksSection() {
   const handleMobileSubmit = async (taskId: string, file: File) => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
-      alert("파일 크기는 10MB 이하로 올려 주세요.");
+      alert("파일 크기는 30MB 이하로 올려 주세요.");
       return;
     }
 

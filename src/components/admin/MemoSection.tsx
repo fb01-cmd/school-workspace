@@ -2074,7 +2074,7 @@ function ComposeModal({
                   <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
                     <span>파일 첨부</span>
                     <span className="text-xs font-normal text-slate-400">
-                      ({stagedAttachments.length}/{MEMO_ATTACHMENT_MAX_COUNT}개, 개당 10MB 이하)
+                      ({stagedAttachments.length}/{MEMO_ATTACHMENT_MAX_COUNT}개, 개당 30MB 이하)
                     </span>
                   </label>
                   {stagedAttachments.length < MEMO_ATTACHMENT_MAX_COUNT && (

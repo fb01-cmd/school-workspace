@@ -14,6 +14,7 @@ import {
   validateTaskFileName,
   validateTaskFileSize,
   TASK_DRAFT_ORPHAN_MS,
+  TASK_FILE_MAX_BYTES,
   TASK_NUDGE_INTERVAL_MS,
   TASK_SERVER_UPLOAD_MAX_BYTES,
 } from "../src/lib/tasks/logic";
@@ -95,8 +96,8 @@ check("화이트리스트: hwp 통과", validateTaskFileName("양식.hwp").ok, t
 check("화이트리스트: exe 거부", validateTaskFileName("virus.exe").ok, false);
 check("화이트리스트: 확장자 없음 거부", validateTaskFileName("noext").ok, false);
 check("크기: 서버 경로 4MB 초과 거부", validateTaskFileSize(TASK_SERVER_UPLOAD_MAX_BYTES + 1, false).ok, false);
-check("크기: 세션 경로 10MB 이하 통과", validateTaskFileSize(9 * 1024 * 1024, true).ok, true);
-check("크기: 세션 경로 10MB 초과 거부", validateTaskFileSize(11 * 1024 * 1024, true).ok, false);
+check("크기: 세션 경로 상한 이하 통과 (12MB — 2026-08-19 30MB 상향 반영)", validateTaskFileSize(12 * 1024 * 1024, true).ok, true);
+check("크기: 세션 경로 상한 초과 거부", validateTaskFileSize(TASK_FILE_MAX_BYTES + 1, true).ok, false);
 check("화이트리스트: gif 거부 (2026-08-19 피드백 9번 — 업무엔 불요)", validateTaskFileName("움짤.gif").ok, false);
 check("화이트리스트: png은 유지", validateTaskFileName("사진.png").ok, true);
 

@@ -8,8 +8,8 @@ export const TASK_MAX_FORM_FILES = 5;
 export const TASK_DEFAULT_RETENTION_DAYS = 365;
 /** 서버 경유 업로드 상한 (Vercel 본문 4.5MB 내 여유) — 초과는 Drive 세션 경로 (§5-4) */
 export const TASK_SERVER_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
-/** 파일 절대 상한 (세션 경로 포함) */
-export const TASK_FILE_MAX_BYTES = 10 * 1024 * 1024;
+/** 파일 절대 상한 (세션 경로 포함) — 2026-08-19 사용자 확정 10→30MB (쪽지 첨부 상한도 이 값을 승계) */
+export const TASK_FILE_MAX_BYTES = 30 * 1024 * 1024;
 /** 재촉 최소 간격 (§6 — 업무당 24시간 1회) */
 export const TASK_NUDGE_INTERVAL_MS = 24 * 3600 * 1000;
 
@@ -290,7 +290,7 @@ export function validateTaskFileSize(size: number, viaSession: boolean): { ok: t
     return {
       ok: false,
       error: viaSession
-        ? "파일은 10MB 이하여야 합니다."
+        ? "파일은 30MB 이하여야 합니다."
         : "4MB가 넘는 파일은 대용량 업로드 경로로 올려 주세요.",
     };
   }

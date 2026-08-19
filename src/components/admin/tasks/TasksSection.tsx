@@ -252,7 +252,7 @@ export default function TasksSection({ initialTaskId }: Props) {
   const handleSubmitFile = async (taskId: string, file: File) => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
-      alert("파일 크기는 최대 10MB까지 올릴 수 있습니다.");
+      alert("파일 크기는 최대 30MB까지 올릴 수 있습니다.");
       return;
     }
 
@@ -726,7 +726,7 @@ export default function TasksSection({ initialTaskId }: Props) {
                                         {submittingTaskId === task.id ? "제출 처리 중…" : "📁 파일 선택하여 제출하기"}
                                       </label>
                                       <p className="text-[11px] text-slate-400">
-                                        한글, 오피스, PDF, 이미지 등 (최대 10MB) · 제출 시 파일명이 자동으로 규칙에 맞게 정규화됩니다.
+                                        한글, 오피스, PDF, 이미지 등 (최대 30MB) · 제출 시 파일명이 자동으로 규칙에 맞게 정규화됩니다.
                                       </p>
                                       {submittingTaskId === task.id && submitProgress && (
                                         <p className="text-xs text-indigo-600 font-bold animate-pulse">

@@ -72,8 +72,8 @@ async function pureTests() {
     !validateAttachmentUpload({ name: "fake.png", mimeType: "image/png", bytes: hwpBytes }).ok);
 
   // 세션 업로드(대용량) 시작 검증 (피드백 10번 — 업무 §5-4 이식)
-  expect("세션: hwp 10MB 이하 통과", validateAttachmentSessionStart({ name: "a.hwp", size: 9 * 1024 * 1024 }).ok);
-  expect("세션: 10MB 초과 거부", !validateAttachmentSessionStart({ name: "a.hwp", size: MEMO_ATTACHMENT_SESSION_MAX_BYTES + 1 }).ok);
+  expect("세션: hwp 상한 이하 통과 (12MB — 2026-08-19 30MB 상향 반영)", validateAttachmentSessionStart({ name: "a.hwp", size: 12 * 1024 * 1024 }).ok);
+  expect("세션: 상한 초과 거부", !validateAttachmentSessionStart({ name: "a.hwp", size: MEMO_ATTACHMENT_SESSION_MAX_BYTES + 1 }).ok);
   expect("세션: exe 거부", !validateAttachmentSessionStart({ name: "a.exe", size: 1024 }).ok);
   expect("세션: 빈 파일 거부", !validateAttachmentSessionStart({ name: "a.pdf", size: 0 }).ok);
   expect("세션: gif 통과 (쪽지는 GIF 유지)", validateAttachmentSessionStart({ name: "a.gif", size: 5 * 1024 * 1024 }).ok);
