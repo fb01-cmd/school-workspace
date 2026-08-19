@@ -65,6 +65,9 @@ export default function TaskStatusBoard() {
   const [nudging, setNudging] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  // 셀프 업무 접기 (피드백 15번) — 반드시 조기 return(로딩·빈 목록)보다 위에 있어야 한다.
+  // 조기 return 아래 훅 선언은 로딩이 끝나는 렌더에서 훅 개수를 바꿔 React #310 크래시를 낸다 (2026-08-19 실사고)
+  const [showSelfTasks, setShowSelfTasks] = useState(false);
 
   // 프로필 로드
   useEffect(() => {
@@ -208,8 +211,6 @@ export default function TaskStatusBoard() {
     else if (st === "DECLINED") declinedCount++;
     else pendingCount++;
   });
-
-  const [showSelfTasks, setShowSelfTasks] = useState(false);
 
   // 셀프 등록 업무와 일반 업무 분리 (피드백 15번)
   const normalTasks = tasks.filter((t) => !t.selfAssigned);
