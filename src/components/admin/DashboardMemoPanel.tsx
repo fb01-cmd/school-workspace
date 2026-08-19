@@ -91,76 +91,58 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
   const unreadCount = memos.filter((m) => !m.reads?.[myEmail]).length;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col h-full">
-      {/* 헤더 */}
-      <div className="bg-gradient-to-r from-indigo-950 to-indigo-900 px-5 py-3.5 text-white flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <span className="text-xl">✉️</span>
+    <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
+      <div>
+        {/* 헤더 */}
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-sm font-bold flex items-center gap-2">
-              받은 쪽지
-              {unreadCount > 0 && (
-                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-500 text-white shadow-xs">
-                  안 읽음 {unreadCount}
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-slate-800">받은 쪽지</h3>
+              {loading ? (
+                <span className="bg-slate-100 text-slate-400 text-xs px-2 py-0.5 rounded-full animate-pulse">
+                  확인 중…
+                </span>
+              ) : notEligible ? (
+                <span className="bg-slate-100 text-slate-500 text-xs font-medium px-2 py-0.5 rounded-full">
+                  소속 미등록
+                </span>
+              ) : unreadCount > 0 ? (
+                <span className="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2 py-0.5 rounded-full">
+                  안 읽음 {unreadCount}건
+                </span>
+              ) : (
+                <span className="bg-slate-100 text-slate-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                  모두 읽음
                 </span>
               )}
-            </h3>
-            <p className="text-[11px] text-indigo-200 mt-0.5">
-              {unreadCount > 0 ? (
-                <>확인하지 않은 쪽지가 <strong className="text-amber-300 font-bold">{unreadCount}건</strong> 있습니다.</>
-              ) : (
-                "모든 쪽지를 확인했습니다."
-              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              {unreadCount > 0
+                ? `확인하지 않은 쪽지가 ${unreadCount}건 있습니다.`
+                : "모든 쪽지를 확인했습니다."}
             </p>
           </div>
+          <span className="p-2 rounded-xl bg-indigo-50 text-indigo-600 text-xl">
+            ✉️
+          </span>
         </div>
-        {onNavigateToMemo && (
-          <button
-            type="button"
-            onClick={() => onNavigateToMemo()}
-            className="text-xs text-indigo-100 hover:text-white bg-indigo-800/70 hover:bg-indigo-700 border border-indigo-700/60 px-3 py-1.5 rounded-lg font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer flex-shrink-0"
-          >
-            <span>쪽지함 전체보기</span>
-            <span>→</span>
-          </button>
-        )}
-      </div>
 
-      {/* 본문 목록 */}
-      <div className="flex-1 p-2 overflow-y-auto max-h-[540px] lg:max-h-[640px]">
+        {/* 본문 목록 */}
         {loading ? (
-          <div className="py-16 text-center text-xs text-indigo-500 font-medium animate-pulse flex items-center justify-center gap-2">
-            <span className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" />
-            <span>받은 쪽지를 불러오는 중입니다...</span>
-          </div>
+          <p className="text-slate-400 text-sm py-4">불러오는 중…</p>
         ) : notEligible ? (
-          <div className="py-12 px-4 text-center text-xs text-slate-500 space-y-2">
-            <span className="text-2xl block">🔒</span>
+          <div className="py-6 text-center text-xs text-slate-500 space-y-1">
+            <span className="text-xl block">🔒</span>
             <p className="font-semibold text-slate-700">소속 정보 등록 후 이용할 수 있습니다</p>
-            <p className="text-slate-400 leading-relaxed">
+            <p className="text-slate-400">
               쪽지는 교직원 조직도에 등록된 분끼리 주고받습니다.
             </p>
           </div>
         ) : memos.length === 0 ? (
-          <div className="py-16 text-center text-xs text-slate-400 space-y-2">
-            <svg
-              className="w-10 h-10 mx-auto text-slate-300"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
-            <p>받은 쪽지가 없습니다.</p>
-          </div>
+          <p className="text-slate-500 text-sm py-4">받은 쪽지가 없습니다.</p>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {memos.map((memo) => {
+          <div className="divide-y divide-slate-100 -mx-1">
+            {memos.slice(0, 5).map((memo) => {
               const isUnread = !memo.reads?.[myEmail];
               const senderName = memo.senderName || memo.senderEmail;
               const hasAttachments = !!(memo.attachments && memo.attachments.length > 0);
@@ -171,11 +153,10 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
                   key={memo.id}
                   type="button"
                   onClick={() => onNavigateToMemo?.(memo.id)}
-                  className={`w-full text-left p-3 rounded-lg hover:bg-indigo-50/60 transition-colors flex items-start gap-2.5 group cursor-pointer ${
+                  className={`w-full text-left p-2.5 rounded-lg hover:bg-slate-50 transition-colors flex items-start gap-2.5 group cursor-pointer ${
                     isUnread ? "bg-indigo-50/40" : ""
                   }`}
                 >
-                  {/* 안 읽음 점 */}
                   <span
                     className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
                       isUnread ? "bg-indigo-600" : "bg-transparent"
@@ -198,28 +179,15 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
                       className={`text-sm truncate leading-snug ${
                         isUnread
                           ? "font-bold text-slate-900 group-hover:text-indigo-700"
-                          : "text-slate-700 group-hover:text-indigo-600"
+                          : "text-slate-700 group-hover:text-slate-900"
                       }`}
                     >
                       {memo.title || MEMO_UNTITLED_FALLBACK}
                     </p>
-                    {/* 부가 정보 (첨부/링크 힌트) */}
-                    {(hasAttachments || hasLinks) && (
-                      <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400">
-                        {hasAttachments && (
-                          <span className="inline-flex items-center gap-0.5 text-slate-500">
-                            <span>🖼️</span>
-                            <span>사진 {memo.attachments!.length}장</span>
-                          </span>
-                        )}
-                        {hasLinks && (
-                          <span className="inline-flex items-center gap-0.5 text-slate-500">
-                            <span>🔗</span>
-                            <span>링크 {memo.links!.length}개</span>
-                          </span>
-                        )}
-                      </div>
-                    )}
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0 mt-0.5 text-slate-400">
+                    {hasAttachments && <span className="text-[10px]">📎</span>}
+                    {hasLinks && <span className="text-[10px]">🔗</span>}
                   </div>
                 </button>
               );
@@ -227,6 +195,21 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
           </div>
         )}
       </div>
+
+      {/* 바닥 링크 */}
+      {onNavigateToMemo && (
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={() => onNavigateToMemo()}
+            className="w-full text-left text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1.5 cursor-pointer"
+          >
+            {memos.length > 5
+              ? `쪽지·업무 열기 (${memos.length - 5}건 더) →`
+              : "쪽지·업무 열기 →"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -44,12 +44,6 @@ export default function ProfileApprovals() {
 
   const isSuperAdmin = userData?.role === "super_admin";
 
-  useEffect(() => {
-    if (userData && !isSuperAdmin) {
-      setActiveSubTab("tree");
-    }
-  }, [userData, isSuperAdmin]);
-
   // 이미 승인된 담임 현황 (`${grade}-${classNum}` -> 교사 정보 목록)
   const [approvedHomerooms, setApprovedHomerooms] = useState<
     Map<string, ApprovedTeacherInfo[]>
@@ -187,6 +181,14 @@ export default function ProfileApprovals() {
     setSelectedTeacherForEdit(email);
     setActiveSubTab("manual");
   };
+
+  if (!isSuperAdmin) {
+    return (
+      <div className="p-8 text-center text-slate-500 text-sm">
+        관리자 전용 메뉴입니다.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

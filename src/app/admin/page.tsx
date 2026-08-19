@@ -271,7 +271,11 @@ export default function AdminPage() {
       case "users":
         return <UserList />;
       case "profile_approvals":
-        return <ProfileApprovals />;
+        return isSuperAdmin ? (
+          <ProfileApprovals />
+        ) : (
+          <div className="p-8 text-center text-slate-500 text-sm">관리자 전용 메뉴입니다.</div>
+        );
       case "classroom":
         return <ClassroomPage />;
       case "classroom_cleanup":
@@ -713,18 +717,6 @@ export default function AdminPage() {
                     >
                       <span>🔑</span>
                       <span>학생 비밀번호 초기화</span>
-                    </button>
-
-                    <button
-                      onClick={() => setActiveMenu("profile_approvals")}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        activeMenu === "profile_approvals"
-                          ? "bg-indigo-800 text-white"
-                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      <span>🌳</span>
-                      <span>교직원 조직도</span>
                     </button>
 
                     {/* 학기말 클래스룸 정리 — 시기성 기능이라 사용 빈도 기준 맨 아래 (2026-08-06 사용자 확정) */}
