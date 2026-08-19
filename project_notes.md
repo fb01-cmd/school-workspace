@@ -964,3 +964,22 @@
 - 검증 상태: tsc·build 전판 ✅ / 세션 실 업로드는 실기기 확인 대상(제출물 세션과 동일 인프라라 위험 낮음)
 - 다음 할 일: 배치 3 화면 몫 = docs/phase8_feedback_batch3_handoff_2026-08-19.md (36 세션 분기 → 32 셀프 서식·참고 파일 → 33 페이지네이션 → 35 담기 수명). push 금지, Claude 검수 후 일괄 배포
 - 주의: ① 35번 DirectSubstituteTab은 회귀 전례 파일 — 담기 기능 4종 보존, check_ui_removals 소명 필수 ② 33번은 클라 페이지네이션(추가 읽기 0) — 색인 의존 쿼리 신설 금지 ③ 훅은 조기 return 위에
+
+## [2026-08-19] Antigravity → Claude(Fable) (Phase 8 피드백 배치 3 화면 몫 완결 — 검수 요청)
+- 변경 파일:
+  - `src/components/admin/tasks/TaskComposerModal.tsx` (36번: 양식 첨부 4MB 초과~30MB 3단 세션 `form_session_start` → `PUT sessionUrl` → `form_session_finish` 분기, 30MB 초과 거부, 안내 문구 30MB 교체)
+  - `src/components/admin/tasks/TasksSection.tsx` (32번: [내 할 일 추가] MemoEditorToolbar+contenteditable 연동, md1 판정 시 `contentFormat: "md1"` 전송, 참고 파일 최대 5개 선택 및 self_add 성공 후 순차 업로드(<=4MB `form_upload`, >4MB 세션), 실패 알림 / 33번: 전체·완료·철회 탭 25개 클라 슬라이싱+[더 보기] 버튼, dueAt 기준 KST 년/월 월 구분선 배너)
+  - `src/components/mobile/MobileTasksSection.tsx` (32번: [내 할 일 추가] MemoEditorToolbar+contenteditable 및 참고 파일 최대 5개 순차 업로드 / 33번: 상단 필터 탭 바(미완료/완료됨/전체), 완료·전체 탭 20개 클라 슬라이싱+[더 보기] 버튼, dueAt 기준 KST 년/월 월 구분선 배너)
+  - `src/components/admin/timetable/DirectSubstituteTab.tsx` (35번: fetchCartDrafts 시 draft[0].sourceTeacherEmail로 선택 교사 및 시간표 자동 복원, draft 없을 시 sessionStorage 복원, handleSelectTeacher에서 다른 교사 선택 시에만 확인창 후 draft 일괄 삭제 및 새 교사 선택, 동일 교사 재선택 시 장바구니 보존 유지, 담기 4종 기능 전량 보존)
+- 검증 상태:
+  - tsc 0 통과 ✅
+  - Next.js build 성공 (46/46 pages) ✅
+  - `check_ui_removals.sh` 소명 완료 ✅:
+    - TaskComposerModal (4MB → 30MB 문구 교체)
+    - TasksSection (내 할 일 서식 지원 개편 및 2단계 제출 문구 조정, 회귀 없음)
+    - MobileTasksSection (내 할 일 서식 지원 및 탭별 빈 상태 문구 조건 분기, 회귀 없음)
+    - DirectSubstituteTab (UI 삭제 0건, 담기 기능 4종 전량 보존)
+- 다음 할 일: Claude 검수 후 일괄 푸시 및 배포 (git push 금지 준수)
+- 주의:
+  - TasksSection 및 MobileTasksSection의 페이지네이션은 Firestore 쿼리를 건드리지 않는 순수 클라이언트 메모리 슬라이싱으로 구현하여 복합 색인 의존 에러(FAILED_PRECONDITION) 원천 차단
+  - DirectSubstituteTab은 동일 교사 클릭 시 확인창을 건너뛰고 장바구니를 안전하게 보존하며, 다른 교사 선택 시에만 확인창을 띄워 이전 draft를 깔끔하게 정리함

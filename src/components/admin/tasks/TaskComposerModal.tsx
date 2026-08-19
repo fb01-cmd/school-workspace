@@ -153,7 +153,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
     }
   };
 
-  // 양식 파일 업로드 (form_upload)
+  // 양식 파일 업로드 (4MB 이하 form_upload, 4MB 초과~30MB form_session 3단 흐름 — 피드백 36번)
   const handleFormUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !preparedTaskId) return;
@@ -162,28 +162,75 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
       alert("양식 파일은 최대 5개까지 올릴 수 있습니다.");
       return;
     }
-    if (file.size > 4 * 1024 * 1024) {
-      alert("양식 파일은 4MB 이하로 올려 주세요.");
+    if (file.size > 30 * 1024 * 1024) {
+      alert(`양식 파일은 30MB 이하로 올려 주세요. (선택한 파일: ${(file.size / (1024 * 1024)).toFixed(1)}MB)`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
     setUploadingForm(true);
     try {
-      const formData = new FormData();
-      formData.append("action", "form_upload");
-      formData.append("taskId", preparedTaskId);
-      formData.append("file", file);
+      if (file.size <= 4 * 1024 * 1024) {
+        // 4MB 이하: 기존 multipart form_upload
+        const formData = new FormData();
+        formData.append("action", "form_upload");
+        formData.append("taskId", preparedTaskId);
+        formData.append("file", file);
 
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "양식 파일 업로드 실패");
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "양식 파일 업로드 실패");
+        }
+
+        setFormFiles((prev) => [...prev, data.formFile]);
+      } else {
+        // 4MB 초과 ~ 30MB: 세션 3단 업로드 (§5-4, 피드백 36번)
+        const startRes = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "form_session_start",
+            taskId: preparedTaskId,
+            fileName: file.name,
+            size: file.size,
+            mimeType: file.type || "application/octet-stream",
+          }),
+        });
+        const startData = await startRes.json();
+        if (!startRes.ok || !startData.success) {
+          throw new Error(startData.error || "대용량 업로드 세션 발급에 실패했습니다.");
+        }
+
+        const driveRes = await fetch(startData.sessionUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        const driveData = await driveRes.json();
+        if (!driveRes.ok || !driveData.id) {
+          throw new Error("드라이브 직접 전송에 실패했습니다.");
+        }
+
+        const finishRes = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "form_session_finish",
+            taskId: preparedTaskId,
+            driveFileId: driveData.id,
+          }),
+        });
+        const finishData = await finishRes.json();
+        if (!finishRes.ok || !finishData.success) {
+          throw new Error(finishData.error || "양식 업로드 완료 확인에 실패했습니다.");
+        }
+
+        setFormFiles((prev) => [...prev, finishData.formFile]);
       }
-
-      setFormFiles((prev) => [...prev, data.formFile]);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err: any) {
       alert(err.message || "양식 업로드 중 오류가 발생했습니다.");
@@ -420,7 +467,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
                       <span>작성 양식 파일 첨부 (선택, 최대 5개)</span>
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      한글(HWP/HWPX), 오피스, PDF 등 (파일당 4MB 이하)
+                      한글(HWP/HWPX), 오피스, PDF 등 (파일당 30MB 이하)
                     </p>
                   </div>
                   {formFiles.length < 5 && (

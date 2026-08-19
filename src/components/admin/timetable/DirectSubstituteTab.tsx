@@ -233,12 +233,18 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
         setWeeks(data.weeks);
         const initId = getInitialWeekId(data.weeks);
         setSelectedWeekId(initId);
-        if (selectedTeacherEmail) fetchTeacherTimetablesForAllWeeks(selectedTeacherEmail, data.weeks);
+        const effectiveTeacher =
+          selectedTeacherEmail ||
+          sessionStorage.getItem("direct_substitute_teacher_email") ||
+          "";
+        if (effectiveTeacher) {
+          fetchTeacherTimetablesForAllWeeks(effectiveTeacher, data.weeks);
+        }
       }
     } catch {}
   };
 
-  const fetchCartDrafts = async () => {
+  const fetchCartDrafts = async (allWeeksList?: TimetableWeek[]) => {
     try {
       const res = await fetch("/api/timetable/requests", {
         method: "POST",
@@ -263,6 +269,31 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           consentNote: d.consentNote,
         }));
         setCartItems(loaded);
+
+        // 지시서 35번: 장바구니 draft가 있으면 해당 교사로 상태 복원
+        const targetWeeks = allWeeksList || weeks;
+        if (loaded.length > 0 && loaded[0].sourceTeacherEmail) {
+          const draftTeacherEmail = loaded[0].sourceTeacherEmail;
+          const draftTeacherName = loaded[0].sourceTeacherName || "";
+          setSelectedTeacherEmail(draftTeacherEmail);
+          setSelectedTeacherName(draftTeacherName);
+          sessionStorage.setItem("direct_substitute_teacher_email", draftTeacherEmail);
+          sessionStorage.setItem("direct_substitute_teacher_name", draftTeacherName);
+          if (targetWeeks.length > 0) {
+            fetchTeacherTimetablesForAllWeeks(draftTeacherEmail, targetWeeks, loaded);
+          }
+        } else {
+          // draft가 없을 때는 sessionStorage에서 이전 선택 교사 복원 시도
+          const savedEmail = sessionStorage.getItem("direct_substitute_teacher_email");
+          const savedName = sessionStorage.getItem("direct_substitute_teacher_name") || "";
+          if (savedEmail && !selectedTeacherEmail) {
+            setSelectedTeacherEmail(savedEmail);
+            setSelectedTeacherName(savedName);
+            if (targetWeeks.length > 0) {
+              fetchTeacherTimetablesForAllWeeks(savedEmail, targetWeeks, []);
+            }
+          }
+        }
         return loaded;
       }
     } catch (err) {
@@ -398,8 +429,13 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
   const handleSelectTeacher = async (email: string, name?: string) => {
     let effectiveCart = cartItems;
-    if (cartItems.length > 0 && email.toLowerCase() !== selectedTeacherEmail.toLowerCase()) {
-      if (!confirm(`담기 목록 ${cartItems.length}건은 현재 선택된 교사 기준입니다. 교사를 전환하면 목록이 비워집니다. 계속할까요?`)) return;
+    const currentEffectiveTeacher = selectedTeacherEmail || cartItems[0]?.sourceTeacherEmail || "";
+
+    // 지시서 35번: 장바구니에 담긴 항목이 있을 때 다른 교사를 선택하면 확인창 표시
+    if (cartItems.length > 0 && email && email.toLowerCase() !== currentEffectiveTeacher.toLowerCase()) {
+      if (!confirm(`담아둔 배정안 ${cartItems.length}건이 있습니다. 다른 교사를 선택하면 담아둔 내용이 비워집니다. 변경하시겠습니까?`)) {
+        return;
+      }
       try {
         await Promise.all(
           cartItems.map((item) =>
@@ -416,18 +452,59 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       setCartItems([]);
       effectiveCart = [];
     }
+
     if (!email) {
-      setSelectedTeacherEmail(""); setSelectedTeacherName(""); setTeacherWeekCellsMap({}); setSelectedSlot(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setSelectedCandidate(null); setChainSourceSlot(null); setChainTargetSlot(null); setChainModalOpen(false); return;
+      setSelectedTeacherEmail("");
+      setSelectedTeacherName("");
+      sessionStorage.removeItem("direct_substitute_teacher_email");
+      sessionStorage.removeItem("direct_substitute_teacher_name");
+      setTeacherWeekCellsMap({});
+      setSelectedSlot(null);
+      setSwapCandidateWeeks([]);
+      setSubstituteCandidates([]);
+      setSelectedCandidate(null);
+      setChainSourceSlot(null);
+      setChainTargetSlot(null);
+      setChainModalOpen(false);
+      return;
     }
+
+    // 동일 교사 재선택 시 장바구니 유지하고 리턴
+    if (email.toLowerCase() === currentEffectiveTeacher.toLowerCase() && selectedTeacherEmail) {
+      return;
+    }
+
     const finalName = name || teacherList.find((t) => t.email.toLowerCase() === email.toLowerCase())?.name || email.split("@")[0];
-    setSelectedTeacherEmail(email); setSelectedTeacherName(finalName);
-    setRecentTeachers((prev) => { const filtered = prev.filter((t) => t.email.toLowerCase() !== email.toLowerCase()); return [{ email, name: finalName }, ...filtered].slice(0, 5); });
-    setSelectedSlot(null); setSourceLessonInfo(null); setSwapCandidateWeeks([]); setSubstituteCandidates([]); setSelectedCandidate(null); setCandidateError(null); setSuccessMsg(null); setSubmitError(null);
-    setChainSourceSlot(null); setChainTargetSlot(null); setChainModalOpen(false); setChainResults([]); setChainSearchError(null);
+    setSelectedTeacherEmail(email);
+    setSelectedTeacherName(finalName);
+    sessionStorage.setItem("direct_substitute_teacher_email", email);
+    sessionStorage.setItem("direct_substitute_teacher_name", finalName);
+
+    setRecentTeachers((prev) => {
+      const filtered = prev.filter((t) => t.email.toLowerCase() !== email.toLowerCase());
+      return [{ email, name: finalName }, ...filtered].slice(0, 5);
+    });
+
+    setSelectedSlot(null);
+    setSourceLessonInfo(null);
+    setSwapCandidateWeeks([]);
+    setSubstituteCandidates([]);
+    setSelectedCandidate(null);
+    setCandidateError(null);
+    setSuccessMsg(null);
+    setSubmitError(null);
+    setChainSourceSlot(null);
+    setChainTargetSlot(null);
+    setChainModalOpen(false);
+    setChainResults([]);
+    setChainSearchError(null);
+
     fetchTeacherTimetablesForAllWeeks(email, weeks, effectiveCart);
     const initWeekId = getInitialWeekId(weeks);
     if (initWeekId) {
-      setTimeout(() => { weekGridRefs.current[initWeekId]?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 250);
+      setTimeout(() => {
+        weekGridRefs.current[initWeekId]?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 250);
     }
   };
 

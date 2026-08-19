@@ -1,6 +1,4 @@
-"use client";
-
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
 import {
@@ -11,6 +9,9 @@ import {
 } from "firebase/firestore";
 import type { TaskDoc, TaskRecipientStatus, TaskSubmission } from "@/lib/tasks/logic";
 import MemoRichBody from "@/components/common/MemoRichBody";
+import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
+import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
+import { bodyHasMd1Formatting } from "@/lib/memo/richtext";
 
 interface TaskItem extends TaskDoc {
   id: string;
@@ -41,6 +42,14 @@ function formatRemainingTime(dueAtMs: number): { text: string; isPast: boolean; 
   return { text: `${hours}시간 남음`, isPast: false, isUrgent: true };
 }
 
+function getYearMonthKey(ms: number): string {
+  if (!ms) return "";
+  const d = new Date(ms + 9 * 3600 * 1000); // KST
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + 1;
+  return `${y}년 ${m}월`;
+}
+
 export default function MobileTasksSection() {
   const { user, userData, teacherProfile } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
@@ -52,7 +61,15 @@ export default function MobileTasksSection() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // 셀프 등록 ([내 할 일 추가] 미니 입력 — 피드백 15번)
+  // 필터 및 클라이언트 페이지네이션 (지시서 33번)
+  const [filter, setFilter] = useState<"pending" | "done" | "all">("pending");
+  const [pageSize, setPageSize] = useState(20);
+
+  useEffect(() => {
+    setPageSize(20);
+  }, [filter]);
+
+  // 셀프 등록 ([내 할 일 추가] 미니 입력 — 피드백 15번, 피드백 32번 서식+참고파일)
   const [isSelfAddOpen, setIsSelfAddOpen] = useState(false);
   const [selfTitle, setSelfTitle] = useState("");
   const [selfDueDate, setSelfDueDate] = useState(() => {
@@ -61,7 +78,19 @@ export default function MobileTasksSection() {
   });
   const [selfDueTime, setSelfDueTime] = useState("17:00");
   const [selfBody, setSelfBody] = useState("");
+  const [selfFiles, setSelfFiles] = useState<File[]>([]);
   const [selfSubmitting, setSelfSubmitting] = useState(false);
+  const [selfUploadProgress, setSelfUploadProgress] = useState<string | null>(null);
+
+  const selfEditorRef = useRef<HTMLDivElement>(null);
+  const selfFileInputRef = useRef<HTMLInputElement>(null);
+
+  const syncSelfBodyMd1 = useCallback(() => {
+    if (selfEditorRef.current) {
+      const md1 = serializeDomToMd1(selfEditorRef.current);
+      setSelfBody(md1);
+    }
+  }, []);
 
   // 액션 상태
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -130,7 +159,25 @@ export default function MobileTasksSection() {
     }).length;
   }, [tasks, myEmail]);
 
-  // 셀프 등록 핸들러 (피드백 15번)
+  // 필터링 및 페이지네이션
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (t.canceledAt) return false;
+      const st = t.statuses?.[myEmail]?.state || "PENDING";
+      if (filter === "pending") return st === "PENDING" || st === "ACCEPTED";
+      if (filter === "done") return st === "DONE" || st === "DECLINED";
+      return true; // "all"
+    });
+  }, [tasks, filter, myEmail]);
+
+  const visibleTasks = useMemo(() => {
+    if (filter === "pending") return filteredTasks;
+    return filteredTasks.slice(0, pageSize);
+  }, [filteredTasks, filter, pageSize]);
+
+  const hasMoreTasks = filter !== "pending" && filteredTasks.length > visibleTasks.length;
+
+  // 셀프 등록 핸들러 (피드백 15번, 피드백 32번 서식+참고파일)
   const handleSelfAdd = async () => {
     if (!selfTitle.trim()) {
       alert("할 일 제목을 입력해 주세요.");
@@ -149,7 +196,11 @@ export default function MobileTasksSection() {
     }
 
     setSelfSubmitting(true);
+    setSelfUploadProgress(null);
     try {
+      const finalBody = selfBody.trim();
+      const hasMd1 = bodyHasMd1Formatting(finalBody);
+
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -157,21 +208,102 @@ export default function MobileTasksSection() {
           action: "self_add",
           title: selfTitle.trim(),
           dueAt,
-          body: selfBody.trim() || undefined,
+          body: finalBody || undefined,
+          contentFormat: hasMd1 ? "md1" : undefined,
         }),
       });
       const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!res.ok || !data.success || !data.taskId) {
         throw new Error(data.error || "할 일을 추가하지 못했습니다.");
+      }
+
+      const createdTaskId = data.taskId;
+
+      // 참고 파일 순차 업로드 (피드백 32-ⓑ)
+      if (selfFiles.length > 0) {
+        const failedFiles: { name: string; reason: string }[] = [];
+        for (let i = 0; i < selfFiles.length; i++) {
+          const file = selfFiles[i];
+          setSelfUploadProgress(`참고 파일 업로드 중… (${i + 1}/${selfFiles.length})`);
+          try {
+            if (file.size <= 4 * 1024 * 1024) {
+              const formData = new FormData();
+              formData.append("action", "form_upload");
+              formData.append("taskId", createdTaskId);
+              formData.append("file", file);
+
+              const upRes = await fetch("/api/tasks", {
+                method: "POST",
+                body: formData,
+              });
+              const upData = await upRes.json();
+              if (!upRes.ok || !upData.success) {
+                throw new Error(upData.error || "업로드 실패");
+              }
+            } else {
+              // >4MB 세션 업로드
+              const startRes = await fetch("/api/tasks", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "form_session_start",
+                  taskId: createdTaskId,
+                  fileName: file.name,
+                  size: file.size,
+                  mimeType: file.type || "application/octet-stream",
+                }),
+              });
+              const startData = await startRes.json();
+              if (!startRes.ok || !startData.success) {
+                throw new Error(startData.error || "세션 생성 실패");
+              }
+
+              const driveRes = await fetch(startData.sessionUrl, {
+                method: "PUT",
+                headers: { "Content-Type": file.type || "application/octet-stream" },
+                body: file,
+              });
+              const driveData = await driveRes.json();
+              if (!driveRes.ok || !driveData.id) {
+                throw new Error("드라이브 전송 실패");
+              }
+
+              const finishRes = await fetch("/api/tasks", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "form_session_finish",
+                  taskId: createdTaskId,
+                  driveFileId: driveData.id,
+                }),
+              });
+              const finishData = await finishRes.json();
+              if (!finishRes.ok || !finishData.success) {
+                throw new Error(finishData.error || "업로드 검증 실패");
+              }
+            }
+          } catch (fileErr: any) {
+            failedFiles.push({ name: file.name, reason: fileErr.message || "오류" });
+          }
+        }
+
+        if (failedFiles.length > 0) {
+          alert(`할 일은 등록되었으나, 참고 파일 ${failedFiles.length}개 업로드에 실패했습니다:\n` +
+            failedFiles.map((f) => `- ${f.name} (${f.reason})`).join("\n"));
+        }
       }
 
       setSelfTitle("");
       setSelfBody("");
+      setSelfFiles([]);
+      if (selfEditorRef.current) selfEditorRef.current.innerHTML = "";
+      if (selfFileInputRef.current) selfFileInputRef.current.value = "";
       setIsSelfAddOpen(false);
     } catch (err: any) {
       alert(err.message || "할 일 등록 중 오류가 발생했습니다.");
     } finally {
       setSelfSubmitting(false);
+      setSelfUploadProgress(null);
     }
   };
 
@@ -381,6 +513,43 @@ export default function MobileTasksSection() {
         </div>
       </div>
 
+      {/* 탭 필터 바 (지시서 33번) */}
+      <div className="flex items-center border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 px-3 py-1.5 gap-1.5 text-xs">
+        <button
+          type="button"
+          onClick={() => setFilter("pending")}
+          className={`px-3 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
+            filter === "pending"
+              ? "bg-indigo-600 text-white shadow-2xs"
+              : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60"
+          }`}
+        >
+          미완료 ({pendingCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter("done")}
+          className={`px-3 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
+            filter === "done"
+              ? "bg-indigo-600 text-white shadow-2xs"
+              : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60"
+          }`}
+        >
+          완료됨
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter("all")}
+          className={`px-3 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
+            filter === "all"
+              ? "bg-indigo-600 text-white shadow-2xs"
+              : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60"
+          }`}
+        >
+          전체 ({tasks.length})
+        </button>
+      </div>
+
       {/* 구독 오류 안내 블록 (피드백 5번 조용한 실패 금지) */}
       {loadError && (
         <div className="p-3 bg-rose-50 border-b border-rose-200 text-xs text-rose-800 font-semibold flex items-center justify-between">
@@ -400,22 +569,34 @@ export default function MobileTasksSection() {
         <div className="px-4 py-6 text-center text-sm text-slate-400 animate-pulse">
           할 일을 불러오는 중…
         </div>
-      ) : tasks.length === 0 ? (
+      ) : filteredTasks.length === 0 ? (
         <div className="px-4 py-6 text-center text-sm text-slate-400">
-          남은 할 일이 없습니다.
+          {filter === "pending" ? "남은 할 일이 없습니다." : "해당하는 업무가 없습니다."}
         </div>
       ) : (
-        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-          {tasks.map((task) => {
-            const isOpen = expandedId === task.id;
-            const myStatus: TaskRecipientStatus = task.statuses?.[myEmail] || { state: "PENDING", at: 0 };
-            const mySubmission: TaskSubmission | undefined = task.submissions?.[myEmail];
-            const isDone = myStatus.state === "DONE";
-            const isPending = myStatus.state === "PENDING";
-            const remaining = formatRemainingTime(task.dueAt);
+        <div>
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            {visibleTasks.map((task, idx) => {
+              const isOpen = expandedId === task.id;
+              const myStatus: TaskRecipientStatus = task.statuses?.[myEmail] || { state: "PENDING", at: 0 };
+              const mySubmission: TaskSubmission | undefined = task.submissions?.[myEmail];
+              const isDone = myStatus.state === "DONE";
+              const isPending = myStatus.state === "PENDING";
+              const remaining = formatRemainingTime(task.dueAt);
 
-            return (
-              <li key={task.id} className={isPending ? "bg-indigo-50/20 dark:bg-indigo-950/20" : "bg-white dark:bg-slate-900"}>
+              // 월 구분선 판정 (지시서 33번)
+              const currentMonthKey = getYearMonthKey(task.dueAt);
+              const prevMonthKey = idx > 0 ? getYearMonthKey(visibleTasks[idx - 1].dueAt) : null;
+              const showMonthDivider = currentMonthKey && currentMonthKey !== prevMonthKey;
+
+              return (
+                <li key={task.id} className={isPending ? "bg-indigo-50/20 dark:bg-indigo-950/20" : "bg-white dark:bg-slate-900"}>
+                  {showMonthDivider && (
+                    <div className="flex items-center gap-2 px-4 py-1.5 bg-slate-100/80 dark:bg-slate-800/80 text-[11px] font-extrabold text-slate-600 dark:text-slate-300 select-none border-b border-slate-200/50 dark:border-slate-700/50">
+                      <span>📅</span>
+                      <span>{currentMonthKey}</span>
+                    </div>
+                  )}
                 {/* 목록 헤더 행 */}
                 <button
                   type="button"
@@ -710,7 +891,7 @@ export default function MobileTasksSection() {
                             type="button"
                             onClick={() => handleTransition(task.id, "accept")}
                             disabled={actionLoadingId === task.id}
-                            className="text-xs text-indigo-600 font-bold underline"
+                            className="text-xs text-indigo-600 font-bold underline cursor-pointer"
                           >
                             다시 수락하기
                           </button>
@@ -723,89 +904,176 @@ export default function MobileTasksSection() {
             );
           })}
         </ul>
-      )}
 
-      {/* [내 할 일 추가] 셀프 등록 모달 (피드백 15번) */}
-      {isSelfAddOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 max-w-xs w-full space-y-3 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1">
-                <span>📝</span>
-                <span>내 할 일 추가</span>
-              </h4>
-              <button
-                type="button"
-                onClick={() => setIsSelfAddOpen(false)}
-                className="text-slate-400 text-xs p-1"
-              >
-                ✕
-              </button>
+        {/* 더 보기 버튼 (지시서 33번) */}
+        {hasMoreTasks && (
+          <div className="p-3 text-center border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setPageSize((prev) => prev + 20)}
+              className="w-full py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+            >
+              더 보기 ({filteredTasks.length - visibleTasks.length}개 남음) ↓
+            </button>
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* [내 할 일 추가] 셀프 등록 모달 (피드백 15번, 피드백 32번 서식+참고파일) */}
+    {isSelfAddOpen && (
+      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 max-w-sm w-full space-y-3 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1">
+              <span>📝</span>
+              <span>내 할 일 추가</span>
+            </h4>
+            <button
+              type="button"
+              onClick={() => setIsSelfAddOpen(false)}
+              className="text-slate-400 text-xs p-1 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="space-y-3 text-xs">
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">할 일 제목 *</label>
+              <input
+                type="text"
+                value={selfTitle}
+                onChange={(e) => setSelfTitle(e.target.value)}
+                placeholder="예: 교과진도표 작성"
+                className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                maxLength={100}
+              />
             </div>
-            <div className="space-y-2 text-xs">
+            <div className="grid grid-cols-2 gap-1.5">
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">할 일 제목 *</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">마감 날짜 *</label>
                 <input
-                  type="text"
-                  value={selfTitle}
-                  onChange={(e) => setSelfTitle(e.target.value)}
-                  placeholder="예: 교과진도표 작성"
-                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  maxLength={100}
+                  type="date"
+                  value={selfDueDate}
+                  onChange={(e) => setSelfDueDate(e.target.value)}
+                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">마감 날짜 *</label>
-                  <input
-                    type="date"
-                    value={selfDueDate}
-                    onChange={(e) => setSelfDueDate(e.target.value)}
-                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">마감 시각 *</label>
-                  <input
-                    type="time"
-                    value={selfDueTime}
-                    onChange={(e) => setSelfDueTime(e.target.value)}
-                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  />
-                </div>
-              </div>
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">내용 (선택)</label>
-                <textarea
-                  rows={2}
-                  value={selfBody}
-                  onChange={(e) => setSelfBody(e.target.value)}
-                  placeholder="메모를 입력하세요"
-                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  maxLength={1000}
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">마감 시각 *</label>
+                <input
+                  type="time"
+                  value={selfDueTime}
+                  onChange={(e) => setSelfDueTime(e.target.value)}
+                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setIsSelfAddOpen(false)}
-                className="px-3 py-1.5 text-xs text-slate-500"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                onClick={handleSelfAdd}
-                disabled={selfSubmitting || !selfTitle.trim()}
-                className="px-3.5 py-1.5 text-xs bg-indigo-600 text-white font-bold rounded-lg disabled:opacity-50"
-              >
-                {selfSubmitting ? "등록 중…" : "등록"}
-              </button>
+
+            {/* 내용 칸 (피드백 32-ⓐ 서식 지원) */}
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">내용 / 메모 (선택)</label>
+              <div className="rounded-lg border border-slate-300 dark:border-slate-700 focus-within:ring-2 focus-within:ring-indigo-500 overflow-hidden">
+                <MemoEditorToolbar
+                  editorRef={selfEditorRef}
+                  onContentChange={syncSelfBodyMd1}
+                />
+                <div
+                  ref={selfEditorRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  spellCheck={false}
+                  onInput={syncSelfBodyMd1}
+                  onPaste={syncSelfBodyMd1}
+                  onKeyUp={syncSelfBodyMd1}
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label="할 일 내용"
+                  data-placeholder="메모를 자유롭게 적어두세요."
+                  className="w-full p-2 text-xs leading-relaxed min-h-[70px] max-h-[140px] overflow-y-auto focus:outline-none bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-sans empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 dark:[&_blockquote]:bg-indigo-950/40 [&_blockquote]:py-0.5 [&_blockquote]:px-2 [&_blockquote]:my-0.5 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic"
+                />
+              </div>
+            </div>
+
+            {/* 참고 파일 추가 (피드백 32-ⓑ) */}
+            <div className="space-y-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5">
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-slate-800 dark:text-slate-200 text-[11px]">
+                  참고 파일 (최대 5개, ≤30MB)
+                </div>
+                {selfFiles.length < 5 && (
+                  <div>
+                    <input
+                      ref={selfFileInputRef}
+                      type="file"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (!files.length) return;
+                        const validFiles: File[] = [];
+                        for (const f of files) {
+                          if (f.size > 30 * 1024 * 1024) {
+                            alert(`30MB 초과 파일은 제외됩니다: ${f.name}`);
+                            continue;
+                          }
+                          validFiles.push(f);
+                        }
+                        setSelfFiles((prev) => [...prev, ...validFiles].slice(0, 5));
+                        if (selfFileInputRef.current) selfFileInputRef.current.value = "";
+                      }}
+                      className="hidden"
+                      id="mobile-self-add-file-input"
+                    />
+                    <label
+                      htmlFor="mobile-self-add-file-input"
+                      className="px-2 py-0.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded cursor-pointer text-[10px] font-bold"
+                    >
+                      + 파일 추가
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {selfFiles.length > 0 && (
+                <div className="divide-y divide-slate-200 dark:divide-slate-700 border border-slate-200 dark:border-slate-700 rounded bg-white dark:bg-slate-800">
+                  {selfFiles.map((f, i) => (
+                    <div key={i} className="px-2 py-1 flex items-center justify-between text-[11px]">
+                      <span className="truncate mr-1 text-slate-800 dark:text-slate-200 flex-1">
+                        📄 {f.name} ({(f.size / 1024).toFixed(0)}KB)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelfFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="text-slate-400 hover:text-rose-600 font-bold px-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsSelfAddOpen(false)}
+              className="px-3 py-1.5 text-xs text-slate-500 cursor-pointer"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={handleSelfAdd}
+              disabled={selfSubmitting || !selfTitle.trim()}
+              className="px-3.5 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg disabled:opacity-50 cursor-pointer shadow-2xs"
+            >
+              {selfSubmitting ? (selfUploadProgress || "등록 중…") : "등록하기"}
+            </button>
+          </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* 거절 사유 모달 */}
       {decliningId && (
