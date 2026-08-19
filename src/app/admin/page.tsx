@@ -331,12 +331,11 @@ export default function AdminPage() {
               </p>
             </div>
 
-            {/* 알림 카드는 공통 최상단. 급식은 교사 홈에선 시간표 아래로 (2026-08-07 사용자 지시) */}
+            {/* 알림 카드는 공통 최상단 */}
             <PushNotificationManager />
             {isSuperAdmin && <AdminUsageSummaryBanner onNavigate={() => setActiveMenu("usage")} />}
-            {isSuperAdmin && <MealCard />}
 
-            {/* super_admin 홈: 상단 개인 업무·쪽지 영역 및 관리 위젯 그리드 (피드백 13번) */}
+            {/* super_admin 홈: 상단 개인 업무·쪽지 영역 및 관리 위젯 그리드 (피드백 13번, 19번: 내 할 일 → 받은 쪽지 → 급식 순서) */}
             {isSuperAdmin ? (
               <div className="space-y-6">
                 {/* 상단 개인 업무 및 쪽지 영역 */}
@@ -344,6 +343,9 @@ export default function AdminPage() {
                   <DashboardTaskCard onNavigate={() => setActiveMenu("tasks")} />
                   <DashboardMemoPanel onNavigateToMemo={handleNavigateToMemo} />
                 </div>
+
+                {/* 급식 카드 */}
+                <MealCard />
 
                 {/* 관리자 위젯 그리드 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -576,10 +578,16 @@ export default function AdminPage() {
         >
           {/* Logo & Navigation */}
           <div>
-            {/* Brand Header */}
+            {/* Brand Header (피드백 21번: 효명 배지 -> 교표 아이콘) */}
             <div className="h-16 flex items-center gap-3 px-6 bg-indigo-900 text-white font-bold tracking-wide border-b border-indigo-800">
-              <span className="bg-indigo-600 text-white p-1 rounded-md text-sm font-bold">효명</span>
-              <span>효명고등학교</span>
+              <div className="w-8 h-8 rounded-lg bg-white p-0.5 shadow-xs flex items-center justify-center flex-shrink-0">
+                <img
+                  src="/icon-192.png"
+                  alt="효명고 교표"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <span className="text-base tracking-tight">효명고등학교</span>
             </div>
 
             {/* Nav Menu */}
@@ -1094,7 +1102,7 @@ export default function AdminPage() {
                 <SavingModeBanner />
                 <ClassroomCleanupBanner onNavigate={() => setActiveMenu("classroom_cleanup")} />
               </div>
-              <MemoSection />
+              <MemoSection initialMemoId={targetMemoId} />
             </main>
           ) : (
             <main className="flex-1 overflow-auto p-8">

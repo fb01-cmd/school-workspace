@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
+import { db } from "@/lib/firebase/config";
+import { doc, getDoc } from "firebase/firestore";
 
 export interface NotificationItem {
   id: string;
@@ -108,6 +110,54 @@ export default function NotificationCenter() {
   const [declineNoteInput, setDeclineNoteInput] = useState<string>("");
   const [acceptingTaskId, setAcceptingTaskId] = useState<string | null>(null);
   const [acceptedTaskIds, setAcceptedTaskIds] = useState<Set<string>>(new Set());
+  const [taskStatusMap, setTaskStatusMap] = useState<
+    Record<string, { state?: string; canceled?: boolean; notEligible?: boolean }>
+  >({});
+
+  // 17번: 패널이 열려 task-assigned 알림이 보일 때 해당 refId 업무 문서를 표시분만 1회씩 읽어 최신 수락 상태 확인
+  useEffect(() => {
+    if (!isOpen || items.length === 0) return;
+    const myEmail = (userData?.email || user?.email || "").toLowerCase();
+    const domain = myEmail.split("@")[1] || "hmh.or.kr";
+    if (!myEmail || !domain) return;
+
+    const assignedTaskIds = Array.from(
+      new Set(
+        items
+          .filter((it) => it.type === "task-assigned" && it.refId)
+          .map((it) => it.refId)
+      )
+    ).filter((id) => !(id in taskStatusMap));
+
+    if (assignedTaskIds.length === 0) return;
+
+    assignedTaskIds.forEach(async (taskId) => {
+      try {
+        const taskDocRef = doc(db, "tasks", domain, "items", taskId);
+        const snap = await getDoc(taskDocRef);
+        if (!snap.exists()) {
+          setTaskStatusMap((prev) => ({ ...prev, [taskId]: { canceled: true } }));
+          return;
+        }
+        const data = snap.data();
+        const isCanceled = !!data.canceledAt;
+        const recipients: string[] = data.recipientEmails || [];
+        const notEligible = !recipients.includes(myEmail);
+        const myState = data.statuses?.[myEmail]?.state || "PENDING";
+
+        setTaskStatusMap((prev) => ({
+          ...prev,
+          [taskId]: {
+            state: myState,
+            canceled: isCanceled,
+            notEligible,
+          },
+        }));
+      } catch (e) {
+        console.error("[NotificationCenter] 업무 상태 조회 실패:", taskId, e);
+      }
+    });
+  }, [isOpen, items, userData?.email, user?.email, taskStatusMap]);
 
   // 푸시(기기로 바로 알림 받기) 설정 상태 (스펙 §6-1)
   const [pushSupported, setPushSupported] = useState<boolean | null>(null);
@@ -411,7 +461,7 @@ export default function NotificationCenter() {
     }
   };
 
-  // 업무 지시 수락 핸들러 (phase8_tasks_spec §6, §7)
+  // 업무 수락 핸들러 (phase8_tasks_spec §6, §7, 피드백 17번)
   const handleAcceptTask = async (taskId: string) => {
     setAcceptingTaskId(taskId);
     try {
@@ -424,11 +474,25 @@ export default function NotificationCenter() {
           transition: "accept",
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "업무 수락에 실패했습니다.");
+        const errorMsg = data.error || "";
+        if (errorMsg.includes("이미 수락") || errorMsg.includes("already")) {
+          // 이미 수락된 경우 오류가 아니라 수락 완료 표기로 전환 (피드백 17번)
+          setAcceptedTaskIds((prev) => new Set(prev).add(taskId));
+          setTaskStatusMap((prev) => ({
+            ...prev,
+            [taskId]: { ...prev[taskId], state: "ACCEPTED" },
+          }));
+          return;
+        }
+        throw new Error(errorMsg || "업무 수락에 실패했습니다.");
       }
       setAcceptedTaskIds((prev) => new Set(prev).add(taskId));
+      setTaskStatusMap((prev) => ({
+        ...prev,
+        [taskId]: { ...prev[taskId], state: "ACCEPTED" },
+      }));
     } catch (err: any) {
       alert(`오류: ${err.message}`);
     } finally {
@@ -741,15 +805,27 @@ export default function NotificationCenter() {
                       </div>
                     )}
 
-                    {/* 업무 지시 수락 창구 (phase8_tasks_spec §6, §7) */}
-                    {item.type === "task-assigned" && item.refId && (
-                      <div className="pt-1">
-                        {acceptedTaskIds.has(item.refId) ? (
-                          <div className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
-                            <span>✅</span>
-                            <span>업무 수락 완료</span>
+                    {/* 업무 수락 창구 (phase8_tasks_spec §6, §7, 피드백 17번) */}
+                    {item.type === "task-assigned" && item.refId && (() => {
+                      const taskInfo = taskStatusMap[item.refId];
+                      if (taskInfo?.canceled || taskInfo?.notEligible) return null;
+                      const isAlreadyAccepted =
+                        acceptedTaskIds.has(item.refId) ||
+                        (taskInfo?.state && taskInfo.state !== "PENDING");
+
+                      if (isAlreadyAccepted) {
+                        return (
+                          <div className="pt-1">
+                            <div className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                              <span>✅</span>
+                              <span>수락함 ✓</span>
+                            </div>
                           </div>
-                        ) : (
+                        );
+                      }
+
+                      return (
+                        <div className="pt-1">
                           <button
                             type="button"
                             onClick={() => handleAcceptTask(item.refId)}
@@ -763,9 +839,9 @@ export default function NotificationCenter() {
                             )}
                             <span>업무 수락하기</span>
                           </button>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      );
+                    })()}
 
                     {/* 원본 바로가기 (딥링크) — usage_alert는 super_admin에게만 노출 */}
                     {!(item.refType === "usage_alert" && userData?.role !== "super_admin") && (

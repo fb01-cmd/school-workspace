@@ -1679,18 +1679,18 @@ function ComposeModal({
     }
   };
 
-  // 발송 (확인창 없음 — §11-1)
+  // 발송 (확인창 없음 — §11-1, 피드백 29번 실패 차단)
   const handleSend = async () => {
     const isUploading = stagedAttachments.some(
       (a) => a.status === "resizing" || a.status === "uploading"
     );
     if (isUploading) {
-      setError("이미지를 업로드하고 있습니다. 잠시 후 다시 시도해 주세요.");
+      setError("파일을 업로드하고 있습니다. 잠시 후 다시 시도해 주세요.");
       return;
     }
-    const hasError = stagedAttachments.some((a) => a.status === "error");
-    if (hasError) {
-      setError("업로드에 실패한 이미지가 있습니다. 삭제하거나 다시 시도해 주세요.");
+    const failedList = stagedAttachments.filter((a) => a.status === "error");
+    if (failedList.length > 0) {
+      setError(`올릴 수 없는 첨부 파일 ${failedList.length}개가 있습니다. 해당 파일을 제거한 후 보내주세요.`);
       return;
     }
 
@@ -1743,8 +1743,16 @@ function ComposeModal({
   const isUploading = stagedAttachments.some(
     (a) => a.status === "resizing" || a.status === "uploading"
   );
+  const failedAttachmentsCount = stagedAttachments.filter((a) => a.status === "error").length;
+  const hasAttachmentError = failedAttachmentsCount > 0;
   const recipientCount = chips.length;
-  const canSend = recipientCount > 0 && title.trim() && bodyMd1.trim() && !sending && !isUploading;
+  const canSend =
+    recipientCount > 0 &&
+    title.trim() &&
+    bodyMd1.trim() &&
+    !sending &&
+    !isUploading &&
+    !hasAttachmentError;
 
   // ── 검색 후보 목록 (teacher_profiles 기반 로컬 필터, 이름 매칭)
   // 결함 5 수정: resolveDisplayName 헬퍼 통일
@@ -2011,55 +2019,7 @@ function ComposeModal({
                 </div>
               </div>
 
-              {/* 링크 */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  링크 첨부 <span className="text-xs font-normal text-slate-400">(최대 5개, https://)</span>
-                </label>
-                {links.length > 0 && (
-                  <ul className="mb-2 space-y-1">
-                    {links.map((l, i) => (
-                      <li key={i} className="flex items-center gap-2 text-xs text-slate-600">
-                        <span className="flex-1 truncate">{l.label || l.url}</span>
-                        <button
-                          type="button"
-                          onClick={() => setLinks((prev) => prev.filter((_, idx) => idx !== i))}
-                          className="text-slate-400 hover:text-red-500 cursor-pointer"
-                        >
-                          ×
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {links.length < 5 && (
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={linkUrl}
-                      onChange={(e) => setLinkUrl(e.target.value)}
-                      placeholder="https://..."
-                      className="flex-1 px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <input
-                      type="text"
-                      value={linkLabel}
-                      onChange={(e) => setLinkLabel(e.target.value)}
-                      placeholder="링크 이름 (선택)"
-                      className="w-32 px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddLink}
-                      className="px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors cursor-pointer"
-                    >
-                      추가
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* 파일 첨부 (최대 5개, 피드백 10번) */}
+              {/* 파일 첨부 (최대 5개, 피드백 10번, 29번) */}
               <div>
                 <input
                   ref={fileInputRef}
@@ -2209,19 +2169,37 @@ function ComposeModal({
               )}
             </div>
 
-            {/* 발송 푸터 (확인창 없음 — §11-1) */}
-            <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
-              >
-                취소
-              </button>
+            {/* 발송 푸터 (확인창 없음 — §11-1, 피드백 29번 사유/버튼 상태 단일화) */}
+            <div className="px-6 py-4 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="flex items-center justify-between sm:justify-start gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
+                >
+                  취소
+                </button>
+                {failedAttachmentsCount > 0 ? (
+                  <p className="text-xs text-rose-600 font-semibold">
+                    올릴 수 없는 첨부 {failedAttachmentsCount}개가 있습니다. 빼면 보낼 수 있어요.
+                  </p>
+                ) : isUploading ? (
+                  <p className="text-xs text-indigo-600 font-semibold">
+                    첨부 파일을 업로드하고 있습니다…
+                  </p>
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={handleSend}
                 disabled={!canSend}
+                title={
+                  hasAttachmentError
+                    ? "올릴 수 없는 첨부 파일을 먼저 제거해 주세요."
+                    : isUploading
+                    ? "파일 업로드가 완료될 때까지 기다려 주세요."
+                    : undefined
+                }
                 className="px-5 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors cursor-pointer"
               >
                 {sending

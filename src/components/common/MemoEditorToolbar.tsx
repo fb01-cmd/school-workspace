@@ -24,6 +24,24 @@ const EMOJI_CATEGORIES = [
   },
 ];
 
+// 주소꼴 토큰 판정 (피드백 18번: https://, www., 도메인.영문TLD2자이상)
+function isLikelyUrlToken(token: string): boolean {
+  if (!token || token.includes("@") || /\s/.test(token)) return false;
+  // 1. http:// 또는 https://
+  if (/^https?:\/\/[^\s]+$/i.test(token)) return true;
+  // 2. www. 로 시작
+  if (/^www\.[^\s]+$/i.test(token)) return true;
+  // 3. 도메인.TLD (영문 2자 이상 TLD — "3.4버전" 등 숫자 TLD 오탐 방지)
+  const domainPattern = /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(?:\/[^\s]*)?$/;
+  return domainPattern.test(token);
+}
+
+function normalizeUrl(token: string): string {
+  if (/^http:\/\//i.test(token)) return "https://" + token.slice(7);
+  if (/^https:\/\//i.test(token)) return token;
+  return `https://${token}`;
+}
+
 interface MemoEditorToolbarProps {
   editorRef: React.RefObject<HTMLDivElement | null>;
   onContentChange?: () => void;
@@ -37,6 +55,66 @@ export default function MemoEditorToolbar({
   const [activeCategory, setActiveCategory] = useState(0);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
+
+  // 18번: 공백/엔터 입력 시점 주소 링크 자동 변환
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key !== " " && e.key !== "Enter") return;
+
+      const sel = window.getSelection();
+      if (!sel || !sel.isCollapsed || !sel.focusNode) return;
+      const node = sel.focusNode;
+      if (node.nodeType !== Node.TEXT_NODE) return;
+      if (node.parentElement?.closest("a")) return; // 이미 링크 내부이면 무시
+
+      const text = node.textContent || "";
+      const offset = sel.focusOffset;
+      const beforeCursor = text.slice(0, offset);
+
+      // 직전 단어 찾기
+      const match = beforeCursor.match(/([^\s]+)[\s]+$/);
+      if (!match || match.index === undefined) return;
+      const token = match[1];
+      if (!isLikelyUrlToken(token)) return;
+
+      const tokenStart = match.index;
+      const tokenEnd = tokenStart + token.length;
+
+      const beforeText = text.slice(0, tokenStart);
+      const afterText = text.slice(tokenEnd);
+
+      const a = document.createElement("a");
+      a.href = normalizeUrl(token);
+      a.textContent = token;
+
+      const parent = node.parentNode;
+      if (!parent) return;
+
+      const frag = document.createDocumentFragment();
+      if (beforeText) frag.appendChild(document.createTextNode(beforeText));
+      frag.appendChild(a);
+      const afterNode = document.createTextNode(afterText);
+      frag.appendChild(afterNode);
+
+      parent.replaceChild(frag, node);
+
+      // 커서를 afterNode의 원래 위치로 복원
+      const newOffset = offset - tokenEnd;
+      const range = document.createRange();
+      range.setStart(afterNode, Math.min(newOffset, afterNode.textContent?.length || 0));
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+
+      onContentChange?.();
+    };
+
+    editor.addEventListener("keyup", handleKeyUp);
+    return () => editor.removeEventListener("keyup", handleKeyUp);
+  }, [editorRef, onContentChange]);
 
   // 밖 클릭 시 이모지 피커 닫기
   useEffect(() => {

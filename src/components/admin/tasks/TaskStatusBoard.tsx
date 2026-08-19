@@ -11,9 +11,12 @@ import {
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
+  getDocs,
   doc,
 } from "firebase/firestore";
+import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import type { TaskDoc, TaskRecipientStatus, TaskSubmission } from "@/lib/tasks/logic";
 import MemoRichBody from "@/components/common/MemoRichBody";
 import { resolveDisplayName } from "@/lib/org/displayName";
@@ -73,20 +76,34 @@ export default function TaskStatusBoard() {
   const selectedTaskIdRef = useRef<string | null>(null);
   selectedTaskIdRef.current = selectedTaskId;
 
-  // 프로필 로드
+  // 프로필 로드 (다이어트 4번: 5분 인메모리 캐시 적용)
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "teacher_profiles"), (snap) => {
+    let cancelled = false;
+    async function loadProfiles() {
+      const CACHE_KEY = "teacher_profiles:all";
+      const cached = getClientCache(CACHE_KEY) as TeacherProfile[] | null;
+      let profiles: TeacherProfile[];
+      if (cached) {
+        profiles = cached;
+      } else {
+        const snap = await getDocs(collection(db, "teacher_profiles"));
+        profiles = snap.docs.map((d) => d.data() as TeacherProfile);
+        setClientCache(CACHE_KEY, profiles, 5 * 60 * 1000);
+      }
+      if (cancelled) return;
       const map = new Map<string, TeacherProfile>();
-      snap.docs.forEach((d) => {
-        const p = d.data() as TeacherProfile;
+      for (const p of profiles) {
         if (p.email) map.set(p.email.toLowerCase(), p);
-      });
+      }
       setProfileMap(map);
-    });
-    return () => unsub();
+    }
+    loadProfiles().catch((err) => console.error("[TaskStatusBoard] 프로필 로드 실패:", err));
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // 내가 보낸 업무 목록 구독
+  // 내가 보낸 업무 목록 구독 (다이어트 3번: limit(50) 추가)
   useEffect(() => {
     if (!myEmail || !domain) {
       setLoading(false);
@@ -96,7 +113,8 @@ export default function TaskStatusBoard() {
     const q = query(
       collection(db, "tasks", domain, "items"),
       where("senderEmail", "==", myEmail),
-      orderBy("createdAt", "desc")
+      orderBy("createdAt", "desc"),
+      limit(50)
     );
     const unsub = onSnapshot(
       q,
@@ -392,13 +410,14 @@ export default function TaskStatusBoard() {
                   <span>{nudging ? "발송 중…" : "리마인드 알림"}</span>
                 </button>
 
-                {/* 제출함 폴더 열기 (제출형) */}
+                {/* 제출함 폴더 열기 (제출형, 피드백 25번 도움말) */}
                 {selectedTask.kind === "submit" && selectedTask.submitFolderId && (
                   <a
                     href={`https://drive.google.com/drive/folders/${selectedTask.submitFolderId}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 rounded-xl text-xs font-bold transition-colors inline-flex items-center gap-1.5"
+                    title="컴퓨터의 드라이브 폴더에서도 보려면 — 드라이브에서 이 폴더에 [바로가기 추가]를 해두세요."
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 rounded-xl text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <span>📁</span>
                     <span>제출함 열기</span>
@@ -518,13 +537,27 @@ export default function TaskStatusBoard() {
                         <td className="px-3.5 py-2 text-slate-600">{dept}</td>
                         <td className="px-3.5 py-2">
                           {statusObj.state === "DONE" ? (
-                            <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                              <span>✓</span> 완료
-                            </span>
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                <span>✓</span> 완료
+                              </span>
+                              {statusObj.note && (
+                                <p className="text-[11px] text-emerald-700 font-medium">
+                                  메모: {statusObj.note}
+                                </p>
+                              )}
+                            </div>
                           ) : statusObj.state === "ACCEPTED" ? (
-                            <span className="inline-flex items-center gap-1 font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                              <span>●</span> 수락됨
-                            </span>
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                                <span>●</span> 수락됨
+                              </span>
+                              {statusObj.note && (
+                                <p className="text-[11px] text-blue-700 font-medium">
+                                  메모: {statusObj.note}
+                                </p>
+                              )}
+                            </div>
                           ) : statusObj.state === "DECLINED" ? (
                             <div className="space-y-0.5">
                               <span className="inline-flex items-center gap-1 font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">

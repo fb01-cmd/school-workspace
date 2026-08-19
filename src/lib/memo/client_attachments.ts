@@ -134,7 +134,7 @@ export async function uploadAttachment(
   }
 
   if (file.size > MEMO_ATTACHMENT_SESSION_MAX_BYTES) {
-    throw new Error("첨부 파일은 최대 30MB 이하만 가능합니다.");
+    throw new Error("첨부 파일은 최대 30MB 이하만 가능합니다. 30MB가 넘는 파일은 내 드라이브에 올린 뒤 링크를 본문에 붙여 주세요.");
   }
 
   // 1. 이미지이고 4MB 이하인 경우 리사이즈/전처리

@@ -67,6 +67,13 @@ export default function MobileTasksSection() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [decliningId, setDecliningId] = useState<string | null>(null);
   const [declineReason, setDeclineReason] = useState("");
+
+  // 완료 체크 메모 모달 (피드백 27번)
+  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [completeNote, setCompleteNote] = useState("");
+
+  // 모바일 제출 대기 상태 (피드백 26번, 27번)
+  const [stagedSubmitMap, setStagedSubmitMap] = useState<Record<string, { file: File; note: string }>>({});
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
@@ -150,7 +157,6 @@ export default function MobileTasksSection() {
           title: selfTitle.trim(),
           dueAt,
           body: selfBody.trim() || undefined,
-          // contentFormat 미지정 = 평문 (PC 미니 입력과 동일 — 서식 도구 없는 입력을 md1로 승격 금지)
         }),
       });
       const data = await res.json();
@@ -168,7 +174,7 @@ export default function MobileTasksSection() {
     }
   };
 
-  // 상태 전이 액션 — 피드백 7번 즉시 낙관 갱신
+  // 상태 전이 액션 — 피드백 7번 즉시 낙관 갱신, 피드백 27번 메모 동반
   const handleTransition = async (taskId: string, action: "accept" | "done" | "undone" | "decline", note?: string) => {
     setActionLoadingId(taskId);
     try {
@@ -179,7 +185,7 @@ export default function MobileTasksSection() {
           action: "transition",
           taskId,
           transition: action,
-          note,
+          note: note?.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -206,6 +212,10 @@ export default function MobileTasksSection() {
         setDecliningId(null);
         setDeclineReason("");
       }
+      if (action === "done") {
+        setCompletingId(null);
+        setCompleteNote("");
+      }
     } catch (err: any) {
       alert(err.message || "처리 중 오류가 발생했습니다.");
     } finally {
@@ -213,11 +223,11 @@ export default function MobileTasksSection() {
     }
   };
 
-  // 모바일 파일/사진 제출 — 피드백 7번 즉시 낙관 갱신
-  const handleMobileSubmit = async (taskId: string, file: File) => {
+  // 모바일 파일/사진 제출 — 피드백 7번 즉시 낙관 갱신, 피드백 26/27번 2단계 제출 및 메모 동반
+  const handleMobileSubmit = async (taskId: string, file: File, note?: string) => {
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      alert("파일 크기는 30MB 이하로 올려 주세요.");
+    if (file.size > 30 * 1024 * 1024) {
+      alert("파일 크기는 최대 30MB까지 올릴 수 있습니다. 30MB가 넘는 파일은 내 드라이브에 올린 뒤 링크를 본문에 붙여 주세요.");
       return;
     }
 
@@ -229,6 +239,9 @@ export default function MobileTasksSection() {
         formData.append("action", "submit");
         formData.append("taskId", taskId);
         formData.append("file", file);
+        if (note?.trim()) {
+          formData.append("note", note.trim());
+        }
 
         const res = await fetch("/api/tasks", {
           method: "POST",
@@ -240,7 +253,11 @@ export default function MobileTasksSection() {
         }
 
         if (data.submission) {
-          const nextStatus: TaskRecipientStatus = { state: "DONE", at: Date.now() };
+          const nextStatus: TaskRecipientStatus = data.status || {
+            state: "DONE",
+            at: Date.now(),
+            note: note?.trim() || undefined,
+          };
           setTasks((prev) =>
             prev.map((t) =>
               t.id === taskId
@@ -253,6 +270,11 @@ export default function MobileTasksSection() {
             )
           );
         }
+        setStagedSubmitMap((prev) => {
+          const next = { ...prev };
+          delete next[taskId];
+          return next;
+        });
         alert("제출이 완료되었습니다.");
       } else {
         // >4MB 세션 업로드
@@ -292,6 +314,7 @@ export default function MobileTasksSection() {
             action: "submit_session_finish",
             taskId,
             driveFileId: driveData.id,
+            note: note?.trim() || undefined,
           }),
         });
         const finishData = await finishRes.json();
@@ -300,7 +323,11 @@ export default function MobileTasksSection() {
         }
 
         if (finishData.submission) {
-          const nextStatus: TaskRecipientStatus = { state: "DONE", at: Date.now() };
+          const nextStatus: TaskRecipientStatus = finishData.status || {
+            state: "DONE",
+            at: Date.now(),
+            note: note?.trim() || undefined,
+          };
           setTasks((prev) =>
             prev.map((t) =>
               t.id === taskId
@@ -490,7 +517,19 @@ export default function MobileTasksSection() {
                     )}
 
                     {/* 모바일 액션 컨트롤 */}
-                    <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80">
+                    <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 space-y-2">
+                      {/* 거절 사유 또는 완료 메모 표출 (피드백 27번) */}
+                      {myStatus.state === "DECLINED" && myStatus.note && (
+                        <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl p-2.5 text-xs text-rose-700 dark:text-rose-300">
+                          <strong>거절 사유:</strong> {myStatus.note}
+                        </div>
+                      )}
+                      {myStatus.state === "DONE" && myStatus.note && (
+                        <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl p-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+                          <strong>완료 메모:</strong> {myStatus.note}
+                        </div>
+                      )}
+
                       {myStatus.state === "PENDING" && (
                         <div className="flex items-center gap-2">
                           <button
@@ -517,7 +556,10 @@ export default function MobileTasksSection() {
                           {task.kind === "confirm" ? (
                             <button
                               type="button"
-                              onClick={() => handleTransition(task.id, "done")}
+                              onClick={() => {
+                                setCompletingId(task.id);
+                                setCompleteNote("");
+                              }}
                               disabled={actionLoadingId === task.id}
                               className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                             >
@@ -525,24 +567,90 @@ export default function MobileTasksSection() {
                               <span>{actionLoadingId === task.id ? "처리 중…" : "완료 체크"}</span>
                             </button>
                           ) : (
-                            <div className="space-y-1.5">
-                              <input
-                                ref={fileInputRef}
-                                type="file"
-                                onChange={(e) => {
-                                  const f = e.target.files?.[0];
-                                  if (f) handleMobileSubmit(task.id, f);
-                                }}
-                                className="hidden"
-                                id={`mobile-submit-${task.id}`}
-                              />
-                              <label
-                                htmlFor={`mobile-submit-${task.id}`}
-                                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
-                              >
-                                <span>📁</span>
-                                <span>{submittingId === task.id ? uploadProgress || "제출 중…" : "파일/사진 선택하여 제출"}</span>
-                              </label>
+                            <div className="space-y-2">
+                              {(() => {
+                                const staged = stagedSubmitMap[task.id];
+                                if (staged) {
+                                  return (
+                                    <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3 space-y-2.5">
+                                      <div className="flex items-center justify-between text-xs">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                          <span>📄</span>
+                                          <span className="font-bold text-slate-900 dark:text-white truncate">
+                                            {staged.file.name}
+                                          </span>
+                                          <span className="text-[10px] text-slate-500">
+                                            ({(staged.file.size / 1024).toFixed(0)} KB)
+                                          </span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setStagedSubmitMap((prev) => {
+                                              const n = { ...prev };
+                                              delete n[task.id];
+                                              return n;
+                                            });
+                                          }}
+                                          className="text-xs text-slate-400 hover:text-rose-600 font-bold ml-1"
+                                        >
+                                          취소
+                                        </button>
+                                      </div>
+
+                                      <input
+                                        type="text"
+                                        value={staged.note}
+                                        onChange={(e) =>
+                                          setStagedSubmitMap((prev) => ({
+                                            ...prev,
+                                            [task.id]: { ...staged, note: e.target.value },
+                                          }))
+                                        }
+                                        placeholder="제출 시 남길 메모 (선택)"
+                                        maxLength={500}
+                                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white"
+                                      />
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMobileSubmit(task.id, staged.file, staged.note)}
+                                        disabled={submittingId === task.id}
+                                        className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shadow-xs"
+                                      >
+                                        {submittingId === task.id ? uploadProgress || "제출 중…" : "🚀 제출 확정하기"}
+                                      </button>
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <div>
+                                    <input
+                                      ref={fileInputRef}
+                                      type="file"
+                                      onChange={(e) => {
+                                        const f = e.target.files?.[0];
+                                        if (f) {
+                                          setStagedSubmitMap((prev) => ({
+                                            ...prev,
+                                            [task.id]: { file: f, note: "" },
+                                          }));
+                                        }
+                                      }}
+                                      className="hidden"
+                                      id={`mobile-submit-${task.id}`}
+                                    />
+                                    <label
+                                      htmlFor={`mobile-submit-${task.id}`}
+                                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                                    >
+                                      <span>📁</span>
+                                      <span>파일/사진 선택하기</span>
+                                    </label>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
@@ -567,8 +675,11 @@ export default function MobileTasksSection() {
                                   type="file"
                                   onChange={(e) => {
                                     const f = e.target.files?.[0];
-                                    if (f && confirm("이전 제출본은 교체됩니다. 다시 제출하시겠습니까?")) {
-                                      handleMobileSubmit(task.id, f);
+                                    if (f) {
+                                      setStagedSubmitMap((prev) => ({
+                                        ...prev,
+                                        [task.id]: { file: f, note: "" },
+                                      }));
                                     }
                                   }}
                                   className="hidden"
@@ -730,6 +841,50 @@ export default function MobileTasksSection() {
                 className="px-3 py-1.5 text-xs bg-rose-600 text-white font-bold rounded-lg"
               >
                 거절 확정
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 모바일 완료 확인 및 선택 메모 모달 (피드백 27번) */}
+      {completingId && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 max-w-xs w-full space-y-3 animate-in fade-in zoom-in-95">
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1">
+              <span>✅</span>
+              <span>업무 완료 처리</span>
+            </h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              완료 메모나 전달사항을 남길 수 있습니다 (선택).
+            </p>
+            <input
+              type="text"
+              value={completeNote}
+              onChange={(e) => setCompleteNote(e.target.value)}
+              placeholder="완료 메모 (선택)"
+              maxLength={500}
+              className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setCompletingId(null);
+                  setCompleteNote("");
+                }}
+                className="px-3 py-1.5 text-xs text-slate-500"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleTransition(completingId, "done", completeNote.trim());
+                }}
+                className="px-3 py-1.5 text-xs bg-emerald-600 text-white font-bold rounded-lg shadow-xs"
+              >
+                완료 확정
               </button>
             </div>
           </div>

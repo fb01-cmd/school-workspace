@@ -5,7 +5,7 @@
 // 양식 업로드 (form_upload, 최대 5개, <=4MB)
 // 2상: send (수신자 지정 및 최종 발송) — 발송 전에는 초안으로 수신자에게 미노출
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import TaskRecipientPickerModal, { RecipientChip } from "./TaskRecipientPickerModal";
 import type { TaskFormFile, TaskKind } from "@/lib/tasks/logic";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
@@ -58,6 +58,42 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 전체 상태 초기화 함수 (피드백 24번)
+  const resetForm = useCallback(() => {
+    setStep(1);
+    setTitle("");
+    setKind("confirm");
+    const d = new Date(Date.now() + 3 * 24 * 3600 * 1000 + 9 * 3600 * 1000);
+    setDueDate(d.toISOString().slice(0, 10));
+    setDueTime("17:00");
+    setBody("");
+    if (editorRef.current) {
+      editorRef.current.innerHTML = "";
+    }
+    setPreparedTaskId(null);
+    setFormFiles([]);
+    setUploadingForm(false);
+    setSelectedUsers([]);
+    setRecipientSummary("");
+    setRecipientChips([]);
+    setIsPickerOpen(false);
+    setLoading(false);
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  // 모달이 열릴 때 상태 초기화
+  useEffect(() => {
+    if (isOpen) {
+      resetForm();
+    }
+  }, [isOpen, resetForm]);
+
+  const handleModalClose = () => {
+    resetForm();
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -184,7 +220,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
 
       alert("업무가 성공적으로 발송되었습니다.");
       onSuccess?.();
-      onClose();
+      handleModalClose();
     } catch (err: any) {
       setError(err.message || "발송 중 오류가 발생했습니다.");
     } finally {
@@ -226,7 +262,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleModalClose}
             className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
           >
             ✕
@@ -493,7 +529,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
             <>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleModalClose}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
               >
                 취소

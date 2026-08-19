@@ -84,7 +84,12 @@ export default function TasksSection({ initialTaskId }: Props) {
   const [declineReason, setDeclineReason] = useState("");
   const [transitionLoading, setTransitionLoading] = useState(false);
 
-  // 파일 제출 상태
+  // 완료 체크 메모 모달 (피드백 27번)
+  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const [completeNote, setCompleteNote] = useState("");
+
+  // 파일 제출 대기 상태 (피드백 26번, 27번)
+  const [stagedSubmitMap, setStagedSubmitMap] = useState<Record<string, { file: File; note: string }>>({});
   const [submittingTaskId, setSubmittingTaskId] = useState<string | null>(null);
   const [submitProgress, setSubmitProgress] = useState<string | null>(null);
   const submitFileInputRef = useRef<HTMLInputElement>(null);
@@ -139,9 +144,9 @@ export default function TasksSection({ initialTaskId }: Props) {
 
       if (filter === "canceled") return isCanceled;
       if (isCanceled) return false;
-
+      if (filter === "all") return true;
       if (filter === "pending") return status === "PENDING" || status === "ACCEPTED";
-      if (filter === "done") return status === "DONE" || status === "DECLINED";
+      if (filter === "done") return status === "DONE";
       return true;
     });
   }, [inboxTasks, filter, myEmail]);
@@ -183,8 +188,6 @@ export default function TasksSection({ initialTaskId }: Props) {
           title: selfTitle.trim(),
           dueAt,
           body: selfBody.trim() || undefined,
-          // contentFormat 미지정 = 평문 — 미니 입력엔 서식 도구가 없어 md1 승격 금지
-          // (별표 등 문자가 서식으로 재해석되는 사고 방지, URL 링크는 평문 렌더가 처리)
         }),
       });
       const data = await res.json();
@@ -202,7 +205,7 @@ export default function TasksSection({ initialTaskId }: Props) {
     }
   };
 
-  // 상태 전이 액션 (accept, done, undone, decline) — 피드백 7번 즉시 낙관 갱신
+  // 상태 전이 액션 (accept, done, undone, decline) — 피드백 7번 즉시 낙관 갱신, 피드백 27번 메모 동반
   const handleTransition = async (taskId: string, action: "accept" | "done" | "undone" | "decline", note?: string) => {
     setTransitionLoading(true);
     try {
@@ -213,7 +216,7 @@ export default function TasksSection({ initialTaskId }: Props) {
           action: "transition",
           taskId,
           transition: action,
-          note,
+          note: note?.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -241,6 +244,10 @@ export default function TasksSection({ initialTaskId }: Props) {
         setDecliningTaskId(null);
         setDeclineReason("");
       }
+      if (action === "done") {
+        setCompletingTaskId(null);
+        setCompleteNote("");
+      }
     } catch (err: any) {
       alert(err.message || "처리 중 오류가 발생했습니다.");
     } finally {
@@ -248,11 +255,11 @@ export default function TasksSection({ initialTaskId }: Props) {
     }
   };
 
-  // 파일 제출 처리 (<=4MB: multipart / >4MB: resumable session) — 피드백 7번 즉시 낙관 갱신
-  const handleSubmitFile = async (taskId: string, file: File) => {
+  // 파일 제출 처리 (<=4MB: multipart / >4MB: resumable session) — 피드백 26번, 27번 note 동반 및 대기 해제
+  const handleSubmitFile = async (taskId: string, file: File, note?: string) => {
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      alert("파일 크기는 최대 30MB까지 올릴 수 있습니다.");
+    if (file.size > 30 * 1024 * 1024) {
+      alert("파일 크기는 최대 30MB까지 올릴 수 있습니다. 30MB가 넘는 파일은 내 드라이브에 올린 뒤 링크를 본문에 붙여 주세요.");
       return;
     }
 
@@ -266,6 +273,9 @@ export default function TasksSection({ initialTaskId }: Props) {
         formData.append("action", "submit");
         formData.append("taskId", taskId);
         formData.append("file", file);
+        if (note?.trim()) {
+          formData.append("note", note.trim());
+        }
 
         const res = await fetch("/api/tasks", {
           method: "POST",
@@ -277,7 +287,11 @@ export default function TasksSection({ initialTaskId }: Props) {
         }
 
         if (data.submission) {
-          const nextStatus: TaskRecipientStatus = { state: "DONE", at: Date.now() };
+          const nextStatus: TaskRecipientStatus = data.status || {
+            state: "DONE",
+            at: Date.now(),
+            note: note?.trim() || undefined,
+          };
           setInboxTasks((prev) =>
             prev.map((t) =>
               t.id === taskId
@@ -290,6 +304,12 @@ export default function TasksSection({ initialTaskId }: Props) {
             )
           );
         }
+        // 대기 맵 정리
+        setStagedSubmitMap((prev) => {
+          const next = { ...prev };
+          delete next[taskId];
+          return next;
+        });
         alert("제출이 완료되었습니다.");
       } else {
         // 4MB 초과: resumable session 경로 (§5-4)
@@ -329,6 +349,7 @@ export default function TasksSection({ initialTaskId }: Props) {
             action: "submit_session_finish",
             taskId,
             driveFileId: driveData.id,
+            note: note?.trim() || undefined,
           }),
         });
         const finishData = await finishRes.json();
@@ -654,10 +675,15 @@ export default function TasksSection({ initialTaskId }: Props) {
                           </div>
                         )}
 
-                        {/* 거절 사유 표출 */}
+                        {/* 거절 사유 또는 완료 메모 표출 (피드백 27번) */}
                         {myStatus.state === "DECLINED" && myStatus.note && (
                           <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-800">
                             <strong>내가 입력한 거절 사유:</strong> {myStatus.note}
+                          </div>
+                        )}
+                        {myStatus.state === "DONE" && myStatus.note && (
+                          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800">
+                            <strong>내가 남긴 완료 메모:</strong> {myStatus.note}
                           </div>
                         )}
 
@@ -690,11 +716,14 @@ export default function TasksSection({ initialTaskId }: Props) {
                             {myStatus.state === "ACCEPTED" && (
                               <div className="space-y-3">
                                 {task.kind === "confirm" ? (
-                                  /* 확인형: 완료 체크 */
+                                  /* 확인형: 완료 체크 (피드백 27번: 선택 메모 다이얼로그) */
                                   <div className="flex items-center gap-3">
                                     <button
                                       type="button"
-                                      onClick={() => handleTransition(task.id, "done")}
+                                      onClick={() => {
+                                        setCompletingTaskId(task.id);
+                                        setCompleteNote("");
+                                      }}
                                       disabled={transitionLoading}
                                       className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
                                     >
@@ -703,37 +732,129 @@ export default function TasksSection({ initialTaskId }: Props) {
                                     </button>
                                   </div>
                                 ) : (
-                                  /* 제출형: 파일 제출 업로드 드롭존 */
+                                  /* 제출형: 파일 선택 → 대기 카드 → 제출 버튼 2단계 흐름 (피드백 26번, 27번) */
                                   <div className="space-y-2">
                                     <div className="text-xs font-bold text-slate-800">
                                       과제/서식 파일 제출하기
                                     </div>
-                                    <div className="border-2 border-dashed border-indigo-200 hover:border-indigo-400 bg-white rounded-xl p-4 text-center space-y-2 transition-colors">
-                                      <input
-                                        ref={submitFileInputRef}
-                                        type="file"
-                                        onChange={(e) => {
-                                          const file = e.target.files?.[0];
-                                          if (file) handleSubmitFile(task.id, file);
-                                        }}
-                                        className="hidden"
-                                        id={`submit-file-${task.id}`}
-                                      />
-                                      <label
-                                        htmlFor={`submit-file-${task.id}`}
-                                        className="inline-block px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
-                                      >
-                                        {submittingTaskId === task.id ? "제출 처리 중…" : "📁 파일 선택하여 제출하기"}
-                                      </label>
-                                      <p className="text-[11px] text-slate-400">
-                                        한글, 오피스, PDF, 이미지 등 (최대 30MB) · 제출 시 파일명이 자동으로 규칙에 맞게 정규화됩니다.
-                                      </p>
-                                      {submittingTaskId === task.id && submitProgress && (
-                                        <p className="text-xs text-indigo-600 font-bold animate-pulse">
-                                          {submitProgress}
-                                        </p>
-                                      )}
-                                    </div>
+                                    {(() => {
+                                      const staged = stagedSubmitMap[task.id];
+                                      if (staged) {
+                                        return (
+                                          <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-4 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-base">📄</span>
+                                                <div>
+                                                  <p className="text-xs font-bold text-slate-900 truncate max-w-xs sm:max-w-md">
+                                                    {staged.file.name}
+                                                  </p>
+                                                  <p className="text-[10px] text-slate-500">
+                                                    {(staged.file.size / 1024).toFixed(0)} KB · 제출 준비 완료
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              <div className="flex items-center gap-1.5">
+                                                <input
+                                                  type="file"
+                                                  onChange={(e) => {
+                                                    const f = e.target.files?.[0];
+                                                    if (f) {
+                                                      setStagedSubmitMap((prev) => ({
+                                                        ...prev,
+                                                        [task.id]: { file: f, note: staged.note },
+                                                      }));
+                                                    }
+                                                  }}
+                                                  className="hidden"
+                                                  id={`change-file-${task.id}`}
+                                                />
+                                                <label
+                                                  htmlFor={`change-file-${task.id}`}
+                                                  className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors"
+                                                >
+                                                  파일 바꾸기
+                                                </label>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setStagedSubmitMap((prev) => {
+                                                      const n = { ...prev };
+                                                      delete n[task.id];
+                                                      return n;
+                                                    });
+                                                  }}
+                                                  className="px-2 py-1 text-slate-400 hover:text-rose-600 font-bold text-xs cursor-pointer"
+                                                  title="제거"
+                                                >
+                                                  ✕
+                                                </button>
+                                              </div>
+                                            </div>
+
+                                            {/* 전달 코멘트 한 줄 (피드백 27번) */}
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="text"
+                                                value={staged.note}
+                                                onChange={(e) =>
+                                                  setStagedSubmitMap((prev) => ({
+                                                    ...prev,
+                                                    [task.id]: { ...staged, note: e.target.value },
+                                                  }))
+                                                }
+                                                placeholder="제출 시 남길 간단한 메모 (선택, 최대 500자)"
+                                                maxLength={500}
+                                                className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500"
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() => handleSubmitFile(task.id, staged.file, staged.note)}
+                                                disabled={submittingTaskId === task.id}
+                                                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs whitespace-nowrap"
+                                              >
+                                                {submittingTaskId === task.id ? "제출 중…" : "🚀 제출 확정"}
+                                              </button>
+                                            </div>
+
+                                            {submittingTaskId === task.id && submitProgress && (
+                                              <p className="text-xs text-indigo-600 font-bold animate-pulse">
+                                                {submitProgress}
+                                              </p>
+                                            )}
+                                          </div>
+                                        );
+                                      }
+
+                                      return (
+                                        <div className="border-2 border-dashed border-indigo-200 hover:border-indigo-400 bg-white rounded-xl p-4 text-center space-y-2 transition-colors">
+                                          <input
+                                            ref={submitFileInputRef}
+                                            type="file"
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              if (file) {
+                                                setStagedSubmitMap((prev) => ({
+                                                  ...prev,
+                                                  [task.id]: { file, note: "" },
+                                                }));
+                                              }
+                                            }}
+                                            className="hidden"
+                                            id={`submit-file-${task.id}`}
+                                          />
+                                          <label
+                                            htmlFor={`submit-file-${task.id}`}
+                                            className="inline-block px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
+                                          >
+                                            📁 파일 선택하기
+                                          </label>
+                                          <p className="text-[11px] text-slate-400">
+                                            한글, 오피스, PDF, 이미지 등 (최대 30MB) · 파일을 선택하면 확인 후 제출할 수 있습니다.
+                                          </p>
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 )}
                               </div>
@@ -758,7 +879,7 @@ export default function TasksSection({ initialTaskId }: Props) {
                                     </button>
                                   </div>
                                 ) : (
-                                  <div className="bg-white border border-emerald-200 rounded-xl p-3.5 space-y-2">
+                                  <div className="bg-white border border-emerald-200 rounded-xl p-3.5 space-y-3">
                                     <div className="flex items-center justify-between">
                                       <div className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
                                         <span>✅</span>
@@ -770,13 +891,10 @@ export default function TasksSection({ initialTaskId }: Props) {
                                           onChange={(e) => {
                                             const file = e.target.files?.[0];
                                             if (file) {
-                                              if (
-                                                confirm(
-                                                  "이전 제출본은 교체되며 30일 후 복구할 수 없습니다. 새 파일로 다시 제출하시겠습니까?"
-                                                )
-                                              ) {
-                                                handleSubmitFile(task.id, file);
-                                              }
+                                              setStagedSubmitMap((prev) => ({
+                                                ...prev,
+                                                [task.id]: { file, note: "" },
+                                              }));
                                             }
                                           }}
                                           className="hidden"
@@ -790,6 +908,68 @@ export default function TasksSection({ initialTaskId }: Props) {
                                         </label>
                                       </div>
                                     </div>
+
+                                    {/* 재제출 대기 카드 표출 (피드백 26번) */}
+                                    {(() => {
+                                      const staged = stagedSubmitMap[task.id];
+                                      if (!staged) return null;
+                                      return (
+                                        <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3 space-y-2">
+                                          <div className="flex items-center justify-between text-xs">
+                                            <div className="flex items-center gap-1.5">
+                                              <span>📄</span>
+                                              <span className="font-bold text-slate-900 truncate max-w-xs">
+                                                {staged.file.name}
+                                              </span>
+                                              <span className="text-[10px] text-slate-500">
+                                                ({(staged.file.size / 1024).toFixed(0)} KB)
+                                              </span>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setStagedSubmitMap((prev) => {
+                                                  const n = { ...prev };
+                                                  delete n[task.id];
+                                                  return n;
+                                                });
+                                              }}
+                                              className="text-xs text-slate-400 hover:text-rose-600 font-bold"
+                                            >
+                                              취소
+                                            </button>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <input
+                                              type="text"
+                                              value={staged.note}
+                                              onChange={(e) =>
+                                                setStagedSubmitMap((prev) => ({
+                                                  ...prev,
+                                                  [task.id]: { ...staged, note: e.target.value },
+                                                }))
+                                              }
+                                              placeholder="재제출 메모 (선택)"
+                                              maxLength={500}
+                                              className="flex-1 px-3 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-900"
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => handleSubmitFile(task.id, staged.file, staged.note)}
+                                              disabled={submittingTaskId === task.id}
+                                              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold"
+                                            >
+                                              {submittingTaskId === task.id ? "교체 중…" : "교체 제출"}
+                                            </button>
+                                          </div>
+                                          {submittingTaskId === task.id && submitProgress && (
+                                            <p className="text-xs text-indigo-600 font-bold animate-pulse">
+                                              {submitProgress}
+                                            </p>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
 
                                     {mySubmission && (
                                       <div className="flex items-center justify-between text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-200/80">
@@ -984,6 +1164,53 @@ export default function TasksSection({ initialTaskId }: Props) {
                 className="px-4 py-1.5 text-xs font-bold bg-rose-600 text-white rounded-xl hover:bg-rose-700 disabled:opacity-50 cursor-pointer shadow-2xs"
               >
                 {transitionLoading ? "처리 중…" : "거절 확정"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 완료 확인 및 선택 메모 모달 (피드백 27번) */}
+      {completingTaskId && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-sm w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <span>✅</span>
+                <span>업무 처리 완료</span>
+              </h4>
+              <p className="text-xs text-slate-500 mt-1">
+                업무를 완료 처리합니다. 발신 선생님께 남길 간단한 메모나 코멘트가 있다면 적어주세요. (선택 사항)
+              </p>
+            </div>
+            <textarea
+              rows={3}
+              value={completeNote}
+              onChange={(e) => setCompleteNote(e.target.value)}
+              placeholder="예: 요청하신 서류 확인 후 교무실 서랍에 비치해 두었습니다. (선택)"
+              className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-slate-900"
+              maxLength={500}
+            />
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setCompletingTaskId(null);
+                  setCompleteNote("");
+                }}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleTransition(completingTaskId, "done", completeNote.trim());
+                }}
+                disabled={transitionLoading}
+                className="px-4 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 cursor-pointer shadow-2xs"
+              >
+                {transitionLoading ? "처리 중…" : "완료 확정"}
               </button>
             </div>
           </div>

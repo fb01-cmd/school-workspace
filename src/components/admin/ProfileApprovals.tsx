@@ -15,7 +15,8 @@ import {
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import OrgChartTree from "@/components/admin/OrgChartTree";
 import OrgChartBuilder from "@/components/admin/OrgChartBuilder";
-import { invalidateClientCache } from "@/lib/cache/clientCache";
+import { getClientCache, setClientCache, invalidateClientCache } from "@/lib/cache/clientCache";
+import { getDocs } from "firebase/firestore";
 import { isMobileNumberPattern } from "@/components/admin/ManualProfileEditor";
 
 interface PendingProfile extends TeacherProfile {
@@ -73,25 +74,38 @@ export default function ProfileApprovals() {
   // 승인 완료 프로필 전체 (email -> 현재 반영값) — 승인 diff 표시용 (2026-08-07)
   const [approvedProfiles, setApprovedProfiles] = useState<Map<string, TeacherProfile>>(new Map());
 
-  // 2. 승인 프로필 실시간 구독 (공동담임 겹침 경고 + 승인 시 변경 diff — 승인 탭 전용)
+  // 2. 승인 프로필 캐시 로드 (다이어트 4번: 5분 인메모리 캐시 적용)
   useEffect(() => {
     if (!userData?.domain || userData.role !== "super_admin") return;
-    const qApproved = query(collection(db, "teacher_profiles"));
-    const unsubApproved = onSnapshot(qApproved, (snap) => {
+    let cancelled = false;
+
+    async function loadApproved() {
+      const CACHE_KEY = "teacher_profiles:all";
+      const cached = getClientCache(CACHE_KEY) as TeacherProfile[] | null;
+      let profiles: TeacherProfile[];
+      if (cached) {
+        profiles = cached;
+      } else {
+        const snap = await getDocs(collection(db, "teacher_profiles"));
+        profiles = snap.docs.map((d) => d.data() as TeacherProfile);
+        setClientCache(CACHE_KEY, profiles, 5 * 60 * 1000);
+      }
+      if (cancelled) return;
+
       const map = new Map<string, ApprovedTeacherInfo[]>();
       const profMap = new Map<string, TeacherProfile>();
-      snap.docs.forEach((docSnap) => {
-        const data = docSnap.data();
-        profMap.set((data.email || docSnap.id).toLowerCase(), data as TeacherProfile);
+      profiles.forEach((data) => {
+        const email = (data.email || "").toLowerCase();
+        if (email) profMap.set(email, data);
         if (data.isHomeroom && data.homeroom) {
           const g = Number(data.homeroom.grade);
-          const c = Number(data.homeroom.class ?? data.homeroom.classNum);
+          const c = Number(data.homeroom.class ?? (data.homeroom as any).classNum);
           if (g && c) {
             const key = `${g}-${c}`;
             const list = map.get(key) || [];
             list.push({
-              email: (data.email || docSnap.id).toLowerCase(),
-              name: data.name || data.email || docSnap.id,
+              email,
+              name: data.name || email,
             });
             map.set(key, list);
           }
@@ -99,8 +113,12 @@ export default function ProfileApprovals() {
       });
       setApprovedHomerooms(map);
       setApprovedProfiles(profMap);
-    });
-    return () => unsubApproved();
+    }
+
+    loadApproved().catch((err) => console.error("[ProfileApprovals] 프로필 로드 실패:", err));
+    return () => {
+      cancelled = true;
+    };
   }, [userData?.domain, userData?.role]);
 
   /** 승인 시 현재 반영값에서 바뀌는 항목 요약 — "나중에 한 행동이 이긴다" 규칙(2026-08-07 사용자 확정)

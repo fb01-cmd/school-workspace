@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
-import { collection, onSnapshot, query } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
@@ -94,29 +94,39 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
     return set;
   }, [gwsUsers, schoolSettings]);
 
-  // Real-time subscription to teacher_profiles collection
+  // 프로필 캐시 로드 (다이어트 4번: 5분 인메모리 캐시 적용)
   useEffect(() => {
-    const q = query(collection(db, "teacher_profiles"));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const items = snap.docs.map((docSnap) => {
-          const data = docSnap.data() as TeacherProfile;
-          return {
-            ...data,
-            email: (data.email || docSnap.id).toLowerCase(),
-            name: data.name || (data.email || docSnap.id).split("@")[0],
-          };
-        });
-        setProfiles(items);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("조직도 프로필 조회 실패:", err);
-        setLoading(false);
+    let cancelled = false;
+    async function loadProfiles() {
+      const CACHE_KEY = "teacher_profiles:all";
+      const cached = getClientCache(CACHE_KEY) as TeacherProfile[] | null;
+      let rawProfiles: TeacherProfile[];
+      if (cached) {
+        rawProfiles = cached;
+      } else {
+        const snap = await getDocs(collection(db, "teacher_profiles"));
+        rawProfiles = snap.docs.map((d) => d.data() as TeacherProfile);
+        setClientCache(CACHE_KEY, rawProfiles, 5 * 60 * 1000);
       }
-    );
-    return () => unsub();
+      if (cancelled) return;
+
+      const items = rawProfiles.map((data) => ({
+        ...data,
+        email: (data.email || "").toLowerCase(),
+        name: data.name || (data.email || "").split("@")[0],
+      }));
+      setProfiles(items);
+      setLoading(false);
+    }
+
+    loadProfiles().catch((err) => {
+      console.error("조직도 프로필 조회 실패:", err);
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Initialize expanded state for departments

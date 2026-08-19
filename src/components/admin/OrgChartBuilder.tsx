@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
-import { collection, onSnapshot, query, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
+import { collection, getDocs, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { getClientCache, setClientCache, invalidateClientCache } from "@/lib/cache/clientCache";
 import { writeAuditLog } from "@/lib/firebase/audit";
 import ManualProfileEditor from "@/components/admin/ManualProfileEditor";
 import { DEFAULT_DEPARTMENTS, POSITION_LIKE_DEPARTMENTS } from "@/lib/org/departments";
@@ -60,19 +60,17 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
   // DnD drag over state
   const [dragOverDept, setDragOverDept] = useState<string | null>(null);
 
-  // 토스트 메시지
-  const [toast, setToast] = useState<{ type: "success" | "warning" | "info"; text: string } | null>(null);
-
-  const isSuperAdmin = userData?.role === "super_admin";
-  const departmentOrder = schoolSettings?.departments || DEFAULT_DEPARTMENTS;
-
-  // 자동 토스트 닫기 (3.5초)
+  // 토스트 알림 상태
+  const [toast, setToast] = useState<{ type: "success" | "info" | "warning" | "error"; text: string } | null>(null);
   useEffect(() => {
     if (toast) {
-      const timer = setTimeout(() => setToast(null), 3500);
+      const timer = setTimeout(() => setToast(null), 3000);
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  const isSuperAdmin = userData?.role === "super_admin";
+  const departmentOrder = schoolSettings?.departments || DEFAULT_DEPARTMENTS;
 
   // §7-1 이탈 가드 (beforeunload)
   const stagedCount = Object.keys(stagedProfiles).length;
@@ -87,10 +85,10 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [stagedCount]);
 
-  // 1. GWS 유저 목록 로드 (교사 명단용)
+  // 1. GWS 유저 목록 로드 (캐시 우선)
   useEffect(() => {
     const cached = getClientCache("users:all");
-    if (cached) {
+    if (Array.isArray(cached) && cached.length > 0) {
       setGwsTeachers(cached);
     } else {
       fetch("/api/workspace/users", {
@@ -109,30 +107,39 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
     }
   }, []);
 
-  // 2. 파이어베이스 승인 프로필 실시간 구독
-  useEffect(() => {
-    const q = query(collection(db, "teacher_profiles"));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const items = snap.docs.map((docSnap) => {
-          const data = docSnap.data() as TeacherProfile;
-          return {
-            ...data,
-            email: (data.email || docSnap.id).toLowerCase(),
-            name: data.name || (data.email || docSnap.id).split("@")[0],
-          };
-        });
-        setProfiles(items);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("조직도 프로필 구독 실패:", err);
-        setLoading(false);
+  // 2. 프로필 캐시 로드 (다이어트 4번: 5분 인메모리 캐시 적용)
+  const loadProfiles = useCallback(async (forceRefresh = false) => {
+    try {
+      const CACHE_KEY = "teacher_profiles:all";
+      if (forceRefresh) {
+        invalidateClientCache(CACHE_KEY);
       }
-    );
-    return () => unsub();
+      const cached = forceRefresh ? null : (getClientCache(CACHE_KEY) as TeacherProfile[] | null);
+      let rawProfiles: TeacherProfile[];
+      if (cached) {
+        rawProfiles = cached;
+      } else {
+        const snap = await getDocs(collection(db, "teacher_profiles"));
+        rawProfiles = snap.docs.map((d) => d.data() as TeacherProfile);
+        setClientCache(CACHE_KEY, rawProfiles, 5 * 60 * 1000);
+      }
+
+      const items = rawProfiles.map((data) => ({
+        ...data,
+        email: (data.email || "").toLowerCase(),
+        name: data.name || (data.email || "").split("@")[0],
+      }));
+      setProfiles(items);
+      setLoading(false);
+    } catch (err) {
+      console.error("조직도 프로필 조회 실패:", err);
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadProfiles();
+  }, [loadProfiles]);
 
   // 파이어베이스 프로필 맵 (email -> TeacherProfile)
   const profileMap = useMemo(() => {
@@ -537,6 +544,11 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
 
     setIsCommitting(false);
     setCommitProgress(null);
+
+    // 성공한 항목이 있으면 캐시 무효화 및 프로필 재로드
+    if (successCount > 0) {
+      loadProfiles(true);
+    }
 
     if (failedEmails.length === 0) {
       setToast({
@@ -1106,6 +1118,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                   delete next[clean];
                   return next;
                 });
+                loadProfiles(true);
                 setEditingTeacher(null);
                 setToast({
                   type: "success",
