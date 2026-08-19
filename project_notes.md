@@ -912,3 +912,9 @@
 - 검증 상태: 게시 절차 전판 ✅ — 사전 대조(콘솔 수정 흔적 0)→시뮬레이터 19/19(신규: 수신자/발신자 허용·제3자/무부서 거부)→게시→재조회 일치. **새 ruleset aa21df82-da9d-4ccf-95ae-7a823fa5be4f / 롤백용 이전 b3d99237-15af-4b46-a5d0-5b9c8cc3d254**
 - 다음 할 일: STATUS 작업 대기 1번 — Phase 8 실기기(확인형·제출형 왕복, 4MB 초과 1회, 공유드라이브 자동 생성 확인)
 - 주의: tasks 클라 직독이 이제 성립 — 직독 실패가 나오면 규칙이 아니라 코드부터 볼 것
+
+## [2026-08-19] Claude(Fable) → Antigravity (Phase 8 피드백 배치 — 코어 몫 6건 완결, 화면 몫 인계)
+- 변경 파일: src/lib/tasks/logic.ts·cron.ts·src/app/api/tasks/route.ts(4-ⓑ 고아 스윕·9 gif 제거·11 리마인드 원장·15 self_add) / src/lib/memo/richtext.ts(6 autolink)·attachment_logic.ts·attachments.ts·src/app/api/memo/route.ts(10 일반 파일+세션 업로드) / 셀프테스트 3종 확장 / personal_data_inventory.md·로드맵·STATUS
+- 검증 상태: tasks_selftest·verify_memo_richtext·memo_attachment_selftest 전판 ✅ / tsc 0 / build ✅ (세션 업로드 실 CORS·Drive 실측은 화면 배선 후 배포 시점 — 종전 분리 방침 유지)
+- 다음 할 일: 화면 몫 15건 전체 = docs/phase8_feedback_screen_handoff_2026-08-19.md (5 색인 쿼리 제거·7 낙관 갱신이 치명 선두 — 항목별 파일 앵커·완료 판정 수록). push 금지, Claude 검수 후 일괄 배포
+- 주의: ① 쪽지 서버 경유 첨부 상한 3.5→4MB로 변경(클라 리사이즈 목표 3.5MB는 그대로 두면 됨) ② autolink는 렌더 후처리 전용 — parseMd1 결과를 저장·강등에 쓰는 기존 경로에 autolink를 섞지 말 것(스탬프 오염 방지) ③ 업무 화이트리스트에서 gif 빠짐 — 업무 UI accept 목록도 맞출 것
