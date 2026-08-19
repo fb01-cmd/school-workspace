@@ -151,8 +151,6 @@ export default function HubOrgTree({
 
   // Tree data structure
   const structuredTree = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-
     // Filter: only active teachers with at least 1 department (no noDept / empty dept)
     const validProfiles = profiles.filter((p) => {
       const cleanEmail = (p.email || "").toLowerCase();
@@ -181,40 +179,44 @@ export default function HubOrgTree({
         getName: (p) => getDisplayName(p),
       });
 
-      let matchingMembers = allMembers;
-      if (q) {
-        matchingMembers = allMembers.filter((p) => {
-          const name = getDisplayName(p).toLowerCase();
-          const pos = (p.position || "").toLowerCase();
-          return name.includes(q) || pos.includes(q);
-        });
-      }
-
       if (allMembers.length > 0) {
         result.push({
           deptName: d,
-          members: matchingMembers,
+          members: allMembers,
           allDeptMembers: allMembers,
         });
       }
     });
 
     return result;
-  }, [profiles, departmentOrder, searchQuery, activeEmails, gwsNameMap]);
+  }, [profiles, departmentOrder, activeEmails, gwsNameMap]);
 
-  // When searching, auto-expand departments with matches
-  useEffect(() => {
-    const q = searchQuery.trim();
-    if (q) {
-      const updated: Record<string, boolean> = {};
-      structuredTree.forEach(({ deptName, members }) => {
-        if (members.length > 0) {
-          updated[deptName] = true;
-        }
-      });
-      setExpandedDepts((prev) => ({ ...prev, ...updated }));
-    }
-  }, [searchQuery, structuredTree]);
+  // Flat search results (Directive 6 / Feedback 4-1 / spec §2-1-1)
+  const flatSearchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+
+    const seenEmails = new Set<string>();
+    const matched: TeacherProfile[] = [];
+
+    profiles.forEach((p) => {
+      const email = (p.email || "").toLowerCase();
+      if (!email || seenEmails.has(email)) return;
+      if (activeEmails && !activeEmails.has(email)) return;
+      if (p.noDept || !p.departments || p.departments.length === 0) return;
+
+      seenEmails.add(email);
+
+      const name = getDisplayName(p).toLowerCase();
+      const ext = (p.extension || "").toLowerCase();
+      if (name.includes(q) || (ext && ext.includes(q))) {
+        matched.push(p);
+      }
+    });
+
+    matched.sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b), "ko"));
+    return matched;
+  }, [searchQuery, profiles, activeEmails, gwsNameMap]);
 
   const toggleDeptExpand = (dept: string) => {
     setExpandedDepts((prev) => ({
@@ -292,16 +294,71 @@ export default function HubOrgTree({
         </div>
       </div>
 
-      {/* Roster Tree list */}
+      {/* Roster Tree or Flat Search Results list */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {loading ? (
           <div className="py-16 text-center text-xs text-slate-400 space-y-2">
             <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
             <p>교직원 명단을 불러오는 중입니다...</p>
           </div>
+        ) : searchQuery.trim() ? (
+          /* Flat search results (Directive 6 / Feedback 4-1 / spec §2-1-1) */
+          flatSearchResults.length === 0 ? (
+            <div className="py-12 text-center text-xs text-slate-400">
+              이름과 일치하는 선생님이 없습니다.
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {flatSearchResults.map((teacher) => {
+                const email = (teacher.email || "").toLowerCase();
+                const isSelected = selectedEmails.has(email);
+                const displayName = getDisplayName(teacher);
+                const deptsLabel = teacher.departments?.join(", ") || "";
+
+                return (
+                  <div
+                    key={email}
+                    className={`flex items-center justify-between px-2.5 py-2 rounded-lg border border-slate-100 bg-white hover:bg-indigo-50/50 transition-colors ${
+                      isSelected ? "bg-indigo-50/70 border-indigo-200" : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggleEmail(email)}
+                        className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPopoverTeacher(teacher)}
+                        className="flex flex-col flex-1 min-w-0 text-left cursor-pointer group"
+                        title="상세 정보 보기"
+                      >
+                        <span
+                          className={`text-xs truncate ${
+                            isSelected
+                              ? "font-bold text-indigo-900"
+                              : "text-slate-800 group-hover:text-indigo-600"
+                          }`}
+                        >
+                          {displayName}
+                        </span>
+                        {deptsLabel && (
+                          <span className="text-[10px] text-slate-400 truncate">
+                            {deptsLabel}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
         ) : structuredTree.length === 0 ? (
           <div className="py-12 text-center text-xs text-slate-400">
-            {searchQuery ? "검색 결과가 없습니다." : "표시할 조직 정보가 없습니다."}
+            표시할 조직 정보가 없습니다.
           </div>
         ) : (
           structuredTree.map(({ deptName, members, allDeptMembers }) => {
