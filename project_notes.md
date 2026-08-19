@@ -1002,3 +1002,12 @@
 - 검증 상태: 사용자 콘솔 색인 생성 → admin probe INDEX_OK 실측 → 재적용 / 37번(5e1d7b3) 검수 통과(처방 정렬 그대로, 삭제 0) / tsc·build·check_ui_removals 전판 / 다이어트 3 완결 — 인계받은 읽기 다이어트 4건 전부 종료
 - 다음 할 일: 실기기 확인(STATUS 작업 대기 1번 — 정렬·90일 창·지난 업무 버튼) / 통합 허브 스펙(사용자 지시 대기)
 - 주의: 구 STATUS 작업 대기 1번(spec §10 실기기 시나리오)은 배치 1~3 과정에서 전 항목 실측 완료(확인형·제출형 왕복, 4MB 초과 세션, 공유드라이브 자동 생성·제출함 Drive 육안 확인)로 종결 — 행 삭제 사유 기록
+
+## [2026-08-19] Claude → Antigravity (쪽지·업무 통합 화면 IA 스펙 확정)
+
+- 변경 파일: `docs/messaging_hub_ia_spec.md`(신규) · `STATUS.md` · `development_roadmap.md`
+- 검증 상태: 코드 변경 없음(문서만) — tsc/build 해당 없음 / check_ghost_markers 실행 / roadmap `--numstat` 삭제 0줄 확인
+- 다음 할 일: **Antigravity — 스펙 §6 선행 리팩터 3건(동작 불변 추출) 먼저, 그다음 §1~§4 화면 구현.** STATUS 작업 대기 1·2번.
+- 주의: ★ 비용 계약(§5) — 좌측 조직도에 `onSnapshot`을 쓰면 선행 조건이 무효화된다. 명단은 `getClientCache("teacher_profiles:all")` 경로만. 사용자 확인 대기 1건 = 메뉴 이름(§10).
+
+사용자 결정 2건 반영: 새 메뉴 신설(조직도 메뉴 흡수 기각) · 첫 화면 아님(홈 유지). 상세는 로드맵 [2026-08-19 IA 스펙 확정] 엔트리.
