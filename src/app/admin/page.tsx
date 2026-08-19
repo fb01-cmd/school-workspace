@@ -64,6 +64,8 @@ export default function AdminPage() {
   const [activeMenu, setActiveMenu] = useState<MenuType>("home");
   const [initialHubCategory, setInitialHubCategory] = useState<"tasks" | "memo">("tasks");
   const [targetMemoId, setTargetMemoId] = useState<string | null>(null);
+  // 알림·카드에서 온 이동 요청의 일련번호 (같은 항목을 다시 눌러도 전달되게 한다)
+  const [navSeq, setNavSeq] = useState(0);
   const [targetTaskId, setTargetTaskId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [pendingProfileCount, setPendingProfileCount] = useState(0);
@@ -103,12 +105,15 @@ export default function AdminPage() {
   useEffect(() => {
     const handleAdminNav = (e: any) => {
       if (e.detail?.menu) {
-        if (e.detail.memoId !== undefined) {
-          setTargetMemoId(e.detail.memoId);
-        }
-        if (e.detail.taskId !== undefined) {
-          setTargetTaskId(e.detail.taskId);
-        }
+        // 지목이 없는 이동(「쪽지함 바로가기」 등)은 직전 지목을 지운다 —
+        // 남겨 두면 목록으로 가라는 요청이 옛날 항목을 다시 여는 꼴이 된다.
+        setTargetMemoId(e.detail.memoId ?? null);
+        setTargetTaskId(e.detail.taskId ?? null);
+        // ⚠️ 이미 그 화면에 있을 때 아무 일도 안 일어나던 원인이 여기였다.
+        // 아래 setActiveMenu·setInitialHubCategory 가 전부 "지금과 같은 값"이면
+        // React가 리렌더를 건너뛰고, 그러면 허브의 열기 effect도 돌지 않는다.
+        // 이동 요청 자체를 세는 값을 하나 올려 매번 확실히 전달한다.
+        setNavSeq((n) => n + 1);
         if (e.detail.menu === "memo") {
           setInitialHubCategory("memo");
           setActiveMenu("hub");
@@ -267,7 +272,7 @@ export default function AdminPage() {
   const renderContent = () => {
     switch (activeMenu) {
       case "hub":
-        return <MessagingHub initialCategory={initialHubCategory} initialTaskId={targetTaskId} initialMemoId={targetMemoId} />;
+        return <MessagingHub initialCategory={initialHubCategory} initialTaskId={targetTaskId} initialMemoId={targetMemoId} navSeq={navSeq} />;
       case "users":
         return <UserList />;
       case "profile_approvals":

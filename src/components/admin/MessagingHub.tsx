@@ -19,12 +19,15 @@ interface MessagingHubProps {
   initialCategory?: "tasks" | "memo";
   initialTaskId?: string | null;
   initialMemoId?: string | null;
+  /** 이동 요청 일련번호 — 같은 항목을 다시 눌러도 열기가 다시 돌게 하는 값 (page.tsx 참조) */
+  navSeq?: number;
 }
 
 export default function MessagingHub({
   initialCategory = "tasks",
   initialTaskId = null,
   initialMemoId = null,
+  navSeq = 0,
 }: MessagingHubProps) {
   const { userData, teacherProfile } = useAuth();
 
@@ -95,18 +98,25 @@ export default function MessagingHub({
 
 
 
-  // initialTaskId / initialMemoId 전달 시 해당 탭 자동 활성화
+  // 알림·카드에서 온 이동 요청을 받아 구분·탭을 맞춘다.
+  // navSeq 가 의존성에 있어야 **이미 이 화면에 있을 때도** 다시 돈다 —
+  // 없으면 id·구분이 직전과 같을 때 effect가 안 돌아 "아무 일도 안 일어남"이 된다.
   useEffect(() => {
     if (initialTaskId) {
       setActiveCategory("tasks");
+      setTasksTab("inbox");
       setSelectedEmails(new Set());
     } else if (initialMemoId) {
       setActiveCategory("memo");
+      setMemoTab("inbox");
       setSelectedEmails(new Set());
     } else if (initialCategory) {
       setActiveCategory(initialCategory);
+      // 지목 없는 이동(「쪽지함 바로가기」)은 그 구분의 기본 탭으로 되돌린다
+      if (initialCategory === "memo") setMemoTab("inbox");
+      else setTasksTab("inbox");
     }
-  }, [initialTaskId, initialMemoId, initialCategory]);
+  }, [initialTaskId, initialMemoId, initialCategory, navSeq]);
 
   // 수신자 토글 핸들러
   const handleToggleEmail = useCallback((email: string) => {
