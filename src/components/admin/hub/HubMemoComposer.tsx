@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
 import { bodyHasMd1Formatting, MEMO_CONTENT_FORMAT_MD1 } from "@/lib/memo/richtext";
-import { buildRecipientSummary, RecipientChip } from "@/lib/org/recipients";
+import { buildRecipientSummary, deriveRecipientChips, RecipientChip } from "@/lib/org/recipients";
 import type { TeacherProfile } from "@/context/AuthContext";
 import { resolveDisplayName } from "@/lib/org/displayName";
 import {
@@ -92,54 +92,9 @@ export default function HubMemoComposer({
     return map;
   }, [profiles]);
 
-  // Recipient chips — 부서 출처를 파생 계산 (결함 1 수정: MemoSection:1336-1350 패턴)
+  // Recipient chips — 1-C 공통 헬퍼로 파생 계산
   const recipientChips = useMemo<RecipientChip[]>(() => {
-    // 1. 부서→이메일 멤버십 맵 구축
-    const deptEmailsMap: Record<string, string[]> = {};
-    profiles.forEach((p) => {
-      const email = (p.email || "").toLowerCase();
-      if (!email || !p.departments || p.departments.length === 0 || p.noDept) return;
-      p.departments.forEach((d) => {
-        if (!deptEmailsMap[d]) deptEmailsMap[d] = [];
-        deptEmailsMap[d].push(email);
-      });
-    });
-
-    // 2. Map<email, chip>
-    const chipMap = new Map<string, RecipientChip>();
-
-    // 2a. 부서 전체 선택된 것 먼저
-    Object.entries(deptEmailsMap).forEach(([deptName, deptEmails]) => {
-      const allIn = deptEmails.length > 0 && deptEmails.every((e) => selectedEmails.has(e));
-      if (allIn) {
-        deptEmails.forEach((e) => {
-          const p = profileMap.get(e);
-          const name = resolveDisplayName(e, p, gwsNameMap.get(e)).name;
-          chipMap.set(e, {
-            type: "user",
-            source: "dept",
-            email: e,
-            label: name,
-            deptLabel: deptName,
-          });
-        });
-      }
-    });
-
-    // 2b. 개인 선택
-    selectedEmails.forEach((email) => {
-      if (chipMap.has(email)) return;
-      const p = profileMap.get(email);
-      const name = resolveDisplayName(email, p, gwsNameMap.get(email)).name;
-      chipMap.set(email, {
-        type: "user",
-        source: "person",
-        email,
-        label: name,
-      });
-    });
-
-    return [...chipMap.values()];
+    return deriveRecipientChips(selectedEmails, profiles, profileMap, gwsNameMap);
   }, [selectedEmails, profileMap, gwsNameMap, profiles]);
 
   // Handle file uploads

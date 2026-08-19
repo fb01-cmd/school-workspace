@@ -11,7 +11,7 @@ import {
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
 import { bodyHasMd1Formatting } from "@/lib/memo/richtext";
-import { buildRecipientSummary, RecipientChip } from "@/lib/org/recipients";
+import { buildRecipientSummary, deriveRecipientChips, RecipientChip } from "@/lib/org/recipients";
 import type { TeacherProfile } from "@/context/AuthContext";
 import { resolveDisplayName } from "@/lib/org/displayName";
 
@@ -107,55 +107,9 @@ export default function HubTaskComposer({
     return map;
   }, [profiles]);
 
-  // Recipient chips — 부서 출처를 파생 계산 (결함 1 수정: MemoSection:1336-1350 패턴)
-  // 모든 구성원이 선택된 부서는 source:"dept", 그 외 개인은 source:"person"
+  // Recipient chips — 1-C 공통 헬퍼로 파생 계산
   const recipientChips = useMemo<RecipientChip[]>(() => {
-    // 1. 부서→이메일 멤버십 맵 구축 (profiles 기반)
-    const deptEmailsMap: Record<string, string[]> = {};
-    profiles.forEach((p) => {
-      const email = (p.email || "").toLowerCase();
-      if (!email || !p.departments || p.departments.length === 0 || p.noDept) return;
-      p.departments.forEach((d) => {
-        if (!deptEmailsMap[d]) deptEmailsMap[d] = [];
-        deptEmailsMap[d].push(email);
-      });
-    });
-
-    // 2. Map<email, chip> — 이메일 키로 중복 제거
-    const chipMap = new Map<string, RecipientChip>();
-
-    // 2a. 부서 전체 선택된 것 먼저 — "dept" source로 삽입
-    Object.entries(deptEmailsMap).forEach(([deptName, deptEmails]) => {
-      const allIn = deptEmails.length > 0 && deptEmails.every((e) => selectedEmails.has(e));
-      if (allIn) {
-        deptEmails.forEach((e) => {
-          const p = profileMap.get(e);
-          const name = resolveDisplayName(e, p, gwsNameMap.get(e)).name;
-          chipMap.set(e, {
-            type: "user",
-            source: "dept",
-            email: e,
-            label: name,
-            deptLabel: deptName,
-          });
-        });
-      }
-    });
-
-    // 2b. 부서 전체가 아닌 개인 선택 — 이미 Map에 있으면 덮어쓰지 않음
-    selectedEmails.forEach((email) => {
-      if (chipMap.has(email)) return;
-      const p = profileMap.get(email);
-      const name = resolveDisplayName(email, p, gwsNameMap.get(email)).name;
-      chipMap.set(email, {
-        type: "user",
-        source: "person",
-        email,
-        label: name,
-      });
-    });
-
-    return [...chipMap.values()];
+    return deriveRecipientChips(selectedEmails, profiles, profileMap, gwsNameMap);
   }, [selectedEmails, profileMap, gwsNameMap, profiles]);
 
   const calculateDueAtMs = (): number => {

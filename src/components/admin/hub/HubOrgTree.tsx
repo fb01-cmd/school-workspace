@@ -220,7 +220,11 @@ export default function HubOrgTree({
   }, [validProfiles, departmentOrder, gwsNameMap]);
 
   // Initial department expansion: expand my own department(s), collapse all if no department
-  // 결함 5 수정: structuredTree 기준으로 돌려 미등록 부서도 포함
+  // 결함 5 & 잔여 b 수정: structuredTree 부서명 목록을 안정 키(deptKey)로 감지
+  const deptKey = useMemo(
+    () => structuredTree.map((t) => t.deptName).join("|"),
+    [structuredTree]
+  );
   useEffect(() => {
     if (structuredTree.length > 0) {
       const myDepts = new Set(teacherProfile?.departments || []);
@@ -231,7 +235,7 @@ export default function HubOrgTree({
       setExpandedDepts(initial);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [structuredTree.length, teacherProfile?.departments]);
+  }, [deptKey, teacherProfile?.departments]);
 
   // Flat search results (Directive 6 / Feedback 4-1 / spec §2-1-1)
   const flatSearchResults = useMemo(() => {
@@ -500,68 +504,62 @@ export default function HubOrgTree({
                 {/* Department Members */}
                 {isExpanded && (
                   <div className="divide-y divide-slate-50 px-1 py-0.5">
-                    {members.length === 0 ? (
-                      <div className="py-2 text-center text-[11px] text-slate-400">
-                        소속 교직원이 없습니다.
-                      </div>
-                    ) : (
-                      members.map((teacher) => {
-                        const email = (teacher.email || "").toLowerCase();
-                        const isSelected = selectedEmails.has(email);
-                        const displayName = getDisplayName(teacher);
-                        const isDeptHead =
-                          !!teacher.deptHeadMap?.[deptName] ||
-                          (teacher.departments?.length === 1 && !!teacher.isDeptHead);
-                        const homeroom =
-                          teacher.homeroom?.grade && teacher.homeroom?.class
-                            ? `${teacher.homeroom.grade}-${teacher.homeroom.class}`
-                            : null;
+                    {members.map((teacher) => {
+                      const email = (teacher.email || "").toLowerCase();
+                      const isSelected = selectedEmails.has(email);
+                      const displayName = getDisplayName(teacher);
+                      const isDeptHead =
+                        !!teacher.deptHeadMap?.[deptName] ||
+                        (teacher.departments?.length === 1 && !!teacher.isDeptHead);
+                      const homeroom =
+                        teacher.homeroom?.grade && teacher.homeroom?.class
+                          ? `${teacher.homeroom.grade}-${teacher.homeroom.class}`
+                          : null;
 
-                        return (
-                          <div
-                            key={`${deptName}-${email}`}
-                            className={`flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-indigo-50/50 transition-colors ${
-                              isSelected ? "bg-indigo-50/70" : ""
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => onToggleEmail(email)}
-                                className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setPopoverTeacher(teacher)}
-                                className="flex items-center gap-1.5 flex-1 min-w-0 text-left cursor-pointer group truncate"
-                                title="상세 정보 보기"
+                      return (
+                        <div
+                          key={`${deptName}-${email}`}
+                          className={`flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-indigo-50/50 transition-colors ${
+                            isSelected ? "bg-indigo-50/70" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => onToggleEmail(email)}
+                              className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setPopoverTeacher(teacher)}
+                              className="flex items-center gap-1.5 flex-1 min-w-0 text-left cursor-pointer group truncate"
+                              title="상세 정보 보기"
+                            >
+                              <span
+                                className={`text-xs truncate ${
+                                  isSelected
+                                    ? "font-bold text-indigo-900"
+                                    : "text-slate-800 group-hover:text-indigo-600"
+                                }`}
                               >
-                                <span
-                                  className={`text-xs truncate ${
-                                    isSelected
-                                      ? "font-bold text-indigo-900"
-                                      : "text-slate-800 group-hover:text-indigo-600"
-                                  }`}
-                                >
-                                  {displayName}
+                                {displayName}
+                              </span>
+                              {isDeptHead && (
+                                <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-100 text-amber-800 flex-shrink-0">
+                                  부서장
                                 </span>
-                                {isDeptHead && (
-                                  <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-100 text-amber-800 flex-shrink-0">
-                                    부서장
-                                  </span>
-                                )}
-                                {homeroom && (
-                                  <span className="text-[9px] font-medium px-1 py-0.2 rounded bg-slate-100 text-slate-600 flex-shrink-0">
-                                    {homeroom}
-                                  </span>
-                                )}
-                              </button>
-                            </div>
+                              )}
+                              {homeroom && (
+                                <span className="text-[9px] font-medium px-1 py-0.2 rounded bg-slate-100 text-slate-600 flex-shrink-0">
+                                  {homeroom}
+                                </span>
+                              )}
+                            </button>
                           </div>
-                        );
-                      })
-                    )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

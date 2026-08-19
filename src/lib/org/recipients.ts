@@ -45,3 +45,65 @@ export function buildRecipientSummary(chips: RecipientChip[]): string {
  * buildRecipientSummary 의 별칭 (MemoSection 호환용)
  */
 export const buildSummary = buildRecipientSummary;
+
+import type { TeacherProfile } from "@/context/AuthContext";
+import { resolveDisplayName } from "@/lib/org/displayName";
+
+/**
+ * 선택된 이메일 목록과 교직원 프로필로부터 수신자 칩 목록을 파생 계산
+ * (부서 전원이 선택된 경우 source: "dept", 그 외에는 source: "person")
+ * - 1-C 추출 (HubTaskComposer & HubMemoComposer 공통)
+ */
+export function deriveRecipientChips(
+  selectedEmails: Set<string>,
+  profiles: TeacherProfile[],
+  profileMap: Map<string, TeacherProfile>,
+  gwsNameMap: Map<string, string>
+): RecipientChip[] {
+  // 1. 부서→이메일 멤버십 맵 구축
+  const deptEmailsMap: Record<string, string[]> = {};
+  profiles.forEach((p) => {
+    const email = (p.email || "").toLowerCase();
+    if (!email || !p.departments || p.departments.length === 0 || p.noDept) return;
+    p.departments.forEach((d) => {
+      if (!deptEmailsMap[d]) deptEmailsMap[d] = [];
+      deptEmailsMap[d].push(email);
+    });
+  });
+
+  // 2. Map<email, chip> — 이메일 키로 중복 제거
+  const chipMap = new Map<string, RecipientChip>();
+
+  // 2a. 부서 전체 선택된 것 먼저 — "dept" source로 삽입
+  Object.entries(deptEmailsMap).forEach(([deptName, deptEmails]) => {
+    const allIn = deptEmails.length > 0 && deptEmails.every((e) => selectedEmails.has(e));
+    if (allIn) {
+      deptEmails.forEach((e) => {
+        const p = profileMap.get(e);
+        const name = resolveDisplayName(e, p, gwsNameMap.get(e)).name;
+        chipMap.set(e, {
+          type: "user",
+          source: "dept",
+          email: e,
+          label: name,
+          deptLabel: deptName,
+        });
+      });
+    }
+  });
+
+  // 2b. 부서 전체가 아닌 개인 선택 — 이미 Map에 있으면 덮어쓰지 않음
+  selectedEmails.forEach((email) => {
+    if (chipMap.has(email)) return;
+    const p = profileMap.get(email);
+    const name = resolveDisplayName(email, p, gwsNameMap.get(email)).name;
+    chipMap.set(email, {
+      type: "user",
+      source: "person",
+      email,
+      label: name,
+    });
+  });
+
+  return [...chipMap.values()];
+}
