@@ -10,7 +10,7 @@ import {
 } from "@/lib/tasks/logic";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
-import { bodyHasMd1Formatting } from "@/lib/memo/richtext";
+import { bodyHasMd1Formatting, stripMd1 } from "@/lib/memo/richtext";
 import { buildRecipientSummary, deriveRecipientChips, RecipientChip } from "@/lib/org/recipients";
 import type { TeacherProfile } from "@/context/AuthContext";
 import { resolveDisplayName } from "@/lib/org/displayName";
@@ -26,7 +26,7 @@ interface HubTaskComposerProps {
   selectedEmails: Set<string>;
   onClearSelection: () => void;
   onRemoveEmail: (email: string) => void;
-  onSwitchToMemo: (title: string, body: string) => void;
+  onSwitchToMemo: () => void;
   onSent: () => void;
   profiles: TeacherProfile[];
   gwsNameMap: Map<string, string>;
@@ -34,6 +34,7 @@ interface HubTaskComposerProps {
   initialBody?: string;
   canSend: boolean;
   hasDraftRef?: React.MutableRefObject<boolean>;
+  currentDraftRef?: React.MutableRefObject<{ title: string; body: string; hasAttachments: boolean }>;
 }
 
 export default function HubTaskComposer({
@@ -48,6 +49,7 @@ export default function HubTaskComposer({
   initialBody = "",
   canSend,
   hasDraftRef,
+  currentDraftRef,
 }: HubTaskComposerProps) {
   const [title, setTitle] = useState(initialTitle);
   const [kind, setKind] = useState<TaskKind>("confirm");
@@ -56,15 +58,8 @@ export default function HubTaskComposer({
     return d.toISOString().slice(0, 10);
   });
   const [dueTime, setDueTime] = useState("17:00");
-  const [body, setBody] = useState(initialBody);
-
-  // 부모(MessagingHub)의 hasDraftRef 동기화 — 선택 비우기 전 확인창 판단용 (결함 2)
-  useEffect(() => {
-    if (hasDraftRef) hasDraftRef.current = !!(title.trim() || body.trim());
-  }, [title, body, hasDraftRef]);
-  useEffect(() => {
-    return () => { if (hasDraftRef) hasDraftRef.current = false; };
-  }, [hasDraftRef]);
+  const plainInitialBody = useMemo(() => (initialBody ? stripMd1(initialBody) : ""), [initialBody]);
+  const [body, setBody] = useState(plainInitialBody);
 
   // 양식 파일은 「고른 뒤 발송 시 업로드」다 (2026-08-19 피드백 6번 처방).
   // 서버의 form_upload·form_session_* 는 **이미 존재하는 taskId** 를 요구하는데(api/tasks/route.ts:101·409),
@@ -82,12 +77,32 @@ export default function HubTaskComposer({
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync initial body into DOM once mounted or when initialBody changes
+  // 부모(MessagingHub)의 draft 동기화 (결함 1, 결함 2)
   useEffect(() => {
-    if (editorRef.current && initialBody && !editorRef.current.innerHTML) {
-      editorRef.current.innerText = initialBody;
+    const hasDraft = !!(title.trim() || body.trim() || pendingFiles.length > 0);
+    if (hasDraftRef) hasDraftRef.current = hasDraft;
+    if (currentDraftRef) {
+      currentDraftRef.current = {
+        title,
+        body,
+        hasAttachments: pendingFiles.length > 0,
+      };
     }
-  }, [initialBody]);
+  }, [title, body, pendingFiles, hasDraftRef, currentDraftRef]);
+
+  useEffect(() => {
+    return () => {
+      if (hasDraftRef) hasDraftRef.current = false;
+      if (currentDraftRef) currentDraftRef.current = { title: "", body: "", hasAttachments: false };
+    };
+  }, [hasDraftRef, currentDraftRef]);
+
+  // Sync initial body into DOM once mounted or when plainInitialBody changes
+  useEffect(() => {
+    if (editorRef.current && plainInitialBody && !editorRef.current.innerHTML) {
+      editorRef.current.innerText = plainInitialBody;
+    }
+  }, [plainInitialBody]);
 
   const syncBodyMd1 = useCallback(() => {
     if (editorRef.current) {
@@ -315,14 +330,8 @@ export default function HubTaskComposer({
   };
 
   const handleSwitchClick = () => {
-    // A-9: 양식 파일 유실 방지 확인
-    if (pendingFiles.length > 0) {
-      if (!window.confirm("쪽지로 전환하면 선택된 양식 파일이 모두 삭제됩니다. 계속하시겠습니까?")) {
-        return;
-      }
-    }
-    const currentBody = syncBodyMd1();
-    onSwitchToMemo(title, currentBody);
+    syncBodyMd1();
+    onSwitchToMemo();
   };
 
   return (
@@ -490,8 +499,7 @@ export default function HubTaskComposer({
           <div className="flex items-center justify-between mb-1.5">
             <div>
               <label className="text-xs font-bold text-slate-700">
-                양식 파일 첨부{" "}
-                {pendingFiles.length > 0 && `(${pendingFiles.length}/${TASK_MAX_FORM_FILES})`}
+                양식 파일 첨부 (최대 {TASK_MAX_FORM_FILES}개)
               </label>
               <p className="text-[11px] text-slate-400 mt-0.5">
                 한글(HWP/HWPX), 오피스, PDF 등 (파일당 30MB 이하)
@@ -508,7 +516,6 @@ export default function HubTaskComposer({
             <input
               type="file"
               ref={fileInputRef}
-              accept=".hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.zip,.txt,.csv,image/*"
               onChange={handleFormFileUpload}
               className="hidden"
             />

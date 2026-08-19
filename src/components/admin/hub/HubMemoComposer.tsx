@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
-import { bodyHasMd1Formatting, MEMO_CONTENT_FORMAT_MD1, collectMd1AttachmentIds } from "@/lib/memo/richtext";
+import { bodyHasMd1Formatting, MEMO_CONTENT_FORMAT_MD1, collectMd1AttachmentIds, stripMd1 } from "@/lib/memo/richtext";
 import { buildRecipientSummary, deriveRecipientChips, RecipientChip } from "@/lib/org/recipients";
 import type { TeacherProfile } from "@/context/AuthContext";
 import { resolveDisplayName } from "@/lib/org/displayName";
@@ -19,7 +19,7 @@ interface HubMemoComposerProps {
   selectedEmails: Set<string>;
   onClearSelection: () => void;
   onRemoveEmail: (email: string) => void;
-  onSwitchToTask: (title: string, body: string) => void;
+  onSwitchToTask: () => void;
   onSent: () => void;
   profiles: TeacherProfile[];
   gwsNameMap: Map<string, string>;
@@ -27,6 +27,7 @@ interface HubMemoComposerProps {
   initialBody?: string;
   canSend: boolean;
   hasDraftRef?: React.MutableRefObject<boolean>;
+  currentDraftRef?: React.MutableRefObject<{ title: string; body: string; hasAttachments: boolean }>;
 }
 
 interface StagedAttachment {
@@ -52,18 +53,11 @@ export default function HubMemoComposer({
   initialBody = "",
   canSend,
   hasDraftRef,
+  currentDraftRef,
 }: HubMemoComposerProps) {
   const [title, setTitle] = useState(initialTitle);
-  const [body, setBody] = useState(initialBody);
-
-  // 부모(MessagingHub)의 hasDraftRef 동기화 — 선택 비우기 전 확인창 판단용 (결함 2)
-  useEffect(() => {
-    if (hasDraftRef) hasDraftRef.current = !!(title.trim() || body.trim());
-  }, [title, body, hasDraftRef]);
-  useEffect(() => {
-    return () => { if (hasDraftRef) hasDraftRef.current = false; };
-  }, [hasDraftRef]);
-
+  const plainInitialBody = useMemo(() => (initialBody ? stripMd1(initialBody) : ""), [initialBody]);
+  const [body, setBody] = useState(plainInitialBody);
   const [stagedAttachments, setStagedAttachments] = useState<StagedAttachment[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,11 +66,31 @@ export default function HubMemoComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const savedRangeRef = useRef<Range | null>(null);
 
+  // 부모(MessagingHub)의 draft 동기화 (결함 1, 결함 2)
   useEffect(() => {
-    if (editorRef.current && initialBody && !editorRef.current.innerHTML) {
-      editorRef.current.innerText = initialBody;
+    const hasDraft = !!(title.trim() || body.trim() || stagedAttachments.length > 0);
+    if (hasDraftRef) hasDraftRef.current = hasDraft;
+    if (currentDraftRef) {
+      currentDraftRef.current = {
+        title,
+        body,
+        hasAttachments: stagedAttachments.length > 0,
+      };
     }
-  }, [initialBody]);
+  }, [title, body, stagedAttachments, hasDraftRef, currentDraftRef]);
+
+  useEffect(() => {
+    return () => {
+      if (hasDraftRef) hasDraftRef.current = false;
+      if (currentDraftRef) currentDraftRef.current = { title: "", body: "", hasAttachments: false };
+    };
+  }, [hasDraftRef, currentDraftRef]);
+
+  useEffect(() => {
+    if (editorRef.current && plainInitialBody && !editorRef.current.innerHTML) {
+      editorRef.current.innerText = plainInitialBody;
+    }
+  }, [plainInitialBody]);
 
   // 편집기 커서/선택 영역 저장
   const saveSelection = useCallback(() => {
@@ -202,12 +216,24 @@ export default function HubMemoComposer({
     return new Set(collectMd1AttachmentIds(body));
   }, [body]);
 
-  // 파일 업로드 큐 처리 (A-6: 파일별 독립 업로드 + 실패 격리)
-  const enqueueFiles = (selectedFiles: File[]) => {
-    if (stagedAttachments.length + selectedFiles.length > MEMO_MAX_ATTACHMENTS) {
+  // 파일 업로드 큐 처리 (A-6: 파일별 독립 업로드 + 실패 격리, 5: 남은 슬롯만 추가, 6: resizing 상태 적용)
+  const enqueueFiles = (fileList: File[]) => {
+    if (!fileList || fileList.length === 0) return;
+
+    const currentCount = stagedAttachments.length;
+    if (currentCount >= MEMO_MAX_ATTACHMENTS) {
       setError(`첨부 파일은 최대 ${MEMO_MAX_ATTACHMENTS}개까지 가능합니다.`);
       return;
     }
+
+    const availableSlots = MEMO_MAX_ATTACHMENTS - currentCount;
+    if (fileList.length > availableSlots) {
+      setError(`첨부 파일은 최대 ${MEMO_MAX_ATTACHMENTS}개까지 가능합니다. (초과분 제외)`);
+    } else {
+      setError(null);
+    }
+
+    const selectedFiles = fileList.slice(0, availableSlots);
 
     const newItems: StagedAttachment[] = selectedFiles.map((file) => {
       const isImg = isImageFile(file.name, file.type);
@@ -215,14 +241,13 @@ export default function HubMemoComposer({
         id: Math.random().toString(36).slice(2),
         name: file.name,
         size: file.size,
-        status: "uploading",
-        previewUrl: isImg ? URL.createObjectURL(file) : undefined,
+        status: isImg && file.size <= 4 * 1024 * 1024 ? "resizing" : "uploading",
+        previewUrl: isImg && typeof window !== "undefined" ? URL.createObjectURL(file) : undefined,
         progressText: isImg && file.size <= 4 * 1024 * 1024 ? "최적화 중…" : "업로드 중…",
       };
     });
 
     setStagedAttachments((prev) => [...prev, ...newItems]);
-    setError(null);
 
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i];
@@ -449,14 +474,8 @@ export default function HubMemoComposer({
   };
 
   const handleSwitchClick = () => {
-    // A-9: 첨부 파일 유실 방지 확인
-    if (stagedAttachments.length > 0) {
-      if (!window.confirm("업무로 전환하면 첨부된 파일이 모두 삭제됩니다. 계속하시겠습니까?")) {
-        return;
-      }
-    }
-    const currentBody = syncBodyMd1();
-    onSwitchToTask(title, currentBody);
+    syncBodyMd1();
+    onSwitchToTask();
   };
 
   return (
@@ -563,17 +582,31 @@ export default function HubMemoComposer({
               contentEditable
               suppressContentEditableWarning
               spellCheck={false}
-              onInput={syncBodyMd1}
-              onBlur={() => {
+              onInput={() => {
                 syncBodyMd1();
                 saveSelection();
+              }}
+              onPaste={handleEditorPaste}
+              onSelect={saveSelection}
+              onMouseUp={saveSelection}
+              onBlur={saveSelection}
+              onKeyDown={(e) => {
+                if (e.ctrlKey || e.metaKey) {
+                  if (["b", "B", "i", "I", "u", "U"].includes(e.key)) {
+                    setTimeout(() => {
+                      syncBodyMd1();
+                      saveSelection();
+                    }, 0);
+                  }
+                }
               }}
               onKeyUp={() => {
                 syncBodyMd1();
                 saveSelection();
               }}
-              onMouseUp={saveSelection}
-              onPaste={handleEditorPaste}
+              role="textbox"
+              aria-multiline="true"
+              aria-label="쪽지 내용"
               data-placeholder="쪽지 내용을 입력해 주세요."
               className="w-full px-3.5 py-2.5 text-[15px] leading-relaxed min-h-[160px] max-h-[300px] overflow-y-auto focus:outline-none bg-white text-slate-800 font-sans empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1.5 [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:rounded-r-md [&_blockquote]:my-1.5 [&_blockquote]:text-slate-700 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-2 [&_img]:block"
             />

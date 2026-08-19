@@ -146,11 +146,18 @@ export default function MessagingHub({
     });
   }, []);
 
-  // 선택 초기화 — 선택만 비우고 초안은 유지 (결함 2 수정: 초안 삭제 분리)
-  // 작성 중 내용이 있으면 확인 1회 (스펙 §3)
+  // 작성기 간 초안(제목·본문·첨부 유무) 동기화 ref (결함 1, 결함 2)
+  const currentDraftRef = useRef<{ title: string; body: string; hasAttachments: boolean }>({
+    title: "",
+    body: "",
+    hasAttachments: false,
+  });
+
+  // 선택 초기화 — 선택만 비우고 초안은 유지 (결함 2 수정)
+  // 작성 중 내용이나 첨부 파일이 있으면 확인 1회 (스펙 §3)
   const handleClearSelection = useCallback(() => {
     if (hasDraftRef.current) {
-      if (!window.confirm("작성 중인 내용이 있습니다. 선택을 비우면 보내는 화면을 떠나게 됩니다. 비우시겠습니까?")) {
+      if (!window.confirm("작성 중인 내용이나 첨부 파일이 있습니다. 선택을 비우면 보내는 화면을 떠나게 됩니다. 비우시겠습니까?")) {
         return;
       }
     }
@@ -162,35 +169,57 @@ export default function MessagingHub({
     setSelectedEmails(new Set(emails.map((e) => e.toLowerCase())));
   }, []);
 
-  // 개별 칩 제거
+  // 개별 칩 제거 — 마지막 1명을 지워 0명이 될 때만 초안 유실 경고 (결함 2)
   const handleRemoveEmail = useCallback((email: string) => {
     const clean = email.toLowerCase();
     setSelectedEmails((prev) => {
+      if (prev.size === 1 && prev.has(clean) && hasDraftRef.current) {
+        if (!window.confirm("작성 중인 내용이나 첨부 파일이 있습니다. 수신자를 모두 지우면 보내는 화면을 떠나게 됩니다. 계속하시겠습니까?")) {
+          return prev;
+        }
+      }
       const next = new Set(prev);
       next.delete(clean);
       return next;
     });
   }, []);
 
-  // 업무 작성 -> 쪽지 작성 전환
-  const handleSwitchToMemo = (title: string, body: string) => {
-    setSharedTitle(title);
-    setSharedBody(body);
+  // 업무 작성 -> 쪽지 작성 전환 (결함 1)
+  const handleSwitchToMemo = useCallback(() => {
+    if (activeComposer === "memo") return;
+    const draft = currentDraftRef.current;
+    if (draft.hasAttachments) {
+      if (!window.confirm("쪽지로 전환하면 선택된 양식 파일은 함께 넘어가지 않습니다. 계속하시겠습니까?")) {
+        return;
+      }
+    }
+    setSharedTitle(draft.title);
+    setSharedBody(draft.body);
     setActiveComposer("memo");
-  };
+  }, [activeComposer]);
 
-  // 쪽지 작성 -> 업무 작성 전환
-  const handleSwitchToTask = (title: string, body: string) => {
-    setSharedTitle(title);
-    setSharedBody(body);
+  // 쪽지 작성 -> 업무 작성 전환 (결함 1, 결함 3)
+  const handleSwitchToTask = useCallback(() => {
+    if (activeComposer === "task") return;
+    const draft = currentDraftRef.current;
+    if (draft.hasAttachments) {
+      if (!window.confirm("업무로 전환하면 첨부된 파일과 본문에 넣은 이미지는 함께 넘어가지 않습니다. 계속하시겠습니까?")) {
+        return;
+      }
+    }
+    // 본문에 넣은 첨부 이미지(att: 참조) 제거 (결함 3)
+    const cleanedBody = draft.body.replace(/!\[(.*?)\]\(att:[^)]+\)/g, "").trim();
+    setSharedTitle(draft.title);
+    setSharedBody(cleanedBody);
     setActiveComposer("task");
-  };
+  }, [activeComposer]);
 
   // 발송 성공 후 복귀 — 발송 뒤에는 선택 + 초안 모두 비운다
   const handleTaskSent = () => {
     setSelectedEmails(new Set());
     setSharedTitle("");
     setSharedBody("");
+    currentDraftRef.current = { title: "", body: "", hasAttachments: false };
     setActiveCategory("tasks");
     setTasksTab("sent");
   };
@@ -199,6 +228,7 @@ export default function MessagingHub({
     setSelectedEmails(new Set());
     setSharedTitle("");
     setSharedBody("");
+    currentDraftRef.current = { title: "", body: "", hasAttachments: false };
     setActiveCategory("memo");
     setMemoTab("sent");
   };
@@ -282,7 +312,7 @@ export default function MessagingHub({
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     type="button"
-                    onClick={() => setActiveComposer("task")}
+                    onClick={handleSwitchToTask}
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                       activeComposer === "task"
                         ? "bg-indigo-600 text-white shadow-xs"
@@ -294,7 +324,7 @@ export default function MessagingHub({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setActiveComposer("memo")}
+                    onClick={handleSwitchToMemo}
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                       activeComposer === "memo"
                         ? "bg-indigo-600 text-white shadow-xs"
@@ -321,6 +351,7 @@ export default function MessagingHub({
                   initialBody={sharedBody}
                   canSend={canSend}
                   hasDraftRef={hasDraftRef}
+                  currentDraftRef={currentDraftRef}
                 />
               ) : (
                 <HubMemoComposer
@@ -335,6 +366,7 @@ export default function MessagingHub({
                   initialBody={sharedBody}
                   canSend={canSend}
                   hasDraftRef={hasDraftRef}
+                  currentDraftRef={currentDraftRef}
                 />
               )}
             </div>
