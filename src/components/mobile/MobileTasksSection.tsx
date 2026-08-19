@@ -150,7 +150,7 @@ export default function MobileTasksSection() {
           title: selfTitle.trim(),
           dueAt,
           body: selfBody.trim() || undefined,
-          contentFormat: selfBody.trim() ? "md1" : undefined,
+          // contentFormat 미지정 = 평문 (PC 미니 입력과 동일 — 서식 도구 없는 입력을 md1로 승격 금지)
         }),
       });
       const data = await res.json();

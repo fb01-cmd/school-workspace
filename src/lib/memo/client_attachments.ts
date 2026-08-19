@@ -175,7 +175,7 @@ export async function uploadAttachment(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       action: "attach_session_start",
-      name: uploadName,
+      fileName: uploadName, // 서버 계약 필드명 = fileName (route가 body.fileName을 읽는다)
       size: uploadBlob.size,
       mimeType: file.type || "application/octet-stream",
     }),

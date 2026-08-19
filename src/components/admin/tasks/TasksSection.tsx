@@ -183,7 +183,8 @@ export default function TasksSection({ initialTaskId }: Props) {
           title: selfTitle.trim(),
           dueAt,
           body: selfBody.trim() || undefined,
-          contentFormat: selfBody.trim() ? "md1" : undefined,
+          // contentFormat 미지정 = 평문 — 미니 입력엔 서식 도구가 없어 md1 승격 금지
+          // (별표 등 문자가 서식으로 재해석되는 사고 방지, URL 링크는 평문 렌더가 처리)
         }),
       });
       const data = await res.json();

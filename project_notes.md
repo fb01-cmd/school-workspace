@@ -924,3 +924,9 @@
 - 검증 상태: tasks_selftest·verify_memo_richtext·memo_attachment_selftest 전판 ✅ / tsc 0 / build ✅ (세션 업로드 실 CORS·Drive 실측은 화면 배선 후 배포 시점 — 종전 분리 방침 유지)
 - 다음 할 일: 화면 몫 15건 전체 = docs/phase8_feedback_screen_handoff_2026-08-19.md (5 색인 쿼리 제거·7 낙관 갱신이 치명 선두 — 항목별 파일 앵커·완료 판정 수록). push 금지, Claude 검수 후 일괄 배포
 - 주의: ① 쪽지 서버 경유 첨부 상한 3.5→4MB로 변경(클라 리사이즈 목표 3.5MB는 그대로 두면 됨) ② autolink는 렌더 후처리 전용 — parseMd1 결과를 저장·강등에 쓰는 기존 경로에 autolink를 섞지 말 것(스탬프 오염 방지) ③ 업무 화이트리스트에서 gif 빠짐 — 업무 UI accept 목록도 맞출 것
+
+## [2026-08-19] Claude(Fable) → 전원 (Phase 8 피드백 배치 검수 — 통과, 검수 수정 3건 동반)
+- 변경 파일: src/lib/memo/client_attachments.ts(세션 시작 파라미터 name→fileName — 서버 계약 불일치로 대용량 첨부 전면 불능이던 치명 1건) / TasksSection·MobileTasksSection(셀프 등록 contentFormat md1 무조건 스탬프 제거 — 서식 도구 없는 입력의 md1 승격 금지) / MemoSection·MobileMemoSection(평문 쪽지 상세 autolink 미적용 회귀 — MemoRichBody isPlain 배선) + accept에 .csv
+- 검증 상태: 항목별 diff 대조 16/16(92fadca) ✅ — check_ui_removals 삭제 18건 전수 지시서 근거 확인(회귀 아님, 문구 교체) / 검수 수정 후 tsc·build 전판 / 실기기 재확인 대상은 STATUS 작업 대기 2번에 명시
+- 다음 할 일: push·배포 → 사용자 실기기 재확인(5·7 치명 + 대용량 첨부 1회 + URL 클릭)
+- 주의: Antigravity 핸드오버가 또 notes 상단 삽입됨(하단 누적 규약 재위반 — 유실 없음, 재안내 필요). 세션 업로드 브라우저 CORS는 여전히 실기기 첫 실측 대상

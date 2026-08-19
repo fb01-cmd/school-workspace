@@ -334,9 +334,12 @@ export default function MobileMemoSection() {
                           className="space-y-2 text-[14px] text-slate-800 dark:text-slate-200 font-sans leading-relaxed break-words"
                         />
                       ) : (
-                        <pre className="whitespace-pre-wrap text-[14px] text-slate-800 dark:text-slate-200 font-sans leading-relaxed">
-                          {displayedMemo.body}
-                        </pre>
+                        // 평문 쪽지도 https 주소는 클릭 가능해야 한다 (피드백 6번 — 쪽지·업무 공용)
+                        <MemoRichBody
+                          body={displayedMemo.body}
+                          isPlain
+                          className="space-y-2 text-[14px] text-slate-800 dark:text-slate-200 font-sans leading-relaxed break-words"
+                        />
                       )}
 
                       {displayedMemo.links && displayedMemo.links.length > 0 && (

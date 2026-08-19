@@ -1037,9 +1037,12 @@ function MemoDetailPanel({
           {memo.contentFormat === "md1" ? (
             <MemoRichBody body={memo.body} memoId={memo.id} />
           ) : (
-            <pre className="whitespace-pre-wrap text-[15px] text-slate-800 font-sans leading-relaxed">
-              {memo.body}
-            </pre>
+            // 평문 쪽지도 https 주소는 클릭 가능해야 한다 (피드백 6번 — 쪽지·업무 공용)
+            <MemoRichBody
+              body={memo.body}
+              isPlain
+              className="space-y-2 text-[15px] text-slate-800 font-sans leading-relaxed break-words"
+            />
           )}
 
           {/* 링크 */}
@@ -2061,7 +2064,7 @@ function ComposeModal({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.zip,.txt"
+                  accept="image/*,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.zip,.txt,.csv"
                   multiple
                   onChange={handleFilesSelected}
                   className="hidden"
