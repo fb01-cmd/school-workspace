@@ -17,6 +17,7 @@ import type { MemoAttachment } from "@/lib/memo/client_attachments";
 
 interface HubMemoComposerProps {
   selectedEmails: Set<string>;
+  deptSources?: Record<string, string>;
   onClearSelection: () => void;
   onRemoveEmail: (email: string) => void;
   onSwitchToTask: (title: string, body: string) => void;
@@ -30,6 +31,7 @@ interface HubMemoComposerProps {
 
 export default function HubMemoComposer({
   selectedEmails,
+  deptSources,
   onClearSelection,
   onRemoveEmail,
   onSwitchToTask,
@@ -82,22 +84,23 @@ export default function HubMemoComposer({
     return map;
   }, [profiles]);
 
-  // Recipient chips for summary
+  // Recipient chips for summary (Directive 10 / Feedback 13)
   const recipientChips = useMemo<RecipientChip[]>(() => {
     const chips: RecipientChip[] = [];
     selectedEmails.forEach((email) => {
       const p = profileMap.get(email);
       const name = resolveDisplayName(email, p, gwsNameMap.get(email)).name;
+      const deptSource = deptSources?.[email];
       chips.push({
         type: "user",
-        source: "person",
+        source: deptSource ? "dept" : "person",
         email,
         label: name,
-        deptLabel: p?.departments?.[0],
+        deptLabel: deptSource || p?.departments?.[0],
       });
     });
     return chips;
-  }, [selectedEmails, profileMap, gwsNameMap]);
+  }, [selectedEmails, profileMap, gwsNameMap, deptSources]);
 
   // Handle file uploads
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

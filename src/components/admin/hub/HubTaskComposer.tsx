@@ -24,6 +24,7 @@ interface PendingFormFile {
 
 interface HubTaskComposerProps {
   selectedEmails: Set<string>;
+  deptSources?: Record<string, string>;
   onClearSelection: () => void;
   onRemoveEmail: (email: string) => void;
   onSwitchToMemo: (title: string, body: string) => void;
@@ -37,6 +38,7 @@ interface HubTaskComposerProps {
 
 export default function HubTaskComposer({
   selectedEmails,
+  deptSources,
   onClearSelection,
   onRemoveEmail,
   onSwitchToMemo,
@@ -97,22 +99,23 @@ export default function HubTaskComposer({
     return map;
   }, [profiles]);
 
-  // Recipient chips for summary
+  // Recipient chips for summary (Directive 10 / Feedback 13)
   const recipientChips = useMemo<RecipientChip[]>(() => {
     const chips: RecipientChip[] = [];
     selectedEmails.forEach((email) => {
       const p = profileMap.get(email);
       const name = resolveDisplayName(email, p, gwsNameMap.get(email)).name;
+      const deptSource = deptSources?.[email];
       chips.push({
         type: "user",
-        source: "person",
+        source: deptSource ? "dept" : "person",
         email,
         label: name,
-        deptLabel: p?.departments?.[0],
+        deptLabel: deptSource || p?.departments?.[0],
       });
     });
     return chips;
-  }, [selectedEmails, profileMap, gwsNameMap]);
+  }, [selectedEmails, profileMap, gwsNameMap, deptSources]);
 
   const calculateDueAtMs = (): number => {
     const [y, m, d] = dueDate.split("-").map(Number);
