@@ -15,8 +15,7 @@ import {
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import OrgChartTree from "@/components/admin/OrgChartTree";
 import OrgChartBuilder from "@/components/admin/OrgChartBuilder";
-import { getClientCache, setClientCache, invalidateClientCache } from "@/lib/cache/clientCache";
-import { getDocs } from "firebase/firestore";
+import { loadTeacherProfiles, invalidateTeacherProfilesCache } from "@/lib/org/roster";
 import { isMobileNumberPattern } from "@/components/admin/ManualProfileEditor";
 
 interface PendingProfile extends TeacherProfile {
@@ -80,16 +79,7 @@ export default function ProfileApprovals() {
     let cancelled = false;
 
     async function loadApproved() {
-      const CACHE_KEY = "teacher_profiles:all";
-      const cached = getClientCache(CACHE_KEY) as TeacherProfile[] | null;
-      let profiles: TeacherProfile[];
-      if (cached) {
-        profiles = cached;
-      } else {
-        const snap = await getDocs(collection(db, "teacher_profiles"));
-        profiles = snap.docs.map((d) => d.data() as TeacherProfile);
-        setClientCache(CACHE_KEY, profiles, 5 * 60 * 1000);
-      }
+      const profiles = await loadTeacherProfiles();
       if (cancelled) return;
 
       const map = new Map<string, ApprovedTeacherInfo[]>();
@@ -161,7 +151,7 @@ export default function ProfileApprovals() {
       });
 
       // 2. Invalidate cache
-      invalidateClientCache("teacher_profiles:all");
+      invalidateTeacherProfilesCache();
 
       // 3. Update pending status
       const pendingRef = doc(db, "teacher_profiles_pending", profile.email);

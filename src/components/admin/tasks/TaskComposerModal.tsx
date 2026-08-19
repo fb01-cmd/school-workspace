@@ -6,7 +6,8 @@
 // 2상: send (수신자 지정 및 최종 발송) — 발송 전에는 초안으로 수신자에게 미노출
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import TaskRecipientPickerModal, { RecipientChip } from "./TaskRecipientPickerModal";
+import TaskRecipientPickerModal from "./TaskRecipientPickerModal";
+import type { RecipientChip } from "@/lib/org/recipients";
 import type { TaskFormFile, TaskKind } from "@/lib/tasks/logic";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";

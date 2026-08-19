@@ -4,6 +4,29 @@
 > 2026-08-14 이전은 [`archive/project_notes_2026-08.md`](./archive/project_notes_2026-08.md)·[`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다
 > (원문 그대로, 블록 무손실 대조 완료). 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-19] Antigravity → Claude/사용자 (쪽지·업무 허브 §6 선행 리팩터 3건 완결 — sort/roster/recipients 추출)
+- **배경**: `docs/messaging_hub_ia_spec.md` §6 선행 리팩터 3건 (허브 화면 착수 전 중복 추출 및 비용 계약 §5-4 이행).
+- **구현 파일**:
+  1. `src/lib/org/sort.ts` (신규):
+     - `sortMembersForDept` 단일 원본 추출 (부서장 최상단 → 학년부 반 번호순 → 한글 이름 가나다순).
+     - `OrgChartTree.tsx`, `OrgChartBuilder.tsx`, `TaskRecipientPickerModal.tsx`, `MemoSection.tsx` 4곳의 인라인/중복 정렬 로직을 대체.
+  2. `src/lib/org/roster.ts` (신규):
+     - `loadTeacherProfiles`, `loadTeacherProfileMap`, `invalidateTeacherProfilesCache` 단일 원본 로더 추출.
+     - 스펙 §5-4: `setClientCache` 호출 시 명시적 TTL(`5*60*1000`) 인자를 제거하고 기본 TTL을 사용하도록 하여 절약 모드의 TTL 연장 손잡이가 정상 작동하도록 개선.
+     - `buildGwsNameMap`, `getActiveTeacherEmails`, `filterActiveTeachers` 헬퍼 통합.
+     - `MemoSection.tsx`, `TaskRecipientPickerModal.tsx`, `OrgChartTree.tsx`, `OrgChartBuilder.tsx`, `ProfileApprovals.tsx`, `TaskStatusBoard.tsx` 로더를 대체.
+  3. `src/lib/org/recipients.ts` (신규):
+     - `RecipientChip` 인터페이스 단일 원본 정의 (`type?: "user"`, `source: "person" | "dept"`, `email`, `label`, `deptLabel?`).
+     - `buildRecipientSummary` (및 별칭 `buildSummary`) 요약 문구 생성 함수 통일.
+     - `MemoSection.tsx`, `TaskRecipientPickerModal.tsx`, `TaskComposerModal.tsx`에 통일 적용.
+- **동작 보존**:
+  - 화면 추가 0건 (허브 화면은 아직 만들지 않음).
+  - 정렬 결과, 명단 필터 결과, 칩 생성 및 요약 문구가 기존 조직도·쪽지 쓰기·업무 수신자 선택 3화면에서 이전과 100% 동일하게 유지됨.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (46/46 static pages prerendered)
+  - `bash scripts/check_ui_removals.sh 4d1c350` ✅ (`setClientCache` 3건의 공용 모듈 이동 외 사라진 UI 상호작용 0건)
+
 ## [2026-08-19] Antigravity → Claude/사용자 (Phase 8 실기기 피드백 화면 반영 완료 — 1군~4군 12개 과제 완결)
 - **변경 파일 (`92fadca`)**: `src/components/common/MemoRichBody.tsx`, `src/components/admin/tasks/TasksSection.tsx`, `src/components/mobile/MobileTasksSection.tsx`, `src/components/admin/DashboardTaskCard.tsx`, `src/components/admin/tasks/TaskRecipientPickerModal.tsx`, `src/components/admin/tasks/TaskComposerModal.tsx`, `src/components/admin/tasks/TaskStatusBoard.tsx`, `src/components/common/NotificationCenter.tsx`, `src/app/admin/page.tsx`, `src/lib/memo/client_attachments.ts`, `src/components/admin/MemoSection.tsx`, `src/components/common/MemoAttachmentGrid.tsx`.
 - **검증 상태**: `npx tsc --noEmit` ✅ (0 errors) · `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (46/46 pages) · `bash scripts/check_ui_removals.sh 1b48d5b` ✅ (삭제 18건 전수 피드백 지시서 근거 소명 완료).

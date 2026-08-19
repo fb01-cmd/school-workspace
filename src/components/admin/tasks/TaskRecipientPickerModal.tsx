@@ -5,18 +5,13 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase/config";
-import { collection, getDocs } from "firebase/firestore";
-import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { resolveDisplayName } from "@/lib/org/displayName";
+import { sortMembersForDept } from "@/lib/org/sort";
+import { loadTeacherProfileMap } from "@/lib/org/roster";
+import { RecipientChip, buildRecipientSummary } from "@/lib/org/recipients";
 import type { TeacherProfile } from "@/context/AuthContext";
 
-export interface RecipientChip {
-  email: string;
-  label: string;
-  source: "dept" | "person";
-  deptLabel?: string;
-}
+export type { RecipientChip };
 
 interface DeptMember {
   email: string;
@@ -34,79 +29,6 @@ interface LocalSearchCandidate {
   name: string;
   dept: string;
   extension?: string;
-}
-
-async function loadProfileMap(): Promise<Map<string, TeacherProfile>> {
-  const CACHE_KEY = "teacher_profiles:all";
-  const cached = getClientCache(CACHE_KEY) as TeacherProfile[] | null;
-  let profiles: TeacherProfile[];
-  if (cached) {
-    profiles = cached;
-  } else {
-    const snap = await getDocs(collection(db, "teacher_profiles"));
-    profiles = snap.docs.map((d) => d.data() as TeacherProfile);
-    setClientCache(CACHE_KEY, profiles, 5 * 60 * 1000);
-  }
-  const map = new Map<string, TeacherProfile>();
-  for (const p of profiles) {
-    if (p.email) map.set(p.email.toLowerCase(), p);
-  }
-  return map;
-}
-
-function buildRecipientSummary(chips: RecipientChip[]): string {
-  if (chips.length === 0) return "";
-  const deptChips = chips.filter((c) => c.source === "dept" && c.deptLabel);
-  if (deptChips.length > 0) {
-    const deptNames = [...new Set(deptChips.map((c) => c.deptLabel!))];
-    const total = chips.length;
-    if (deptNames.length === 1) {
-      return `${deptNames[0]} ${total}명`;
-    }
-    return `${deptNames[0]} 외 ${deptNames.length - 1}개 부서 ${total}명`;
-  }
-  const first = chips[0].label;
-  const rest = chips.length - 1;
-  return rest > 0 ? `${first} 외 ${rest}명` : first;
-}
-
-function sortMembersForDept(
-  deptName: string,
-  members: DeptMember[],
-  profileMap: Map<string, TeacherProfile>
-): DeptMember[] {
-  const gradeMatch = deptName.match(/^([1-3])학년/);
-
-  return [...members].sort((a, b) => {
-    const profA = profileMap.get(a.email.toLowerCase());
-    const profB = profileMap.get(b.email.toLowerCase());
-
-    const aIsHead = !!profA?.deptHeadMap?.[deptName] || (profA?.departments?.length === 1 && !!profA?.isDeptHead);
-    const bIsHead = !!profB?.deptHeadMap?.[deptName] || (profB?.departments?.length === 1 && !!profB?.isDeptHead);
-
-    // 1. 부장 우선
-    if (aIsHead && !bIsHead) return -1;
-    if (!aIsHead && bIsHead) return 1;
-
-    // 2. 학년부인 경우 담임 반 순
-    if (gradeMatch) {
-      const gradeNum = Number(gradeMatch[1]);
-      const aIsHomeroom = !!profA?.isHomeroom && Number(profA?.homeroom?.grade) === gradeNum;
-      const bIsHomeroom = !!profB?.isHomeroom && Number(profB?.homeroom?.grade) === gradeNum;
-
-      if (aIsHomeroom && !bIsHomeroom) return -1;
-      if (!aIsHomeroom && bIsHomeroom) return 1;
-
-      if (aIsHomeroom && bIsHomeroom) {
-        const aClass = Number(profA?.homeroom?.class || 0);
-        const bClass = Number(profB?.homeroom?.class || 0);
-        if (aClass !== bClass) return aClass - bClass;
-      }
-    }
-
-    // 3. 나머지 가나다순
-    return a.name.localeCompare(b.name, "ko");
-  });
 }
 
 interface Props {
@@ -140,7 +62,7 @@ export default function TaskRecipientPickerModal({
   useEffect(() => {
     if (!isOpen) return;
     setSelectedEmails(new Set(initialSelectedEmails));
-    loadProfileMap()
+    loadTeacherProfileMap()
       .then((map) => {
         setProfileMap(map);
         setLoading(false);

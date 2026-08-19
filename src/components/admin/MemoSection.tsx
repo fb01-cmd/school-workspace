@@ -21,6 +21,9 @@ import { db } from "@/lib/firebase/config";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
 import { resolveDisplayName } from "@/lib/org/displayName";
+import { sortMembersForDept } from "@/lib/org/sort";
+import { loadTeacherProfileMap, buildGwsNameMap } from "@/lib/org/roster";
+import { RecipientChip, buildSummary } from "@/lib/org/recipients";
 import type { MemoDoc } from "@/lib/memo/logic";
 import { MEMO_UNTITLED_FALLBACK } from "@/lib/memo/logic";
 import type { TeacherProfile } from "@/context/AuthContext";
@@ -68,15 +71,6 @@ interface StagedAttachment {
   error?: string;
 }
 
-/** 칩의 출처: "person" = 개인 검색·개별 체크, "dept" = 부서 헤더 체크 */
-interface RecipientChip {
-  type: "user";
-  source: "person" | "dept";
-  email: string;
-  label: string;          // 이름만 (이메일 미포함)
-  deptLabel?: string;     // source === "dept" 일 때 부서명 (summary용)
-}
-
 type Tab = "inbox" | "sent" | "starred";
 type ComposeStep = 1 | 2;
 
@@ -110,27 +104,6 @@ function formatFull(ms: number): string {
 }
 
 /**
- * GWS 사용자 배열 → 이메일별 표시 이름 맵.
- * 이름의 원본은 GWS 디렉터리 성·이름이다(memo_spec.md §11-7). 이 맵은 화면이 쥔 state에서
- * 만들어지므로, 캐시가 만료되어도 이름이 아이디로 되돌아가지 않는다.
- */
-function buildGwsNameMap(users: unknown): Map<string, string> {
-  const map = new Map<string, string>();
-  if (!Array.isArray(users)) return map;
-  users.forEach((u: any) => {
-    const email = (u.primaryEmail || u.email || "").toLowerCase();
-    if (!email) return;
-    const name =
-      u.name?.fullName ||
-      (u.name?.familyName ? `${u.name.familyName}${u.name.givenName || ""}` : null);
-    if (name && typeof name === "string" && name.trim()) {
-      map.set(email, name.trim());
-    }
-  });
-  return map;
-}
-
-/**
  * 이름 표기 단일 헬퍼 — 트리·검색·칩·읽음 현황표 전부 이 함수를 쓴다.
  * §11-5 동명이인 부제를 나중에 추가할 때 이 함수만 고치면 된다.
  */
@@ -142,49 +115,6 @@ function resolveMemoDisplayName(
   const cleanEmail = email.toLowerCase();
   const p = profileMap.get(cleanEmail);
   return resolveDisplayName(email, p, gwsNameMap.get(cleanEmail)).name;
-}
-
-
-
-/** teacher_profiles 전수를 clientCache에서 가져오거나 Firestore에서 1회 읽어온다 */
-async function loadProfileMap(): Promise<Map<string, TeacherProfile>> {
-  const CACHE_KEY = "teacher_profiles:all";
-  const cached = getClientCache(CACHE_KEY) as TeacherProfile[] | null;
-  let profiles: TeacherProfile[];
-  if (cached) {
-    profiles = cached;
-  } else {
-    const snap = await getDocs(collection(db, "teacher_profiles"));
-    profiles = snap.docs.map((d) => d.data() as TeacherProfile);
-    setClientCache(CACHE_KEY, profiles, 5 * 60 * 1000); // TTL 5분
-  }
-  const map = new Map<string, TeacherProfile>();
-  for (const p of profiles) {
-    if (p.email) map.set(p.email.toLowerCase(), p);
-  }
-  return map;
-}
-
-// recipientSummary: 부서 기준 vs 이름 기준 (결함 4 수정)
-function buildSummary(chips: RecipientChip[]): string {
-  if (chips.length === 0) return "";
-  // 부서 헤더 선택이 하나라도 있으면 부서명 기준
-  const deptChips = chips.filter((c) => c.source === "dept" && c.deptLabel);
-  if (deptChips.length > 0) {
-    // 선택된 부서명 (중복 제거)
-    const deptNames = [...new Set(deptChips.map((c) => c.deptLabel!))];
-    const total = chips.length;
-    if (deptNames.length === 1) {
-      // 단일 부서 전체 선택: "2학년 10명" ("2학년 외 9명"으로 오독되는 문제 방지)
-      return `${deptNames[0]} ${total}명`;
-    }
-    // 복수 부서: "2학년 외 2개 부서 21명"
-    return `${deptNames[0]} 외 ${deptNames.length - 1}개 부서 ${total}명`;
-  }
-  // 개인만이면 이름 기준
-  const first = chips[0].label;
-  const rest = chips.length - 1;
-  return rest > 0 ? `${first} 외 ${rest}명` : first;
 }
 
 // ── 로컬 이름 검색 (§11-2 개정: teacher_profiles 명단만, 이름 매칭, 부서 부제) ───
@@ -1388,29 +1318,8 @@ function ComposeModal({
           members.push({ email, name: resolveMemoDisplayName(email, profileMap, gwsNameMap), extension: p.extension });
         }
       });
-      const gradeMatch = dept.match(/^([1-3])학년/);
-      members.sort((a, b) => {
-        const profA = profileMap.get(a.email.toLowerCase());
-        const profB = profileMap.get(b.email.toLowerCase());
-        const aIsHead = !!profA?.deptHeadMap?.[dept] || (profA?.departments?.length === 1 && !!profA?.isDeptHead);
-        const bIsHead = !!profB?.deptHeadMap?.[dept] || (profB?.departments?.length === 1 && !!profB?.isDeptHead);
-        if (aIsHead && !bIsHead) return -1;
-        if (!aIsHead && bIsHead) return 1;
-        if (gradeMatch) {
-          const gradeNum = Number(gradeMatch[1]);
-          const aIsHomeroom = !!profA?.isHomeroom && Number(profA?.homeroom?.grade) === gradeNum;
-          const bIsHomeroom = !!profB?.isHomeroom && Number(profB?.homeroom?.grade) === gradeNum;
-          if (aIsHomeroom && !bIsHomeroom) return -1;
-          if (!aIsHomeroom && bIsHomeroom) return 1;
-          if (aIsHomeroom && bIsHomeroom) {
-            const aClass = Number(profA?.homeroom?.class || 0);
-            const bClass = Number(profB?.homeroom?.class || 0);
-            if (aClass !== bClass) return aClass - bClass;
-          }
-        }
-        return a.name.localeCompare(b.name, "ko");
-      });
-      return { dept, members };
+      const sortedMembers = sortMembersForDept(dept, members, profileMap);
+      return { dept, members: sortedMembers };
     })
     .filter((s) => s.members.length > 0);
 
@@ -2278,7 +2187,7 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
   // teacher_profiles 맵 (이름 표시용)
   const [profileMap, setProfileMap] = useState<Map<string, TeacherProfile>>(new Map());
   useEffect(() => {
-    loadProfileMap()
+    loadTeacherProfileMap()
       .then((m) => { setProfileMap(m); setProfileError(null); })
       .catch((err) => {
         console.error("[memo] 조직도 로드 실패", err);

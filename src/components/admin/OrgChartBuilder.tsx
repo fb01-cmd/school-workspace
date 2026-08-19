@@ -9,6 +9,8 @@ import { writeAuditLog } from "@/lib/firebase/audit";
 import ManualProfileEditor from "@/components/admin/ManualProfileEditor";
 import { DEFAULT_DEPARTMENTS, POSITION_LIKE_DEPARTMENTS } from "@/lib/org/departments";
 import { resolveDisplayName } from "@/lib/org/displayName";
+import { sortMembersForDept } from "@/lib/org/sort";
+import { loadTeacherProfiles, filterActiveTeachers } from "@/lib/org/roster";
 
 
 interface Props {
@@ -85,11 +87,11 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [stagedCount]);
 
-  // 1. GWS 유저 목록 로드 (캐시 우선)
+  // 1. GWS 유저 목록 로드 (프리페치 캐시 "users:all" 활용)
   useEffect(() => {
-    const cached = getClientCache("users:all");
-    if (Array.isArray(cached) && cached.length > 0) {
-      setGwsTeachers(cached);
+    const cachedUsers = getClientCache("users:all");
+    if (cachedUsers && Array.isArray(cachedUsers) && cachedUsers.length > 0) {
+      setGwsTeachers(cachedUsers);
     } else {
       fetch("/api/workspace/users", {
         method: "POST",
@@ -107,28 +109,10 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
     }
   }, []);
 
-  // 2. 프로필 캐시 로드 (다이어트 4번: 5분 인메모리 캐시 적용)
+  // 2. 프로필 캐시 로드 (다이어트 4번: 인메모리 캐시 적용)
   const loadProfiles = useCallback(async (forceRefresh = false) => {
     try {
-      const CACHE_KEY = "teacher_profiles:all";
-      if (forceRefresh) {
-        invalidateClientCache(CACHE_KEY);
-      }
-      const cached = forceRefresh ? null : (getClientCache(CACHE_KEY) as TeacherProfile[] | null);
-      let rawProfiles: TeacherProfile[];
-      if (cached) {
-        rawProfiles = cached;
-      } else {
-        const snap = await getDocs(collection(db, "teacher_profiles"));
-        rawProfiles = snap.docs.map((d) => d.data() as TeacherProfile);
-        setClientCache(CACHE_KEY, rawProfiles, 5 * 60 * 1000);
-      }
-
-      const items = rawProfiles.map((data) => ({
-        ...data,
-        email: (data.email || "").toLowerCase(),
-        name: data.name || (data.email || "").split("@")[0],
-      }));
+      const items = await loadTeacherProfiles(forceRefresh);
       setProfiles(items);
       setLoading(false);
     } catch (err) {
@@ -221,62 +205,8 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
 
   // 교직원 명단 — 교직원 OU 매핑이 있으면 그 하위만(기기·졸업생 계정 유입 차단), 없으면 학생 OU 제외 폴백
   const teacherUserList = useMemo(() => {
-    const teacherOU = ((schoolSettings as any)?.ouMapping?.teachers || "").toLowerCase();
-    return gwsTeachers.filter((u) => {
-      const email = (u.primaryEmail || u.email || "").toLowerCase();
-      if (/^\d{5}@/.test(email)) return false; // 학번 계정(학생·졸업생) 제외
-      const orgPath = (u.orgUnitPath || "").toLowerCase();
-      if (teacherOU) {
-        return orgPath === teacherOU || orgPath.startsWith(teacherOU + "/");
-      }
-      if (orgPath.includes("student") || orgPath.includes("학생")) return false;
-      return true;
-    });
+    return filterActiveTeachers(gwsTeachers, (schoolSettings as any)?.ouMapping?.teachers);
   }, [gwsTeachers, schoolSettings]);
-
-  // ─── §1 정렬 규칙 헬퍼 ──────────────────────────────────────────
-  const sortMembersForDept = (deptName: string, members: TeacherProfile[]) => {
-    const isGradeDept = /^([1-3])학년$/.test(deptName);
-    const targetGrade = isGradeDept ? parseInt(deptName[0], 10) : 0;
-
-    if (isGradeDept) {
-      return [...members].sort((a, b) => {
-        const aIsHead = !!a.deptHeadMap?.[deptName] || (a.departments?.length === 1 && a.isDeptHead);
-        const bIsHead = !!b.deptHeadMap?.[deptName] || (b.departments?.length === 1 && b.isDeptHead);
-
-        if (aIsHead && !bIsHead) return -1;
-        if (!aIsHead && bIsHead) return 1;
-
-        const aIsHomeroom = a.isHomeroom && a.homeroom?.grade === targetGrade;
-        const bIsHomeroom = b.isHomeroom && b.homeroom?.grade === targetGrade;
-
-        if (aIsHomeroom && !bIsHomeroom) return -1;
-        if (!aIsHomeroom && bIsHomeroom) return 1;
-
-        if (aIsHomeroom && bIsHomeroom) {
-          const aClass = Number(a.homeroom?.class || 0);
-          const bClass = Number(b.homeroom?.class || 0);
-          if (aClass !== bClass) return aClass - bClass;
-        }
-
-        const aName = getDisplayName(a.email, a);
-        const bName = getDisplayName(b.email, b);
-        return aName.localeCompare(bName, "ko");
-      });
-    } else {
-      return [...members].sort((a, b) => {
-        const aIsHead = !!a.deptHeadMap?.[deptName] || (a.departments?.length === 1 && a.isDeptHead);
-        const bIsHead = !!b.deptHeadMap?.[deptName] || (b.departments?.length === 1 && b.isDeptHead);
-
-        if (aIsHead && !bIsHead) return -1;
-        if (!aIsHead && bIsHead) return 1;
-
-        const aName = getDisplayName(a.email, a);
-        const bName = getDisplayName(b.email, b);
-        return aName.localeCompare(bName, "ko");
-      });
-    }
-  };
 
   // 트리 구조 맵 (deptName -> TeacherProfile[]) — 파이어베이스 + 로컬 스테이징 오버레이 병합
   const deptMembersMap = useMemo(() => {
@@ -318,7 +248,12 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
     const sortedMap = new Map<string, TeacherProfile[]>();
     departmentOrder.forEach((d) => {
       const list = map.get(d) || [];
-      sortedMap.set(d, sortMembersForDept(d, list));
+      sortedMap.set(
+        d,
+        sortMembersForDept(d, list, {
+          getName: (p) => getDisplayName(p.email, p),
+        })
+      );
     });
 
     return { sortedMap, noDeptList };

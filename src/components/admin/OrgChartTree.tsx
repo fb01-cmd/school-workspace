@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
-import { db } from "@/lib/firebase/config";
-import { collection, getDocs } from "firebase/firestore";
-
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
 import { resolveDisplayName } from "@/lib/org/displayName";
+import { sortMembersForDept } from "@/lib/org/sort";
+import { loadTeacherProfiles, buildGwsNameMap, getActiveTeacherEmails } from "@/lib/org/roster";
 
 
 interface Props {
@@ -50,21 +49,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
 
   // GWS real name resolution map
   const gwsNameMap = useMemo(() => {
-    const map = new Map<string, string>();
-    const cachedUsers = gwsUsers;
-    if (Array.isArray(cachedUsers)) {
-      cachedUsers.forEach((u: any) => {
-        const email = (u.primaryEmail || u.email || "").toLowerCase();
-        if (!email) return;
-        const name =
-          u.name?.fullName ||
-          (u.name?.familyName ? `${u.name.familyName}${u.name.givenName || ""}` : null);
-        if (name && typeof name === "string" && name.trim()) {
-          map.set(email, name.trim());
-        }
-      });
-    }
-    return map;
+    return buildGwsNameMap(gwsUsers);
   }, [gwsUsers]);
 
   const getDisplayName = (t: TeacherProfile) => {
@@ -76,45 +61,15 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
   // 재직자 이메일 집합 (2026-08-07 조직도 잔존 결함 수정) — OrgChartBuilder.teacherUserList와
   // 같은 기준으로 전출·명퇴 계정의 잔존 프로필을 트리에서 숨긴다. 캐시가 없으면 null(필터 생략).
   const activeEmails = useMemo(() => {
-    const cachedUsers = gwsUsers;
-    if (!Array.isArray(cachedUsers) || cachedUsers.length === 0) return null;
-    const teacherOU = ((schoolSettings as any)?.ouMapping?.teachers || "").toLowerCase();
-    const set = new Set<string>();
-    cachedUsers.forEach((u: any) => {
-      const email = (u.primaryEmail || u.email || "").toLowerCase();
-      if (!email || /^\d{5}@/.test(email)) return;
-      const orgPath = (u.orgUnitPath || "").toLowerCase();
-      if (teacherOU) {
-        if (orgPath !== teacherOU && !orgPath.startsWith(teacherOU + "/")) return;
-      } else if (orgPath.includes("student") || orgPath.includes("학생")) {
-        return;
-      }
-      set.add(email);
-    });
-    return set;
+    return getActiveTeacherEmails(gwsUsers, (schoolSettings as any)?.ouMapping?.teachers);
   }, [gwsUsers, schoolSettings]);
 
-  // 프로필 캐시 로드 (다이어트 4번: 5분 인메모리 캐시 적용)
+  // 프로필 캐시 로드 (다이어트 4번: 인메모리 캐시 적용)
   useEffect(() => {
     let cancelled = false;
     async function loadProfiles() {
-      const CACHE_KEY = "teacher_profiles:all";
-      const cached = getClientCache(CACHE_KEY) as TeacherProfile[] | null;
-      let rawProfiles: TeacherProfile[];
-      if (cached) {
-        rawProfiles = cached;
-      } else {
-        const snap = await getDocs(collection(db, "teacher_profiles"));
-        rawProfiles = snap.docs.map((d) => d.data() as TeacherProfile);
-        setClientCache(CACHE_KEY, rawProfiles, 5 * 60 * 1000);
-      }
+      const items = await loadTeacherProfiles();
       if (cancelled) return;
-
-      const items = rawProfiles.map((data) => ({
-        ...data,
-        email: (data.email || "").toLowerCase(),
-        name: data.name || (data.email || "").split("@")[0],
-      }));
       setProfiles(items);
       setLoading(false);
     }
@@ -164,58 +119,6 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
   const structuredTree = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
-    // Helper to sort department members according to §1 rules
-    const sortMembersForDept = (deptName: string, members: TeacherProfile[]): TeacherProfile[] => {
-      const gradeMatch = deptName.match(/^([1-3])학년$/);
-
-      if (gradeMatch) {
-        const gradeNum = Number(gradeMatch[1]);
-
-        return [...members].sort((a, b) => {
-          // Unified head fallback check
-          const aIsHead = !!a.deptHeadMap?.[deptName] || (a.departments?.length === 1 && a.isDeptHead);
-          const bIsHead = !!b.deptHeadMap?.[deptName] || (b.departments?.length === 1 && b.isDeptHead);
-
-          // 1. Department Head first
-          if (aIsHead && !bIsHead) return -1;
-          if (!aIsHead && bIsHead) return 1;
-
-          // 2. Homeroom teachers of this grade sorted by class number (1반, 2반, 3반...)
-          const aIsHomeroomOfGrade = a.isHomeroom && Number(a.homeroom?.grade) === gradeNum;
-          const bIsHomeroomOfGrade = b.isHomeroom && Number(b.homeroom?.grade) === gradeNum;
-
-          if (aIsHomeroomOfGrade && !bIsHomeroomOfGrade) return -1;
-          if (!aIsHomeroomOfGrade && bIsHomeroomOfGrade) return 1;
-
-          if (aIsHomeroomOfGrade && bIsHomeroomOfGrade) {
-            const aClass = Number(a.homeroom?.class || 0);
-            const bClass = Number(b.homeroom?.class || 0);
-            if (aClass !== bClass) return aClass - bClass;
-          }
-
-          // 3. Remaining non-homeroom members sorted alphabetically by real name
-          const aName = getDisplayName(a);
-          const bName = getDisplayName(b);
-          return aName.localeCompare(bName, "ko");
-        });
-      } else {
-        // Non-grade departments
-        return [...members].sort((a, b) => {
-          const aIsHead = !!a.deptHeadMap?.[deptName] || (a.departments?.length === 1 && a.isDeptHead);
-          const bIsHead = !!b.deptHeadMap?.[deptName] || (b.departments?.length === 1 && b.isDeptHead);
-
-          // 1. Department Head first
-          if (aIsHead && !bIsHead) return -1;
-          if (!aIsHead && bIsHead) return 1;
-
-          // 2. Korean alphabetical order by real name
-          const aName = getDisplayName(a);
-          const bName = getDisplayName(b);
-          return aName.localeCompare(bName, "ko");
-        });
-      }
-    };
-
     // Filter profiles by search query if present
     const filteredProfiles = profiles.filter((p) => {
       // 재직자 필터 — 전출·명퇴 잔존 프로필 숨김 (2026-08-07)
@@ -249,7 +152,9 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
     // Sort each department
     const sortedTree: { deptName: string; members: TeacherProfile[] }[] = [];
     departmentOrder.forEach((d) => {
-      const sorted = sortMembersForDept(d, deptMap[d] || []);
+      const sorted = sortMembersForDept(d, deptMap[d] || [], {
+        getName: (p) => getDisplayName(p),
+      });
       if (sorted.length > 0 || !q) {
         // Always show departments when no search query, or when search matches
         sortedTree.push({ deptName: d, members: sorted });

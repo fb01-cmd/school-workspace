@@ -20,6 +20,7 @@ import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import type { TaskDoc, TaskRecipientStatus, TaskSubmission } from "@/lib/tasks/logic";
 import MemoRichBody from "@/components/common/MemoRichBody";
 import { resolveDisplayName } from "@/lib/org/displayName";
+import { loadTeacherProfileMap } from "@/lib/org/roster";
 import type { TeacherProfile } from "@/context/AuthContext";
 
 interface TaskItem extends TaskDoc {
@@ -76,25 +77,12 @@ export default function TaskStatusBoard() {
   const selectedTaskIdRef = useRef<string | null>(null);
   selectedTaskIdRef.current = selectedTaskId;
 
-  // 프로필 로드 (다이어트 4번: 5분 인메모리 캐시 적용)
+  // 프로필 로드 (다이어트 4번: 인메모리 캐시 적용)
   useEffect(() => {
     let cancelled = false;
     async function loadProfiles() {
-      const CACHE_KEY = "teacher_profiles:all";
-      const cached = getClientCache(CACHE_KEY) as TeacherProfile[] | null;
-      let profiles: TeacherProfile[];
-      if (cached) {
-        profiles = cached;
-      } else {
-        const snap = await getDocs(collection(db, "teacher_profiles"));
-        profiles = snap.docs.map((d) => d.data() as TeacherProfile);
-        setClientCache(CACHE_KEY, profiles, 5 * 60 * 1000);
-      }
+      const map = await loadTeacherProfileMap();
       if (cancelled) return;
-      const map = new Map<string, TeacherProfile>();
-      for (const p of profiles) {
-        if (p.email) map.set(p.email.toLowerCase(), p);
-      }
       setProfileMap(map);
     }
     loadProfiles().catch((err) => console.error("[TaskStatusBoard] 프로필 로드 실패:", err));
