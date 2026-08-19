@@ -4,6 +4,29 @@
 > 2026-08-14 이전은 [`archive/project_notes_2026-08.md`](./archive/project_notes_2026-08.md)·[`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다
 > (원문 그대로, 블록 무손실 대조 완료). 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-19] Antigravity → Claude/사용자 (쪽지·업무 피드백 배치 1 완결 — hub_batch1_directive.md 11개 항목 반영)
+- **배경**: `docs/hub_batch1_directive.md` 및 `docs/hub_feedback_2026-08-19.md` 기반 피드백 배치 1 처리 (지시서 항목 1~12 / 피드백 2·3·5·7·8·9·10·11·12·13·14).
+- **구현 및 커밋 내역 (5개 덩어리)**:
+  1. `f1348b7`: **지시서 6번 / 피드백 4-1** — 검색 시 트리 필터링 대신 평면 드롭다운 목록(`flatSearchResults`) 표출 (이름+내선번호 매칭, 이메일 매칭 금지, 부서 부제 상시 표출, 검색어 자동 펼침 `useEffect` 삭제로 내 부서 초기 상태 보존).
+  2. `4d25ef9`: **지시서 3, 4, 5번 / 피드백 5, 7, 10** —
+     - 「효명고 전체 선택 (N명)」 버튼 신설 (중복 제거된 실인원 기준, 검색 중 숨김, `MessagingHub`와 `onSelectAll` 연동).
+     - 부분 선택 커스텀 인디케이터 적용 (연한 인디고 테두리 + 흰 배경 + 가로줄 막대로 완전 선택 `✓`와 명확히 분리).
+     - 부서 헤더 인원수 배지를 `선택/전체`(예: `1/3`) 형태로 개편 (0명 선택 시 총원만 표시).
+  3. `f1dfabb`: **지시서 7, 8, 9, 11번 / 피드백 9, 11, 12, 14** —
+     - 타 부서 부서장 라벨링 결함 수정 (`deptHeadMap?.[deptName]` 기준 단일화).
+     - `schoolSettings.departments`에 미등록된 부서 소속 교직원도 뒤에 이어 붙여 누락 방지.
+     - `loadTeacherProfiles` 실패 시 에러 문구 및 [다시 시도] 버튼 제공 (정상 빈 상태와 분리).
+     - 소속 없는 계정 진입 시 27개 부서 전체 접힘 초기화.
+  4. `3b78b4c`: **지시서 10번 / 피드백 13** — 부서 단위 체크 시 `source: "dept"` 및 `deptLabel`을 `deptSources` 상태로 전달하여 `buildRecipientSummary`가 `1학년 11명` / `1학년 외 1개 부서 N명`으로 정상 생성·저장되도록 수정.
+  5. `5f0c5bc`: **지시서 1, 2, 12번 / 피드백 2, 3/3-1/3-2, 8** —
+     - 업무 등록 마감 시각 입력창 폭 고정(`w-28`) 제거 및 날짜-시각 `grid-cols-2`로 개편하여 `오후 05:00` 및 시계 아이콘 잘림 해소.
+     - 홈 대시보드 「받은 쪽지」 카드의 어두운 그라디언트 헤더를 제거하고 `rounded-2xl p-6` 흰색 카드로 통일하여 「내 할 일」·급식 카드와 톤/반응성 통일.
+     - 사이드바 교직원 공통 도구에서 「교직원 조직도」 제거 및 관리자 전용 메뉴(`profile_approvals`)에 `isSuperAdmin` 가드 적용.
+- **검증 결과**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (47/47 static pages prerendered)
+  - `bash scripts/check_ui_removals.sh bc1ffd0` ✅ (지시서 기반 의도된 삭제 전수 소명 완료)
+
 ## [2026-08-19] Antigravity → Claude/사용자 (쪽지·업무 통합 화면 구현 완결 — messaging_hub_ia_spec 개정판)
 - **배경**: `docs/messaging_hub_ia_spec.md` 개정판(2026-08-19 범위 확대)에 따른 「쪽지·업무」 통합 화면 구현.
 - **구현 파일**:
