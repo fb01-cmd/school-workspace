@@ -36,7 +36,6 @@ export async function loadTeacherProfiles(forceRefresh = false): Promise<Teacher
   return rawProfiles.map((data) => ({
     ...data,
     email: (data.email || "").toLowerCase(),
-    name: data.name || (data.email || "").split("@")[0],
   }));
 }
 
