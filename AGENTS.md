@@ -106,7 +106,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 1. **GWS UID 충돌 방지**: 
    동일한 이메일로 구글 계정을 삭제 후 재생성할 때, 구글 내부 고유 ID(UID)가 변경되어 파이어베이스 로그인 시 `auth/provider-already-linked` 에러가 발생한다.
    - 계정 **삭제(개별/일괄/크론/전출)** 시: Google Workspace 계정을 삭제하기 전에 반드시 `deleteAuthUserByEmail(email)`을 호출하여 Firebase Auth의 인증 레코드도 동기화하여 삭제한다.
-   - 계정 **생성(개별/전입/입학)** 시: Google Workspace 계정을 생성하기 전에 반드시 `deleteAuthUserByEmail(email)`을 먼저 실행하여 혹시 남아있을지 모르는 파이어베이스 구버전 UID 레코드를 깨끗이 정리(Clean)한다.
+   - 계정 **생성(개별/전입/입학)** 시: `createUser`가 **GWS 계정 생성에 성공한 뒤** `deleteAuthUserByEmail(email)`로 남아 있을 수 있는 구버전 Auth 레코드를 정리한다. **생성 함수 안에 있으므로 호출부마다 따로 부르지 않는다.**
+     > **⚠️ 순서를 앞으로 옮기지 마라 (2026-08-20 정정).** 원래 이 줄은 *"생성하기 **전에** 먼저 실행"* 이었다. 그런데 `deleteAuthUserByEmail`은 이름과 달리 **Firestore `users` 문서(= role의 원본)까지 지운다.** 생성 앞에 두면 **이미 살아 있는 계정에도 무조건 실행**돼, 중복이라 생성이 실패하는 경우 **새 계정은 안 생기고 멀쩡한 사용자만 권한을 잃는다.** `enroll_students`는 존재 확인 없이 이메일을 조립해 부르고 전입 처리는 일련번호를 재사용하므로 가정이 아니다. **생성 성공 = 그 이메일 계정이 방금 새로 생겼다**는 뜻이므로, 그때 남아 있는 Auth 레코드는 정의상 stale이다.
 
 2. **서비스 계정 역할(IAM) 전제 조건**:
    이 자동 삭제 메커니즘(`deleteAuthUserByEmail`)이 정상 작동하려면, 백엔드 서버에서 실행되는 GCP 서비스 계정(`GOOGLE_WORKSPACE_SERVICE_ACCOUNT_EMAIL`)에 GCP Console 또는 Firebase Console을 통해 **`Firebase 인증 관리자 (Firebase Authentication Admin)`** 역할이 반드시 부여되어 있어야 한다. 만약 이 권한이 누락되면 권한 오류로 자동 정리가 실패하여 로그인 꼬임이 발생한다.
@@ -547,47 +548,16 @@ useEffect(() => {
 <!-- END:prefetch-first-rules -->
 
 <!-- BEGIN:firestore-security-rules -->
-# Firestore 보안 규칙 — 배포 전 필수 변경 규칙
+# Firestore 보안 규칙 — 단일 원본은 코드다
 
-이 프로젝트는 현재 개발 편의를 위해 Firestore 보안 규칙이 공개(open) 상태이다.
-**배포(Vercel 등 외부 공개) 직전에 반드시 아래 절차를 수행해야 한다.**
+**규칙의 단일 원본은 저장소의 [`firestore.rules`](./firestore.rules)다. 이 문서에 규칙 본문을 복사하지 않는다.**
 
-## 현재 개발용 규칙 (배포 금지)
+- **완화(권한을 넓히는 변경)는 보안 검수 없이 하지 않는다.** 배포 편의를 이유로 넓히지 않는다.
+- 배포 시에는 `firestore.rules`를 **그대로** 게시한다. 어떤 문서에 적힌 규칙 예시도 배포 대상이 아니다.
 
-```js
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{documents=**} {
-      allow read, write: if true;  // ⛔ 공개 — 로컬 전용
-    }
-  }
-}
-```
-
-## 배포 시 적용해야 할 규칙
-
-```js
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      // ✅ 로그인한 사용자(Google 계정)만 읽기/쓰기 허용
-      allow read, write: if request.auth != null;
-    }
-  }
-}
-```
-
-## 변경 방법
-
-Firebase 콘솔 → Firestore → **규칙** 탭 → 위 내용으로 교체 → **게시** 클릭
-
-## 근거
-
-- 이 앱의 서버 로직(Next.js API Route)은 Firebase Admin SDK를 사용하므로 보안 규칙 적용 대상 외
-- 클라이언트는 로그인 후 실시간 구독(`onSnapshot`)만 사용하므로 `request.auth != null` 조건이 충분
-- 학생 개인정보 보호를 위해 공개 규칙 상태로 배포하는 것은 절대 금지
+> **[2026-08-20 정정 — 이 절은 위험한 상태였다]** 원래 여기에는 *"이 프로젝트는 현재 보안 규칙이 **공개(open) 상태**이니 배포 전에 `allow read, write: if request.auth != null`로 바꿔라"* 는 절차와 규칙 전문이 적혀 있었다. **둘 다 사실이 아니었다.**
+> 실제 `firestore.rules`는 **230줄**이고 기본 전부 거부 + **@hmh.or.kr 도메인 게이트** + 역할별 분리 + 학생은 자기 문서만 + 서버 전용 컬렉션 쓰기 금지를 이미 갖추고 있다(2026-07-24 설계). 문서가 시키는 `request.auth != null`은 **그보다 훨씬 약해서**, 그대로 따르면 외부 Gmail 계정 접근과 학생의 교직원 데이터 열람이 열린다.
+> **낡은 규칙이 아니라 따르면 해로운 규칙이었다.** 문서에 코드를 복사해 두면 코드가 자라도 문서는 그대로라 이렇게 된다 — **그래서 본문을 두지 않고 파일을 가리킨다.**
 <!-- END:firestore-security-rules -->
 
 <!-- BEGIN:autocomplete-input-rules -->
