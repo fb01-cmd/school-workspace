@@ -966,7 +966,11 @@ export default function AdminPage() {
                             }`}
                           >
                             <span>📥</span>
-                            <span>프로필 승인 대기</span>
+                            {/* 2026-08-19 사용자 확정: 「프로필 승인 대기」→「교직원 조직도 관리」.
+                                교직원 공통 도구의 「교직원 조직도」를 내리면서(피드백 8번) 이 메뉴가
+                                조직도 열람의 유일한 경로가 됐는데, 옛 이름으로는 그게 안 읽혀
+                                관리자가 조직도를 못 찾았다(사용자 실기기, 배포 당일). 위치는 유지. */}
+                            <span>교직원 조직도 관리</span>
                             {pendingProfileCount > 0 && (
                               <span className="ml-auto bg-amber-400 text-amber-900 text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
                                 {pendingProfileCount}
