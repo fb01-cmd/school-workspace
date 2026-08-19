@@ -29,6 +29,17 @@ interface HubMemoComposerProps {
   hasDraftRef?: React.MutableRefObject<boolean>;
 }
 
+interface StagedAttachment {
+  id: string;
+  name: string;
+  size: number;
+  previewUrl?: string;
+  status: "resizing" | "uploading" | "done" | "error";
+  progressText?: string;
+  attachment?: MemoAttachment;
+  error?: string;
+}
+
 export default function HubMemoComposer({
   selectedEmails,
   onClearSelection,
@@ -53,10 +64,7 @@ export default function HubMemoComposer({
     return () => { if (hasDraftRef) hasDraftRef.current = false; };
   }, [hasDraftRef]);
 
-  const [attachments, setAttachments] = useState<MemoAttachment[]>([]);
-  const [uploadingFiles, setUploadingFiles] = useState(false);
-  const [uploadProgressMsg, setUploadProgressMsg] = useState<string | null>(null);
-
+  const [stagedAttachments, setStagedAttachments] = useState<StagedAttachment[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,41 +100,106 @@ export default function HubMemoComposer({
     return deriveRecipientChips(selectedEmails, profiles, profileMap, gwsNameMap);
   }, [selectedEmails, profileMap, gwsNameMap, profiles]);
 
-  // Handle file uploads
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-
-    if (attachments.length + files.length > MEMO_MAX_ATTACHMENTS) {
-      alert(`첨부 파일은 최대 ${MEMO_MAX_ATTACHMENTS}개까지 가능합니다.`);
+  // 파일 업로드 큐 처리 (A-6: 파일별 독립 업로드 + 실패 격리)
+  const enqueueFiles = (selectedFiles: File[]) => {
+    if (stagedAttachments.length + selectedFiles.length > MEMO_MAX_ATTACHMENTS) {
+      setError(`첨부 파일은 최대 ${MEMO_MAX_ATTACHMENTS}개까지 가능합니다.`);
       return;
     }
 
-    setUploadingFiles(true);
+    const newItems: StagedAttachment[] = selectedFiles.map((file) => {
+      const isImg = isImageFile(file.name, file.type);
+      return {
+        id: Math.random().toString(36).slice(2),
+        name: file.name,
+        size: file.size,
+        status: "uploading",
+        previewUrl: isImg ? URL.createObjectURL(file) : undefined,
+        progressText: isImg && file.size <= 4 * 1024 * 1024 ? "최적화 중…" : "업로드 중…",
+      };
+    });
+
+    setStagedAttachments((prev) => [...prev, ...newItems]);
     setError(null);
 
-    try {
-      for (const file of files) {
-        setUploadProgressMsg(`${file.name} 올리는 중…`);
-        const att = await uploadAttachment(file, (msg) => setUploadProgressMsg(msg));
-        setAttachments((prev) => [...prev, att]);
-      }
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    } catch (err: any) {
-      setError(err.message || "파일 업로드 중 오류가 발생했습니다.");
-    } finally {
-      setUploadingFiles(false);
-      setUploadProgressMsg(null);
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      const item = newItems[i];
+
+      (async () => {
+        try {
+          const uploaded = await uploadAttachment(file, (msg) => {
+            setStagedAttachments((prev) =>
+              prev.map((a) => (a.id === item.id ? { ...a, progressText: msg } : a))
+            );
+          });
+
+          setStagedAttachments((prev) =>
+            prev.map((a) =>
+              a.id === item.id
+                ? {
+                    ...a,
+                    status: "done",
+                    progressText: undefined,
+                    attachment: uploaded,
+                    previewUrl: uploaded.thumbnailLink || a.previewUrl,
+                  }
+                : a
+            )
+          );
+        } catch (err: any) {
+          setStagedAttachments((prev) =>
+            prev.map((a) =>
+              a.id === item.id
+                ? {
+                    ...a,
+                    status: "error",
+                    progressText: undefined,
+                    error: err?.message || "업로드 실패",
+                  }
+                : a
+            )
+          );
+        }
+      })();
     }
   };
 
-  const handleRemoveAttachment = (driveFileId: string) => {
-    setAttachments((prev) => prev.filter((a) => a.driveFileId !== driveFileId));
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    enqueueFiles(files);
   };
+
+  const handleRemoveAttachment = (id: string) => {
+    setStagedAttachments((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  const isUploading = stagedAttachments.some((a) => a.status === "uploading" || a.status === "resizing");
+  const failedAttachmentsCount = stagedAttachments.filter((a) => a.status === "error").length;
+  const hasAttachmentError = failedAttachmentsCount > 0;
+  const isBodyEmpty = !body.trim();
+  const isNoRecipient = selectedEmails.size === 0;
+
+  // A-7: 발송 불가 사유
+  const disableReason = !canSend
+    ? "조직 정보 등록 후 쪽지를 보낼 수 있습니다."
+    : isNoRecipient
+    ? "수신자를 선택해 주세요."
+    : isBodyEmpty
+    ? "쪽지 내용을 입력해 주세요."
+    : hasAttachmentError
+    ? `올릴 수 없는 첨부 ${failedAttachmentsCount}개가 있습니다. 빼면 보낼 수 있어요.`
+    : isUploading
+    ? "첨부 파일을 업로드하고 있습니다…"
+    : null;
+
+  const canSubmit = !sending && !isUploading && canSend && !isNoRecipient && !isBodyEmpty && !hasAttachmentError;
 
   // Send memo (no confirmation modal per memo_spec §11-1)
   const handleSend = async () => {
-    if (!canSend) return;
+    if (!canSubmit) return;
 
     const finalBody = syncBodyMd1();
     if (!finalBody.trim()) {
@@ -145,7 +218,9 @@ export default function HubMemoComposer({
       const hasMd1 = bodyHasMd1Formatting(finalBody);
       const recipientSummary = buildRecipientSummary(recipientChips);
       const userList = Array.from(selectedEmails);
-      const driveFileIds = attachments.map((a) => a.driveFileId);
+      const driveFileIds = stagedAttachments
+        .filter((a) => a.status === "done" && a.attachment)
+        .map((a) => a.attachment!.driveFileId);
 
       const res = await fetch("/api/memo", {
         method: "POST",
@@ -283,12 +358,12 @@ export default function HubMemoComposer({
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-xs font-bold text-slate-700">
-              첨부 파일 {attachments.length > 0 && `(${attachments.length}/${MEMO_MAX_ATTACHMENTS})`}
+              첨부 파일 {stagedAttachments.length > 0 && `(${stagedAttachments.length}/${MEMO_MAX_ATTACHMENTS})`}
             </label>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingFiles || attachments.length >= MEMO_MAX_ATTACHMENTS}
+              disabled={isUploading || stagedAttachments.length >= MEMO_MAX_ATTACHMENTS}
               className="text-xs font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-50 cursor-pointer flex items-center gap-1"
             >
               <span>+ 파일 첨부</span>
@@ -302,52 +377,85 @@ export default function HubMemoComposer({
             />
           </div>
 
-          {attachments.length > 0 ? (
-            <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200 max-h-36 overflow-y-auto">
-              {attachments.map((file) => (
-                <div
-                  key={file.driveFileId}
-                  className="flex items-center justify-between px-3 py-1.5 bg-white rounded-lg border border-slate-200 text-xs"
-                >
-                  <span className="truncate text-slate-800 font-medium">
-                    {isImageFile(file.name) ? "🖼️" : "📄"} {file.name}
-                    <span className="text-slate-400 text-[10px] ml-1.5">
-                      ({formatAttachmentSize(file.size)})
-                    </span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveAttachment(file.driveFileId)}
-                    className="text-slate-400 hover:text-rose-600 font-bold ml-2 cursor-pointer p-0.5"
+          {stagedAttachments.length > 0 ? (
+            <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200 max-h-48 overflow-y-auto">
+              {stagedAttachments.map((item) => {
+                const isImg = isImageFile(item.name);
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex items-center justify-between px-3 py-2 bg-white rounded-lg border text-xs ${
+                      item.status === "error"
+                        ? "border-rose-300 bg-rose-50/50"
+                        : item.status === "done"
+                        ? "border-slate-200"
+                        : "border-indigo-200 bg-indigo-50/30"
+                    }`}
                   >
-                    ✕
-                  </button>
-                </div>
-              ))}
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span>{isImg ? "🖼️" : "📄"}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-slate-800 font-medium">{item.name}</span>
+                          <span className="text-slate-400 text-[10px] flex-shrink-0">
+                            ({formatAttachmentSize(item.size)})
+                          </span>
+                        </div>
+                        {item.status === "uploading" && (
+                          <p className="text-[10px] text-indigo-600 font-medium">
+                            {item.progressText || "업로드 중…"}
+                          </p>
+                        )}
+                        {item.status === "error" && (
+                          <p className="text-[10px] text-rose-600 font-semibold leading-snug">
+                            ⚠️ {item.error || "업로드에 실패했습니다."}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAttachment(item.id)}
+                      className="text-slate-400 hover:text-rose-600 font-bold ml-2 cursor-pointer p-0.5 flex-shrink-0"
+                      title="첨부 제거"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="py-3 text-center text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-              {uploadProgressMsg || (uploadingFiles ? "파일 올리는 중..." : "첨부된 파일이 없습니다.")}
+              첨부된 파일이 없습니다.
             </div>
           )}
         </div>
       </div>
 
       {/* Bottom Send Bar */}
-      <div className="pt-4 border-t border-slate-200 flex items-center justify-between max-w-4xl">
-        <button
-          type="button"
-          onClick={onClearSelection}
-          className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
-        >
-          선택 비우기
-        </button>
+      <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 max-w-4xl">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onClearSelection}
+            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+          >
+            선택 비우기
+          </button>
+          {disableReason && (
+            <p className={`text-xs font-semibold ${hasAttachmentError ? "text-rose-600" : "text-slate-500"}`}>
+              {disableReason}
+            </p>
+          )}
+        </div>
 
         <button
           type="button"
           onClick={handleSend}
-          disabled={sending || uploadingFiles || !canSend || selectedEmails.size === 0 || !body.trim()}
-          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+          disabled={!canSubmit}
+          title={disableReason || undefined}
+          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
         >
           {sending ? (
             <>
