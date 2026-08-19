@@ -51,6 +51,8 @@ export interface TaskDoc {
   recipientCount: number;
   recipientSummary: string;
   statuses: Record<string, TaskRecipientStatus>;
+  /** 셀프 등록 업무 (피드백 15번) — 현황판 접기·"내가 등록" 표시용 */
+  selfAssigned?: boolean;
   formFiles?: TaskFormFile[];
   submissions?: Record<string, TaskSubmission>;
   submitFolderId?: string;
@@ -151,6 +153,56 @@ export function submissionDoneStatus(now: number): TaskRecipientStatus {
   return { state: "DONE", at: now };
 }
 
+// ── 고아 초안 판정 (피드백 4-ⓑ — 2상 발송의 1상만 하고 중단된 문서) ──
+
+/** prepare 후 send가 안 된 초안이 이 시간을 넘기면 스윕이 정리한다 */
+export const TASK_DRAFT_ORPHAN_MS = 24 * 3600 * 1000;
+
+/** 수신자 0명(미발송)인 채 24시간이 지난 초안인가 — 작성 중인 문서를 지우지 않는 관문 */
+export function isOrphanDraft(
+  task: Pick<TaskDoc, "recipientCount" | "createdAt">,
+  now: number
+): boolean {
+  return task.recipientCount === 0 && now - task.createdAt >= TASK_DRAFT_ORPHAN_MS;
+}
+
+// ── 셀프 등록 (피드백 15번 — [내 할 일 추가] 미니 입력의 서버 형상) ──
+
+/**
+ * 셀프 업무 문서 — 수신자 자동 본인·생성 즉시 수락·확인형 강제 (사용자 확정: 자기에게
+ * 제출하는 제출형은 개념 불일치라 유형 선택 자체가 없다. 서버가 confirm을 강제한다).
+ * Drive 폴더는 만들지 않는다 — 확인형 셀프 업무에 양식·제출함이 없고, 파기 스윕의
+ * 폴더 삭제는 폴더 부재를 정상 통과한다.
+ */
+export function buildSelfTaskDoc(params: {
+  email: string;
+  name: string;
+  title: string;
+  body: string;
+  contentFormat?: "md1";
+  dueAt: number;
+  now: number;
+  retentionDays: number;
+}): TaskDoc {
+  const email = params.email.trim().toLowerCase();
+  return {
+    senderEmail: email,
+    senderName: params.name,
+    title: params.title,
+    body: params.body,
+    ...(params.contentFormat === "md1" ? { contentFormat: "md1" as const } : {}),
+    kind: "confirm", // 확인형 강제 — 클라이언트 입력과 무관
+    dueAt: params.dueAt,
+    recipientEmails: [email],
+    recipientCount: 1,
+    recipientSummary: "본인",
+    statuses: { [email]: { state: "ACCEPTED", at: params.now } }, // 생성 즉시 수락
+    selfAssigned: true,
+    createdAt: params.now,
+    expireAt: params.now + params.retentionDays * 24 * 3600 * 1000,
+  };
+}
+
 // ── 재촉 간격 (§6) ───────────────────────────────────────────
 
 export function canNudge(lastNudgeAt: number | undefined, now: number): boolean {
@@ -214,10 +266,11 @@ export function normalizeSubmissionFileName(params: {
 
 // ── 양식·제출 파일 화이트리스트 (§5-2) ───────────────────────
 
-/** 업무 양식·제출물 허용 확장자 — 실행 파일류 차단. 이미지의 바이트 서명 검증은 첨부 로직 재사용 */
+/** 업무 양식·제출물 허용 확장자 — 실행 파일류 차단. 이미지의 바이트 서명 검증은 첨부 로직 재사용.
+ * GIF 제외 (2026-08-19 피드백 9번 — 업무엔 불요, 사용자 확정. 쪽지 첨부는 GIF 유지) */
 export const TASK_FILE_EXT_WHITELIST = [
   "hwp", "hwpx", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pdf", "zip",
-  "png", "jpg", "jpeg", "webp", "gif", "txt", "csv",
+  "png", "jpg", "jpeg", "webp", "txt", "csv",
 ];
 
 export function validateTaskFileName(name: unknown): { ok: true; ext: string } | { ok: false; error: string } {

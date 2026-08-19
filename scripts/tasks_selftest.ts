@@ -4,13 +4,16 @@
  */
 import {
   applyTaskTransition,
+  buildSelfTaskDoc,
   canNudge,
   isDueTomorrowKST,
+  isOrphanDraft,
   normalizeSubmissionFileName,
   nudgeTargets,
   validateTaskContent,
   validateTaskFileName,
   validateTaskFileSize,
+  TASK_DRAFT_ORPHAN_MS,
   TASK_NUDGE_INTERVAL_MS,
   TASK_SERVER_UPLOAD_MAX_BYTES,
 } from "../src/lib/tasks/logic";
@@ -94,6 +97,29 @@ check("화이트리스트: 확장자 없음 거부", validateTaskFileName("noext
 check("크기: 서버 경로 4MB 초과 거부", validateTaskFileSize(TASK_SERVER_UPLOAD_MAX_BYTES + 1, false).ok, false);
 check("크기: 세션 경로 10MB 이하 통과", validateTaskFileSize(9 * 1024 * 1024, true).ok, true);
 check("크기: 세션 경로 10MB 초과 거부", validateTaskFileSize(11 * 1024 * 1024, true).ok, false);
+check("화이트리스트: gif 거부 (2026-08-19 피드백 9번 — 업무엔 불요)", validateTaskFileName("움짤.gif").ok, false);
+check("화이트리스트: png은 유지", validateTaskFileName("사진.png").ok, true);
+
+// ── 고아 초안 판정 (피드백 4-ⓑ) ──
+check("고아: 수신 0 + 24h 경과 → 정리 대상", isOrphanDraft({ recipientCount: 0, createdAt: NOW - TASK_DRAFT_ORPHAN_MS }, NOW), true);
+check("고아: 수신 0 + 23h → 아직 작성 중일 수 있음, 보존", isOrphanDraft({ recipientCount: 0, createdAt: NOW - TASK_DRAFT_ORPHAN_MS + 3600 * 1000 }, NOW), false);
+check("고아: 발송된 업무(수신>0)는 절대 대상 아님", isOrphanDraft({ recipientCount: 3, createdAt: NOW - 100 * TASK_DRAFT_ORPHAN_MS }, NOW), false);
+
+// ── 셀프 등록 (피드백 15번 — 수신자 자동 본인·즉시 수락·확인형 강제) ──
+{
+  const doc = buildSelfTaskDoc({
+    email: "Me@hmh.or.kr", name: "홍길동", title: "성적 마감", body: "",
+    dueAt: NOW + 86400_000, now: NOW, retentionDays: 365,
+  });
+  check("셀프: 확인형 강제", doc.kind, "confirm");
+  check("셀프: 수신자 = 본인(소문자 정규화)", doc.recipientEmails, ["me@hmh.or.kr"]);
+  check("셀프: 생성 즉시 수락", doc.statuses["me@hmh.or.kr"], { state: "ACCEPTED", at: NOW });
+  check("셀프: selfAssigned 표시", doc.selfAssigned, true);
+  check("셀프: 수신 요약 = 본인", doc.recipientSummary, "본인");
+  check("셀프: 폴더 미생성 (양식·제출함 없음)", doc.formFolderId === undefined && doc.submitFolderId === undefined, true);
+  check("셀프: 완료 전이 동작", applyTaskTransition(doc, "me@hmh.or.kr", "done", undefined, NOW + 1).ok, true);
+  check("셀프: 고아 초안 스윕 대상 아님 (수신 1명)", isOrphanDraft(doc, NOW + 100 * TASK_DRAFT_ORPHAN_MS), false);
+}
 
 console.log(fails ? `\n❌ 실패 ${fails}건` : "\n✅ 전판 통과");
 process.exit(fails ? 1 : 0);

@@ -10,6 +10,7 @@ import {
   TASK_DEFAULT_RETENTION_DAYS,
   TaskDoc,
   applyTaskTransition,
+  buildSelfTaskDoc,
   canNudge,
   nudgeTargets,
   normalizeSubmissionFileName,
@@ -37,6 +38,7 @@ type TasksAction =
   | "prepare"
   | "form_upload"
   | "send"
+  | "self_add"
   | "transition"
   | "submit"
   | "submit_session_start"
@@ -109,6 +111,8 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "양식은 업무를 낸 사람만 올릴 수 있습니다." }, { status: 403 });
         if (task.canceledAt)
           return NextResponse.json({ error: "철회된 업무입니다." }, { status: 400 });
+        if (!task.formFolderId)
+          return NextResponse.json({ error: "이 업무에는 양식을 올릴 수 없습니다." }, { status: 400 }); // 셀프 등록 업무 (폴더 미생성)
         if ((task.formFiles || []).length >= TASK_MAX_FORM_FILES)
           return NextResponse.json(
             { error: `양식은 ${TASK_MAX_FORM_FILES}개까지 올릴 수 있습니다.` },
@@ -200,6 +204,31 @@ export async function POST(req: NextRequest) {
           expireAt: now + retentionDays * 24 * 3600 * 1000,
         };
         await ref.set(doc);
+        return NextResponse.json({ success: true, taskId: ref.id });
+      }
+
+      case "self_add": {
+        // [내 할 일 추가] 미니 입력 (피드백 15번) — 1액션 완결: 수신자 자동 본인·즉시 수락·
+        // 확인형 강제(buildSelfTaskDoc이 kind 입력을 받지 않는다). 폴더·알림·감사 로그 없음 —
+        // 자기 자신에게 보내는 푸시는 소음이고, D-1 리마인드는 스윕이 동일하게 챙긴다.
+        const now = Date.now();
+        const validated = validateTaskContent({ ...body, kind: "confirm", recipientSummary: "본인", now });
+        if (!validated.ok) return NextResponse.json({ error: validated.error }, { status: 400 });
+        const retentionSnap = await adminDb.collection("settings").doc(domain).get();
+        const retentionDays = Number(retentionSnap.data()?.taskRetentionDays) || TASK_DEFAULT_RETENTION_DAYS;
+        const ref = tasksColRef(domain).doc();
+        await ref.set(
+          buildSelfTaskDoc({
+            email,
+            name: (myProfile?.name || "").trim() || email.split("@")[0],
+            title: validated.content.title,
+            body: validated.content.body,
+            contentFormat: validated.content.contentFormat,
+            dueAt: validated.content.dueAt,
+            now,
+            retentionDays,
+          })
+        );
         return NextResponse.json({ success: true, taskId: ref.id });
       }
 
@@ -374,21 +403,33 @@ export async function POST(req: NextRequest) {
         const now = Date.now();
         if (!canNudge(task.lastNudgeAt, now))
           return NextResponse.json(
-            { error: "재촉은 업무당 하루에 한 번만 보낼 수 있습니다." },
+            { error: "리마인드 알림은 업무당 하루에 한 번만 보낼 수 있습니다." },
             { status: 429 }
           );
         const targets = nudgeTargets(task);
         if (targets.length === 0)
-          return NextResponse.json({ error: "재촉할 대상이 없습니다. 모두 처리했습니다." }, { status: 400 });
+          return NextResponse.json({ error: "리마인드를 보낼 대상이 없습니다. 모두 처리했습니다." }, { status: 400 });
         await tasksColRef(domain).doc(task.id).update({ lastNudgeAt: now });
+        // 피드백 11번 — 푸시는 부드러운 문구 1회 + 종 알림 원장(task-due 계열) 기록.
+        // 원장이 없으면 푸시를 놓친 수신자에게 흔적이 0으로 남는 설계 빈틈이었다.
         after(async () => {
-          await notifyTask(domain, targets, task.senderName, task.title, task.id, "업무 확인 부탁");
+          await notifyTask(domain, targets, task.senderName, task.title, task.id, "기한이 다가오는 업무가 있어요");
+          await emitNotificationsBatch(
+            domain,
+            targets.map((r) => ({
+              recipientEmail: r,
+              type: "task-due" as const,
+              title: `[리마인드] ${task.title}`,
+              refType: "task",
+              refId: task.id,
+            }))
+          );
           await writeAuditLog({
             operatorEmail: email,
             operatorName: task.senderName,
-            action: "업무 재촉",
+            action: "업무 리마인드",
             targetEmail: `${targets.length}명`,
-            details: `업무 "${task.title}" 미처리 ${targets.length}명 재촉`,
+            details: `업무 "${task.title}" 미처리 ${targets.length}명에게 리마인드 알림`,
             status: "success",
           });
         });
