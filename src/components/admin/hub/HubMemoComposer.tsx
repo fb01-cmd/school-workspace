@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
-import { bodyHasMd1Formatting, MEMO_CONTENT_FORMAT_MD1 } from "@/lib/memo/richtext";
+import { bodyHasMd1Formatting, MEMO_CONTENT_FORMAT_MD1, collectMd1AttachmentIds } from "@/lib/memo/richtext";
 import { buildRecipientSummary, deriveRecipientChips, RecipientChip } from "@/lib/org/recipients";
 import type { TeacherProfile } from "@/context/AuthContext";
 import { resolveDisplayName } from "@/lib/org/displayName";
@@ -70,12 +70,24 @@ export default function HubMemoComposer({
 
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const savedRangeRef = useRef<Range | null>(null);
 
   useEffect(() => {
     if (editorRef.current && initialBody && !editorRef.current.innerHTML) {
       editorRef.current.innerText = initialBody;
     }
   }, [initialBody]);
+
+  // 편집기 커서/선택 영역 저장
+  const saveSelection = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editorRef.current) {
+      const range = sel.getRangeAt(0);
+      if (editorRef.current.contains(range.commonAncestorContainer)) {
+        savedRangeRef.current = range.cloneRange();
+      }
+    }
+  }, []);
 
   const syncBodyMd1 = useCallback(() => {
     if (editorRef.current) {
@@ -85,6 +97,91 @@ export default function HubMemoComposer({
     }
     return body;
   }, [body]);
+
+  // Range 유효성 검사 — 비동기 업로드 중 본문 편집으로 Range가 DOM에서 떨어졌는지 확인
+  const isRangeValid = useCallback((r: Range | null): boolean => {
+    if (!r || !editorRef.current) return false;
+    try {
+      const container = r.commonAncestorContainer;
+      if (!container || !container.isConnected || !editorRef.current.contains(container)) {
+        return false;
+      }
+      if (!r.startContainer.isConnected || !r.endContainer.isConnected) {
+        return false;
+      }
+      const maxStart =
+        r.startContainer.nodeType === Node.TEXT_NODE
+          ? (r.startContainer.textContent?.length ?? 0)
+          : r.startContainer.childNodes.length;
+      const maxEnd =
+        r.endContainer.nodeType === Node.TEXT_NODE
+          ? (r.endContainer.textContent?.length ?? 0)
+          : r.endContainer.childNodes.length;
+      if (r.startOffset > maxStart || r.endOffset > maxEnd) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // 편집기 커서 위치에 이미지 노드 삽입 (A-4 / spec §13)
+  const insertInlineImage = useCallback(
+    (attId: string, previewUrl: string, fileName: string) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+
+      const img = document.createElement("img");
+      img.setAttribute("data-att-id", attId);
+      img.setAttribute("src", previewUrl);
+      img.setAttribute("alt", fileName);
+      img.className = "max-w-full h-auto rounded-lg my-2 block";
+      img.style.maxWidth = "100%";
+      img.style.height = "auto";
+      img.style.display = "block";
+      img.style.margin = "0.5rem 0";
+      img.style.borderRadius = "0.5rem";
+
+      const lineBreakDiv = document.createElement("div");
+      lineBreakDiv.appendChild(document.createElement("br"));
+
+      editor.focus();
+
+      const sel = window.getSelection();
+      let targetRange: Range | null = null;
+
+      if (sel && sel.rangeCount > 0) {
+        const currentRange = sel.getRangeAt(0);
+        if (isRangeValid(currentRange)) {
+          targetRange = currentRange;
+        }
+      }
+
+      if (!targetRange && isRangeValid(savedRangeRef.current)) {
+        targetRange = savedRangeRef.current;
+      }
+
+      if (targetRange) {
+        targetRange.deleteContents();
+        targetRange.insertNode(lineBreakDiv);
+        targetRange.insertNode(img);
+      } else {
+        editor.appendChild(img);
+        editor.appendChild(lineBreakDiv);
+      }
+
+      const nextRange = document.createRange();
+      nextRange.setStart(lineBreakDiv, 0);
+      nextRange.collapse(true);
+      sel?.removeAllRanges();
+      sel?.addRange(nextRange);
+      savedRangeRef.current = nextRange.cloneRange();
+
+      syncBodyMd1();
+    },
+    [isRangeValid, syncBodyMd1]
+  );
 
   // Profile lookup map
   const profileMap = useMemo(() => {
@@ -99,6 +196,11 @@ export default function HubMemoComposer({
   const recipientChips = useMemo<RecipientChip[]>(() => {
     return deriveRecipientChips(selectedEmails, profiles, profileMap, gwsNameMap);
   }, [selectedEmails, profileMap, gwsNameMap, profiles]);
+
+  // 본문에서 참조 중인 첨부 ID 집합 (A-4)
+  const inlineAttachmentIds = useMemo(() => {
+    return new Set(collectMd1AttachmentIds(body));
+  }, [body]);
 
   // 파일 업로드 큐 처리 (A-6: 파일별 독립 업로드 + 실패 격리)
   const enqueueFiles = (selectedFiles: File[]) => {
@@ -147,6 +249,12 @@ export default function HubMemoComposer({
                 : a
             )
           );
+
+          // 이미지인 경우 본문 커서 위치에 이미지 노드 자동 삽입 (A-4 / MemoSection:1470)
+          if (isImageFile(file.name, file.type)) {
+            const preview = item.previewUrl || uploaded.thumbnailLink || "";
+            insertInlineImage(uploaded.driveFileId, preview, file.name);
+          }
         } catch (err: any) {
           setStagedAttachments((prev) =>
             prev.map((a) =>
@@ -165,6 +273,73 @@ export default function HubMemoComposer({
     }
   };
 
+  // 클립보드 붙여넣기 — 이미지 파일 감지 (A-2)
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items || items.length === 0) return;
+
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          let fileName = file.name;
+          if (!fileName || fileName === "image.png" || fileName === "blob") {
+            const ext = file.type.split("/")[1] || "png";
+            fileName = `붙여넣은 이미지.${ext}`;
+          }
+          const namedFile = new File([file], fileName, { type: file.type });
+          imageFiles.push(namedFile);
+        }
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      enqueueFiles(imageFiles);
+    }
+  };
+
+  // 편집기 붙여넣기 — 이미지 추출 or 평문 텍스트 강제 (A-2, A-3)
+  const handleEditorPaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      const imageFiles: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            const namedFile = new File(
+              [file],
+              file.name && file.name !== "image.png" ? file.name : "붙여넣은 이미지.png",
+              { type: file.type }
+            );
+            imageFiles.push(namedFile);
+          }
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        enqueueFiles(imageFiles);
+        return;
+      }
+    }
+
+    // 텍스트 붙여넣기는 외부 서식(HTML)을 배제하고 평문만 삽입 (A-3)
+    e.preventDefault();
+    e.stopPropagation();
+    const text = e.clipboardData.getData("text/plain");
+    if (text) {
+      document.execCommand("insertText", false, text);
+      syncBodyMd1();
+      saveSelection();
+    }
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -173,13 +348,31 @@ export default function HubMemoComposer({
   };
 
   const handleRemoveAttachment = (id: string) => {
-    setStagedAttachments((prev) => prev.filter((a) => a.id !== id));
+    setStagedAttachments((prev) => {
+      const target = prev.find((a) => a.id === id);
+
+      // 편집기 DOM에서 해당 이미지 제거 (A-4)
+      if (target?.attachment?.driveFileId && editorRef.current) {
+        const imgs = editorRef.current.querySelectorAll(
+          `img[data-att-id="${target.attachment.driveFileId}"]`
+        );
+        imgs.forEach((img) => img.remove());
+        setTimeout(syncBodyMd1, 0);
+      }
+
+      if (target?.previewUrl && target.previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+
+      return prev.filter((a) => a.id !== id);
+    });
   };
 
   const isUploading = stagedAttachments.some((a) => a.status === "uploading" || a.status === "resizing");
   const failedAttachmentsCount = stagedAttachments.filter((a) => a.status === "error").length;
   const hasAttachmentError = failedAttachmentsCount > 0;
   const isBodyEmpty = !body.trim();
+  const isBodyTooLong = body.length > 10000;
   const isNoRecipient = selectedEmails.size === 0;
 
   // A-7: 발송 불가 사유
@@ -189,13 +382,15 @@ export default function HubMemoComposer({
     ? "수신자를 선택해 주세요."
     : isBodyEmpty
     ? "쪽지 내용을 입력해 주세요."
+    : isBodyTooLong
+    ? "쪽지 내용은 최대 10,000자까지 작성할 수 있습니다."
     : hasAttachmentError
     ? `올릴 수 없는 첨부 ${failedAttachmentsCount}개가 있습니다. 빼면 보낼 수 있어요.`
     : isUploading
     ? "첨부 파일을 업로드하고 있습니다…"
     : null;
 
-  const canSubmit = !sending && !isUploading && canSend && !isNoRecipient && !isBodyEmpty && !hasAttachmentError;
+  const canSubmit = !sending && !isUploading && canSend && !isNoRecipient && !isBodyEmpty && !isBodyTooLong && !hasAttachmentError;
 
   // Send memo (no confirmation modal per memo_spec §11-1)
   const handleSend = async () => {
@@ -204,6 +399,10 @@ export default function HubMemoComposer({
     const finalBody = syncBodyMd1();
     if (!finalBody.trim()) {
       setError("쪽지 내용을 입력해 주세요.");
+      return;
+    }
+    if (finalBody.length > 10000) {
+      setError("쪽지 내용은 최대 10,000자까지 작성할 수 있습니다.");
       return;
     }
     if (selectedEmails.size === 0) {
@@ -250,12 +449,21 @@ export default function HubMemoComposer({
   };
 
   const handleSwitchClick = () => {
+    // A-9: 첨부 파일 유실 방지 확인
+    if (stagedAttachments.length > 0) {
+      if (!window.confirm("업무로 전환하면 첨부된 파일이 모두 삭제됩니다. 계속하시겠습니까?")) {
+        return;
+      }
+    }
     const currentBody = syncBodyMd1();
     onSwitchToTask(title, currentBody);
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white overflow-y-auto p-6 space-y-6">
+    <div
+      onPaste={handlePaste}
+      className="flex-1 flex flex-col h-full bg-white overflow-y-auto p-6 space-y-6"
+    >
       {/* Header with Switcher Hint */}
       <div className="flex items-center justify-between pb-4 border-b border-slate-200">
         <div>
@@ -331,11 +539,20 @@ export default function HubMemoComposer({
           />
         </div>
 
-        {/* Body Editor */}
+        {/* Body Editor (A-5: 글자수 카운터) */}
         <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1.5">
-            쪽지 내용 <span className="text-rose-500">*</span>
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-xs font-bold text-slate-700">
+              쪽지 내용 <span className="text-rose-500">*</span>
+            </label>
+            <span
+              className={`text-[11px] ${
+                body.length > 10000 ? "text-rose-600 font-bold" : "text-slate-400"
+              }`}
+            >
+              {body.length.toLocaleString()} / 10,000자
+            </span>
+          </div>
           <div className="border border-slate-300 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent">
             <MemoEditorToolbar
               editorRef={editorRef}
@@ -347,7 +564,16 @@ export default function HubMemoComposer({
               suppressContentEditableWarning
               spellCheck={false}
               onInput={syncBodyMd1}
-              onBlur={syncBodyMd1}
+              onBlur={() => {
+                syncBodyMd1();
+                saveSelection();
+              }}
+              onKeyUp={() => {
+                syncBodyMd1();
+                saveSelection();
+              }}
+              onMouseUp={saveSelection}
+              onPaste={handleEditorPaste}
               data-placeholder="쪽지 내용을 입력해 주세요."
               className="w-full px-3.5 py-2.5 text-[15px] leading-relaxed min-h-[160px] max-h-[300px] overflow-y-auto focus:outline-none bg-white text-slate-800 font-sans empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1.5 [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:rounded-r-md [&_blockquote]:my-1.5 [&_blockquote]:text-slate-700 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-2 [&_img]:block"
             />
@@ -400,6 +626,29 @@ export default function HubMemoComposer({
                           <span className="text-slate-400 text-[10px] flex-shrink-0">
                             ({formatAttachmentSize(item.size)})
                           </span>
+                          {/* A-4: 본문 삽입 버튼 / 본문에 들어감 표시 */}
+                          {isImg && item.status === "done" && item.attachment && (
+                            inlineAttachmentIds.has(item.attachment.driveFileId) ? (
+                              <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+                                본문에 들어감
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  insertInlineImage(
+                                    item.attachment!.driveFileId,
+                                    item.previewUrl || item.attachment!.thumbnailLink || "",
+                                    item.name
+                                  )
+                                }
+                                className="text-[10px] text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded font-semibold transition-colors cursor-pointer flex-shrink-0"
+                                title="본문 커서 위치에 넣기"
+                              >
+                                + 본문에 넣기
+                              </button>
+                            )
+                          )}
                         </div>
                         {item.status === "uploading" && (
                           <p className="text-[10px] text-indigo-600 font-medium">

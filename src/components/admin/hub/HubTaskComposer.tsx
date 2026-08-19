@@ -315,6 +315,12 @@ export default function HubTaskComposer({
   };
 
   const handleSwitchClick = () => {
+    // A-9: 양식 파일 유실 방지 확인
+    if (pendingFiles.length > 0) {
+      if (!window.confirm("쪽지로 전환하면 선택된 양식 파일이 모두 삭제됩니다. 계속하시겠습니까?")) {
+        return;
+      }
+    }
     const currentBody = syncBodyMd1();
     onSwitchToMemo(title, currentBody);
   };
@@ -479,15 +485,20 @@ export default function HubTaskComposer({
         {/* Form Attachments */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-bold text-slate-700">
-              양식 파일 첨부{" "}
-              {pendingFiles.length > 0 && `(${pendingFiles.length}/${TASK_MAX_FORM_FILES})`}
-            </label>
+            <div>
+              <label className="text-xs font-bold text-slate-700">
+                양식 파일 첨부{" "}
+                {pendingFiles.length > 0 && `(${pendingFiles.length}/${TASK_MAX_FORM_FILES})`}
+              </label>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                한글(HWP/HWPX), 오피스, PDF 등 (파일당 30MB 이하)
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={sending || pendingFiles.length >= TASK_MAX_FORM_FILES}
-              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-50 cursor-pointer flex items-center gap-1"
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-50 cursor-pointer flex items-center gap-1 flex-shrink-0"
             >
               <span>+ 양식 파일 추가</span>
             </button>
