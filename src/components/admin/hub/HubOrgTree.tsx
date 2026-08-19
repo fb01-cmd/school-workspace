@@ -136,28 +136,34 @@ export default function HubOrgTree({
     return resolveDisplayName(email, t, gwsName).name;
   };
 
+  const reqSeqRef = useRef(0);
+
   // Load teacher profiles using centralized loader (which uses roster_index cache / org_index)
-  // 결함 6 수정: 취소 가드 복원 — 언마운트 후 setState 방지 및 [다시 시도] 연타 방어
-  const fetchProfiles = useCallback(async (signal?: { cancelled: boolean }) => {
+  // 결함 6 완성: 내부 reqSeqRef 로 시퀀스 자체 발급·대조 — [다시 시도] 연타 및 언마운트 경합을 호출자 의존 없이 완벽 방어
+  const fetchProfiles = useCallback(async () => {
+    const seq = ++reqSeqRef.current;
     setLoading(true);
     setError(null);
     try {
       const items = await loadTeacherProfiles();
-      if (signal?.cancelled) return;
+      if (seq !== reqSeqRef.current) return;
       setProfiles(items);
     } catch (err) {
-      if (signal?.cancelled) return;
+      if (seq !== reqSeqRef.current) return;
       console.error("조직도 명단 조회 실패:", err);
       setError("명단을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
-      if (!signal?.cancelled) setLoading(false);
+      if (seq === reqSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    const signal = { cancelled: false };
-    fetchProfiles(signal);
-    return () => { signal.cancelled = true; };
+    fetchProfiles();
+    return () => {
+      reqSeqRef.current++;
+    };
   }, [fetchProfiles]);
 
   // Filter: only active teachers with at least 1 department (no noDept / empty dept)
@@ -610,7 +616,8 @@ export default function HubOrgTree({
                   {(popoverTeacher.departments || []).map((d) => (
                     <div key={d} className="flex items-center gap-1.5">
                       <span className="font-semibold text-slate-800 text-xs">{d}</span>
-                      {!!popoverTeacher.deptHeadMap?.[d] && (
+                      {(!!popoverTeacher.deptHeadMap?.[d] ||
+                        (popoverTeacher.departments?.length === 1 && !!popoverTeacher.isDeptHead)) && (
                         <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-800">
                           부서장
                         </span>
