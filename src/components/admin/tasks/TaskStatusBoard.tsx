@@ -119,12 +119,33 @@ export default function TaskStatusBoard() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const list: TaskItem[] = snap.docs
+        const rawList: TaskItem[] = snap.docs
           .map((d) => ({
             id: d.id,
             ...(d.data() as TaskDoc),
           }))
           .filter((t) => (t.recipientCount || t.recipientEmails?.length || 0) > 0); // 초안 제외 (피드백 4-a)
+
+        // 피드백 37번: 마감 미경과 업무 D-day 빠른 순(dueAt asc), 마감 경과·철회 업무는 그 아래 최신순(dueAt/createdAt desc)
+        const now = Date.now();
+        const list = rawList.sort((a, b) => {
+          const aActive = !a.canceledAt && a.dueAt >= now;
+          const bActive = !b.canceledAt && b.dueAt >= now;
+
+          if (aActive && !bActive) return -1;
+          if (!aActive && bActive) return 1;
+
+          if (aActive && bActive) {
+            // 마감 미경과: D-day 빠른 순 (dueAt 오름차순)
+            if (a.dueAt !== b.dueAt) return a.dueAt - b.dueAt;
+            return (b.createdAt || 0) - (a.createdAt || 0);
+          }
+
+          // 마감 경과 및 철회: 최신순 (dueAt 내림차순, 같으면 createdAt 내림차순)
+          if (a.dueAt !== b.dueAt) return b.dueAt - a.dueAt;
+          return (b.createdAt || 0) - (a.createdAt || 0);
+        });
+
         setTasks(list);
         if (list.length > 0 && !selectedTaskIdRef.current) {
           setSelectedTaskId(list[0].id);

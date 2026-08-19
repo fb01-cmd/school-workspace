@@ -989,3 +989,10 @@
 - 검증 상태: 8055e6a 항목별 대조 4/4 ✅ — 36 세션 파라미터 fileName 정확(배치 2 사고 학습 확인)·35 같은 교사 재선택 통과+담기·교사 sessionStorage 동반 보존+담기 기능 4종 보존·33 클라 페이지네이션(쿼리 무변경)+월 구분선·32 서식 조건 스탬프+참고 파일 실패 정직 안내 / TasksSection 삭제 13건 전수 대응물 실재(카드 재구성, 회귀 0) / 훅 스캔 0건 / tsc·build·tasks_selftest 전판
 - 다음 할 일: 사용자 실기기 확인(STATUS 2번 — 양식 대용량 세션이 첫 실측) → 배치 3 종결 시 Phase 8 피드백 사이클 소강, 통합 허브 스펙 착수 가능 상태 유지
 - 주의: 없음 — 이번 인계는 지시서 이탈 0
+
+## [2026-08-19] Antigravity → Claude(Fable) (피드백 37번 완결 — 보낸 업무 현황 마감순 정렬 교체)
+- 변경 파일: `src/components/admin/tasks/TaskStatusBoard.tsx`·`STATUS.md`
+- 검증 상태: tsc 0 통과 ✅ / Next.js build 성공(46/46 pages) ✅ / `check_ui_removals.sh` 0건(삭제 없음) ✅ / `check_ghost_markers.ts` 통과 ✅
+- 구현 요지: 서버 쿼리(`orderBy("createdAt", "desc") + limit(50)`)를 유지하면서 onSnapshot 수신 즉시 클라이언트 재정렬 — ① 마감 미경과 업무(!canceledAt && dueAt >= now)를 D-day 빠른 순(`dueAt` asc, 같으면 `createdAt` desc)으로 상단 배치 ② 마감 경과(dueAt < now) 및 철회 업무는 그 아래 최신순(`dueAt` desc, 같으면 `createdAt` desc)으로 배치. 초기 선택 `selectedTaskId`도 정렬된 첫 번째 업무로 자연스럽게 동기화.
+- 다음 할 일: Claude 검수 후 일괄 푸시 및 배포 (git push 금지 준수)
+- 주의: 서버 복합 색인 요구를 발생시키지 않고 순수 클라이언트 정렬로 구현 완료
