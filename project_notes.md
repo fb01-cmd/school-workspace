@@ -1043,3 +1043,18 @@
 - 주의: 이 규칙에 따라 **명단 요약 문서를 사용자 결정 대기에서 작업 대기 2번(담당 Claude)으로 옮겼다** — 사용자 발안 + Claude 채택 권고 상태에서 결정을 미룰 자리가 아니라고 판단. 이견 있으면 되돌린다.
 
 사용자 지적 원문과 규칙 전문은 AGENTS.md §2-⑩. 요지 = 목표 규모(교사 70·학생 800, 11월 무료 한도 복귀)로 지금 설계하고, 미래 Claude 가용성을 계획 자원으로 쓰지 않는다.
+
+## [2026-08-19] Claude → Antigravity (허브 스펙 범위 개정 + 선행 리팩터 f2729ce 표적 검수)
+
+- 변경 파일: `docs/messaging_hub_ia_spec.md`(개정) · `STATUS.md`
+- 검증 상태: tsc ✅(직접 실행, exit 0) / check_ui_removals ✅(사라진 항목 = setClientCache 3건 — 전부 roster.ts로 이동한 것) / 정렬·명단 동작 불변 코드 대조 완료
+- 다음 할 일: STATUS 2번(명단 요약 문서, Claude) → 3번(화면, Antigravity). **화면은 개정판 스펙으로 만든다**
+- 주의: 개정으로 범위가 커졌다 — 「쪽지」·「업무 관리」 메뉴 2개를 흡수·제거. **크로스 네비 별칭 라우팅(§1-2-3)이 최대 함정**(알림·대시보드 딥링크가 죽는다)
+
+**표적 검수 결과 (f2729ce) — 통과, 저위험 1건**
+
+- 정렬 동작 불변 확인 ✅: MemoSection은 `members`에 `resolveMemoDisplayName` 결과를 담은 뒤 정렬하고, 새 `sortMembersForDept`는 `"name" in a`일 때 그 값을 쓴다 → 구 인라인 정렬과 결과 동일. TaskRecipientPickerModal 구 함수와도 규칙 일치.
+- **[저위험 1건] `roster.ts:39`가 `name: data.name || 이메일_로컬부` 폴백을 로더에 넣었다.** 구 사본 중 이 폴백이 있던 것은 OrgChartTree 하나뿐이고, ProfileApprovals는 `name: data.name || email`(전체 이메일)이었다. 통합 결과 **ProfileApprovals:98의 `|| email` 분기가 죽어**, 이름 없는 계정 표시가 `fb01@hmh.or.kr` → `fb01`로 바뀐다. 지시서에 없던 변화다.
+  - 영향은 작다(8/19 GWS 실명 채움으로 대상 대부분 소멸, 잔여는 noDept 도구·시험 계정). `resolveDisplayName`은 "로컬부와 다를 때만 profile.name 채택"이라 무력화되지 않고, `isFrozenLocalPartName`(MyProfileModal)은 AuthContext 경로라 무관 — **가드는 안 깨졌다.**
+  - 처방(작성자 몫): `roster.ts`에서 name 폴백을 빼고 원시값을 그대로 반환한다. 표시 이름은 `displayName.ts` 단일 원본에 맡긴다 — 로더가 가짜 이름을 채우면 "아이디가 이름 자리에 있다"는 상태 자체를 소비자가 구분할 수 없게 된다(피드백 23번 계열).
+- 규칙 위반 1건(경미): f2729ce가 Claude의 미커밋 스펙 편집 2줄을 함께 담았다 — AGENTS.md ①-0(`git add -A` 금지). 내용 유실 없음, 귀속만 어긋남.
