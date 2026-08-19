@@ -3,6 +3,7 @@
 import { adminDb, verifyAuthAccess } from "@/lib/firebase/admin";
 import {
   MEMO_MAX_RECIPIENTS,
+  MEMO_UNTITLED_FALLBACK,
   MemoDoc,
   ReplyContext,
   computeRecall,
@@ -303,8 +304,10 @@ export async function POST(req: NextRequest) {
         }
 
         // 웹 푸시 — 응답 후 발송, 실패해도 저장에 영향 없음 (스펙 §2-6·§5)
+        // 제목 선택화(피드백 31번): 빈 제목은 발신 표면에서 "(제목 없음)" 폴백
+        const displayTitle = validated.content.title || MEMO_UNTITLED_FALLBACK;
         after(() =>
-          notifyMemo(domain, resolved.accepted, senderName, validated.content.title, ref.id)
+          notifyMemo(domain, resolved.accepted, senderName, displayTitle, ref.id)
         );
         // 원장: 수신자 전원에게 알림 (notification_center_spec §3 ③) — 문구는 푸시와 동일 수준
         // (발신자·제목까지만, 본문 금지)
@@ -314,7 +317,7 @@ export async function POST(req: NextRequest) {
             resolved.accepted.map((r: string) => ({
               recipientEmail: r,
               type: "memo" as const,
-              title: `${senderName} 선생님의 쪽지: ${validated.content.title}`,
+              title: `${senderName} 선생님의 쪽지: ${displayTitle}`,
               refType: "memo",
               refId: ref.id,
             }))

@@ -24,16 +24,23 @@ const EMOJI_CATEGORIES = [
   },
 ];
 
-// 주소꼴 토큰 판정 (피드백 18번: https://, www., 도메인.영문TLD2자이상)
+// 주소꼴 토큰 판정 (피드백 18번: https://, www., 도메인.통용TLD)
+// 맨도메인(스킴·www 없음)은 통용 TLD 화이트리스트만 인정 — 영문 확장자 오탐 차단
+// (검수 발견: "report.hwp"·"Node.js" 류가 [a-z]{2,} 규칙에 걸려 링크로 변환됐다)
+const BARE_DOMAIN_TLDS = new Set([
+  "kr", "com", "net", "org", "io", "co", "me", "dev", "app", "ai",
+  "edu", "gov", "info", "biz", "xyz", "site", "cloud", "page",
+]);
 function isLikelyUrlToken(token: string): boolean {
   if (!token || token.includes("@") || /\s/.test(token)) return false;
   // 1. http:// 또는 https://
   if (/^https?:\/\/[^\s]+$/i.test(token)) return true;
   // 2. www. 로 시작
   if (/^www\.[^\s]+$/i.test(token)) return true;
-  // 3. 도메인.TLD (영문 2자 이상 TLD — "3.4버전" 등 숫자 TLD 오탐 방지)
-  const domainPattern = /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(?:\/[^\s]*)?$/;
-  return domainPattern.test(token);
+  // 3. 도메인.TLD — 경로 앞부분에서 마지막 라벨을 뽑아 통용 TLD만 통과
+  //    (hmh.or.kr처럼 다단 도메인은 최종 라벨 kr로 판정)
+  const m = /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.([a-zA-Z]{2,})(?:\/[^\s]*)?$/.exec(token);
+  return !!m && BARE_DOMAIN_TLDS.has(m[2].toLowerCase());
 }
 
 function normalizeUrl(token: string): string {

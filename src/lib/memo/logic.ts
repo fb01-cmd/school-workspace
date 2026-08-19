@@ -2,6 +2,8 @@
 // 이 파일은 네트워크·Firestore 무의존이다 — selftest(scripts/memo_selftest.ts)가 직접 임포트한다.
 
 export const MEMO_MAX_TITLE = 200;
+/** 빈 제목 표기 폴백 (피드백 31번 — 제목 선택화) — 서버 발신 표면·화면 공용 단일 원본 */
+export const MEMO_UNTITLED_FALLBACK = "(제목 없음)";
 export const MEMO_MAX_BODY = 10000;
 export const MEMO_MAX_LINKS = 5;
 export const MEMO_MAX_RECIPIENTS = 300;
@@ -76,8 +78,9 @@ export function validateMemoContent(input: {
   recipientSummary?: unknown;
   contentFormat?: unknown;
 }): { ok: true; content: MemoContent } | { ok: false; error: string } {
+  // 제목 선택화 (2026-08-19 피드백 31번 — 메신저 문법): 빈 제목 허용, 문서엔 "" 저장.
+  // 표기 폴백은 MEMO_UNTITLED_FALLBACK 단일 상수 — 서버 발신 표면(푸시·원장)과 화면이 공유.
   const title = typeof input.title === "string" ? input.title.trim() : "";
-  if (!title) return { ok: false, error: "제목을 입력해 주세요." };
   if (title.length > MEMO_MAX_TITLE)
     return { ok: false, error: `제목은 ${MEMO_MAX_TITLE}자 이내여야 합니다.` };
 

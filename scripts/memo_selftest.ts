@@ -29,7 +29,9 @@ async function main() {
   {
     const ok = validateMemoContent({ title: " 회의 안내 ", body: "내용", links: [{ url: "https://drive.google.com/x", label: "양식" }] });
     expect("정상 입력 통과 + 트림", ok.ok && ok.content.title === "회의 안내");
-    expect("빈 제목 거부", !validateMemoContent({ title: "  ", body: "x" }).ok);
+    // 제목 선택화 (2026-08-19 피드백 31번) — 빈 제목 허용, 문서엔 "" 저장 (표기 폴백은 발신 표면·화면 몫)
+    expect("빈 제목 허용 (31번 — 메신저 문법)", (() => { const r = validateMemoContent({ title: "  ", body: "x" }); return r.ok && r.content.title === ""; })());
+    expect("제목 필드 부재도 허용", (() => { const r = validateMemoContent({ body: "x" }); return r.ok && r.content.title === ""; })());
     expect("빈 본문 거부", !validateMemoContent({ title: "t", body: "" }).ok);
     expect("제목 상한 초과 거부", !validateMemoContent({ title: "가".repeat(201), body: "x" }).ok);
     expect("본문 상한 초과 거부", !validateMemoContent({ title: "t", body: "가".repeat(10001) }).ok);
