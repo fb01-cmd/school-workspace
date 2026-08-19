@@ -396,9 +396,9 @@ export default function HubTaskComposer({
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="예: 2026학년도 1학기 교육과정 반성 및 만족도 조사지 제출"
+            placeholder="예: 2026학년도 2학기 현장체험학습 참가 동의서 취합"
             className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder:text-slate-400"
-            maxLength={100}
+            maxLength={200}
           />
         </div>
 
@@ -456,6 +456,9 @@ export default function HubTaskComposer({
                 className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900"
               />
             </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              마감 하루 전 아침에 미완료 선생님께 기한 알림이 발송됩니다.
+            </p>
           </div>
         </div>
 
@@ -505,6 +508,7 @@ export default function HubTaskComposer({
             <input
               type="file"
               ref={fileInputRef}
+              accept=".hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.zip,.txt,.csv,image/*"
               onChange={handleFormFileUpload}
               className="hidden"
             />

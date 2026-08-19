@@ -533,9 +533,9 @@ export default function HubMemoComposer({
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="제목을 입력하지 않으면 본문 첫 줄이 미리보기로 표시됩니다."
+            placeholder="제목 (선택)"
             className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder:text-slate-400"
-            maxLength={100}
+            maxLength={200}
           />
         </div>
 
@@ -597,6 +597,7 @@ export default function HubMemoComposer({
             <input
               type="file"
               ref={fileInputRef}
+              accept="image/*,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.zip,.txt,.csv"
               multiple
               onChange={handleFileUpload}
               className="hidden"
