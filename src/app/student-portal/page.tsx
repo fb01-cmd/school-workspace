@@ -326,7 +326,11 @@ export default function StudentPortal() {
           <div className="bg-gradient-to-r from-indigo-700 via-indigo-800 to-violet-800 rounded-2xl text-white p-6 sm:p-8 shadow-md">
             <span className="sm:hidden bg-indigo-500/30 text-indigo-200 px-2.5 py-0.5 rounded-full text-xs font-semibold">학생 포털</span>
             <h1 className="text-2xl sm:text-3xl font-black mt-1 sm:mt-0 tracking-tight">효명고등학교 계정관리시스템</h1>
-            <p className="text-indigo-200 text-sm mt-1">환영합니다! {userData?.email} 학생의 개인 대시보드입니다.</p>
+            <p className="text-indigo-200 text-sm mt-1">
+              {userData?.name
+                ? `환영합니다! ${userData.name} 학생의 개인 대시보드입니다.`
+                : "환영합니다! 개인 대시보드입니다."}
+            </p>
           </div>
 
           {/* 🔔 알림 설정 관리자 */}

@@ -3,6 +3,7 @@ import { auth, googleProvider } from "./config";
 
 export interface UserData {
   email: string;
+  name?: string;
   domain: string;
   role: "student" | "teacher" | "super_admin";
   // isApproved는 2026-08-13에 제거했다 — 이름은 "승인됐는가"인데 실제로는 "워크스페이스

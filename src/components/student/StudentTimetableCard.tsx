@@ -90,32 +90,29 @@ export default function StudentTimetableCard() {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden transition-shadow hover:shadow-md">
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
       {/* 헤더 */}
-      <div className="bg-gradient-to-r from-indigo-900 to-indigo-800 px-5 py-4 text-white flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <span className="text-xl">🗓️</span>
-          <div>
-            <h3 className="text-base font-black text-white flex items-center gap-2">
-              <span>{classGrid.grade}학년 {classGrid.classNum}반 주간 시간표</span>
-              {termMeta && (
-                <span className="text-[10px] font-normal px-2 py-0.5 rounded bg-indigo-700/80 text-indigo-200 border border-indigo-600/50">
-                  {termMeta.name}
-                </span>
-              )}
-            </h3>
-            {weekMeta?.startDate && (
-              <p className="text-xs text-indigo-200 mt-0.5">
-                🗓️ <span className="font-bold text-amber-300">{weekMeta.startDate}</span> 주간
-              </p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+        <div>
+          <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+            <span>🗓️</span>
+            <span>{classGrid.grade}학년 {classGrid.classNum}반 주간 시간표</span>
+            {termMeta && (
+              <span className="text-[10px] font-normal px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+                {termMeta.name}
+              </span>
             )}
-          </div>
+          </h3>
+          {weekMeta?.startDate && (
+            <p className="text-xs text-slate-500 mt-1">
+              🗓️ <span className="font-semibold text-slate-700">{weekMeta.startDate}</span> 주간
+            </p>
+          )}
         </div>
       </div>
 
       {/* 월~금 주간 그리드 표 — min-width 없이 카드 폭에 맞춤 (금요일 잘림 방지, 2026-08-07 사용자 지시) */}
-      <div className="p-4">
-        <div className="border border-slate-200 rounded-xl text-xs">
+      <div className="border border-slate-200 rounded-xl text-xs">
           <table className="w-full table-fixed border-collapse text-center">
             <thead>
               <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
@@ -211,7 +208,6 @@ export default function StudentTimetableCard() {
             </tbody>
           </table>
         </div>
-      </div>
     </div>
   );
 }
