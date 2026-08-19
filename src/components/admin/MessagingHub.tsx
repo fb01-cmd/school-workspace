@@ -90,19 +90,16 @@ export default function MessagingHub({
     return map;
   }, [profiles]);
 
-  // 수신자 부서 선택 출처 매핑 (Directive 10 / Feedback 13)
-  const [deptSources, setDeptSources] = useState<Record<string, string>>({});
+
 
   // initialTaskId / initialMemoId 전달 시 해당 탭 자동 활성화
   useEffect(() => {
     if (initialTaskId) {
       setActiveCategory("tasks");
       setSelectedEmails(new Set());
-      setDeptSources({});
     } else if (initialMemoId) {
       setActiveCategory("memo");
       setSelectedEmails(new Set());
-      setDeptSources({});
     } else if (initialCategory) {
       setActiveCategory(initialCategory);
     }
@@ -120,11 +117,6 @@ export default function MessagingHub({
       }
       return next;
     });
-    setDeptSources((prev) => {
-      const next = { ...prev };
-      delete next[clean];
-      return next;
-    });
   }, []);
 
   // 부서 전체 선택/해제 핸들러
@@ -134,37 +126,21 @@ export default function MessagingHub({
       const allSelected = memberEmails.length > 0 && memberEmails.every((e) => next.has(e));
       if (allSelected) {
         memberEmails.forEach((e) => next.delete(e));
-        setDeptSources((ds) => {
-          const copy = { ...ds };
-          memberEmails.forEach((e) => delete copy[e]);
-          return copy;
-        });
       } else {
         memberEmails.forEach((e) => next.add(e));
-        setDeptSources((ds) => {
-          const copy = { ...ds };
-          memberEmails.forEach((e) => {
-            copy[e] = deptName;
-          });
-          return copy;
-        });
       }
       return next;
     });
   }, []);
 
-  // 선택 초기화
+  // 선택 초기화 — 선택만 비우고 초안은 유지 (결함 2 수정: 초안 삭제 분리)
   const handleClearSelection = useCallback(() => {
     setSelectedEmails(new Set());
-    setDeptSources({});
-    setSharedTitle("");
-    setSharedBody("");
   }, []);
 
   // 전체 선택 (효명고 전체 선택)
   const handleSelectAll = useCallback((emails: string[]) => {
     setSelectedEmails(new Set(emails.map((e) => e.toLowerCase())));
-    setDeptSources({});
   }, []);
 
   // 개별 칩 제거
@@ -173,11 +149,6 @@ export default function MessagingHub({
     setSelectedEmails((prev) => {
       const next = new Set(prev);
       next.delete(clean);
-      return next;
-    });
-    setDeptSources((prev) => {
-      const next = { ...prev };
-      delete next[clean];
       return next;
     });
   }, []);
@@ -196,15 +167,19 @@ export default function MessagingHub({
     setActiveComposer("task");
   };
 
-  // 발송 성공 후 복귀
+  // 발송 성공 후 복귀 — 발송 뒤에는 선택 + 초안 모두 비운다
   const handleTaskSent = () => {
-    handleClearSelection();
+    setSelectedEmails(new Set());
+    setSharedTitle("");
+    setSharedBody("");
     setActiveCategory("tasks");
     setTasksTab("sent");
   };
 
   const handleMemoSent = () => {
-    handleClearSelection();
+    setSelectedEmails(new Set());
+    setSharedTitle("");
+    setSharedBody("");
     setActiveCategory("memo");
     setMemoTab("sent");
   };
@@ -317,7 +292,6 @@ export default function MessagingHub({
               {activeComposer === "task" ? (
                 <HubTaskComposer
                   selectedEmails={selectedEmails}
-                  deptSources={deptSources}
                   onClearSelection={handleClearSelection}
                   onRemoveEmail={handleRemoveEmail}
                   onSwitchToMemo={handleSwitchToMemo}
@@ -331,7 +305,6 @@ export default function MessagingHub({
               ) : (
                 <HubMemoComposer
                   selectedEmails={selectedEmails}
-                  deptSources={deptSources}
                   onClearSelection={handleClearSelection}
                   onRemoveEmail={handleRemoveEmail}
                   onSwitchToTask={handleSwitchToTask}

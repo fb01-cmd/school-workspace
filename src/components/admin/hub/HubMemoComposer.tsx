@@ -17,7 +17,6 @@ import type { MemoAttachment } from "@/lib/memo/client_attachments";
 
 interface HubMemoComposerProps {
   selectedEmails: Set<string>;
-  deptSources?: Record<string, string>;
   onClearSelection: () => void;
   onRemoveEmail: (email: string) => void;
   onSwitchToTask: (title: string, body: string) => void;
@@ -31,7 +30,6 @@ interface HubMemoComposerProps {
 
 export default function HubMemoComposer({
   selectedEmails,
-  deptSources,
   onClearSelection,
   onRemoveEmail,
   onSwitchToTask,
@@ -84,23 +82,55 @@ export default function HubMemoComposer({
     return map;
   }, [profiles]);
 
-  // Recipient chips for summary (Directive 10 / Feedback 13)
+  // Recipient chips — 부서 출처를 파생 계산 (결함 1 수정: MemoSection:1336-1350 패턴)
   const recipientChips = useMemo<RecipientChip[]>(() => {
-    const chips: RecipientChip[] = [];
-    selectedEmails.forEach((email) => {
-      const p = profileMap.get(email);
-      const name = resolveDisplayName(email, p, gwsNameMap.get(email)).name;
-      const deptSource = deptSources?.[email];
-      chips.push({
-        type: "user",
-        source: deptSource ? "dept" : "person",
-        email,
-        label: name,
-        deptLabel: deptSource || p?.departments?.[0],
+    // 1. 부서→이메일 멤버십 맵 구축
+    const deptEmailsMap: Record<string, string[]> = {};
+    profiles.forEach((p) => {
+      const email = (p.email || "").toLowerCase();
+      if (!email || !p.departments || p.departments.length === 0 || p.noDept) return;
+      p.departments.forEach((d) => {
+        if (!deptEmailsMap[d]) deptEmailsMap[d] = [];
+        deptEmailsMap[d].push(email);
       });
     });
-    return chips;
-  }, [selectedEmails, profileMap, gwsNameMap, deptSources]);
+
+    // 2. Map<email, chip>
+    const chipMap = new Map<string, RecipientChip>();
+
+    // 2a. 부서 전체 선택된 것 먼저
+    Object.entries(deptEmailsMap).forEach(([deptName, deptEmails]) => {
+      const allIn = deptEmails.length > 0 && deptEmails.every((e) => selectedEmails.has(e));
+      if (allIn) {
+        deptEmails.forEach((e) => {
+          const p = profileMap.get(e);
+          const name = resolveDisplayName(e, p, gwsNameMap.get(e)).name;
+          chipMap.set(e, {
+            type: "user",
+            source: "dept",
+            email: e,
+            label: name,
+            deptLabel: deptName,
+          });
+        });
+      }
+    });
+
+    // 2b. 개인 선택
+    selectedEmails.forEach((email) => {
+      if (chipMap.has(email)) return;
+      const p = profileMap.get(email);
+      const name = resolveDisplayName(email, p, gwsNameMap.get(email)).name;
+      chipMap.set(email, {
+        type: "user",
+        source: "person",
+        email,
+        label: name,
+      });
+    });
+
+    return [...chipMap.values()];
+  }, [selectedEmails, profileMap, gwsNameMap, profiles]);
 
   // Handle file uploads
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
