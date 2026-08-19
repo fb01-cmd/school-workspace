@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
@@ -92,6 +92,7 @@ export default function HubOrgTree({
   const { userData, teacherProfile, schoolSettings } = useAuth();
   const [profiles, setProfiles] = useState<TeacherProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedDepts, setExpandedDepts] = useState<Record<string, boolean>>({});
   const [popoverTeacher, setPopoverTeacher] = useState<TeacherProfile | null>(null);
@@ -136,38 +137,32 @@ export default function HubOrgTree({
   };
 
   // Load teacher profiles using centralized loader (which uses roster_index cache / org_index)
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const items = await loadTeacherProfiles();
-        if (cancelled) return;
-        setProfiles(items);
-        onProfilesLoaded?.(items);
-      } catch (err) {
-        console.error("조직도 명단 조회 실패:", err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+  const fetchProfiles = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const items = await loadTeacherProfiles();
+      setProfiles(items);
+      onProfilesLoaded?.(items);
+    } catch (err) {
+      console.error("조직도 명단 조회 실패:", err);
+      setError("명단을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setLoading(false);
     }
-    load();
-    return () => {
-      cancelled = true;
-    };
   }, [onProfilesLoaded]);
 
-  // Initial department expansion: expand my own department(s), collapse others
+  useEffect(() => {
+    fetchProfiles();
+  }, [fetchProfiles]);
+
+  // Initial department expansion: expand my own department(s), collapse all if no department (Directive 11 / Feedback 14)
   useEffect(() => {
     if (departmentOrder.length > 0) {
       const myDepts = new Set(teacherProfile?.departments || []);
       const initial: Record<string, boolean> = {};
       departmentOrder.forEach((d) => {
-        // If user belongs to depts, only expand those; if no department, default expand all
-        if (myDepts.size > 0) {
-          initial[d] = myDepts.has(d);
-        } else {
-          initial[d] = true;
-        }
+        initial[d] = myDepts.size > 0 ? myDepts.has(d) : false;
       });
       setExpandedDepts(initial);
     }
@@ -196,9 +191,15 @@ export default function HubOrgTree({
       });
     });
 
+    // Registered departments first, followed by any unregistered departments that have members (Directive 8 / Feedback 11)
+    const unregDepts = Object.keys(deptMap)
+      .filter((d) => !departmentOrder.includes(d) && (deptMap[d] || []).length > 0)
+      .sort((a, b) => a.localeCompare(b, "ko"));
+    const allDepts = [...departmentOrder, ...unregDepts];
+
     const result: { deptName: string; members: TeacherProfile[]; allDeptMembers: TeacherProfile[] }[] = [];
 
-    departmentOrder.forEach((d) => {
+    allDepts.forEach((d) => {
       const allMembers = sortMembersForDept(d, deptMap[d] || [], {
         getName: (p) => getDisplayName(p),
       });
@@ -374,6 +375,17 @@ export default function HubOrgTree({
             <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
             <p>교직원 명단을 불러오는 중입니다...</p>
           </div>
+        ) : error ? (
+          <div className="py-12 px-4 text-center text-xs space-y-3">
+            <p className="text-slate-500">{error}</p>
+            <button
+              type="button"
+              onClick={fetchProfiles}
+              className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-100 font-semibold cursor-pointer transition-colors"
+            >
+              다시 시도
+            </button>
+          </div>
         ) : searchQuery.trim() ? (
           /* Flat search results (Directive 6 / Feedback 4-1 / spec §2-1-1) */
           flatSearchResults.length === 0 ? (
@@ -492,7 +504,8 @@ export default function HubOrgTree({
                         const isSelected = selectedEmails.has(email);
                         const displayName = getDisplayName(teacher);
                         const isDeptHead =
-                          teacher.isDeptHead || teacher.deptHeadMap?.[deptName] || false;
+                          !!teacher.deptHeadMap?.[deptName] ||
+                          (teacher.departments?.length === 1 && !!teacher.isDeptHead);
                         const homeroom =
                           teacher.homeroom?.grade && teacher.homeroom?.class
                             ? `${teacher.homeroom.grade}-${teacher.homeroom.class}`
