@@ -546,10 +546,10 @@ export default function TaskStatusBoard() {
 
                     return (
                       <tr key={email} className="hover:bg-slate-50/60">
-                        <td className="px-3.5 py-2 font-bold text-slate-900">
-                          {name}
-                          <span className="block text-[10px] text-slate-400 font-normal">{email}</span>
-                        </td>
+                        {/* 이메일 미표시 (memo_spec §11-2 · 2026-08-20 사용자 확정) — 허브가 이 표를
+                            흡수하면서 「이름만 보여준다」 규칙 대상이 됐다. 같은 표에 부서 열이 있고
+                            동명이인은 §11-5 부제 규칙으로 가리므로 아이디는 중복이다. */}
+                        <td className="px-3.5 py-2 font-bold text-slate-900">{name}</td>
                         <td className="px-3.5 py-2 text-slate-600">{dept}</td>
                         <td className="px-3.5 py-2">
                           {statusObj.state === "DONE" ? (

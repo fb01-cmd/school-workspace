@@ -1388,7 +1388,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             <select value={selectedTeacherEmail} onChange={(e) => { const email = e.target.value; const found = teacherList.find((t) => t.email.toLowerCase() === email.toLowerCase()); handleSelectTeacher(email, found?.name); }} disabled={teacherListLoading} className="w-full px-3 py-2 border border-gray-300 rounded-lg font-semibold bg-white text-xs disabled:opacity-60">
               <option value="">-- 교사를 선택해 주세요 --</option>
               {teacherListLoading && <option value="">교사 목록 불러오는 중...</option>}
-              {!teacherListLoading && teacherList.map((t) => (<option key={t.email} value={t.email}>{t.name} ({t.email})</option>))}
+              {!teacherListLoading && teacherList.map((t) => (<option key={t.email} value={t.email}>{t.name}</option>))}
             </select>
           </div>
           {recentTeachers.length > 0 && (
