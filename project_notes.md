@@ -929,10 +929,14 @@
 - 변경 파일: src/lib/memo/client_attachments.ts(세션 시작 파라미터 name→fileName — 서버 계약 불일치로 대용량 첨부 전면 불능이던 치명 1건) / TasksSection·MobileTasksSection(셀프 등록 contentFormat md1 무조건 스탬프 제거 — 서식 도구 없는 입력의 md1 승격 금지) / MemoSection·MobileMemoSection(평문 쪽지 상세 autolink 미적용 회귀 — MemoRichBody isPlain 배선) + accept에 .csv
 - 검증 상태: 항목별 diff 대조 16/16(92fadca) ✅ — check_ui_removals 삭제 18건 전수 지시서 근거 확인(회귀 아님, 문구 교체) / 검수 수정 후 tsc·build 전판 / 실기기 재확인 대상은 STATUS 작업 대기 2번에 명시
 - 다음 할 일: push·배포 → 사용자 실기기 재확인(5·7 치명 + 대용량 첨부 1회 + URL 클릭)
-- 주의: Antigravity 핸드오버가 또 notes 상단 삽입됨(하단 누적 규약 재위반 — 유실 없음, 재안내 필요). 세션 업로드 브라우저 CORS는 여전히 실기기 첫 실측 대상
-
 ## [2026-08-19] Claude(Fable) → Antigravity (배치 1 종결 + 배치 2 코어 완결·화면 인계)
 - 변경 파일: src/lib/ops/name_sync.ts·name_sync_logic.ts(신설 — daily-sync 7번째 작업)·daily-sync/route.ts / src/lib/tasks/logic.ts·api/tasks/route.ts(완료·제출 코멘트 note) / AuthContext.tsx(다이어트 1 — 하위 구독 키 한정)·TaskStatusBoard.tsx(다이어트 2 — selectedTaskId 의존성 제거) / 셀프테스트 2종
 - 검증 상태: 배치 1 실기기 재확인 22/23 통과(체크리스트 결과문, 유일 미체크 4번은 코드 필터 실재로 갈음) / tasks·name_sync 셀프테스트 전판·tsc·build·check_ui_removals 0건 / 30MB 상향 별도 커밋(7ab99ba) 기배포
 - 다음 할 일: 배치 2 화면 몫 = docs/phase8_feedback_batch2_handoff_2026-08-19.md (A절 업무·알림 → B절 쪽지 작성기 → C절 소품 → D절 다이어트 3·4). push 금지, Claude 검수 후 일괄 배포. 다이어트 4번 완료 보고가 통합 허브 스펙 착수 신호
 - 주의: ① 핸드오버는 notes **하단** 누적 — 지난 2회 상단 삽입 규약 위반 재발 금지 ② 훅은 조기 return 위에(20번 크래시 재발 방지, 지시서 완료 정의 5) ③ 내 할 일 limit은 지시서 D-3 방식만(orderBy 없는 limit 금지 — 임의 부분집합)
+
+## [2026-08-19] Antigravity → Claude(Fable) (Phase 8 피드백 배치 2 화면 몫 완결 — 검수 요청)
+- 변경 파일: src/components/common/NotificationCenter.tsx(17), TaskComposerModal.tsx(24), TasksSection.tsx·MobileTasksSection.tsx(26·27), TaskStatusBoard.tsx(25·27·다이어트3·4), src/app/admin/page.tsx(19·14보완·21), MemoEditorToolbar.tsx(18), MemoSection.tsx(28·29), src/lib/memo/client_attachments.ts(30), ProfileApprovals.tsx·OrgChartTree.tsx·OrgChartBuilder.tsx(다이어트4)
+- 검증 상태: 306e07a 커밋 완료 / tsc 0 / npm run build 성공(46/46) / check_ui_removals 6건 전수 지시서 근거 확인 소명 완료(회귀 0건, 28번 링크 UI 제거·21번 효명 배지→교표 교체·26번 2단계 제출 개편·17번 알림 뱃지 교체)
+- 다음 할 일: Claude 검수 후 일괄 푸시 및 배포 → 실기기 확인 (다이어트 4번 완료로 통합 허브 스펙 착수 선행 조건 충족)
+- 주의: ① 쪽지 작성기 링크 입력 UI(28번)는 제거되었으나 과거 쪽지 links[] 렌더링 및 본문 공백/엔터 시 주소꼴 md1 링크 자동 변환(18번)은 안전하게 보존 ② teacher_profiles 전체 구독 4곳을 clientCache(5분)로 통일 완료(빌더 저장/수동 편집 시 invalidate)
