@@ -31,12 +31,14 @@ import {
 import { expandGroupEmails, resolveRecipients } from "@/lib/memo/logic";
 import { emitNotificationsBatch } from "@/lib/notifications/server";
 import { notifyTask } from "@/lib/push/webpush";
-import { FieldPath } from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse, after } from "next/server";
 
 type TasksAction =
   | "prepare"
   | "form_upload"
+  | "form_session_start"
+  | "form_session_finish"
   | "send"
   | "self_add"
   | "transition"
@@ -111,8 +113,14 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "양식은 업무를 낸 사람만 올릴 수 있습니다." }, { status: 403 });
         if (task.canceledAt)
           return NextResponse.json({ error: "철회된 업무입니다." }, { status: 400 });
-        if (!task.formFolderId)
-          return NextResponse.json({ error: "이 업무에는 양식을 올릴 수 없습니다." }, { status: 400 }); // 셀프 등록 업무 (폴더 미생성)
+        // 셀프 등록 업무는 폴더 미생성 상태 — 첫 양식 첨부 시점에 지연 생성 (피드백 32-ⓑ:
+        // 무첨부 셀프 업무의 가벼움은 유지하고, 필요해진 순간에만 Drive 비용을 낸다)
+        if (!task.formFolderId) {
+          const folders = await ensureTaskFolders(task.id, kstYear(task.createdAt));
+          await tasksColRef(domain).doc(task.id).update(folders);
+          task.formFolderId = folders.formFolderId;
+          task.submitFolderId = folders.submitFolderId;
+        }
         if ((task.formFiles || []).length >= TASK_MAX_FORM_FILES)
           return NextResponse.json(
             { error: `양식은 ${TASK_MAX_FORM_FILES}개까지 올릴 수 있습니다.` },
@@ -394,6 +402,65 @@ export async function POST(req: NextRequest) {
             doneStatus
           );
         return NextResponse.json({ success: true, submission, status: doneStatus });
+      }
+
+      case "form_session_start": {
+        // 양식 대용량(>4MB, ≤30MB) — 발신자 전용 세션 업로드 (피드백 36번: submit 세션의 거울)
+        const task = await loadTaskOrNull(domain, String(body.taskId || ""));
+        if (!task) return NextResponse.json({ error: "업무를 찾을 수 없습니다." }, { status: 404 });
+        if (task.senderEmail !== email)
+          return NextResponse.json({ error: "양식은 업무를 낸 사람만 올릴 수 있습니다." }, { status: 403 });
+        if (task.canceledAt) return NextResponse.json({ error: "철회된 업무입니다." }, { status: 400 });
+        if ((task.formFiles || []).length >= TASK_MAX_FORM_FILES)
+          return NextResponse.json(
+            { error: `양식은 ${TASK_MAX_FORM_FILES}개까지 올릴 수 있습니다.` },
+            { status: 400 }
+          );
+        const nameCheck = validateTaskFileName(body.fileName);
+        if (!nameCheck.ok) return NextResponse.json({ error: nameCheck.error }, { status: 400 });
+        const sizeCheck = validateTaskFileSize(Number(body.size), true);
+        if (!sizeCheck.ok) return NextResponse.json({ error: sizeCheck.error }, { status: 400 });
+        if (!task.formFolderId) {
+          const folders = await ensureTaskFolders(task.id, kstYear(task.createdAt));
+          await tasksColRef(domain).doc(task.id).update(folders);
+          task.formFolderId = folders.formFolderId;
+        }
+        const origin = req.headers.get("origin") || req.nextUrl.origin;
+        const sessionUrl = await createResumableUploadSession({
+          folderId: task.formFolderId!,
+          name: String(body.fileName), // 양식은 원본 이름 그대로 (§5-2 — 제출물과 달리 정규화 없음)
+          mimeType: typeof body.mimeType === "string" ? body.mimeType : "application/octet-stream",
+          origin,
+        });
+        return NextResponse.json({ success: true, sessionUrl });
+      }
+
+      case "form_session_finish": {
+        const task = await loadTaskOrNull(domain, String(body.taskId || ""));
+        if (!task) return NextResponse.json({ error: "업무를 찾을 수 없습니다." }, { status: 404 });
+        if (task.senderEmail !== email)
+          return NextResponse.json({ error: "양식은 업무를 낸 사람만 올릴 수 있습니다." }, { status: 403 });
+        if (task.canceledAt) return NextResponse.json({ error: "철회된 업무입니다." }, { status: 400 });
+        const fileId = String(body.driveFileId || "");
+        const meta = fileId ? await getTaskFileMeta(fileId) : null;
+        // 재검증 전까지 양식으로 치지 않는다 (§5-4 규약 승계): 이 업무 양식 폴더 안 + 확장자·크기
+        if (!meta || !task.formFolderId || !meta.parents.includes(task.formFolderId)) {
+          return NextResponse.json({ error: "업로드된 파일을 확인하지 못했습니다." }, { status: 400 });
+        }
+        const nameCheck = validateTaskFileName(meta.name);
+        if (!nameCheck.ok) return NextResponse.json({ error: nameCheck.error }, { status: 400 });
+        const sizeCheck = validateTaskFileSize(meta.size, true);
+        if (!sizeCheck.ok) return NextResponse.json({ error: sizeCheck.error }, { status: 400 });
+        if ((task.formFiles || []).length >= TASK_MAX_FORM_FILES)
+          return NextResponse.json(
+            { error: `양식은 ${TASK_MAX_FORM_FILES}개까지 올릴 수 있습니다.` },
+            { status: 400 }
+          );
+        const entry = { driveFileId: fileId, name: meta.name, mimeType: meta.mimeType, size: meta.size };
+        await tasksColRef(domain)
+          .doc(task.id)
+          .update({ formFiles: FieldValue.arrayUnion(entry) });
+        return NextResponse.json({ success: true, formFile: entry });
       }
 
       case "nudge": {

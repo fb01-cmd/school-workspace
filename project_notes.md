@@ -958,3 +958,9 @@
 - 검증 상태: 31번 화면 몫 전수 정합(폴백 12곳 상수 사용·placeholder·canSend 제목 해제·RE:) ✅ / tsc·build·check_ui_removals 0건 / 057080a+검수 수정 09725ed 배포 완료
 - 다음 할 일: 사용자 실기기 확인(빈 제목 쪽지 왕복 포함) + 기한창은 STATUS 3번(색인 생성 후 재적용)
 - 주의: 지시서가 명기한 "적용 전 FAILED_PRECONDITION 확인"이 생략된 채 기한창이 들어옴 — 검수 실측이 잡았다. 색인 의존 쿼리는 앞으로도 반드시 사전 probe(5번·이번 두 번째)
+
+## [2026-08-19] Claude(Fable) → Antigravity (배치 2 실기기 10/10 종결 + 배치 3 코어 완결·화면 인계)
+- 변경 파일: src/app/api/tasks/route.ts(form_session_start/finish 신설 — 발신자 전용·30MB·5개 한도·parent 재검증·arrayUnion append + form_upload 폴더 지연 생성) / 지시서·STATUS·로드맵
+- 검증 상태: tsc·build 전판 ✅ / 세션 실 업로드는 실기기 확인 대상(제출물 세션과 동일 인프라라 위험 낮음)
+- 다음 할 일: 배치 3 화면 몫 = docs/phase8_feedback_batch3_handoff_2026-08-19.md (36 세션 분기 → 32 셀프 서식·참고 파일 → 33 페이지네이션 → 35 담기 수명). push 금지, Claude 검수 후 일괄 배포
+- 주의: ① 35번 DirectSubstituteTab은 회귀 전례 파일 — 담기 기능 4종 보존, check_ui_removals 소명 필수 ② 33번은 클라 페이지네이션(추가 읽기 0) — 색인 의존 쿼리 신설 금지 ③ 훅은 조기 return 위에
