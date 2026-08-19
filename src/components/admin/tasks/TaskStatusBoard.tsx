@@ -37,7 +37,10 @@ function formatFull(ms: number): string {
   });
 }
 
-function formatRemainingTime(dueAtMs: number): { text: string; isPast: boolean; isUrgent: boolean } {
+function formatRemainingTime(dueAtMs: number, noDue?: boolean): { text: string; isPast: boolean; isUrgent: boolean } {
+  if (noDue) {
+    return { text: "기한 없음", isPast: false, isUrgent: false };
+  }
   const now = Date.now();
   const diff = dueAtMs - now;
   if (diff < 0) {
@@ -247,7 +250,7 @@ export default function TaskStatusBoard() {
   const normalTasks = tasks.filter((t) => !t.selfAssigned);
   const selfTasks = tasks.filter((t) => !!t.selfAssigned);
 
-  const dueInfo = selectedTask ? formatRemainingTime(selectedTask.dueAt) : null;
+  const dueInfo = selectedTask ? formatRemainingTime(selectedTask.dueAt, selectedTask.noDue) : null;
   const isCanceled = !!selectedTask?.canceledAt;
 
   return (
@@ -258,7 +261,7 @@ export default function TaskStatusBoard() {
         <div className="space-y-2 max-h-[75vh] overflow-y-auto pr-1">
           {normalTasks.map((task) => {
             const isSelected = selectedTaskId === task.id;
-            const remaining = formatRemainingTime(task.dueAt);
+            const remaining = formatRemainingTime(task.dueAt, task.noDue);
             const taskDone = Object.values(task.statuses || {}).filter((s) => s.state === "DONE").length;
             const taskTotal = task.recipientCount || task.recipientEmails.length;
             const isTaskCanceled = !!task.canceledAt;
@@ -332,7 +335,7 @@ export default function TaskStatusBoard() {
                 <div className="space-y-1.5 mt-1.5">
                   {selfTasks.map((task) => {
                     const isSelected = selectedTaskId === task.id;
-                    const remaining = formatRemainingTime(task.dueAt);
+                    const remaining = formatRemainingTime(task.dueAt, task.noDue);
                     return (
                       <button
                         key={task.id}
@@ -380,6 +383,10 @@ export default function TaskStatusBoard() {
                 {isCanceled ? (
                   <span className="bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full">
                     철회된 업무
+                  </span>
+                ) : selectedTask.noDue ? (
+                  <span className="font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                    기한 없음
                   </span>
                 ) : (
                   <span

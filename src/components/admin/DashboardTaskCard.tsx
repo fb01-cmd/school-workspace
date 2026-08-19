@@ -30,12 +30,13 @@ interface PendingRow {
   id: string;
   title: string;
   dueAt: number;
+  noDue?: boolean;
   accepted: boolean;
 }
 
 /** 기한 표기 — 오늘/내일/지남을 먼저 말한다(날짜만 적으면 급한지 아닌지 읽히지 않는다) */
-function formatDue(dueAt: number, now: number): { label: string; urgent: boolean } {
-  if (!dueAt) return { label: "기한 없음", urgent: false };
+function formatDue(dueAt: number, now: number, noDue?: boolean): { label: string; urgent: boolean } {
+  if (noDue || !dueAt) return { label: "기한 없음", urgent: false };
   const day = 24 * 3600 * 1000;
   const kst = (ms: number) => new Date(ms + 9 * 3600 * 1000).toISOString().slice(0, 10);
   const dDay = Math.round(
@@ -55,6 +56,7 @@ export default function DashboardTaskCard({ onNavigate }: Props) {
   const [rows, setRows] = useState<PendingRow[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const pendingCount = rows === null ? null : rows.length;
+  const dueRows = rows === null ? null : rows.filter((r) => !r.noDue);
 
   useEffect(() => {
     if (!myEmail || !domain) return;
@@ -89,6 +91,7 @@ export default function DashboardTaskCard({ onNavigate }: Props) {
             id: d.id,
             title: t.title || "(제목 없음)",
             dueAt: Number(t.dueAt || 0),
+            noDue: !!t.noDue,
             accepted: st === "ACCEPTED",
           });
         });
@@ -128,9 +131,9 @@ export default function DashboardTaskCard({ onNavigate }: Props) {
             📌
           </span>
         </div>
-        {rows === null ? (
+        {dueRows === null ? (
           <p className="text-slate-400 text-sm py-4">불러오는 중…</p>
-        ) : rows.length === 0 ? (
+        ) : dueRows.length === 0 ? (
           <p className="text-slate-500 text-sm py-4">
             {loadError
               ? "목록을 불러오지 못했습니다. 새로고침해 주세요."
@@ -138,8 +141,8 @@ export default function DashboardTaskCard({ onNavigate }: Props) {
           </p>
         ) : (
           <ul className="divide-y divide-slate-100 -mx-1">
-            {rows.slice(0, PREVIEW_ROWS).map((r) => {
-              const due = formatDue(r.dueAt, Date.now());
+            {dueRows.slice(0, PREVIEW_ROWS).map((r) => {
+              const due = formatDue(r.dueAt, Date.now(), r.noDue);
               return (
                 <li key={r.id}>
                   <button
@@ -179,8 +182,8 @@ export default function DashboardTaskCard({ onNavigate }: Props) {
           onClick={onNavigate}
           className="w-full text-left text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1.5 cursor-pointer"
         >
-          {rows && rows.length > PREVIEW_ROWS
-            ? `쪽지·업무 열기 (${rows.length - PREVIEW_ROWS}건 더) →`
+          {dueRows && dueRows.length > PREVIEW_ROWS
+            ? `쪽지·업무 열기 (${dueRows.length - PREVIEW_ROWS}건 더) →`
             : "쪽지·업무 열기 →"}
         </button>
       </div>

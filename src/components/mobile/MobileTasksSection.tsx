@@ -29,7 +29,10 @@ function formatFull(ms: number): string {
   });
 }
 
-function formatRemainingTime(dueAtMs: number): { text: string; isPast: boolean; isUrgent: boolean } {
+function formatRemainingTime(dueAtMs: number, noDue?: boolean): { text: string; isPast: boolean; isUrgent: boolean } {
+  if (noDue) {
+    return { text: "기한 없음", isPast: false, isUrgent: false };
+  }
   const now = Date.now();
   const diff = dueAtMs - now;
   if (diff < 0) {
@@ -74,6 +77,7 @@ export default function MobileTasksSection() {
   // 셀프 등록 ([내 할 일 추가] 미니 입력 — 피드백 15번, 피드백 32번 서식+참고파일)
   const [isSelfAddOpen, setIsSelfAddOpen] = useState(false);
   const [selfTitle, setSelfTitle] = useState("");
+  const [selfNoDue, setSelfNoDue] = useState(false);
   const [selfDueDate, setSelfDueDate] = useState(() => {
     const d = new Date(Date.now() + 3 * 24 * 3600 * 1000 + 9 * 3600 * 1000);
     return d.toISOString().slice(0, 10);
@@ -177,29 +181,60 @@ export default function MobileTasksSection() {
     });
   }, [tasks, filter, myEmail]);
 
+  // A안 정렬: 기한 있는 업무(기한 임박순) + 기한 없는 업무(최근 추가순)
+  const dueTasks = useMemo(() => {
+    return filteredTasks.filter((t) => !t.noDue);
+  }, [filteredTasks]);
+
+  const noDueTasks = useMemo(() => {
+    return filteredTasks
+      .filter((t) => !!t.noDue)
+      .sort((a, b) => {
+        const aDone = a.statuses?.[myEmail]?.state === "DONE" ? 1 : 0;
+        const bDone = b.statuses?.[myEmail]?.state === "DONE" ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+  }, [filteredTasks, myEmail]);
+
+  const sortedFilteredTasks = useMemo(() => {
+    return [...dueTasks, ...noDueTasks];
+  }, [dueTasks, noDueTasks]);
+
   const visibleTasks = useMemo(() => {
-    if (filter === "pending") return filteredTasks;
-    return filteredTasks.slice(0, pageSize);
-  }, [filteredTasks, filter, pageSize]);
+    if (filter === "pending") return sortedFilteredTasks;
+    return sortedFilteredTasks.slice(0, pageSize);
+  }, [sortedFilteredTasks, filter, pageSize]);
 
-  const hasMoreTasks = filter !== "pending" && filteredTasks.length > visibleTasks.length;
+  const visibleDueTasks = useMemo(() => {
+    return visibleTasks.filter((t) => !t.noDue);
+  }, [visibleTasks]);
 
-  // 셀프 등록 핸들러 (피드백 15번, 피드백 32번 서식+참고파일)
+  const visibleNoDueTasks = useMemo(() => {
+    return visibleTasks.filter((t) => !!t.noDue);
+  }, [visibleTasks]);
+
+  const hasMoreTasks = filter !== "pending" && sortedFilteredTasks.length > visibleTasks.length;
+
+  // 셀프 등록 핸들러 (피드백 15번, 피드백 32번 서식+참고파일, task_no_due_spec §3-1)
   const handleSelfAdd = async () => {
     if (!selfTitle.trim()) {
       alert("할 일 제목을 입력해 주세요.");
       return;
     }
-    if (!selfDueDate || !selfDueTime) {
-      alert("기한 날짜와 시각을 지정해 주세요.");
-      return;
-    }
-    const [y, m, d] = selfDueDate.split("-").map(Number);
-    const [hh, mm] = selfDueTime.split(":").map(Number);
-    const dueAt = Date.UTC(y, m - 1, d, hh - 9, mm, 0, 0);
-    if (dueAt <= Date.now()) {
-      alert("기한은 현재 시각보다 이후여야 합니다.");
-      return;
+    let dueAt: number | undefined;
+    if (!selfNoDue) {
+      if (!selfDueDate || !selfDueTime) {
+        alert("기한 날짜와 시각을 지정해 주세요.");
+        return;
+      }
+      const [y, m, d] = selfDueDate.split("-").map(Number);
+      const [hh, mm] = selfDueTime.split(":").map(Number);
+      dueAt = Date.UTC(y, m - 1, d, hh - 9, mm, 0, 0);
+      if (dueAt <= Date.now()) {
+        alert("기한은 현재 시각보다 이후여야 합니다.");
+        return;
+      }
     }
 
     setSelfSubmitting(true);
@@ -214,7 +249,7 @@ export default function MobileTasksSection() {
         body: JSON.stringify({
           action: "self_add",
           title: selfTitle.trim(),
-          dueAt,
+          ...(selfNoDue ? { noDue: true } : { dueAt }),
           body: finalBody || undefined,
           contentFormat: hasMd1 ? "md1" : undefined,
         }),
@@ -301,6 +336,7 @@ export default function MobileTasksSection() {
       }
 
       setSelfTitle("");
+      setSelfNoDue(false);
       setSelfBody("");
       setSelfFiles([]);
       if (selfEditorRef.current) selfEditorRef.current.innerHTML = "";
@@ -493,6 +529,331 @@ export default function MobileTasksSection() {
 
   if (notEligible) return null;
 
+  const renderTaskItem = (task: TaskItem, showMonthDivider: boolean, currentMonthKey: string | null) => {
+    const isOpen = expandedId === task.id;
+    const myStatus: TaskRecipientStatus = task.statuses?.[myEmail] || { state: "PENDING", at: 0 };
+    const mySubmission: TaskSubmission | undefined = task.submissions?.[myEmail];
+    const isDone = myStatus.state === "DONE";
+    const isPending = myStatus.state === "PENDING";
+    const remaining = formatRemainingTime(task.dueAt, task.noDue);
+
+    return (
+      <li key={task.id} className={isPending ? "bg-indigo-50/20 dark:bg-indigo-950/20" : "bg-white dark:bg-slate-900"}>
+        {showMonthDivider && currentMonthKey && (
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-slate-100/80 dark:bg-slate-800/80 text-[11px] font-extrabold text-slate-600 dark:text-slate-300 select-none border-b border-slate-200/50 dark:border-slate-700/50">
+            <span>📅</span>
+            <span>{currentMonthKey}</span>
+          </div>
+        )}
+        {/* 목록 헤더 행 */}
+        <button
+          type="button"
+          onClick={() => setExpandedId(isOpen ? null : task.id)}
+          className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
+        >
+          <span
+            className={`flex-shrink-0 w-2.5 h-2.5 rounded-full mt-1.5 ${
+              isDone
+                ? "bg-emerald-500"
+                : isPending
+                ? "bg-amber-500 ring-2 ring-amber-200 dark:ring-amber-800"
+                : "bg-blue-400"
+            }`}
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-1.5 text-[11px] mb-0.5">
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="text-slate-500 dark:text-slate-400 font-medium">
+                  {task.selfAssigned ? "본인 등록" : `${task.senderName} 선생님`}
+                </span>
+                {task.selfAssigned && (
+                  <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1 py-0.2 rounded font-bold">
+                    내가 등록
+                  </span>
+                )}
+              </div>
+              <span
+                className={`font-bold ${
+                  isDone
+                    ? "text-emerald-600"
+                    : isPending
+                    ? "text-amber-600 font-extrabold"
+                    : task.noDue
+                    ? "text-slate-600 dark:text-slate-400 font-bold"
+                    : remaining.isPast
+                    ? "text-slate-400"
+                    : remaining.isUrgent
+                    ? "text-rose-500 font-extrabold"
+                    : "text-indigo-600 dark:text-indigo-400"
+                }`}
+              >
+                {isDone ? "완료됨" : isPending ? "수락 전" : remaining.text}
+              </span>
+            </div>
+            <p className={`text-sm truncate ${isDone ? "text-slate-500 dark:text-slate-400 line-through" : "font-bold text-slate-900 dark:text-white"}`}>
+              {task.title}
+            </p>
+          </div>
+          <svg
+            className={`flex-shrink-0 w-4 h-4 text-slate-400 transition-transform mt-1.5 ${isOpen ? "rotate-180" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {/* 상세 펼침 */}
+        {isOpen && (
+          <div className="px-4 pb-4 pt-2 bg-slate-50 dark:bg-slate-850 border-t border-slate-100 dark:border-slate-800 space-y-3">
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between flex-wrap gap-1">
+              <span>{task.noDue ? "기한 없음" : `기한: ${formatFull(task.dueAt)}`}</span>
+              <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                {task.kind === "submit" ? "📁 파일 제출 필요" : "✅ 확인 완료 필요"}
+              </span>
+            </div>
+
+            {/* 내용 (피드백 8번 '내용' + 피드백 6,9번 autolink) */}
+            {task.body && (
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-700/80 p-3 text-xs text-slate-800 dark:text-slate-200">
+                <MemoRichBody
+                  body={task.body}
+                  isPlain={task.contentFormat !== "md1"}
+                  className="text-xs space-y-1.5 font-sans leading-relaxed"
+                />
+              </div>
+            )}
+
+            {/* 양식 파일 */}
+            {task.formFiles && task.formFiles.length > 0 && (
+              <div className="space-y-1">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                  양식 파일 내려받기
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {task.formFiles.map((f, i) => (
+                    <a
+                      key={i}
+                      href={`/api/tasks/file?taskId=${task.id}&fileId=${f.driveFileId}`}
+                      download
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300"
+                    >
+                      <span>📄</span>
+                      <span className="truncate max-w-[150px]">{f.name}</span>
+                      <span>↓</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 모바일 액션 컨트롤 */}
+            <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 space-y-2">
+              {/* 거절 사유 또는 완료 메모 표출 (피드백 27번) */}
+              {myStatus.state === "DECLINED" && myStatus.note && (
+                <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl p-2.5 text-xs text-rose-700 dark:text-rose-300">
+                  <strong>거절 사유:</strong> {myStatus.note}
+                </div>
+              )}
+              {myStatus.state === "DONE" && myStatus.note && (
+                <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl p-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+                  <strong>완료 메모:</strong> {myStatus.note}
+                </div>
+              )}
+
+              {myStatus.state === "PENDING" && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleTransition(task.id, "accept")}
+                    disabled={actionLoadingId === task.id}
+                    className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    {actionLoadingId === task.id ? "처리 중…" : "🤝 수락하기"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDecliningId(task.id)}
+                    disabled={actionLoadingId === task.id}
+                    className="px-3 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold rounded-xl text-xs cursor-pointer"
+                  >
+                    거절
+                  </button>
+                </div>
+              )}
+
+              {myStatus.state === "ACCEPTED" && (
+                <div>
+                  {task.kind === "confirm" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCompletingId(task.id);
+                        setCompleteNote("");
+                      }}
+                      disabled={actionLoadingId === task.id}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                    >
+                      <span>✅</span>
+                      <span>{actionLoadingId === task.id ? "처리 중…" : "완료 체크"}</span>
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      {(() => {
+                        const staged = stagedSubmitMap[task.id];
+                        if (staged) {
+                          return (
+                            <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3 space-y-2.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span>📄</span>
+                                  <span className="font-bold text-slate-900 dark:text-white truncate">
+                                    {staged.file.name}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500">
+                                    ({(staged.file.size / 1024).toFixed(0)} KB)
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setStagedSubmitMap((prev) => {
+                                      const n = { ...prev };
+                                      delete n[task.id];
+                                      return n;
+                                    });
+                                  }}
+                                  className="text-xs text-slate-400 hover:text-rose-600 font-bold ml-1"
+                                >
+                                  취소
+                                </button>
+                              </div>
+
+                              <input
+                                type="text"
+                                value={staged.note}
+                                onChange={(e) =>
+                                  setStagedSubmitMap((prev) => ({
+                                    ...prev,
+                                    [task.id]: { ...staged, note: e.target.value },
+                                  }))
+                                }
+                                placeholder="제출 시 남길 메모 (선택)"
+                                maxLength={500}
+                                className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white"
+                              />
+
+                              <button
+                                type="button"
+                                onClick={() => handleMobileSubmit(task.id, staged.file, staged.note)}
+                                disabled={submittingId === task.id}
+                                className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shadow-xs"
+                              >
+                                {submittingId === task.id ? uploadProgress || "제출 중…" : "🚀 제출 확정하기"}
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div>
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) {
+                                  setStagedSubmitMap((prev) => ({
+                                    ...prev,
+                                    [task.id]: { file: f, note: "" },
+                                  }));
+                                }
+                              }}
+                              className="hidden"
+                              id={`mobile-submit-${task.id}`}
+                            />
+                            <label
+                              htmlFor={`mobile-submit-${task.id}`}
+                              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                            >
+                              <span>📁</span>
+                              <span>파일/사진 선택하기</span>
+                            </label>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {myStatus.state === "DONE" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                    <span>✅ 완료 처리됨</span>
+                    {task.kind === "confirm" ? (
+                      <button
+                        type="button"
+                        onClick={() => handleTransition(task.id, "undone")}
+                        disabled={actionLoadingId === task.id}
+                        className="text-[11px] text-slate-400 hover:text-slate-600 underline"
+                      >
+                        완료 취소
+                      </button>
+                    ) : (
+                      <div>
+                        <input
+                          type="file"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) {
+                              setStagedSubmitMap((prev) => ({
+                                ...prev,
+                                [task.id]: { file: f, note: "" },
+                              }));
+                            }
+                          }}
+                          className="hidden"
+                          id={`mobile-resubmit-${task.id}`}
+                        />
+                        <label
+                          htmlFor={`mobile-resubmit-${task.id}`}
+                          className="text-[11px] text-indigo-500 font-bold underline cursor-pointer"
+                        >
+                          다시 제출 (교체)
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                  {mySubmission && (
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                      내 제출: {mySubmission.name}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {myStatus.state === "DECLINED" && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-rose-600 font-medium">거절됨</span>
+                  <button
+                    type="button"
+                    onClick={() => handleTransition(task.id, "accept")}
+                    disabled={actionLoadingId === task.id}
+                    className="text-xs text-indigo-600 font-bold underline cursor-pointer"
+                  >
+                    다시 수락하기
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </li>
+    );
+  };
+
   return (
     <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
       {/* 헤더 */}
@@ -576,356 +937,52 @@ export default function MobileTasksSection() {
         <div className="px-4 py-6 text-center text-sm text-slate-400 animate-pulse">
           할 일을 불러오는 중…
         </div>
-      ) : filteredTasks.length === 0 ? (
+      ) : sortedFilteredTasks.length === 0 ? (
         <div className="px-4 py-6 text-center text-sm text-slate-400">
           {filter === "pending" ? "남은 할 일이 없습니다." : "해당하는 업무가 없습니다."}
         </div>
       ) : (
         <div>
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {visibleTasks.map((task, idx) => {
-              const isOpen = expandedId === task.id;
-              const myStatus: TaskRecipientStatus = task.statuses?.[myEmail] || { state: "PENDING", at: 0 };
-              const mySubmission: TaskSubmission | undefined = task.submissions?.[myEmail];
-              const isDone = myStatus.state === "DONE";
-              const isPending = myStatus.state === "PENDING";
-              const remaining = formatRemainingTime(task.dueAt);
-
-              // 월 구분선 판정 (지시서 33번)
+            {/* 1. 기한 있는 업무 */}
+            {visibleDueTasks.map((task, idx) => {
               const currentMonthKey = getYearMonthKey(task.dueAt);
-              const prevMonthKey = idx > 0 ? getYearMonthKey(visibleTasks[idx - 1].dueAt) : null;
+              const prevMonthKey = idx > 0 ? getYearMonthKey(visibleDueTasks[idx - 1].dueAt) : null;
               const showMonthDivider = currentMonthKey && currentMonthKey !== prevMonthKey;
+              return renderTaskItem(task, !!showMonthDivider, currentMonthKey);
+            })}
 
-              return (
-                <li key={task.id} className={isPending ? "bg-indigo-50/20 dark:bg-indigo-950/20" : "bg-white dark:bg-slate-900"}>
-                  {showMonthDivider && (
-                    <div className="flex items-center gap-2 px-4 py-1.5 bg-slate-100/80 dark:bg-slate-800/80 text-[11px] font-extrabold text-slate-600 dark:text-slate-300 select-none border-b border-slate-200/50 dark:border-slate-700/50">
-                      <span>📅</span>
-                      <span>{currentMonthKey}</span>
-                    </div>
-                  )}
-                {/* 목록 헤더 행 */}
-                <button
-                  type="button"
-                  onClick={() => setExpandedId(isOpen ? null : task.id)}
-                  className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
-                >
-                  <span
-                    className={`flex-shrink-0 w-2.5 h-2.5 rounded-full mt-1.5 ${
-                      isDone
-                        ? "bg-emerald-500"
-                        : isPending
-                        ? "bg-amber-500 ring-2 ring-amber-200 dark:ring-amber-800"
-                        : "bg-blue-400"
-                    }`}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1.5 text-[11px] mb-0.5">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">
-                          {task.selfAssigned ? "본인 등록" : `${task.senderName} 선생님`}
-                        </span>
-                        {task.selfAssigned && (
-                          <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1 py-0.2 rounded font-bold">
-                            내가 등록
-                          </span>
-                        )}
-                      </div>
-                      <span
-                        className={`font-bold ${
-                          isDone
-                            ? "text-emerald-600"
-                            : isPending
-                            ? "text-amber-600 font-extrabold"
-                            : remaining.isPast
-                            ? "text-slate-400"
-                            : remaining.isUrgent
-                            ? "text-rose-500 font-extrabold"
-                            : "text-indigo-600 dark:text-indigo-400"
-                        }`}
-                      >
-                        {isDone ? "완료됨" : isPending ? "수락 전" : remaining.text}
-                      </span>
-                    </div>
-                    <p className={`text-sm truncate ${isDone ? "text-slate-500 dark:text-slate-400 line-through" : "font-bold text-slate-900 dark:text-white"}`}>
-                      {task.title}
-                    </p>
+            {/* 2. 기한 없음 구역 (A안, 0건이면 감춤, task_no_due_spec §3-2) */}
+            {visibleNoDueTasks.length > 0 && (
+              <>
+                <li className="bg-slate-100/90 dark:bg-slate-800/90 px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 select-none border-b border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span>📋</span>
+                    <span>기한 없음</span>
                   </div>
-                  <svg
-                    className={`flex-shrink-0 w-4 h-4 text-slate-400 transition-transform mt-1.5 ${isOpen ? "rotate-180" : ""}`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
+                  <span className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                    {visibleNoDueTasks.length}
+                  </span>
+                </li>
+                {visibleNoDueTasks.map((task) => renderTaskItem(task, false, null))}
+              </>
+            )}
+          </ul>
 
-                {/* 상세 펼침 */}
-                {isOpen && (
-                  <div className="px-4 pb-4 pt-2 bg-slate-50 dark:bg-slate-850 border-t border-slate-100 dark:border-slate-800 space-y-3">
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between flex-wrap gap-1">
-                      <span>기한: {formatFull(task.dueAt)}</span>
-                      <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                        {task.kind === "submit" ? "📁 파일 제출 필요" : "✅ 확인 완료 필요"}
-                      </span>
-                    </div>
-
-                    {/* 내용 (피드백 8번 '내용' + 피드백 6,9번 autolink) */}
-                    {task.body && (
-                      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-700/80 p-3 text-xs text-slate-800 dark:text-slate-200">
-                        <MemoRichBody
-                          body={task.body}
-                          isPlain={task.contentFormat !== "md1"}
-                          className="text-xs space-y-1.5 font-sans leading-relaxed"
-                        />
-                      </div>
-                    )}
-
-                    {/* 양식 파일 */}
-                    {task.formFiles && task.formFiles.length > 0 && (
-                      <div className="space-y-1">
-                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                          양식 파일 내려받기
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {task.formFiles.map((f, i) => (
-                            <a
-                              key={i}
-                              href={`/api/tasks/file?taskId=${task.id}&fileId=${f.driveFileId}`}
-                              download
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300"
-                            >
-                              <span>📄</span>
-                              <span className="truncate max-w-[150px]">{f.name}</span>
-                              <span>↓</span>
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 모바일 액션 컨트롤 */}
-                    <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 space-y-2">
-                      {/* 거절 사유 또는 완료 메모 표출 (피드백 27번) */}
-                      {myStatus.state === "DECLINED" && myStatus.note && (
-                        <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl p-2.5 text-xs text-rose-700 dark:text-rose-300">
-                          <strong>거절 사유:</strong> {myStatus.note}
-                        </div>
-                      )}
-                      {myStatus.state === "DONE" && myStatus.note && (
-                        <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl p-2.5 text-xs text-emerald-700 dark:text-emerald-300">
-                          <strong>완료 메모:</strong> {myStatus.note}
-                        </div>
-                      )}
-
-                      {myStatus.state === "PENDING" && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleTransition(task.id, "accept")}
-                            disabled={actionLoadingId === task.id}
-                            className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
-                          >
-                            {actionLoadingId === task.id ? "처리 중…" : "🤝 수락하기"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDecliningId(task.id)}
-                            disabled={actionLoadingId === task.id}
-                            className="px-3 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold rounded-xl text-xs cursor-pointer"
-                          >
-                            거절
-                          </button>
-                        </div>
-                      )}
-
-                      {myStatus.state === "ACCEPTED" && (
-                        <div>
-                          {task.kind === "confirm" ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCompletingId(task.id);
-                                setCompleteNote("");
-                              }}
-                              disabled={actionLoadingId === task.id}
-                              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
-                            >
-                              <span>✅</span>
-                              <span>{actionLoadingId === task.id ? "처리 중…" : "완료 체크"}</span>
-                            </button>
-                          ) : (
-                            <div className="space-y-2">
-                              {(() => {
-                                const staged = stagedSubmitMap[task.id];
-                                if (staged) {
-                                  return (
-                                    <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3 space-y-2.5">
-                                      <div className="flex items-center justify-between text-xs">
-                                        <div className="flex items-center gap-1.5 min-w-0">
-                                          <span>📄</span>
-                                          <span className="font-bold text-slate-900 dark:text-white truncate">
-                                            {staged.file.name}
-                                          </span>
-                                          <span className="text-[10px] text-slate-500">
-                                            ({(staged.file.size / 1024).toFixed(0)} KB)
-                                          </span>
-                                        </div>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setStagedSubmitMap((prev) => {
-                                              const n = { ...prev };
-                                              delete n[task.id];
-                                              return n;
-                                            });
-                                          }}
-                                          className="text-xs text-slate-400 hover:text-rose-600 font-bold ml-1"
-                                        >
-                                          취소
-                                        </button>
-                                      </div>
-
-                                      <input
-                                        type="text"
-                                        value={staged.note}
-                                        onChange={(e) =>
-                                          setStagedSubmitMap((prev) => ({
-                                            ...prev,
-                                            [task.id]: { ...staged, note: e.target.value },
-                                          }))
-                                        }
-                                        placeholder="제출 시 남길 메모 (선택)"
-                                        maxLength={500}
-                                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white"
-                                      />
-
-                                      <button
-                                        type="button"
-                                        onClick={() => handleMobileSubmit(task.id, staged.file, staged.note)}
-                                        disabled={submittingId === task.id}
-                                        className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shadow-xs"
-                                      >
-                                        {submittingId === task.id ? uploadProgress || "제출 중…" : "🚀 제출 확정하기"}
-                                      </button>
-                                    </div>
-                                  );
-                                }
-
-                                return (
-                                  <div>
-                                    <input
-                                      ref={fileInputRef}
-                                      type="file"
-                                      onChange={(e) => {
-                                        const f = e.target.files?.[0];
-                                        if (f) {
-                                          setStagedSubmitMap((prev) => ({
-                                            ...prev,
-                                            [task.id]: { file: f, note: "" },
-                                          }));
-                                        }
-                                      }}
-                                      className="hidden"
-                                      id={`mobile-submit-${task.id}`}
-                                    />
-                                    <label
-                                      htmlFor={`mobile-submit-${task.id}`}
-                                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
-                                    >
-                                      <span>📁</span>
-                                      <span>파일/사진 선택하기</span>
-                                    </label>
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {myStatus.state === "DONE" && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                            <span>✅ 완료 처리됨</span>
-                            {task.kind === "confirm" ? (
-                              <button
-                                type="button"
-                                onClick={() => handleTransition(task.id, "undone")}
-                                disabled={actionLoadingId === task.id}
-                                className="text-[11px] text-slate-400 hover:text-slate-600 underline"
-                              >
-                                완료 취소
-                              </button>
-                            ) : (
-                              <div>
-                                <input
-                                  type="file"
-                                  onChange={(e) => {
-                                    const f = e.target.files?.[0];
-                                    if (f) {
-                                      setStagedSubmitMap((prev) => ({
-                                        ...prev,
-                                        [task.id]: { file: f, note: "" },
-                                      }));
-                                    }
-                                  }}
-                                  className="hidden"
-                                  id={`mobile-resubmit-${task.id}`}
-                                />
-                                <label
-                                  htmlFor={`mobile-resubmit-${task.id}`}
-                                  className="text-[11px] text-indigo-500 font-bold underline cursor-pointer"
-                                >
-                                  다시 제출 (교체)
-                                </label>
-                              </div>
-                            )}
-                          </div>
-                          {mySubmission && (
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                              내 제출: {mySubmission.name}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {myStatus.state === "DECLINED" && (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-rose-600 font-medium">거절됨</span>
-                          <button
-                            type="button"
-                            onClick={() => handleTransition(task.id, "accept")}
-                            disabled={actionLoadingId === task.id}
-                            className="text-xs text-indigo-600 font-bold underline cursor-pointer"
-                          >
-                            다시 수락하기
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-
-        {/* 더 보기 버튼 (지시서 33번) */}
-        {hasMoreTasks && (
-          <div className="p-3 text-center border-t border-slate-100 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={() => setPageSize((prev) => prev + 20)}
-              className="w-full py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-            >
-              더 보기 ({filteredTasks.length - visibleTasks.length}개 남음) ↓
-            </button>
-          </div>
-        )}
-      </div>
-    )}
+          {/* 더 보기 버튼 (지시서 33번) */}
+          {hasMoreTasks && (
+            <div className="p-3 text-center border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setPageSize((prev) => prev + 20)}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                더 보기 ({sortedFilteredTasks.length - visibleTasks.length}개 남음) ↓
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
     {/* [내 할 일 추가] 셀프 등록 모달 (피드백 15번, 피드백 32번 서식+참고파일) */}
     {isSelfAddOpen && (
@@ -956,24 +1013,46 @@ export default function MobileTasksSection() {
                 maxLength={100}
               />
             </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">마감 날짜 *</label>
-                <input
-                  type="date"
-                  value={selfDueDate}
-                  onChange={(e) => setSelfDueDate(e.target.value)}
-                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-slate-700 dark:text-slate-300 text-xs">
+                  마감 기한 {!selfNoDue && <span className="text-rose-500">*</span>}
+                </label>
+                <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 font-medium cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={selfNoDue}
+                    onChange={(e) => setSelfNoDue(e.target.checked)}
+                    className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <span>기한 없음</span>
+                </label>
               </div>
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">마감 시각 *</label>
-                <input
-                  type="time"
-                  value={selfDueTime}
-                  onChange={(e) => setSelfDueTime(e.target.value)}
-                  className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                />
+              <div className={`grid grid-cols-2 gap-1.5 transition-opacity ${selfNoDue ? "opacity-50" : ""}`}>
+                <div>
+                  <label className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">
+                    마감 날짜 {!selfNoDue && <span className="text-rose-500">*</span>}
+                  </label>
+                  <input
+                    type="date"
+                    value={selfDueDate}
+                    onChange={(e) => setSelfDueDate(e.target.value)}
+                    disabled={selfNoDue}
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:bg-slate-100 disabled:dark:bg-slate-800/50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">
+                    마감 시각 {!selfNoDue && <span className="text-rose-500">*</span>}
+                  </label>
+                  <input
+                    type="time"
+                    value={selfDueTime}
+                    onChange={(e) => setSelfDueTime(e.target.value)}
+                    disabled={selfNoDue}
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:bg-slate-100 disabled:dark:bg-slate-800/50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                  />
+                </div>
               </div>
             </div>
 

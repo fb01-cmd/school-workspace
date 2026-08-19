@@ -327,8 +327,8 @@ export default function StudentPortal() {
             <span className="sm:hidden bg-indigo-500/30 text-indigo-200 px-2.5 py-0.5 rounded-full text-xs font-semibold">학생 포털</span>
             <h1 className="text-2xl sm:text-3xl font-black mt-1 sm:mt-0 tracking-tight">효명고등학교 계정관리시스템</h1>
             <p className="text-indigo-200 text-sm mt-1">
-              {userData?.name
-                ? `환영합니다! ${userData.name} 학생의 개인 대시보드입니다.`
+              {userData?.name?.trim()
+                ? `환영합니다! ${userData.name.trim()} 학생의 개인 대시보드입니다.`
                 : "환영합니다! 개인 대시보드입니다."}
             </p>
           </div>
