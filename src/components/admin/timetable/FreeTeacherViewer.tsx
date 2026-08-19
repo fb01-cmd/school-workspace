@@ -190,9 +190,6 @@ export default function FreeTeacherViewer({
                     <span>👤</span>
                     <span>{t.name}</span>
                   </div>
-                  <div className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[150px]">
-                    {t.email}
-                  </div>
                 </div>
                 <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
                   공강
