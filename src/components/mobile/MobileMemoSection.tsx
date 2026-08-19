@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import type { MemoDoc } from "@/lib/memo/logic";
+import { MEMO_UNTITLED_FALLBACK } from "@/lib/memo/logic";
 import MemoAttachmentGrid from "@/components/common/MemoAttachmentGrid";
 import MemoRichBody from "@/components/common/MemoRichBody";
 import { collectMd1AttachmentIds } from "@/lib/memo/richtext";
@@ -273,7 +274,7 @@ export default function MobileMemoSection() {
                           : "font-medium text-slate-700 dark:text-slate-300"
                       }`}
                     >
-                      {memo.title}
+                      {memo.title || MEMO_UNTITLED_FALLBACK}
                     </p>
                   </div>
                   <svg
@@ -321,7 +322,7 @@ export default function MobileMemoSection() {
 
                     {displayedMemo.id !== memo.id && (
                       <h4 className="text-sm font-bold text-slate-900 dark:text-white px-0.5">
-                        {displayedMemo.title}
+                        {displayedMemo.title || MEMO_UNTITLED_FALLBACK}
                       </h4>
                     )}
 
@@ -433,7 +434,7 @@ export default function MobileMemoSection() {
                                         : "text-slate-700 dark:text-slate-300"
                                     }`}
                                   >
-                                    {item.title}
+                                    {item.title || MEMO_UNTITLED_FALLBACK}
                                   </span>
                                   {isCurrent && (
                                     <span className="text-[10px] bg-indigo-600 text-white font-semibold px-1.5 py-0.5 rounded flex-shrink-0">

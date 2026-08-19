@@ -22,6 +22,7 @@ import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
 import { resolveDisplayName } from "@/lib/org/displayName";
 import type { MemoDoc } from "@/lib/memo/logic";
+import { MEMO_UNTITLED_FALLBACK } from "@/lib/memo/logic";
 import type { TeacherProfile } from "@/context/AuthContext";
 import type { MemoAttachment } from "@/lib/memo/attachment_logic";
 import {
@@ -511,7 +512,7 @@ function InboxRow({
             isUnread ? "font-bold text-slate-950" : "font-medium text-slate-700"
           }`}
         >
-          {memo.title}
+          {memo.title || MEMO_UNTITLED_FALLBACK}
         </p>
       </div>
     </button>
@@ -561,7 +562,7 @@ function SentRow({
         </div>
         {/* 쪽지 제목 (주 톤) */}
         <p className="text-sm font-semibold text-slate-800 truncate mt-1">
-          {memo.title}
+          {memo.title || MEMO_UNTITLED_FALLBACK}
         </p>
         {/* 읽음 및 회수 상태 뱃지 */}
         <div className="text-xs text-slate-400 mt-1.5 flex items-center gap-1.5 flex-wrap">
@@ -600,12 +601,12 @@ function StarredRow({
   onClick: () => void;
   onToggleStar: (memo: MemoItem) => void;
 }) {
-  const isSentByMe = memo.senderEmail.toLowerCase() === myEmail.toLowerCase();
-  const isUnread = !isSentByMe && !memo.reads?.[myEmail];
+  const isSentByMe = (memo.senderEmail || "").toLowerCase() === myEmail.toLowerCase();
+  const isUnread = !isSentByMe && !(memo.reads && memo.reads[myEmail]);
+  const isStarred = !!memo.starredBy?.[myEmail];
   const readCount = Object.keys(memo.reads || {}).length;
   const total = memo.recipientCount || memo.recipientEmails?.length || 0;
   const recalled = memo.recalledCount ?? 0;
-  const isStarred = !!memo.starredBy?.[myEmail];
 
   return (
     <button
@@ -657,7 +658,7 @@ function StarredRow({
             isUnread ? "font-bold text-slate-950" : "font-medium text-slate-800"
           }`}
         >
-          {memo.title}
+          {memo.title || MEMO_UNTITLED_FALLBACK}
         </p>
         {isSentByMe && (
           <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
@@ -822,7 +823,7 @@ function MemoDetailPanel({
             </div>
             {/* 제목: 선명한 주 톤 */}
             <h3 className="text-lg font-bold text-slate-900 leading-snug tracking-tight">
-              {memo.title}
+              {memo.title || MEMO_UNTITLED_FALLBACK}
             </h3>
           </div>
 
@@ -1125,7 +1126,7 @@ function MemoDetailPanel({
                         {senderLabel}
                       </span>
                       <span className={`truncate flex-1 ${isCurrent ? "font-bold text-indigo-950" : "text-slate-700"}`}>
-                        {item.title}
+                        {item.title || "(제목 없음)"}
                       </span>
                       {isCurrent && (
                         <span className="text-[10px] bg-indigo-600 text-white font-semibold px-1.5 py-0.5 rounded flex-shrink-0">
@@ -1243,7 +1244,7 @@ function ComposeModal({
   // 작성 (step 2)
   const initialTitle = useMemo(() => {
     if (!replyToMemo) return "";
-    const clean = replyToMemo.title.trim();
+    const clean = (replyToMemo.title || "").trim() || "(제목 없음)";
     return /^re:\s*/i.test(clean) ? clean : `RE: ${clean}`;
   }, [replyToMemo]);
 
@@ -1748,7 +1749,6 @@ function ComposeModal({
   const recipientCount = chips.length;
   const canSend =
     recipientCount > 0 &&
-    title.trim() &&
     bodyMd1.trim() &&
     !sending &&
     !isUploading &&
@@ -1963,7 +1963,7 @@ function ComposeModal({
                   onChange={(e) => setTitle(e.target.value)}
                   onPaste={handlePaste}
                   maxLength={200}
-                  placeholder="제목을 입력하세요"
+                  placeholder="제목 (선택)"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
@@ -2630,7 +2630,7 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
         })
         .filter((m) => {
           const target: MemoSearchTarget = {
-            title: m.title,
+            title: m.title || MEMO_UNTITLED_FALLBACK,
             body: m.body,
             senderName: m.senderName,
             senderDisplayName:

@@ -15,6 +15,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import type { MemoDoc } from "@/lib/memo/logic";
+import { MEMO_UNTITLED_FALLBACK } from "@/lib/memo/logic";
 
 type MemoItem = MemoDoc & { id: string };
 
@@ -200,7 +201,7 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
                           : "text-slate-700 group-hover:text-indigo-600"
                       }`}
                     >
-                      {memo.title}
+                      {memo.title || MEMO_UNTITLED_FALLBACK}
                     </p>
                     {/* 부가 정보 (첨부/링크 힌트) */}
                     {(hasAttachments || hasLinks) && (

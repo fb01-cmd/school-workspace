@@ -79,7 +79,7 @@ export default function MobileTasksSection() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 내 할 일 구독 — 복합 색인 orderBy 제거 + 클라이언트 정렬 (피드백 5번)
+  // 내 할 일 구독 (다이어트 3번: 90일 기한창 적용)
   useEffect(() => {
     if (!myEmail || !domain || notEligible) {
       setLoading(false);
@@ -87,9 +87,11 @@ export default function MobileTasksSection() {
     }
     setLoading(true);
     setLoadError(null);
+    const windowStart = Date.now() - 90 * 24 * 3600 * 1000;
     const q = query(
       collection(db, "tasks", domain, "items"),
-      where("recipientEmails", "array-contains", myEmail)
+      where("recipientEmails", "array-contains", myEmail),
+      where("dueAt", ">=", windowStart)
     );
     const unsub = onSnapshot(
       q,
