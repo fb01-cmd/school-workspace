@@ -145,7 +145,6 @@ export default function HubOrgTree({
       const items = await loadTeacherProfiles();
       if (signal?.cancelled) return;
       setProfiles(items);
-      onProfilesLoaded?.(items);
     } catch (err) {
       if (signal?.cancelled) return;
       console.error("조직도 명단 조회 실패:", err);
@@ -153,7 +152,7 @@ export default function HubOrgTree({
     } finally {
       if (!signal?.cancelled) setLoading(false);
     }
-  }, [onProfilesLoaded]);
+  }, []);
 
   useEffect(() => {
     const signal = { cancelled: false };
@@ -161,17 +160,25 @@ export default function HubOrgTree({
     return () => { signal.cancelled = true; };
   }, [fetchProfiles]);
 
-  // Tree data structure
-  const structuredTree = useMemo(() => {
-    // Filter: only active teachers with at least 1 department (no noDept / empty dept)
-    const validProfiles = profiles.filter((p) => {
+  // Filter: only active teachers with at least 1 department (no noDept / empty dept)
+  // 1-A 수정: 트리가 그리는 것과 완전히 동일한 재직 필터 통과 집합
+  const validProfiles = useMemo(() => {
+    return profiles.filter((p) => {
       const cleanEmail = (p.email || "").toLowerCase();
       if (!cleanEmail) return false;
       if (activeEmails && !activeEmails.has(cleanEmail)) return false;
       if (p.noDept || !p.departments || p.departments.length === 0) return false;
       return true;
     });
+  }, [profiles, activeEmails]);
 
+  // 부모(MessagingHub) 및 작성기에 트리와 일치하는 재직 교직원 명단 전달 (1-A)
+  useEffect(() => {
+    onProfilesLoaded?.(validProfiles);
+  }, [validProfiles, onProfilesLoaded]);
+
+  // Tree data structure
+  const structuredTree = useMemo(() => {
     const deptMap: Record<string, TeacherProfile[]> = {};
     departmentOrder.forEach((d) => (deptMap[d] = []));
 
@@ -204,7 +211,7 @@ export default function HubOrgTree({
     });
 
     return result;
-  }, [profiles, departmentOrder, activeEmails, gwsNameMap]);
+  }, [validProfiles, departmentOrder, gwsNameMap]);
 
   // Initial department expansion: expand my own department(s), collapse all if no department
   // 결함 5 수정: structuredTree 기준으로 돌려 미등록 부서도 포함
@@ -225,17 +232,9 @@ export default function HubOrgTree({
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
 
-    const seenEmails = new Set<string>();
     const matched: TeacherProfile[] = [];
 
-    profiles.forEach((p) => {
-      const email = (p.email || "").toLowerCase();
-      if (!email || seenEmails.has(email)) return;
-      if (activeEmails && !activeEmails.has(email)) return;
-      if (p.noDept || !p.departments || p.departments.length === 0) return;
-
-      seenEmails.add(email);
-
+    validProfiles.forEach((p) => {
       const name = getDisplayName(p).toLowerCase();
       const ext = (p.extension || "").toLowerCase();
       if (name.includes(q) || (ext && ext.includes(q))) {
@@ -245,20 +244,17 @@ export default function HubOrgTree({
 
     matched.sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b), "ko"));
     return matched;
-  }, [searchQuery, profiles, activeEmails, gwsNameMap]);
+  }, [searchQuery, validProfiles, gwsNameMap]);
 
   // All valid deduped active teacher emails (Directive 5 / Feedback 7 / spec §2-1-2)
   const allValidTeacherEmails = useMemo(() => {
     const seen = new Set<string>();
-    profiles.forEach((p) => {
+    validProfiles.forEach((p) => {
       const email = (p.email || "").toLowerCase();
-      if (!email) return;
-      if (activeEmails && !activeEmails.has(email)) return;
-      if (p.noDept || !p.departments || p.departments.length === 0) return;
-      seen.add(email);
+      if (email) seen.add(email);
     });
     return Array.from(seen);
-  }, [profiles, activeEmails]);
+  }, [validProfiles]);
 
   const totalValidCount = allValidTeacherEmails.length;
   const isAllSchoolSelected =
