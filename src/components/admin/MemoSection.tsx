@@ -1988,6 +1988,7 @@ function ComposeModal({
                     ref={editorRef}
                     contentEditable
                     suppressContentEditableWarning
+                    spellCheck={false} // 맞춤법 빨간 줄이 링크 표시와 혼동됨 (2026-08-19 실기기)
                     onInput={() => {
                       syncBodyMd1();
                       saveSelection();

@@ -64,12 +64,17 @@ export default function MemoEditorToolbar({
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
 
   // 18번: 공백/엔터 입력 시점 주소 링크 자동 변환
+  // keydown인 이유(2026-08-19 실기기 수정): keyup 시점의 엔터는 이미 새 줄이 만들어져
+  // 커서가 다음 줄 노드로 넘어가 직전 줄의 주소 토큰을 볼 수 없다 — 변환 불발.
+  // keydown에서는 토큰이 아직 커서 바로 앞 같은 텍스트 노드에 있고, 변환 후
+  // 기본 입력(공백·줄바꿈)이 링크 뒤 새 커서 위치에 그대로 이어진다.
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
 
-    const handleKeyUp = (e: KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== " " && e.key !== "Enter") return;
+      if (e.isComposing) return; // 한글 조합 중 엔터 이중 발화 방지
 
       const sel = window.getSelection();
       if (!sel || !sel.isCollapsed || !sel.focusNode) return;
@@ -81,8 +86,8 @@ export default function MemoEditorToolbar({
       const offset = sel.focusOffset;
       const beforeCursor = text.slice(0, offset);
 
-      // 직전 단어 찾기
-      const match = beforeCursor.match(/([^\s]+)[\s]+$/);
+      // 커서 바로 앞 단어 (아직 공백·줄바꿈이 입력되기 전)
+      const match = beforeCursor.match(/([^\s]+)$/);
       if (!match || match.index === undefined) return;
       const token = match[1];
       if (!isLikelyUrlToken(token)) return;
@@ -96,6 +101,8 @@ export default function MemoEditorToolbar({
       const a = document.createElement("a");
       a.href = normalizeUrl(token);
       a.textContent = token;
+      // 편집 중에도 링크가 됐음을 눈으로 알 수 있게 — 맞춤법 빨간 줄과 혼동 방지 (실기기 피드백)
+      a.className = "text-indigo-600 underline break-all";
 
       const parent = node.parentNode;
       if (!parent) return;
@@ -119,8 +126,8 @@ export default function MemoEditorToolbar({
       onContentChange?.();
     };
 
-    editor.addEventListener("keyup", handleKeyUp);
-    return () => editor.removeEventListener("keyup", handleKeyUp);
+    editor.addEventListener("keydown", handleKeyDown);
+    return () => editor.removeEventListener("keydown", handleKeyDown);
   }, [editorRef, onContentChange]);
 
   // 밖 클릭 시 이모지 피커 닫기
