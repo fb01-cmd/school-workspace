@@ -39,7 +39,6 @@ const TeacherPortalSection = dynamic(() => import("@/components/admin/timetable/
 const PolicyAckStatusTab = dynamic(() => import("@/components/admin/PolicyAckStatusTab"), { loading: TabLoading });
 const PWAInstallGuideTab = dynamic(() => import("@/components/admin/PWAInstallGuideTab"), { loading: TabLoading });
 const MessagingHub = dynamic(() => import("@/components/admin/MessagingHub"), { loading: TabLoading });
-const MemoSection = dynamic(() => import("@/components/admin/MemoSection"), { loading: TabLoading });
 const TasksSection = dynamic(() => import("@/components/admin/tasks/TasksSection"), { loading: TabLoading });
 const UsageDashboardTab = dynamic(() => import("@/components/admin/UsageDashboardTab"), { loading: TabLoading });
 import { PWAInstallPrompt } from "@/components/pwa/PWAInstallPrompt";
@@ -269,8 +268,6 @@ export default function AdminPage() {
     switch (activeMenu) {
       case "hub":
         return <MessagingHub initialCategory={initialHubCategory} initialTaskId={targetTaskId} initialMemoId={targetMemoId} />;
-      case "memo":
-        return <MessagingHub initialCategory="memo" initialMemoId={targetMemoId} />;
       case "tasks":
         return <MessagingHub initialCategory="tasks" initialTaskId={targetTaskId} />;
       case "users":
@@ -1097,15 +1094,15 @@ export default function AdminPage() {
           </header>
 
           {/* Dynamic Content Panel */}
-          {activeMenu === "memo" ? (
-            /* 쪽지는 패딩/max-width 없이 꽉 채움 (목록+상세 2열 레이아웃).
+          {activeMenu === "hub" ? (
+            /* 쪽지·업무는 패딩/max-width 없이 꽉 채움 (2단 레이아웃 및 좌·우 독립 스크롤).
                ClassroomCleanupBanner는 모든 메뉴에서 노출되어야 하므로(결정 #5) 여기도 포함. */
             <main className="flex-1 overflow-hidden flex flex-col">
               <div className="px-4 pt-3 pb-0 space-y-3">
                 <SavingModeBanner />
                 <ClassroomCleanupBanner onNavigate={() => setActiveMenu("classroom_cleanup")} />
               </div>
-              <MemoSection initialMemoId={targetMemoId} />
+              <MessagingHub initialCategory={initialHubCategory} initialTaskId={targetTaskId} initialMemoId={targetMemoId} />
             </main>
           ) : (
             <main className="flex-1 overflow-auto p-8">
