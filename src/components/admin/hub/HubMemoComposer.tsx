@@ -26,6 +26,7 @@ interface HubMemoComposerProps {
   initialTitle?: string;
   initialBody?: string;
   canSend: boolean;
+  hasDraftRef?: React.MutableRefObject<boolean>;
 }
 
 export default function HubMemoComposer({
@@ -39,9 +40,18 @@ export default function HubMemoComposer({
   initialTitle = "",
   initialBody = "",
   canSend,
+  hasDraftRef,
 }: HubMemoComposerProps) {
   const [title, setTitle] = useState(initialTitle);
   const [body, setBody] = useState(initialBody);
+
+  // 부모(MessagingHub)의 hasDraftRef 동기화 — 선택 비우기 전 확인창 판단용 (결함 2)
+  useEffect(() => {
+    if (hasDraftRef) hasDraftRef.current = !!(title.trim() || body.trim());
+  }, [title, body, hasDraftRef]);
+  useEffect(() => {
+    return () => { if (hasDraftRef) hasDraftRef.current = false; };
+  }, [hasDraftRef]);
 
   const [attachments, setAttachments] = useState<MemoAttachment[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);

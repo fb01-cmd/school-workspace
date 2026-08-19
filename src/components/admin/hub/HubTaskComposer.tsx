@@ -33,6 +33,7 @@ interface HubTaskComposerProps {
   initialTitle?: string;
   initialBody?: string;
   canSend: boolean;
+  hasDraftRef?: React.MutableRefObject<boolean>;
 }
 
 export default function HubTaskComposer({
@@ -46,6 +47,7 @@ export default function HubTaskComposer({
   initialTitle = "",
   initialBody = "",
   canSend,
+  hasDraftRef,
 }: HubTaskComposerProps) {
   const [title, setTitle] = useState(initialTitle);
   const [kind, setKind] = useState<TaskKind>("confirm");
@@ -55,6 +57,14 @@ export default function HubTaskComposer({
   });
   const [dueTime, setDueTime] = useState("17:00");
   const [body, setBody] = useState(initialBody);
+
+  // 부모(MessagingHub)의 hasDraftRef 동기화 — 선택 비우기 전 확인창 판단용 (결함 2)
+  useEffect(() => {
+    if (hasDraftRef) hasDraftRef.current = !!(title.trim() || body.trim());
+  }, [title, body, hasDraftRef]);
+  useEffect(() => {
+    return () => { if (hasDraftRef) hasDraftRef.current = false; };
+  }, [hasDraftRef]);
 
   // 양식 파일은 「고른 뒤 발송 시 업로드」다 (2026-08-19 피드백 6번 처방).
   // 서버의 form_upload·form_session_* 는 **이미 존재하는 taskId** 를 요구하는데(api/tasks/route.ts:101·409),

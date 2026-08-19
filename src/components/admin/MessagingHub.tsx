@@ -4,7 +4,7 @@
 // IA: 좌 320px 상주 조직도 + 우 (업무/쪽지 모드 & 탭)
 // 모드: 담긴 사람 0명 = 읽는 자리 (목록/상세), 담긴 사람 1명 이상 = 보내는 자리 (인라인 폼)
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import { getClientCache } from "@/lib/cache/clientCache";
 import { buildGwsNameMap } from "@/lib/org/roster";
@@ -47,6 +47,9 @@ export default function MessagingHub({
   // 작성기 전환 시 텍스트 보존 버퍼 (§2-5)
   const [sharedTitle, setSharedTitle] = useState("");
   const [sharedBody, setSharedBody] = useState("");
+
+  // 작성 중 내용 유무를 추적하는 ref — composers가 업데이트 (결함 2 수정: 선택 비우기 전 확인용)
+  const hasDraftRef = useRef(false);
 
   // 좌측 조직도 접힘 상태 (localStorage 영속화)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -134,7 +137,13 @@ export default function MessagingHub({
   }, []);
 
   // 선택 초기화 — 선택만 비우고 초안은 유지 (결함 2 수정: 초안 삭제 분리)
+  // 작성 중 내용이 있으면 확인 1회 (스펙 §3)
   const handleClearSelection = useCallback(() => {
+    if (hasDraftRef.current) {
+      if (!window.confirm("작성 중인 내용이 있습니다. 선택을 비우면 보내는 화면을 떠나게 됩니다. 비우시겠습니까?")) {
+        return;
+      }
+    }
     setSelectedEmails(new Set());
   }, []);
 
@@ -301,6 +310,7 @@ export default function MessagingHub({
                   initialTitle={sharedTitle}
                   initialBody={sharedBody}
                   canSend={canSend}
+                  hasDraftRef={hasDraftRef}
                 />
               ) : (
                 <HubMemoComposer
@@ -314,6 +324,7 @@ export default function MessagingHub({
                   initialTitle={sharedTitle}
                   initialBody={sharedBody}
                   canSend={canSend}
+                  hasDraftRef={hasDraftRef}
                 />
               )}
             </div>
