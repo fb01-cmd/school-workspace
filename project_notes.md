@@ -1313,3 +1313,37 @@ Antigravity에 터미널판이 있고(구 Gemini CLI의 후속), **GUI와 맥락
 - GUI 데스크톱 앱을 받는다면 `.deb`의 **x64**가 정답(arm64·rpm은 오답)
 - **단 GUI판은 권하지 않는다**: ⓐ Electron이라 Crostini + Wayland + fcitx 조합에서 **한글 입력이 조용히 죽는다**(기존 확인된 함정) ⓑ **Claude가 부를 수 없어 오케스트레이션이 성립하지 않는다**
 - 구독은 **사용자 아내분 계정**이다 → 자동 호출 구조로 가면 **한도를 두 사람이 나눠 쓰게 되고 아내분은 소진 시점을 모른다.** 사전 양해 필요
+
+---
+
+## [2026-08-19] 전입생 로그인 불가 — 계정 생성 경로에 Firebase Auth 선제 정리 누락
+
+**증상**: 전입 처리로 방금 만든 테스트 학생 `24343@`으로 포털에 로그인하면 실패. 화면 문구는 `로그인에 실패했습니다. 다시 시도해주세요. (auth/provider-already-linked)`.
+
+**실측 원인** (`scripts/inspect_transfer_login_conflict.ts` — Firebase Auth의 `google.com` provider uid ↔ GWS Directory `user.id` 전수 대조, Firestore 읽기 0):
+
+| | 값 |
+|---|---|
+| Firebase Auth 레코드 | uid `vy8FKUiKCtSZr6gdbGdDfcMZNib2`, google sub `104022345150816139616`, 생성 **8/07** |
+| GWS 계정 | id `116433366628236712566`, 생성 **8/19** |
+
+같은 이메일이 8/7 테스트 때 존재했다가 GWS에서 삭제됐는데 **Firebase Auth 레코드만 남았다.** 8/19에 같은 일련번호(343)로 계정을 다시 만들자 Google sub가 바뀌었고, 로그인 시 Firebase가 이메일로 옛 레코드를 찾아 새 `google.com` 자격증명을 붙이려다 이미 링크돼 있어 거부했다. 전 도메인 31건 중 충돌은 이 1건뿐.
+
+**왜 누락됐나 — 가드가 호출부마다 흩어져 있었다.** `createUser` 호출부는 4곳인데 `deleteAuthUserByEmail` 선제 호출이 있는 곳은 둘뿐이었다.
+
+| 호출부 | 가드 |
+|---|---|
+| `users` route `action:"create"` (개별 생성) | 있음 |
+| `lifecycle` route `enroll_teacher` | 있음 |
+| **`lifecycle` route `enroll_students`** (신입생 일괄 + **전입 처리**) | **없음** |
+| **`users` route `action:"bulk_save"`** (일괄 저장) | **없음** |
+
+빠진 두 곳이 하필 학생 대량 경로다. 신입생 일괄 생성은 매년 새 일련번호를 쓰니 드러나지 않았고, **일련번호를 재사용하는 전입 처리에서 처음 터졌다** (일련번호 계산은 학년 OU + 전출·자퇴 OU만 훑으므로, 완전 삭제된 계정의 번호는 정상적으로 재할당된다 — 이건 버그가 아니라 이 가드가 필요한 바로 그 조건이다).
+
+**조치**: 가드를 호출부가 아니라 **`createUser` 함수 안**(`src/lib/google/workspace.ts`, mock 아닌 경로)으로 옮겼다. `deleteUser`의 보호 계정 가드와 같은 "단일 관문" 방식이라 **앞으로 생성 경로가 늘어도 자동 적용된다.** 실패해도 생성을 막지 않는다(베스트 에포트). 기존 두 호출부의 명시적 호출은 그대로 뒀다 — 두 번 불려도 `auth/user-not-found`로 정상 종료한다.
+
+**복구**: `scripts/repair_stale_auth_24343.ts --apply`로 고아 Auth 레코드 1건 삭제(딸린 Firestore `users` 문서는 0건이었다). 재실행한 대조에서 충돌 0건.
+
+**증상 소멸 확인 (같은 날)**: 사용자가 실기기에서 `24343@`으로 로그인해 학생 포털 진입 성공. 스크립트의 "충돌 0건"은 충돌 소멸만 증명하므로 이 실기기 확인까지 받고 닫았다(증상 소멸 기준).
+
+**⚠️ 아직 배포 안 됨**: `createUser` 단일 관문 이전은 커밋만 됐다. 다음 배포 전까지는 **운영에서 계정을 다시 만들면 같은 증상이 재발할 수 있다** — 재발 시 `scripts/inspect_transfer_login_conflict.ts`로 대상을 찾고, `deleteAuthUserByEmail` 경로(개별 계정 삭제 화면)로 정리하면 된다.

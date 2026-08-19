@@ -470,6 +470,25 @@ export const createUser = async (
   const admin = getAdminClient();
   if (!admin) throw new Error("Admin client is not initialized.");
 
+  // ── 생성 전 stale Firebase Auth 레코드 정리 (단일 관문) ──────────────────
+  // 같은 이메일이 과거에 존재했다면 Firebase Auth에 옛 Google sub가 링크된 레코드가
+  // 남는다. GWS 계정을 새로 만들면 sub가 바뀌므로, 그 계정으로 로그인할 때 Firebase가
+  // 이메일로 기존 레코드를 찾아 새 google.com 자격증명을 붙이려다
+  // `auth/provider-already-linked`로 실패한다 — 화면에는 "로그인에 실패했습니다"만 뜬다.
+  //
+  // 이 가드는 원래 호출부마다 흩어져 있었고(users:create, lifecycle:enroll_teacher),
+  // 학생 경로(lifecycle:enroll_students, users:bulk_save)에는 빠져 있었다.
+  // 2026-08-19 전입생 테스트에서 24343@가 정확히 이 이유로 로그인 불가였다
+  // (Auth sub 104022345150816139616[8/7] vs GWS id 116433366628236712566[8/19]).
+  // 그래서 호출부가 아니라 **생성 함수 안**에 둔다 — 새 생성 경로가 늘어도 자동 적용된다.
+  // 실패해도 생성을 막지 않는다 (베스트 에포트) — 삭제 함수 자체가 이미 그렇게 동작한다.
+  try {
+    const { deleteAuthUserByEmail } = await import("@/lib/firebase/admin");
+    await deleteAuthUserByEmail(email);
+  } catch (cleanupErr: any) {
+    console.warn(`[createUser] stale Firebase Auth 정리 실패 (${email}): ${cleanupErr?.message}`);
+  }
+
   try {
     const res = await admin.users.insert({
       requestBody: {
