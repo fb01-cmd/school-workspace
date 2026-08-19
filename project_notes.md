@@ -4,6 +4,38 @@
 > 2026-08-14 이전은 [`archive/project_notes_2026-08.md`](./archive/project_notes_2026-08.md)·[`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다
 > (원문 그대로, 블록 무손실 대조 완료). 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-19] Antigravity → Claude/사용자 (쪽지·업무 통합 화면 구현 완결 — messaging_hub_ia_spec 개정판)
+- **배경**: `docs/messaging_hub_ia_spec.md` 개정판(2026-08-19 범위 확대)에 따른 「쪽지·업무」 통합 화면 구현.
+- **구현 파일**:
+  1. `src/components/admin/MessagingHub.tsx` (신규):
+     - 2단 고정 레이아웃 (좌측 조직도 상주 + 우측 작업 영역, <1024px PC 전용 가드).
+     - 담긴 사람 0명 = 읽는 자리(대구분 `[ 📌 업무 ]` / `[ ✉️ 쪽지 ]`), 1명 이상 = 보내는 자리(상단 칩 띠 + 인라인 업무 등록/쪽지 쓰기 폼).
+     - 초기 진입: `[ 📌 업무 ]` → `[ 📥 내 할 일 ]` (§2-3, §2-5 업무 유도 배치).
+  2. `src/components/admin/hub/HubOrgTree.tsx` (신규):
+     - `loadTeacherProfiles()` 단일 원본 로더 사용 (`onSnapshot` 0건, `org_index` / 캐시 공유).
+     - 소속이 등록된 재직 교직원 81명만 표출 (`noDept`/소속 빈 계정 제외).
+     - 이름 검색(클라이언트 로컬 필터), 부서 접기/펼치기(내 소속 기본 펼침), 체크박스 전체/개별 선택, 이름 클릭 시 좌측 플로팅 정보 카드(내선·담임·직위 표출 + 담기/빼기), 접힘 상태 `localStorage` 기억.
+  3. `src/components/admin/hub/HubTaskComposer.tsx` (신규):
+     - 인라인 업무 등록 폼 (업무명, 확인형/제출형, 마감 기한, 서식 툴바 본문, 양식 파일 첨부 최대 5개).
+     - `[✉️ 쪽지로 바꾸기]` 전환 버튼 + 안내 문구 (*"기한이 있는 일은 업무로 보내면 누가 끝냈는지 자동으로 모입니다."*).
+     - 2상 발송(`prepare` → `send`) 후 `[보낸 업무]` 탭으로 자동 복귀.
+  4. `src/components/admin/hub/HubMemoComposer.tsx` (신규):
+     - 인라인 쪽지 쓰기 폼 (제목, 서식 툴바 본문, 파일 첨부 4MB/30MB 세션, 링크).
+     - `[📌 업무로 바꾸기]` 전환 버튼 + 안내 문구.
+     - 발송 후 `[보낸 쪽지]` 탭으로 자동 복귀.
+  5. `src/app/admin/page.tsx`:
+     - 사이드바 `쪽지`·`업무 관리` 2개 메뉴 제거 및 `[쪽지·업무]` 단일 메뉴 통합(홈 바로 아래).
+     - 홈 메뉴 라벨 및 상단 헤더 문구 `홈 (대시보드)` / `어드민 홈 대시보드` → `홈` 정리 (§1-2-5).
+     - `admin_navigate` 및 기존 딥링크(`memo`, `tasks`)를 허브의 [쪽지] / [업무] 하위 탭으로 별칭 라우팅 및 `initialMemoId` / `initialTaskId` 정상 전달 (§1-2-3).
+  6. `src/components/admin/tasks/TasksSection.tsx` & `src/components/admin/MemoSection.tsx`:
+     - `initialTab` 지원 추가로 허브와의 양방향 탭 전환 연동.
+- **검증 상태**:
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (47/47 static pages prerendered)
+  - `onSnapshot` 허브 컴포넌트 내 0건 확인 ✅ (스펙 §5-1, §8-1)
+  - 이메일 `@` UI 비노출 확인 ✅ (스펙 §8-5)
+  - `bash scripts/check_ui_removals.sh 4d1c350` ✅ (`홈 (대시보드)`·`쪽지`·`업무 관리`의 지시서 기반 제거 소명 완료)
+
 ## [2026-08-19] Antigravity → Claude/사용자 (쪽지·업무 허브 §6 선행 리팩터 3건 완결 — sort/roster/recipients 추출)
 - **배경**: `docs/messaging_hub_ia_spec.md` §6 선행 리팩터 3건 (허브 화면 착수 전 중복 추출 및 비용 계약 §5-4 이행).
 - **구현 파일**:

@@ -38,6 +38,7 @@ const TimetableCreationSection = dynamic(() => import("@/components/admin/timeta
 const TeacherPortalSection = dynamic(() => import("@/components/admin/timetable/TeacherPortalSection"), { loading: TabLoading });
 const PolicyAckStatusTab = dynamic(() => import("@/components/admin/PolicyAckStatusTab"), { loading: TabLoading });
 const PWAInstallGuideTab = dynamic(() => import("@/components/admin/PWAInstallGuideTab"), { loading: TabLoading });
+const MessagingHub = dynamic(() => import("@/components/admin/MessagingHub"), { loading: TabLoading });
 const MemoSection = dynamic(() => import("@/components/admin/MemoSection"), { loading: TabLoading });
 const TasksSection = dynamic(() => import("@/components/admin/tasks/TasksSection"), { loading: TabLoading });
 const UsageDashboardTab = dynamic(() => import("@/components/admin/UsageDashboardTab"), { loading: TabLoading });
@@ -56,12 +57,13 @@ import { TimetableSettings } from "@/lib/timetable/types";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
-type MenuType = "home" | "users" | "groups" | "settings" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable_operation" | "timetable_creation" | "my_timetable" | "policy_ack" | "pwa_guide" | "memo" | "tasks" | "usage";
+type MenuType = "home" | "hub" | "users" | "groups" | "settings" | "forms" | "logs" | "roster" | "lifecycle" | "teachers" | "ou_manage" | "classroom" | "classroom_cleanup" | "chrome_bookmarks" | "password_reset" | "profile_approvals" | "discipline" | "timetable_operation" | "timetable_creation" | "my_timetable" | "policy_ack" | "pwa_guide" | "memo" | "tasks" | "usage";
 
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
   const router = useRouter();
   const [activeMenu, setActiveMenu] = useState<MenuType>("home");
+  const [initialHubCategory, setInitialHubCategory] = useState<"tasks" | "memo">("tasks");
   const [targetMemoId, setTargetMemoId] = useState<string | null>(null);
   const [targetTaskId, setTargetTaskId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -98,7 +100,7 @@ export default function AdminPage() {
     } catch (e) {}
   }, []);
 
-  // admin_navigate 이벤트 리스너 (탭/메뉴간 이동)
+  // admin_navigate 이벤트 리스너 (탭/메뉴간 이동 및 허브 별칭 라우팅 — spec §1-2-3)
   useEffect(() => {
     const handleAdminNav = (e: any) => {
       if (e.detail?.menu) {
@@ -108,7 +110,15 @@ export default function AdminPage() {
         if (e.detail.taskId !== undefined) {
           setTargetTaskId(e.detail.taskId);
         }
-        setActiveMenu(e.detail.menu);
+        if (e.detail.menu === "memo") {
+          setInitialHubCategory("memo");
+          setActiveMenu("hub");
+        } else if (e.detail.menu === "tasks") {
+          setInitialHubCategory("tasks");
+          setActiveMenu("hub");
+        } else {
+          setActiveMenu(e.detail.menu);
+        }
       }
     };
     window.addEventListener("admin_navigate", handleAdminNav);
@@ -245,20 +255,24 @@ export default function AdminPage() {
 
   const handleNavigateToMemo = (memoId?: string) => {
     setTargetMemoId(memoId || null);
-    setActiveMenu("memo");
+    setInitialHubCategory("memo");
+    setActiveMenu("hub");
   };
 
   const handleNavigateToTasks = (taskId?: string) => {
     setTargetTaskId(taskId || null);
-    setActiveMenu("tasks");
+    setInitialHubCategory("tasks");
+    setActiveMenu("hub");
   };
 
   const renderContent = () => {
     switch (activeMenu) {
+      case "hub":
+        return <MessagingHub initialCategory={initialHubCategory} initialTaskId={targetTaskId} initialMemoId={targetMemoId} />;
       case "memo":
-        return <MemoSection initialMemoId={targetMemoId} />;
+        return <MessagingHub initialCategory="memo" initialMemoId={targetMemoId} />;
       case "tasks":
-        return <TasksSection initialTaskId={targetTaskId} />;
+        return <MessagingHub initialCategory="tasks" initialTaskId={targetTaskId} />;
       case "users":
         return <UserList />;
       case "profile_approvals":
@@ -622,36 +636,25 @@ export default function AdminPage() {
                       }`}
                     >
                       <span>🏠</span>
-                      <span>홈 (대시보드)</span>
+                      <span>홈</span>
                     </button>
 
-                    {/* 쪽지 — 홈 바로 아래, 전 교직원 (spec §4-1) */}
+                    {/* 쪽지·업무 — 홈 바로 아래, 전 교직원 (messaging_hub_ia_spec §1-2) */}
                     <button
-                      onClick={() => setActiveMenu("memo")}
+                      onClick={() => {
+                        setTargetMemoId(null);
+                        setTargetTaskId(null);
+                        setInitialHubCategory("tasks");
+                        setActiveMenu("hub");
+                      }}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        activeMenu === "memo"
+                        activeMenu === "hub" || activeMenu === "memo" || activeMenu === "tasks"
                           ? "bg-indigo-800 text-white font-bold shadow-sm"
                           : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
                       }`}
                     >
                       <span>✉️</span>
-                      <span>쪽지</span>
-                    </button>
-
-                    {/* 업무 관리 — 쪽지 바로 아래, 전 교직원 (phase8_tasks_spec §7) */}
-                    <button
-                      onClick={() => {
-                        setTargetTaskId(null);
-                        setActiveMenu("tasks");
-                      }}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        activeMenu === "tasks"
-                          ? "bg-indigo-800 text-white font-bold shadow-sm"
-                          : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      <span>📌</span>
-                      <span>업무 관리</span>
+                      <span>쪽지·업무</span>
                     </button>
 
                     {/* 내 시간표 (교사 최다 사용 메뉴 — 홈 바로 아래 이동) */}
@@ -1063,7 +1066,7 @@ export default function AdminPage() {
                 </svg>
               </button>
               <h1 className="text-lg font-bold text-gray-800">
-                {activeMenu === "home" && "어드민 홈 대시보드"}
+                {activeMenu === "home" && "홈"}
                 {activeMenu === "users" && "사용자 전체관리"}
                 {activeMenu === "settings" && "Workspace 환경 설정"}
                 {activeMenu === "ou_manage" && "GWS 조직단위 관리"}
@@ -1079,7 +1082,7 @@ export default function AdminPage() {
                 {activeMenu === "timetable_operation" && "시간표 운영 (학기 중)"}
                 {activeMenu === "timetable_creation" && "시간표 작성 & 학기 관리"}
                 {activeMenu === "my_timetable" && "내 시간표"}
-                {activeMenu === "memo" && "쪽지"}
+                {(activeMenu === "hub" || activeMenu === "memo" || activeMenu === "tasks") && "쪽지·업무"}
               </h1>
             </div>
             <div className="flex items-center gap-3">

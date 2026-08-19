@@ -2128,9 +2128,10 @@ function ComposeModal({
 
 interface MemoSectionProps {
   initialMemoId?: string | null;
+  initialTab?: Tab;
 }
 
-export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
+export default function MemoSection({ initialMemoId, initialTab }: MemoSectionProps = {}) {
   const { user, userData, teacherProfile, schoolSettings, savingMode } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "";
@@ -2140,7 +2141,13 @@ export default function MemoSection({ initialMemoId }: MemoSectionProps = {}) {
    */
   const notEligible = !!userData && !(teacherProfile?.departments?.length);
 
-  const [tab, setTab] = useState<Tab>("inbox");
+  const [tab, setTab] = useState<Tab>(initialTab || "inbox");
+
+  useEffect(() => {
+    if (initialTab) {
+      setTab(initialTab);
+    }
+  }, [initialTab]);
   const [inboxMemos, setInboxMemos] = useState<MemoItem[]>([]);
   const [sentMemos, setSentMemos] = useState<MemoItem[]>([]);
   const [starredMemos, setStarredMemos] = useState<MemoItem[]>([]);

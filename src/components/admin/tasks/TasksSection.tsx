@@ -62,15 +62,22 @@ function getYearMonthKey(ms: number): string {
 
 interface Props {
   initialTaskId?: string | null;
+  initialTab?: "inbox" | "sent";
 }
 
-export default function TasksSection({ initialTaskId }: Props) {
+export default function TasksSection({ initialTaskId, initialTab }: Props) {
   const { user, userData, teacherProfile } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "hmh.or.kr";
 
   // 탭: "inbox" (내 할 일) | "sent" (보낸 업무 현황)
-  const [activeTab, setActiveTab] = useState<"inbox" | "sent">("inbox");
+  const [activeTab, setActiveTab] = useState<"inbox" | "sent">(initialTab || "inbox");
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
 
   // 내 할 일 목록
