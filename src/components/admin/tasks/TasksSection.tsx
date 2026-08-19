@@ -110,11 +110,12 @@ export default function TasksSection({ initialTaskId }: Props) {
     }
     setLoading(true);
     setLoadError(null);
-    const windowStart = Date.now() - 90 * 24 * 3600 * 1000;
+    // 기한창(dueAt 범위) 금지 — array-contains + 다른 필드 범위는 복합 색인 요구로
+    // FAILED_PRECONDITION (2026-08-19 검수 실측, 5번 치명과 동일 계열). 색인 생성(사용자 콘솔 1회) 전까지
+    // array-contains 단독만 허용. 색인 등록 후 기한창+orderBy+limit 일괄 적용 예정 — STATUS 참조.
     const q = query(
       collection(db, "tasks", domain, "items"),
-      where("recipientEmails", "array-contains", myEmail),
-      where("dueAt", ">=", windowStart)
+      where("recipientEmails", "array-contains", myEmail)
     );
     const unsub = onSnapshot(
       q,

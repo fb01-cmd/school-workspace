@@ -87,11 +87,10 @@ export default function MobileTasksSection() {
     }
     setLoading(true);
     setLoadError(null);
-    const windowStart = Date.now() - 90 * 24 * 3600 * 1000;
+    // 기한창(dueAt 범위) 금지 — 복합 색인 요구 실측 (TasksSection 동일 주석 참조, 5번 치명 계열)
     const q = query(
       collection(db, "tasks", domain, "items"),
-      where("recipientEmails", "array-contains", myEmail),
-      where("dueAt", ">=", windowStart)
+      where("recipientEmails", "array-contains", myEmail)
     );
     const unsub = onSnapshot(
       q,

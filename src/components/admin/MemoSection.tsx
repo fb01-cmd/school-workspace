@@ -1244,7 +1244,7 @@ function ComposeModal({
   // 작성 (step 2)
   const initialTitle = useMemo(() => {
     if (!replyToMemo) return "";
-    const clean = (replyToMemo.title || "").trim() || "(제목 없음)";
+    const clean = (replyToMemo.title || "").trim() || MEMO_UNTITLED_FALLBACK;
     return /^re:\s*/i.test(clean) ? clean : `RE: ${clean}`;
   }, [replyToMemo]);
 
