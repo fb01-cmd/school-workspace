@@ -24,12 +24,16 @@ const EMOJI_CATEGORIES = [
   },
 ];
 
-// 주소꼴 토큰 판정 (피드백 18번: https://, www., 도메인.통용TLD)
-// 맨도메인(스킴·www 없음)은 통용 TLD 화이트리스트만 인정 — 영문 확장자 오탐 차단
-// (검수 발견: "report.hwp"·"Node.js" 류가 [a-z]{2,} 규칙에 걸려 링크로 변환됐다)
-const BARE_DOMAIN_TLDS = new Set([
-  "kr", "com", "net", "org", "io", "co", "me", "dev", "app", "ai",
-  "edu", "gov", "info", "biz", "xyz", "site", "cloud", "page",
+// 주소꼴 토큰 판정 (피드백 18번: https://, www., 도메인.TLD)
+// 맨도메인(스킴·www 없음)의 오탐 차단은 TLD 화이트리스트가 아니라 **파일 확장자 블랙리스트**로 —
+// 통용 TLD 방식은 joo.is 같은 단축주소를 놓친다(2026-08-19 실기기 재발견). 단축주소 꼬리표는
+// 무한히 다양하지만 실무 파일 확장자는 유한하다.
+const NOT_URL_TAILS = new Set([
+  // 업무·쪽지에서 오가는 문서/이미지 확장자 (첨부 화이트리스트 계열)
+  "hwp", "hwpx", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pdf", "zip",
+  "png", "jpg", "jpeg", "webp", "gif", "txt", "csv",
+  // 언급될 법한 개발·문서 확장자
+  "js", "ts", "tsx", "jsx", "md", "html", "css", "json", "exe", "apk", "mp3", "mp4", "wav", "mov",
 ]);
 function isLikelyUrlToken(token: string): boolean {
   if (!token || token.includes("@") || /\s/.test(token)) return false;
@@ -37,10 +41,14 @@ function isLikelyUrlToken(token: string): boolean {
   if (/^https?:\/\/[^\s]+$/i.test(token)) return true;
   // 2. www. 로 시작
   if (/^www\.[^\s]+$/i.test(token)) return true;
-  // 3. 도메인.TLD — 경로 앞부분에서 마지막 라벨을 뽑아 통용 TLD만 통과
-  //    (hmh.or.kr처럼 다단 도메인은 최종 라벨 kr로 판정)
+  // 3. 도메인.TLD[/경로] — 마지막 라벨이 영문 2자 이상이고 파일 확장자가 아니면 주소로 본다
+  //    ("report.hwp"·"Node.js"는 확장자라 제외, "joo.is/260819"·"hmh.or.kr"은 통과)
   const m = /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.([a-zA-Z]{2,})(?:\/[^\s]*)?$/.exec(token);
-  return !!m && BARE_DOMAIN_TLDS.has(m[2].toLowerCase());
+  if (!m) return false;
+  const tail = m[2].toLowerCase();
+  // 경로가 붙어 있으면("joo.is/260819") 확장자일 수 없다 — 항상 주소
+  const hasPath = token.includes("/");
+  return hasPath || !NOT_URL_TAILS.has(tail);
 }
 
 function normalizeUrl(token: string): string {
