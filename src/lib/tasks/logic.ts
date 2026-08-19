@@ -135,11 +135,14 @@ export function applyTaskTransition(
       if (!reason) return { ok: false, error: "거절 사유를 입력해 주세요." }; // §3 — 사유 필수
       return { ok: true, next: { state: "DECLINED", at: now, note: reason.slice(0, 500) } };
     }
-    case "done":
+    case "done": {
       if (task.kind === "submit")
         return { ok: false, error: "제출형 업무는 파일을 제출하면 완료됩니다." };
       if (cur === "DECLINED") return { ok: false, error: "거절한 업무입니다. 먼저 수락해 주세요." };
-      return { ok: true, next: { state: "DONE", at: now } };
+      // 완료 코멘트 (피드백 27번) — 거절 사유와 같은 자리(note), 선택 사항
+      const comment = (note || "").trim();
+      return { ok: true, next: { state: "DONE", at: now, ...(comment ? { note: comment.slice(0, 500) } : {}) } };
+    }
     case "undone":
       if (cur !== "DONE") return { ok: false, error: "완료 상태가 아닙니다." };
       return { ok: true, next: { state: "ACCEPTED", at: now } };
@@ -148,9 +151,10 @@ export function applyTaskTransition(
   }
 }
 
-/** 제출 성공 = DONE (제출형 전용 — 라우트가 제출 기록과 원자 처리) */
-export function submissionDoneStatus(now: number): TaskRecipientStatus {
-  return { state: "DONE", at: now };
+/** 제출 성공 = DONE (제출형 전용 — 라우트가 제출 기록과 원자 처리). note = 제출 코멘트 (피드백 27번, 선택) */
+export function submissionDoneStatus(now: number, note?: unknown): TaskRecipientStatus {
+  const comment = typeof note === "string" ? note.trim() : "";
+  return { state: "DONE", at: now, ...(comment ? { note: comment.slice(0, 500) } : {}) };
 }
 
 // ── 고아 초안 판정 (피드백 4-ⓑ — 2상 발송의 1상만 하고 중단된 문서) ──

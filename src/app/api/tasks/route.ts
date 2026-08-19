@@ -161,6 +161,7 @@ export async function POST(req: NextRequest) {
       }
       const now = Date.now();
       const submission = { driveFileId, name: normalized, size: file.size, at: now, version: (prev?.version || 0) + 1 };
+      const doneStatus = submissionDoneStatus(now, form?.get("note")); // 제출 코멘트 (피드백 27번, 선택)
       // 키에 점(.)이 포함되므로 FieldPath 가변 인자 형태 필수 (memo reads 전례)
       await tasksColRef(domain)
         .doc(task.id)
@@ -168,9 +169,9 @@ export async function POST(req: NextRequest) {
           new FieldPath("submissions", email),
           submission,
           new FieldPath("statuses", email),
-          submissionDoneStatus(now)
+          doneStatus
         );
-      return NextResponse.json({ success: true, action, submission });
+      return NextResponse.json({ success: true, action, submission, status: doneStatus });
     }
 
     const body = await req.json().catch(() => ({} as any));
@@ -383,15 +384,16 @@ export async function POST(req: NextRequest) {
         if (!sizeCheck.ok) return NextResponse.json({ error: sizeCheck.error }, { status: 400 });
         const now = Date.now();
         const submission = { driveFileId: fileId, name: meta.name, size: meta.size, at: now, version: 1 };
+        const doneStatus = submissionDoneStatus(now, body.note); // 제출 코멘트 (피드백 27번, 선택)
         await tasksColRef(domain)
           .doc(task.id)
           .update(
             new FieldPath("submissions", email),
             submission,
             new FieldPath("statuses", email),
-            submissionDoneStatus(now)
+            doneStatus
           );
-        return NextResponse.json({ success: true, submission });
+        return NextResponse.json({ success: true, submission, status: doneStatus });
       }
 
       case "nudge": {

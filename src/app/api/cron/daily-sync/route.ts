@@ -4,6 +4,7 @@ import { runNeisCalendarSync } from "@/lib/timetable/server";
 import { runMemoPurge } from "@/lib/memo/purge";
 import { runTaskSweep } from "@/lib/tasks/cron";
 import { runUsageAlert } from "@/lib/ops/usage_alert";
+import { runNameSync } from "@/lib/ops/name_sync";
 import { sweepSavingMode } from "@/lib/ops/saving_mode";
 import { recordCronRun } from "@/lib/ops/cron_heartbeat";
 import { adminDb } from "@/lib/firebase/admin";
@@ -58,6 +59,7 @@ export async function GET(req: NextRequest) {
     usageAlert: { ok: boolean; detail: unknown };
     savingSweep: { ok: boolean; detail: unknown };
     taskSweep: { ok: boolean; detail: unknown };
+    nameSync: { ok: boolean; detail: unknown };
   } = {
     bridge: { ok: false, detail: null },
     neis: { ok: false, detail: null },
@@ -65,6 +67,7 @@ export async function GET(req: NextRequest) {
     usageAlert: { ok: false, detail: null },
     savingSweep: { ok: false, detail: null },
     taskSweep: { ok: false, detail: null },
+    nameSync: { ok: false, detail: null },
   };
 
   /** 알림 발신 도메인 — 나이스·사용량 경보가 공유한다 (없으면 학교 기본값) */
@@ -131,16 +134,25 @@ export async function GET(req: NextRequest) {
     results.taskSweep = { ok: false, detail: error.message };
   }
 
+  // ── 7. 표시이름 동기화 — GWS 실명을 단일 원본으로 사본 갱신 (피드백 22·23번) ──
+  try {
+    results.nameSync = { ok: true, detail: await runNameSync({ dryRun }) };
+  } catch (error: any) {
+    console.error("[Daily-Sync Cron] 이름 동기화 실패:", error);
+    results.nameSync = { ok: false, detail: error.message };
+  }
+
   const anyFailed =
     !results.bridge.ok ||
     !results.neis.ok ||
     !results.memoPurge.ok ||
     !results.usageAlert.ok ||
     !results.savingSweep.ok ||
-    !results.taskSweep.ok;
+    !results.taskSweep.ok ||
+    !results.nameSync.ok;
   // 심박 — 성공·실패·무작업을 가리지 않고 남긴다(cron_heartbeat.ts 주석의 사고 2건)
   await recordCronRun("daily-sync", {
-    summary: `브리지 ${results.bridge.ok ? "ok" : "실패"} · 나이스 ${results.neis.ok ? "ok" : "실패"} · 쪽지파기 ${results.memoPurge.ok ? "ok" : "실패"} · 사용량경보 ${results.usageAlert.ok ? "ok" : "실패"} · 절약정리 ${results.savingSweep.ok ? "ok" : "실패"} · 업무 ${results.taskSweep.ok ? "ok" : "실패"}`,
+    summary: `브리지 ${results.bridge.ok ? "ok" : "실패"} · 나이스 ${results.neis.ok ? "ok" : "실패"} · 쪽지파기 ${results.memoPurge.ok ? "ok" : "실패"} · 사용량경보 ${results.usageAlert.ok ? "ok" : "실패"} · 절약정리 ${results.savingSweep.ok ? "ok" : "실패"} · 업무 ${results.taskSweep.ok ? "ok" : "실패"} · 이름동기화 ${results.nameSync.ok ? "ok" : "실패"}`,
     hadError: anyFailed,
   });
 

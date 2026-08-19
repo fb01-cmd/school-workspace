@@ -10,6 +10,7 @@ import {
   isOrphanDraft,
   normalizeSubmissionFileName,
   nudgeTargets,
+  submissionDoneStatus,
   validateTaskContent,
   validateTaskFileName,
   validateTaskFileSize,
@@ -56,6 +57,16 @@ check("① 완료 취소 → 수락 상태로", applyTaskTransition(baseTask("co
 check("① 대상 아님 거부", applyTaskTransition(baseTask("confirm"), "x@hmh.or.kr", "accept", undefined, NOW).ok, false);
 check("① 철회된 업무 거부", applyTaskTransition({ ...baseTask("confirm"), canceledAt: 1 } as any, "a@hmh.or.kr", "accept", undefined, NOW).ok, false);
 check("① 완료 후 거절 불가", applyTaskTransition(baseTask("confirm", { "a@hmh.or.kr": { state: "DONE", at: 1 } }), "a@hmh.or.kr", "decline", "사유", NOW).ok, false);
+
+// ── ①-b 완료 코멘트 (피드백 27번 — 거절 사유와 같은 자리) ──
+check("①-b 완료 코멘트 실림", applyTaskTransition(baseTask("confirm"), "a@hmh.or.kr", "done", "출장 복귀 후 서명본으로 재제출 예정", NOW), {
+  ok: true, next: { state: "DONE", at: NOW, note: "출장 복귀 후 서명본으로 재제출 예정" },
+});
+check("①-b 코멘트 없으면 note 필드 부재", "note" in (applyTaskTransition(baseTask("confirm"), "a@hmh.or.kr", "done", "  ", NOW) as any).next, false);
+check("①-b 500자 절단", (applyTaskTransition(baseTask("confirm"), "a@hmh.or.kr", "done", "가".repeat(600), NOW) as any).next.note.length, 500);
+check("①-b 완료취소는 코멘트 미보존", (applyTaskTransition(baseTask("confirm", { "a@hmh.or.kr": { state: "DONE", at: 1, note: "x" } }), "a@hmh.or.kr", "undone", undefined, NOW) as any).next, { state: "ACCEPTED", at: NOW });
+check("①-b 제출 코멘트 실림", submissionDoneStatus(NOW, " 2쪽 서명 누락분은 내일 보완 "), { state: "DONE", at: NOW, note: "2쪽 서명 누락분은 내일 보완" });
+check("①-b 제출 코멘트 비문자열 무시", submissionDoneStatus(NOW, 123 as any), { state: "DONE", at: NOW });
 
 // ── ② 파일명 정규화 3갈래 (§5-3) ──
 check("② 담임", normalizeSubmissionFileName({

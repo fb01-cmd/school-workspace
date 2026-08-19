@@ -108,6 +108,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let unsubscribeSettings: (() => void) | null = null;
     let unsubscribeTeacherProfile: (() => void) | null = null;
     let unsubscribeSavingMode: (() => void) | null = null;
+    // 하위 구독의 현재 키 — users 문서 스냅샷이 발화할 때마다(알림 1건마다 unreadNotifCount로 발화)
+    // settings·teacher_profiles 구독을 해제→재생성하면 재구독 초기 읽기가 매번 추가된다
+    // (읽기 1회면 될 것이 3회 — 읽기 다이어트 1번, 2026-08-19). 키가 같으면 기존 구독을 유지한다.
+    let settingsSubKey: string | null = null;
+    let profileSubKey: string | null = null;
 
     const unsubscribeAuth = onIdTokenChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -152,7 +157,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUserData(data);
 
             // Listen to school settings from Firestore in real-time
-            if (data.domain) {
+            // 도메인이 바뀔 때만 재구독 — users 스냅샷 발화마다 재생성 금지 (읽기 다이어트 1번)
+            if (data.domain && settingsSubKey !== data.domain) {
+              settingsSubKey = data.domain;
               if (unsubscribeSettings) unsubscribeSettings();
               const settingsRef = doc(db, "settings", data.domain);
               unsubscribeSettings = onSnapshot(settingsRef, (settingsSnap) => {
@@ -190,10 +197,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               setLoading(false);
             }
 
-            // 교직원인 경우 teacher_profiles 실시간 구독
-            if (data.domain && (data.role === "super_admin" || data.role === "teacher") && data.email) {
+            // 교직원인 경우 teacher_profiles 실시간 구독 — 이메일이 바뀔 때만 재구독 (읽기 다이어트 1번)
+            const profileKey =
+              data.domain && (data.role === "super_admin" || data.role === "teacher") && data.email
+                ? data.email
+                : null;
+            if (profileKey && profileSubKey !== profileKey) {
+              profileSubKey = profileKey;
               if (unsubscribeTeacherProfile) unsubscribeTeacherProfile();
-              const profileRef = doc(db, "teacher_profiles", data.email);
+              const profileRef = doc(db, "teacher_profiles", profileKey);
               unsubscribeTeacherProfile = onSnapshot(profileRef, (snap) => {
                 if (snap.exists()) {
                   setTeacherProfile(snap.data() as TeacherProfile);
@@ -292,6 +304,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (unsubscribeSettings) unsubscribeSettings();
         if (unsubscribeTeacherProfile) unsubscribeTeacherProfile();
         if (unsubscribeSavingMode) unsubscribeSavingMode();
+        // 재로그인 시 하위 구독이 새로 열리도록 키 초기화 (계정 전환 대응)
+        unsubscribeDoc = unsubscribeSettings = unsubscribeTeacherProfile = unsubscribeSavingMode = null;
+        settingsSubKey = null;
+        profileSubKey = null;
       }
     });
 

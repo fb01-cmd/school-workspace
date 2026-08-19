@@ -3,7 +3,7 @@
 // 보낸 업무 현황판 — docs/phase8_tasks_spec.md §3, §5, §7
 // 발신자 화면의 실시간 원본: 수신자별 상태 표, 수락/완료 집계 칩, 재촉(24h 제한), 제출함 폴더 열기, 철회
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
 import {
@@ -68,6 +68,10 @@ export default function TaskStatusBoard() {
   // 셀프 업무 접기 (피드백 15번) — 반드시 조기 return(로딩·빈 목록)보다 위에 있어야 한다.
   // 조기 return 아래 훅 선언은 로딩이 끝나는 렌더에서 훅 개수를 바꿔 React #310 크래시를 낸다 (2026-08-19 실사고)
   const [showSelfTasks, setShowSelfTasks] = useState(false);
+  // 초기 선택 판정용 — selectedTaskId를 목록 구독 effect 의존성에 넣지 않기 위한 ref
+  // (의존성에 넣으면 항목 클릭마다 목록 전체 재구독·진입 시 2회 읽기 — 읽기 다이어트 2번, 2026-08-19)
+  const selectedTaskIdRef = useRef<string | null>(null);
+  selectedTaskIdRef.current = selectedTaskId;
 
   // 프로필 로드
   useEffect(() => {
@@ -104,7 +108,7 @@ export default function TaskStatusBoard() {
           }))
           .filter((t) => (t.recipientCount || t.recipientEmails?.length || 0) > 0); // 초안 제외 (피드백 4-a)
         setTasks(list);
-        if (list.length > 0 && !selectedTaskId) {
+        if (list.length > 0 && !selectedTaskIdRef.current) {
           setSelectedTaskId(list[0].id);
         }
         setLoading(false);
@@ -115,7 +119,7 @@ export default function TaskStatusBoard() {
       }
     );
     return () => unsub();
-  }, [myEmail, domain, selectedTaskId]);
+  }, [myEmail, domain]);
 
   // 선택된 업무 단일 문서 실시간 구독
   useEffect(() => {
