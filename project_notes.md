@@ -1058,3 +1058,14 @@
   - 영향은 작다(8/19 GWS 실명 채움으로 대상 대부분 소멸, 잔여는 noDept 도구·시험 계정). `resolveDisplayName`은 "로컬부와 다를 때만 profile.name 채택"이라 무력화되지 않고, `isFrozenLocalPartName`(MyProfileModal)은 AuthContext 경로라 무관 — **가드는 안 깨졌다.**
   - 처방(작성자 몫): `roster.ts`에서 name 폴백을 빼고 원시값을 그대로 반환한다. 표시 이름은 `displayName.ts` 단일 원본에 맡긴다 — 로더가 가짜 이름을 채우면 "아이디가 이름 자리에 있다"는 상태 자체를 소비자가 구분할 수 없게 된다(피드백 23번 계열).
 - 규칙 위반 1건(경미): f2729ce가 Claude의 미커밋 스펙 편집 2줄을 함께 담았다 — AGENTS.md ①-0(`git add -A` 금지). 내용 유실 없음, 귀속만 어긋남.
+
+## [2026-08-19] Claude 검수 (0fdb1bf) + 사용자 메모 등재
+
+- 변경 파일: `docs/messaging_hub_ia_spec.md`(§1-2-5 추가) · `STATUS.md`
+- 검증 상태: tsc ✅ exit 0(직접 실행) / check_ui_removals ✅ "사라진 상호작용 없음"(기준 8c3b429) / roster.ts name 폴백 제거 확인
+- 다음 할 일: STATUS 1번 명단 요약 문서(Claude) → 2번 화면(Antigravity)
+- 주의: 선행 리팩터 3건 종결. STATUS 작업 대기에서 해당 행 삭제, 번호 재부여
+
+**0fdb1bf 검수 = 통과.** `loadTeacherProfiles`가 원시 `name`을 그대로 반환하고 `email` 소문자화만 남겼다 → ProfileApprovals의 `data.name || email` 분기 복원, OrgChartTree·TaskRecipientPickerModal은 `resolveDisplayName` 경유라 영향 없음. 표시 이름 단일 원본이 `displayName.ts`로 정리됐다.
+
+**사용자 메모 (2026-08-19)**: 홈 메뉴는 더 이상 대시보드 역할이 아니다(관리자 화면 제외) → 「(대시보드)」 부제 제거. 두 곳(page.tsx:625 사이드바, :1066 상단 제목 「어드민 홈 대시보드」 — 후자는 일반 교사에게 "어드민"이 노출되던 자리). 허브 사이드바 작업과 동반 처리하도록 스펙 §1-2-5에 등재.
