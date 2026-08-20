@@ -2753,7 +2753,9 @@ export default function MemoSection({ initialMemoId, initialTab }: MemoSectionPr
       {/* 본문: 목록 + 상세 2열 */}
       <div className="flex-1 flex overflow-hidden">
         {/* 목록 패널 */}
-        <div className={`flex flex-col border-r border-slate-200 overflow-hidden ${selectedMemo ? "w-80 flex-shrink-0" : "flex-1"}`}>
+        {/* 좁은 화면(lg 미만)은 단일 패널 전환: 상세가 열리면 목록을 숨겨 전체 폭을 준다.
+            상세의 X(닫기)가 목록 복귀 역할 (2026-08-20 실기기 — 상세가 옆으로 열려 잘림) */}
+        <div className={`flex-col border-r border-slate-200 overflow-hidden ${selectedMemo ? "hidden lg:flex w-80 flex-shrink-0" : "flex flex-1"}`}>
           {/* 검색 결과 상단 안내 바 (§2-4a) */}
           {isSearching && !loading && currentList.length > 0 && (
             <div className="px-3.5 py-1.5 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between text-xs text-slate-500 font-medium flex-shrink-0">

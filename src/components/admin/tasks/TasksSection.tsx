@@ -1092,13 +1092,13 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 overflow-x-auto">
           {/* 탭 전환 */}
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
+          <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 shrink-0 border border-slate-200">
             <button
               type="button"
               onClick={() => setActiveTab("inbox")}
-              className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-lg text-sm font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === "inbox"
                   ? "bg-white text-indigo-700 shadow-2xs font-extrabold"
                   : "text-slate-600 hover:text-slate-900"
@@ -1115,7 +1115,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
             <button
               type="button"
               onClick={() => setActiveTab("sent")}
-              className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-lg text-sm font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === "sent"
                   ? "bg-white text-indigo-700 shadow-2xs font-extrabold"
                   : "text-slate-600 hover:text-slate-900"
@@ -1130,7 +1130,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
             <button
               type="button"
               onClick={() => setIsComposerOpen(true)}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold whitespace-nowrap shrink-0 rounded-xl transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <span>+ 업무 등록</span>
             </button>
@@ -1182,7 +1182,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               <button
                 type="button"
                 onClick={() => setFilter("pending")}
-                className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-full font-bold whitespace-nowrap transition-colors cursor-pointer ${
                   filter === "pending"
                     ? "bg-indigo-600 text-white"
                     : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
@@ -1193,7 +1193,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               <button
                 type="button"
                 onClick={() => setFilter("done")}
-                className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-full font-bold whitespace-nowrap transition-colors cursor-pointer ${
                   filter === "done"
                     ? "bg-indigo-600 text-white"
                     : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
@@ -1204,7 +1204,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               <button
                 type="button"
                 onClick={() => setFilter("all")}
-                className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-full font-bold whitespace-nowrap transition-colors cursor-pointer ${
                   filter === "all"
                     ? "bg-indigo-600 text-white"
                     : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
@@ -1215,7 +1215,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               <button
                 type="button"
                 onClick={() => setFilter("canceled")}
-                className={`px-3 py-1.5 rounded-full font-bold transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-full font-bold whitespace-nowrap transition-colors cursor-pointer ${
                   filter === "canceled"
                     ? "bg-indigo-600 text-white"
                     : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
@@ -1230,7 +1230,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               <button
                 type="button"
                 onClick={() => setIsSelfAddOpen(true)}
-                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-full transition-colors cursor-pointer border border-slate-200"
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold whitespace-nowrap rounded-full transition-colors cursor-pointer border border-slate-200"
               >
                 <span>+ 내 할 일 추가</span>
               </button>
