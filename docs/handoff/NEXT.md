@@ -17,94 +17,88 @@
 
 ---
 
-## 과제 D — 소속 없는 교사가 「업무 등록」에 들어가진 뒤 막힌다 (희망고문)
+## 과제 E — 「내 할 일 추가」도 잠그고, 자격 판정을 한 곳으로 모은다
 
-**기준 커밋**: `84d8ef5` · **사용자 실기기 신고 2026-08-20**
+**기준 커밋**: `61110a9` · Codex 검증 D-5·D-7 실패분의 후속
 
-### 증상
+### 배경
 
-교직원 조직도에 **소속이 등록되지 않은 교사** 계정으로:
+`61110a9`로 「+ 업무 등록」은 잠겼다. 그런데 **같은 함정이 「내 할 일 추가」에 남아 있다** — 소속 없는 계정이 버튼을 눌러 내용을 다 쓴 뒤 서버에서 거절당한다.
 
-- **쪽지**는 애초에 못 쓴다 — 자격 안내가 뜨고 발송이 막힌다. **올바른 동작이다.**
-- **업무는 「+ 업무 등록」이 그냥 열린다.** 업무명·기한·내용을 다 채울 수 있고, **[다음] 을 눌러야 비로소 막힌다.**
+**서버는 그대로 둔다 (2026-08-20 사용자 결정).** 소속 없는 계정은 셀프 할 일도 쓸 수 없는 것이 맞다. 그렇게 하려면 보안 규칙과 목록 조회까지 세 겹을 다 열어야 하는데, 그만한 일이 아니라고 판단했다. **화면을 서버에 맞추는 것이 이 과제다.**
 
-사용자 표현: *"희망고문이랄까?"* **다 쓰게 해 놓고 마지막에 막는 것이 가장 나쁘다.**
+### 할 일 (1) — 「내 할 일 추가」 버튼 잠금
 
-### 원인 (Claude가 코드로 확인 완료 — 조사하지 말고 이대로 고쳐라)
+| 파일 | 줄 | 지금 |
+|---|---|---|
+| `src/components/admin/tasks/TasksSection.tsx` | `:1228-1235` | 조건 없이 `setIsSelfAddOpen(true)` |
+| `src/components/mobile/MobileTasksSection.tsx` | `:887-891` | 조건 없이 `setIsSelfAddOpen(true)` |
 
-`src/components/admin/tasks/TasksSection.tsx:1125` 의 「+ 업무 등록」 버튼에 **자격 검사가 아예 없다.**
+- 두 곳 모두 **자격 없으면 `disabled`** 로 만든다. **스타일만 흐리게 하지 마라** — 눌리면 실패다.
+- `61110a9`가 「+ 업무 등록」에 한 것과 **똑같은 방식**을 쓴다(`TasksSection.tsx:1128-1145` 참고). 새 방식을 만들지 마라.
+- 안내 문구는 그 버튼 성격에 맞게: `조직 정보가 등록되면 내 할 일을 쓸 수 있습니다.`
+- 「내 조직 정보 신청 →」도 같이 둔다 — 같은 `openMyProfileModal` 이벤트.
+- **PC와 모바일이 같은 문구·같은 동작이어야 한다.** 오늘 PC·모바일이 갈려서 난 사고가 두 번이다.
 
-```tsx
-onClick={() => setIsComposerOpen(true)}   // 조건 없이 모달을 연다
+### 할 일 (2) — 자격 판정 단일화 (지금 5벌이다)
+
+`61110a9`가 `canUseMessaging`(`src/lib/org/eligibility.ts`)을 만들었지만 **사본이 4곳 남아 있다.**
+
+```
+src/components/mobile/MobileMemoSection.tsx:50
+src/components/admin/MemoSection.tsx:2142
+src/components/admin/DashboardMemoPanel.tsx:47
+src/components/mobile/MobileTasksSection.tsx:63
 ```
 
-사진에 보이는 분홍 경고는 화면이 미리 판단한 것이 아니라 **서버가 거절한 메시지**(`src/app/api/tasks/route.ts:87`)가 뒤늦게 표시된 것이다. 그래서 **들어간 뒤에야** 알게 된다.
-
-**쪽지 쪽에는 이미 판정 기준이 있다** — `src/components/admin/MessagingHub.tsx:35`:
+넷 다 이렇게 쓰여 있다:
 
 ```ts
-const canSend = !!userData && !!(teacherProfile?.departments && teacherProfile.departments.length > 0);
+const notEligible = !!userData && !(teacherProfile?.departments?.length);
 ```
 
-`TasksSection`도 **이미 `teacherProfile`을 갖고 있다**(`:73`의 `useAuth()`). 새로 불러올 것이 없다.
+**⚠️ 이것을 `!canUseMessaging(...)` 으로 바꾸지 마라. 동작이 달라진다.**
 
-### 할 일
+`notEligible`은 **`userData`가 아직 안 왔을 때 `false`** 다 — 즉 **로딩 중에는 경고를 띄우지 않는다.** 반면 `!canUseMessaging(null, ...)`은 `true`라서 **화면이 뜨는 순간 경고가 번쩍인다.** 이건 버그가 아니라 의도된 장치다.
 
-**(1) 판정을 한 곳으로 모은다.**
+**그래서 헬퍼를 하나 더 만든다.** `src/lib/org/eligibility.ts`에 추가:
 
-지금 이 판정이 `MessagingHub.tsx:35`에 있고, 여기에 또 쓰면 **두 곳이 된다.** 오늘 PC·모바일이 갈려서 생긴 사고를 이미 두 번 봤다.
+```ts
+/**
+ * 「자격 없음」 표시 여부 — 자격 판정의 단순 반대가 아니다.
+ *
+ * `userData`가 아직 안 온 로딩 구간에서는 **false**를 돌려 경고가 번쩍이는 것을 막는다.
+ * `!canUseMessaging(...)`으로 대체하면 그 깜빡임이 생긴다 (2026-08-20 단일화 시 확인).
+ */
+export function isMessagingIneligible(
+  userData: unknown,
+  teacherProfile: { departments?: string[] | null } | null | undefined
+): boolean {
+  return !!userData && !(teacherProfile?.departments?.length);
+}
+```
 
-- `src/lib/org/` 아래에 작은 헬퍼를 만든다. 예: `src/lib/org/eligibility.ts`
-  ```ts
-  /** 쪽지·업무를 보낼 자격 — 교직원 조직도에 소속이 등록돼 있어야 한다 (2026-08-20 단일화) */
-  export function canUseMessaging(
-    userData: unknown,
-    teacherProfile: { departments?: string[] | null } | null | undefined
-  ): boolean {
-    return !!userData && !!(teacherProfile?.departments && teacherProfile.departments.length > 0);
-  }
-  ```
-- **`MessagingHub.tsx:35`도 이 함수를 쓰도록 바꾼다.** 판정이 두 벌로 남으면 이 과제의 절반이 무의미하다.
-- **동작은 지금과 완전히 같아야 한다.** 조건식을 바꾸지 마라, 옮기기만 해라.
-
-**(2) 「+ 업무 등록」 버튼을 자격에 걸어 잠근다.**
-
-`TasksSection.tsx:1124-1131`:
-
-- 자격이 없으면 버튼을 **비활성**으로 만든다(`disabled`, 흐리게, 커서 기본).
-- **왜 안 되는지와 다음에 할 일을 그 자리에서 알려준다.** 쪽지와 같은 문구·같은 동작을 쓴다:
-  - 안내: `조직 정보가 등록되면 업무를 보낼 수 있습니다.`
-  - 옆에 `내 조직 정보 신청 →` 버튼. 누르면 쪽지 쪽과 **똑같이** 프로필 모달을 연다:
-    ```ts
-    document.dispatchEvent(new CustomEvent("openMyProfileModal"))
-    ```
-    (참고 구현: `src/components/admin/hub/HubMemoComposer.tsx:516-529`)
-- 안내를 버튼 옆이나 위에 두되 **새 컴포넌트를 만들지 마라.**
-
-**(3) 모바일도 같은지 확인한다.**
-
-`src/components/mobile/MobileTasksSection.tsx` 에 업무를 **등록하는** 입구가 있는지 확인해라.
-
-- 있으면 같은 방식으로 잠근다.
-- **없으면(받기 전용이면) 없다고 보고만 해라.** 없는 것을 만들지 마라.
+- 위 4곳이 **이 함수를 쓰게** 바꾼다. 조건식을 손으로 다시 쓰지 마라.
+- **표현을 바꾸지 마라 — 옮기기만 해라.** 동작이 한 톨도 달라지면 안 된다.
 
 ### 하지 말 것
 
-- **서버 검사를 없애지 마라.** 화면 잠금은 편의이고 서버가 진짜 방어선이다(`AGENTS.md` 자동완성 규칙 5번 — UI를 신뢰하지 않는다).
-- 자격 조건 자체를 바꾸지 마라. **소속 1개 이상**이 기준이고 그대로다.
-- 쪽지 쪽 동작을 바꾸지 마라. 지금이 맞다.
-- 모달 내부(`TaskComposerModal.tsx`)를 고치지 마라. **입구를 막는 과제다.**
+- **서버를 건드리지 마라.** `src/app/api/tasks/route.ts`의 소속 검사는 **그대로 유지**한다.
+- **`firestore.rules`를 건드리지 마라.**
+- 자격 조건(소속 1개 이상)을 바꾸지 마라.
+- 목록 조회 게이트(`MobileTasksSection.tsx:120`·`:526`)를 건드리지 마라. **이 과제 범위가 아니다.**
 
 ### 완료 확인
 
 1. `npx tsc --noEmit` 0건.
-2. **소속 있는 계정**: 「+ 업무 등록」이 종전과 똑같이 열린다. **변화 없음이 조건이다.**
-3. **소속 없는 계정**: 버튼이 눌리지 않고, 안내와 「내 조직 정보 신청」이 보이며, 눌렀을 때 프로필 모달이 열린다.
-4. `grep -rn "departments.length > 0" src/` — **판정이 한 곳(새 헬퍼)만 남았는지** 확인해 결과를 보고해라.
-5. `bash scripts/check_ui_removals.sh 84d8ef5` — 뜬 항목마다 이 지시서에 있었는지 판정해라.
-6. **실기기 확인은 Antigravity가 못 한다.** 보고에 *"실기기 미확인 — 소속 없는 계정 확인은 사용자 몫"* 을 명시해라.
+2. **자격 있는 계정: 아무 변화가 없다.** 두 버튼 다 종전과 똑같이 열린다. 이게 조건이다.
+3. **자격 없는 계정**: 「+ 업무 등록」·「+ 내 할 일 추가」 둘 다 눌리지 않고, 안내와 「내 조직 정보 신청」이 보인다.
+4. `grep -rn "departments?.length\|departments.length > 0" src/ | grep -v "lib/org/eligibility"` 를 돌려 **자격 판정 용도의 사본이 0건인지** 확인해 결과를 그대로 붙여라.
+   - 목록 표시·그룹핑 용도(`TaskRecipientPickerModal` 등)는 자격 판정이 아니다. **구분해서 보고해라.**
+5. `bash scripts/check_ui_removals.sh 61110a9` — 뜬 항목마다 이 지시서에 있었는지 판정해라.
+6. **실기기 확인은 Antigravity가 못 한다.** 보고에 *"실기기 미확인"* 을 명시해라.
 
 ### 보고할 것
 
-- 4번 `grep` 결과를 **그대로** 붙여라. 판정이 두 곳 이상 남아 있으면 실패다.
-- 모바일에 업무 등록 입구가 있었는지 없었는지 `파일:줄번호`로 답해라.
+- 4번 `grep` 결과를 **그대로** 붙여라.
+- PC와 모바일의 문구가 **글자까지 같은지** 각각 `파일:줄번호`로 보여라.
