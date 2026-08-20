@@ -10,6 +10,20 @@ export const TEACHER_PROFILES_CACHE_KEY = "teacher_profiles:all";
 const REBUILD_MARKER_KEY = "roster_index:rebuild_requested";
 const REBUILD_MARKER_TTL_MS = 5 * 60 * 1000;
 
+export interface RebuildResult {
+  success: boolean;
+  built?: boolean;
+  reason?: string;
+}
+
+/** 진행 중인 재조립 요청 Promise 보관 (과제 2 — 읽기 대기용) */
+let inFlightRebuildPromise: Promise<RebuildResult> | null = null;
+
+/** 테스트용: inFlightRebuildPromise 주입/조회 헬퍼 */
+export function _setInFlightRebuildPromiseForTest(p: Promise<RebuildResult> | null): void {
+  inFlightRebuildPromise = p;
+}
+
 /**
  * 명단 색인 재조립을 서버에 요청한다 (fire-and-forget).
  *
@@ -21,19 +35,35 @@ export function requestRosterIndexRebuild(): void {
   if (typeof window === "undefined") return;
   if (getClientCache(REBUILD_MARKER_KEY)) return; // 5분 내 중복 요청 억제
   setClientCache(REBUILD_MARKER_KEY, true, REBUILD_MARKER_TTL_MS);
-  void (async () => {
+
+  const promise = (async (): Promise<RebuildResult> => {
     try {
       const token = await auth.currentUser?.getIdToken();
-      if (!token) return;
-      await fetch("/api/org/roster", {
+      if (!token) return { success: false };
+      const res = await fetch("/api/org/roster", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ action: "rebuild" }),
       });
+      if (!res.ok) return { success: false };
+      const data = await res.json().catch(() => ({}));
+      return {
+        success: !!data.success,
+        built: !!data.built,
+        reason: data.reason,
+      };
     } catch {
       // 실패해도 화면을 막지 않는다 — 하루 1회 보정이 흡수한다 (스펙 §2-2)
+      return { success: false };
     }
   })();
+
+  inFlightRebuildPromise = promise;
+  promise.finally(() => {
+    if (inFlightRebuildPromise === promise) {
+      inFlightRebuildPromise = null;
+    }
+  });
 }
 
 /**
@@ -75,6 +105,12 @@ export async function loadTeacherProfiles(forceRefresh = false): Promise<Teacher
   }));
 }
 
+async function fetchProfilesFromOrigin(): Promise<TeacherProfile[]> {
+  const snap = await getDocs(collection(db, "teacher_profiles"));
+  requestRosterIndexRebuild();
+  return snap.docs.map((d) => d.data() as TeacherProfile);
+}
+
 /**
  * 명단 색인 우선 읽기 → 못 쓰면 원본 전수 폴백 (스펙 §3)
  *
@@ -82,21 +118,64 @@ export async function loadTeacherProfiles(forceRefresh = false): Promise<Teacher
  * 색인을 못 믿는 조건은 스펙 §3 표와 같다 — 없음·구조 불일치·개수 불일치·48시간 초과.
  * 폴백에 빠지면 재조립을 요청하되, requestRosterIndexRebuild가 5분 마커로 스탬피드를 막는다.
  */
-async function fetchProfilesViaIndexOrOrigin(): Promise<TeacherProfile[]> {
-  const domain = auth.currentUser?.email?.split("@")[1]?.toLowerCase();
+export async function fetchProfilesViaIndexOrOrigin(
+  opts?: {
+    customTimeoutMs?: number;
+    mockDomain?: string;
+    mockGetIndexDoc?: (domain: string) => Promise<any>;
+    mockGetOriginDocs?: () => Promise<TeacherProfile[]>;
+  }
+): Promise<TeacherProfile[]> {
+  const timeoutMs = opts?.customTimeoutMs ?? 3000;
+
+  // 1. 진행 중인 재조립이 있으면 최대 3초(timeoutMs)까지 대기 (과제 2)
+  if (inFlightRebuildPromise) {
+    let timer: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise<{ timeout: true }>((resolve) => {
+      timer = setTimeout(() => resolve({ timeout: true }), timeoutMs);
+    });
+
+    try {
+      const result = await Promise.race([inFlightRebuildPromise, timeoutPromise]);
+      if (timer) clearTimeout(timer);
+
+      // 3초 안에 안 끝나거나 요청이 실패했거나 debounced된 경우: 요약본을 읽지 않고 원본 직접 조회
+      if (
+        "timeout" in result ||
+        !result.success ||
+        !result.built ||
+        result.reason === "debounced"
+      ) {
+        if (opts?.mockGetOriginDocs) return opts.mockGetOriginDocs();
+        return fetchProfilesFromOrigin();
+      }
+    } catch {
+      if (timer) clearTimeout(timer);
+      if (opts?.mockGetOriginDocs) return opts.mockGetOriginDocs();
+      return fetchProfilesFromOrigin();
+    }
+  }
+
+  // 2. 명단 색인 읽기 (정상 완료되었거나 평상시 요청이 없던 경우)
+  const domain = opts?.mockDomain ?? auth.currentUser?.email?.split("@")[1]?.toLowerCase();
   if (domain) {
     try {
-      const snap = await getDoc(doc(db, ROSTER_INDEX_COLLECTION, domain));
-      const data = snap.exists() ? (snap.data() as any) : null;
+      let data: any = null;
+      if (opts?.mockGetIndexDoc) {
+        data = await opts.mockGetIndexDoc(domain);
+      } else {
+        const snap = await getDoc(doc(db, ROSTER_INDEX_COLLECTION, domain));
+        data = snap.exists() ? (snap.data() as any) : null;
+      }
       if (isRosterIndexUsable(data)) return data.profiles as TeacherProfile[];
     } catch {
       // 색인 읽기 실패는 치명적이지 않다 — 원본으로 간다
     }
   }
-  // ── 폴백: 원본 전수 ──
-  const snap = await getDocs(collection(db, "teacher_profiles"));
-  requestRosterIndexRebuild();
-  return snap.docs.map((d) => d.data() as TeacherProfile);
+
+  // 3. 폴백: 원본 전수
+  if (opts?.mockGetOriginDocs) return opts.mockGetOriginDocs();
+  return fetchProfilesFromOrigin();
 }
 
 /**
