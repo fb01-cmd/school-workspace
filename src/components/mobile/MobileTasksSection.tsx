@@ -739,6 +739,12 @@ export default function MobileTasksSection() {
                                 className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white"
                               />
 
+                              {mySubmission && (
+                                <p className="text-[11px] text-amber-800 dark:text-amber-300 font-medium">
+                                  이전 제출본은 교체되며 30일이 지나면 복구할 수 없습니다.
+                                </p>
+                              )}
+
                               <button
                                 type="button"
                                 onClick={() => handleMobileSubmit(task.id, staged.file, staged.note)}
