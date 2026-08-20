@@ -66,7 +66,7 @@ export default function MyProfileCard() {
   return (
     <>
       <div className="bg-indigo-900/60 rounded-xl p-4 space-y-3">
-        <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+        <div className="text-xs font-bold text-indigo-400 uppercase tracking-wider">
           내 조직 정보
         </div>
 

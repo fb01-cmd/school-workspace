@@ -554,7 +554,7 @@ export default function StudentRoster() {
                   <h1 className="text-2xl font-black text-slate-900 tracking-tight">
                     {group.grade}학년 {group.classNum === 0 ? "학번 미지정" : `${group.classNum}반`} 학생 명렬표
                   </h1>
-                  <p className="text-slate-400 text-[10px] mt-1 print-date font-mono">
+                  <p className="text-slate-400 text-xs mt-1 print-date font-mono">
                     출력일: {new Date().toLocaleDateString("ko-KR")} | 총원: {group.list.length}명
                   </p>
                 </div>
@@ -653,7 +653,7 @@ export default function StudentRoster() {
                                 {col.title}
                               </span>
                               <span 
-                                className="no-print text-slate-400 text-[10px] select-none cursor-pointer" 
+                                className="no-print text-slate-400 text-xs select-none cursor-pointer" 
                                 title="더블클릭하여 수정" 
                                 onClick={() => handleEditColumnTitle(col.id, col.title)}
                               >
@@ -709,7 +709,7 @@ export default function StudentRoster() {
                               className="px-2 py-1.5 text-center border border-slate-300 font-semibold text-slate-900 col-name"
                             >
                               {student.name}
-                              {student.suspended && <span className="text-[9px] text-rose-500 ml-1 no-print">(정지)</span>}
+                              {student.suspended && <span className="text-xs text-rose-500 ml-1 no-print">(정지)</span>}
                             </td>
 
                             {/* Optional Student Email */}

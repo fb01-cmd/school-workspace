@@ -255,14 +255,14 @@ export default function ChromeBookmarks() {
           </p>
           <p className="leading-relaxed">
             현재 구글 Workspace 최고관리자의 서비스 연동 권한 중 
-            <span className="font-mono bg-amber-100 px-1 py-0.5 rounded text-[10px] mx-1">https://www.googleapis.com/auth/chrome.management.policy</span> 
+            <span className="font-mono bg-amber-100 px-1 py-0.5 rounded text-xs mx-1">https://www.googleapis.com/auth/chrome.management.policy</span> 
             접근 권한이 구글 관리자 화면에 등록되지 않았거나 승인되지 않아 <strong>[오프라인 임시 저장 모드]</strong>로 자동 전환하여 작동 중입니다.
           </p>
-          <p className="text-[10px] text-amber-600 font-medium">
+          <p className="text-xs text-amber-600 font-medium">
             (북마크 편집 정보는 플랫폼과 수정 이력에 정상 보관되나, 실제 학생 기기 크롬 브라우저 상단바에 즉시 배포되지는 않습니다. 서비스 연동 권한이 활성화되면 실시간 동기화가 재개됩니다.)
           </p>
           {authWarning && (
-            <p className="text-[10px] font-mono text-amber-500 mt-1.5 border-t border-amber-200/50 pt-1">
+            <p className="text-xs font-mono text-amber-500 mt-1.5 border-t border-amber-200/50 pt-1">
               API 오류 상세: {authWarning}
             </p>
           )}
@@ -347,7 +347,7 @@ export default function ChromeBookmarks() {
               <h4 className="text-xs font-bold text-indigo-950 uppercase tracking-wide">💡 크롬 북마크 배포 가이드</h4>
               <ul className="list-disc pl-4 space-y-2 text-xs text-indigo-900 leading-relaxed">
                 <li>배포를 적용하면, 해당 조직단위(OU)에 소속된 모든 계정이 로그인된 크롬 브라우저 상단에 북마크바 폴더가 <strong>강제로 생성</strong>되며 사용자가 삭제할 수 없습니다.</li>
-                <li>적용 완료 후 반영까지 크롬 브라우저 수명 주기에 따라 최대 1~5분가량 소요될 수 있으며, 브라우저 주소창에 <span className="font-mono bg-indigo-150 px-1 py-0.5 rounded text-[10px]">chrome://policy</span>를 입력하여 [정책 새로고침]을 누르면 즉시 동기화됩니다.</li>
+                <li>적용 완료 후 반영까지 크롬 브라우저 수명 주기에 따라 최대 1~5분가량 소요될 수 있으며, 브라우저 주소창에 <span className="font-mono bg-indigo-150 px-1 py-0.5 rounded text-xs">chrome://policy</span>를 입력하여 [정책 새로고침]을 누르면 즉시 동기화됩니다.</li>
                 <li>안전한 협업을 위해 모든 북마크 수정 이력은 백엔드 감사 로그에 실시간 기록되며, 수정 로그 열람실에서 즉시 조회가 가능합니다.</li>
               </ul>
             </div>
@@ -379,10 +379,10 @@ export default function ChromeBookmarks() {
                   <div key={log.id} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 text-xs shadow-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
                       <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-indigo-100 text-indigo-800">북마크 변경</span>
+                        <span className="px-2 py-0.5 rounded text-xs font-extrabold bg-indigo-100 text-indigo-800">북마크 변경</span>
                         <strong className="text-sm text-gray-900">{log.orgUnitPath}</strong>
                       </div>
-                      <span className="text-gray-400 font-mono text-[10px]">{formatLogTime(log.timestamp)}</span>
+                      <span className="text-gray-400 font-mono text-xs">{formatLogTime(log.timestamp)}</span>
                     </div>
 
                     <div className="flex flex-wrap gap-1.5 items-center">
@@ -411,7 +411,7 @@ export default function ChromeBookmarks() {
                           변경 없음 (재배포) &mdash; before {countBefore}개 / after {countAfter}개
                         </span>
                       )}
-                      <span className="ml-auto text-[10px] text-gray-400">전체 {totalAfter}개 항목</span>
+                      <span className="ml-auto text-xs text-gray-400">전체 {totalAfter}개 항목</span>
                     </div>
 
                     {hasChanges && (
@@ -421,9 +421,9 @@ export default function ChromeBookmarks() {
                             <span className="flex-shrink-0">➕</span>
                             <span>
                               {item.isFolder ? "📁" : "🔗"} <span className="font-semibold">{item.name}</span>
-                              {!item.isFolder && item.url && <span className="text-green-500 text-[10px] ml-1 font-mono"> {item.url}</span>}
+                              {!item.isFolder && item.url && <span className="text-green-500 text-xs ml-1 font-mono"> {item.url}</span>}
                               {item.path.includes(" › ") && (
-                                <span className="text-gray-400 text-[10px] ml-1">← {item.path.split(" › ").slice(0, -1).join(" › ")}</span>
+                                <span className="text-gray-400 text-xs ml-1">← {item.path.split(" › ").slice(0, -1).join(" › ")}</span>
                               )}
                             </span>
                           </div>
@@ -433,7 +433,7 @@ export default function ChromeBookmarks() {
                             <span className="flex-shrink-0">➖</span>
                             <span className="line-through opacity-70">
                               {item.isFolder ? "📁" : "🔗"} <span className="font-semibold">{item.name}</span>
-                              {!item.isFolder && item.url && <span className="text-[10px] ml-1 font-mono"> {item.url}</span>}
+                              {!item.isFolder && item.url && <span className="text-xs ml-1 font-mono"> {item.url}</span>}
                             </span>
                           </div>
                         ))}
@@ -442,17 +442,17 @@ export default function ChromeBookmarks() {
                             <span className="flex-shrink-0">↕️</span>
                             <span>
                               {item.isFolder ? "📁" : "🔗"} <span className="font-semibold">{item.name}</span>
-                              <span className="text-gray-400 text-[10px] ml-1">→ {item.path.includes(" › ") ? item.path.split(" › ").slice(0, -1).join(" › ") : "루트"}</span>
+                              <span className="text-gray-400 text-xs ml-1">→ {item.path.includes(" › ") ? item.path.split(" › ").slice(0, -1).join(" › ") : "루트"}</span>
                             </span>
                           </div>
                         ))}
                         {(added.length + removed.length + moved.length) > 15 && (
-                          <p className="text-gray-400 text-[10px] pt-1 border-t">외 {(added.length + removed.length + moved.length) - 15}개 변경...</p>
+                          <p className="text-gray-400 text-xs pt-1 border-t">외 {(added.length + removed.length + moved.length) - 15}개 변경...</p>
                         )}
                       </div>
                     )}
 
-                    <div className="text-gray-500 text-[10px] text-right">
+                    <div className="text-gray-500 text-xs text-right">
                       수정 작업: <span className="font-bold text-gray-800">{log.operatorName}</span> ({log.operatorEmail})
                     </div>
                   </div>

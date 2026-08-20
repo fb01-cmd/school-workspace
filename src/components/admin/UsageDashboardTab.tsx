@@ -561,7 +561,7 @@ export default function UsageDashboardTab() {
                   bottom: `${Math.min(95, Math.max(5, (dailyLimit / chartMaxY) * 100))}%`,
                 }}
               >
-                <span className="text-[10px] font-bold bg-white dark:bg-slate-900 px-1.5 py-0.5 text-rose-600 dark:text-rose-400 rounded-md border border-rose-200 dark:border-rose-900/60 shadow-2xs">
+                <span className="text-[11px] font-bold bg-white dark:bg-slate-900 px-1.5 py-0.5 text-rose-600 dark:text-rose-400 rounded-md border border-rose-200 dark:border-rose-900/60 shadow-2xs">
                   무료 한도 ({dailyLimit.toLocaleString()}건)
                 </span>
               </div>
@@ -607,7 +607,7 @@ export default function UsageDashboardTab() {
             </div>
 
             {/* X축 날짜 라벨 (5일 간격으로 표시) */}
-            <div className="flex justify-between text-[10px] text-slate-400 px-1">
+            <div className="flex justify-between text-[11px] text-slate-400 px-1">
               <span>{daily[0]?.label}</span>
               {daily.length > 10 && <span>{daily[Math.floor(daily.length / 2)]?.label}</span>}
               <span>{daily[daily.length - 1]?.label}</span>
@@ -695,7 +695,7 @@ export default function UsageDashboardTab() {
             </div>
 
             {/* X축 시간 라벨 */}
-            <div className="flex justify-between text-[10px] text-slate-400 px-1">
+            <div className="flex justify-between text-[11px] text-slate-400 px-1">
               <span>{hourly[0]?.label}시</span>
               {hourly.length > 6 && <span>{hourly[Math.floor(hourly.length / 2)]?.label}시</span>}
               <span>{hourly[hourly.length - 1]?.label}시</span>

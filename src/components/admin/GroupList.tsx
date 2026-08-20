@@ -509,7 +509,7 @@ export default function GroupList() {
                   </td>
                   <td className="px-4 py-3 text-gray-500 text-xs">
                     <div className="font-medium text-gray-700 line-clamp-1">{g.description || "설명 없음"}</div>
-                    <div className="text-indigo-600 font-semibold mt-1 bg-indigo-50/50 inline-block px-2 py-0.5 rounded text-[10px]">
+                    <div className="text-indigo-600 font-semibold mt-1 bg-indigo-50/50 inline-block px-2 py-0.5 rounded text-xs">
                       회원수: {g.directMembersCount || "0"}명
                     </div>
                   </td>
@@ -549,7 +549,7 @@ export default function GroupList() {
                 >
                   ×
                 </button>
-                <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-indigo-600 rounded text-white inline-block mb-2">
+                <span className="px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider bg-indigo-600 rounded text-white inline-block mb-2">
                   구글 그룹 관리
                 </span>
                 <h3 className="text-lg font-bold truncate pr-8">{selectedGroup.name}</h3>
@@ -591,7 +591,7 @@ export default function GroupList() {
                       </span>
                       {/* Current status summary shown even when collapsed */}
                       {!loadingSettings && groupSettings && (
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                           currentPreset === "announcement"
                             ? "bg-amber-100 text-amber-700"
                             : currentPreset === "public"
@@ -602,7 +602,7 @@ export default function GroupList() {
                         </span>
                       )}
                       {!loadingSettings && !groupSettings && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-200 text-gray-500">
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 text-gray-500">
                           권한 정보 없음
                         </span>
                       )}
@@ -768,13 +768,13 @@ export default function GroupList() {
                                 "외부 사용자"
                               )}
                             </span>
-                            <span className="text-[10px] font-mono text-gray-400 truncate mt-0.5">
+                            <span className="text-xs font-mono text-gray-400 truncate mt-0.5">
                               {m.email}
                             </span>
                           </div>
                           <button
                             onClick={() => handleRemoveMember(m.email)}
-                            className="px-2.5 py-1 text-[10px] text-red-500 hover:bg-red-50 rounded font-semibold transition-colors flex-shrink-0"
+                            className="px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 rounded font-semibold transition-colors flex-shrink-0"
                           >
                             제외
                           </button>

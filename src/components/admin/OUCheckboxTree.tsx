@@ -117,12 +117,12 @@ function CheckboxNode({ node, selected, onChange, depth = 0 }: CheckboxNodeProps
 
         {/* Badge when fully selected */}
         {state === "all" && (
-          <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
+          <span className="text-[11px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
             허용
           </span>
         )}
         {state === "some" && (
-          <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
+          <span className="text-[11px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
             일부
           </span>
         )}
@@ -183,7 +183,7 @@ export default function OUCheckboxTree({ orgUnits, selected, onChange }: OUCheck
           <button
             type="button"
             onClick={() => onChange([])}
-            className="text-indigo-500 hover:text-indigo-700 text-[10px] underline"
+            className="text-indigo-500 hover:text-indigo-700 text-xs underline"
           >
             전체 해제
           </button>

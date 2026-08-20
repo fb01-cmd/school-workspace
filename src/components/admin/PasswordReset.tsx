@@ -219,7 +219,7 @@ export default function PasswordReset() {
             
             <div className="bg-white border border-green-100 rounded-lg p-3 flex justify-between items-center">
               <div>
-                <span className="text-gray-400 block text-[10px]">설정된 임시 비밀번호</span>
+                <span className="text-gray-400 block text-xs">설정된 임시 비밀번호</span>
                 <strong className="text-lg font-mono text-indigo-600 tracking-wider">
                   {successResult.tempPassword}
                 </strong>

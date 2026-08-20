@@ -212,7 +212,7 @@ export default function PolicyAckStatusTab() {
                     <tr key={u.uid} className="hover:bg-slate-50/80 transition-colors">
                       <td className="p-3">
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          className={`px-2 py-0.5 rounded text-xs font-bold ${
                             u.role === "super_admin"
                               ? "bg-purple-100 text-purple-800"
                               : u.role === "teacher"
@@ -227,11 +227,11 @@ export default function PolicyAckStatusTab() {
                       <td className="p-3 font-mono text-slate-600">{u.email}</td>
                       <td className="p-3">
                         {isAcked ? (
-                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded inline-flex items-center gap-1">
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-xs font-bold rounded inline-flex items-center gap-1">
                             ✅ 확인 완료 (v{u.policyAck?.version})
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded inline-flex items-center gap-1">
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-xs font-bold rounded inline-flex items-center gap-1">
                             ⏳ 미확인
                           </span>
                         )}

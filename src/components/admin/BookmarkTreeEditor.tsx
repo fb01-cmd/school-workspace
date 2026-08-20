@@ -294,7 +294,7 @@ function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, 
 
         {/* Expand toggle */}
         <span
-          className="w-3.5 flex-shrink-0 text-[10px] text-gray-400 text-center cursor-pointer"
+          className="w-3.5 flex-shrink-0 text-xs text-gray-400 text-center cursor-pointer"
           onClick={() => isFolder && setExpanded(v => !v)}
         >
           {isFolder ? (expanded ? "▼" : "▶") : ""}

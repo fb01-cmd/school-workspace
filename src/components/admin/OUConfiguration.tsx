@@ -501,7 +501,7 @@ export default function OUConfiguration() {
                     
                     {/* OU Selector */}
                     <div className="flex-1 min-w-[200px]">
-                      <label className="block text-[10px] font-semibold text-gray-500 mb-1">학생 OU 경로</label>
+                      <label className="block text-xs font-semibold text-gray-500 mb-1">학생 OU 경로</label>
                       <OUTreeSelector
                         orgUnits={orgUnits}
                         value={studentOUMappings[grade] || ""}
@@ -512,7 +512,7 @@ export default function OUConfiguration() {
 
                     {/* Class Count Input */}
                     <div className="w-36 flex-shrink-0">
-                      <label className="block text-[10px] font-semibold text-gray-500 mb-1">학급(반) 수</label>
+                      <label className="block text-xs font-semibold text-gray-500 mb-1">학급(반) 수</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
@@ -657,12 +657,12 @@ export default function OUConfiguration() {
                       >
                         <span>{group}</span>
                         {isDefaultGroup && (
-                          <span className="bg-indigo-100 text-indigo-800 text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                          <span className="bg-indigo-100 text-indigo-800 text-[11px] px-1.5 py-0.5 rounded font-semibold">
                             기본 필수
                           </span>
                         )}
                         {isSecurity && (
-                          <span className="bg-red-50 text-red-600 border border-red-200 text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                          <span className="bg-red-50 text-red-600 border border-red-200 text-[11px] px-1.5 py-0.5 rounded font-semibold">
                             보안 그룹
                           </span>
                         )}

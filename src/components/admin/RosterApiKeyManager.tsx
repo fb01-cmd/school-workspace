@@ -527,11 +527,11 @@ export default function RosterApiKeyManager() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {k.revoked ? (
-                        <span className="inline-flex px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-100 text-rose-700 border border-rose-200">
+                        <span className="inline-flex px-2 py-0.5 text-xs font-bold rounded-full bg-rose-100 text-rose-700 border border-rose-200">
                           폐기됨
                         </span>
                       ) : (
-                        <span className="inline-flex px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                        <span className="inline-flex px-2 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
                           활성
                         </span>
                       )}

@@ -112,7 +112,7 @@ export default function PWAInstallGuideTab() {
             </div>
             <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-normal">
               링크를 <strong>Safari로</strong> 열기<br />
-              <span className="text-[10px] text-gray-500 dark:text-gray-500 block mt-1">
+              <span className="text-[11px] text-gray-500 dark:text-gray-500 block mt-1">
                 (카톡에서 열렸으면: 하단 공유 아이콘 → "Safari로 열기", 또는 주소 복사 후 Safari에 붙여넣기)
               </span>
             </p>
@@ -125,7 +125,7 @@ export default function PWAInstallGuideTab() {
             </div>
             <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-normal">
               하단 가운데 <strong>공유 버튼(⬆️)</strong> → 아래로 스크롤 → <strong>"홈 화면에 추가"</strong><br />
-              <span className="text-[10px] text-gray-500 dark:text-gray-500 block mt-1">
+              <span className="text-[11px] text-gray-500 dark:text-gray-500 block mt-1">
                 ("웹 앱으로 열기" 체크는 켠 채로)
               </span>
             </p>
@@ -138,7 +138,7 @@ export default function PWAInstallGuideTab() {
             </div>
             <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-normal">
               홈 화면의 <strong>효명고 아이콘으로</strong> 앱 열기 → 로그인<br />
-              <span className="text-[10px] text-gray-500 dark:text-gray-500 block mt-1">
+              <span className="text-[11px] text-gray-500 dark:text-gray-500 block mt-1">
                 (구글 화면으로 갔다가 자동으로 돌아옴)
               </span>
             </p>

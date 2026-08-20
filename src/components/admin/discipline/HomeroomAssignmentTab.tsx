@@ -349,7 +349,7 @@ export default function HomeroomAssignmentTab({ domain: _domain }: HomeroomAssig
                                 {grade}-{classNum}반
                               </span>
                               {isCoHomeroom ? (
-                                <span className="text-[10px] font-extrabold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700">
+                                <span className="text-[11px] font-extrabold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700">
                                   👥 공동담임 ({classTeachers.length}명)
                                 </span>
                               ) : !isAssigned ? (

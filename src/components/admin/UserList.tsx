@@ -1234,7 +1234,7 @@ export default function UserList() {
                       <div className="flex items-center gap-2">
                         <span>{user.name.givenName}</span>
                         {user.suspended && (
-                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-800 border border-red-200">
                             일시정지됨
                           </span>
                         )}
@@ -1672,7 +1672,7 @@ export default function UserList() {
                   <label className="block text-sm font-medium text-gray-700">
                     이메일 별칭 (Email Aliases)
                   </label>
-                  <span className="text-[10px] text-amber-600 font-semibold">
+                  <span className="text-xs text-amber-600 font-semibold">
                     * 별칭 추가/삭제는 즉시 Google에 반영됩니다.
                   </span>
                 </div>
@@ -1713,7 +1713,7 @@ export default function UserList() {
                       placeholder="새 별칭 아이디 입력"
                       disabled={aliasSubmitting}
                     />
-                    <span className="inline-flex items-center px-2.5 border border-l-0 border-gray-300 rounded-r-md bg-gray-50 text-gray-500 text-[10px] font-mono select-none">
+                    <span className="inline-flex items-center px-2.5 border border-l-0 border-gray-300 rounded-r-md bg-gray-50 text-gray-500 text-xs font-mono select-none">
                       @{domain}
                     </span>
                   </div>

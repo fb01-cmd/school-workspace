@@ -615,7 +615,7 @@ export default function AdminPage() {
                 <button
                   type="button"
                   onClick={() => toggleSection("common")}
-                  className="w-full flex items-center justify-between px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider hover:text-indigo-200 transition-colors"
+                  className="w-full flex items-center justify-between px-4 pb-2 text-xs font-bold text-indigo-400 uppercase tracking-wider hover:text-indigo-200 transition-colors"
                 >
                   <span>교직원 공통 도구</span>
                   <svg
@@ -746,7 +746,7 @@ export default function AdminPage() {
                         <span>🏷️</span>
                         <span>내 조직 정보 신청</span>
                         {hasNoProfile && (
-                          <span className="ml-auto text-[10px] bg-amber-400 text-amber-900 font-bold px-1.5 py-0.5 rounded-full">미등록</span>
+                          <span className="ml-auto text-[11px] bg-amber-400 text-amber-900 font-bold px-1.5 py-0.5 rounded-full">미등록</span>
                         )}
                       </button>
                     )}
@@ -760,7 +760,7 @@ export default function AdminPage() {
                   <button
                     type="button"
                     onClick={() => toggleSection("timetable")}
-                    className="w-full flex items-center justify-between px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider hover:text-indigo-200 transition-colors"
+                    className="w-full flex items-center justify-between px-4 pb-2 text-xs font-bold text-indigo-400 uppercase tracking-wider hover:text-indigo-200 transition-colors"
                   >
                     <span>시간표 관리</span>
                     <svg
@@ -793,7 +793,7 @@ export default function AdminPage() {
                           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                             activeMenu === "timetable_creation"
                               ? "bg-indigo-800 text-white font-bold shadow-sm"
-                              : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
+                            : "hover:bg-indigo-900/50 text-gray-400 hover:text-white"
                           }`}
                         >
                           <span>🧩</span>
@@ -810,7 +810,7 @@ export default function AdminPage() {
                 <button
                   type="button"
                   onClick={() => toggleSection("discipline")}
-                  className="w-full flex items-center justify-between px-4 pb-2 text-[10px] font-bold text-indigo-400 uppercase tracking-wider hover:text-indigo-200 transition-colors"
+                  className="w-full flex items-center justify-between px-4 pb-2 text-xs font-bold text-indigo-400 uppercase tracking-wider hover:text-indigo-200 transition-colors"
                 >
                   <span>학생 생활지도</span>
                   <svg
@@ -847,7 +847,7 @@ export default function AdminPage() {
                   <button
                     type="button"
                     onClick={() => toggleSection("admin")}
-                    className="w-full flex items-center justify-between px-4 pb-2 text-[10px] font-bold text-red-300 uppercase tracking-wider hover:text-red-100 transition-colors"
+                    className="w-full flex items-center justify-between px-4 pb-2 text-xs font-bold text-red-300 uppercase tracking-wider hover:text-red-100 transition-colors"
                   >
                     <span>🔐 관리자 전용</span>
                     <svg
@@ -866,7 +866,7 @@ export default function AdminPage() {
                     <div className="space-y-4 pt-1">
                       {/* 시스템 설정 */}
                       <div>
-                        <div className="px-4 pb-1 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                        <div className="px-4 pb-1 text-xs font-bold text-indigo-400 uppercase tracking-wider">
                           ⚙️ 시스템 설정
                         </div>
                         <div className="space-y-1">
@@ -922,7 +922,7 @@ export default function AdminPage() {
 
                       {/* 사용자 및 조직 관리 */}
                       <div>
-                        <div className="px-4 pb-1 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                        <div className="px-4 pb-1 text-xs font-bold text-indigo-400 uppercase tracking-wider">
                           👥 사용자 및 조직 관리
                         </div>
                         <div className="space-y-1">
@@ -977,7 +977,7 @@ export default function AdminPage() {
                                 관리자가 조직도를 못 찾았다(사용자 실기기, 배포 당일). 위치는 유지. */}
                             <span>교직원 조직도 관리</span>
                             {pendingProfileCount > 0 && (
-                              <span className="ml-auto bg-amber-400 text-amber-900 text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                              <span className="ml-auto bg-amber-400 text-amber-900 text-[11px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
                                 {pendingProfileCount}
                               </span>
                             )}
@@ -987,7 +987,7 @@ export default function AdminPage() {
 
                       {/* 계정 생애주기 관리 */}
                       <div>
-                        <div className="px-4 pb-1 text-[10px] font-bold text-red-300 uppercase tracking-wider">
+                        <div className="px-4 pb-1 text-xs font-bold text-red-300 uppercase tracking-wider">
                           🔄 계정 생애주기 관리
                         </div>
                         <div className="space-y-1">

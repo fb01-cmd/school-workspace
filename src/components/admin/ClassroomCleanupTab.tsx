@@ -880,11 +880,11 @@ export default function ClassroomCleanupTab() {
                               </td>
                               <td className="p-3 text-center">
                                 {c.isOwner ? (
-                                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded text-[10px] font-bold">
+                                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded text-xs font-bold">
                                     소유자
                                   </span>
                                 ) : (
-                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 border border-gray-200 rounded text-[10px] font-medium">
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 border border-gray-200 rounded text-xs font-medium">
                                     공동 교사
                                   </span>
                                 )}
@@ -1093,18 +1093,18 @@ export default function ClassroomCleanupTab() {
                         <span>{log.originalName}</span>
                         {/* 🟡 2 수정: orphan 모드 전용 배지 */}
                         {log.mode === "orphan" && (
-                          <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded border border-orange-200">
+                          <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[11px] font-bold rounded border border-orange-200">
                             고아 폴더
                           </span>
                         )}
                         {log.mode === "residual" && (
-                          <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-semibold rounded border border-amber-200">
+                          <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 text-[11px] font-semibold rounded border border-amber-200">
                             잔여 정리
                           </span>
                         )}
                       </div>
                       {log.results && (
-                        <div className="flex flex-wrap gap-1 mt-1 text-[10px] font-medium">
+                        <div className="flex flex-wrap gap-1 mt-1 text-[11px] font-medium">
                           {log.results.archive && (
                             <span className={log.results.archive.success ? "text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60" : "text-red-800 bg-red-50 px-1.5 py-0.5 rounded border border-red-200/60"}>
                               보관 {log.results.archive.success ? "성공" : "실패"}

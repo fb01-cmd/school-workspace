@@ -534,7 +534,7 @@ export default function DisciplineSummarySection({
                       >
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center space-x-2">
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                            <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
                               {it.category || "기타"}
                             </span>
                             <span className="font-bold text-gray-900 dark:text-white">

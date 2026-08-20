@@ -721,14 +721,14 @@ export default function ClassroomPage() {
               <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
                 <div>
                   <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">강제 배정 대기 명단</h3>
-                  <p className="text-[10px] text-gray-400">강제 배정 대상 임시 버퍼</p>
+                  <p className="text-xs text-gray-400">강제 배정 대상 임시 버퍼</p>
                 </div>
                 {studentBasket.length > 0 && (
                   <div className="flex gap-2">
                     <button
                       type="button"
                       onClick={handleClearBasket}
-                      className="text-[10px] text-red-600 hover:underline font-bold"
+                      className="text-xs text-red-600 hover:underline font-bold"
                     >
                       전체 비우기
                     </button>
@@ -742,7 +742,7 @@ export default function ClassroomPage() {
                   <div className="flex flex-col items-center justify-center h-full text-gray-400 text-xs text-center py-10">
                     <p className="text-2xl mb-2">📥</p>
                     <p>대기 명단이 비어 있습니다.</p>
-                    <p className="text-[10px] text-gray-400 mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                       반별 일괄 추가나 개별 학생 검색을 이용하여 대상을 추가해 주세요.
                     </p>
                   </div>
@@ -756,14 +756,14 @@ export default function ClassroomPage() {
                         className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-150 rounded-lg text-xs hover:bg-gray-100/50 transition-colors"
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[10px] text-gray-400 font-sans flex-shrink-0">{idx + 1}</span>
+                          <span className="text-xs text-gray-400 font-sans flex-shrink-0">{idx + 1}</span>
                           <div className="min-w-0">
                             {hasInfo ? (
                               <>
                                 <span className="font-semibold text-gray-800">
                                   {info.studentId ? `${info.studentId} ${info.givenName}`.trim() : info.givenName}
                                 </span>
-                                <span className="ml-1.5 text-[10px] text-gray-400 font-mono truncate">{email}</span>
+                                <span className="ml-1.5 text-xs text-gray-400 font-mono truncate">{email}</span>
                               </>
                             ) : (
                               <span className="font-mono text-gray-700">{email}</span>
@@ -828,7 +828,7 @@ export default function ClassroomPage() {
           <div>
             <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-1.5">
               <span>👥 수업 소속 멤버 목록</span>
-              <span className="bg-indigo-50 text-indigo-600 text-[10px] px-2 py-0.5 rounded-full font-extrabold">
+              <span className="bg-indigo-50 text-indigo-600 text-xs px-2 py-0.5 rounded-full font-extrabold">
                 {courseStudents.length}명 가입됨
               </span>
             </h3>
@@ -895,7 +895,7 @@ export default function ClassroomPage() {
                 <div key={log.id} className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3 text-xs">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-2">
                     <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                      <span className={`px-2 py-0.5 rounded text-xs font-extrabold ${
                         log.action === "CREATE_AND_SYNC" 
                           ? "bg-purple-100 text-purple-800" 
                           : "bg-blue-100 text-blue-800"
@@ -904,7 +904,7 @@ export default function ClassroomPage() {
                       </span>
                       <strong className="text-sm text-gray-900">{log.courseName} {log.sectionName ? `(${log.sectionName})` : ""}</strong>
                     </div>
-                    <span className="text-gray-400 font-mono text-[10px]">{formatLogTime(log.timestamp)}</span>
+                    <span className="text-gray-400 font-mono text-xs">{formatLogTime(log.timestamp)}</span>
                   </div>
 
                   <div className="flex flex-wrap gap-x-6 gap-y-2 text-gray-600">
@@ -922,10 +922,10 @@ export default function ClassroomPage() {
 
                   {log.failures && log.failures.length > 0 && (
                     <div className="bg-white rounded border border-red-100 p-2.5 space-y-1">
-                      <p className="text-[10px] font-bold text-red-600">⚠️ 일부 미가입 사유:</p>
+                      <p className="text-xs font-bold text-red-600">⚠️ 일부 미가입 사유:</p>
                       <div className="max-h-24 overflow-y-auto space-y-1">
                         {log.failures.map((f, i) => (
-                          <div key={i} className="text-[10px] flex justify-between font-mono">
+                          <div key={i} className="text-xs flex justify-between font-mono">
                             <span className="text-gray-500">{f.email}</span>
                             <span className="text-red-500 font-semibold">{f.reason}</span>
                           </div>

@@ -402,7 +402,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
               hasError && !row.emailPrefix.trim() ? "border-red-400 bg-red-50/50" : "border-slate-200"
             }`}
           />
-          <span className="px-2 py-1 text-[10px] text-slate-500 border border-l-0 border-slate-200 bg-slate-50 rounded-r font-mono select-none">
+          <span className="px-2 py-1 text-xs text-slate-500 border border-l-0 border-slate-200 bg-slate-50 rounded-r font-mono select-none">
             @{domain}
           </span>
         </div>
@@ -526,7 +526,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
           <button
             type="button"
             onClick={() => onRemoveRow(row.id, index)}
-            className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded text-[10px] font-semibold"
+            className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded text-xs font-semibold"
           >
             삭제
           </button>
@@ -539,7 +539,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
       <tr className="bg-red-50 border-b-2 border-red-200">
         <td colSpan={9} className="px-4 py-2 text-xs text-red-700 bg-red-100/90 font-medium">
           <div className="flex items-center gap-2">
-            <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[10px] font-bold">저장 실패</span>
+            <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-xs font-bold">저장 실패</span>
             {/* 본문은 눈높이 문구, 원문은 title로만 — 진단 정보는 남기되 화면에 영문을 띄우지 않는다 */}
             <span title={row.serverError}>{formatServerError(row.serverError)}</span>
           </div>
@@ -1503,7 +1503,7 @@ export default function UserSheetEditor({
                   <button
                     type="button"
                     onClick={() => handleFillDownFrom(0, "changePasswordAtNextLogin")}
-                    className="text-[9px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium px-1.5 py-0.5 rounded text-center transition-colors"
+                    className="text-[11px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium px-1.5 py-0.5 rounded text-center transition-colors"
                     title="첫 번째 행 체크 상태를 아래로 복사"
                   >
                     아래로 복사
@@ -1518,7 +1518,7 @@ export default function UserSheetEditor({
                   <button
                     type="button"
                     onClick={() => handleFillDownFrom(0, "suspended")}
-                    className="text-[9px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium px-1.5 py-0.5 rounded text-center transition-colors"
+                    className="text-[11px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium px-1.5 py-0.5 rounded text-center transition-colors"
                     title="첫 번째 행의 정지 여부를 아래로 복사"
                   >
                     아래로 복사
