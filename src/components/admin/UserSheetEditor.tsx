@@ -311,9 +311,9 @@ const SheetRowMemo = memo(function SheetRowMemo({
         <div className="flex flex-col items-center gap-0.5">
           <span>{index + 1}</span>
           {row.isNew ? (
-            <span className="px-1 py-0.2 bg-emerald-100 text-emerald-800 rounded-[3px] text-[8px] font-bold">New</span>
+            <span className="px-1 py-0.2 bg-emerald-100 text-emerald-800 rounded-[3px] text-xs font-bold">New</span>
           ) : row.isModified ? (
-            <span className="px-1 py-0.2 bg-sky-100 text-sky-800 rounded-[3px] text-[8px] font-bold">Edit</span>
+            <span className="px-1 py-0.2 bg-sky-100 text-sky-800 rounded-[3px] text-xs font-bold">Edit</span>
           ) : null}
         </div>
       </td>
