@@ -23,28 +23,70 @@ export interface RecipientChip {
  * - 1명: "홍길동"
  * - 복수: "홍길동 외 3명"
  */
-export function buildRecipientSummary(chips: RecipientChip[]): string {
-  if (chips.length === 0) return "";
-  // 부서 헤더 선택이 하나라도 있으면 부서명 기준
-  const deptChips = chips.filter((c) => c.source === "dept" && c.deptLabel);
-  if (deptChips.length > 0) {
-    const deptNames = [...new Set(deptChips.map((c) => c.deptLabel!))];
-    const total = chips.length;
-    if (deptNames.length === 1) {
-      return `${deptNames[0]} ${total}명`;
-    }
-    return `${deptNames[0]} 외 ${deptNames.length - 1}개 부서 ${total}명`;
-  }
-  // 개인만이면 이름 기준
-  const first = chips[0].label;
-  const rest = chips.length - 1;
-  return rest > 0 ? `${first} 외 ${rest}명` : first;
+/**
+ * 수신자 요약의 **재료** (2026-08-20 신설).
+ *
+ * **문장을 저장하지 않고 재료를 저장한다.** 이전에는 `"1학년 12명"` 같은 완성된 문장을
+ * 발송 시점에 만들어 문서에 박았는데, 그러면 ⓐ 문구가 틀려도 이미 보낸 것은 못 고치고
+ * ⓑ 표현을 바꾸면 옛 것과 새 것이 섞이며 ⓒ 회수로 인원이 줄어도 숫자가 옛날 그대로다.
+ *
+ * 재료만 저장하면 **문장은 화면에서 만든다** — 문구 변경이 옛 문서에도 즉시 반영되고,
+ * 인원수는 살아 있는 `recipientCount`를 쓰므로 회수를 자동으로 따라간다.
+ *
+ * 저장하는 것은 **발송 시점에만 알 수 있는 것**뿐이다:
+ * - `depts` — 어느 부서를 통째로 골랐나 (나중에 명단이 바뀌면 복원 불가)
+ * - `firstLabel` — 개인 선택일 때 대표로 보일 이름 (발송 당시 스탬프, `senderName`과 같은 성격)
+ * - `extra` — 부서 외에 개인으로 더한 인원 (참고용)
+ */
+export interface RecipientMeta {
+  depts: string[];
+  extra: number;
+  firstLabel?: string;
+}
+
+export function buildRecipientMeta(chips: RecipientChip[]): RecipientMeta {
+  const depts = [...new Set(chips.filter((c) => c.source === "dept" && c.deptLabel).map((c) => c.deptLabel!))];
+  const extra = chips.filter((c) => c.source !== "dept").length;
+  return { depts, extra, ...(chips[0]?.label ? { firstLabel: chips[0].label } : {}) };
 }
 
 /**
- * buildRecipientSummary 의 별칭 (MemoSection 호환용)
+ * 화면에 보일 한 줄을 만든다. **여기가 문구의 단일 소재지다 — 바꾸고 싶으면 이 함수만 고친다.**
+ *
+ * @param meta  발송 시 저장한 재료 (없으면 옛 문서 — `fallback` 사용)
+ * @param fallback  옛 문서에 저장돼 있던 완성 문장
+ * @param count  **살아 있는** 수신자 수 (`recipientCount`) — 회수를 반영한다
  */
-export const buildSummary = buildRecipientSummary;
+export function renderRecipientLine(
+  meta: RecipientMeta | undefined | null,
+  fallback: string | undefined | null,
+  count: number
+): string {
+  if (!meta) return (fallback || "").trim() || (count > 0 ? `${count}명` : "");
+
+  const { depts, extra, firstLabel } = meta;
+
+  if (depts.length === 0) {
+    if (!firstLabel) return count > 0 ? `${count}명` : "";
+    return count > 1 ? `${firstLabel} 외 ${count - 1}명` : firstLabel;
+  }
+  if (depts.length === 1) {
+    // 부서만 골랐으면 「1학년 11명」. 개인이 섞였으면 **부서 인원인 척하지 않는다** —
+    // 「1학년 12명」은 1학년이 12명이라는 뜻으로 읽힌다(2026-08-20 사용자 지적).
+    return extra > 0 ? `${depts[0]} 등 ${count}명` : `${depts[0]} ${count}명`;
+  }
+  return `${depts[0]} 외 ${depts.length - 1}개 부서 ${count}명`;
+}
+
+/**
+ * 화면 미리보기용 — 아직 발송 전이라 `recipientCount`가 없을 때 쓴다.
+ * 저장 대상이 아니다(저장은 `buildRecipientMeta`).
+ */
+export function previewRecipientLine(chips: RecipientChip[]): string {
+  return renderRecipientLine(buildRecipientMeta(chips), null, chips.length);
+}
+
+export const buildSummary = previewRecipientLine;
 
 import type { TeacherProfile } from "@/context/AuthContext";
 import { resolveDisplayName } from "@/lib/org/displayName";
@@ -106,4 +148,20 @@ export function deriveRecipientChips(
   });
 
   return [...chipMap.values()];
+}
+
+/**
+ * 서버 입력 정규화 — 클라이언트가 보낸 `recipientMeta`를 신뢰하지 않고 모양만 받아 정리한다.
+ * 값이 이상하면 `undefined`를 돌려 옛 문장(`recipientSummary`) 경로로 떨어지게 한다.
+ */
+export function sanitizeRecipientMeta(raw: unknown): RecipientMeta | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const depts = Array.isArray(r.depts)
+    ? r.depts.filter((d): d is string => typeof d === "string" && !!d.trim()).map((d) => d.trim().slice(0, 40)).slice(0, 30)
+    : [];
+  const extra = typeof r.extra === "number" && Number.isFinite(r.extra) && r.extra >= 0 ? Math.floor(r.extra) : 0;
+  const firstLabel = typeof r.firstLabel === "string" && r.firstLabel.trim() ? r.firstLabel.trim().slice(0, 40) : undefined;
+  if (depts.length === 0 && !firstLabel) return undefined;
+  return { depts, extra, ...(firstLabel ? { firstLabel } : {}) };
 }

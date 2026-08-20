@@ -310,6 +310,44 @@ async function main() {
     expect("설정: 둘 다 없으면 기본 12개월", resolveRetentionMonths(undefined, undefined) === MEMO_RETENTION_MONTHS);
   }
 
+
+  console.log("\n── 수신자 요약: 재료 저장 + 화면 생성 (2026-08-20) ──");
+  {
+    const { buildRecipientMeta, renderRecipientLine, sanitizeRecipientMeta } = require("../src/lib/org/recipients");
+    const chip = (label: string, dept?: string) =>
+      dept ? { type: "user", source: "dept", email: `${label}@x`, label, deptLabel: dept }
+           : { type: "user", source: "person", email: `${label}@x`, label };
+
+    // 개인만
+    const solo = buildRecipientMeta([chip("홍길동")]);
+    expect("개인 1명", renderRecipientLine(solo, null, 1) === "홍길동");
+    expect("개인 4명", renderRecipientLine(buildRecipientMeta([chip("홍길동"), chip("김철수"), chip("이영희"), chip("박민")]), null, 4) === "홍길동 외 3명");
+
+    // 부서 하나만
+    const deptOnly = buildRecipientMeta([chip("a", "1학년"), chip("b", "1학년")]);
+    expect("부서 전체", renderRecipientLine(deptOnly, null, 11) === "1학년 11명");
+
+    // ⭐ 부서 + 개인 — 부서 인원인 척하지 않는다 (이번 수정의 핵심)
+    const mixed = buildRecipientMeta([chip("a", "1학년"), chip("b", "1학년"), chip("외부인")]);
+    expect("부서+개인은 「등」으로 — 부서 인원 오인 방지", renderRecipientLine(mixed, null, 12) === "1학년 등 12명");
+    expect("부서+개인이 「1학년 12명」이 아니다", renderRecipientLine(mixed, null, 12) !== "1학년 12명");
+
+    // 부서 여럿
+    const multi = buildRecipientMeta([chip("a", "1학년"), chip("b", "2학년")]);
+    expect("부서 2개", renderRecipientLine(multi, null, 21) === "1학년 외 1개 부서 21명");
+
+    // ⭐ 인원수는 살아 있는 값 — 회수로 줄면 문구도 줄어든다
+    expect("회수 반영 (11명 → 9명)", renderRecipientLine(deptOnly, null, 9) === "1학년 9명");
+
+    // 옛 문서 폴백
+    expect("옛 문서는 저장된 문장을 쓴다", renderRecipientLine(undefined, "1학년 12명", 12) === "1학년 12명");
+    expect("둘 다 없으면 인원수", renderRecipientLine(undefined, null, 5) === "5명");
+
+    // 서버 정규화
+    expect("정규화: 이상한 값은 무시", sanitizeRecipientMeta({ depts: "x", extra: -1 }) === undefined);
+    expect("정규화: 정상값 통과", sanitizeRecipientMeta({ depts: ["1학년"], extra: 1 })?.depts[0] === "1학년");
+  }
+
   console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);
   process.exit(failed === 0 ? 0 : 1);
 }

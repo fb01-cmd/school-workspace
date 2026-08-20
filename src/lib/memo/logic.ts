@@ -28,6 +28,8 @@ export interface MemoDoc {
   recipientEmails: string[];
   recipientCount: number;
   recipientSummary: string;
+  /** 요약의 재료 — 문장은 화면에서 만든다 (org/recipients.ts). 옛 문서엔 없다 */
+  recipientMeta?: { depts: string[]; extra: number; firstLabel?: string };
   // 수신자 이메일 → 최초 열람 시각(ms). 키에 점(.)이 있으므로 갱신은 FieldPath 필수.
   reads: Record<string, number>;
   createdAt: number;

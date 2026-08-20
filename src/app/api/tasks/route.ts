@@ -29,6 +29,7 @@ import {
   uploadTaskFile,
 } from "@/lib/tasks/drive";
 import { expandGroupEmails, resolveRecipients } from "@/lib/memo/logic";
+import { sanitizeRecipientMeta } from "@/lib/org/recipients";
 import { emitNotificationsBatch } from "@/lib/notifications/server";
 import { notifyTask } from "@/lib/push/webpush";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
@@ -214,7 +215,8 @@ export async function POST(req: NextRequest) {
           dueAt: validated.content.dueAt,
           recipientEmails: [],
           recipientCount: 0,
-          recipientSummary: validated.content.recipientSummary,
+          recipientSummary: validated.content.recipientSummary, // 옛 화면 호환 (문장)
+          ...(sanitizeRecipientMeta(body.recipientMeta) ? { recipientMeta: sanitizeRecipientMeta(body.recipientMeta) } : {}),
           statuses: {},
           formFolderId: folders.formFolderId,
           submitFolderId: folders.submitFolderId,
@@ -293,10 +295,12 @@ export async function POST(req: NextRequest) {
             ? body.recipientSummary.trim().slice(0, 100)
             : task.recipientSummary;
 
+        const metaFromSend = sanitizeRecipientMeta(body.recipientMeta);
         await tasksColRef(domain).doc(task.id).update({
           recipientEmails: resolved.accepted,
           recipientCount: resolved.accepted.length,
           recipientSummary: summary,
+          ...(metaFromSend ? { recipientMeta: metaFromSend } : {}),
         });
         // 제출형은 담당자에게 제출함 열람 부여 (§0-4 예외 1) — 실패는 기능 저하로 수용
         if (task.kind === "submit" && task.submitFolderId) {

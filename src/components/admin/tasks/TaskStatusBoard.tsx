@@ -4,6 +4,7 @@
 // 발신자 화면의 실시간 원본: 수신자별 상태 표, 수락/완료 집계 칩, 재촉(24h 제한), 제출함 폴더 열기, 철회
 
 import { useState, useEffect, useRef } from "react";
+import { renderRecipientLine } from "@/lib/org/recipients";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
 import {
@@ -407,7 +408,7 @@ export default function TaskStatusBoard() {
                 {selectedTask.title}
               </h2>
               <p className="text-xs text-slate-400">
-                발송 일시: {formatFull(selectedTask.createdAt)} · 수신 대상: {selectedTask.recipientSummary || `${totalCount}명`}
+                발송 일시: {formatFull(selectedTask.createdAt)} · 수신 대상: {renderRecipientLine(selectedTask.recipientMeta, selectedTask.recipientSummary, selectedTask.recipientCount ?? totalCount)}
               </p>
             </div>
 

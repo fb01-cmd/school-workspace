@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { resolveDisplayName } from "@/lib/org/displayName";
 import { sortMembersForDept } from "@/lib/org/sort";
 import { loadTeacherProfileMap } from "@/lib/org/roster";
-import { RecipientChip, buildRecipientSummary } from "@/lib/org/recipients";
+import { RecipientChip, previewRecipientLine } from "@/lib/org/recipients";
 import type { TeacherProfile } from "@/context/AuthContext";
 
 export type { RecipientChip };
@@ -187,7 +187,7 @@ export default function TaskRecipientPickerModal({
     };
   });
 
-  const summaryText = buildRecipientSummary(selectedChips);
+  const summaryText = previewRecipientLine(selectedChips);
 
   const handleApply = () => {
     onConfirm({

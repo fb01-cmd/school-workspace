@@ -23,7 +23,7 @@ import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
 import { resolveDisplayName } from "@/lib/org/displayName";
 import { sortMembersForDept } from "@/lib/org/sort";
 import { loadTeacherProfileMap, buildGwsNameMap } from "@/lib/org/roster";
-import { RecipientChip, buildSummary } from "@/lib/org/recipients";
+import { RecipientChip, buildSummary, renderRecipientLine } from "@/lib/org/recipients";
 import type { MemoDoc } from "@/lib/memo/logic";
 import { MEMO_UNTITLED_FALLBACK } from "@/lib/memo/logic";
 import type { TeacherProfile } from "@/context/AuthContext";
@@ -484,7 +484,7 @@ function SentRow({
         {/* 받는 분 요약 + 시각 (보조 톤) */}
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs truncate text-slate-500 font-medium">
-            받는 분: {memo.recipientSummary || `${total}명`}
+            받는 분: {renderRecipientLine((memo as any).recipientMeta, memo.recipientSummary, memo.recipientCount ?? total)}
           </span>
           <span className="flex-shrink-0 text-[11px] text-slate-400">
             {formatDate(memo.createdAt)}
@@ -575,7 +575,7 @@ function StarredRow({
               }`}
             >
               {isSentByMe
-                ? `받는 분: ${memo.recipientSummary || `${total}명`}`
+                ? `받는 분: ${renderRecipientLine((memo as any).recipientMeta, memo.recipientSummary, memo.recipientCount ?? total)}`
                 : memo.senderName || memo.senderEmail}
             </span>
           </div>
@@ -745,7 +745,7 @@ function MemoDetailPanel({
                 </span>
               ) : (
                 <span>
-                  받는 사람: <strong className="text-slate-700 font-semibold">{memo.recipientSummary || `${memo.recipientCount}명`}</strong>
+                  받는 사람: <strong className="text-slate-700 font-semibold">{renderRecipientLine((memo as any).recipientMeta, memo.recipientSummary, memo.recipientCount)}</strong>
                 </span>
               )}
               <span className="text-slate-300">·</span>

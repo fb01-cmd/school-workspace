@@ -1,5 +1,6 @@
 // 쪽지(사내 메신저) 1단계 — 발송·읽음 API (docs/memo_spec.md §2)
 // 읽기(받은/보낸쪽지함)는 클라이언트 직독 + firestore.rules — 쓰기는 이 라우트 전용.
+import { sanitizeRecipientMeta } from "@/lib/org/recipients";
 import { adminDb, verifyAuthAccess } from "@/lib/firebase/admin";
 import {
   MEMO_MAX_RECIPIENTS,
@@ -271,7 +272,8 @@ export async function POST(req: NextRequest) {
           links: validated.content.links,
           recipientEmails: resolved.accepted,
           recipientCount: resolved.accepted.length,
-          recipientSummary: validated.content.recipientSummary,
+          recipientSummary: validated.content.recipientSummary, // 옛 화면 호환 (문장)
+          ...(sanitizeRecipientMeta(body.recipientMeta) ? { recipientMeta: sanitizeRecipientMeta(body.recipientMeta) } : {}),
           reads: {},
           createdAt: now,
           expireAt: memoExpireAtKST(now, retentionMonths), // 달 단위 파기 (2026-08-20 A안 — logic.ts 주석 참조)

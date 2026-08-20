@@ -11,7 +11,7 @@ import {
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
 import { bodyHasMd1Formatting, stripMd1 } from "@/lib/memo/richtext";
-import { buildRecipientSummary, deriveRecipientChips, RecipientChip } from "@/lib/org/recipients";
+import { previewRecipientLine, buildRecipientMeta, deriveRecipientChips, RecipientChip } from "@/lib/org/recipients";
 import type { TeacherProfile } from "@/context/AuthContext";
 import { resolveDisplayName } from "@/lib/org/displayName";
 
@@ -252,7 +252,8 @@ export default function HubTaskComposer({
     try {
       const finalBody = syncBodyMd1();
       const hasMd1 = bodyHasMd1Formatting(finalBody);
-      const recipientSummary = buildRecipientSummary(recipientChips);
+      const recipientSummary = previewRecipientLine(recipientChips); // 옛 문서 호환용 문장
+      const recipientMeta = buildRecipientMeta(recipientChips); // 화면이 문장을 만들 재료
       const userList = Array.from(selectedEmails);
 
       // 1상: prepare — 초안 생성. 이미 만든 초안이 있고 내용이 그대로면 재사용한다(재시도 시 중복 초안 방지).
@@ -275,6 +276,7 @@ export default function HubTaskComposer({
             kind,
             dueAt,
             recipientSummary,
+          recipientMeta,
             // 양식은 여기서 넘기지 않는다 — prepare는 formFiles를 읽지 않고 버린다(route.ts:198 문서 리터럴).
             // 파일은 taskId를 받은 뒤 form_upload로 올린다.
           }),
@@ -310,6 +312,7 @@ export default function HubTaskComposer({
           taskId,
           recipients: { users: userList, groups: [] },
           recipientSummary,
+          recipientMeta,
         }),
       });
 

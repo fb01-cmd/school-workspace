@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
 import { bodyHasMd1Formatting, MEMO_CONTENT_FORMAT_MD1, collectMd1AttachmentIds, stripMd1 } from "@/lib/memo/richtext";
-import { buildRecipientSummary, deriveRecipientChips, RecipientChip } from "@/lib/org/recipients";
+import { previewRecipientLine, buildRecipientMeta, deriveRecipientChips, RecipientChip } from "@/lib/org/recipients";
 import type { TeacherProfile } from "@/context/AuthContext";
 import { resolveDisplayName } from "@/lib/org/displayName";
 import {
@@ -440,7 +440,8 @@ export default function HubMemoComposer({
 
     try {
       const hasMd1 = bodyHasMd1Formatting(finalBody);
-      const recipientSummary = buildRecipientSummary(recipientChips);
+      const recipientSummary = previewRecipientLine(recipientChips); // 옛 문서 호환용 문장
+      const recipientMeta = buildRecipientMeta(recipientChips); // 화면이 문장을 만들 재료
       const userList = Array.from(selectedEmails);
       const driveFileIds = stagedAttachments
         .filter((a) => a.status === "done" && a.attachment)
@@ -456,6 +457,7 @@ export default function HubMemoComposer({
           contentFormat: hasMd1 ? MEMO_CONTENT_FORMAT_MD1 : undefined,
           attachments: driveFileIds.length > 0 ? driveFileIds : undefined,
           recipientSummary,
+          recipientMeta,
           recipients: { users: userList, groups: [] },
         }),
       });

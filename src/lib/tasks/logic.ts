@@ -71,6 +71,8 @@ export interface TaskDoc {
   recipientEmails: string[];
   recipientCount: number;
   recipientSummary: string;
+  /** 요약의 재료 — 문장은 화면에서 만든다 (org/recipients.ts). 옛 문서엔 없다 */
+  recipientMeta?: { depts: string[]; extra: number; firstLabel?: string };
   statuses: Record<string, TaskRecipientStatus>;
   /** 셀프 등록 업무 (피드백 15번) — 현황판 접기·"내가 등록" 표시용 */
   selfAssigned?: boolean;
