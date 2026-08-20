@@ -92,10 +92,10 @@ export default function MealCard() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+              <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
                 나이스 연동
               </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+              <span className="text-xs font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
                 효명고 식단표
               </span>
             </div>
@@ -135,7 +135,7 @@ export default function MealCard() {
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
                 >
-                  <span className="text-[10px] opacity-80">{dayLbl}</span>
+                  <span className="text-xs opacity-80">{dayLbl}</span>
                   <span className="text-sm font-black">{dayNum}일</span>
                 </button>
               );
@@ -170,7 +170,7 @@ export default function MealCard() {
                   </span>
                 </span>
                 {selectedMeal.calories && (
-                  <span className="text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full">
                     🔥 {selectedMeal.calories}
                   </span>
                 )}
@@ -186,7 +186,7 @@ export default function MealCard() {
                     <span className="font-bold text-slate-800">{dish.name}</span>
                     {dish.allergyCodes && (
                       <span
-                        className="text-[9px] text-slate-400 font-medium px-1.5 py-0.5 bg-white rounded border border-slate-200"
+                        className="text-[11px] text-slate-400 font-medium px-1.5 py-0.5 bg-white rounded border border-slate-200"
                         title={`알레르기 정보: ${dish.allergyCodes}`}
                       >
                         알레르기 {dish.allergyCodes}
@@ -200,7 +200,7 @@ export default function MealCard() {
         </div>
       </div>
 
-      <div className="pt-3 border-t border-slate-100 text-[10px] text-slate-400 text-right">
+      <div className="pt-3 border-t border-slate-100 text-xs text-slate-400 text-right">
         출처: 나이스 교육정보 개방 포털 (효명고등학교)
       </div>
     </div>

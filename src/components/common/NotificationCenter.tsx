@@ -624,7 +624,7 @@ export default function NotificationCenter() {
       >
         <span className="text-lg leading-none select-none">🔔</span>
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full min-w-[18px] text-center shadow-xs animate-pulse">
+          <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[11px] font-black px-1.5 py-0.2 rounded-full min-w-[18px] text-center shadow-xs animate-pulse">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -694,7 +694,7 @@ export default function NotificationCenter() {
                     {/* 상단 뱃지 및 시간 */}
                     <div className="flex items-center justify-between gap-2 text-[11px]">
                       <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold border text-[10px] ${badge.bg}`}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold border text-[11px] ${badge.bg}`}
                       >
                         <span>{badge.icon}</span>
                         <span>{badge.label}</span>
@@ -912,7 +912,7 @@ export default function NotificationCenter() {
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-bold text-gray-900 dark:text-white">기기로 바로 알림 받기</span>
                     {isPushSubscribed && (
-                      <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded-full border border-emerald-200 dark:border-emerald-800">
+                      <span className="text-[11px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded-full border border-emerald-200 dark:border-emerald-800">
                         켜짐
                       </span>
                     )}

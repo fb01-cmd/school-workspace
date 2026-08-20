@@ -113,14 +113,14 @@ export function PWAInstallPrompt({ onOpenGuide }: PWAInstallPromptProps) {
                   🍎 아이폰(iOS) 사용자 설치 절차
                 </span>
                 {isIOS && (
-                  <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 rounded-full">
+                  <span className="px-2 py-0.5 text-[11px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 rounded-full">
                     현재 기기
                   </span>
                 )}
               </div>
               <ol className="space-y-2 text-xs text-gray-700 dark:text-gray-300 leading-relaxed font-medium">
                 <li className="flex items-start gap-2">
-                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold mt-0.5">
+                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[11px] font-bold mt-0.5">
                     1
                   </span>
                   <span>
@@ -131,7 +131,7 @@ export function PWAInstallPrompt({ onOpenGuide }: PWAInstallPromptProps) {
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold mt-0.5">
+                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[11px] font-bold mt-0.5">
                     2
                   </span>
                   <span>
@@ -142,7 +142,7 @@ export function PWAInstallPrompt({ onOpenGuide }: PWAInstallPromptProps) {
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold mt-0.5">
+                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[11px] font-bold mt-0.5">
                     3
                   </span>
                   <span>
@@ -153,7 +153,7 @@ export function PWAInstallPrompt({ onOpenGuide }: PWAInstallPromptProps) {
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold mt-0.5">
+                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[11px] font-bold mt-0.5">
                     4
                   </span>
                   <span>
@@ -161,7 +161,7 @@ export function PWAInstallPrompt({ onOpenGuide }: PWAInstallPromptProps) {
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold mt-0.5">
+                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[11px] font-bold mt-0.5">
                     5
                   </span>
                   <span>

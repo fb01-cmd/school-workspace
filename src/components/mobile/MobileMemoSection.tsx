@@ -190,7 +190,7 @@ export default function MobileMemoSection() {
           <span className="text-base">✉️</span>
           <h2 className="text-sm font-bold text-slate-900 dark:text-white">쪽지</h2>
           {unreadCount > 0 && (
-            <span className="text-[10px] font-black bg-indigo-500 text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+            <span className="text-[11px] font-black bg-indigo-500 text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
               {unreadCount}
             </span>
           )}
@@ -421,7 +421,7 @@ export default function MobileMemoSection() {
                               >
                                 <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                   <span
-                                    className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${
+                                    className={`px-1.5 py-0.5 rounded text-[11px] font-semibold flex-shrink-0 ${
                                       isSentByMe
                                         ? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
                                         : "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300"
@@ -439,12 +439,12 @@ export default function MobileMemoSection() {
                                     {item.title || MEMO_UNTITLED_FALLBACK}
                                   </span>
                                   {isCurrent && (
-                                    <span className="text-[10px] bg-indigo-600 text-white font-semibold px-1.5 py-0.5 rounded flex-shrink-0">
+                                    <span className="text-[11px] bg-indigo-600 text-white font-semibold px-1.5 py-0.5 rounded flex-shrink-0">
                                       현재 쪽지
                                     </span>
                                   )}
                                 </div>
-                                <span className="flex-shrink-0 text-slate-400 dark:text-slate-500 text-[10px]">
+                                <span className="flex-shrink-0 text-slate-400 dark:text-slate-500 text-[11px]">
                                   {formatDate(item.createdAt)}
                                 </span>
                               </button>

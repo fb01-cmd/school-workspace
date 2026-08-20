@@ -64,7 +64,7 @@ export default function HelpTip({
         >
           <div className="flex justify-between items-center pb-2 mb-2 border-b border-gray-100 font-bold text-gray-900">
             <span className="flex items-center gap-1.5 text-indigo-600">
-              <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px]">
+              <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs">
                 ?
               </span>
               {title}

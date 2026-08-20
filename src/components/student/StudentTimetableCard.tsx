@@ -98,7 +98,7 @@ export default function StudentTimetableCard() {
             <span>🗓️</span>
             <span>{classGrid.grade}학년 {classGrid.classNum}반 주간 시간표</span>
             {termMeta && (
-              <span className="text-[10px] font-normal px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+              <span className="text-xs font-normal px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
                 {termMeta.name}
               </span>
             )}
@@ -124,7 +124,7 @@ export default function StudentTimetableCard() {
                   return (
                     <th key={d.num} className="py-1.5 px-1 text-[11px]">
                       <div>{d.label}</div>
-                      {md && <div className="text-[10px] font-normal text-slate-500">{md}</div>}
+                      {md && <div className="text-xs font-normal text-slate-500">{md}</div>}
                     </th>
                   );
                 })}
@@ -184,10 +184,10 @@ export default function StudentTimetableCard() {
                                   >
                                     <div className="font-black text-[15px] text-slate-900 truncate">{subj}</div>
                                     {validTeachers.length > 0 && (
-                                      <div className="text-[11px] text-slate-500 font-normal truncate mt-1">{teacherNames}</div>
+                                      <div className="text-xs text-slate-500 font-normal truncate mt-1">{teacherNames}</div>
                                     )}
                                     {isChanged && (
-                                      <div className="text-[10px] font-extrabold text-sky-700 mt-1">
+                                      <div className="text-[11px] font-extrabold text-sky-700 mt-1">
                                         ▲ {changedType === "substitute" ? "보강" : changedType === "move" ? "이동" : "교체"}
                                         {origin && ` · ${DAY_LABEL[origin.day]}${origin.period}`}
                                       </div>

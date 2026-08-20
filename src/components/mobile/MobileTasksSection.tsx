@@ -568,7 +568,7 @@ export default function MobileTasksSection() {
               <span className="font-bold text-slate-900 dark:text-white truncate">
                 {staged.displayName}
               </span>
-              <span className="text-[10px] text-slate-500">
+              <span className="text-[11px] text-slate-500">
                 ({(staged.file.size / 1024).toFixed(0)} KB)
               </span>
             </div>
@@ -649,7 +649,7 @@ export default function MobileTasksSection() {
                   {task.selfAssigned ? "본인 등록" : `${task.senderName} 선생님`}
                 </span>
                 {task.selfAssigned && (
-                  <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1 py-0.2 rounded font-bold">
+                  <span className="text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1 py-0.2 rounded font-bold">
                     내가 등록
                   </span>
                 )}
@@ -902,7 +902,7 @@ export default function MobileTasksSection() {
           <span className="text-base">📌</span>
           <h2 className="text-sm font-bold text-slate-900 dark:text-white">내 할 일</h2>
           {pendingCount > 0 && (
-            <span className="text-[10px] font-black bg-indigo-500 text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+            <span className="text-[11px] font-black bg-indigo-500 text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
               {pendingCount}
             </span>
           )}
@@ -1000,7 +1000,7 @@ export default function MobileTasksSection() {
                     <span>📋</span>
                     <span>기한 없음</span>
                   </div>
-                  <span className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                  <span className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] px-1.5 py-0.2 rounded-full font-bold">
                     {visibleNoDueTasks.length}
                   </span>
                 </li>
@@ -1070,7 +1070,7 @@ export default function MobileTasksSection() {
               </div>
               <div className={`grid grid-cols-2 gap-1.5 transition-opacity ${selfNoDue ? "opacity-50" : ""}`}>
                 <div>
-                  <label className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">
+                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">
                     마감 날짜 {!selfNoDue && <span className="text-rose-500">*</span>}
                   </label>
                   <input
@@ -1082,7 +1082,7 @@ export default function MobileTasksSection() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">
+                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">
                     마감 시각 {!selfNoDue && <span className="text-rose-500">*</span>}
                   </label>
                   <input
@@ -1152,7 +1152,7 @@ export default function MobileTasksSection() {
                     />
                     <label
                       htmlFor="mobile-self-add-file-input"
-                      className="px-2 py-0.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded cursor-pointer text-[10px] font-bold"
+                      className="px-2 py-0.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded cursor-pointer text-xs font-bold"
                     >
                       + 파일 추가
                     </label>
