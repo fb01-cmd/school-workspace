@@ -370,12 +370,12 @@ export default function CoTeachingRuleTab({
               <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                 <span>{editingRuleId ? "✏️ 복수교사 규칙 수정" : "➕ 복수교사 규칙 등록"}</span>
                 {isOperating && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
                     🔒 운영 학기 잠김
                   </span>
                 )}
                 {isArchived && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
                     🔒 열람 전용
                   </span>
                 )}
@@ -666,7 +666,7 @@ export default function CoTeachingRuleTab({
                                           {lesson.teachers?.map((t) => t.name).join(", ")}
                                         </div>
                                         {hit && (
-                                          <span className="inline-block text-[9px] bg-purple-700 text-white font-extrabold px-1 rounded mt-0.5">
+                                          <span className="inline-block text-[10px] bg-purple-700 text-white font-extrabold px-1 rounded mt-0.5">
                                             👥 복수교사
                                           </span>
                                         )}
@@ -745,7 +745,7 @@ export default function CoTeachingRuleTab({
                             투입 교사 {rule.teacherEmails?.length || 0}명
                           </span>
                           {rule.active === false && (
-                            <span className="bg-gray-200 text-gray-700 text-[10px] px-1.5 py-0.5 rounded font-bold">
+                            <span className="bg-gray-200 text-gray-700 text-xs px-1.5 py-0.5 rounded font-bold">
                               비활성
                             </span>
                           )}

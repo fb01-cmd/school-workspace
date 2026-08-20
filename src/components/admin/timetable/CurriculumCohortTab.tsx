@@ -273,7 +273,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
                       <div className="flex items-center gap-2">
                         <h3 className="text-base font-bold text-gray-900">{c.label}</h3>
                         {!c.active && (
-                          <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-bold">
+                          <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs font-bold">
                             비활성
                           </span>
                         )}
@@ -456,7 +456,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
                                         e.stopPropagation();
                                         setSlotNameModal({ day: d.day, period: p, name: hit.displayName });
                                       }}
-                                      className="text-[10px] bg-indigo-700/80 px-1 rounded hover:bg-indigo-800"
+                                      className="text-xs bg-indigo-700/80 px-1 rounded hover:bg-indigo-800"
                                     >
                                       ✎
                                     </span>

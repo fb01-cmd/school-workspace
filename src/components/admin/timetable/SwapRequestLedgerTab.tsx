@@ -439,13 +439,13 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                 </div>
                 {req.simulMove?.steps && req.simulMove.steps.length > 0 && (
                   <div className="text-[11px] bg-purple-50 border border-purple-200 text-purple-950 rounded-lg p-2.5 space-y-1 mt-1 font-sans">
-                    <div className="font-bold text-[10px] text-purple-900 flex items-center gap-1">
+                    <div className="font-bold text-[11px] text-purple-900 flex items-center gap-1">
                       <span>🧩</span>
                       <span>반별 이동 내역 ({req.simulMove.steps.length}개 반):</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-1">
                       {req.simulMove.steps.map((step, idx) => (
-                        <div key={`${step.classNum}-${idx}`} className="text-[10px] leading-tight text-purple-950 bg-white rounded p-1.5 border border-purple-200 flex items-center justify-between shadow-2xs">
+                        <div key={`${step.classNum}-${idx}`} className="text-[11px] leading-tight text-purple-950 bg-white rounded p-1.5 border border-purple-200 flex items-center justify-between shadow-2xs">
                           <span>
                             <strong>{step.classNum}반</strong>: {step.groupLesson.subjectName} ({step.groupLesson.teacherName})
                           </span>
@@ -488,12 +488,12 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                 </div>
                 {req.chainSteps && req.chainSteps.length > 0 && (
                   <div className="text-[11px] bg-purple-50 border border-purple-200 text-purple-950 rounded-lg p-2 font-mono space-y-1 mt-1">
-                    <div className="font-bold text-[10px] text-purple-900 flex items-center gap-1">
+                    <div className="font-bold text-[11px] text-purple-900 flex items-center gap-1">
                       <span>🔗</span>
                       <span>체인 수열 ({req.chainSteps.length}단계):</span>
                     </div>
                     {req.chainSteps.map((step: any, idx: number) => (
-                      <div key={idx} className="text-[10px] leading-tight text-purple-900">
+                      <div key={idx} className="text-[11px] leading-tight text-purple-900">
                         Step {idx + 1}: {step.stepSummary || step.summary || `${step.sourceTeacherName || ""} → ${step.candidate?.counterpartName || ""} (${step.targetDay}요일 ${step.targetPeriod}교시)`}
                       </div>
                     ))}
@@ -591,7 +591,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
             <span className="font-extrabold text-sky-900 flex items-center gap-1">
               <span>🤝 사전 양해 확인됨</span>
               {req.consent.confirmedAt && (
-                <span className="text-[10px] text-sky-600 font-normal">
+                <span className="text-[11px] text-sky-600 font-normal">
                   ({formatShortDate(req.consent.confirmedAt)})
                 </span>
               )}
@@ -721,7 +721,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                 <div className="flex items-center justify-between px-1">
                   <h3 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
                     <span>🔔 처리 대기 중 신청 ({pendingRequests.length}건)</span>
-                    <span className="text-[10px] text-amber-700 font-normal">
+                    <span className="text-xs text-amber-700 font-normal">
                       · 오래된 신청순 (상단부터 순차 처리)
                     </span>
                   </h3>

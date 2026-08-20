@@ -384,12 +384,12 @@ export default function VenueGroupTab({ activeTermId, isOperating = false, isArc
               <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
                 <span>{editingGroupId ? "✏️ 특별실 배정 수정" : "➕ 신규 특별실 배정 추가"}</span>
                 {isOperating && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
                     🔒 운영 학기 잠김
                   </span>
                 )}
                 {isArchived && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
                     🔒 열람 전용
                   </span>
                 )}
@@ -777,7 +777,7 @@ export default function VenueGroupTab({ activeTermId, isOperating = false, isArc
                                         {lesson.teachers?.map((t) => t.name).join(", ")}
                                       </div>
                                       {matchedRoom && (
-                                        <span className="inline-block text-[9px] bg-emerald-700 text-white font-extrabold px-1.5 py-0.5 rounded mt-0.5">
+                                        <span className="inline-block text-[10px] bg-emerald-700 text-white font-extrabold px-1.5 py-0.5 rounded mt-0.5">
                                           🏛️ {matchedRoom}
                                         </span>
                                       )}
@@ -847,14 +847,14 @@ export default function VenueGroupTab({ activeTermId, isOperating = false, isArc
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-200">
+                            <span className="text-[11px] font-extrabold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-200">
                               🏛️ {grp.roomName}
                             </span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-700">
+                            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-700">
                               {grp.grade}학년
                             </span>
                             {grp.active === false && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
+                              <span className="text-xs font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
                                 비활성
                               </span>
                             )}

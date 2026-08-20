@@ -1024,7 +1024,7 @@ export default function TimetableImportTab({
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
-            <span className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-[10px]">
+            <span className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-xs">
               1
             </span>
             <span>데이터 분석</span>
@@ -1041,7 +1041,7 @@ export default function TimetableImportTab({
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
-            <span className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-[10px]">
+            <span className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-xs">
               2
             </span>
             <span>교사명 매핑</span>
@@ -1058,7 +1058,7 @@ export default function TimetableImportTab({
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
-            <span className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-[10px]">
+            <span className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-xs">
               3
             </span>
             <span>검증 & 저장</span>
@@ -1072,7 +1072,7 @@ export default function TimetableImportTab({
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
-            <span className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-[10px]">
+            <span className="w-5 h-5 rounded-full bg-white/20 text-white flex items-center justify-center text-xs">
               4
             </span>
             <span>학기 & 권한 관리</span>
@@ -1165,7 +1165,7 @@ export default function TimetableImportTab({
                     <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
                       <span>1️⃣</span>
                       <span>전체시간표.xlsx</span>
-                      <span className="bg-red-100 text-red-700 text-[10px] font-extrabold px-1.5 py-0.5 rounded">필수</span>
+                      <span className="bg-red-100 text-red-700 text-xs font-extrabold px-1.5 py-0.5 rounded">필수</span>
                     </span>
                   </div>
                   <p className="text-xs text-gray-500 mb-3">
@@ -1192,7 +1192,7 @@ export default function TimetableImportTab({
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <span>2️⃣</span>
                       <span>주간시간표.xlsx</span>
-                      <span className="bg-slate-200 text-slate-700 text-[10px] font-bold px-1.5 py-0.5 rounded">선택 (교차 검증)</span>
+                      <span className="bg-slate-200 text-slate-700 text-xs font-bold px-1.5 py-0.5 rounded">선택 (교차 검증)</span>
                     </span>
                   </div>
                   <p className="text-xs text-gray-500 mb-3">
@@ -1394,15 +1394,15 @@ export default function TimetableImportTab({
                         <td className="px-4 py-3 font-bold text-gray-900">{tName}</td>
                         <td className="px-4 py-3">
                           {isVirtual ? (
-                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                            <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-indigo-100 text-indigo-800">
                               가상 교사 (계정 없음)
                             </span>
                           ) : isMatched ? (
-                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                            <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800">
                               자동 매칭됨
                             </span>
                           ) : (
-                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                            <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800">
                               미매칭 (지정 필요)
                             </span>
                           )}
@@ -1439,7 +1439,7 @@ export default function TimetableImportTab({
                             )}
                             <button
                               onClick={() => toggleVirtualTeacher(tName)}
-                              className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-colors ${
+                              className={`shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
                                 isVirtual
                                   ? "bg-white border-indigo-300 text-indigo-700 hover:bg-indigo-50"
                                   : "bg-gray-50 border-gray-200 text-gray-500 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200"
@@ -1644,15 +1644,15 @@ export default function TimetableImportTab({
                         </td>
                         <td className="px-4 py-3">
                           {t.status === "active" ? (
-                            <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                               🟢 현재 활성 학기
                             </span>
                           ) : t.status === "draft" ? (
-                            <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
                               🟡 초안 (Draft)
                             </span>
                           ) : (
-                            <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600">
+                            <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600">
                               ⚪ 보관됨 (Archived)
                             </span>
                           )}

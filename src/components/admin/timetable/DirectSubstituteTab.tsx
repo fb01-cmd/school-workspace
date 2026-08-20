@@ -1475,7 +1475,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                                 <div key={cIdx} title="담기 가상 반영 — 일괄 반영 전까지는 실제 시간표가 아닙니다" className="w-full p-1.5 rounded-lg text-left border bg-amber-100 border-amber-400 text-amber-950">
                                                   <div className="font-black text-xs text-amber-950">{cell.subjectShort || cell.subjectName}</div>
                                                   <div className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5 bg-amber-200 text-amber-900">{cell.grade}-{cell.classNum}반</div>
-                                                  <div className="text-[9px] bg-amber-200 text-amber-900 font-extrabold px-1 rounded mt-0.5 inline-block">🛒 담김 이동</div>
+                                                  <div className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-1 rounded mt-0.5 inline-block">🛒 담김 이동</div>
                                                 </div>
                                               );
                                             }
@@ -1489,7 +1489,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                                 <div className="flex items-center justify-between gap-1 flex-wrap mt-0.5">
                                                   <div className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold ${isSelected ? "bg-indigo-800 text-indigo-100" : simulCheck.hit ? "bg-purple-200 text-purple-900" : "bg-indigo-100 text-indigo-800"}`}>{cell.grade}-{cell.classNum}반</div>
                                                   {simulCheck.hit && (
-                                                    <span className="text-[9px] bg-purple-700 text-white font-extrabold px-1 rounded" title={simulCheck.groupLabel || "이동수업 그룹"}>🔀 이동수업</span>
+                                                    <span className="text-[10px] bg-purple-700 text-white font-extrabold px-1 rounded" title={simulCheck.groupLabel || "이동수업 그룹"}>🔀 이동수업</span>
                                                   )}
                                                 </div>
                                               </button>
@@ -1519,7 +1519,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                               {inlineCand.coordination && <span className="shrink-0">⚠️</span>}
                                               <span className="truncate">{formatCandidateSlotLabel(inlineCand)}</span>
                                             </span>
-                                            <span className={`px-1 py-0.5 rounded text-[9px] font-extrabold shrink-0 ${
+                                            <span className={`px-1 py-0.5 rounded text-[10px] font-extrabold shrink-0 ${
                                               inlineCand.coordination
                                                 ? "bg-red-200 text-red-950 border border-red-400 font-black"
                                                 : inlineCand.score > 0 || (inlineCand.penalties && inlineCand.penalties.length > 0)
@@ -1539,7 +1539,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                         </button>
                                       ) : cartMatch ? (
                                         <div className="w-full p-1.5 rounded-lg border border-dashed border-amber-400 bg-amber-50/60 text-center">
-                                          <div className="text-[9px] font-extrabold text-amber-800">🛒 담김 (이동됨)</div>
+                                          <div className="text-[10px] font-extrabold text-amber-800">🛒 담김 (이동됨)</div>
                                           <div className="text-[10px] font-bold text-amber-900 truncate">{cartMatch.subjectName || "수업"}</div>
                                         </div>
                                       ) : (
@@ -1550,7 +1550,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                           title="이 빈 자리로 다른 수업 가져오기 (연쇄 이동 탐색)"
                                         >
                                           <span>-</span>
-                                          <span className="hidden group-hover:inline text-[9px] bg-indigo-100 text-indigo-800 px-1 py-0.2 rounded font-extrabold">
+                                          <span className="hidden group-hover:inline text-[10px] bg-indigo-100 text-indigo-800 px-1 py-0.2 rounded font-extrabold">
                                             🔗 가져오기
                                           </span>
                                         </button>
@@ -1625,11 +1625,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                 {selectedCandidate.counterpartSubjectName && `(${selectedCandidate.counterpartSubjectName})`}
                               </span>
                               {selectedCandidate.coordination ? (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-red-200 text-red-950 border border-red-400">
+                                <span className="px-1.5 py-0.5 rounded text-xs font-black bg-red-200 text-red-950 border border-red-400">
                                   ⚠️ 양해 필수
                                 </span>
                               ) : (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-200 text-emerald-900">
+                                <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-emerald-200 text-emerald-900">
                                   {selectedCandidate.score > 0 ? `감점 ${selectedCandidate.score}` : "0점"}
                                 </span>
                               )}
@@ -1655,9 +1655,9 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                             <div className="font-bold text-indigo-950 flex items-center gap-2">
                               <span>{selectedCandidate.teacherName} 선생님</span>
                               {(selectedCandidate as any).sameSubject && (
-                                <span className="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded font-extrabold">동일 과목</span>
+                                <span className="text-[11px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded font-extrabold">동일 과목</span>
                               )}
-                              <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">
+                              <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">
                                 보강 누계 {(selectedCandidate as any).substituteCount ?? 0}회
                               </span>
                             </div>
@@ -1670,7 +1670,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                         <div className="space-y-2 pt-2 border-t border-gray-100">
                           <div className="text-xs font-bold text-gray-800 flex items-center justify-between">
                             <span>🔍 상대 시간표 미리보기</span>
-                            {previewLoading && <span className="text-[10px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
+                            {previewLoading && <span className="text-[11px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
                           </div>
                           {candidateParties.length > 1 && (
                             <div className="flex items-center gap-1.5 p-1.5 bg-gray-50 border border-gray-200 rounded-lg">
@@ -1751,7 +1751,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                       <div className="space-y-2">
                         <div className="text-[11px] font-bold text-gray-700 flex items-center justify-between">
                           <span>보강 가능 교사 목록 ({substituteCandidates.length}명)</span>
-                          <span className="text-[10px] text-gray-400 font-normal">누계 적은 순</span>
+                          <span className="text-[11px] text-gray-400 font-normal">누계 적은 순</span>
                         </div>
                         <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                           {substituteCandidates.map((cand) => (
@@ -1768,10 +1768,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-gray-900 group-hover:text-indigo-900">👤 {cand.teacherName}</span>
                                 {cand.sameSubject && (
-                                  <span className="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded font-extrabold">동일 과목</span>
+                                  <span className="text-[11px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded font-extrabold">동일 과목</span>
                                 )}
                               </div>
-                              <span className="text-[10px] bg-gray-200 group-hover:bg-indigo-100 text-gray-700 group-hover:text-indigo-800 font-bold px-2 py-0.5 rounded">
+                              <span className="text-xs bg-gray-200 group-hover:bg-indigo-100 text-gray-700 group-hover:text-indigo-800 font-bold px-2 py-0.5 rounded">
                                 누계 {cand.substituteCount ?? 0}회
                               </span>
                             </button>
@@ -1833,20 +1833,20 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                 #{idx + 1} [{item.type === "swap" ? "맞교환" : "특별보강"}]
                               </span>
                               {item.candidate.coordination && item.consentStatus !== "CONSENTED" && (
-                                <span className="text-[10px] text-red-600 font-black bg-red-100 px-1 rounded">⚠️ 양해 필요</span>
+                                <span className="text-xs text-red-600 font-black bg-red-100 px-1 rounded">⚠️ 양해 필요</span>
                               )}
                               {item.consentStatus === "REQUESTED" && (
-                                <span className="text-[10px] bg-blue-100 text-blue-900 border border-blue-300 font-bold px-1.5 py-0.5 rounded">
+                                <span className="text-xs bg-blue-100 text-blue-900 border border-blue-300 font-bold px-1.5 py-0.5 rounded">
                                   📨 양해 대기 중
                                 </span>
                               )}
                               {item.consentStatus === "CONSENTED" && (
-                                <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold px-1.5 py-0.5 rounded">
+                                <span className="text-xs bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold px-1.5 py-0.5 rounded">
                                   ✓ 알림으로 양해 받음
                                 </span>
                               )}
                               {item.consentStatus === "DECLINED" && (
-                                <span className="text-[10px] bg-rose-100 text-rose-900 border border-rose-300 font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                                <span className="text-xs bg-rose-100 text-rose-900 border border-rose-300 font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
                                   <span>❌ 어렵다고 답함</span>
                                   {item.consentNote && <span className="font-normal text-rose-800">(사유: {item.consentNote})</span>}
                                 </span>
@@ -1912,7 +1912,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                 >
                                   <span>📋</span>
                                   <span>{t.name} ({t.count}건)</span>
-                                  {generatingShareFor === t.email && <span className="animate-spin text-[10px]">⏳</span>}
+                                  {generatingShareFor === t.email && <span className="animate-spin text-xs">⏳</span>}
                                 </button>
                                 <button
                                   type="button"
@@ -1922,7 +1922,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                   }}
                                   disabled={!!sendingConsentDraftId || allConsented || groupDrafts.length === 0}
                                   title="양해 요청 알림 보내기"
-                                  className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded text-[10px] font-bold transition-colors disabled:opacity-50 flex items-center gap-0.5 cursor-pointer"
+                                  className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-0.5 cursor-pointer"
                                 >
                                   <span>📨</span>
                                   <span>{allConsented ? "수락됨" : anyRequested ? "다시 요청" : "요청"}</span>
@@ -2099,7 +2099,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                       항목 #{iIdx + 1}: {item.source.grade}-{item.source.classNum}반 {item.source.subjectName} ➔ {item.counterpartName}
                     </span>
                     {item.consentStatus === "CONSENTED" && (
-                      <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                      <span className="text-xs text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                         ✓ 알림으로 양해 받음
                       </span>
                     )}
@@ -2196,7 +2196,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs font-bold text-gray-700">
                 <label htmlFor="direct-consent-message-input">부탁 말씀 (선택)</label>
-                <span className="text-[10px] text-gray-400 font-normal">{consentMessageInput.length}/200자</span>
+                <span className="text-[11px] text-gray-400 font-normal">{consentMessageInput.length}/200자</span>
               </div>
               <textarea
                 id="direct-consent-message-input"

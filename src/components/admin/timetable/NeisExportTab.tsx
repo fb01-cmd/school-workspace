@@ -244,19 +244,19 @@ export default function NeisExportTab({ activeTermId }: NeisExportTabProps) {
                   </td>
                   <td className="py-3 px-2 text-center font-bold">
                     {r.type === "cross_swap" ? (
-                      <span className="px-2 py-0.5 rounded text-[10px] bg-purple-50 text-purple-700 border border-purple-200">
+                      <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
                         교차주맞교환
                       </span>
                     ) : r.type === "swap" ? (
-                      <span className="px-2 py-0.5 rounded text-[10px] bg-blue-50 text-blue-700 border border-blue-200">
+                      <span className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
                         맞교환
                       </span>
                     ) : r.type === "move" ? (
-                      <span className="px-2 py-0.5 rounded text-[10px] bg-purple-50 text-purple-800 border border-purple-300">
+                      <span className="px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-800 border border-purple-300">
                         통이동
                       </span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded text-[10px] bg-orange-50 text-orange-700 border border-orange-200">
+                      <span className="px-2 py-0.5 rounded text-xs bg-orange-50 text-orange-700 border border-orange-200">
                         특별보강
                       </span>
                     )}

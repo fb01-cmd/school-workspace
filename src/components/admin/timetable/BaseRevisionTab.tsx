@@ -513,7 +513,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                                       setEditSubjectName(lesson?.subjectName || "");
                                       setEditTeacherName(lesson?.teachers?.[0]?.name || "");
                                     }}
-                                    className="opacity-0 group-hover:opacity-100 text-[9px] text-amber-800 hover:underline text-right w-full pt-0.5"
+                                    className="opacity-0 group-hover:opacity-100 text-[10px] text-amber-800 hover:underline text-right w-full pt-0.5"
                                   >
                                     ✏️ 내용 변경
                                   </button>
@@ -655,7 +655,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                   >
                     <div className="flex items-center justify-between">
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                        className={`text-xs font-bold px-2 py-0.5 rounded ${
                           rev.status === "applied"
                             ? "bg-emerald-200 text-emerald-900"
                             : "bg-amber-200 text-amber-900"

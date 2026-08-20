@@ -433,7 +433,7 @@ export default function TeacherSlotBanTab({
               className="flex items-center gap-2 text-xs font-bold text-violet-900 hover:text-violet-700 transition-colors"
             >
               <span>🗣️ 말로 금지 규칙 입력하기 (AI 도움)</span>
-              <span className="text-[10px] bg-violet-200 text-violet-800 px-2 py-0.5 rounded-full font-semibold">
+              <span className="text-xs bg-violet-200 text-violet-800 px-2 py-0.5 rounded-full font-semibold">
                 {aiFormalizeOpen ? "접기 ▲" : "펼치기 ▼"}
               </span>
             </button>
@@ -495,12 +495,12 @@ export default function TeacherSlotBanTab({
             <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
               <span>{editingRuleId ? "✏️ 금지 규칙 수정" : "➕ 금지 규칙 등록"}</span>
               {isOperating && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
                   🔒 운영 학기 잠김
                 </span>
               )}
               {isArchived && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
+                <span className="text-xs font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
                   🔒 열람 전용
                 </span>
               )}
@@ -797,7 +797,7 @@ export default function TeacherSlotBanTab({
                               {rule.teacherName ? `${rule.teacherName} (${rule.teacherEmail})` : rule.teacherEmail}
                             </span>
                             {rule.active === false && (
-                              <span className="bg-gray-200 text-gray-700 text-[10px] px-1.5 py-0.5 rounded font-bold">
+                              <span className="bg-gray-200 text-gray-700 text-xs px-1.5 py-0.5 rounded font-bold">
                                 비활성
                               </span>
                             )}
@@ -916,7 +916,7 @@ export default function TeacherSlotBanTab({
                           {entry.teacherName ? `${entry.teacherName} (${entry.teacherEmail})` : entry.teacherEmail}
                         </span>
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          className={`px-2 py-0.5 rounded text-xs font-bold ${
                             entry.kind === "assign"
                               ? "bg-rose-100 text-rose-800"
                               : "bg-amber-100 text-amber-800"
@@ -968,7 +968,7 @@ export default function TeacherSlotBanTab({
                   )}
                 </button>
               </div>
-              <p className="text-[10px] text-gray-400 text-center">
+              <p className="text-xs text-gray-400 text-center">
                 💡 AI가 작성한 참고 의견입니다 — 반영 전 내용을 확인하셨습니까?
               </p>
             </div>

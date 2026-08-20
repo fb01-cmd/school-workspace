@@ -1576,7 +1576,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     <h3 className="text-sm font-bold text-white flex items-center gap-2">
                       <span>🗓️ {week.startDate} 주간시간표 ({week.weekId})</span>
                       {selectedCell?.weekId === week.weekId && (
-                        <span className="text-[10px] bg-amber-300 text-amber-950 px-2 py-0.5 rounded font-black">
+                        <span className="text-xs bg-amber-300 text-amber-950 px-2 py-0.5 rounded font-black">
                           선택한 소스 수업 주
                         </span>
                       )}
@@ -1874,7 +1874,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     <summary className="font-bold text-purple-950 hover:underline">
                       💡 여러 선생님의 양해가 필요한 방법입니다
                     </summary>
-                    <p className="mt-1 leading-relaxed bg-white/80 p-2 rounded-lg border border-purple-200 text-purple-950 text-[10px]">
+                    <p className="mt-1 leading-relaxed bg-white/80 p-2 rounded-lg border border-purple-200 text-purple-950 text-[11px]">
                       1단계 직접 맞교환 후보가 없더라도 2~3단계 징검다리 경로(연속 수업 교환)를 통해 이 수업을 내 원하는 공강 교시로 보낼 수 있습니다.
                     </p>
                   </details>
@@ -1888,7 +1888,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   {chainSearching && (
                     <div className="p-3 bg-white border border-purple-300 rounded-xl text-center space-y-1 animate-pulse">
                       <div className="text-xs font-extrabold text-purple-950">🔗 징검다리 체인 경로 탐색 중...</div>
-                      <div className="text-[10px] text-purple-800">
+                      <div className="text-[11px] text-purple-800">
                         목적지: {chainTarget ? formatSlotWithDate(chainTarget.weekId || selectedCell.weekId, chainTarget.day, chainTarget.period) : ""}
                       </div>
                     </div>
@@ -1912,7 +1912,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     <div className="space-y-2.5 pt-1 border-t border-purple-200">
                       <div className="text-xs font-extrabold text-purple-950 flex items-center justify-between">
                         <span>발견된 체인 경로 ({chainSearchResults.length}건)</span>
-                        <span className="text-[10px] bg-purple-200 text-purple-900 px-1.5 py-0.5 rounded font-bold">
+                        <span className="text-xs bg-purple-200 text-purple-900 px-1.5 py-0.5 rounded font-bold">
                           {chainTarget ? `${chainTarget.day}요일 ${chainTarget.period}교시` : ""}
                         </span>
                       </div>
@@ -1935,7 +1935,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                   <span>🔗</span>
                                   <span>{chain.steps.length}단계 체인 경로</span>
                                 </span>
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] ${chain.totalScore > 0 ? "bg-amber-100 text-amber-900 border border-amber-300" : "bg-purple-100 text-purple-900 font-extrabold border border-purple-200"}`}>
+                                <span className={`px-1.5 py-0.5 rounded text-xs ${chain.totalScore > 0 ? "bg-amber-100 text-amber-900 border border-amber-300" : "bg-purple-100 text-purple-900 font-extrabold border border-purple-200"}`}>
                                   {chain.totalScore > 0 ? `총 감점 ${chain.totalScore}점` : "0점 (시간표 감점 없음)"}
                                 </span>
                               </div>
@@ -1944,7 +1944,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                 👥 <strong>거치는 교사:</strong> <span className="font-extrabold text-indigo-900">{uniqueTeachers.join(", ")}</span>
                               </div>
 
-                              <div className="bg-purple-50/70 border border-purple-200 rounded-lg p-2 font-mono text-[10px] text-purple-950 space-y-1">
+                              <div className="bg-purple-50/70 border border-purple-200 rounded-lg p-2 font-mono text-[11px] text-purple-950 space-y-1">
                                 {chain.steps.map((step, sIdx) => (
                                   <div key={sIdx} className="leading-tight">
                                     Step {sIdx + 1}: {step.stepSummary || `${step.sourceTeacherName} → ${step.candidate?.counterpartName} (${step.candidate?.targetDay}요일 ${step.candidate?.targetPeriod}교시)`}
@@ -2050,7 +2050,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     <div className="space-y-1">
                       <label className="text-[11px] font-bold text-gray-700 flex items-center justify-between">
                         <span>👥 시간표를 확인할 당사자 선택</span>
-                        {previewLoading && <span className="text-[10px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
+                        {previewLoading && <span className="text-[11px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
                       </label>
                       <select
                         value={currentParty?.email || ""}
@@ -2069,7 +2069,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       <span>
                         🔍 {applyingCandidate.counterpartName} 교사 시간표 미리보기
                       </span>
-                      {previewLoading && <span className="text-[10px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
+                      {previewLoading && <span className="text-[11px] text-indigo-500 animate-pulse font-semibold">조회 중...</span>}
                     </div>
                   )}
 
@@ -2233,7 +2233,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   <div key={d.id || i} className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-1.5 text-xs">
                     <div className="font-extrabold text-amber-950 flex items-center justify-between">
                       <span>🔄 {d.source.subjectName}({d.source.grade}-{d.source.classNum}) ↔ {d.candidate.counterpartName} 선생님</span>
-                      <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-bold">장소 조율</span>
+                      <span className="text-xs bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-bold">장소 조율</span>
                     </div>
                     <div className="text-amber-900 text-xs font-semibold">
                       {formatCoordinationText(d.candidate.coordination)}
@@ -2398,7 +2398,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                   <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs text-red-950">
                     <div className="font-bold flex items-center justify-between">
                       <span>👥 사전 양해 필요 당사자 선생님 ({parties.length}명)</span>
-                      <span className="text-[10px] bg-red-200 text-red-950 px-2 py-0.5 rounded font-black">양해 필수</span>
+                      <span className="text-xs bg-red-200 text-red-950 px-2 py-0.5 rounded font-black">양해 필수</span>
                     </div>
                     <div className="font-extrabold text-red-900 text-xs">
                       {parties.map((p) => `${p.name} 선생님`).join(", ")}
@@ -2597,7 +2597,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                         <span>⚠️ 교환 신청 불가 (시간표 상태 변경 등)</span>
                       </div>
                       <div className="text-[11px] font-medium text-red-800">{errorMsg}</div>
-                      <div className="text-[10px] text-red-700 font-normal">
+                      <div className="text-[11px] text-red-700 font-normal">
                         상태가 변경되었으므로 아래 <b>[이 초안 삭제]</b> 버튼을 눌러 초안을 정리해 주세요.
                       </div>
                     </div>
@@ -2617,39 +2617,39 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                         />
                         <span className="text-indigo-900">{draft.sourceWeekId} 주</span>
                         {draft.targetWeekId && draft.targetWeekId !== draft.sourceWeekId && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">
                             ↔ {draft.targetWeekId} 주 교차 주
                           </span>
                         )}
                         {draft.conditional && (
-                          <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-extrabold px-1.5 py-0.5 rounded">
+                          <span className="text-xs bg-amber-100 text-amber-900 border border-amber-300 font-extrabold px-1.5 py-0.5 rounded">
                             ⏳ 조건부 — 내 대기 신청 승인 전제
                           </span>
                         )}
                         {isCoordination && (
-                          <span className="text-[10px] bg-red-200 text-red-950 border border-red-400 font-black px-1.5 py-0.5 rounded">
+                          <span className="text-xs bg-red-200 text-red-950 border border-red-400 font-black px-1.5 py-0.5 rounded">
                             ⚠️ 양해 필수
                           </span>
                         )}
                         {draft.consentStatus === "REQUESTED" && (
-                          <span className="text-[10px] bg-blue-100 text-blue-900 border border-blue-300 font-bold px-1.5 py-0.5 rounded">
+                          <span className="text-xs bg-blue-100 text-blue-900 border border-blue-300 font-bold px-1.5 py-0.5 rounded">
                             📨 양해 대기 중
                           </span>
                         )}
                         {draft.consentStatus === "CONSENTED" && (
-                          <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold px-1.5 py-0.5 rounded">
+                          <span className="text-xs bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold px-1.5 py-0.5 rounded">
                             ✓ 알림으로 양해 받음
                           </span>
                         )}
                         {draft.consentStatus === "DECLINED" && (
-                          <span className="text-[10px] bg-rose-100 text-rose-900 border border-rose-300 font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                          <span className="text-xs bg-rose-100 text-rose-900 border border-rose-300 font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
                             <span>❌ 어렵다고 답함</span>
                             {draft.consentNote && (
                               <span className="font-normal text-rose-800">(사유: {draft.consentNote})</span>
                             )}
                           </span>
                         )}
-                        <span className="text-gray-400 text-[10px]">
+                        <span className="text-gray-400 text-[11px]">
                           · {new Date(draft.updatedAt).toLocaleDateString("ko-KR")} 저장
                         </span>
                       </div>
@@ -2668,13 +2668,13 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                         errorMsg && !isConditionalError(errorMsg) ? (
                           <div className="text-[11px] font-extrabold text-red-900 bg-red-50 border border-red-300 rounded px-2.5 py-1.5 mt-1 space-y-0.5">
                             <div>❌ 성립 불가 — 전제로 삼은 대기 신청이 취소·반려되었거나 시간표가 변경되었습니다.</div>
-                            <div className="text-[10px] text-red-700 font-medium">더 이상 신청할 수 없는 안입니다. 이 초안을 삭제해 주세요.</div>
+                            <div className="text-[11px] text-red-700 font-medium">더 이상 신청할 수 없는 안입니다. 이 초안을 삭제해 주세요.</div>
                           </div>
                         ) : (
                           <div className="text-[11px] font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 mt-1 space-y-1">
                             <div>⏳ 내 대기 신청이 <span className="underline font-extrabold text-amber-950">승인되어야만</span> 가능한 안입니다. 그 신청을 취소하면 이 안도 함께 사라집니다.</div>
                             {errorMsg && (
-                              <div className="text-[10px] text-amber-800 font-medium">아직 전제 신청이 승인되지 않아 지금은 신청할 수 없습니다. 승인된 뒤 다시 신청해 주세요.</div>
+                              <div className="text-[11px] text-amber-800 font-medium">아직 전제 신청이 승인되지 않아 지금은 신청할 수 없습니다. 승인된 뒤 다시 신청해 주세요.</div>
                             )}
                           </div>
                         )
@@ -2916,7 +2916,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs font-bold text-gray-700">
                 <label htmlFor="consent-message-input">부탁 말씀 (선택)</label>
-                <span className="text-[10px] text-gray-400 font-normal">{consentMessageInput.length}/200자</span>
+                <span className="text-[11px] text-gray-400 font-normal">{consentMessageInput.length}/200자</span>
               </div>
               <textarea
                 id="consent-message-input"
@@ -2991,7 +2991,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                     <div className="text-[11px] font-bold text-gray-900 flex items-center justify-between">
                       <span>항목 #{dIdx + 1}: {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} ➔ {d.candidate.counterpartName}</span>
                       {d.consentStatus === "CONSENTED" && (
-                        <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                        <span className="text-xs text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                           ✓ 알림으로 양해 받음
                         </span>
                       )}
@@ -3361,13 +3361,13 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
 
             {req.type === "simul_move" && req.simulMove?.steps && req.simulMove.steps.length > 0 && (
               <div className="w-full text-[11px] bg-purple-50 border border-purple-200 text-purple-950 rounded-lg p-2.5 space-y-1 mt-1.5 font-sans">
-                <div className="font-bold text-[10px] text-purple-900 flex items-center gap-1">
+                <div className="font-bold text-xs text-purple-900 flex items-center gap-1">
                   <span>🧩</span>
                   <span>반별 이동 내역 ({req.simulMove.steps.length}개 반):</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-1">
                   {req.simulMove.steps.map((step, idx) => (
-                    <div key={`${step.classNum}-${idx}`} className="text-[10px] leading-tight text-purple-950 bg-white rounded p-1.5 border border-purple-200 flex items-center justify-between shadow-2xs">
+                    <div key={`${step.classNum}-${idx}`} className="text-[11px] leading-tight text-purple-950 bg-white rounded p-1.5 border border-purple-200 flex items-center justify-between shadow-2xs">
                       <span>
                         <strong>{step.classNum}반</strong>: {step.groupLesson.subjectName} ({step.groupLesson.teacherName})
                       </span>
@@ -3384,12 +3384,12 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
 
             {req.type === "chain" && req.chainSteps && req.chainSteps.length > 0 && (
               <div className="w-full text-[11px] bg-purple-50 border border-purple-200 text-purple-950 rounded-lg p-2 font-mono space-y-1 mt-1.5">
-                <div className="font-bold text-[10px] text-purple-900 flex items-center gap-1">
+                <div className="font-bold text-xs text-purple-900 flex items-center gap-1">
                   <span>🔗</span>
                   <span>체인 수열 ({req.chainSteps.length}단계):</span>
                 </div>
                 {req.chainSteps.map((step: any, idx: number) => (
-                  <div key={idx} className="text-[10px] leading-tight text-purple-900">
+                  <div key={idx} className="text-[11px] leading-tight text-purple-900">
                     Step {idx + 1}: {step.stepSummary || step.summary || `${step.sourceTeacherName || ""} → ${step.candidate?.counterpartName || ""} (${step.targetDay}요일 ${step.targetPeriod}교시)`}
                   </div>
                 ))}
@@ -3427,7 +3427,7 @@ function MyRequestsTab({ settings }: MyRequestsTabProps) {
             <div className="font-bold flex items-center gap-1 text-amber-900">
               <span>🤝 당사자 사전 양해 확인 완료</span>
               {req.consent.confirmedAt && (
-                <span className="text-[10px] text-amber-700 font-normal">
+                <span className="text-[11px] text-amber-700 font-normal">
                   ({new Date(req.consent.confirmedAt).toLocaleDateString("ko-KR")} {new Date(req.consent.confirmedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })})
                 </span>
               )}

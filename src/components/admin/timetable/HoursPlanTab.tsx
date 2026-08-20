@@ -1194,7 +1194,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                             </label>
 
                             <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                              className={`px-1.5 py-0.5 rounded text-[11px] font-bold shrink-0 ${
                                 isError
                                   ? "bg-amber-200 text-amber-950"
                                   : "bg-slate-200 text-slate-800"
@@ -1418,7 +1418,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                                 row.teacherName ||
                                 (row.teacherEmail ? row.teacherEmail.split("@")[0] : "(선생님 선택)")}
                             </span>
-                            <span className="text-[10px] text-gray-400 group-hover:text-indigo-600 ml-1">
+                            <span className="text-xs text-gray-400 group-hover:text-indigo-600 ml-1">
                               ✎
                             </span>
                           </button>

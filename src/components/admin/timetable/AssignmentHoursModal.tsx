@@ -1142,7 +1142,7 @@ export default function AssignmentHoursModal({
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="font-bold text-gray-900 text-xs">① 과목별 배정표</span>
-                        <span className="px-1.5 py-0.5 bg-red-100 text-red-800 rounded font-bold text-[10px]">
+                        <span className="px-1.5 py-0.5 bg-red-100 text-red-800 rounded font-bold text-xs">
                           필수
                         </span>
                       </div>
@@ -1155,7 +1155,7 @@ export default function AssignmentHoursModal({
                       <div className="bg-white border border-indigo-200 rounded-lg p-2.5 flex items-center justify-between">
                         <div className="overflow-hidden mr-2">
                           <p className="font-bold text-indigo-900 truncate text-[11px]">{assignFile.name}</p>
-                          <p className="text-[10px] text-gray-400 font-mono">
+                          <p className="text-[11px] text-gray-400 font-mono">
                             {formatFileSize(assignFile.size)}
                           </p>
                         </div>
@@ -1196,7 +1196,7 @@ export default function AssignmentHoursModal({
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="font-bold text-gray-900 text-xs">② 창체 수업 담당교사</span>
-                        <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded font-medium text-[10px]">
+                        <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded font-medium text-xs">
                           선택
                         </span>
                       </div>
@@ -1211,7 +1211,7 @@ export default function AssignmentHoursModal({
                           <p className="font-bold text-indigo-900 truncate text-[11px]">
                             {creativeFile.name}
                           </p>
-                          <p className="text-[10px] text-gray-400 font-mono">
+                          <p className="text-[11px] text-gray-400 font-mono">
                             {formatFileSize(creativeFile.size)}
                           </p>
                         </div>
@@ -1252,7 +1252,7 @@ export default function AssignmentHoursModal({
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="font-bold text-gray-900 text-xs">③ 이동수업 현황</span>
-                        <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded font-medium text-[10px]">
+                        <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded font-medium text-xs">
                           선택
                         </span>
                       </div>
@@ -1271,7 +1271,7 @@ export default function AssignmentHoursModal({
                             >
                               <div className="overflow-hidden mr-2">
                                 <p className="font-bold text-indigo-900 truncate text-[11px]">{file.name}</p>
-                                <p className="text-[10px] text-gray-400 font-mono">
+                                <p className="text-[11px] text-gray-400 font-mono">
                                   {formatFileSize(file.size)}
                                 </p>
                               </div>
@@ -1536,12 +1536,12 @@ export default function AssignmentHoursModal({
                                   {item.rawName}
                                 </span>
                                 {item.fromSimulStatus && (
-                                  <span className="px-1 py-0.2 bg-blue-100 text-blue-800 rounded text-[9px] whitespace-nowrap">
+                                  <span className="px-1 py-0.2 bg-blue-100 text-blue-800 rounded text-[11px] whitespace-nowrap">
                                     현황
                                   </span>
                                 )}
                                 {item.fromRegistry && (
-                                  <span className="px-1 py-0.2 bg-sky-100 text-sky-800 rounded text-[9px] whitespace-nowrap">
+                                  <span className="px-1 py-0.2 bg-sky-100 text-sky-800 rounded text-[11px] whitespace-nowrap">
                                     등록부
                                   </span>
                                 )}
@@ -1606,17 +1606,17 @@ export default function AssignmentHoursModal({
                                 <div className="flex items-center gap-2">
                                   <span className="font-bold text-gray-900 text-xs">「{item.rawName}」</span>
                                   {item.fromSimulStatus && (
-                                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-medium text-[10px]">
+                                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-medium text-[11px]">
                                       이동수업 현황 문서 표기
                                     </span>
                                   )}
                                   {item.fromRegistry && (
-                                    <span className="px-1.5 py-0.5 bg-sky-100 text-sky-800 rounded font-medium text-[10px]">
+                                    <span className="px-1.5 py-0.5 bg-sky-100 text-sky-800 rounded font-medium text-[11px]">
                                       등록부에 있는 표기
                                     </span>
                                   )}
                                   {historyCand && !isCreateMode && (
-                                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px]">
+                                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[11px]">
                                       이전 기록 있음
                                     </span>
                                   )}
@@ -1671,7 +1671,7 @@ export default function AssignmentHoursModal({
                                         ))}
                                       <option value="__create_new__">+ 「{item.rawName}」 새 과목으로 등록</option>
                                     </select>
-                                    <span className="text-[10px] text-gray-400">
+                                    <span className="text-[11px] text-gray-400">
                                       목록에 연결할 과목이 없으면 맨 아래 &apos;+ 새 과목으로 등록&apos;을 선택해 주세요
                                     </span>
                                   </div>
@@ -1728,16 +1728,16 @@ export default function AssignmentHoursModal({
                               <div className="space-y-0.5">
                                 <div className="flex items-center gap-2">
                                   <span className="font-bold text-gray-900 text-xs">「{item.rawName}」</span>
-                                  <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded font-medium text-[10px]">
+                                  <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded font-medium text-[11px]">
                                     신규 과목
                                   </span>
                                   {item.fromSimulStatus && (
-                                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-medium text-[10px]">
+                                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-medium text-[11px]">
                                       이동수업 현황 문서 표기
                                     </span>
                                   )}
                                   {item.fromRegistry && (
-                                    <span className="px-1.5 py-0.5 bg-sky-100 text-sky-800 rounded font-medium text-[10px]">
+                                    <span className="px-1.5 py-0.5 bg-sky-100 text-sky-800 rounded font-medium text-[11px]">
                                       등록부에 있는 표기
                                     </span>
                                   )}
@@ -1775,7 +1775,7 @@ export default function AssignmentHoursModal({
                                         새 과목 등록으로 전환
                                       </button>
                                     </div>
-                                    <span className="text-[10px] text-gray-400">
+                                    <span className="text-[11px] text-gray-400">
                                       목록에 연결할 과목이 없으면 &apos;새 과목 등록으로 전환&apos;을 눌러주세요
                                     </span>
                                   </div>

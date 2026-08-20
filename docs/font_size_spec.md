@@ -80,7 +80,22 @@ grep -rln "text-\[10px\]" src/
 
 **1단계 완료 시점에 구현자가 채우고 Claude가 검수한다.** 이 목록에 없는 파일에서 `text-[10px]`이 grep에 잡히면 실패다.
 
-- (아직 비어 있음 — 1단계에서 채운다. `OffscreenShareCard.tsx`는 §3-2 대상이라 이 목록이 아니라 스펙 범위 밖이다.)
+### 고밀도 격자 셀 내부 정보 (§3-1 예외) — 12종
+- `src/components/admin/MyTimetableCard.tsx` — 교사 개인 주간 시간표 카드 격자 셀 (특별실/학급)
+- `src/components/admin/timetable/BaseRevisionTab.tsx` — 기초 시간표 판 정정 격자 셀
+- `src/components/admin/timetable/ClassTimetableTab.tsx` — 학급별 주간 시간표 격자 셀 (이동수업 뱃지·교사명)
+- `src/components/admin/timetable/TeacherTimetableTab.tsx` — 교사별 주간 시간표 격자 셀 (이동수업 뱃지·학급명)
+- `src/components/admin/timetable/ConsecutiveRuleTab.tsx` — 연강 배정 룰 격자 셀 (이동수업 뱃지·학급명)
+- `src/components/admin/timetable/CoTeachingRuleTab.tsx` — 협력수업 룰 격자 셀 (이동수업 뱃지·학급명)
+- `src/components/admin/timetable/SimulGroupTab.tsx` — 동시수업 룰 격자 셀 (이동수업 뱃지·학급명)
+- `src/components/admin/timetable/VenueGroupTab.tsx` — 장소그룹 룰 격자 셀 (이동수업 뱃지·학급명)
+- `src/components/admin/timetable/DirectSubstituteTab.tsx` — 관리자 직권 대결/교환 주간 시간표 격자 셀
+- `src/components/admin/timetable/DraftAutoTab.tsx` — 자동 작성 초안 및 교사 파생 시간표 격자 셀
+- `src/components/admin/timetable/TeacherPortalSection.tsx` — 교사 포털 주간 시간표 격자 셀 (초안/대기 뱃지·교환 후보)
+- `src/components/admin/timetable/MiniPreviewGrid.tsx` — 교환 후보 상대 시간표 미니 미리보기 격자 셀
+
+### 이미지 생성 전용 오프스크린 렌더 (§3-2 예외) — 1종
+- `src/components/admin/timetable/OffscreenShareCard.tsx` — html-to-image 사전 양해 카드 캡처 전용 (화면 비노출)
 
 ## §8-1 신규 개발 상시 적용 (2026-08-20 사용자 결정)
 

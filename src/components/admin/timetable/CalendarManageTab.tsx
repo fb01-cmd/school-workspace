@@ -706,25 +706,25 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
                           <div className="flex items-center gap-2 flex-wrap">
                             {/* 나이스 자동 vs 직접 등록 배지 */}
                             {isNeis ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                              <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
                                 나이스 자동
                               </span>
                             ) : (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 직접 등록
                               </span>
                             )}
 
                             {/* 교직원 전용 배지 */}
                             {evt.staffOnly && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                              <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
                                 🔒 교직원 전용
                               </span>
                             )}
 
                             {/* 일정 타입 배지 */}
                             <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                              className={`text-xs font-bold px-2 py-0.5 rounded border ${
                                 evt.type === "행사"
                                   ? "bg-gray-100 text-gray-700 border-gray-300"
                                   : evt.type === "휴업일" || evt.type === "재량휴업"
@@ -742,7 +742,7 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
                               🗓️ {evt.startDate}
                               {isMultiDay ? ` ~ ${evt.endDate}` : ""}
                               {isPast && (
-                                <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded">
+                                <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded">
                                   지난 일정
                                 </span>
                               )}

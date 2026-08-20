@@ -225,7 +225,7 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
                                         {subjName}
                                       </div>
                                       {simulCheck.hit && (
-                                        <span className="text-[9px] bg-purple-700 text-white font-extrabold px-1 rounded" title={simulCheck.groupLabel || "이동수업 그룹"}>
+                                        <span className="text-[10px] bg-purple-700 text-white font-extrabold px-1 rounded" title={simulCheck.groupLabel || "이동수업 그룹"}>
                                           🔀 이동수업
                                         </span>
                                       )}

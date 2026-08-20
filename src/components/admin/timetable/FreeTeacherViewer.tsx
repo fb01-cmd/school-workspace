@@ -191,7 +191,7 @@ export default function FreeTeacherViewer({
                     <span>{t.name}</span>
                   </div>
                 </div>
-                <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800">
                   공강
                 </span>
               </div>

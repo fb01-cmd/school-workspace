@@ -122,7 +122,7 @@ export function OffscreenShareCard({
         className="w-[520px] bg-white border border-indigo-200 rounded-2xl p-5 shadow-xl space-y-4 font-sans text-gray-900"
       >
         <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
-          <div className="text-[10px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
+          <div className="text-[11px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
           <div className="text-lg font-black mt-0.5 tracking-tight">수업교환 양해 요청</div>
         </div>
 
@@ -142,7 +142,7 @@ export function OffscreenShareCard({
           <div className="font-bold text-gray-800 border-b border-gray-200 pb-1.5 flex items-center justify-between">
             <span>🔄 수업교환 상세 일정 (선생님 기준)</span>
               {data.targetWeekId && data.targetWeekId !== data.sourceWeekId && (
-                <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full border border-indigo-200">
+                <span className="text-xs bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full border border-indigo-200">
                   ↔ {data.targetWeekId} 주 교차 주
                 </span>
               )}
@@ -261,7 +261,7 @@ export function OffscreenShareCard({
           counterpartTitle={counterpartTitle}
         />
 
-        <div className="text-center text-[10px] text-gray-400 border-t border-gray-100 pt-2 font-medium">
+        <div className="text-center text-[11px] text-gray-400 border-t border-gray-100 pt-2 font-medium">
           효명고등학교 학적 & 일과진행 시스템
         </div>
       </div>
@@ -293,7 +293,7 @@ export function RecipientWeekBlock({
               return (
                 <th key={d.num} className="py-1 px-0.5 w-1/5 text-xs">
                   <div>{d.label}</div>
-                  {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
+                  {dateLabel && <div className="text-[11px] text-gray-400 font-normal">{dateLabel}</div>}
                 </th>
               );
             })}
@@ -319,7 +319,7 @@ export function RecipientWeekBlock({
                     <td key={d.num} className={`p-0.5 h-10 text-xs align-middle ${cellStyle}`}>
                       {marker ? (
                         <div className="space-y-0.5">
-                          <div className={`text-[9px] font-extrabold ${marker.kind === "out" ? "text-amber-900" : "text-emerald-900"}`}>
+                          <div className={`text-[10px] font-extrabold ${marker.kind === "out" ? "text-amber-900" : "text-emerald-900"}`}>
                             {marker.kind === "out" ? "➖ 빠짐" : "➕ 들어옴"}
                           </div>
                           <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">
@@ -386,7 +386,7 @@ export function OffscreenConsolidatedCard({
         className="w-[520px] bg-white border border-indigo-200 rounded-2xl p-5 shadow-xl space-y-4 font-sans text-gray-900"
       >
         <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 text-white rounded-xl p-3.5 text-center shadow-sm">
-          <div className="text-[10px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
+          <div className="text-[11px] font-bold text-indigo-200 tracking-wider">HYOMYUNG HIGH SCHOOL</div>
           <div className="text-lg font-black mt-0.5 tracking-tight">{cardTitle}{n > 1 ? ` (${n}건)` : ""}</div>
         </div>
 
@@ -408,7 +408,7 @@ export function OffscreenConsolidatedCard({
             <>
               {recipientMoves.map((m, i) => (
                 <div key={`rm${i}`} className="flex items-start gap-2 bg-amber-50/90 border border-amber-200 rounded-lg p-2.5">
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-amber-600 text-white text-[10px] font-black flex items-center justify-center mt-0.5">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-amber-600 text-white text-xs font-black flex items-center justify-center mt-0.5">
                     {i + 1}
                   </span>
                   <div className="font-bold text-amber-900">
@@ -423,7 +423,7 @@ export function OffscreenConsolidatedCard({
               )}
               {contextMoves.length > 0 && (
                 <div className="bg-white border border-gray-200 rounded-lg p-2.5 space-y-1">
-                  <div className="text-[10px] font-extrabold text-gray-500">함께 바뀌는 수업</div>
+                  <div className="text-[11px] font-extrabold text-gray-500">함께 바뀌는 수업</div>
                   {contextMoves.map((m, i) => (
                     <div key={`cm${i}`} className="font-semibold text-emerald-900">
                       {m.ownerName} 선생님의 {m.grade}-{m.classNum}반 {m.subjectName} : {formatSlotWithDate(m.from.weekId, m.from.day, m.from.period)} → {formatSlotWithDate(m.to.weekId, m.to.day, m.to.period)}
@@ -432,7 +432,7 @@ export function OffscreenConsolidatedCard({
                 </div>
               )}
               {(data.swapStepCount || 0) >= 2 && (
-                <div className="text-[10px] text-gray-400 font-medium pt-0.5">
+                <div className="text-[11px] text-gray-400 font-medium pt-0.5">
                   ※ 여러 단계로 나뉘어 처리되는 교환이지만, 위 내용과 아래 시간표는 최종 결과 기준입니다.
                 </div>
               )}
@@ -462,7 +462,7 @@ export function OffscreenConsolidatedCard({
             const isSub = d.type === "substitute";
             return (
               <div key={d.id || i} className="flex items-start gap-2 bg-white border border-gray-200 rounded-lg p-2.5">
-                <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center mt-0.5">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-600 text-white text-xs font-black flex items-center justify-center mt-0.5">
                   {(netMode ? recipientMoves.length : 0) + i + 1}
                 </span>
                 {isSub ? (
@@ -470,7 +470,7 @@ export function OffscreenConsolidatedCard({
                     <div className="font-bold text-emerald-900">
                       {srcSlot} {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} — 보강을 부탁드립니다
                     </div>
-                    <div className="text-[10px] text-gray-500">
+                    <div className="text-[11px] text-gray-500">
                       {data.ownerLabel || "해당"} 수업을 대신 맡아주시는 일정입니다
                     </div>
                   </div>
@@ -498,7 +498,7 @@ export function OffscreenConsolidatedCard({
                           🧩 이 교체는 {simul.grade}학년 {simul.classNums.join("·")}반 {simul.steps.length}개 반이 함께 움직입니다.
                         </div>
                         {d.candidate?.coordination?.conflicts && d.candidate.coordination.conflicts.length > 0 && (
-                          <div className="text-[10px] text-amber-900 bg-amber-50 border border-amber-300 rounded p-1 font-bold">
+                          <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded p-1 font-bold">
                             ⚠️ 교체하면 {formatSlotWithDate(d.candidate.coordination.conflicts[0].slot.weekId, d.candidate.coordination.conflicts[0].slot.day, d.candidate.coordination.conflicts[0].slot.period)} {d.candidate.coordination.conflicts[0].roomName} 사용이 겹칩니다 (사용 중: {d.candidate.coordination.conflicts[0].occupants.map((o: any) => `${o.teacherName} 선생님`).join(", ")})
                           </div>
                         )}
@@ -514,7 +514,7 @@ export function OffscreenConsolidatedCard({
                       {data.ownerLabel || "제"} {d.source.grade}-{d.source.classNum}반 {d.source.subjectName} : {srcSlot} → {tgtSlot}
                     </div>
                     {d.candidate?.coordination?.conflicts && d.candidate.coordination.conflicts.length > 0 && (
-                      <div className="text-[10px] text-amber-900 bg-amber-50 border border-amber-300 rounded p-1 font-bold mt-1">
+                      <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded p-1 font-bold mt-1">
                         ⚠️ 교체하면 {formatSlotWithDate(d.candidate.coordination.conflicts[0].slot.weekId, d.candidate.coordination.conflicts[0].slot.day, d.candidate.coordination.conflicts[0].slot.period)} {d.candidate.coordination.conflicts[0].roomName} 사용이 겹칩니다 (사용 중: {d.candidate.coordination.conflicts[0].occupants.map((o: any) => `${o.teacherName} 선생님`).join(", ")})
                       </div>
                     )}
@@ -526,7 +526,7 @@ export function OffscreenConsolidatedCard({
         </div>
 
         <div className="space-y-2">
-          <div className="text-[10px] text-gray-500 flex flex-wrap gap-2.5">
+          <div className="text-[11px] text-gray-500 flex flex-wrap gap-2.5">
             {hasOutMarker && (
               <span className="inline-flex items-center gap-1 font-bold text-amber-900">
                 <span className="w-2.5 h-2.5 rounded bg-amber-200 border border-amber-400 inline-block" />
@@ -543,7 +543,7 @@ export function OffscreenConsolidatedCard({
           ))}
         </div>
 
-        <div className="text-center text-[10px] text-gray-400 border-t border-gray-100 pt-2 font-medium">
+        <div className="text-center text-[11px] text-gray-400 border-t border-gray-100 pt-2 font-medium">
           효명고등학교 학적 & 일과진행 시스템
         </div>
       </div>

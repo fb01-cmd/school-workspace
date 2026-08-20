@@ -152,7 +152,7 @@ export default function MyTimetableCard({ onNavigateToMyTimetable }: MyTimetable
                                     >
                                       <div className="truncate">{cell.grade}-{cell.classNum} {subj}</div>
                                       {cell.room && (
-                                        <div className="text-[9px] font-normal text-gray-500 truncate mt-0.5">{cell.room}</div>
+                                        <div className="text-[10px] font-normal text-gray-500 truncate mt-0.5">{cell.room}</div>
                                       )}
                                     </div>
                                   );

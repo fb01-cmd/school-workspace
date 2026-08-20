@@ -1158,7 +1158,7 @@ export default function DraftAutoTab({
               title="클릭하여 하드 위반 상세를 확인하거나 접습니다"
             >
               <span>하드 위반 {report.hard.length}건</span>
-              <span className="text-[10px]">{showHardDetails ? "▲" : "▼"}</span>
+              <span className="text-xs">{showHardDetails ? "▲" : "▼"}</span>
             </button>
             <button
               onClick={() => setShowSoftDetails((o) => !o)}
@@ -1166,7 +1166,7 @@ export default function DraftAutoTab({
               title="클릭하여 소프트 감점 상세를 확인하거나 접습니다"
             >
               <span>소프트 {report.soft.total}점</span>
-              <span className="text-[10px]">{showSoftDetails ? "▲" : "▼"}</span>
+              <span className="text-xs">{showSoftDetails ? "▲" : "▼"}</span>
             </button>
 
             {/* AI 원인 진단 버튼 — 하드 > 0 이고 키 설정 시에만 노출 (E-1b) */}
@@ -1304,7 +1304,7 @@ export default function DraftAutoTab({
               <div className="flex items-center gap-2">
                 <span className="text-base">🔴</span>
                 <span className="text-xs font-bold text-red-950">하드 위반 상세 (총 {report.hard.length}건)</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-200 text-red-900 font-bold border border-red-300">
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-200 text-red-900 font-bold border border-red-300">
                   완성본을 위해 해결이 권장되는 위반 항목입니다
                 </span>
               </div>
@@ -1374,7 +1374,7 @@ export default function DraftAutoTab({
                       <div key={code} className="space-y-2">
                         <div className="flex items-center gap-2 border-b border-red-200 pb-1">
                           <span className="font-extrabold text-red-900 text-xs">{code} ({label})</span>
-                          <span className="text-[10px] font-extrabold px-2 py-0.2 rounded-full bg-red-200 text-red-900">
+                          <span className="text-xs font-extrabold px-2 py-0.2 rounded-full bg-red-200 text-red-900">
                             {items.length}건
                           </span>
                         </div>
@@ -1385,7 +1385,7 @@ export default function DraftAutoTab({
                             <summary className="cursor-pointer text-[11px] font-bold text-gray-600 hover:text-gray-900 py-1 flex items-center gap-1.5 select-none">
                               <span>📋</span>
                               <span>등록부 미비로 추정 ({gapItems.length}건)</span>
-                              <span className="text-[10px] text-gray-400 group-open:rotate-180 transition-transform">▼</span>
+                              <span className="text-xs text-gray-400 group-open:rotate-180 transition-transform">▼</span>
                             </summary>
                             <div className="mt-2 space-y-2 pl-3 border-l-2 border-amber-300">
                               {gapItems.map(renderItem)}
@@ -1408,7 +1408,7 @@ export default function DraftAutoTab({
               <div className="flex items-center gap-2">
                 <span className="text-base">🟡</span>
                 <span className="text-xs font-bold text-amber-950">소프트 감점 상세 (총 {report.soft.total}점)</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold border border-amber-300">
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold border border-amber-300">
                   시간표의 가독성 및 균형 감점 현황입니다
                 </span>
               </div>
@@ -1443,7 +1443,7 @@ export default function DraftAutoTab({
                         <div className="flex items-center justify-between border-b border-amber-200 pb-1">
                           <div className="flex items-center gap-2">
                             <span className="font-extrabold text-amber-950 text-xs">{code} ({label})</span>
-                            <span className="text-[10px] font-extrabold px-2 py-0.2 rounded-full bg-amber-200 text-amber-900">
+                            <span className="text-xs font-extrabold px-2 py-0.2 rounded-full bg-amber-200 text-amber-900">
                               {sortedItems.length}건
                             </span>
                           </div>
@@ -1528,7 +1528,7 @@ export default function DraftAutoTab({
                                           <div className="flex items-start justify-between gap-2">
                                             <div className="flex items-start gap-2 min-w-0">
                                               {/* 순위 배지 */}
-                                              <span className="shrink-0 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold flex items-center justify-center mt-0.5">
+                                              <span className="shrink-0 w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-extrabold flex items-center justify-center mt-0.5">
                                                 {ci + 1}
                                               </span>
                                               <div className="space-y-0.5 min-w-0">
@@ -1540,7 +1540,7 @@ export default function DraftAutoTab({
                                                   </span>
                                                   {/* 지목 항목 해소 여부 */}
                                                   {cand.resolvesTarget && (
-                                                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                                                    <span className="text-xs px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
                                                       ✅ 이 감점 해소
                                                     </span>
                                                   )}
@@ -1590,7 +1590,7 @@ export default function DraftAutoTab({
               <div className="flex items-center gap-2">
                 <span className="text-base">🔍</span>
                 <span className="text-xs font-bold text-violet-900">원인 진단 결과</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-200 text-violet-800 font-bold border border-violet-300">
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-200 text-violet-800 font-bold border border-violet-300">
                   AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
                 </span>
               </div>
@@ -1613,7 +1613,7 @@ export default function DraftAutoTab({
                           key={i}
                           className="flex items-start gap-2.5 bg-white rounded-lg border border-violet-100 px-3.5 py-2.5 text-xs text-gray-800 font-medium"
                         >
-                          <span className="shrink-0 w-5 h-5 rounded-full bg-violet-600 text-white text-[10px] font-extrabold flex items-center justify-center mt-0.5">
+                          <span className="shrink-0 w-5 h-5 rounded-full bg-violet-600 text-white text-xs font-extrabold flex items-center justify-center mt-0.5">
                             {i + 1}
                           </span>
                           <span>{s}</span>
@@ -1640,7 +1640,7 @@ export default function DraftAutoTab({
               <div className="flex items-center gap-2">
                 <span className="text-base">💬</span>
                 <span className="text-xs font-bold text-sky-900">이 시간표 설명</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-200 text-sky-800 font-bold border border-sky-300">
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-200 text-sky-800 font-bold border border-sky-300">
                   AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
                 </span>
               </div>
@@ -1671,7 +1671,7 @@ export default function DraftAutoTab({
               <div className="flex items-center gap-2">
                 <span className="text-base">✨</span>
                 <span className="text-xs font-bold text-emerald-900">개선 제안</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-800 font-bold border border-emerald-300">
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-800 font-bold border border-emerald-300">
                   AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
                 </span>
               </div>
@@ -1692,7 +1692,7 @@ export default function DraftAutoTab({
                         key={i}
                         className="flex items-start gap-2.5 bg-white rounded-lg border border-emerald-100 px-3.5 py-2.5 text-xs text-gray-800 font-medium"
                       >
-                        <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold flex items-center justify-center mt-0.5">
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-600 text-white text-xs font-extrabold flex items-center justify-center mt-0.5">
                           {i + 1}
                         </span>
                         <span>{s}</span>
@@ -1865,7 +1865,7 @@ export default function DraftAutoTab({
                                     {lesson.teachers?.map((t) => t.name).join(", ")}
                                   </div>
                                   {simulLabel && (
-                                    <div className="text-[9px] text-purple-700 font-extrabold mt-0.5">
+                                    <div className="text-[10px] text-purple-700 font-extrabold mt-0.5">
                                       🔒 {simulLabel}
                                     </div>
                                   )}
@@ -1984,7 +1984,7 @@ export default function DraftAutoTab({
                       >
                         <div className="min-w-0">
                           <p className="font-bold text-xs text-red-950 truncate">{u.label}</p>
-                          <p className="text-[10px] text-red-700 font-semibold mt-0.5">
+                          <p className="text-[11px] text-red-700 font-semibold mt-0.5">
                             잔여 {u.remaining}시수 미배정
                           </p>
                         </div>
@@ -2150,7 +2150,7 @@ export default function DraftAutoTab({
                             #{idx + 1} {op.type === "swap" ? "맞교환/이동" : "셀 통째 수정"} ({op.grade}학년 {op.classNum}반)
                           </span>
                           {isCurrent && (
-                            <span className="text-[10px] bg-purple-700 text-white font-extrabold px-1.5 py-0.5 rounded">
+                            <span className="text-xs bg-purple-700 text-white font-extrabold px-1.5 py-0.5 rounded">
                               현재 지점
                             </span>
                           )}
@@ -2222,7 +2222,7 @@ export default function DraftAutoTab({
               <div className="flex items-center gap-2">
                 <span className="font-bold">현행 시간표에서 다시 짜기</span>
                 {hasBaseGrids === false && (
-                  <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-normal">
+                  <span className="text-xs text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-normal">
                     기초 시간표 없음
                   </span>
                 )}
@@ -2589,7 +2589,7 @@ export default function DraftAutoTab({
                     </div>
                   )}
 
-                  <div className="text-[10px] text-gray-400">
+                  <div className="text-[11px] text-gray-400">
                     최종 수정: {fmtTime(draft.updatedAt)}
                   </div>
 

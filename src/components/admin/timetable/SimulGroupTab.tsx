@@ -338,12 +338,12 @@ export default function SimulGroupTab({ activeTermId, isOperating = false, isArc
               <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
                 <span>{editingGroupId ? "✏️ 이동수업 그룹 수정" : "➕ 신규 이동수업 그룹 추가"}</span>
                 {isOperating && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
                     🔒 운영 학기 잠김
                   </span>
                 )}
                 {isArchived && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
                     🔒 열람 전용
                   </span>
                 )}
@@ -701,7 +701,7 @@ export default function SimulGroupTab({ activeTermId, isOperating = false, isArc
                                         {lesson.teachers?.map((t) => t.name).join(", ")}
                                       </div>
                                       {check.hit && (
-                                        <span className="inline-block text-[9px] bg-purple-700 text-white font-extrabold px-1 rounded mt-0.5">
+                                        <span className="inline-block text-[10px] bg-purple-700 text-white font-extrabold px-1 rounded mt-0.5">
                                           🔀 이동수업
                                         </span>
                                       )}
@@ -771,11 +771,11 @@ export default function SimulGroupTab({ activeTermId, isOperating = false, isArc
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
+                            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
                               {grp.grade}학년
                             </span>
                             {grp.active === false && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
+                              <span className="text-xs font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-700">
                                 비활성
                               </span>
                             )}

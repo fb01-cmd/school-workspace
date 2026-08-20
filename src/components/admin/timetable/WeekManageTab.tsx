@@ -332,12 +332,12 @@ export default function WeekManageTab({
                             {w.startDate} ({w.id})
                           </span>
                           {isCurrent && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white shadow-2xs">
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white shadow-2xs">
                               이번 주
                             </span>
                           )}
                           {isPast && showPastWeeks && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">
+                            <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">
                               지난 주
                             </span>
                           )}
@@ -371,12 +371,12 @@ export default function WeekManageTab({
                             );
                           })}
                           {holidayCount > 0 && (
-                            <span className="ml-1 text-[10px] bg-red-100 text-red-800 px-1.5 py-0.5 rounded font-bold">
+                            <span className="ml-1 text-[11px] bg-red-100 text-red-800 px-1.5 py-0.5 rounded font-bold">
                               휴업 {holidayCount}일
                             </span>
                           )}
                           {overrideCount > 0 && (
-                            <span className="ml-1 text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded font-bold">
+                            <span className="ml-1 text-[11px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded font-bold">
                               직접 조정 {overrideCount}일
                             </span>
                           )}

@@ -84,7 +84,7 @@ export default function MiniPreviewGrid({
 
   return (
     <div className="space-y-3 font-sans text-gray-900">
-      <div className="text-[10px] text-gray-500 flex flex-wrap gap-2.5">
+      <div className="text-[11px] text-gray-500 flex flex-wrap gap-2.5">
         {partyRole === "venue_occupant" ? (
           <span className="inline-flex items-center gap-1 font-bold text-red-950">
             <span className="w-2.5 h-2.5 rounded bg-red-100 border border-red-500 inline-block" />
@@ -109,7 +109,7 @@ export default function MiniPreviewGrid({
         <div className="border border-gray-200 rounded-lg overflow-hidden text-xs bg-white shadow-xs">
           <div className="bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-700 border-b border-gray-200 flex justify-between items-center">
             <span>🗓️ {getWeekRangeLabel(targetStartDate)} 시간표</span>
-            <span className="text-[10px] font-semibold text-gray-500">{counterpartTitle} 주간 시간표</span>
+            <span className="text-[11px] font-semibold text-gray-500">{counterpartTitle} 주간 시간표</span>
           </div>
           <table className="w-full table-fixed border-collapse text-center">
             <thead>
@@ -120,7 +120,7 @@ export default function MiniPreviewGrid({
                   return (
                     <th key={d.num} className="py-1 px-0.5 w-1/5 text-xs">
                       <div>{d.label}</div>
-                      {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
+                      {dateLabel && <div className="text-[11px] text-gray-400 font-normal">{dateLabel}</div>}
                     </th>
                   );
                 })}
@@ -164,21 +164,21 @@ export default function MiniPreviewGrid({
                         <td key={d.num} className={`p-0.5 h-10 text-xs align-middle ${cellStyle}`} title={cellTitle}>
                           {isOutSlot ? (
                             <div className="space-y-0.5">
-                              <div className="text-[9px] font-extrabold text-amber-900">➖ 빠짐</div>
+                              <div className="text-[10px] font-extrabold text-amber-900">➖ 빠짐</div>
                               <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">
                                 {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
                               </div>
                             </div>
                           ) : isInSlot ? (
                             <div className="space-y-0.5">
-                              <div className="text-[9px] font-extrabold text-emerald-900">➕ 들어옴</div>
+                              <div className="text-[10px] font-extrabold text-emerald-900">➕ 들어옴</div>
                               <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">
                                 {selectedCell.grade}-{selectedCell.classNum}
                               </div>
                             </div>
                           ) : isVenueSlot ? (
                             <div className="space-y-0.5">
-                              <div className="text-[9px] font-extrabold text-red-900">⚠️ 장소 겹침</div>
+                              <div className="text-[10px] font-extrabold text-red-900">⚠️ 장소 겹침</div>
                               <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">
                                 {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
                               </div>
@@ -208,7 +208,7 @@ export default function MiniPreviewGrid({
           <div className={`border rounded-lg overflow-hidden text-xs bg-white shadow-xs ${topChrome.border}`}>
             <div className={`px-2 py-1 text-[11px] font-bold border-b flex justify-between items-center ${topChrome.head}`}>
               <span>🗓️ {getWeekRangeLabel(sourceStartDate)} 주 시간표</span>
-              <span className={`text-[10px] font-extrabold ${topChrome.tag}`}>{topChrome.label}</span>
+              <span className={`text-[11px] font-extrabold ${topChrome.tag}`}>{topChrome.label}</span>
             </div>
             <table className="w-full table-fixed border-collapse text-center">
               <thead>
@@ -219,7 +219,7 @@ export default function MiniPreviewGrid({
                     return (
                       <th key={d.num} className="py-1 px-0.5 w-1/5 text-xs">
                         <div>{d.label}</div>
-                        {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
+                        {dateLabel && <div className="text-[11px] text-gray-400 font-normal">{dateLabel}</div>}
                       </th>
                     );
                   })}
@@ -259,21 +259,21 @@ export default function MiniPreviewGrid({
                           <td key={d.num} className={`p-0.5 h-10 text-xs align-middle ${cellStyle}`} title={cellTitle}>
                             {isOut ? (
                               <div className="space-y-0.5">
-                                <div className="text-[9px] font-extrabold text-amber-900">➖ 빠짐</div>
+                                <div className="text-[10px] font-extrabold text-amber-900">➖ 빠짐</div>
                                 <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">
                                   {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
                                 </div>
                               </div>
                             ) : isIn ? (
                               <div className="space-y-0.5">
-                                <div className="text-[9px] font-extrabold text-emerald-900">➕ 들어옴</div>
+                                <div className="text-[10px] font-extrabold text-emerald-900">➕ 들어옴</div>
                                 <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">
                                   {selectedCell.grade}-{selectedCell.classNum}
                                 </div>
                               </div>
                             ) : isVenue ? (
                               <div className="space-y-0.5">
-                                <div className="text-[9px] font-extrabold text-red-900">⚠️ 장소 겹침</div>
+                                <div className="text-[10px] font-extrabold text-red-900">⚠️ 장소 겹침</div>
                                 <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">
                                   {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
                                 </div>
@@ -299,7 +299,7 @@ export default function MiniPreviewGrid({
           <div className={`border rounded-lg overflow-hidden text-xs bg-white shadow-xs ${bottomChrome.border}`}>
             <div className={`px-2 py-1 text-[11px] font-bold border-b flex justify-between items-center ${bottomChrome.head}`}>
               <span>🗓️ {getWeekRangeLabel(targetStartDate)} 주 시간표</span>
-              <span className={`text-[10px] font-extrabold ${bottomChrome.tag}`}>{bottomChrome.label}</span>
+              <span className={`text-[11px] font-extrabold ${bottomChrome.tag}`}>{bottomChrome.label}</span>
             </div>
             <table className="w-full table-fixed border-collapse text-center">
               <thead>
@@ -310,7 +310,7 @@ export default function MiniPreviewGrid({
                     return (
                       <th key={d.num} className="py-1 px-0.5 w-1/5 text-xs">
                         <div>{d.label}</div>
-                        {dateLabel && <div className="text-[10px] text-gray-400 font-normal">{dateLabel}</div>}
+                        {dateLabel && <div className="text-[11px] text-gray-400 font-normal">{dateLabel}</div>}
                       </th>
                     );
                   })}
@@ -350,21 +350,21 @@ export default function MiniPreviewGrid({
                           <td key={d.num} className={`p-0.5 h-10 text-xs align-middle ${cellStyle}`} title={cellTitle}>
                             {isOut ? (
                               <div className="space-y-0.5">
-                                <div className="text-[9px] font-extrabold text-amber-900">➖ 빠짐</div>
+                                <div className="text-[10px] font-extrabold text-amber-900">➖ 빠짐</div>
                                 <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">
                                   {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
                                 </div>
                               </div>
                             ) : isIn ? (
                               <div className="space-y-0.5">
-                                <div className="text-[9px] font-extrabold text-emerald-900">➕ 들어옴</div>
+                                <div className="text-[10px] font-extrabold text-emerald-900">➕ 들어옴</div>
                                 <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">
                                   {selectedCell.grade}-{selectedCell.classNum}
                                 </div>
                               </div>
                             ) : isVenue ? (
                               <div className="space-y-0.5">
-                                <div className="text-[9px] font-extrabold text-red-900">⚠️ 장소 겹침</div>
+                                <div className="text-[10px] font-extrabold text-red-900">⚠️ 장소 겹침</div>
                                 <div className="font-bold text-[10px] truncate max-w-[48px] mx-auto">
                                   {hasLesson ? `${matched[0].grade}-${matched[0].classNum}` : "수업"}
                                 </div>
