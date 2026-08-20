@@ -44,6 +44,8 @@ export default function MessagingHub({
 
   // 선택된 수신자 (소문자 이메일 Set)
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+  // lg 미만 전용: 조직도 전면 선택 화면 (상주 패널의 모바일 대체 — 같은 선택 상태를 공유)
+  const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
 
   // 보내는 자리에서의 활성 작성기: "task" (업무 등록) | "memo" (쪽지 쓰기) — 기본값은 업무 등록
   const [activeComposer, setActiveComposer] = useState<"task" | "memo">("task");
@@ -243,28 +245,35 @@ export default function MessagingHub({
 
   return (
     <div className="w-full h-full flex flex-col min-h-0 bg-slate-100">
-      {/* ── 1. PC 전용 안내 (화면 폭 1024px 미만 가드 — 스펙 §2, 로드맵 원칙 ③) ── */}
-      <div className="lg:hidden p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-sm max-w-md mx-auto my-12">
-        <span className="text-4xl block mb-3">💻</span>
-        <h3 className="text-base font-bold text-slate-800 mb-1">컴퓨터 전용 화면</h3>
-        <p className="text-xs text-slate-500">
-          쪽지·업무 통합 화면은 넓은 화면의 컴퓨터 환경에 최적화되어 있습니다.
-        </p>
+      {/* ── 1. 좁은 화면 수신자 선택 줄 (2026-08-20 사용자 결정: PC 전용 차단을 풀되,
+             조직도는 상주 패널 대신 버튼으로 여는 전면 선택 화면으로. 조직도를 보며
+             읽는 배치는 포기하고 「사람 골라서 보내기」는 살린다) ── */}
+      <div className="lg:hidden flex items-center gap-2 px-3 py-2 bg-white border-b border-slate-200 shrink-0">
+        <button
+          type="button"
+          onClick={() => setMobileTreeOpen(true)}
+          className="whitespace-nowrap px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-bold shadow-2xs"
+        >
+          👥 수신자 선택{selectedEmails.size > 0 ? ` (${selectedEmails.size}명)` : ""}
+        </button>
+        <span className="text-xs text-slate-400 truncate">넓은 화면에서는 조직도가 함께 보입니다</span>
       </div>
 
-      {/* ── 2. 메인 2단 화면 (1024px 이상) ── */}
-      <div className="hidden lg:flex flex-1 min-h-0 overflow-hidden">
-        {/* 좌측 패널: 교직원 조직도 상주 */}
-        <HubOrgTree
-          selectedEmails={selectedEmails}
-          onToggleEmail={handleToggleEmail}
-          onToggleDept={handleToggleDept}
-          onClearSelection={handleClearSelection}
-          onSelectAll={handleSelectAll}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={toggleSidebarCollapse}
-          onProfilesLoaded={setProfiles}
-        />
+      {/* ── 2. 메인 화면 (조직도 패널은 1024px 이상에서만 상주) ── */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* 좌측 패널: 교직원 조직도 상주 (lg 미만에서는 숨김 — 아래 전면 선택 화면으로 대체) */}
+        <div className="hidden lg:contents">
+          <HubOrgTree
+            selectedEmails={selectedEmails}
+            onToggleEmail={handleToggleEmail}
+            onToggleDept={handleToggleDept}
+            onClearSelection={handleClearSelection}
+            onSelectAll={handleSelectAll}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={toggleSidebarCollapse}
+            onProfilesLoaded={setProfiles}
+          />
+        </div>
 
         {/* 우측 패널: 읽는 자리 / 보내는 자리 */}
         <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-white">
@@ -433,6 +442,32 @@ export default function MessagingHub({
           )}
         </main>
       </div>
+
+      {/* ── 3. 조직도 전면 선택 화면 (lg 미만 전용) — 배경 탭 또는 완료 버튼으로 닫는다 ── */}
+      {mobileTreeOpen && (
+        <div className="fixed inset-0 z-[60] lg:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileTreeOpen(false)} aria-hidden="true" />
+          <div className="absolute inset-y-0 left-0 flex max-w-full shadow-2xl">
+            <HubOrgTree
+              selectedEmails={selectedEmails}
+              onToggleEmail={handleToggleEmail}
+              onToggleDept={handleToggleDept}
+              onClearSelection={handleClearSelection}
+              onSelectAll={handleSelectAll}
+              isCollapsed={false}
+              onToggleCollapse={() => setMobileTreeOpen(false)}
+              onProfilesLoaded={setProfiles}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setMobileTreeOpen(false)}
+            className="absolute bottom-5 right-4 z-10 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-lg"
+          >
+            선택 완료{selectedEmails.size > 0 ? ` (${selectedEmails.size}명)` : ""}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1088,6 +1088,12 @@ export default function AdminPage() {
               <h1 className="text-lg font-bold text-gray-800 truncate">
                 {activeMenu === "home" && "홈"}
                 {activeMenu === "users" && "사용자 전체관리"}
+                {activeMenu === "groups" && "그룹스 전체관리"}
+                {activeMenu === "classroom_cleanup" && "학기말 클래스룸 정리"}
+                {activeMenu === "chrome_bookmarks" && "크롬 북마크 배정"}
+                {activeMenu === "password_reset" && "학생 비밀번호 초기화"}
+                {activeMenu === "profile_approvals" && "조직 정보 승인"}
+                {activeMenu === "discipline" && "생활지도 종합 관리"}
                 {activeMenu === "settings" && "Workspace 환경 설정"}
                 {activeMenu === "ou_manage" && "GWS 조직단위 관리"}
                 {activeMenu === "forms" && "생활지도 기록 작성"}
