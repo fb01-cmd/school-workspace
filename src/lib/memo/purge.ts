@@ -82,6 +82,13 @@ export async function runMemoPurge(
   };
 
   // ── 1. 만료 쪽지 (첨부 파일 → 문서 순서 — 참조가 마지막에 사라지게) ──
+  //
+  // ⚠️ **쪽지 파기의 단일 소재지다. 다른 크론·스크립트에서 만료 쪽지 문서를 지우지 마라.**
+  // 문서를 먼저 지우면 그것이 가리키던 Drive 첨부를 다시 찾을 방법이 없어져
+  // **본문만 파기되고 첨부(학생 사진·명단 등)는 영구히 남는다** — 개인정보 보존 기한 위반이다.
+  // 2026-08-20에 lifecycle 크론이 UTC 15시에 문서만 일괄 삭제하고 있었고(이 함수는 18시),
+  // 그 결함을 제거하며 여기로 일원화했다.
+
   for (const domain of domains) {
     const expiredSnap = await adminDb
       .collection("memos")

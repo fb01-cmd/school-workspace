@@ -718,7 +718,7 @@ export async function GET(req: NextRequest) {
     // ── Phase 11 산출물 E: 보존 기한 경과 데이터 파기 (2026-08-05 확정: 서명 증빙 3년·감사 로그 5년·쪽지 설정일) ──
     // mockToday와 무관하게 실제 시각 기준으로만 판정 — 테스트용 날짜 조작이 조기 파기를 유발하면 안 된다.
     const retentionNow = new Date();
-    const purgeCounts = { graduationConsents: 0, auditLogs: 0, memos: 0 };
+    const purgeCounts = { graduationConsents: 0, auditLogs: 0 }; // 쪽지는 daily-sync 담당 (2026-08-20 분리)
     const purgeExpiredDocs = async (query: FirebaseFirestore.Query, label: string) => {
       let total = 0;
       // 회당 300건 × 최대 10회 — Vercel 실행 한도 내 안전. 잔여분은 다음날 크론이 이어서 파기.
@@ -743,25 +743,34 @@ export async function GET(req: NextRequest) {
         adminDb.collection("audit_logs").where("timestamp", "<=", auditCutoff),
         "감사 로그(5년 경과)"
       );
-      // expireAt 필드는 api/memo/route.ts:166에서 숫자(ms, timestamp)로 기록됨
-      let expiredMemosTotal = 0;
-      for (const domain of domains) {
-        const count = await purgeExpiredDocs(
-          adminDb.collection("memos").doc(domain).collection("items").where("expireAt", "<=", retentionNow.getTime()),
-          `만료 쪽지 (${domain})`
-        );
-        expiredMemosTotal += count;
-      }
-      purgeCounts.memos = expiredMemosTotal;
+      // ⚠️ 쪽지 파기는 **여기서 하지 않는다** (2026-08-20 제거 — 개인정보 보존 기한 결함).
+      //
+      // 원래 이 자리에서 만료 쪽지 문서를 도메인당 최대 3,000건 일괄 삭제했다. 그런데
+      // 이 크론은 문서만 지우고 **Drive 첨부 파일을 보지 않는다.** 반면 daily-sync의
+      // runMemoPurge(src/lib/memo/purge.ts)는 첨부 파일을 먼저 지우고 문서를 나중에
+      // 지운다 — 참조가 마지막에 사라지도록 일부러 그 순서다.
+      //
+      // 두 크론의 실행 순서가 이 설계를 깼다: 이 크론이 UTC 15시, daily-sync가 UTC 18시다
+      // (vercel.json). 먼저 도는 여기서 문서를 지워 버리면 세 시간 뒤 daily-sync는
+      // **만료 문서를 하나도 못 찾고**, 그 문서가 가리키던 Drive 파일은 어떤 경로도
+      // 다시 찾지 못한다. 빈 폴더 정리(purge.ts §3)도 "파일이 남아 있으면 폴더 유지"라
+      // 잡지 못한다.
+      //
+      // 결과: 보존 기한이 지나 **본문은 파기됐는데 첨부(학생 사진·명단 등)만 영구히
+      // 남는다.** 정리 문제가 아니라 개인정보 보존 기한 위반이다.
+      //
+      // 쪽지 파기의 단일 소재지는 daily-sync의 runMemoPurge 하나다. 하루 100건 상한은
+      // 일일 발송량을 충분히 앞선다(만료는 생성일 기준 롤링이라 하루 만료량 ≈ 하루 발송량).
+      // 아직 실제 만료가 시작되기 전에(기본 보존 365일, 플랫폼 개시 2026-07) 잡았다.
 
       // 파기 실행 사실만 기록(건수·기준일) — 파기된 내용 자체는 재기록하지 않는다.
-      if (purgeCounts.graduationConsents > 0 || purgeCounts.auditLogs > 0 || purgeCounts.memos > 0) {
+      if (purgeCounts.graduationConsents > 0 || purgeCounts.auditLogs > 0) {
         await writeAuditLog({
           operatorEmail: "system-cron",
           operatorName: "보존 기한 파기 크론",
           action: "보존 기한 경과 데이터 파기",
           targetEmail: "-",
-          details: `졸업 서명 증빙 ${purgeCounts.graduationConsents}건·감사 로그 ${purgeCounts.auditLogs}건·쪽지 ${purgeCounts.memos}건 파기 (방침: 3년/5년/설정일)`,
+          details: `졸업 서명 증빙 ${purgeCounts.graduationConsents}건·감사 로그 ${purgeCounts.auditLogs}건 파기 (방침: 3년/5년). 쪽지 파기는 daily-sync의 runMemoPurge 담당 — 첨부 파일을 함께 지워야 하므로 이 크론에서 분리했다(2026-08-20)`,
           status: "success",
         });
       }
