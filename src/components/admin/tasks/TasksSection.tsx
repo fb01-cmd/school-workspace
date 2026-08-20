@@ -1009,7 +1009,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                 </div>
 
                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
-                                  <p className="text-[11px] text-amber-800 font-medium">
+                                  <p className="text-sm text-amber-800 font-medium">
                                     이전 제출본은 교체되며 30일이 지나면 복구할 수 없습니다.
                                   </p>
                                   <button
@@ -1492,7 +1492,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                     {selfFiles.map((f, i) => (
                       <div key={i} className="px-2.5 py-1.5 flex items-center justify-between text-sm">
                         <span className="font-medium text-slate-800 truncate mr-2 flex-1">
-                          📄 {f.name} ({(f.size / 1024).toFixed(0)} KB)
+                          📄 {f.name} <span className="text-xs text-slate-500">({(f.size / 1024).toFixed(0)} KB)</span>
                         </span>
                         <button
                           type="button"

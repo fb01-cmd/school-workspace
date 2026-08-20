@@ -433,7 +433,7 @@ function InboxRow({
           >
             {memo.senderName || memo.senderEmail}
           </span>
-          <span className="flex-shrink-0 text-[11px] text-slate-400">
+          <span className="flex-shrink-0 text-xs text-slate-400">
             {formatDate(memo.createdAt)}
           </span>
         </div>
@@ -487,7 +487,7 @@ function SentRow({
           <span className="text-sm truncate text-slate-500 font-medium">
             받는 분: {renderRecipientLine((memo as any).recipientMeta, memo.recipientSummary, memo.recipientCount ?? total)}
           </span>
-          <span className="flex-shrink-0 text-[11px] text-slate-400">
+          <span className="flex-shrink-0 text-xs text-slate-400">
             {formatDate(memo.createdAt)}
           </span>
         </div>
@@ -580,7 +580,7 @@ function StarredRow({
                 : memo.senderName || memo.senderEmail}
             </span>
           </div>
-          <span className="flex-shrink-0 text-[11px] text-slate-400">
+          <span className="flex-shrink-0 text-xs text-slate-400">
             {formatDate(memo.createdAt)}
           </span>
         </div>
@@ -938,15 +938,15 @@ function MemoDetailPanel({
               recallResult.recalledCount === 0 ? (
                 <div>
                   <p className="font-semibold">이미 모두 읽어 회수할 쪽지가 없습니다.</p>
-                  <p className="mt-1 text-xs opacity-80">이미 읽은 분의 쪽지는 회수되지 않으며 휴대전화 알림은 취소할 수 없습니다.</p>
+                  <p className="mt-1 text-sm opacity-80">이미 읽은 분의 쪽지는 회수되지 않으며 휴대전화 알림은 취소할 수 없습니다.</p>
                 </div>
               ) : (
                 <div>
                   <p className="font-semibold">아직 읽지 않은 {recallResult.recalledCount}명의 쪽지를 회수했습니다.</p>
                   {recallResult.remainingCount > 0 && (
-                    <p className="mt-1 text-xs opacity-80">이미 읽은 {recallResult.remainingCount}명의 쪽지는 회수되지 않았습니다.</p>
+                    <p className="mt-1 text-sm opacity-80">이미 읽은 {recallResult.remainingCount}명의 쪽지는 회수되지 않았습니다.</p>
                   )}
-                  <p className="mt-2 text-xs opacity-80 pt-1.5 border-t border-rose-200/60">
+                  <p className="mt-2 text-sm opacity-80 pt-1.5 border-t border-rose-200/60">
                     이미 읽은 분의 쪽지는 회수되지 않으며 휴대전화 알림은 취소할 수 없습니다.
                   </p>
                 </div>
@@ -959,7 +959,7 @@ function MemoDetailPanel({
 
         {/* §12-2 회수 주의 안내 — 회수 버튼이 보이는 동안 항상 표시 */}
         {isMine && unreadCount > 0 && !recallResult && (
-          <p className="text-xs text-slate-400 leading-relaxed px-1">
+          <p className="text-sm text-slate-400 leading-relaxed px-1">
             이미 읽은 분의 쪽지는 회수되지 않습니다. 휴대전화 알림은 취소할 수 없습니다.
           </p>
         )}
@@ -1065,7 +1065,7 @@ function MemoDetailPanel({
                         </span>
                       )}
                     </div>
-                    <span className="flex-shrink-0 text-slate-400 text-[11px]">
+                    <span className="flex-shrink-0 text-slate-400 text-xs">
                       {formatDate(item.createdAt)}
                     </span>
                   </button>
@@ -1788,7 +1788,7 @@ function ComposeModal({
                 <div className="border border-slate-200 rounded-lg max-h-56 overflow-y-auto p-2">
                   {profileError ? (
                     // 버그2 수정: 로드 실패를 트리 자리에 표시 (기존 영원한 스피너 대신)
-                    <p className="text-xs text-rose-500 text-center py-4">{profileError}</p>
+                    <p className="text-sm text-rose-500 text-center py-4">{profileError}</p>
                   ) : sections.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-4">조직도 정보를 불러오는 중…</p>
                   ) : (
@@ -2091,7 +2091,7 @@ function ComposeModal({
                   취소
                 </button>
                 {failedAttachmentsCount > 0 ? (
-                  <p className="text-xs text-rose-600 font-semibold">
+                  <p className="text-sm text-rose-600 font-semibold">
                     올릴 수 없는 첨부 {failedAttachmentsCount}개가 있습니다. 빼면 보낼 수 있어요.
                   </p>
                 ) : isUploading ? (

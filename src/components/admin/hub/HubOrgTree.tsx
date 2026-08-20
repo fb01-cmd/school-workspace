@@ -487,7 +487,7 @@ export default function HubOrgTree({
                       <span className="text-sm font-bold text-slate-800 truncate">{deptName}</span>
                       <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                         <span
-                          className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
+                          className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
                             selectedCountInDept > 0
                               ? "bg-indigo-100 text-indigo-700"
                               : "bg-slate-200 text-slate-700"

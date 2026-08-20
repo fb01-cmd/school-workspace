@@ -970,7 +970,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                           )}
 
                           {staged && (
-                            <span className="text-[11px] text-amber-700 bg-amber-100 font-extrabold px-1 rounded">
+                            <span className="text-xs text-amber-700 bg-amber-100 font-extrabold px-1 rounded">
                               미반영
                             </span>
                           )}
@@ -981,11 +981,11 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
 
                     <div className="flex items-center gap-1.5 shrink-0">
                       {isNoDept ? (
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-extrabold rounded-md shadow-2xs">
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-300 text-xs font-extrabold rounded-md shadow-2xs">
                           🚫 해당없음
                         </span>
                       ) : isUnassigned ? (
-                        <span className="px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-extrabold rounded-md shadow-2xs">
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 text-xs font-extrabold rounded-md shadow-2xs">
                           🍊 미배치
                         </span>
                       ) : (

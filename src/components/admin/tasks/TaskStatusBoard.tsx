@@ -278,7 +278,7 @@ export default function TaskStatusBoard() {
                     : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50"
                 }`}
               >
-                <div className="flex items-center justify-between gap-1.5 mb-1 text-[11px]">
+                <div className="flex items-center justify-between gap-1.5 mb-1 text-sm">
                   <span
                     className={`font-bold px-1.5 py-0.2 rounded-md ${
                       task.kind === "submit"
@@ -311,7 +311,7 @@ export default function TaskStatusBoard() {
                   {task.title}
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                <div className="flex items-center justify-between text-xs text-slate-500">
                   <span>
                     완료 <strong className="text-slate-800">{taskDone}</strong>/{taskTotal}명
                   </span>
@@ -551,7 +551,7 @@ export default function TaskStatusBoard() {
                             흡수하면서 「이름만 보여준다」 규칙 대상이 됐다. 같은 표에 부서 열이 있고
                             동명이인은 §11-5 부제 규칙으로 가리므로 아이디는 중복이다. */}
                         <td className="px-3.5 py-2 font-bold text-slate-900">{name}</td>
-                        <td className="px-3.5 py-2 text-slate-600">{dept}</td>
+                        <td className="px-3.5 py-2 text-xs text-slate-600">{dept}</td>
                         <td className="px-3.5 py-2">
                           {statusObj.state === "DONE" ? (
                             <div className="space-y-0.5">
@@ -559,7 +559,7 @@ export default function TaskStatusBoard() {
                                 <span>✓</span> 완료
                               </span>
                               {statusObj.note && (
-                                <p className="text-[11px] text-emerald-700 font-medium">
+                                <p className="text-xs text-emerald-700 font-medium">
                                   메모: {statusObj.note}
                                 </p>
                               )}
@@ -570,7 +570,7 @@ export default function TaskStatusBoard() {
                                 <span>●</span> 수락됨
                               </span>
                               {statusObj.note && (
-                                <p className="text-[11px] text-blue-700 font-medium">
+                                <p className="text-xs text-blue-700 font-medium">
                                   메모: {statusObj.note}
                                 </p>
                               )}
@@ -581,7 +581,7 @@ export default function TaskStatusBoard() {
                                 <span>✕</span> 거절됨
                               </span>
                               {statusObj.note && (
-                                <p className="text-[11px] text-rose-600 font-medium">
+                                <p className="text-xs text-rose-600 font-medium">
                                   사유: {statusObj.note}
                                 </p>
                               )}
@@ -592,7 +592,7 @@ export default function TaskStatusBoard() {
                             </span>
                           )}
                         </td>
-                        <td className="px-3.5 py-2 text-slate-400 text-[11px]">
+                        <td className="px-3.5 py-2 text-slate-400 text-xs">
                           {statusObj.at ? formatFull(statusObj.at) : "-"}
                         </td>
                         {selectedTask.kind === "submit" && (

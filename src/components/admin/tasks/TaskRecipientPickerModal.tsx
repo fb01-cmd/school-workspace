@@ -257,7 +257,7 @@ export default function TaskRecipientPickerModal({
                   >
                     <span className="font-semibold text-slate-800">
                       {c.name}
-                      {c.extension && <span className="text-slate-400 font-normal ml-1">({c.extension})</span>}
+                      {c.extension && <span className="text-xs text-slate-400 font-normal ml-1">({c.extension})</span>}
                     </span>
                     <span className="text-slate-400 text-xs">{c.dept}</span>
                   </button>
@@ -332,7 +332,7 @@ export default function TaskRecipientPickerModal({
                         {section.dept}
                       </button>
                       {checkedCount > 0 && (
-                        <span className="text-[11px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.2 rounded-full">
+                        <span className="text-xs bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.2 rounded-full">
                           {checkedCount}/{emails.length}
                         </span>
                       )}

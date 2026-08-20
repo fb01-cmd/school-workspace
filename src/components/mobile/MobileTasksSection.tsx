@@ -602,7 +602,7 @@ export default function MobileTasksSection() {
           />
 
           {mySubmission && (
-            <p className="text-[11px] text-amber-800 dark:text-amber-300 font-medium">
+            <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">
               이전 제출본은 교체되며 30일이 지나면 복구할 수 없습니다.
             </p>
           )}
@@ -643,7 +643,7 @@ export default function MobileTasksSection() {
             }`}
           />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-1.5 text-[11px] mb-0.5">
+            <div className="flex items-center justify-between gap-1.5 text-xs mb-0.5">
               <div className="flex items-center gap-1.5 truncate">
                 <span className="text-slate-500 dark:text-slate-400 font-medium">
                   {task.selfAssigned ? "본인 등록" : `${task.senderName} 선생님`}
@@ -689,7 +689,7 @@ export default function MobileTasksSection() {
         {/* 상세 펼침 */}
         {isOpen && (
           <div className="px-4 pb-4 pt-2 bg-slate-50 dark:bg-slate-850 border-t border-slate-100 dark:border-slate-800 space-y-3">
-            <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between flex-wrap gap-1">
+            <div className="text-sm text-slate-500 dark:text-slate-400 flex items-center justify-between flex-wrap gap-1">
               <span>{task.noDue ? "기한 없음" : `기한: ${formatFull(task.dueAt)}`}</span>
               <span className="font-semibold text-indigo-600 dark:text-indigo-400">
                 {task.kind === "submit" ? "📁 파일 제출 필요" : "✅ 확인 완료 필요"}
@@ -710,7 +710,7 @@ export default function MobileTasksSection() {
             {/* 양식 파일 */}
             {task.formFiles && task.formFiles.length > 0 && (
               <div className="space-y-1">
-                <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
                   양식 파일 내려받기
                 </span>
                 <div className="flex flex-wrap gap-1.5">
@@ -770,7 +770,10 @@ export default function MobileTasksSection() {
                   {task.kind === "confirm" ? (
                     <button
                       type="button"
-                      onClick={() => setCompletingId(task.id)}
+                      onClick={() => {
+                        setCompletingId(task.id);
+                        setCompleteNote("");
+                      }}
                       disabled={actionLoadingId === task.id}
                       className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                     >
@@ -778,7 +781,7 @@ export default function MobileTasksSection() {
                       <span>{actionLoadingId === task.id ? "처리 중…" : "완료 체크"}</span>
                     </button>
                   ) : (
-                    <div>
+                    <div className="space-y-2">
                       {stagedSubmitMap[task.id] ? (
                         renderStagedCard()
                       ) : (
@@ -828,7 +831,7 @@ export default function MobileTasksSection() {
                         type="button"
                         onClick={() => handleTransition(task.id, "undone")}
                         disabled={actionLoadingId === task.id}
-                        className="text-sm text-slate-500 hover:text-slate-700 underline cursor-pointer"
+                        className="text-sm text-slate-400 hover:text-slate-600 underline cursor-pointer"
                       >
                         완료 취소
                       </button>
@@ -899,7 +902,7 @@ export default function MobileTasksSection() {
           <span className="text-base">📌</span>
           <h2 className="text-sm font-bold text-slate-900 dark:text-white">내 할 일</h2>
           {pendingCount > 0 && (
-            <span className="text-[11px] font-black bg-indigo-500 text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+            <span className="text-xs font-black bg-indigo-500 text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
               {pendingCount}
             </span>
           )}
@@ -912,7 +915,7 @@ export default function MobileTasksSection() {
           >
             + 추가
           </button>
-          <span className="text-[11px] text-slate-400 dark:text-slate-500">
+          <span className="text-xs text-slate-400 dark:text-slate-500">
             미완료 {pendingCount} / 전체 {tasks.length}건
           </span>
         </div>
@@ -1162,7 +1165,7 @@ export default function MobileTasksSection() {
                   {selfFiles.map((f, i) => (
                     <div key={i} className="px-2.5 py-1.5 flex items-center justify-between text-sm">
                       <span className="truncate mr-1 text-slate-800 dark:text-slate-200 flex-1">
-                        📄 {f.name} ({(f.size / 1024).toFixed(0)}KB)
+                        📄 {f.name} <span className="text-xs text-slate-500 dark:text-slate-400">({(f.size / 1024).toFixed(0)}KB)</span>
                       </span>
                       <button
                         type="button"

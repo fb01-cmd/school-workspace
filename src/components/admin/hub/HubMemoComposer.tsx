@@ -692,7 +692,7 @@ export default function HubMemoComposer({
                           </p>
                         )}
                         {item.status === "error" && (
-                          <p className="text-xs text-rose-600 font-semibold leading-snug">
+                          <p className="text-sm text-rose-600 font-semibold leading-snug">
                             ⚠️ {item.error || "업로드에 실패했습니다."}
                           </p>
                         )}
