@@ -417,7 +417,8 @@ export default function MessagingHub({
                   </button>
                 </div>
 
-                <div className="text-xs text-slate-400">
+                {/* 좁은 폭에서는 설명을 숨긴다 — 버튼을 밀어내는 값어치가 없다 (2026-08-20 실기기) */}
+                <div className="hidden lg:block text-xs text-slate-400">
                   {activeCategory === "tasks"
                     ? "내 할 일을 확인하거나 보낸 업무 현황을 조회합니다."
                     : "주고받은 쪽지를 확인하고 관리합니다."}
