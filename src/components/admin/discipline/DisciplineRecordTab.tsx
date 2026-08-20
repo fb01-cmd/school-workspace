@@ -309,7 +309,7 @@ export default function DisciplineRecordTab({
             {/* 우리 반 학생 드롭다운 (담임 교사일 때 기본 표시) */}
             {hasHomeroom && (
               <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                <div className="text-sm text-gray-700 dark:text-gray-300 mb-1 font-semibold">
                   🏫 우리 반 학생 목록 ({homeroomLabel})
                 </div>
                 {loadingHomeroom ? (
@@ -335,7 +335,7 @@ export default function DisciplineRecordTab({
             {(!hasHomeroom || hasBroaderRecordGrant) && (
               <div>
                 {hasHomeroom && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium pt-1">
+                  <div className="text-sm text-gray-700 dark:text-gray-300 mb-1 font-semibold pt-1">
                     🔍 타 학급 / 전체 학생 직접 검색
                   </div>
                 )}
@@ -355,7 +355,7 @@ export default function DisciplineRecordTab({
             )}
 
             {selectedStudentEmail && (
-              <div className="mt-2 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-md inline-block">
+              <div className="mt-2 text-sm font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-md inline-block">
                 선택된 학생: {selectedStudentName} ({selectedStudentEmail})
               </div>
             )}
@@ -376,7 +376,7 @@ export default function DisciplineRecordTab({
                   const catItems = activeItems.filter((it) => (it.category || "기타") === cat);
                   return (
                     <div key={cat} className="space-y-2">
-                      <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <div className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
                         {cat}
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

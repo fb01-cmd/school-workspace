@@ -177,24 +177,24 @@ export default function DisciplineVoidedTab({ config }: DisciplineVoidedTabProps
               return (
                 <div key={r.id} className="p-5 hover:bg-gray-50/80 dark:hover:bg-gray-750/50 transition-colors space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center space-x-3">
-                      <span className="text-xs font-bold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2.5 py-1 rounded-md">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-bold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-2.5 py-1 rounded-md">
                         {r.grade}학년 {r.classNum}반 ({r.studentId})
                       </span>
                       <h4 className="font-bold text-base text-gray-900 dark:text-white">
                         {r.studentName || r.studentId}
                       </h4>
-                      <span className="text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2.5 py-0.5 rounded-full border border-red-200 dark:border-red-800">
+                      <span className="text-sm font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2.5 py-0.5 rounded-full border border-red-200 dark:border-red-800">
                         무효화됨
                       </span>
                     </div>
 
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
                       발생일: <strong className="text-gray-700 dark:text-gray-300">{occurredDateStr}</strong>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs bg-gray-50 dark:bg-gray-900/40 p-3.5 rounded-lg border border-gray-100 dark:border-gray-800">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm bg-gray-50 dark:bg-gray-900/40 p-3.5 rounded-lg border border-gray-100 dark:border-gray-800">
                     <div>
                       <span className="text-gray-400 font-medium">지도 항목: </span>
                       <span className="font-bold text-gray-800 dark:text-gray-200">{itemLabel}</span>
@@ -214,14 +214,14 @@ export default function DisciplineVoidedTab({ config }: DisciplineVoidedTabProps
                   </div>
 
                   {r.note && (
-                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
                       <span className="font-semibold text-gray-500">원래 비고: </span>
                       {r.note}
                     </div>
                   )}
 
                   {r.voidReason && (
-                    <div className="text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/40">
+                    <div className="text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/40">
                       <span className="font-bold text-red-800 dark:text-red-200">무효화 사유: </span>
                       {r.voidReason}
                     </div>

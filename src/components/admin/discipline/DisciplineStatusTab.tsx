@@ -252,11 +252,11 @@ export default function DisciplineStatusTab({
               <div
                 key={st.studentId}
                 onClick={() => setSelectedStudent(st)}
-                className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all cursor-pointer space-y-3"
+                className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md hover:border-blue-300 dark:border-blue-600 transition-all cursor-pointer space-y-3"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                    <span className="text-sm font-bold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
                       {st.studentId}
                     </span>
                     <h3 className="font-bold text-base text-gray-900 dark:text-white">
@@ -265,7 +265,7 @@ export default function DisciplineStatusTab({
                   </div>
 
                   <span
-                    className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                    className={`text-sm font-bold px-2.5 py-1 rounded-full ${
                       st.status.currentStageId
                         ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
                         : "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
@@ -275,7 +275,7 @@ export default function DisciplineStatusTab({
                   </span>
                 </div>
 
-                <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-700">
+                <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-700">
                   <span>유효 지도 기록: <strong className="text-gray-900 dark:text-white">{totalRecordsCount}건</strong></span>
                   <span className="text-blue-600 dark:text-blue-400 font-medium">상세 이력 보기 &rarr;</span>
                 </div>
@@ -298,7 +298,7 @@ export default function DisciplineStatusTab({
                     {selectedStudent.studentName} 학생 지도 이력
                   </h3>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
                   {selectedStudent.grade}학년 {selectedStudent.classNum}반 ({selectedStudent.studentEmail})
                 </p>
               </div>
@@ -315,7 +315,7 @@ export default function DisciplineStatusTab({
               {/* 단계 판정 상태 요약 카드 */}
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800 flex items-center justify-between">
                 <div>
-                  <div className="text-xs font-semibold text-blue-800 dark:text-blue-300">현재 자동 계산 단계</div>
+                  <div className="text-sm font-semibold text-blue-800 dark:text-blue-300">현재 자동 계산 단계</div>
                   <div className="text-lg font-bold text-blue-950 dark:text-blue-100 mt-0.5">
                     {selectedStudent.status.currentStageId
                       ? stageMap.get(selectedStudent.status.currentStageId) || selectedStudent.status.currentStageId
@@ -324,8 +324,8 @@ export default function DisciplineStatusTab({
                 </div>
                 {selectedStudent.status.triggered.length > 0 && (
                   <div className="text-right">
-                    <div className="text-xs text-blue-700 dark:text-blue-300 font-medium">충족 규칙</div>
-                    <div className="text-xs text-blue-900 dark:text-blue-200 mt-0.5">
+                    <div className="text-sm text-blue-700 dark:text-blue-300 font-medium">충족 규칙</div>
+                    <div className="text-sm font-bold text-blue-900 dark:text-blue-200 mt-0.5">
                       {selectedStudent.status.triggered.length}개 규칙 도달
                     </div>
                   </div>
@@ -360,7 +360,7 @@ export default function DisciplineStatusTab({
                                       {itemMap.get(rec.itemId) || rec.itemId}
                                     </span>
                                   </div>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                  <div className="text-sm text-gray-600 dark:text-gray-300">
                                     발생일: {new Date(rec.occurredAt).toLocaleDateString("ko-KR")} | 작성자: {rec.recordedBy}
                                   </div>
                                 </div>
@@ -375,7 +375,7 @@ export default function DisciplineStatusTab({
                                   return canVoid ? (
                                     <button
                                       onClick={() => setVoidModalRecord(rec)}
-                                      className="text-xs text-red-600 dark:text-red-400 hover:underline font-medium px-2 py-1 bg-red-50 dark:bg-red-900/20 rounded"
+                                      className="text-sm text-red-600 dark:text-red-400 hover:underline font-bold px-2 py-1 bg-red-50 dark:bg-red-900/20 rounded"
                                     >
                                       무효화
                                     </button>
@@ -384,7 +384,7 @@ export default function DisciplineStatusTab({
                               </div>
 
                               {rec.note && (
-                                <div className="mt-2 text-xs bg-gray-50 dark:bg-gray-800 p-2.5 rounded-lg text-gray-700 dark:text-gray-300">
+                                <div className="mt-2 text-sm bg-gray-50 dark:bg-gray-800 p-2.5 rounded-lg text-gray-700 dark:text-gray-300">
                                   {rec.note}
                                 </div>
                               )}
@@ -414,7 +414,7 @@ export default function DisciplineStatusTab({
 
             <form onSubmit={handleVoidRecord} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">
                   무효화 사유 <span className="text-red-500">*</span>
                 </label>
                 <textarea

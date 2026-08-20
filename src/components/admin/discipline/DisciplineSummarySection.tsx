@@ -293,7 +293,7 @@ export default function DisciplineSummarySection({
 
         <div className="flex flex-wrap items-center gap-3">
           {/* 기간 필터 버튼그룹 (Spec §1-E) */}
-          <div className="flex items-center bg-gray-100 dark:bg-gray-700 p-1 rounded-xl text-xs font-semibold">
+          <div className="flex items-center bg-gray-100 dark:bg-gray-700 p-1 rounded-xl text-sm font-semibold">
             <button
               onClick={() => setPeriodFilter("all")}
               className={`px-3 py-1.5 rounded-lg transition-all ${
@@ -327,7 +327,7 @@ export default function DisciplineSummarySection({
           </div>
 
           {/* 뷰 모드 토글 (Spec §1-F) */}
-          <div className="flex items-center bg-gray-100 dark:bg-gray-700 p-1 rounded-xl text-xs font-semibold">
+          <div className="flex items-center bg-gray-100 dark:bg-gray-700 p-1 rounded-xl text-sm font-semibold">
             <button
               onClick={() => setViewMode("dashboard")}
               className={`px-3 py-1.5 rounded-lg transition-all ${
@@ -353,7 +353,7 @@ export default function DisciplineSummarySection({
           {/* 엑셀 내보내기 버튼 (Spec §1-F) */}
           <button
             onClick={handleExportXlsx}
-            className="flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+            className="flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-sm transition-all"
             title="현재 집계된 지도 현황 데이터를 엑셀로 내보냅니다."
           >
             <span>📥 엑셀 (.xlsx)</span>
@@ -362,7 +362,7 @@ export default function DisciplineSummarySection({
       </div>
 
       {/* 안내 문구 & PII 경고 (Spec §1-E, §1-F) */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2 px-1 text-gray-500 dark:text-gray-400">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between text-sm gap-2 px-1 text-gray-500 dark:text-gray-400">
         <div className="flex items-center space-x-1 font-medium text-blue-600 dark:text-blue-400">
           <span>ℹ️ 단계는 현재 판정 기준, 건수는 선택 기간 기준입니다.</span>
         </div>
@@ -380,7 +380,7 @@ export default function DisciplineSummarySection({
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center space-x-2">
                   <span>🏫 학년 × 반 지도 건수 (히트맵)</span>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
                     합계 {totalRecordCount}건
                   </span>
                 </h3>
@@ -483,7 +483,7 @@ export default function DisciplineSummarySection({
                         ></span>
                         {/* 라벨은 학교 설정 자유 문자열("1단계" 같은 이름 실존) — 순번을 덧붙이면
                             "1단계 (3단계)"류 모순 표기가 되므로 라벨만 쓴다. 위계는 정렬 순서로 전달. */}
-                        <span className="text-xs font-bold text-gray-900 dark:text-white">
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">
                           {st.label}
                         </span>
                       </div>
@@ -532,9 +532,9 @@ export default function DisciplineSummarySection({
                         key={it.id}
                         className="p-2.5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 space-y-1.5"
                       >
-                        <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center justify-between text-sm">
                           <div className="flex items-center space-x-2">
-                            <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                            <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
                               {it.category || "기타"}
                             </span>
                             <span className="font-bold text-gray-900 dark:text-white">
@@ -604,16 +604,16 @@ export default function DisciplineSummarySection({
                               {idx + 1}
                             </td>
                             <td className="py-2.5 px-2">
-                              <div className="font-bold text-gray-900 dark:text-white">
+                              <div className="font-bold text-sm text-gray-900 dark:text-white">
                                 {st.student.studentName}
                               </div>
-                              <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
                                 {st.student.grade}학년 {st.student.classNum}반 ({st.student.studentId})
                               </div>
                             </td>
                             <td className="py-2.5 px-2">
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[11px] font-bold inline-block ${
+                                className={`px-2 py-0.5 rounded-full text-xs font-bold inline-block ${
                                   st.currentStage
                                     ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
                                     : "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
@@ -622,10 +622,10 @@ export default function DisciplineSummarySection({
                                 {stageLabel}
                               </span>
                             </td>
-                            <td className="py-2.5 px-2 text-center font-extrabold text-blue-700 dark:text-blue-300">
+                            <td className="py-2.5 px-2 text-center font-extrabold text-blue-700 dark:text-blue-300 text-sm">
                               {st.validCount}건
                             </td>
-                            <td className="py-2.5 px-2 text-right text-gray-500 dark:text-gray-400 text-[11px]">
+                            <td className="py-2.5 px-2 text-right text-gray-600 dark:text-gray-300 text-xs">
                               {dateStr}
                             </td>
                           </tr>
@@ -643,14 +643,14 @@ export default function DisciplineSummarySection({
       {/* ── 뷰 2: 표로 보기 (피벗 테이블) ── */}
       {viewMode === "pivot" && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
             <span>
               총 <strong>{pivotData.length}명</strong>의 학생 피벗 데이터 (행 클릭 시 상세 이력 모달)
             </span>
           </div>
 
           <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl max-h-[500px]">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-sm border-collapse">
               <thead className="bg-gray-50 dark:bg-gray-700/50 sticky top-0 border-b border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold z-10">
                 <tr>
                   <th className="p-3 w-20">학번</th>
@@ -695,7 +695,7 @@ export default function DisciplineSummarySection({
                         onClick={() => onSelectStudent(st.student)}
                         className="hover:bg-blue-50/50 dark:hover:bg-blue-900/20 cursor-pointer transition-colors"
                       >
-                        <td className="p-3 font-semibold text-gray-500">{st.student.studentId}</td>
+                        <td className="p-3 font-semibold text-gray-700 dark:text-gray-300">{st.student.studentId}</td>
                         <td className="p-3 font-bold text-gray-900 dark:text-white">
                           {st.student.studentName}
                         </td>
@@ -703,7 +703,7 @@ export default function DisciplineSummarySection({
                         <td className="p-3 text-center">{st.student.classNum}</td>
                         <td className="p-3">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                            className={`px-2 py-0.5 rounded-full text-xs font-bold ${
                               st.currentStage
                                 ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
                                 : "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
@@ -730,7 +730,7 @@ export default function DisciplineSummarySection({
                         <td className="p-3 text-center font-extrabold text-blue-700 dark:text-blue-300 bg-blue-50/40 dark:bg-blue-900/20">
                           {st.validCount}건
                         </td>
-                        <td className="p-3 text-right text-gray-500 dark:text-gray-400 text-[11px]">
+                        <td className="p-3 text-right text-gray-600 dark:text-gray-300 text-xs">
                           {dateStr}
                         </td>
                       </tr>

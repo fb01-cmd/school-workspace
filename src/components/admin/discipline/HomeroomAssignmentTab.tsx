@@ -207,7 +207,7 @@ export default function HomeroomAssignmentTab({ domain: _domain }: HomeroomAssig
         <div className="flex items-center space-x-1 w-full sm:w-auto overflow-x-auto">
           <button
             onClick={() => setGradeFilter("all")}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+            className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${
               gradeFilter === "all"
                 ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 shadow-xs"
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300"
@@ -219,7 +219,7 @@ export default function HomeroomAssignmentTab({ domain: _domain }: HomeroomAssig
             <button
               key={g}
               onClick={() => setGradeFilter(g)}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+              className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${
                 gradeFilter === g
                   ? "bg-blue-600 text-white shadow-xs"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300"
@@ -237,13 +237,13 @@ export default function HomeroomAssignmentTab({ domain: _domain }: HomeroomAssig
             placeholder="교사 이름, 이메일, 반 검색..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-9 pr-3 py-1.5 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <span className="absolute left-3 top-2 text-gray-400 text-xs">🔍</span>
+          <span className="absolute left-3 top-2 text-gray-400 text-sm">🔍</span>
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className="absolute right-2.5 top-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs"
+              className="absolute right-2.5 top-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm"
             >
               ✕
             </button>
@@ -304,7 +304,7 @@ export default function HomeroomAssignmentTab({ domain: _domain }: HomeroomAssig
                         {assignedClassNums.length}개 반 배정 완료
                       </span>
                     </div>
-                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
                       총 {entries.filter((e) => e.grade === grade).length}명 등록됨
                     </span>
                   </div>
@@ -342,18 +342,18 @@ export default function HomeroomAssignmentTab({ domain: _domain }: HomeroomAssig
                             {/* 클래스 배지 및 라벨 */}
                             <div className="flex items-center justify-between">
                               <span
-                                className={`text-xs font-bold px-2.5 py-1 rounded-md shadow-2xs ${
+                                className={`text-sm font-bold px-2.5 py-1 rounded-md shadow-2xs ${
                                   isAssigned ? theme.tagBg : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
                                 }`}
                               >
                                 {grade}-{classNum}반
                               </span>
                               {isCoHomeroom ? (
-                                <span className="text-[11px] font-extrabold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700">
+                                <span className="text-xs font-extrabold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700">
                                   👥 공동담임 ({classTeachers.length}명)
                                 </span>
                               ) : !isAssigned ? (
-                                <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500">
+                                <span className="text-xs font-medium text-gray-400 dark:text-gray-500">
                                   미배정
                                 </span>
                               ) : null}
@@ -375,7 +375,7 @@ export default function HomeroomAssignmentTab({ domain: _domain }: HomeroomAssig
                                         <p className="text-sm font-bold text-gray-900 dark:text-white truncate leading-tight">
                                           {teacher.name || "이름 미설정"}
                                         </p>
-                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                                           {teacher.email}
                                         </p>
                                       </div>

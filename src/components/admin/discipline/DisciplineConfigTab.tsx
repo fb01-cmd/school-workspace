@@ -179,7 +179,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
 
         <div className="flex items-center space-x-3">
           {hasUnsavedChanges && (
-            <span className="text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-3 py-1.5 rounded-md animate-pulse border border-amber-200 dark:border-amber-800">
+            <span className="text-sm font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-3 py-1.5 rounded-md animate-pulse border border-amber-200 dark:border-amber-800">
               ⚠️ 미저장 변경사항 있음
             </span>
           )}
@@ -219,7 +219,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
           </div>
           <button
             onClick={addItem}
-            className="text-xs font-bold px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg"
+            className="text-sm font-bold px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg"
           >
             ➕ 항목 추가
           </button>
@@ -245,7 +245,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
                 placeholder="분류 (예: 생활지도, 선도)"
                 className="w-36 p-2 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
-              <label className="flex items-center space-x-1.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+              <label className="flex items-center space-x-1.5 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={it.active !== false}
@@ -268,7 +268,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
           </div>
           <button
             onClick={addStage}
-            className="text-xs font-bold px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg"
+            className="text-sm font-bold px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg"
           >
             ➕ 단계 추가
           </button>
@@ -280,7 +280,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
               key={st.id}
               className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-200 dark:border-gray-700"
             >
-              <span className="text-xs font-bold text-gray-500 w-12">순서:</span>
+              <span className="text-sm font-bold text-gray-500 w-12">순서:</span>
               <input
                 type="number"
                 value={st.order}
@@ -294,7 +294,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
                 placeholder="단계 이름 (예: 담임 지도)"
                 className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
-              <label className="flex items-center space-x-1.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer whitespace-nowrap">
+              <label className="flex items-center space-x-1.5 text-sm text-gray-700 dark:text-gray-300 cursor-pointer whitespace-nowrap">
                 <input
                   type="checkbox"
                   checked={st.homeroomResolvable === true}
@@ -317,7 +317,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
           </div>
           <button
             onClick={addRule}
-            className="text-xs font-bold px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg"
+            className="text-sm font-bold px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg"
           >
             ➕ 규칙 추가
           </button>
@@ -394,7 +394,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
 
               <button
                 onClick={() => deleteRule(rule.id)}
-                className="text-xs text-red-600 dark:text-red-400 hover:underline font-medium self-end md:self-auto"
+                className="text-sm text-red-600 dark:text-red-400 hover:underline font-medium self-end md:self-auto"
               >
                 삭제
               </button>
@@ -444,11 +444,11 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
               >
                 <div>
                   <div className="text-sm font-bold text-gray-900 dark:text-white">{g}학년 리셋 마커</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{markerStr}</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">{markerStr}</div>
                 </div>
                 <button
                   onClick={() => setResetGrade(g)}
-                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow-sm"
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm rounded-lg shadow-sm"
                 >
                   리셋 실행
                 </button>
@@ -470,7 +470,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
             </p>
 
             {hasUnsavedChanges && (
-              <div className="p-3 bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-xs font-bold rounded-lg">
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-sm font-bold rounded-lg">
                 💡 미저장 상태인 규정 변경사항이 있습니다. 리셋 실행 시 규정이 자동으로 함께 저장됩니다.
               </div>
             )}

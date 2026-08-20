@@ -204,7 +204,7 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
                   <tr key={g.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-colors">
                     <td className="p-4 font-bold text-gray-900 dark:text-white">{g.teacherEmail}</td>
                     <td className="p-4">
-                      <span className="text-xs font-bold px-2.5 py-1 rounded bg-blue-50 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                      <span className="text-sm font-bold px-2.5 py-1 rounded bg-blue-50 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
                         {scopeStr}
                       </span>
                     </td>
@@ -213,7 +213,7 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
                         {g.rights.map((r) => (
                           <span
                             key={r}
-                            className="text-xs font-medium px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                            className="text-sm font-medium px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
                           >
                             {rightLabels[r] || r}
                           </span>
@@ -227,7 +227,7 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
                     <td className="p-4 text-right">
                       <button
                         onClick={() => handleRevokeGrant(g.id)}
-                        className="text-xs text-red-600 dark:text-red-400 hover:underline font-bold px-2 py-1 bg-red-50 dark:bg-red-900/20 rounded"
+                        className="text-sm text-red-600 dark:text-red-400 hover:underline font-bold px-2 py-1 bg-red-50 dark:bg-red-900/20 rounded"
                       >
                         회수
                       </button>
@@ -254,7 +254,7 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
             <form onSubmit={handleCreateGrant} className="space-y-4">
               {/* 교사 선택 */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">
                   대상 교사 <span className="text-red-500">*</span>
                 </label>
                 <AutocompleteInput
@@ -275,7 +275,7 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
                   className="w-full"
                 />
                 {selectedTeacherEmail && (
-                  <div className="mt-1 text-xs text-blue-600 font-medium">
+                  <div className="mt-1 text-sm text-blue-600 font-medium">
                     선택: {selectedTeacherName} ({selectedTeacherEmail})
                   </div>
                 )}
@@ -283,14 +283,14 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
 
               {/* 범위 (Scope) */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">
                   권한 범위 <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   <button
                     type="button"
                     onClick={() => setScopeType("all")}
-                    className={`py-2 text-xs font-bold rounded-lg border ${
+                    className={`py-2 text-sm font-bold rounded-lg border ${
                       scopeType === "all"
                         ? "bg-blue-600 text-white border-blue-600"
                         : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600"
@@ -301,7 +301,7 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
                   <button
                     type="button"
                     onClick={() => setScopeType("grade")}
-                    className={`py-2 text-xs font-bold rounded-lg border ${
+                    className={`py-2 text-sm font-bold rounded-lg border ${
                       scopeType === "grade"
                         ? "bg-blue-600 text-white border-blue-600"
                         : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600"
@@ -312,7 +312,7 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
                   <button
                     type="button"
                     onClick={() => setScopeType("class")}
-                    className={`py-2 text-xs font-bold rounded-lg border ${
+                    className={`py-2 text-sm font-bold rounded-lg border ${
                       scopeType === "class"
                         ? "bg-blue-600 text-white border-blue-600"
                         : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600"
@@ -362,14 +362,14 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
 
               {/* 권한 목록 (Rights) */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
                   부여할 권한 목록 <span className="text-red-500">*</span>
                 </label>
                 <div className="space-y-1.5 bg-gray-50 dark:bg-gray-900/30 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
                   {ALL_DISCIPLINE_RIGHTS.map((r) => {
                     const checked = selectedRights.includes(r);
                     return (
-                      <label key={r} className="flex items-center space-x-2 text-xs font-medium text-gray-800 dark:text-gray-200 cursor-pointer">
+                      <label key={r} className="flex items-center space-x-2 text-sm font-medium text-gray-800 dark:text-gray-200 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={checked}
@@ -391,7 +391,7 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
 
               {/* 만료일 */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">
                   만료일 (선택 - 미지정 시 영구)
                 </label>
                 <input

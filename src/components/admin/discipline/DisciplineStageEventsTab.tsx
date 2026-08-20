@@ -225,18 +225,18 @@ export default function DisciplineStageEventsTab({ domain, config, canResolve }:
                 className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
               >
                 <div className="space-y-2">
-                  <div className="flex items-center space-x-3">
-                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-bold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded">
                       {ev.studentId} {ev.studentName}
                     </span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
                       {ev.grade}학년 {ev.classNum}반
                     </span>
-                    <span className="text-xs font-bold text-white bg-blue-600 px-2.5 py-0.5 rounded-full">
+                    <span className="text-sm font-bold text-white bg-blue-600 px-2.5 py-0.5 rounded-full">
                       {stageLabel}
                     </span>
                     {ev.cause === "manual" && (
-                      <span className="text-xs font-bold text-amber-800 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-0.5 rounded">
+                      <span className="text-sm font-bold text-amber-800 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-0.5 rounded">
                         [수동 지정]
                       </span>
                     )}
@@ -255,7 +255,7 @@ export default function DisciplineStageEventsTab({ domain, config, canResolve }:
                   </div>
 
                   {ev.resolved && ev.resolution && (
-                    <div className="text-xs bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 p-2.5 rounded-lg border border-green-100 dark:border-green-800">
+                    <div className="text-sm bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 p-2.5 rounded-lg border border-green-100 dark:border-green-800">
                       <strong>조치 내용:</strong> {ev.resolution} ({ev.resolvedBy})
                     </div>
                   )}
@@ -265,12 +265,12 @@ export default function DisciplineStageEventsTab({ domain, config, canResolve }:
                   {!ev.resolved ? (
                     <button
                       onClick={() => setResolveEvent(ev)}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-lg shadow-sm transition-all"
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold text-sm rounded-lg shadow-sm transition-all"
                     >
                       ✅ 조치 완료 처리
                     </button>
                   ) : (
-                    <span className="text-xs font-medium text-gray-400 dark:text-gray-500">
+                    <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
                       {new Date(ev.resolvedAt || 0).toLocaleDateString("ko-KR")} 완료
                     </span>
                   )}
@@ -294,7 +294,7 @@ export default function DisciplineStageEventsTab({ domain, config, canResolve }:
 
             <form onSubmit={handleResolveSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">
                   조치 사항 <span className="text-red-500">*</span>
                 </label>
                 <textarea
@@ -341,7 +341,7 @@ export default function DisciplineStageEventsTab({ domain, config, canResolve }:
 
             <form onSubmit={handleManualSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">
                   대상 학생 <span className="text-red-500">*</span>
                 </label>
                 <AutocompleteInput
@@ -361,14 +361,14 @@ export default function DisciplineStageEventsTab({ domain, config, canResolve }:
                   className="w-full"
                 />
                 {manualStudentEmail && (
-                  <div className="mt-1 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                  <div className="mt-1 text-sm text-blue-600 dark:text-blue-400 font-medium">
                     선택: {manualStudentName} ({manualStudentEmail})
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">
                   부여할 단계 <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -387,7 +387,7 @@ export default function DisciplineStageEventsTab({ domain, config, canResolve }:
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">
                   수동 부여 사유 <span className="text-red-500">*</span>
                 </label>
                 <textarea
