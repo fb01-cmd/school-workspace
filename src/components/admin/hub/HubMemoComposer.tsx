@@ -659,13 +659,13 @@ export default function HubMemoComposer({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="truncate text-slate-800 font-medium">{item.name}</span>
-                          <span className="text-slate-400 text-[10px] flex-shrink-0">
+                          <span className="text-slate-400 text-[11px] flex-shrink-0">
                             ({formatAttachmentSize(item.size)})
                           </span>
                           {/* A-4: 본문 삽입 버튼 / 본문에 들어감 표시 */}
                           {isImg && item.status === "done" && item.attachment && (
                             inlineAttachmentIds.has(item.attachment.driveFileId) ? (
-                              <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+                              <span className="text-[11px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
                                 본문에 들어감
                               </span>
                             ) : (
@@ -678,7 +678,7 @@ export default function HubMemoComposer({
                                     item.name
                                   )
                                 }
-                                className="text-[10px] text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded font-semibold transition-colors cursor-pointer flex-shrink-0"
+                                className="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded font-semibold transition-colors cursor-pointer flex-shrink-0"
                                 title="본문 커서 위치에 넣기"
                               >
                                 + 본문에 넣기
@@ -687,12 +687,12 @@ export default function HubMemoComposer({
                           )}
                         </div>
                         {item.status === "uploading" && (
-                          <p className="text-[10px] text-indigo-600 font-medium">
+                          <p className="text-xs text-indigo-600 font-medium">
                             {item.progressText || "업로드 중…"}
                           </p>
                         )}
                         {item.status === "error" && (
-                          <p className="text-[10px] text-rose-600 font-semibold leading-snug">
+                          <p className="text-xs text-rose-600 font-semibold leading-snug">
                             ⚠️ {item.error || "업로드에 실패했습니다."}
                           </p>
                         )}

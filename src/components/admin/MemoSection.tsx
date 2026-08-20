@@ -287,7 +287,7 @@ function DeptCheckboxTree({ sections, selected, onChange, myDepts }: DeptCheckbo
                 className="w-4 flex-shrink-0 text-center text-slate-400 hover:text-slate-600"
                 aria-label={isOpen ? "접기" : "펼치기"}
               >
-                <span className="text-[10px]">{isOpen ? "▼" : "▶"}</span>
+                <span className="text-xs">{isOpen ? "▼" : "▶"}</span>
               </button>
 
               {/* 부서 체크박스 */}
@@ -311,7 +311,7 @@ function DeptCheckboxTree({ sections, selected, onChange, myDepts }: DeptCheckbo
 
               {/* 선택 뱃지 */}
               {checkedCount > 0 && (
-                <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
+                <span className="text-xs bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
                   {checkedCount}/{emails.length}
                 </span>
               )}
@@ -562,7 +562,7 @@ function StarredRow({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
             <span
-              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${
+              className={`text-[11px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${
                 isSentByMe
                   ? "bg-slate-100 text-slate-600"
                   : "bg-indigo-50 text-indigo-600 border border-indigo-100"
@@ -1050,7 +1050,7 @@ function MemoDetailPanel({
                   >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${
+                        className={`px-1.5 py-0.5 rounded text-[11px] font-semibold flex-shrink-0 ${
                           isSentByMe ? "bg-slate-200 text-slate-700" : "bg-indigo-100 text-indigo-700"
                         }`}
                       >
@@ -1060,7 +1060,7 @@ function MemoDetailPanel({
                         {item.title || "(제목 없음)"}
                       </span>
                       {isCurrent && (
-                        <span className="text-[10px] bg-indigo-600 text-white font-semibold px-1.5 py-0.5 rounded flex-shrink-0">
+                        <span className="text-[11px] bg-indigo-600 text-white font-semibold px-1.5 py-0.5 rounded flex-shrink-0">
                           현재 쪽지
                         </span>
                       )}
@@ -1998,13 +1998,13 @@ function ComposeModal({
                             ) : (
                               <div className="flex flex-col items-center justify-center gap-1 text-slate-400">
                                 <span className="text-2xl">📄</span>
-                                <span className="text-[10px] text-slate-500 font-medium">일반 파일</span>
+                                <span className="text-xs text-slate-500 font-medium">일반 파일</span>
                               </div>
                             )}
 
                             {/* 본문에 들어감 뱃지 (썸네일 좌측 상단 — 이미지 전용) */}
                             {isInline && (
-                              <div className="absolute top-1.5 left-1.5 bg-indigo-600/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-xs backdrop-blur-[1px]">
+                              <div className="absolute top-1.5 left-1.5 bg-indigo-600/90 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow-xs backdrop-blur-[1px]">
                                 본문에 들어감
                               </div>
                             )}
@@ -2013,7 +2013,7 @@ function ComposeModal({
                             {(item.status === "resizing" || item.status === "uploading") && (
                               <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex flex-col items-center justify-center text-white gap-1 p-1">
                                 <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                                <span className="text-[10px] font-bold">{item.progressText || "처리 중…"}</span>
+                                <span className="text-xs font-bold">{item.progressText || "처리 중…"}</span>
                               </div>
                             )}
 
@@ -2034,7 +2034,7 @@ function ComposeModal({
                             <p className="font-medium text-slate-800 truncate" title={item.name}>
                               {item.name}
                             </p>
-                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                            <div className="flex items-center justify-between text-xs text-slate-400">
                               <span>{formatAttachmentSize(item.size)}</span>
                               {item.status === "done" && item.attachment && isImg && (
                                 isInline ? (
@@ -2061,7 +2061,7 @@ function ComposeModal({
                             </div>
                             {/* 실패 사유는 잘라내지 않는다 — 사용자가 사유를 보고 조치해야 한다 (2026-08-18 실기기 지적) */}
                             {item.status === "error" && (
-                              <p className="text-[10px] text-rose-600 font-semibold leading-snug">
+                              <p className="text-xs text-rose-600 font-semibold leading-snug">
                                 ⚠️ {item.error || "업로드에 실패했습니다."}
                               </p>
                             )}
@@ -2649,7 +2649,7 @@ export default function MemoSection({ initialMemoId, initialTab }: MemoSectionPr
           >
             받은쪽지함
             {unreadCount > 0 && (
-              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center ${
+              <span className={`text-[11px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center ${
                 tab === "inbox" ? "bg-white text-indigo-700" : "bg-indigo-500 text-white"
               }`}>
                 {unreadCount}

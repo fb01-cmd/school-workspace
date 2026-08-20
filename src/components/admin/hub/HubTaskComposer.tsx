@@ -432,7 +432,7 @@ export default function HubTaskComposer({
                 }`}
               >
                 <span>✅ 확인형</span>
-                <span className="text-[10px] font-normal text-slate-500">완료 체크만 필요</span>
+                <span className="text-[11px] font-normal text-slate-500">완료 체크만 필요</span>
               </button>
               <button
                 type="button"
@@ -444,7 +444,7 @@ export default function HubTaskComposer({
                 }`}
               >
                 <span>📂 제출형</span>
-                <span className="text-[10px] font-normal text-slate-500">서식/파일 제출 필요</span>
+                <span className="text-[11px] font-normal text-slate-500">서식/파일 제출 필요</span>
               </button>
             </div>
           </div>

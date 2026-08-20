@@ -172,7 +172,7 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
                       >
                         {senderName}
                       </span>
-                      <span className="text-[10px] text-slate-400 flex-shrink-0">
+                      <span className="text-xs text-slate-400 flex-shrink-0">
                         {formatDate(memo.createdAt)}
                       </span>
                     </div>
@@ -187,8 +187,8 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
                     </p>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0 mt-0.5 text-slate-400">
-                    {hasAttachments && <span className="text-[10px]">📎</span>}
-                    {hasLinks && <span className="text-[10px]">🔗</span>}
+                    {hasAttachments && <span className="text-xs">📎</span>}
+                    {hasLinks && <span className="text-xs">🔗</span>}
                   </div>
                 </button>
               );

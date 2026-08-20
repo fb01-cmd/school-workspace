@@ -372,7 +372,7 @@ export default function HubOrgTree({
               }`}
             >
               <span>{isAllSchoolSelected ? `전체 해제 (${totalValidCount}명)` : `효명고 전체 선택 (${totalValidCount}명)`}</span>
-              <span className="text-[10px] text-slate-400">{isAllSchoolSelected ? "✕" : "✓"}</span>
+              <span className="text-xs text-slate-400">{isAllSchoolSelected ? "✕" : "✓"}</span>
             </button>
           </div>
         )}
@@ -442,7 +442,7 @@ export default function HubOrgTree({
                           {displayName}
                         </span>
                         {deptsLabel && (
-                          <span className="text-[10px] text-slate-400 truncate">
+                          <span className="text-xs text-slate-400 truncate">
                             {deptsLabel}
                           </span>
                         )}
@@ -487,7 +487,7 @@ export default function HubOrgTree({
                       <span className="text-xs font-bold text-slate-800 truncate">{deptName}</span>
                       <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                         <span
-                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                          className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
                             selectedCountInDept > 0
                               ? "bg-indigo-100 text-indigo-700"
                               : "bg-slate-200 text-slate-700"
@@ -497,7 +497,7 @@ export default function HubOrgTree({
                             ? `${selectedCountInDept}/${members.length}`
                             : members.length}
                         </span>
-                        <span className="text-[10px] text-slate-400">{isExpanded ? "▲" : "▼"}</span>
+                        <span className="text-xs text-slate-400">{isExpanded ? "▲" : "▼"}</span>
                       </div>
                     </button>
                   </div>
@@ -550,12 +550,12 @@ export default function HubOrgTree({
                                 {displayName}
                               </span>
                               {isDeptHead && (
-                                <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-100 text-amber-800 flex-shrink-0">
+                                <span className="text-[11px] font-bold px-1 py-0.2 rounded bg-amber-100 text-amber-800 flex-shrink-0">
                                   부서장
                                 </span>
                               )}
                               {homeroom && (
-                                <span className="text-[9px] font-medium px-1 py-0.2 rounded bg-slate-100 text-slate-600 flex-shrink-0">
+                                <span className="text-[11px] font-medium px-1 py-0.2 rounded bg-slate-100 text-slate-600 flex-shrink-0">
                                   {homeroom}
                                 </span>
                               )}
@@ -620,7 +620,7 @@ export default function HubOrgTree({
                       <span className="font-semibold text-slate-800 text-xs">{d}</span>
                       {(!!popoverTeacher.deptHeadMap?.[d] ||
                         (popoverTeacher.departments?.length === 1 && !!popoverTeacher.isDeptHead)) && (
-                        <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-800">
+                        <span className="text-[11px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-800">
                           부서장
                         </span>
                       )}

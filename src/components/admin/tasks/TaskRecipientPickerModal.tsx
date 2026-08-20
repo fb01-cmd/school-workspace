@@ -311,7 +311,7 @@ export default function TaskRecipientPickerModal({
                       <button
                         type="button"
                         onClick={() => toggleDeptExpand(section.dept)}
-                        className="w-4 text-center text-slate-400 hover:text-slate-600 text-[10px] cursor-pointer"
+                        className="w-4 text-center text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
                       >
                         {isOpen ? "▼" : "▶"}
                       </button>
@@ -332,7 +332,7 @@ export default function TaskRecipientPickerModal({
                         {section.dept}
                       </button>
                       {checkedCount > 0 && (
-                        <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.2 rounded-full">
+                        <span className="text-[11px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.2 rounded-full">
                           {checkedCount}/{emails.length}
                         </span>
                       )}

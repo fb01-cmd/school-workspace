@@ -546,7 +546,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
                         >
                           <span>{chip.label}</span>
                           {chip.deptLabel && (
-                            <span className="text-[10px] text-slate-400">({chip.deptLabel})</span>
+                            <span className="text-[11px] text-slate-400">({chip.deptLabel})</span>
                           )}
                           <button
                             type="button"

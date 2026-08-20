@@ -623,7 +623,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                 {task.selfAssigned ? "본인 등록" : `${task.senderName} 선생님`}
               </span>
               {task.selfAssigned && (
-                <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">
+                <span className="text-[11px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">
                   내가 등록
                 </span>
               )}
@@ -719,7 +719,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                     >
                       <span>📄</span>
                       <span>{f.name}</span>
-                      <span className="text-slate-400 text-[10px]">
+                      <span className="text-slate-400 text-[11px]">
                         ({(f.size / 1024).toFixed(0)} KB)
                       </span>
                       <span>↓</span>
@@ -973,7 +973,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                     <span className="font-bold text-slate-900 truncate max-w-xs">
                                       {staged.displayName}
                                     </span>
-                                    <span className="text-[10px] text-slate-500">
+                                    <span className="text-[11px] text-slate-500">
                                       ({(staged.file.size / 1024).toFixed(0)} KB)
                                     </span>
                                   </div>
@@ -1106,7 +1106,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
             >
               <span>📥 내 할 일</span>
               {pendingCount > 0 && (
-                <span className="bg-indigo-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                <span className="bg-indigo-600 text-white text-[11px] px-1.5 py-0.2 rounded-full font-black">
                   {pendingCount}
                 </span>
               )}

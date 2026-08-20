@@ -330,7 +330,7 @@ export default function TaskStatusBoard() {
                 className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
                 <span>📝 내가 등록한 할 일 ({selfTasks.length}건)</span>
-                <span className="text-[10px]">{showSelfTasks ? "▲ 접기" : "▼ 펼치기"}</span>
+                <span className="text-xs">{showSelfTasks ? "▲ 접기" : "▼ 펼치기"}</span>
               </button>
               {showSelfTasks && (
                 <div className="space-y-1.5 mt-1.5">
@@ -349,7 +349,7 @@ export default function TaskStatusBoard() {
                         }`}
                       >
                         <div className="truncate text-slate-800">{task.title}</div>
-                        <div className="text-[10px] text-slate-400 mt-0.5">{remaining.text}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">{remaining.text}</div>
                       </button>
                     );
                   })}
@@ -479,7 +479,7 @@ export default function TaskStatusBoard() {
                   >
                     <span>📄</span>
                     <span>{f.name}</span>
-                    <span className="text-slate-400 text-[10px]">
+                    <span className="text-slate-400 text-[11px]">
                       ({(f.size / 1024).toFixed(0)} KB)
                     </span>
                     <span>↓</span>
