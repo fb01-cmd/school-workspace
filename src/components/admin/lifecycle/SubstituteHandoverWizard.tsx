@@ -437,7 +437,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
               </div>
               <p className="text-xs leading-relaxed">
                 {previewData.toName} 선생님의 교직원 프로필이 아직 생성되지 않았거나 승인 대기 상태입니다.
-                [프로필 승인] 메뉴에서 먼저 승인을 완료해 주세요.
+                [교직원 조직도 관리] 메뉴에서 먼저 승인을 완료해 주세요.
               </p>
             </div>
           )}

@@ -159,7 +159,7 @@ export default function HomeroomAssignmentTab({ domain: _domain }: HomeroomAssig
             담임 교사 변경 및 배정 수정 안내
           </p>
           <p className="text-xs text-amber-800/90 dark:text-amber-300/90 leading-normal">
-            담임 정보를 변경하려면 교사가 <strong>[마이페이지 → 조직 정보 신청]</strong>에서 학년·반을 변경 제출하고, 수퍼어드민이 <strong>[프로필 승인 대기]</strong>에서 승인하면 이곳 및 생활지도 권한에 즉시 반영됩니다.
+            담임 정보를 변경하려면 교사가 <strong>[마이페이지 → 조직 정보 신청]</strong>에서 학년·반을 변경 제출하고, 수퍼어드민이 <strong>[교직원 조직도 관리]</strong>에서 승인하면 이곳 및 생활지도 권한에 즉시 반영됩니다.
           </p>
         </div>
       </div>
