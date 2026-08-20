@@ -1167,3 +1167,4 @@ Codex 통과 5/실패 36 (커밋 4개 대조). Claude가 36건 전건 열람, �
 - **[판단] API는 바꾸지 않는다.** 외부 연동자가 주소를 붙들고 있고(`roster/feed` 안내문·`calendar/ics` 구독), 캘린더 구독은 끊겨도 **오류가 안 보인다.** 교사가 볼 일 없는 주소라 이름을 다듬을 실익도 없다.
 - **[미확인 — 착수 전 필수]** 안내문 본문은 **Firestore `settings/{domain}`의 관리자 편집 템플릿이 우선**한다. 치환자를 안 쓰고 주소를 직접 타이핑한 템플릿이 있으면 DB에 굳어 있고 **코드 grep으로 안 보인다.** 실제 DB 확인 필요.
 - 검증 상태: 조사·기록만. **코드 변경 없음.**
+- **[사실 추가 — 형제 프로젝트]** 사용자 지적으로 `course-selection-app`을 열어 확인했다. `src/app/api/roster/sync/route.ts:6`이 `https://portal.hmh.or.kr/api/roster/feed`를 코드에 박고 있고(환경변수 `HMH_ROSTER_FEED_URL` 우회로 있음), **같은 파일 5행에 선례 주석이 있다** — *"2026-08 플랫폼 도메인이 admin.hmh.or.kr → portal.hmh.or.kr 로 변경됨 (구 도메인 DNS 소멸)"*. 주소를 바꾸면 형제 프로젝트를 따로 고쳐 따로 배포해야 한다는 것이 **이미 한 번 실증된 비용**이다. 그 앱의 `privacy/page.tsx:100`은 학생에게 보이는 개인정보 처리방침에 `portal.hmh.or.kr`을 적고 있다. **→ `/api/*` 불변 결론이 더 굳어졌다.** 화면 주소(`/admin`·`/student-portal`)만 바꾸는 안은 이 앱과 무관하다.
