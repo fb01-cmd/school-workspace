@@ -991,12 +991,15 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                   />
                                 </div>
 
-                                <div className="flex justify-end gap-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
+                                  <p className="text-[11px] text-amber-800 font-medium">
+                                    이전 제출본은 교체되며 30일이 지나면 복구할 수 없습니다.
+                                  </p>
                                   <button
                                     type="button"
                                     onClick={() => handleSubmitFile(task.id, staged.file, staged.note)}
                                     disabled={submittingTaskId === task.id}
-                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs flex items-center gap-1"
+                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs flex items-center justify-center gap-1 shrink-0 cursor-pointer self-end sm:self-auto"
                                   >
                                     {submittingTaskId === task.id ? (
                                       <>
