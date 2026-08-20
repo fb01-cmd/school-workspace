@@ -6,13 +6,24 @@
 
 ## 1. 문제 (실측 확인 2026-08-08)
 
+> **[2026-08-21 표기 정정] 아래 첫 줄의 파일 경로 `src/app/admin/page.tsx`는 지금 존재하지 않는다.**
+>
+> 근거: 커밋 `72763b1`이 화면 경로 이름을 바꿨다 — `/admin` → `/teacher`, `/student-portal` → `/student`.
+> 아래 문장이 가리키는 헤더는 **현재 `src/app/teacher/page.tsx`**에 있다. 사이드바에 메뉴 항목이 없다는
+> 서술 자체는 §2-③의 의도된 설계이므로 그대로 유효하다.
+>
+> 또한 §2-①(헤더 배지를 진입 버튼으로 승격)은 **이미 반영돼 있다** —
+> `src/components/pwa/PWAInstallPrompt.tsx:62`의 `isStandalone` 분기가 `<button onClick={handleInstallClick}>`이고,
+> `:72`의 라벨이 스펙이 지정한 *"앱으로 실행 중 · 사용 설정 안내"* 그대로다.
+> 열린 항목은 [`STATUS.md`](../STATUS.md)에서 본다.
+
 - `pwa_guide` 화면(앱으로 설치하기 안내, `PWAInstallGuideTab`)으로 들어가는 진입점은 **헤더의 `PWAInstallPrompt` 버튼 하나뿐**이다 (`src/app/admin/page.tsx` 헤더, 사이드바에 메뉴 항목 없음).
 - 그런데 `PWAInstallPrompt`는 앱 창(standalone)으로 실행 중이면 **클릭 불가 배지 "✓ 앱으로 실행 중"** 으로 바뀐다 (`src/components/pwa/PWAInstallPrompt.tsx`의 `isStandalone` 분기).
 - 결과: 설치(또는 크롬 "앱으로 실행")를 마친 교사는 작업표시줄 고정·컴퓨터 켤 때 자동 실행·알림 켜기 등 **후속 단계를 따라갈 진입로가 없다.**
 
 ## 2. 배치 결정 (IA — 임의 변경 금지)
 
-### ① 헤더 배지를 진입 버튼으로 승격 (핵심 수정)
+### ✅ ① ~~헤더 배지를 진입 버튼으로 승격 (핵심 수정)~~ — **2026-08-21 확인: 반영 완료** (`PWAInstallPrompt.tsx:62`·`:72`)
 
 `PWAInstallPrompt.tsx`의 standalone 분기를 **클릭 가능한 버튼**으로 바꾼다.
 

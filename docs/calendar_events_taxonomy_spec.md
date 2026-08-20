@@ -67,6 +67,19 @@ neisKey?: string;     // source=neis 전용 dedupe 키: `${AA_YMD}|${EVENT_NM}`
 - tsc·build(힙 4GB) 통과.
 - 실측(테스트 데이터 종료 시 정리): ① 수집 실행 → 행사·휴업 항목 생성, 공휴일·토요휴업 미생성, 방학이 기간 1건으로 병합 ② 재실행 멱등(변경 0) ③ 수능일(11/19) 휴업이 해당 주 파생에 반영(노출 창 밖이면 주 등록 후 확인) ④ manual 항목이 수집에 안 지워짐 ⑤ neis 항목 수동 수정 시도 400 ⑥ 기존 `scripts/verify_calendar_sync.ts` 재통과.
 
-## §7 Phase 3 — 구독형 캘린더 (범위 밖, 착수 시 별도 스펙)
+## ✅ §7 ~~Phase 3 — 구독형 캘린더 (범위 밖, 착수 시 별도 스펙)~~ — **2026-08-21 확인: ⓐ 확정·구현·배포 완료**
+
+> **[2026-08-21 표기 정정] 이 절은 구독형 캘린더를 이 스펙의 범위 밖으로 미뤄 두고 ⓐ·ⓑ 중 무엇으로 갈지도
+> 정해지지 않은 것처럼 적고 있으나, 둘 다 낡았다.**
+>
+> 근거: `docs/calendar_ics_feed_spec.md:3` — *"calendar_events_taxonomy_spec §7의 ⓐ안(앱 내 1클릭 안내, 0원·권한 불요) 채택 —
+> DWD 자동 구독(ⓑ)은 하지 않는다"* (2026-08-10 사용자 착수 확정).
+> 구현·배포 실물: `src/app/api/calendar/ics/route.ts`(피드 엔드포인트),
+> `scripts/verify_calendar_ics.ts`(검증), `scripts/migrate_user_calendar.ts`(이관).
+>
+> 즉 별도 스펙은 이미 쓰였고 코드도 들어갔다. 상세는 `docs/calendar_ics_feed_spec.md`가 원본이고,
+> 열린 항목은 [`STATUS.md`](../STATUS.md)에서 본다.
+
+*(이하 2026-08-10 이전 작성 당시 기록 — 현재 상태가 아니다.)*
 
 학사일정(행사+일과 영향)을 ics 피드로 노출 → 구글 캘린더 구독. 자동 구독 방식 미결: ⓐ 앱 내 1클릭 안내(0원·권한 불요, 우선 후보) ⓑ Workspace 단 자동(DWD calendar 스코프 — 선배포 금지). 본 스펙의 title·grades·이원화가 피드 요건 선충족.

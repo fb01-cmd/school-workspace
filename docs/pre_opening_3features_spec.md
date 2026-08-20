@@ -211,5 +211,12 @@ timetable_base_revisions/{domain}/revisions/{revId}
 
 ### F-5. 잔여 (비차단)
 
-- 등록부 화면(§A-4 SimulGroupTab 상당) = Antigravity — venue_list/save/delete 계약 완비. 그리드에 특별실명 뱃지 표시(lesson.room 노출)도 화면 몫.
+> **[2026-08-21 표기 정정] 아래 첫 줄이 남은 화면 작업으로 적은 등록부 화면은 이미 만들어져 있다.**
+>
+> 근거(코드 실측): `src/components/admin/timetable/VenueGroupTab.tsx:74`(`venue_list` 호출)·`:244`(`venue_save` 호출).
+> 본문이 본보기로 지목한 §A-4 화면도 `src/components/admin/timetable/SimulGroupTab.tsx:63`·`:225`에 같은 구조로 존재한다.
+> 둘째 줄(기초 개정 시 slots 갱신)은 작업 항목이 아니라 상시 유지보수 주의사항이므로 그대로 유효하다.
+> 열린 항목은 [`STATUS.md`](../STATUS.md)에서 본다.
+
+- ✅ ~~등록부 화면(§A-4 SimulGroupTab 상당) = Antigravity~~ — **2026-08-21 코드 확인: 구현 완료** (`VenueGroupTab.tsx`, venue_list/save/delete 계약 완비). 그리드에 특별실명 뱃지 표시(lesson.room 노출)는 이번 정정에서 별도로 확인하지 않았다.
 - 기초 개정(§E)으로 slots 지정 수업(과탐 실험)의 기초 위치가 바뀌면 등록부 slots 갱신 필요 — venue_list의 baseConflicts·판정 0셀 경고가 감지망.

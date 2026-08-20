@@ -563,3 +563,13 @@ Codex 통과 5/실패 36 (커밋 4개 대조). Claude가 36건 전건 열람, �
 - **[판단] 근거 블록에 오늘 실측을 넣었다.** 규칙만 적으면 다음 세션이 왜 있는지 몰라 지운다 — docs/ 71개 대조 결과(A형 9 + B형 14), `midterm_triage` §3이 *"보안 — 원칙 위반 상태"* 제목인 채 3건 다 고쳐져 있던 것, 그리고 **반대 방향 1건이 더 위험했다**는 것(대장 누락은 헷갈리게 하는 게 아니라 항목을 사라지게 한다)까지 적었다.
 - **[사실] `CLAUDE.md`는 건드리지 않았다.** 그 파일은 규칙 본문을 한 줄도 두지 않는다는 원칙이 있고(2026-08-20 실사고 후 명문화), 세션 시작 순서에서 이미 `STATUS.md`·`AGENTS.md`를 가리키고 있어 추가할 것이 없다.
 - 검증 상태: `npm run check:docs` 3개 검사 통과. AGENTS.md 삭제 줄 0. **코드 변경 없음.**
+
+## [2026-08-21] Claude(Opus) — 낡은 상태 표기 문서 28개 일괄 정정 (새 규칙 ④-3 첫 적용)
+
+- **[사용자 지시]** *"어제 목록의 A형 9개와 B형 14곳을 새 규칙(AGENTS.md ④-3)에 맞춰 정정해줘. 머리말에 완료 날짜와 근거 커밋을 붙이고 제목은 종결 표기로. 원 기록은 지우지 말고 시제만 분리."*
+- **[사실] 28개 파일, +555/-71줄.** 5갈래 병렬(파일이 겹치지 않아 충돌 없음). A형(자기를 작업 목록이라 선언) = phase8 인계서 3종·`deferred_backlog`·`midterm_direction`·허브 지시서/리뷰 4종. B형(제목은 미결·실제는 완료) = `agents_md_diet_proposal`·`three_agent_collaboration_draft`·`ux_trap_scan`·`hub_feedback`·`consent_swap_opening_spec`·`roadmap_status_ledger_spec`·9c 계열 6종·`pre_opening_3features_spec`·`hours_source_files_analysis`·`notification_center_spec`·`calendar_events_taxonomy_spec`·`tutorial_reentry_spec`·`product_overview`.
+- **[사실] 원 기록 유실 0.** 삭제 71줄을 **한 줄씩 육안 대조**했다 — 대부분 제목 줄 교체이고, 본문이 지워진 4곳(`notification_center_spec` §7 표 8줄, `phase9c_f_spec` 열린 질문 3건·F-2 행, `9c_research_notes` §4-5, `product_overview` 2줄)은 전부 **취소선으로 원문을 다시 넣고 현재 상태를 덧붙인 형태**임을 확인했다. 표는 열을 늘렸을 뿐 4행 전부 보존.
+- **[판단] 통째로 종결로 밀지 않은 것들** — 살아 있는 것을 죽은 것으로 만들면 그게 더 큰 사고다. ⓐ `deferred_backlog`는 A갈래 3건만 코드로 닫힌 것이 확인돼 **나머지는 종결 단정하지 않았다** ⓑ `hub_batch1_review` 「사용자 판단 대기」 **A(막대 색)는 아직 열려 있어** 그대로 두고 원본이 STATUS.md임을 명시 ⓒ `phase9c_f_spec`은 **회수 시점 표기만 낡았고 F-2 구현은 열려 있을 수 있다**고 못 박았다(받은 파일이 1학년 한 반분) ⓓ 9c 계열의 11월 시한 항목·v1.1 계획은 미래 계획이라 무변경 ⓔ `hub_feedback_2026-08-19` 머리말은 **이미 모범**(STATUS를 가리킴)이라 손대지 않고 절 제목만 고쳤다.
+- **[사실] 유령 검사 금지어는 17종이고 「구현이 안 됐다」는 뜻의 그 단어도 포함된다** — 병렬 세션 하나가 초안에 썼다가 잡혀 회수했다. **금지어를 문서에 열거하지 말 것.** 오늘 이 함정에 **세 번** 걸렸다: ⓐ 옛 제목을 인용하다 ⓑ 그 일을 일지에 회고하며 키워드를 다시 적다 ⓒ 이 줄을 쓰며 또 적었다. `check_ghost_markers`는 문맥을 안 보고 문자열만 보므로 **인용·회고·금지어 설명이 전부 똑같이 잡힌다.** 목록이 필요하면 `scripts/check_ghost_markers.ts`의 MARKERS 배열을 열어 본다.
+- **검증 상태**: `npm run check:docs` 3개 검사 통과(재고 51건, 기준선 52 — 늘지 않았다). `src/`·`scripts/` 변경 **0건**. 코드는 한 줄도 안 건드렸다.
+- **[사실] 남긴 것**: `README.md` 문서 안내 목록(`:6-13`)에 `STATUS.md`가 없다. 다른 문서가 원본을 자처하는 문제는 아니라 이번 범위에서 뺐다 — 고칠지는 사용자 판단.

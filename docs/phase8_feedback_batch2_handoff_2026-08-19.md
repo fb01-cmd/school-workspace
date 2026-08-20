@@ -1,11 +1,32 @@
-# Phase 8 피드백 배치 2 — 화면 몫 인계 (Antigravity)
+# Phase 8 피드백 배치 2 — 화면 몫 인계 (Antigravity) — 📕 **종결 (2026-08-21)**
+
+> ## ⛔ 이 문서는 살아 있는 지시가 아니다
+>
+> **종결 확인 2026-08-21.** 배치 2는 검수를 통과해 닫혔다. **지금 열린 항목은 [`STATUS.md`](../STATUS.md)에서 본다.**
+>
+> **근거 커밋**
+> - `09cacdc` — 배치 2 검수 통과 기록(수정 2건 반영, 남은 3번 항목은 `STATUS.md`로 이관)
+> - `599d3b2` — 배치 2 종결 기록(배치 3 코어와 같은 커밋)
+> - `b7adf85` — D절 다이어트 3(내 할 일 90일 기한창 재적용) 완결
+>
+> **근거 코드 (2026-08-21 실측)**
+> - 다이어트 4(teacher_profiles 캐시 통일) → [`TaskStatusBoard.tsx:98`](../src/components/admin/tasks/TaskStatusBoard.tsx)
+> - 다이어트 3(구독 범위 제한) → [`TasksSection.tsx:113-119`](../src/components/admin/tasks/TasksSection.tsx)
+> - 17번(알림 패널 수락 버튼 상태) → [`NotificationCenter.tsx:481`](../src/components/common/NotificationCenter.tsx)·[`:821`](../src/components/common/NotificationCenter.tsx)
+>
+> 본문이 지시 대상으로 든 `MobileTasksSection`은 커밋 `0dbfc9b`(`/m` 폐지)로 파일 자체가 사라졌다 — 반응형 단일 화면으로 통합됐다.
+> **인계의 단일 원본은 [`docs/handoff/NEXT.md`](./handoff/NEXT.md) 다** (`AGENTS.md` §1-5).
+
+*(이하 2026-08-19 작성 당시 기록 — 현재 상태가 아니다.)*
 
 > 원본 목록 = `development_roadmap.md` Phase 8 「[2026-08-19 실기기 피드백 수집 중]」의 17~30번 (번호도 그 목록 기준).
 > 코어 몫(22·23 이름 동기화 크론, 27 완료 코멘트 서버, 30MB 상향)은 Claude가 구현 완료(`3f4e91c`·`7ab99ba`) — 이 문서는 화면 몫만.
 > 읽기 다이어트 4건 중 1·2번(AuthContext·TaskStatusBoard 구독)도 Claude가 완료 — **이 문서의 D절(다이어트 3·4번)만 남았다.**
 > 완료 후: AGENTS.md ④-3 인계 게이트 3종 필수. push 금지 — Claude 검수 후 일괄 배포.
 
-## 작업 순서
+## 작업 순서 — ~~지시~~ (2026-08-21 종결, 이력)
+
+> 아래 순서는 2026-08-19에 정한 것이고 그대로 수행돼 `09cacdc`에서 검수를 통과했다. 지금의 우선순위는 `STATUS.md`와 `docs/handoff/NEXT.md`에서 본다.
 
 **A절(업무·알림): 17 → 24 → 26 → 27화면 → 19 → 14보완.** B절(쪽지 작성기): 18 → 28 → 29 → 30안내. C절(소품): 21 → 25안내. D절(읽기 다이어트 3·4).
 
@@ -111,7 +132,9 @@ TasksSection·MobileTasksSection·TaskStatusBoard 전부 limit 없음(memos는 �
 
 ---
 
-## 완료 정의 (전 항목 공통)
+## 완료 정의 (전 항목 공통) — ~~게이트~~ (2026-08-21 종결, 이력)
+
+> 이 게이트는 당시 통과됐다(`09cacdc`). 지금 넘기는 작업의 게이트 원본은 `AGENTS.md` ①~④다.
 
 1. `npx tsc --noEmit` + `NODE_OPTIONS="--max-old-space-size=4096" npm run build` 통과.
 2. `bash scripts/check_ui_removals.sh <작업 시작 커밋>` 실행·항목별 소명 (28번 링크 첨부 제거는 지시된 삭제임을 명기).

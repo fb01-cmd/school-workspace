@@ -1,4 +1,22 @@
-# Phase 8 피드백 배치 3 — 화면 몫 인계 (Antigravity)
+# Phase 8 피드백 배치 3 — 화면 몫 인계 (Antigravity) — 📕 **종결 (2026-08-21)**
+
+> ## ⛔ 이 문서는 살아 있는 지시가 아니다
+>
+> **종결 확인 2026-08-21.** 배치 3은 검수와 실기기 확인을 모두 통과해 닫혔다. **지금 열린 항목은 [`STATUS.md`](../STATUS.md)에서 본다.**
+>
+> **근거 커밋**
+> - `86a9e42` — 배치 3 검수 무수정 통과
+> - `f3f7ef1` — 배치 3 실기기 4/4 종결 (양식 세션 11.7MB 업로드 실측 포함)
+>
+> **근거 코드 (2026-08-21 실측)**
+> - 36번(양식 세션 업로드 2액션) → [`api/tasks/route.ts:459`](../src/app/api/tasks/route.ts)·[`:490`](../src/app/api/tasks/route.ts)
+> - 36번 화면 분기(4MB 초과 세션 경로) → [`TaskComposerModal.tsx:167`](../src/components/admin/tasks/TaskComposerModal.tsx)
+> - 33번(페이지네이션·월 구분선) → [`TasksSection.tsx:1298`](../src/components/admin/tasks/TasksSection.tsx)
+>
+> 본문의 `MobileTasksSection` 지시는 커밋 `0dbfc9b`(`/m` 폐지)로 대응 파일이 사라졌다 — 반응형 단일 화면으로 통합됐다.
+> **인계의 단일 원본은 [`docs/handoff/NEXT.md`](./handoff/NEXT.md) 다** (`AGENTS.md` §1-5).
+
+*(이하 2026-08-19 작성 당시 기록 — 현재 상태가 아니다.)*
 
 > 원본 = `development_roadmap.md` Phase 8 피드백 목록 32·33·35·36번.
 > 코어 몫(36 양식 세션 액션 2종 + 32-ⓑ 양식 폴더 지연 생성)은 Claude 구현 완료 — 이 문서는 화면 몫만.
@@ -36,6 +54,8 @@ DirectSubstituteTab: 담기 목록은 보존되는데 선택 교사가 초기화
 - 같은 교사 재선택은 "전환"으로 취급하지 않는다(확인창 없음). 확인창은 실제로 다른 교사를 고를 때만.
 - 담기 이탈 경고 등 기존 담기 기능 4종은 건드리지 않는다(①-1 회귀 전례 파일 — check_ui_removals 소명 필수).
 
-## 완료 정의
+## 완료 정의 — ~~게이트~~ (2026-08-21 종결, 이력)
+
+> 이 게이트는 당시 통과됐다(`86a9e42`). 지금 넘기는 작업의 게이트 원본은 `AGENTS.md` ①~④다.
 
 tsc·build 통과 / check_ui_removals 소명 / 명시 add 커밋 / project_notes 하단 핸드오버 / push 금지.

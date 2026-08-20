@@ -1,10 +1,30 @@
-# Phase 8 실기기 피드백 배치 — 화면 몫 인계 (Antigravity)
+# Phase 8 실기기 피드백 배치 — 화면 몫 인계 (Antigravity) — 📕 **종결 (2026-08-21)**
+
+> ## ⛔ 이 문서는 살아 있는 지시가 아니다
+>
+> **2026-08-21 종결.** 15건 전부 코드에 반영된 것을 확인했다. **지금 열린 항목은 [`STATUS.md`](../STATUS.md)에서 본다.**
+>
+> **근거 (코드 실측, 2026-08-21)**
+> - 5번(색인 의존 쿼리 제거·조용한 실패 금지) → [`TasksSection.tsx:214`](../src/components/admin/tasks/TasksSection.tsx)
+> - 7번(전이 응답 낙관 갱신) → [`TasksSection.tsx:411`](../src/components/admin/tasks/TasksSection.tsx)
+> - 1·2·3번(픽커 조직도 정렬·내 부서만 펼침·이름 검색) → [`TaskRecipientPickerModal.tsx:121`](../src/components/admin/tasks/TaskRecipientPickerModal.tsx)
+> - 12번(철회 확인창 경고)·현황판 계열 → [`TaskStatusBoard.tsx:119`](../src/components/admin/tasks/TaskStatusBoard.tsx)·[`:456`](../src/components/admin/tasks/TaskStatusBoard.tsx)·[`:591`](../src/components/admin/tasks/TaskStatusBoard.tsx)
+> - 15번(셀프 등록 `self_add`)·4-a(초안 정리) → [`api/tasks/route.ts:527`](../src/app/api/tasks/route.ts)·[`:246`](../src/app/api/tasks/route.ts)
+> - 10번(쪽지 일반 파일 첨부) → [`api/memo/route.ts:490`](../src/app/api/memo/route.ts)
+>
+> **이 문서가 지시 대상으로 삼은 `src/components/mobile/MobileTasksSection.tsx` 는 이제 없다.** 커밋 `0dbfc9b`(`/m` 폐지 2단계, 모바일 전용 3파일 삭제)로 파일 자체가 사라졌다. 반응형 단일 화면으로 통합됐으므로 아래 본문의 "PC·모바일 두 곳" 지시는 현재 코드에 대응물이 없다.
+>
+> **인계의 단일 원본은 [`docs/handoff/NEXT.md`](./handoff/NEXT.md) 다** (`AGENTS.md` §1-5, 2026-08-20 사용자 결정). 이 문서를 보고 다음 작업을 고르지 않는다.
+
+*(이하 2026-08-19 작성 당시 기록 — 현재 상태가 아니다.)*
 
 > 원본 목록 = `development_roadmap.md` Phase 8 「[2026-08-19 실기기 피드백 수집 중]」 (번호도 그 목록 기준).
 > 코어(서버·파서) 몫 6건(4-b·6·9·10·11·15)은 Claude가 2026-08-19 구현 완결 — 이 문서의 해당 항목은 "배선만" 남았다.
 > 완료 후: AGENTS.md ④-3 인계 게이트 3종(자기 커밋·project_notes 핸드오버·check_ui_removals 소명) 필수. push는 하지 않는다 — Claude 검수 후 일괄 배포.
 
-## 작업 순서
+## 작업 순서 — ~~지시~~ (2026-08-21 종결, 이력)
+
+> 아래 순서는 2026-08-19에 정한 것이고 **전부 수행됐다.** 지금 무엇을 먼저 할지는 여기가 아니라 `STATUS.md`와 `docs/handoff/NEXT.md`에서 정한다.
 
 **1군(치명 — 최우선, 두 건을 같이 고치고 같이 확인): 5 → 7.** 2군(수신자 픽커): 1·2·3. 3군(문구·표시): 8·11·14·15명칭·4-a. 4군(배선·기능): 9·6·12·13·15미니입력·10.
 
@@ -125,7 +145,9 @@
 
 ---
 
-## 완료 정의 (전 항목 공통)
+## 완료 정의 (전 항목 공통) — ~~게이트~~ (2026-08-21 종결, 이력)
+
+> 이 게이트는 당시 통과됐다. 지금 새로 넘기는 작업의 게이트는 `AGENTS.md` ①~④가 원본이다.
 
 1. `npx tsc --noEmit` + `NODE_OPTIONS="--max-old-space-size=4096" npm run build` 통과.
 2. `bash scripts/check_ui_removals.sh <작업 시작 커밋>` 실행·항목별 소명 (①-1-3).
