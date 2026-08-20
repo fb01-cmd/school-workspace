@@ -762,7 +762,7 @@ export default function AdminPage() {
                     {/* 조직 정보 신청 (교사 본인) */}
                     {!isSuperAdmin && (
                       <button
-                        onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
+                        onClick={() => { setIsSidebarOpen(false); document.dispatchEvent(new CustomEvent("openMyProfileModal")); }}
                         className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors hover:bg-indigo-900/50 text-gray-400 hover:text-white"
                       >
                         <span>🏷️</span>
@@ -1073,8 +1073,10 @@ export default function AdminPage() {
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Top Navbar */}
-          <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8">
-            <div className="flex items-center gap-3">
+          {/* 모바일 헤더 겹침 방지 (2026-08-20 실기기): 제목은 truncate, 우측은 shrink-0,
+              앱 실행 안내 pill은 sm 미만 숨김 — 모바일 설치 안내는 /m 랜딩에 이미 있다 */}
+          <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between gap-2 px-4 md:px-8">
+            <div className="flex items-center gap-3 min-w-0">
               <button
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                 className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600 focus:outline-none md:hidden"
@@ -1083,7 +1085,7 @@ export default function AdminPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
-              <h1 className="text-lg font-bold text-gray-800">
+              <h1 className="text-lg font-bold text-gray-800 truncate">
                 {activeMenu === "home" && "홈"}
                 {activeMenu === "users" && "사용자 전체관리"}
                 {activeMenu === "settings" && "Workspace 환경 설정"}
@@ -1103,9 +1105,11 @@ export default function AdminPage() {
                 {(activeMenu === "hub" || activeMenu === "memo" || activeMenu === "tasks") && "쪽지·업무"}
               </h1>
             </div>
-            <div className="flex items-center gap-3">
-              <PWAInstallPrompt onOpenGuide={() => setActiveMenu("pwa_guide")} />
-              <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="hidden sm:block">
+                <PWAInstallPrompt onOpenGuide={() => setActiveMenu("pwa_guide")} />
+              </div>
+              <span className={`text-xs font-semibold px-2 py-1 rounded-full whitespace-nowrap ${
                 isSuperAdmin ? "bg-indigo-100 text-indigo-800" : "bg-gray-100 text-gray-800"
               }`}>
                 {isSuperAdmin ? "수퍼어드민 권한" : "교사 권한"}

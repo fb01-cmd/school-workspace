@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@/context/AuthContext";
 import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
@@ -159,8 +160,11 @@ export default function MyProfileModal({ onClose }: Props) {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+  // body 포털: 이 모달의 호스트(MyProfileCard)는 사이드바 안에 있어서, 그대로 렌더하면
+  // 사이드바의 스크롤·스택 컨텍스트에 갇혀 세로 줄·하단 잘림이 생긴다 (2026-08-20 실기기,
+  // 「내 조직 정보 신청」 메뉴 입구). 포털이면 어느 입구로 열어도 화면 최상위에 뜬다.
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
@@ -322,6 +326,7 @@ export default function MyProfileModal({ onClose }: Props) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
