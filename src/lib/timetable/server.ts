@@ -6575,6 +6575,12 @@ export async function saveSwapDraft(
     throw new Error("상대 교사 이메일 형식이 올바르지 않습니다.");
   }
 
+  // 대상 교사 이메일 형식 검증 (직권 담기)
+  const sourceTeacherEmail = draftData.sourceTeacherEmail;
+  if (sourceTeacherEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sourceTeacherEmail)) {
+    throw new Error("대상 교사 이메일 형식이 올바르지 않습니다.");
+  }
+
   let docId = draftId;
 
   if (docId) {
@@ -6630,6 +6636,12 @@ export async function saveSwapDraft(
     // 직권 담기 초안 (notification_center_spec §4 직권 동등성) — 교사 포털 목록에서는 제외,
     // 일과계 직권 화면 목록에서만 조회된다 (listSwapDrafts directOnly)
     ...(draftData.direct ? { direct: true } : {}),
+    ...(draftData.direct && draftData.sourceTeacherEmail
+      ? {
+          sourceTeacherEmail: String(draftData.sourceTeacherEmail).trim().toLowerCase(),
+          sourceTeacherName: String(draftData.sourceTeacherName || "").trim().slice(0, 40),
+        }
+      : {}),
     ...(draftId ? {} : { createdAt: now }),
   };
 
@@ -6653,6 +6665,9 @@ export async function saveSwapDraft(
     createdAt: toMillis(savedData.createdAt) || now,
     updatedAt: toMillis(savedData.updatedAt) || now,
     conditional: !!savedData.conditional,
+    ...(savedData.direct ? { direct: true } : {}),
+    ...(savedData.sourceTeacherEmail ? { sourceTeacherEmail: savedData.sourceTeacherEmail } : {}),
+    ...(savedData.sourceTeacherName ? { sourceTeacherName: savedData.sourceTeacherName } : {}),
   };
 }
 
@@ -6757,6 +6772,9 @@ export async function listSwapDrafts(
       createdAt: toMillis(data.createdAt) || Date.now(),
       updatedAt: toMillis(data.updatedAt) || Date.now(),
       conditional: !!data.conditional,
+      ...(data.direct ? { direct: true } : {}),
+      ...(data.sourceTeacherEmail ? { sourceTeacherEmail: data.sourceTeacherEmail } : {}),
+      ...(data.sourceTeacherName ? { sourceTeacherName: data.sourceTeacherName } : {}),
     };
   });
   return drafts.sort((a, b) => b.updatedAt - a.updatedAt);

@@ -835,6 +835,10 @@ export interface SwapDraft {
   conditional?: boolean; // 조건부 후보 여부 (2026-08-05)
   /** 직권 담기 초안 (일과계) — 교사 포털 목록과 분리 (notification_center_spec §4 직권 동등성) */
   direct?: boolean;
+  /** 직권 담기 대상 교사 이메일 (일과계 직권 배정) */
+  sourceTeacherEmail?: string;
+  /** 직권 담기 대상 교사 실명 (일과계 직권 배정) */
+  sourceTeacherName?: string;
 }
 
 // ── 주간 합성 (weekly.ts 출력) ────────────────────────────────

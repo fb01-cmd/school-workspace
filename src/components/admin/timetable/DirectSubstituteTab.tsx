@@ -429,10 +429,10 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
   const handleSelectTeacher = async (email: string, name?: string) => {
     let effectiveCart = cartItems;
-    const currentEffectiveTeacher = selectedTeacherEmail || cartItems[0]?.sourceTeacherEmail || "";
+    const knownOwner = cartItems[0]?.sourceTeacherEmail || "";
 
-    // 지시서 35번: 장바구니에 담긴 항목이 있을 때 다른 교사를 선택하면 확인창 표시
-    if (cartItems.length > 0 && email && email.toLowerCase() !== currentEffectiveTeacher.toLowerCase()) {
+    // 주인을 아는 경우만 다른 교사 선택 시 확인 후 비움 (주인을 모르는 옛 초안은 자동 삭제 금지)
+    if (cartItems.length > 0 && email && knownOwner && email.toLowerCase() !== knownOwner.toLowerCase()) {
       if (!confirm(`담아둔 배정안 ${cartItems.length}건이 있습니다. 다른 교사를 선택하면 담아둔 내용이 비워집니다. 변경하시겠습니까?`)) {
         return;
       }
@@ -470,7 +470,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
     }
 
     // 동일 교사 재선택 시 장바구니 유지하고 리턴
-    if (email.toLowerCase() === currentEffectiveTeacher.toLowerCase() && selectedTeacherEmail) {
+    if (selectedTeacherEmail && email.toLowerCase() === selectedTeacherEmail.toLowerCase()) {
       return;
     }
 
@@ -674,6 +674,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             action: "draft_save",
             draft: {
               direct: true,
+              sourceTeacherEmail: step.sourceTeacherEmail || selectedTeacherEmail,
+              sourceTeacherName: step.sourceTeacherName || selectedTeacherName,
               termId: activeTermId || "",
               sourceWeekId: step.weekId,
               ...(step.targetWeekId ? { targetWeekId: step.targetWeekId } : {}),
@@ -835,6 +837,8 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           action: "draft_save",
           draft: {
             direct: true,
+            sourceTeacherEmail: selectedTeacherEmail,
+            sourceTeacherName: selectedTeacherName,
             termId: activeTermId || "",
             sourceWeekId,
             ...(targetWeekId ? { targetWeekId } : {}),
@@ -1403,10 +1407,11 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
           )}
         </div>
 
-        {selectedTeacherEmail ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            <div className="lg:col-span-8 space-y-6">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center justify-between">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-8 space-y-6">
+            {selectedTeacherEmail ? (
+              <>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-indigo-950 flex items-center gap-2">
                     <span>🗓️</span>
@@ -1575,11 +1580,19 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                   </button>
                 </div>
               )}
+            </>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-gray-500 space-y-2">
+              <div className="text-3xl">👤</div>
+              <div className="font-bold text-sm text-gray-700">시간표를 조회할 교사를 먼저 선택해 주세요.</div>
+              <div className="text-xs text-gray-400">교사를 선택하면 해당 교사의 전 주 시간표가 주차별로 배치됩니다.</div>
             </div>
+          )}
+        </div>
 
-            <div className="lg:col-span-4 space-y-6 sticky top-4">
-              {selectedSlot && sourceLessonInfo && (
-                <div className="bg-white rounded-xl shadow-md border border-gray-200 p-5 space-y-4">
+        <div className="lg:col-span-4 space-y-6 sticky top-4">
+          {selectedTeacherEmail && selectedSlot && sourceLessonInfo && (
+            <div className="bg-white rounded-xl shadow-md border border-gray-200 p-5 space-y-4">
                   <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                     <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5"><span>3️⃣ 후보 상세 및 미리보기</span></h3>
                     <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg text-[11px] font-bold">
@@ -1791,6 +1804,20 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                   )}
                 </div>
 
+                {!selectedTeacherEmail && cartItems.length > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 leading-relaxed font-medium">
+                    {cartItems[0]?.sourceTeacherName || cartItems[0]?.sourceTeacherEmail ? (
+                      <span>
+                        💡 이 배정안은 <strong>{cartItems[0].sourceTeacherName || cartItems[0].sourceTeacherEmail}</strong> 선생님 시간표에서 담은 것입니다. 이어서 작업하려면 위에서 그 선생님을 선택하세요.
+                      </span>
+                    ) : (
+                      <span>
+                        ⚠️ 담긴 항목이 있으나 어느 선생님 시간표에서 담은 것인지 확인할 수 없습니다. 내용을 확인하고 직접 비워 주세요.
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {cartItems.length === 0 ? (
                   <div className="py-6 text-center text-xs text-gray-400">
                     담긴 항목이 없습니다. 여러 수업을 골라 [담기]로 모아 일괄 처리할 수 있습니다.
@@ -1935,14 +1962,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
               </div>
             </div>
           </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-gray-500 space-y-2">
-            <div className="text-3xl">👤</div>
-            <div className="font-bold text-sm text-gray-700">시간표를 조회할 교사를 먼저 선택해 주세요.</div>
-            <div className="text-xs text-gray-400">교사를 선택하면 해당 교사의 전 주 시간표가 주차별로 배치됩니다.</div>
-          </div>
-        )}
-      </div>
+        </div>
 
       {/* 체인 탐색 모달 */}
       {chainModalOpen && chainTargetSlot && (
