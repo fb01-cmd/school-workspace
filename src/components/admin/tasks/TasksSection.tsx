@@ -16,6 +16,7 @@ import {
   getDocs,
 } from "firebase/firestore";
 import type { TaskDoc, TaskRecipientStatus, TaskSubmission } from "@/lib/tasks/logic";
+import { toTransportSafeFile } from "@/lib/tasks/logic";
 import MemoRichBody from "@/components/common/MemoRichBody";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
@@ -160,7 +161,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
   const [completeNote, setCompleteNote] = useState("");
 
   // 파일 제출 대기 상태 (피드백 26번, 27번)
-  const [stagedSubmitMap, setStagedSubmitMap] = useState<Record<string, { file: File; note: string }>>({});
+  const [stagedSubmitMap, setStagedSubmitMap] = useState<Record<string, { file: File; displayName: string; note: string }>>({});
   const [submittingTaskId, setSubmittingTaskId] = useState<string | null>(null);
   const [submitProgress, setSubmitProgress] = useState<string | null>(null);
   const submitFileInputRef = useRef<HTMLInputElement>(null);
@@ -799,7 +800,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                   <div className="flex items-center gap-2 text-xs">
                                     <span className="text-base">📄</span>
                                     <span className="font-bold text-slate-900">
-                                      {staged.file.name}
+                                      {staged.displayName}
                                     </span>
                                     <span className="text-slate-500">
                                       ({(staged.file.size / 1024).toFixed(0)} KB)
@@ -866,13 +867,20 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                 <input
                                   ref={submitFileInputRef}
                                   type="file"
-                                  onChange={(e) => {
+                                  onChange={async (e) => {
                                     const file = e.target.files?.[0];
-                                    if (file) {
+                                    if (!file) return;
+                                    try {
+                                      const safeFile = await toTransportSafeFile(file);
                                       setStagedSubmitMap((prev) => ({
                                         ...prev,
-                                        [task.id]: { file, note: "" },
+                                        [task.id]: { file: safeFile, displayName: file.name, note: "" },
                                       }));
+                                    } catch (err) {
+                                      console.error("Failed to read file:", err);
+                                      alert("파일을 읽지 못했습니다. 다시 선택해 주세요.");
+                                    } finally {
+                                      if (submitFileInputRef.current) submitFileInputRef.current.value = "";
                                     }
                                   }}
                                   className="hidden"
@@ -923,13 +931,18 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                             <div>
                               <input
                                 type="file"
-                                onChange={(e) => {
+                                onChange={async (e) => {
                                   const file = e.target.files?.[0];
-                                  if (file) {
+                                  if (!file) return;
+                                  try {
+                                    const safeFile = await toTransportSafeFile(file);
                                     setStagedSubmitMap((prev) => ({
                                       ...prev,
-                                      [task.id]: { file, note: "" },
+                                      [task.id]: { file: safeFile, displayName: file.name, note: "" },
                                     }));
+                                  } catch (err) {
+                                    console.error("Failed to read file:", err);
+                                    alert("파일을 읽지 못했습니다. 다시 선택해 주세요.");
                                   }
                                 }}
                                 className="hidden"
@@ -954,7 +967,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                   <div className="flex items-center gap-1.5">
                                     <span>📄</span>
                                     <span className="font-bold text-slate-900 truncate max-w-xs">
-                                      {staged.file.name}
+                                      {staged.displayName}
                                     </span>
                                     <span className="text-[10px] text-slate-500">
                                       ({(staged.file.size / 1024).toFixed(0)} KB)

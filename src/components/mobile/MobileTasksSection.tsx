@@ -10,6 +10,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import type { TaskDoc, TaskRecipientStatus, TaskSubmission } from "@/lib/tasks/logic";
+import { toTransportSafeFile } from "@/lib/tasks/logic";
 import MemoRichBody from "@/components/common/MemoRichBody";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
@@ -108,7 +109,7 @@ export default function MobileTasksSection() {
   const [completeNote, setCompleteNote] = useState("");
 
   // 모바일 제출 대기 상태 (피드백 26번, 27번)
-  const [stagedSubmitMap, setStagedSubmitMap] = useState<Record<string, { file: File; note: string }>>({});
+  const [stagedSubmitMap, setStagedSubmitMap] = useState<Record<string, { file: File; displayName: string; note: string }>>({});
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
@@ -541,7 +542,7 @@ export default function MobileTasksSection() {
             <div className="flex items-center gap-1.5 min-w-0">
               <span>📄</span>
               <span className="font-bold text-slate-900 dark:text-white truncate">
-                {staged.file.name}
+                {staged.displayName}
               </span>
               <span className="text-[10px] text-slate-500">
                 ({(staged.file.size / 1024).toFixed(0)} KB)
@@ -764,13 +765,20 @@ export default function MobileTasksSection() {
                           <input
                             ref={fileInputRef}
                             type="file"
-                            onChange={(e) => {
+                            onChange={async (e) => {
                               const f = e.target.files?.[0];
-                              if (f) {
+                              if (!f) return;
+                              try {
+                                const safeFile = await toTransportSafeFile(f);
                                 setStagedSubmitMap((prev) => ({
                                   ...prev,
-                                  [task.id]: { file: f, note: "" },
+                                  [task.id]: { file: safeFile, displayName: f.name, note: "" },
                                 }));
+                              } catch (err) {
+                                console.error("Failed to read file:", err);
+                                alert("파일을 읽지 못했습니다. 다시 선택해 주세요.");
+                              } finally {
+                                if (fileInputRef.current) fileInputRef.current.value = "";
                               }
                             }}
                             className="hidden"
@@ -807,13 +815,18 @@ export default function MobileTasksSection() {
                       <div>
                         <input
                           type="file"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const f = e.target.files?.[0];
-                            if (f) {
+                            if (!f) return;
+                            try {
+                              const safeFile = await toTransportSafeFile(f);
                               setStagedSubmitMap((prev) => ({
                                 ...prev,
-                                [task.id]: { file: f, note: "" },
+                                [task.id]: { file: safeFile, displayName: f.name, note: "" },
                               }));
+                            } catch (err) {
+                              console.error("Failed to read file:", err);
+                              alert("파일을 읽지 못했습니다. 다시 선택해 주세요.");
                             }
                           }}
                           className="hidden"

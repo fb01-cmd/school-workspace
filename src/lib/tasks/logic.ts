@@ -333,3 +333,24 @@ export function validateTaskFileSize(size: number, viaSession: boolean): { ok: t
   }
   return { ok: true };
 }
+
+/**
+ * 고른 파일을 즉시 메모리로 읽어 **전송 안전한 이름**의 새 File 로 바꾼다 (2026-08-20).
+ *
+ * 두 가지를 동시에 막는다.
+ * ① 안드로이드 사진 선택기가 준 파일 통로가 담기~확정 사이에 닫히는 것
+ *    — 여기서 미리 읽어 두면 통로가 닫혀도 바이트는 손에 있다.
+ * ② 스크린샷 파일명의 한글·띄어쓰기·괄호가 전송에서 문제를 일으키는 것
+ *    — 서버는 어차피 확장자만 쓰고 이름은 새로 만든다(normalizeSubmissionFileName).
+ *      그러므로 원본 이름을 그대로 보낼 이유가 없다.
+ *
+ * **원본 이름은 버리지 말고 호출부가 따로 보관해 화면에 표시한다.**
+ */
+export async function toTransportSafeFile(file: File): Promise<File> {
+  const m = /\.([A-Za-z0-9]{1,10})$/.exec(file.name || "");
+  const ext = m ? m[1].toLowerCase() : "bin";
+  const buf = await file.arrayBuffer();
+  return new File([buf], `upload.${ext}`, {
+    type: file.type || "application/octet-stream",
+  });
+}
