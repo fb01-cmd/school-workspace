@@ -739,7 +739,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                           📦 묶음 신청 ({bReqs.length}건)
                         </span>
                         <span className="text-xs font-extrabold text-indigo-950">
-                          {bReqs[0].requesterName} ({bReqs[0].requesterEmail})
+                          {bReqs[0].requesterName}
                         </span>
                         {bReqs.some((r) => validity[r.id]?.ok === false) && (
                           <span className="text-[11px] font-black text-red-900 bg-red-100 border border-red-300 px-2 py-0.5 rounded-full">
