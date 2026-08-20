@@ -4,6 +4,40 @@
 > 2026-08-14 이전은 [`archive/project_notes_2026-08.md`](./archive/project_notes_2026-08.md)·[`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다
 > (원문 그대로, 블록 무손실 대조 완료). 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-20] Antigravity → Claude/사용자 (과제 I 완결 — 글씨 크기 2단계 1묶음 14px 승격)
+
+> ⚠️ **검증 범위 고지**: **화면·모바일 미검증** (360px 및 실기기 검증은 Claude 및 사용자 몫). `tsc`·`build`·`check_ui_removals`·`grep` 회귀 관문 전수 통과 완료.
+
+- **배경**: `docs/handoff/NEXT.md` 과제 I 지시서에 따라 허브·쪽지·업무·조직도 컴포넌트의 1급 정보(사람 이름, 날짜/마감일시, 상태 뱃지, 액션 버튼, 모달 텍스트, 입력 필드)를 `docs/font_size_spec.md` 3등급 체계에 맞춰 `text-sm`(14px)으로 승격. 2급(12px)·3급(11px) 정보와 10px 미만 잔재 0건 유지.
+- **구현 및 커밋 내역 (3개 그룹 + 1건 원형 보존, 총 4커밋)**:
+  1. `eef1941`: **Group 1 (쪽지 & 허브 컴포넌트 1급 정보 14px 승격)** —
+     - `src/components/admin/hub/HubMemoComposer.tsx`: 수신자 뱃지/칩, 폼 라벨, 툴바, 파일 첨부 버튼/목록, 발송 버튼 `text-sm` 승격.
+     - `src/components/admin/hub/HubOrgTree.tsx`: 플로팅 팝오버 교사 실명, 내선번호, 담임 정보, 담기/빼기 버튼 `text-sm` 승격.
+     - `src/components/admin/hub/HubTaskComposer.tsx`: 단계 인디케이터, 폼 라벨, 마감일시 인풋, 서식 에디터, 1·2단계 액션 버튼 `text-sm` 승격.
+     - `src/components/admin/MemoSection.tsx`: 쪽지함 탭, 검색/필터 인풋, 보낸/받은 사람 실명, 쪽지 제목, 첨부파일 목록, 인라인 답장 모달 폼 전수 `text-sm` 승격.
+     - `src/components/admin/DashboardMemoPanel.tsx`: 대시보드 쪽지 패널 발신자, 날짜, 제목, 답장/읽음 버튼, 작성 모달 `text-sm` 승격.
+  2. `4078385`: **Group 2 (업무 컴포넌트 1급 정보 14px 승격)** —
+     - `src/components/admin/tasks/TaskComposerModal.tsx`: 단계 인디케이터, 에러 배너, 폼 라벨(업무명, 업무유형, 기한, 내용), 작성 양식 파일 첨부 헤더/버튼/목록, 수신자 라벨/선택버튼/칩목록, 1·2단계 푸터 버튼 `text-sm` 승격.
+     - `src/components/admin/tasks/TaskRecipientPickerModal.tsx`: 검색 후보 교사명 `c.name`, 선택 제어 요약 및 전체선택/해제 버튼, 부서명 `section.dept`, 부서원 교사명 `m.name`, 하단 취소 및 선택 완료 버튼 `text-sm` 승격.
+     - `src/components/admin/tasks/TaskStatusBoard.tsx`: 보낸 업무 목록 헤더, 업무명, 내가 등록한 할 일 헤더/아이템, 우측 상단 뱃지 래퍼, 리마인드/제출함/철회 버튼, 내용 헤더 및 `MemoRichBody`, 배포 양식 파일 헤더/목록, 수신자별 처리 현황 헤더, 상태 테이블 `th`/`td`, 철회 모달 `text-sm` 승격.
+     - `src/components/admin/tasks/TasksSection.tsx`: 월별 구분 헤더 (`📅 YYYY년 M월`), 메타 정보, 상태 칩 5종, D-Day 뱃지, 내용 헤더 및 `MemoRichBody`, 양식 파일 헤더/목록, 거절사유/완료메모 블록, 수락/거절/완료체크/파일제출/재제출 컨트롤, 상단 탭 2종, 업무등록 버튼 및 미등록 배너, 필터 칩 4종, 기한없음 헤더, 더보기/지난업무보기 버튼, 셀프추가/거절/완료 모달 전수 `text-sm` 승격.
+     - `src/components/mobile/MobileTasksSection.tsx`: 미등록 신청 링크, staged 파일명/취소/인풋/제출확정 버튼, 월별 구분 헤더, 기한 메타, 내용 `MemoRichBody`, 양식 파일 헤더/목록, 거절사유/완료메모 블록, 수락/거절/완료체크/파일선택 버튼, 탭 필터 바 버튼 3종, 더보기 버튼, 셀프 추가/거절/완료 모달 전수 `text-sm` 승격.
+  3. `82cd0d3`: **Group 3 (조직도 컴포넌트 1급 정보 14px 승격)** —
+     - `src/components/admin/OrgChartTree.tsx`: 검색 입력창, 전체 펼치기/접기 버튼, 수정 버튼 `text-sm` 승격.
+     - `src/components/admin/OrgChartBuilder.tsx`: 토스트 메시지, 받는 부서 선택 뱃지, 미반영 변경 카운터 및 커밋/취소 버튼, 부서 내 교사 칩 및 담임 반 지정 드롭다운, 호버 액션 버튼, 해당없음 섹션 칩, 미배치 필터 체크박스 라벨, 명단 검색창, 명단 교사 실명, + 추가 버튼 `text-sm` 승격.
+  4. `d4cb153`: **후속 보정 (모바일 업무 양식 파일 문구 원형 보존)** —
+     - `MobileTasksSection.tsx`의 "양식 파일 내려받기" 문구 원형을 보존하여 `check_ui_removals.sh` 상호작용 삭제 0건 달성.
+- **검증 관문 결과**:
+  - `grep -rnE "text-\[[0-9](\.[0-9]+)?px\]" src/` ✅ (0 matches)
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `NODE_OPTIONS="--max-old-space-size=4096" npm run build` ✅ (47/47 static pages prerendered)
+  - `bash scripts/check_ui_removals.sh 5d4919e` ✅ (`✅ 사라진 상호작용 없음 (기준 5d4919e)`)
+- **다음 단계 인계**:
+  - Claude / 사용자에게 **화면 및 모바일 실기기(360px 가로 스크롤/겹침 여부) 검증** 인계.
+  - 검증 완료 후 `STATUS.md`의 2단계 다음 묶음(시간표·생활지도·수명주기) 등재 및 진행.
+
+
+
 ## [2026-08-19] Antigravity → Claude/사용자 (배치 1 2차 검수 후속 수정 완결 — hub_batch1_review2.md)
 - **배경**: `docs/hub_batch1_review2.md` 지시사항 수행 (순서 1·2·3 및 시간표 카드 톤 통일, 1-B 대기).
 - **구현 및 커밋 내역 (4개 덩어리)**:
