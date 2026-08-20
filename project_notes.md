@@ -1150,3 +1150,11 @@ Codex 통과 5/실패 36 (커밋 4개 대조). Claude가 36건 전건 열람, �
 - **검증 상태**: `npx tsc --noEmit` 통과. `npm run build` 통과(`/m`은 정적 프리렌더된 리다이렉트로 출력). dev 서버 실측 — `curl -i /m` → **307 + `location: /admin`**, 브라우저 375px에서 `/m` 진입 시 `/admin` → (미로그인) `/login` 체인이 정상 동작. **실기기 확인은 못 한다**(로그인 세션 필요) — STATUS 실기기 표에 「/m 폐지 전환」 행 ⓐ~ⓔ로 얹었다.
 - **[판단] 남은 위험**: 반응형 `/admin`이 폰에서 못 덮는 자리가 있으면 그건 이번 전환이 만든 게 아니라 **드러낸** 것이다. 실기기 확인 ⓔ가 그걸 찾는 항목이다. 되돌리려면 login의 뷰포트 분기 한 줄과 `m/page.tsx`만 복원하면 되고, 모바일 3파일을 아직 안 지운 이유가 이것이다.
 - **[사실] 배포 2026-08-21** — 사용자 지시(*"배포를 해야 볼 수 있어"*)로 `origin main`에 push(`33f3dbe..cf634a6`). push 전 `git fetch`로 대조해 **로컬이 정확히 1커밋 앞, origin은 0커밋 앞**임을 확인했다(다른 세션 미반영분 동반 배포 없음). Vercel 반영까지 약 35초. 운영 도메인 실측: `https://portal.hmh.or.kr/m` → **307 `location: /admin`**, `/admin`·`/login`·`/student-portal` 전부 200. 이제 실기기 확인 ⓐ~ⓔ가 가능한 상태다.
+
+## [2026-08-21] Claude(Opus) — /m 폐지 2단계 (삭제, 항목 종결)
+
+- **[사실] 사용자 실기기 확인 통과**: *"'/m' 폐지 폰 확인 ⓐ~ⓔ 전부 통과했다. 2단계 진행해."* — STATUS 실기기 표의 ⓐ(폰 로그인 → /admin 랜딩) ⓑ(첫 화면이 사이드바에 안 덮임·三 토글) ⓒ(/m 직접 진입 → /admin) ⓓ(알림 탭 이동) ⓔ(시간표·급식·할 일·쪽지를 /admin 안에서 전부 열람) 전항목.
+- **[사실] 삭제**: `src/components/mobile/` 3파일(`MobileMemoSection` 505 + `MobileTasksSection` 1,290 + `TodayTimetableCard` 215 = **2,010줄**). 폴더 자체가 사라졌다. `src/app/m/page.tsx`(리다이렉트 본체)는 존치.
+- **[판단→확인] 딸려 죽는 공용 부품이 없는지 역방향으로 봤다.** 삭제 대상이 import하던 9개 모듈을 하나씩 세어 **전부 모바일 밖 사용처가 1개 이상**임을 확인했다 — `MemoAttachmentGrid` 1 / `MemoEditorToolbar` 5 / `MemoRichBody` 3 / `lib/memo/logic` 4 / `richtext` 7 / `richtext_dom` 5 / `org/eligibility` 4 / `tasks/logic` 8 / `timetable/types` 33. **유령 코드가 새로 생기지 않았다.** (본 범위 = `src/` 전체 grep. 안 본 범위 = `scripts/`·`archive/` — 화면 부품이라 참조할 이유가 없고 실제로 grep 0건.)
+- **검증 상태**: `grep -rn "components/mobile" src/` **0건**, 이름 직접 참조도 0건. `npx tsc --noEmit` 통과. `npm run build` 통과(`✓ Compiled successfully`, `/m` 라우트는 리다이렉트로 그대로 출력). STATUS 규칙 1에 따라 「2단계」 행과 「/m 폐지 전환」 실기기 행을 **지웠다**(이력은 이 일지에).
+- **[사실] 이 항목은 여기서 닫힌다.** 로드맵 §2 상태 줄을 🚧 → ✅로 바꿨고, `docs/mobile_m_spec.md`는 폐지 머리말 + 잔재 없음으로 정리했다. 발안(8/20)에서 완결(8/21)까지 하루.
