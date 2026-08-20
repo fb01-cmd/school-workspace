@@ -62,7 +62,7 @@ export default function GroupList() {
   const [success, setSuccess] = useState("");
 
   const opEmail = user?.email || "unknown@domain.com";
-  const opName = user?.displayName || user?.email?.split("@")[0] || "관리자";
+  const opName = user?.email?.split("@")[0] || "관리자";
 
   // Load Groups list
   const loadGroups = async (forceRefresh = false) => {

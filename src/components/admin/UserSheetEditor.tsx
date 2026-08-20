@@ -1313,7 +1313,7 @@ export default function UserSheetEditor({
           creates,
           updates: mappedUpdates,
           operatorEmail: user?.email || userData?.email || "unknown@domain.com",
-          operatorName: user?.displayName || user?.email?.split("@")[0] || "관리자",
+          operatorName: user?.email?.split("@")[0] || "관리자",
         }),
       });
 

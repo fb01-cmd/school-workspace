@@ -3,11 +3,25 @@
 import { useEffect, useState, useMemo } from "react";
 import { fetchAuditLogs, AuditLog } from "@/lib/firebase/audit";
 import { useAuth } from "@/context/AuthContext";
+import { getClientCache } from "@/lib/cache/clientCache";
+import { buildGwsNameMap } from "@/lib/org/roster";
 
 export default function AuditLogViewer() {
   const { userData } = useAuth();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 행위자 이름은 표시 시점에 현재 GWS 이름으로 재해석한다 — 저장된 operatorName은
+  // 기록 경로마다 원천이 달라 낡은 스냅샷·빈 값이 섞여 있다 (2026-08-20 실기기).
+  // 저장값 자체는 감사 기록이므로 손대지 않고, 못 찾을 때의 폴백으로만 쓴다.
+  const [gwsUsers, setGwsUsers] = useState<unknown[]>([]);
+  useEffect(() => {
+    const cached = getClientCache("users:all");
+    if (Array.isArray(cached) && cached.length > 0) setGwsUsers(cached);
+  }, []);
+  const gwsNameMap = useMemo(() => buildGwsNameMap(gwsUsers), [gwsUsers]);
+  const actorName = (log: AuditLog) =>
+    gwsNameMap.get((log.operatorEmail || "").toLowerCase()) || log.operatorName || "이름없음";
   
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState("");
@@ -238,7 +252,7 @@ export default function AuditLogViewer() {
                     
                     {/* Actor (Admin) */}
                     <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-700">
-                      <div>{log.operatorName || "이름없음"}</div>
+                      <div>{actorName(log)}</div>
                       <div className="text-xs text-slate-400 font-mono">{log.operatorEmail}</div>
                     </td>
 

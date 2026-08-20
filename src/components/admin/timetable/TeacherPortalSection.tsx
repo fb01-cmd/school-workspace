@@ -709,7 +709,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         }
       }
 
-      const currentUserName = user?.displayName || teacherProfile?.name || userEmail.split("@")[0] || "교사";
+      const currentUserName = teacherProfile?.name || userEmail.split("@")[0] || "교사";
       setDraftShareData({
         variant: "counterpart",
         requesterName: currentUserName,
@@ -1056,7 +1056,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
         .sort((a, b) => a.startDate.localeCompare(b.startDate));
 
       setConsolidatedData({
-        requesterName: user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사",
+        requesterName: teacherProfile?.name || userEmail?.split("@")[0] || "교사",
         counterpartName: group.name,
         counterpartEmail: email,
         items: group.drafts,
@@ -1919,7 +1919,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
                       <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                         {chainSearchResults.map((chain, cIdx) => {
-                          const currentTeacherName = user?.displayName || teacherProfile?.name || "";
+                          const currentTeacherName = teacherProfile?.name || "";
                           const uniqueTeachers = Array.from(
                             new Set(
                               chain.steps
@@ -2143,7 +2143,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                       type="button"
                       onClick={() => {
                         if (!selectedCell || !applyingCandidate) return;
-                        const currentUserName = user?.displayName || teacherProfile?.name || userEmail?.split("@")[0] || "교사";
+                        const currentUserName = teacherProfile?.name || userEmail?.split("@")[0] || "교사";
                         handleCopyShareImage({
                           variant: "counterpart",
                           requesterName: currentUserName,
@@ -2380,7 +2380,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
 
               {/* 양해 당사자 목록 */}
               {(() => {
-                const currentTeacherName = user?.displayName || teacherProfile?.name || "";
+                const currentTeacherName = teacherProfile?.name || "";
                 const partyMap = new Map<string, string>();
                 for (const s of selectedChainForSubmit.steps) {
                   const srcEmail = s.sourceTeacherEmail.trim().toLowerCase();

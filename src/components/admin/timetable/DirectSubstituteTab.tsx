@@ -1160,7 +1160,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       }));
 
       const resolvedOperator = user?.email
-        ? resolveDisplayName(user.email, teacherProfile ?? undefined, user.displayName ?? undefined).name
+        ? resolveDisplayName(user.email, teacherProfile ?? undefined).name
         : "";
       const operatorName =
         resolvedOperator && !isFrozenLocalPartName(resolvedOperator, user?.email || "")

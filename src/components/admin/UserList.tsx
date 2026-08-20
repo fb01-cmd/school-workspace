@@ -294,7 +294,7 @@ export default function UserList() {
           action: "bulk_delete",
           emails: Array.from(selectedUserEmails),
           operatorEmail: user?.email || userData?.email || "unknown@domain.com",
-          operatorName: user?.displayName || user?.email?.split("@")[0] || "관리자",
+          operatorName: user?.email?.split("@")[0] || "관리자",
         }),
       });
       const data = await res.json();
@@ -340,7 +340,7 @@ export default function UserList() {
           emails: Array.from(selectedUserEmails),
           suspended: suspend,
           operatorEmail: user?.email || userData?.email || "unknown@domain.com",
-          operatorName: user?.displayName || user?.email?.split("@")[0] || "관리자",
+          operatorName: user?.email?.split("@")[0] || "관리자",
         }),
       });
       const data = await res.json();
@@ -399,7 +399,7 @@ export default function UserList() {
             suspended: !userItem.suspended,
           },
           operatorEmail: user?.email || userData?.email || "unknown@domain.com",
-          operatorName: user?.displayName || user?.email?.split("@")[0] || "관리자",
+          operatorName: user?.email?.split("@")[0] || "관리자",
         }),
       });
       const data = await res.json();
@@ -460,7 +460,7 @@ export default function UserList() {
           email: editingUser.primaryEmail,
           updates,
           operatorEmail: user?.email || userData?.email || "unknown@domain.com",
-          operatorName: user?.displayName || user?.email?.split("@")[0] || "관리자",
+          operatorName: user?.email?.split("@")[0] || "관리자",
         }),
       });
       const data = await res.json();
@@ -518,7 +518,7 @@ export default function UserList() {
           email: editingUser.primaryEmail,
           alias: aliasEmail,
           operatorEmail: user?.email || userData?.email || "unknown@domain.com",
-          operatorName: user?.displayName || user?.email?.split("@")[0] || "관리자",
+          operatorName: user?.email?.split("@")[0] || "관리자",
         }),
       });
       const data = await res.json();
@@ -556,7 +556,7 @@ export default function UserList() {
           email: editingUser.primaryEmail,
           alias: aliasEmail,
           operatorEmail: user?.email || userData?.email || "unknown@domain.com",
-          operatorName: user?.displayName || user?.email?.split("@")[0] || "관리자",
+          operatorName: user?.email?.split("@")[0] || "관리자",
         }),
       });
       const data = await res.json();
@@ -734,7 +734,7 @@ export default function UserList() {
           password: newPassword,
           changePasswordAtNextLogin: newChangePasswordAtNextLogin,
           operatorEmail: user?.email || userData?.email || "unknown@domain.com",
-          operatorName: user?.displayName || user?.email?.split("@")[0] || "관리자",
+          operatorName: user?.email?.split("@")[0] || "관리자",
         }),
       });
       const data = await res.json();
@@ -783,7 +783,7 @@ export default function UserList() {
           action: "delete",
           email,
           operatorEmail: user?.email || userData?.email || "unknown@domain.com",
-          operatorName: user?.displayName || user?.email?.split("@")[0] || "관리자",
+          operatorName: user?.email?.split("@")[0] || "관리자",
         }),
       });
       const data = await res.json();
