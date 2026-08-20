@@ -17,24 +17,8 @@
 
 ---
 
-## 과제 I — 글씨 크기 2단계 1묶음: 허브·쪽지·업무·조직도의 1급 정보 14px 승격
+## 지금 대기 중인 과제 없음
 
-- 기준 커밋: `5d4919e`
-- **시작 전에 `docs/font_size_spec.md` §2(등급)·§4(모바일 조건)·§5(2단계)를 읽어라.**
+**2026-08-20 저녁 기준.** 과제 I는 완료·검증·판정 반영까지 끝났다(`ca91546`). 글씨 크기 2단계 다음 묶음(시간표·생활지도·수명주기)은 실기기 확인 통과 후 Claude가 여기에 쓴다.
 
-### 할 일
-
-1. 대상 파일(이 묶음만): `src/components/admin/hub/` 전체, `src/components/admin/tasks/` 전체, `src/components/mobile/MobileTasksSection.tsx`, `src/components/admin/MemoSection.tsx`, `src/components/admin/DashboardMemoPanel.tsx`, `src/components/admin/OrgChartTree.tsx`, `src/components/admin/OrgChartBuilder.tsx`.
-2. 화면에 보이는 **1급 정보**(스펙 §2 표: 사람 이름·날짜·시각·마감·상태·버튼 라벨·에러 문장·입력 필드의 값과 라벨)가 `text-xs` 이하로 렌더되는 곳을 전수 찾아 `text-sm` 이상으로 올린다.
-3. 2급·3급은 손대지 않는다. 임의값 신설 금지 — 표준 클래스만.
-4. 크기 승격으로 한 줄에 안 들어가는 곳은 **줄바꿈 허용 수준까지만** 고친다(`flex-wrap`, 세로 스택 전환). 구조 개편·컴포넌트 재배치는 금지 — 필요해 보이면 `파일:줄`로 보고만.
-5. 판단이 애매한 자리는 한 급 위로 올리고, 올리지 않고 남긴 1급 후보는 사유와 함께 보고한다.
-6. 커밋은 2~3개로 끊는다 (쪽지·허브 / 업무 / 조직도).
-
-### 완료 확인 방법
-
-1. `grep -rnE "text-\[[0-9](\.[0-9]+)?px\]" src/` → 0건 유지 (회귀)
-2. `npx tsc --noEmit` · `npm run build` 통과
-3. `bash scripts/check_ui_removals.sh 5d4919e` 결과 보고
-4. 핸드오버: 승격한 곳 수 + 남긴 1급 후보 목록(사유) + 줄바꿈 처리한 곳 목록 + **"화면·모바일 미검증" 명시** (360px·실기기는 Claude·사용자 몫)
-
+다음 과제가 생기면 Claude가 여기에 쓴다. **이 줄이 보이면 아직 새 지시가 없다는 뜻이므로, 임의로 할 일을 찾아 하지 마라.**
