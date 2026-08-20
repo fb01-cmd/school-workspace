@@ -100,19 +100,19 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
             <div className="flex items-center gap-2">
               <h3 className="text-base font-bold text-slate-800">받은 쪽지</h3>
               {loading ? (
-                <span className="bg-slate-100 text-slate-400 text-xs px-2 py-0.5 rounded-full animate-pulse">
+                <span className="bg-slate-100 text-slate-400 text-sm px-2 py-0.5 rounded-full animate-pulse">
                   확인 중…
                 </span>
               ) : notEligible ? (
-                <span className="bg-slate-100 text-slate-500 text-xs font-medium px-2 py-0.5 rounded-full">
+                <span className="bg-slate-100 text-slate-500 text-sm font-medium px-2 py-0.5 rounded-full">
                   소속 미등록
                 </span>
               ) : unreadCount > 0 ? (
-                <span className="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2 py-0.5 rounded-full">
+                <span className="bg-indigo-50 text-indigo-700 text-sm font-semibold px-2 py-0.5 rounded-full">
                   안 읽음 {unreadCount}건
                 </span>
               ) : (
-                <span className="bg-slate-100 text-slate-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                <span className="bg-slate-100 text-slate-600 text-sm font-medium px-2 py-0.5 rounded-full">
                   모두 읽음
                 </span>
               )}
@@ -166,7 +166,7 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-0.5">
                       <span
-                        className={`text-xs truncate ${
+                        className={`text-sm truncate ${
                           isUnread ? "font-bold text-slate-900" : "text-slate-600"
                         }`}
                       >

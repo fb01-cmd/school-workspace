@@ -304,7 +304,7 @@ export default function HubOrgTree({
           >
             <span className="text-sm">▶</span>
           </button>
-          <span className="[writing-mode:vertical-rl] text-xs font-bold text-slate-600 tracking-wider">
+          <span className="[writing-mode:vertical-rl] text-sm font-bold text-slate-600 tracking-wider">
             교직원 조직도
           </span>
         </div>
@@ -345,7 +345,7 @@ export default function HubOrgTree({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="이름으로 검색..."
-            className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-slate-900 placeholder:text-slate-400"
+            className="w-full pl-8 pr-7 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-slate-900 placeholder:text-slate-400"
           />
           <span className="absolute left-2.5 top-2 text-slate-400 text-xs">🔍</span>
           {searchQuery && (
@@ -365,7 +365,7 @@ export default function HubOrgTree({
             <button
               type="button"
               onClick={handleToggleAllSchool}
-              className={`w-full py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-between border ${
+              className={`w-full py-1.5 px-3 rounded-lg text-sm font-bold transition-all cursor-pointer flex items-center justify-between border ${
                 isAllSchoolSelected
                   ? "bg-indigo-50 border-indigo-200 text-indigo-800 hover:bg-indigo-100/80"
                   : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100/70"
@@ -433,7 +433,7 @@ export default function HubOrgTree({
                         title="상세 정보 보기"
                       >
                         <span
-                          className={`text-xs truncate ${
+                          className={`text-sm truncate ${
                             isSelected
                               ? "font-bold text-indigo-900"
                               : "text-slate-800 group-hover:text-indigo-600"
@@ -484,7 +484,7 @@ export default function HubOrgTree({
                       onClick={() => toggleDeptExpand(deptName)}
                       className="flex-1 flex items-center justify-between text-left cursor-pointer truncate py-0.5"
                     >
-                      <span className="text-xs font-bold text-slate-800 truncate">{deptName}</span>
+                      <span className="text-sm font-bold text-slate-800 truncate">{deptName}</span>
                       <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                         <span
                           className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
@@ -515,7 +515,7 @@ export default function HubOrgTree({
                         (teacher.departments?.length === 1 && !!teacher.isDeptHead);
                       const homeroom =
                         teacher.homeroom?.grade && teacher.homeroom?.class
-                          ? `${teacher.homeroom.grade}-${teacher.homeroom.class}`
+                            ? `${teacher.homeroom.grade}-${teacher.homeroom.class}`
                           : null;
 
                       return (
@@ -541,7 +541,7 @@ export default function HubOrgTree({
                               title="상세 정보 보기"
                             >
                               <span
-                                className={`text-xs truncate ${
+                                className={`text-sm truncate ${
                                   isSelected
                                     ? "font-bold text-indigo-900"
                                     : "text-slate-800 group-hover:text-indigo-600"
@@ -573,7 +573,7 @@ export default function HubOrgTree({
       </div>
 
       {/* Bottom status bar */}
-      <div className="p-3 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between text-xs">
+      <div className="p-3 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between text-sm">
         <div className="font-semibold text-slate-700">
           담긴 사람: <span className="font-bold text-indigo-600">{selectedEmails.size}명</span>
         </div>
@@ -581,7 +581,7 @@ export default function HubOrgTree({
           <button
             type="button"
             onClick={onClearSelection}
-            className="text-xs font-bold text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
+            className="text-sm font-bold text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
           >
             비우기
           </button>
@@ -655,7 +655,7 @@ export default function HubOrgTree({
                     onToggleEmail((popoverTeacher.email || "").toLowerCase());
                     setPopoverTeacher(null);
                   }}
-                  className="w-full py-1.5 text-xs font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer border border-rose-200"
+                  className="w-full py-1.5 text-sm font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer border border-rose-200"
                 >
                   빼기
                 </button>
@@ -666,7 +666,7 @@ export default function HubOrgTree({
                     onToggleEmail((popoverTeacher.email || "").toLowerCase());
                     setPopoverTeacher(null);
                   }}
-                  className="w-full py-1.5 text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                  className="w-full py-1.5 text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition-colors cursor-pointer shadow-2xs"
                 >
                   담기
                 </button>

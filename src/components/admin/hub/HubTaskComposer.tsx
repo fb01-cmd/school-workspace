@@ -359,7 +359,7 @@ export default function HubTaskComposer({
           <button
             type="button"
             onClick={handleSwitchClick}
-            className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer border border-slate-200 flex items-center gap-1.5"
+            className="px-3 py-1.5 text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer border border-slate-200 flex items-center gap-1.5"
           >
             <span>✉️ 쪽지로 바꾸기</span>
           </button>
@@ -368,7 +368,7 @@ export default function HubTaskComposer({
 
       {/* Ineligible notice banner (§4) */}
       {!canSend && (
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between">
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span>🔒</span>
             <span>조직 정보가 등록되면 보낼 수 있습니다.</span>
@@ -376,7 +376,7 @@ export default function HubTaskComposer({
           <button
             type="button"
             onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
-            className="text-xs font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+            className="text-sm font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
           >
             내 조직 정보 신청 →
           </button>
@@ -385,7 +385,7 @@ export default function HubTaskComposer({
 
       {/* Error alert */}
       {error && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-semibold flex items-center justify-between">
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-800 font-semibold flex items-center justify-between">
           <span>{error}</span>
           <button
             type="button"
@@ -401,7 +401,7 @@ export default function HubTaskComposer({
       <div className="space-y-4 max-w-4xl">
         {/* Title */}
         <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+          <label className="block text-sm font-bold text-slate-700 mb-1.5">
             업무명 <span className="text-rose-500">*</span>
           </label>
           <input
@@ -418,14 +418,14 @@ export default function HubTaskComposer({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Kind Selector */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label className="block text-sm font-bold text-slate-700 mb-1.5">
               업무 방식 <span className="text-rose-500">*</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setKind("confirm")}
-                className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex flex-col items-center gap-0.5 ${
+                className={`py-2 px-3 rounded-xl text-sm font-bold border transition-all cursor-pointer flex flex-col items-center gap-0.5 ${
                   kind === "confirm"
                     ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 shadow-2xs"
                     : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -437,7 +437,7 @@ export default function HubTaskComposer({
               <button
                 type="button"
                 onClick={() => setKind("submit")}
-                className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex flex-col items-center gap-0.5 ${
+                className={`py-2 px-3 rounded-xl text-sm font-bold border transition-all cursor-pointer flex flex-col items-center gap-0.5 ${
                   kind === "submit"
                     ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 shadow-2xs"
                     : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -451,7 +451,7 @@ export default function HubTaskComposer({
 
           {/* Due Date & Time (Directive 1 / Feedback 2) */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label className="block text-sm font-bold text-slate-700 mb-1.5">
               마감 기한 <span className="text-rose-500">*</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -459,13 +459,13 @@ export default function HubTaskComposer({
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900"
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900"
               />
               <input
                 type="time"
                 value={dueTime}
                 onChange={(e) => setDueTime(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900"
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900"
               />
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
@@ -476,7 +476,7 @@ export default function HubTaskComposer({
 
         {/* Body Editor */}
         <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+          <label className="block text-sm font-bold text-slate-700 mb-1.5">
             내용
           </label>
           <div className="border border-slate-300 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent">
@@ -501,7 +501,7 @@ export default function HubTaskComposer({
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <div>
-              <label className="text-xs font-bold text-slate-700">
+              <label className="text-sm font-bold text-slate-700">
                 양식 파일 첨부 (최대 {TASK_MAX_FORM_FILES}개)
               </label>
               <p className="text-[11px] text-slate-400 mt-0.5">
@@ -512,7 +512,7 @@ export default function HubTaskComposer({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={sending || pendingFiles.length >= TASK_MAX_FORM_FILES}
-              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-50 cursor-pointer flex items-center gap-1 flex-shrink-0"
+              className="text-sm font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-50 cursor-pointer flex items-center gap-1 flex-shrink-0"
             >
               <span>+ 양식 파일 추가</span>
             </button>
@@ -529,7 +529,7 @@ export default function HubTaskComposer({
               {pendingFiles.map((entry, idx) => (
                 <div
                   key={entry.key}
-                  className="flex items-center justify-between px-3 py-1.5 bg-white rounded-lg border border-slate-200 text-xs"
+                  className="flex items-center justify-between px-3 py-1.5 bg-white rounded-lg border border-slate-200 text-sm"
                 >
                   <span className="truncate text-slate-800 font-medium">
                     📄 {entry.file.name}
@@ -561,7 +561,7 @@ export default function HubTaskComposer({
         <button
           type="button"
           onClick={onClearSelection}
-          className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+          className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
         >
           선택 비우기
         </button>
@@ -570,7 +570,7 @@ export default function HubTaskComposer({
           type="button"
           onClick={handleSend}
           disabled={sending || !canSend || selectedEmails.size === 0 || !title.trim()}
-          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
         >
           {sending ? (
             <>

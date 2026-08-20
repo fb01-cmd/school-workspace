@@ -427,7 +427,7 @@ function InboxRow({
         {/* 발신자 + 시각 (보조 톤) */}
         <div className="flex items-center justify-between gap-2">
           <span
-            className={`text-xs truncate ${
+            className={`text-sm truncate ${
               isUnread ? "font-bold text-slate-700" : "text-slate-500 font-medium"
             }`}
           >
@@ -484,7 +484,7 @@ function SentRow({
       <div className="flex-1 min-w-0">
         {/* 받는 분 요약 + 시각 (보조 톤) */}
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs truncate text-slate-500 font-medium">
+          <span className="text-sm truncate text-slate-500 font-medium">
             받는 분: {renderRecipientLine((memo as any).recipientMeta, memo.recipientSummary, memo.recipientCount ?? total)}
           </span>
           <span className="flex-shrink-0 text-[11px] text-slate-400">
@@ -496,7 +496,7 @@ function SentRow({
           {memo.title || MEMO_UNTITLED_FALLBACK}
         </p>
         {/* 읽음 및 회수 상태 뱃지 */}
-        <div className="text-xs text-slate-400 mt-1.5 flex items-center gap-1.5 flex-wrap">
+        <div className="text-sm text-slate-400 mt-1.5 flex items-center gap-1.5 flex-wrap">
           <span
             className={`font-semibold ${
               readCount === total && total > 0
@@ -571,7 +571,7 @@ function StarredRow({
               {isSentByMe ? "보낸 쪽지" : "받은 쪽지"}
             </span>
             <span
-              className={`text-xs truncate ${
+              className={`text-sm truncate ${
                 isUnread ? "font-bold text-slate-700" : "text-slate-500 font-medium"
               }`}
             >
@@ -592,7 +592,7 @@ function StarredRow({
           {memo.title || MEMO_UNTITLED_FALLBACK}
         </p>
         {isSentByMe && (
-          <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
+          <div className="text-sm text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
             <span
               className={`font-semibold ${
                 readCount === total && total > 0
@@ -739,7 +739,7 @@ function MemoDetailPanel({
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             {/* 메타 정보: 작고 옅게 한 줄로 정리 */}
-            <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap mb-1.5">
+            <div className="text-sm text-slate-500 flex items-center gap-2 flex-wrap mb-1.5">
               {effectiveTab === "inbox" ? (
                 <span>
                   보낸 사람: <strong className="text-slate-700 font-semibold">{memo.senderName || memo.senderEmail}</strong>
@@ -764,7 +764,7 @@ function MemoDetailPanel({
             <button
               type="button"
               onClick={() => onToggleStar(memo)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 border border-slate-200 bg-white hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-slate-600 border border-slate-200 bg-white hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
               aria-label={isStarred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
               title={isStarred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
             >
@@ -792,7 +792,7 @@ function MemoDetailPanel({
               <button
                 type="button"
                 onClick={onReply}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
                 aria-label="답장"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -808,7 +808,7 @@ function MemoDetailPanel({
                 type="button"
                 onClick={() => setShowRecallConfirm(true)}
                 disabled={!canRecall}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors disabled:opacity-40 cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors disabled:opacity-40 cursor-pointer"
                 aria-label="쪽지 회수"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -824,7 +824,7 @@ function MemoDetailPanel({
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={deleting}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:text-rose-600 rounded-lg transition-colors disabled:opacity-40 cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-slate-600 border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:text-rose-600 rounded-lg transition-colors disabled:opacity-40 cursor-pointer"
                 aria-label="쪽지 삭제"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -859,7 +859,7 @@ function MemoDetailPanel({
               </div>
               <div>
                 <h4 className="text-sm font-bold text-slate-900">쪽지를 삭제하시겠습니까?</h4>
-                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                <p className="text-sm text-slate-600 mt-1 leading-relaxed">
                   이 쪽지를 내 쪽지함에서 지울까요? 내 화면에서만 지워지며 상대방 화면과 기록은 남습니다.
                 </p>
               </div>
@@ -869,7 +869,7 @@ function MemoDetailPanel({
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={deleting}
-                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               >
                 취소
               </button>
@@ -877,7 +877,7 @@ function MemoDetailPanel({
                 type="button"
                 onClick={handleDelete}
                 disabled={deleting}
-                className="px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {deleting ? "삭제 중…" : "삭제"}
               </button>
@@ -898,7 +898,7 @@ function MemoDetailPanel({
               </div>
               <div>
                 <h4 className="text-sm font-bold text-slate-900">쪽지를 회수하시겠습니까?</h4>
-                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                <p className="text-sm text-slate-600 mt-1 leading-relaxed">
                   안 읽은 <strong className="text-rose-600 font-semibold">{unreadCount}명</strong>에게서 회수합니다. 이미 읽은 분 것은 회수되지 않고 휴대전화 알림도 취소되지 않습니다.
                 </p>
               </div>
@@ -907,14 +907,14 @@ function MemoDetailPanel({
               <button
                 type="button"
                 onClick={() => setShowRecallConfirm(false)}
-                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               >
                 취소
               </button>
               <button
                 type="button"
                 onClick={handleRecall}
-                className="px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors shadow-sm cursor-pointer"
+                className="px-3 py-1.5 text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors shadow-sm cursor-pointer"
               >
                 회수
               </button>
@@ -1018,7 +1018,7 @@ function MemoDetailPanel({
         {threadMemos.length > 1 && (
           <div className="bg-slate-100/70 border border-slate-200/80 rounded-xl overflow-hidden shadow-2xs">
             <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200/80 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
                 <span>주고받은 이력</span>
                 <span className="text-[11px] font-normal text-slate-500">({threadMemos.length}건)</span>
               </span>
@@ -1042,7 +1042,7 @@ function MemoDetailPanel({
                         onSelectMemo(item, targetTab);
                       }
                     }}
-                    className={`w-full text-left px-4 py-2.5 text-xs flex items-center justify-between gap-3 transition-colors ${
+                    className={`w-full text-left px-4 py-2.5 text-sm flex items-center justify-between gap-3 transition-colors ${
                       isCurrent
                         ? "bg-indigo-50/90 font-bold text-indigo-950 cursor-default"
                         : "hover:bg-slate-50 text-slate-600 cursor-pointer"
@@ -1079,7 +1079,7 @@ function MemoDetailPanel({
         {tab === "sent" && (
           <div className="bg-slate-100/70 border border-slate-200/80 rounded-xl overflow-hidden shadow-2xs">
             <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200/80 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
                 <span>읽음 현황</span>
                 <span className="text-[11px] font-normal text-slate-500">
                   (총 {memo.recipientEmails?.length || memo.recipientCount || 0}명)
@@ -1104,14 +1104,14 @@ function MemoDetailPanel({
                     </span>
 
                     {readAt ? (
-                      <span className="flex-shrink-0 flex items-center gap-1 text-emerald-600 text-xs font-medium">
+                      <span className="flex-shrink-0 flex items-center gap-1 text-emerald-600 text-sm font-medium">
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                         </svg>
                         {formatFull(readAt)}
                       </span>
                     ) : (
-                      <span className="flex-shrink-0 text-xs text-slate-400">안 읽음</span>
+                      <span className="flex-shrink-0 text-sm text-slate-400">안 읽음</span>
                     )}
                   </div>
                 );
@@ -1771,7 +1771,7 @@ function ComposeModal({
                         const allSelected = allEmails.size > 0 && [...allEmails].every((e) => selected.has(e));
                         handleTreeChange(allSelected ? new Set() : allEmails);
                       }}
-                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
+                      className="text-sm text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
                     >
                       {(() => {
                         // 버그1 수정: flatMap은 중복 포함 — Set으로 dedupe해 실인원만 카운트
@@ -1842,7 +1842,7 @@ function ComposeModal({
                     <button
                       type="button"
                       onClick={() => setStep(1)}
-                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
+                      className="text-sm text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
                     >
                       ← 받는 사람 변경
                     </button>
@@ -1952,7 +1952,7 @@ function ComposeModal({
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -2691,7 +2691,7 @@ export default function MemoSection({ initialMemoId, initialTab }: MemoSectionPr
           <select
             value={searchRange}
             onChange={(e) => setSearchRange(e.target.value as MemoSearchRange)}
-            className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all flex-shrink-0"
+            className="px-2.5 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all flex-shrink-0"
             aria-label="검색 기간 범위"
           >
             {/* 선택지를 직접 나열하지 않는다 — 사전에 범위를 추가해도 화면에 안 나타나
@@ -2711,7 +2711,7 @@ export default function MemoSection({ initialMemoId, initialTab }: MemoSectionPr
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="쪽지 검색 (제목, 내용, 이름)"
-              className="w-full pl-8 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
+              className="w-full pl-8 pr-8 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
             />
             <svg
               className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
@@ -2806,7 +2806,7 @@ export default function MemoSection({ initialMemoId, initialTab }: MemoSectionPr
                           <button
                             type="button"
                             onClick={() => setSearchRange(wider)}
-                            className="px-2.5 py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium rounded-md transition-colors border border-indigo-200 cursor-pointer"
+                            className="px-2.5 py-1 text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium rounded-md transition-colors border border-indigo-200 cursor-pointer"
                           >
                             {MEMO_SEARCH_RANGE_LABELS[wider]}로 검색
                           </button>
@@ -2815,7 +2815,7 @@ export default function MemoSection({ initialMemoId, initialTab }: MemoSectionPr
                       <button
                         type="button"
                         onClick={() => setSearchRange("1y")}
-                        className="px-2.5 py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium rounded-md transition-colors border border-indigo-200 cursor-pointer"
+                        className="px-2.5 py-1 text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium rounded-md transition-colors border border-indigo-200 cursor-pointer"
                       >
                         최근 1년으로 검색
                       </button>
