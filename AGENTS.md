@@ -278,18 +278,32 @@ Claude 비용의 대부분은 판단이 아니라 **읽기**에서 나온다(202
 - **항상 금지**: `git push` · `gh` · `.env.local` · `~/.ssh/` · `rm -rf` · 승인 우회 옵션(`--dangerously-*`, `--full-auto`).
 - **푸시는 Claude 또는 사용자만 한다.**
 
-**⚠️ `agy` 권한은 설정 파일에 적어도 생기지 않는다 (2026-08-20 실측, 하루를 태운 뒤)**
+**⚠️ `agy` 헤드리스는 당분간 쓰지 않는다 — 권한이 아니라 작업 폴더 버그다 (2026-08-20 확정)**
 
-`~/.gemini/antigravity-cli/settings.json`의 `permissions.allow`에 `command(...)`를 **손으로 적어 넣어도 무시된다.** 대화형 창에서 **명령 종류마다 한 번 승인**해야 실제 권한이 되고, 그 뒤로는 헤드리스(`--print`)에서도 통과한다.
+**분업**: 헤드리스 위임은 **Codex 전담**. `agy`는 **사용자 대화형 전용**이다.
 
-- **증거**: `command(git status)`를 파일에 적어 둔 상태에서 대화형 실행 시 승인창이 그대로 떴다. 승인(3번) 후에도 파일 내용은 변하지 않았다(이미 있어서 추가할 게 없었다). 즉 **파일의 항목은 존재해도 효력이 없다.**
-- **로그가 이유를 말한다**: 설정은 정상 로드되는데(`CLI settings initialized: permissions=...`) 바로 다음 줄에서 `ApplyProjectPermissionGrants: no grants for project "CLI Project", cleared project permissions` 로 **통째로 지워진다.**
-- **승인창에서 고를 것**: `3. Yes, and always allow ... (Persist to settings.json)`. 2번은 그 대화창에서만 살아 있어 껐다 켜면 사라진다.
-- **헤드리스는 물어볼 자리가 없다.** 승인 안 된 명령을 만나면 `soft-denying tool confirmation "RunCommand"` 로 **즉시** 죽는다(실측 12초). 타임아웃처럼 보이지만 아니다 — **`--print-timeout`을 늘려도 해결되지 않는다.**
-- **한 번씩만 하면 된다.** 명령 종류(`npx tsc`·`git commit`·`grep` 등)마다 최초 1회이고, 새 종류가 나올 때만 다시 뜬다.
-- **`--dangerously-skip-permissions`로 우회하지 않는다** — 위 「항상 금지」 그대로다. 그 옵션은 모든 도구를 무조건 승인하므로 `git push`·`gh`·`rm -rf` 차단까지 함께 무력화된다.
+**권한은 파일로 된다 (이전 기재가 오진이었다).** `~/.gemini/antigravity-cli/settings.json`의 `permissions.allow`/`deny`에 직접 적으면 효력이 있다 — 공식 경로다.
+- **적용은 새 프로세스 기준.** 이미 떠 있는 세션은 파일 변경을 모르고 승인창을 띄운다. "적었는데 승인창이 떴다"는 관찰의 정체가 이것이다.
+- **`command(...)`는 완전일치가 아니라 토큰 prefix**다. `command(git rev-parse)`가 `git rev-parse --show-toplevel`을 커버한다.
+- `ApplyProjectPermissionGrants: no grants for project ... cleared` 로그 줄은 **원인이 아니라 배경 소음**이다 — 정상 동작하던 날에도 똑같이 찍혔고, `~/.gemini/config/projects/default-cli-project.json`의 `projectResources`는 처음부터 `{}`다.
 
-> **왜 규칙에 적는가**: 2026-08-20에 Claude 두 세션과 사용자가 **같은 벽에 각자 부딪혔다.** 원인 추정도 두 번 틀렸다(타임아웃 오진, 설정 파일 오진). 지식이 대화창에만 있으면 다음 세션이 처음부터 다시 헤맨다.
+**함정 ① — 호출 형식이 틀리면 조용히 실패한다.** `--print`/`-p`는 불리언이 아니라 **값을 받는 옵션**이다(`--prompt`가 별칭). 따라서
+```
+agy --print --mode accept-edits --print-timeout 25m < task.txt   # 잘못
+```
+는 프롬프트가 **문자열 `"--mode"`** 가 되고 **stdin은 버려진다.** 에러가 나지 않고 **엉뚱한 답이 정상 응답처럼 돌아오므로 알아채기 어렵다** — 실제로 `--print-timeout` 옵션 설명서가 출력됐는데 "권한 오류 없이 응답이 나왔다"로 읽고 넘어갔다.
+```
+agy -p "프롬프트 내용"                                            # 올바름
+```
+**첫 호출은 반드시 확인 프롬프트로 형식을 검사한다** — `agy -p "pwd 를 실행해 출력만 보여줘"`.
+
+**함정 ② — 도구가 저장소가 아닌 빈 폴더에서 돈다 (이것이 헤드리스를 막는 이유).** 헤드리스는 호출한 셸의 위치가 아니라 `~/.gemini/antigravity-cli/scratch`를 도구 작업 폴더로 넘긴다. 실측: `git rev-parse --show-toplevel` → `fatal: not a git repository`, `ls -a` → `.  ..`(빈 폴더). 권한을 통과한 명령도 전부 이렇게 죽고, **모델이 그걸 진단하려고 임의 명령을 추가하면 그것들이 allow에 없어 거부가 연쇄된다.** 우리가 본 거부 메시지 대부분이 그 2차 명령의 것이었다.
+
+**재개 조건**: 공급자가 작업 폴더 문제를 고친 뒤, `agy -p "git rev-parse --show-toplevel 을 실행해 출력만 보여줘"`가 **실제 저장소 경로를 반환**하면 그때 다시 쓴다. 그전까지는 사람이 대화형 창에 직접 붙여넣는 방식만 유효하다(2026-08-20 소품 3건이 그렇게 성공했다).
+
+**`--dangerously-skip-permissions`로 우회하지 않는다** — 위 「항상 금지」 그대로다. 모든 도구를 무조건 승인하므로 `git push`·`gh`·`rm -rf` 차단까지 함께 무력화된다.
+
+> **왜 규칙에 적는가**: 2026-08-20에 Claude 두 세션과 사용자가 같은 벽에 각자 부딪혔고, **원인 추정이 네 번 틀렸다** — 타임아웃 오진 / 설정 파일 오진 / grants 오진 / 거부 로그 오해. 최종 진상은 Codex 3자 조사와 두 세션의 결정 시험으로 확정했다. **틀린 가설을 지워 두지 않으면 다음 세션이 같은 가설을 다시 세운다** — 그래서 위에 오진 목록을 남긴다.
 
 **막혔을 때** — 같은 문제로 두 번 막히면 다른 에이전트에게 **사실 수집까지만** 시킨다(무엇이 어디서 어떤 조건에서 실패하는가). **진단과 처방은 Claude.** 그래야 두 진단이 갈리지 않는다.
 
