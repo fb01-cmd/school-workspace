@@ -252,6 +252,45 @@ export function resolveRetentionDays(raw: unknown): number {
   return n;
 }
 
+/** 보존 개월 수 — 달 단위 파기의 기준 (2026-08-20 사용자 확정). 기본 12개월 */
+export const MEMO_RETENTION_MONTHS = 12;
+
+/**
+ * 설정값 해석 — `memoRetentionMonths`(신규)를 먼저 보고, 없으면 옛 `memoRetentionDays`를
+ * 개월로 환산한다(설정 UI는 아직 없어 실사용 값은 없으나 하위호환을 남긴다).
+ * 환산은 **내림** — 짧아지는 방향만 택한다는 A안 원칙과 같다.
+ */
+export function resolveRetentionMonths(rawMonths: unknown, rawDays?: unknown): number {
+  const m = typeof rawMonths === "number" ? Math.floor(rawMonths) : NaN;
+  if (Number.isFinite(m) && m >= 1 && m <= 120) return m;
+  const d = typeof rawDays === "number" ? Math.floor(rawDays) : NaN;
+  if (Number.isFinite(d) && d >= 28 && d <= 3650) return Math.max(1, Math.floor(d / 30.44));
+  return MEMO_RETENTION_MONTHS;
+}
+
+/**
+ * 파기 시각 = **보낸 달로부터 N개월이 지난 달 1일 00:00 KST** (2026-08-20 A안 확정).
+ *
+ * 왜 「보낸 날 + 365일」이 아닌가 — 파기를 **달 단위로 끊기 위해서**다.
+ * 같은 달에 보낸 쪽지가 전부 같은 날 만료되면 ⓐ 첨부 폴더가 이미 `쪽지/YYYY/MM`로
+ * 달별이라 **폴더를 통째로 지울 수 있고** ⓑ 월별 개인 사본(레버 ②')이 도입되면
+ * **그 사람의 그 달 문서 하나만 지우면 끝난다.** 한 건씩 골라 지우는 비용이 사라진다.
+ *
+ * **말일이 아니라 1일인 이유**: 실제 보존이 **335~365일**이 되어 **기존 고지("보낸 날부터
+ * 365일")를 절대 넘지 않는다.** 말일로 잡으면 최대 395일이 되어 보관 기간이 늘어나고,
+ * 그것은 문구 수정이 아니라 다시 알려야 하는 변경이 된다. **짧아지는 방향만 택한다.**
+ *
+ * 예) 2026-08-01 발송 → 2027-08-01 파기(365일) · 2026-08-31 발송 → 2027-08-01 파기(335일)
+ */
+export function memoExpireAtKST(sentAtMs: number, retentionMonths = MEMO_RETENTION_MONTHS): number {
+  const KST = 9 * 3600 * 1000;
+  const k = new Date(sentAtMs + KST); // KST 벽시계로 환산
+  const y = k.getUTCFullYear();
+  const m = k.getUTCMonth(); // 0-based
+  // 보낸 달 + N개월의 1일 00:00 KST → UTC ms
+  return Date.UTC(y, m + retentionMonths, 1, 0, 0, 0, 0) - KST;
+}
+
 // ── 삭제(내 화면에서만 감추기) (§12-1) ──────────────────────────────────────
 
 /**

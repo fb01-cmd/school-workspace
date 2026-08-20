@@ -14,7 +14,8 @@ import {
   resolveRecipients,
   resolveReplyContext,
   resolveStarEligibility,
-  resolveRetentionDays,
+  resolveRetentionMonths,
+  memoExpireAtKST,
   validateMemoContent,
 } from "@/lib/memo/logic";
 import {
@@ -256,7 +257,10 @@ export async function POST(req: NextRequest) {
 
         // 보존 기한 — 발송 시 즉시 스탬프 (스펙 §6)
         const settingsSnap = await adminDb.collection("settings").doc(domain).get();
-        const retentionDays = resolveRetentionDays(settingsSnap.data()?.memoRetentionDays);
+        const retentionMonths = resolveRetentionMonths(
+          settingsSnap.data()?.memoRetentionMonths,
+          settingsSnap.data()?.memoRetentionDays
+        );
 
         const now = Date.now();
         const doc: MemoDoc = {
@@ -270,7 +274,7 @@ export async function POST(req: NextRequest) {
           recipientSummary: validated.content.recipientSummary,
           reads: {},
           createdAt: now,
-          expireAt: now + retentionDays * 24 * 3600 * 1000,
+          expireAt: memoExpireAtKST(now, retentionMonths), // 달 단위 파기 (2026-08-20 A안 — logic.ts 주석 참조)
           ...(staged.attachments.length > 0
             ? { attachments: staged.attachments, attachmentShareMode }
             : {}),

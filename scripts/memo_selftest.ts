@@ -12,6 +12,9 @@ import {
   resolveStarEligibility,
   resolveRecipients,
   resolveRetentionDays,
+  resolveRetentionMonths,
+  memoExpireAtKST,
+  MEMO_RETENTION_MONTHS,
   validateMemoContent,
 } from "../src/lib/memo/logic";
 
@@ -281,6 +284,31 @@ async function main() {
     expect("1년 파생 필터 (365일 이내만)", derived1y.map((m) => m.id).join(",") === "m1,m2,m3");
   }
 
+
+
+  console.log("\n── 달 단위 파기 (2026-08-20 A안) ──");
+  {
+    const KST = 9 * 3600 * 1000;
+    const kstDay = (ms: number) => new Date(ms + KST).toISOString().slice(0, 10);
+    const day = 24 * 3600 * 1000;
+
+    const aug1 = Date.UTC(2026, 7, 1, 0, 0, 0);      // 2026-08-01 09:00 KST
+    const aug31 = Date.UTC(2026, 7, 31, 14, 0, 0);   // 2026-08-31 23:00 KST
+    const dec15 = Date.UTC(2026, 11, 15, 3, 0, 0);   // 2026-12-15 12:00 KST
+
+    expect("8/1 발송 → 이듬해 8/1 파기", kstDay(memoExpireAtKST(aug1)) === "2027-08-01");
+    expect("8/31 발송도 같은 날 파기 (달 단위로 뭉친다)", kstDay(memoExpireAtKST(aug31)) === "2027-08-01");
+    expect("12월 발송 → 이듬해 12/1 (해 넘김)", kstDay(memoExpireAtKST(dec15)) === "2027-12-01");
+
+    // ⭐ A안의 핵심 안전 조건 — 기존 고지(365일)를 절대 넘지 않는다
+    expect("보존이 365일을 넘지 않는다 (8/1 발송)", memoExpireAtKST(aug1) - aug1 <= 365 * day);
+    expect("보존이 365일을 넘지 않는다 (8/31 발송)", memoExpireAtKST(aug31) - aug31 <= 365 * day);
+    expect("보존이 11개월 이상이다 (8/31 발송)", memoExpireAtKST(aug31) - aug31 >= 330 * day);
+
+    expect("설정: 개월 값이 우선", resolveRetentionMonths(6, 365) === 6);
+    expect("설정: 개월이 없으면 일수를 내림 환산", resolveRetentionMonths(undefined, 365) === 11);
+    expect("설정: 둘 다 없으면 기본 12개월", resolveRetentionMonths(undefined, undefined) === MEMO_RETENTION_MONTHS);
+  }
 
   console.log(failed === 0 ? "\n🎉 전체 통과" : `\n💥 실패 ${failed}건`);
   process.exit(failed === 0 ? 0 : 1);
