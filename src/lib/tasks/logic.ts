@@ -302,7 +302,11 @@ export function normalizeSubmissionFileName(params: {
   const name = dis ? `${rawName}(${dis})` : rawName;
   const title = cleanSegment(params.taskTitle).slice(0, 60) || "업무";
   const base = [affiliation, name, title].filter(Boolean).join("_");
-  return `${base}${ext}`.slice(0, 150);
+  // 150자로 줄일 때 **확장자는 자르지 않는다** (2026-08-21, Codex 발견).
+  // 종전엔 `${base}${ext}`를 통째로 slice 해서 base 가 길면 확장자까지 잘렸다.
+  // 확장자 없는 파일은 담당자가 내려받아 열 때 프로그램 연결이 안 된다.
+  // base+ext 가 150 이하면 결과는 종전과 완전히 동일하다(회귀 없음).
+  return `${base.slice(0, Math.max(0, 150 - ext.length))}${ext}`;
 }
 
 // ── 양식·제출 파일 화이트리스트 (§5-2) ───────────────────────

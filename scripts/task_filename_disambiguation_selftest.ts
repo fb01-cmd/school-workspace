@@ -177,4 +177,67 @@ assert(!/[\/\\:*?"<>|\u0000-\u001f]/.test(specialCharFileName), "금지된 파�
 assert(specialCharFileName.endsWith(".pdf"), "확장자가 소문자로 정상 변환되지 않음");
 console.log("  ✅ Case 4 통과: 특수문자가 언더스코어로 안전 치환되고 확장자 소문자 변환 완료");
 
-console.log("\n🎉 모든 4개 케이스 셀프테스트 성공 (4/4 passed)!");
+// ── Case 5 (ⓔ): 150자 상한에서도 확장자가 살아남는다 (2026-08-21, Codex 발견 결함) ──
+console.log("\n[Case 5] 이름이 아주 길 때 확장자가 잘리지 않는지 검증");
+
+// 경계: base 길이가 (150 - 확장자길이) 를 넘는 순간부터 확장자가 잘렸다.
+// ".hwpx"(5자) 기준 base 146자부터 결함이 나고, 150자부터는 확장자가 통째로 사라진다.
+// 아래 입력은 base 185자로 경계를 확실히 넘긴다 — 종전 코드로는 반드시 실패한다.
+const longDept = "가".repeat(120);
+const longTitle = "나".repeat(80); // 내부에서 60자로 잘린다
+const longFileName = normalizeSubmissionFileName({
+  taskTitle: longTitle,
+  submitterName: "홍길동",
+  departments: [longDept],
+  originalName: "제출물.hwpx",
+});
+assert(
+  longFileName.length <= 150,
+  `150자 상한 위반: ${longFileName.length}자`
+);
+assert(
+  longFileName.endsWith(".hwpx"),
+  `확장자가 잘렸다 — 이 파일은 열리지 않는다: ...${longFileName.slice(-12)}`
+);
+
+// 경계 바로 위(base 146자) — 종전 코드는 여기서 ".hwp" 로 한 글자만 갉아먹어
+// "형식은 맞는데 열리는 프로그램이 다른" 가장 알아채기 어려운 형태가 됐다.
+const boundary = normalizeSubmissionFileName({
+  taskTitle: "나".repeat(60),
+  submitterName: "홍길동",
+  departments: ["가".repeat(81)], // 81 + 1 + 3 + 1 + 60 = 146
+  originalName: "제출물.hwpx",
+});
+assert(
+  boundary.endsWith(".hwpx"),
+  `경계(base 146자)에서 확장자가 변형됐다: ...${boundary.slice(-8)}`
+);
+
+// 구분자까지 붙은 최악의 경우에도 확장자가 남아야 한다.
+const longWithDis = normalizeSubmissionFileName({
+  taskTitle: longTitle,
+  submitterName: "가".repeat(40),
+  departments: [longDept],
+  disambiguator: "verylongaccountname12",
+  originalName: "스캔본.jpeg",
+});
+assert(longWithDis.length <= 150, `150자 상한 위반(구분자): ${longWithDis.length}자`);
+assert(
+  longWithDis.endsWith(".jpeg"),
+  `구분자 포함 시 확장자가 잘렸다: ...${longWithDis.slice(-12)}`
+);
+
+// 회귀 방어: 150자 안에 들어가는 평범한 입력은 결과가 종전과 한 글자도 달라지면 안 된다.
+const shortUnchanged = normalizeSubmissionFileName({
+  taskTitle: "현장체험 동의서",
+  submitterName: "홍길동",
+  homeroom: { grade: 2, class: 3 },
+  originalName: "동의서.hwp",
+});
+assert(
+  shortUnchanged === "2학년3반_홍길동_현장체험 동의서.hwp",
+  `짧은 입력에서 회귀 발생: ${shortUnchanged}`
+);
+console.log("  ✅ Case 5 통과: 상한 초과 시 base 만 잘리고 확장자는 보존, 짧은 입력은 종전과 동일");
+
+console.log("\n🎉 모든 5개 케이스 셀프테스트 성공 (5/5 passed)!");
