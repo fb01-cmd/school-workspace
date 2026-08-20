@@ -147,13 +147,29 @@ export async function POST(req: NextRequest) {
       if (!task.recipientEmails.includes(email))
         return NextResponse.json({ error: "이 업무의 대상이 아닙니다." }, { status: 403 });
 
-      const normalized = normalizeSubmissionFileName({
+      let normalized = normalizeSubmissionFileName({
         taskTitle: task.title,
         submitterName: myProfile?.name || email.split("@")[0],
         homeroom: myProfile?.isHomeroom ? myProfile?.homeroom : null,
         departments: myDepts,
         originalName: file.name,
       });
+
+      // 동명이인 파일명 중복 방어 (2026-08-20 과제 G)
+      // task.submissions 에서 나(email) 아닌 다른 제출자 중 name 이 겹치면 내 계정 아이디로 구분
+      const isDuplicate = Object.entries(task.submissions || {}).some(
+        ([subEmail, sub]) => subEmail !== email && sub.name === normalized
+      );
+      if (isDuplicate) {
+        normalized = normalizeSubmissionFileName({
+          taskTitle: task.title,
+          submitterName: myProfile?.name || email.split("@")[0],
+          homeroom: myProfile?.isHomeroom ? myProfile?.homeroom : null,
+          departments: myDepts,
+          originalName: file.name,
+          disambiguator: email.split("@")[0],
+        });
+      }
       const prev = task.submissions?.[email];
       let driveFileId: string;
       if (prev) {
@@ -381,13 +397,28 @@ export async function POST(req: NextRequest) {
             { error: "재제출은 4MB 이하로 올리거나, 기존 제출을 확인해 주세요." },
             { status: 400 }
           ); // 세션 경로는 신규 파일 생성 — 교체(재제출)는 서버 경유만 (v1 단순화)
-        const normalized = normalizeSubmissionFileName({
+        let normalized = normalizeSubmissionFileName({
           taskTitle: task.title,
           submitterName: myProfile?.name || email.split("@")[0],
           homeroom: myProfile?.isHomeroom ? myProfile?.homeroom : null,
           departments: myDepts,
           originalName: String(body.fileName),
         });
+
+        // 동명이인 파일명 중복 방어 (2026-08-20 과제 G)
+        const isDuplicate = Object.entries(task.submissions || {}).some(
+          ([subEmail, sub]) => subEmail !== email && sub.name === normalized
+        );
+        if (isDuplicate) {
+          normalized = normalizeSubmissionFileName({
+            taskTitle: task.title,
+            submitterName: myProfile?.name || email.split("@")[0],
+            homeroom: myProfile?.isHomeroom ? myProfile?.homeroom : null,
+            departments: myDepts,
+            originalName: String(body.fileName),
+            disambiguator: email.split("@")[0],
+          });
+        }
         const origin = req.headers.get("origin") || req.nextUrl.origin;
         const sessionUrl = await createResumableUploadSession({
           folderId: task.submitFolderId!,

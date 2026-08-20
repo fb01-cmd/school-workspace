@@ -285,6 +285,8 @@ export function normalizeSubmissionFileName(params: {
   homeroom?: { grade: number; class: number } | null;
   departments?: string[] | null;
   originalName: string;
+  /** 동명이인 구분자 — 있으면 이름 뒤에 괄호로 붙는다 (2026-08-20). 없으면 종전과 완전히 동일. */
+  disambiguator?: string;
 }): string {
   const ext = (() => {
     const m = /\.([A-Za-z0-9]{1,10})$/.exec(params.originalName || "");
@@ -295,7 +297,9 @@ export function normalizeSubmissionFileName(params: {
     : params.departments && params.departments.length > 0
       ? cleanSegment(params.departments[0])
       : "";
-  const name = cleanSegment(params.submitterName) || "이름없음";
+  const rawName = cleanSegment(params.submitterName) || "이름없음";
+  const dis = params.disambiguator ? cleanSegment(params.disambiguator).slice(0, 20) : "";
+  const name = dis ? `${rawName}(${dis})` : rawName;
   const title = cleanSegment(params.taskTitle).slice(0, 60) || "업무";
   const base = [affiliation, name, title].filter(Boolean).join("_");
   return `${base}${ext}`.slice(0, 150);
