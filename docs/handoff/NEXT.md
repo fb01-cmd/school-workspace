@@ -75,7 +75,9 @@
 
 **함정 (반드시 확인)**
 
-- **서버는 10초 중복 방지가 있다**(`roster_index.ts`의 `ROSTER_INDEX_DEBOUNCE_MS`). 10초 안에 두 번째 요청이 오면 재조립 없이 즉시 돌아온다. **그 경우 기다려도 값이 안 바뀐다** — 이때는 3번(원본 직접 읽기)으로 가야 맞다. 응답의 `built` 필드가 `false`이고 `reason`이 `"debounced"`면 그렇게 판단해라.
+- **서버는 10초 중복 방지가 있다.** 상수는 `src/lib/org/roster_index_shared.ts:18`(`ROSTER_INDEX_DEBOUNCE_MS = 10 * 1000`)에 **정의**돼 있고, 판정은 `src/lib/org/roster_index.ts:53-55`에서 한다. 10초 안에 두 번째 요청이 오면 **재조립 없이** `{ built: false, reason: "debounced" }`로 즉시 돌아온다(`roster_index.ts:54`).
+  - **그 경우 기다려도 값이 안 바뀐다.** 다른 사람이 방금 재조립했으면 내 변경은 아직 안 들어간 색인이다. **이때는 3번(원본 직접 읽기)으로 가야 맞다.**
+  - **지금 `requestRosterIndexRebuild`는 응답 본문을 읽지 않는다**(`roster.ts:28-32`에서 `await fetch(...)` 하고 버린다). **`res.json()`으로 `built`·`reason`을 꺼내 쓰도록 고쳐야 한다.** 이게 이 과제에서 유일하게 기존 함수의 동작을 바꾸는 지점이다.
 - **`REBUILD_MARKER_KEY` 5분 억제 마커를 없애지 마라.** 그건 여러 클라이언트가 동시에 재조립을 때리는 것을 막는 장치다.
 - 서버 경로(`buildRosterIndex`를 직접 부르는 곳)는 **이 과제 범위가 아니다.** 건드리지 마라.
 
