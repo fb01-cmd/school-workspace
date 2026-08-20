@@ -16,6 +16,7 @@ import {
 import { db } from "@/lib/firebase/config";
 import type { MemoDoc } from "@/lib/memo/logic";
 import { MEMO_UNTITLED_FALLBACK } from "@/lib/memo/logic";
+import { isMessagingIneligible } from "@/lib/org/eligibility";
 
 type MemoItem = MemoDoc & { id: string };
 
@@ -44,7 +45,7 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
   const { user, userData, teacherProfile } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "";
-  const notEligible = !!userData && !(teacherProfile?.departments?.length);
+  const notEligible = isMessagingIneligible(userData, teacherProfile);
 
   const [memos, setMemos] = useState<MemoItem[]>([]);
   const [loading, setLoading] = useState(true);

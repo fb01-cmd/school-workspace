@@ -1225,14 +1225,37 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               </button>
             </div>
 
-            {/* 내 할 일 추가 버튼 (피드백 15번) */}
-            <button
-              type="button"
-              onClick={() => setIsSelfAddOpen(true)}
-              className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-full transition-colors cursor-pointer border border-slate-200"
-            >
-              <span>+ 내 할 일 추가</span>
-            </button>
+            {/* 내 할 일 추가 버튼 (피드백 15번) 및 미자격 안내 */}
+            {canSend ? (
+              <button
+                type="button"
+                onClick={() => setIsSelfAddOpen(true)}
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-full transition-colors cursor-pointer border border-slate-200"
+              >
+                <span>+ 내 할 일 추가</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
+                  <span>🔒</span>
+                  <span>조직 정보가 등록되면 내 할 일을 쓸 수 있습니다.</span>
+                  <button
+                    type="button"
+                    onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer ml-1"
+                  >
+                    내 조직 정보 신청 →
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  disabled
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-400 font-bold rounded-full border border-slate-200 cursor-not-allowed opacity-60"
+                >
+                  <span>+ 내 할 일 추가</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 할 일 목록 */}

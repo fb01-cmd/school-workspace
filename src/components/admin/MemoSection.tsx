@@ -28,6 +28,7 @@ import type { MemoDoc } from "@/lib/memo/logic";
 import { MEMO_UNTITLED_FALLBACK } from "@/lib/memo/logic";
 import type { TeacherProfile } from "@/context/AuthContext";
 import type { MemoAttachment } from "@/lib/memo/attachment_logic";
+import { isMessagingIneligible } from "@/lib/org/eligibility";
 import {
   resizeAndValidateImage,
   uploadAttachment,
@@ -2139,7 +2140,7 @@ export default function MemoSection({ initialMemoId, initialTab }: MemoSectionPr
    * 쪽지 자격 = 교직원 조직도 등록 여부(teacher_profiles/{email}.departments 비지 않음).
    * isApproved는 쓰지 않는다(2026-08-13 실측: 일반 교사 전원 false — §2 정정 참조).
    */
-  const notEligible = !!userData && !(teacherProfile?.departments?.length);
+  const notEligible = isMessagingIneligible(userData, teacherProfile);
 
   const [tab, setTab] = useState<Tab>(initialTab || "inbox");
 

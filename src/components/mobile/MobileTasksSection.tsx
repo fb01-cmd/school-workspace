@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 import type { TaskDoc, TaskRecipientStatus, TaskSubmission } from "@/lib/tasks/logic";
 import { toTransportSafeFile } from "@/lib/tasks/logic";
+import { canUseMessaging, isMessagingIneligible } from "@/lib/org/eligibility";
 import MemoRichBody from "@/components/common/MemoRichBody";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
@@ -60,7 +61,8 @@ export default function MobileTasksSection() {
   const { user, userData, teacherProfile } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "";
-  const notEligible = !!userData && !(teacherProfile?.departments?.length);
+  const notEligible = isMessagingIneligible(userData, teacherProfile);
+  const canSend = canUseMessaging(userData, teacherProfile);
 
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -884,18 +886,45 @@ export default function MobileTasksSection() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsSelfAddOpen(true)}
-            className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 cursor-pointer"
-          >
-            + 추가
-          </button>
+          {canSend ? (
+            <button
+              type="button"
+              onClick={() => setIsSelfAddOpen(true)}
+              className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+            >
+              + 추가
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="text-[11px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-60"
+            >
+              + 추가
+            </button>
+          )}
           <span className="text-[11px] text-slate-400 dark:text-slate-500">
             미완료 {pendingCount} / 전체 {tasks.length}건
           </span>
         </div>
       </div>
+
+      {/* 미자격 안내 배너 */}
+      {!canSend && (
+        <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span>🔒</span>
+            <span className="truncate">조직 정보가 등록되면 내 할 일을 쓸 수 있습니다.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
+            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline shrink-0 cursor-pointer"
+          >
+            내 조직 정보 신청 →
+          </button>
+        </div>
+      )}
 
       {/* 탭 필터 바 (지시서 33번) */}
       <div className="flex items-center border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 px-3 py-1.5 gap-1.5 text-xs">

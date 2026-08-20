@@ -19,6 +19,8 @@ import MemoAttachmentGrid from "@/components/common/MemoAttachmentGrid";
 import MemoRichBody from "@/components/common/MemoRichBody";
 import { collectMd1AttachmentIds } from "@/lib/memo/richtext";
 
+import { isMessagingIneligible } from "@/lib/org/eligibility";
+
 type MemoItem = MemoDoc & { id: string };
 
 function formatDate(ms: number): string {
@@ -47,7 +49,7 @@ export default function MobileMemoSection() {
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "";
   // 자격 = 교직원 조직도 등록(teacher_profiles) — 규칙·API와 같은 기준. 미등록은 직독이 거부된다.
-  const notEligible = !!userData && !(teacherProfile?.departments?.length);
+  const notEligible = isMessagingIneligible(userData, teacherProfile);
 
   const [inboxMemos, setInboxMemos] = useState<MemoItem[]>([]);
   const [sentMemos, setSentMemos] = useState<MemoItem[]>([]);
