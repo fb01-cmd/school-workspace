@@ -1550,7 +1550,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                           title="이 빈 자리로 다른 수업 가져오기 (연쇄 이동 탐색)"
                                         >
                                           <span>-</span>
-                                          <span className="hidden group-hover:inline text-[10px] bg-indigo-100 text-indigo-800 px-1 py-0.2 rounded font-extrabold">
+                                          <span className="hidden group-hover:inline text-xs bg-indigo-100 text-indigo-800 px-1 py-0.2 rounded font-extrabold">
                                             🔗 가져오기
                                           </span>
                                         </button>
@@ -1833,20 +1833,20 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                                 #{idx + 1} [{item.type === "swap" ? "맞교환" : "특별보강"}]
                               </span>
                               {item.candidate.coordination && item.consentStatus !== "CONSENTED" && (
-                                <span className="text-xs text-red-600 font-black bg-red-100 px-1 rounded">⚠️ 양해 필요</span>
+                                <span className="text-sm text-red-600 font-black bg-red-100 px-1 rounded">⚠️ 양해 필요</span>
                               )}
                               {item.consentStatus === "REQUESTED" && (
-                                <span className="text-xs bg-blue-100 text-blue-900 border border-blue-300 font-bold px-1.5 py-0.5 rounded">
+                                <span className="text-sm bg-blue-100 text-blue-900 border border-blue-300 font-bold px-1.5 py-0.5 rounded">
                                   📨 양해 대기 중
                                 </span>
                               )}
                               {item.consentStatus === "CONSENTED" && (
-                                <span className="text-xs bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold px-1.5 py-0.5 rounded">
+                                <span className="text-sm bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold px-1.5 py-0.5 rounded">
                                   ✓ 알림으로 양해 받음
                                 </span>
                               )}
                               {item.consentStatus === "DECLINED" && (
-                                <span className="text-xs bg-rose-100 text-rose-900 border border-rose-300 font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                                <span className="text-sm bg-rose-100 text-rose-900 border border-rose-300 font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
                                   <span>❌ 어렵다고 답함</span>
                                   {item.consentNote && <span className="font-normal text-rose-800">(사유: {item.consentNote})</span>}
                                 </span>

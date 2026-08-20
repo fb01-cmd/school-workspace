@@ -513,7 +513,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                                       setEditSubjectName(lesson?.subjectName || "");
                                       setEditTeacherName(lesson?.teachers?.[0]?.name || "");
                                     }}
-                                    className="opacity-0 group-hover:opacity-100 text-[10px] text-amber-800 hover:underline text-right w-full pt-0.5"
+                                    className="opacity-0 group-hover:opacity-100 text-xs text-amber-800 hover:underline text-right w-full pt-0.5"
                                   >
                                     ✏️ 내용 변경
                                   </button>

@@ -1070,7 +1070,7 @@ export default function MobileTasksSection() {
               </div>
               <div className={`grid grid-cols-2 gap-1.5 transition-opacity ${selfNoDue ? "opacity-50" : ""}`}>
                 <div>
-                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">
+                  <label className="block text-sm text-slate-500 dark:text-slate-400 mb-0.5">
                     마감 날짜 {!selfNoDue && <span className="text-rose-500">*</span>}
                   </label>
                   <input
@@ -1082,7 +1082,7 @@ export default function MobileTasksSection() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-0.5">
+                  <label className="block text-sm text-slate-500 dark:text-slate-400 mb-0.5">
                     마감 시각 {!selfNoDue && <span className="text-rose-500">*</span>}
                   </label>
                   <input

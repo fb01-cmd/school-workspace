@@ -2061,7 +2061,7 @@ function ComposeModal({
                             </div>
                             {/* 실패 사유는 잘라내지 않는다 — 사용자가 사유를 보고 조치해야 한다 (2026-08-18 실기기 지적) */}
                             {item.status === "error" && (
-                              <p className="text-xs text-rose-600 font-semibold leading-snug">
+                              <p className="text-sm text-rose-600 font-semibold leading-snug">
                                 ⚠️ {item.error || "업로드에 실패했습니다."}
                               </p>
                             )}

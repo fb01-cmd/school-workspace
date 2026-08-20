@@ -526,7 +526,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
           <button
             type="button"
             onClick={() => onRemoveRow(row.id, index)}
-            className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded text-xs font-semibold"
+            className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded text-sm font-semibold"
           >
             삭제
           </button>
@@ -539,7 +539,7 @@ const SheetRowMemo = memo(function SheetRowMemo({
       <tr className="bg-red-50 border-b-2 border-red-200">
         <td colSpan={9} className="px-4 py-2 text-xs text-red-700 bg-red-100/90 font-medium">
           <div className="flex items-center gap-2">
-            <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-xs font-bold">저장 실패</span>
+            <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-sm font-bold">저장 실패</span>
             {/* 본문은 눈높이 문구, 원문은 title로만 — 진단 정보는 남기되 화면에 영문을 띄우지 않는다 */}
             <span title={row.serverError}>{formatServerError(row.serverError)}</span>
           </div>

@@ -852,7 +852,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleViewSignature(c.email)}
                           disabled={runningAction !== null || loadingConsent}
-                          className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-xs transition-colors"
+                          className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-sm transition-colors"
                         >
                           서명 보기
                         </button>

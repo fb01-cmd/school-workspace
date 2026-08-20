@@ -501,7 +501,7 @@ export default function OUConfiguration() {
                     
                     {/* OU Selector */}
                     <div className="flex-1 min-w-[200px]">
-                      <label className="block text-xs font-semibold text-gray-500 mb-1">학생 OU 경로</label>
+                      <label className="block text-sm font-semibold text-gray-500 mb-1">학생 OU 경로</label>
                       <OUTreeSelector
                         orgUnits={orgUnits}
                         value={studentOUMappings[grade] || ""}
@@ -512,7 +512,7 @@ export default function OUConfiguration() {
 
                     {/* Class Count Input */}
                     <div className="w-36 flex-shrink-0">
-                      <label className="block text-xs font-semibold text-gray-500 mb-1">학급(반) 수</label>
+                      <label className="block text-sm font-semibold text-gray-500 mb-1">학급(반) 수</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"

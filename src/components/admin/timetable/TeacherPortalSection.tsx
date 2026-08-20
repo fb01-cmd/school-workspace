@@ -1689,7 +1689,7 @@ function MyTimetableTab({ periodsPerDay, settings }: MyTimetableTabProps) {
                                                   handleDeleteDraftById(draftId);
                                                 }}
                                                 disabled={!!deletingDraftId || savingDraft}
-                                                className="text-[10px] font-bold text-red-600 hover:text-red-800 bg-white px-1 py-0.5 rounded border border-red-200 disabled:opacity-40"
+                                                className="text-xs font-bold text-red-600 hover:text-red-800 bg-white px-1 py-0.5 rounded border border-red-200 disabled:opacity-40"
                                               >
                                                 취소
                                               </button>

@@ -742,7 +742,7 @@ export default function CalendarManageTab({ activeTermId }: CalendarManageTabPro
                               🗓️ {evt.startDate}
                               {isMultiDay ? ` ~ ${evt.endDate}` : ""}
                               {isPast && (
-                                <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded">
+                                <span className="text-sm font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded">
                                   지난 일정
                                 </span>
                               )}

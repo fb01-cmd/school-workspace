@@ -258,7 +258,7 @@ export default function AuditLogViewer() {
                     <td className="px-4 py-3 text-slate-600 leading-relaxed font-sans max-w-md break-words">
                       {log.details}
                       {log.error && (
-                        <div className="text-xs text-red-500 mt-1 font-mono">
+                        <div className="text-sm text-red-500 mt-1 font-mono">
                           ❌ 에러: {log.error}
                         </div>
                       )}
@@ -267,11 +267,11 @@ export default function AuditLogViewer() {
                     {/* Status Badge */}
                     <td className="px-4 py-3 text-center whitespace-nowrap">
                       {isSuccess ? (
-                        <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="inline-flex px-2 py-0.5 rounded-md text-sm font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           성공
                         </span>
                       ) : (
-                        <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-bold bg-red-50 text-red-700 border border-red-200">
+                        <span className="inline-flex px-2 py-0.5 rounded-md text-sm font-bold bg-red-50 text-red-700 border border-red-200">
                           실패
                         </span>
                       )}

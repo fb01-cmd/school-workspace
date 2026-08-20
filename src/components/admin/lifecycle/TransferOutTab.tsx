@@ -556,7 +556,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                     
                     let statusBadge = null;
                     if (task.status === "OU_MOVED") {
-                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-xs rounded-full bg-sky-100 text-sky-800">OU 격리됨</span>;
+                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-sm rounded-full bg-sky-100 text-sky-800">OU 격리됨</span>;
                     } else if (task.status === "DEADLINE_SET") {
                       statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-xs rounded-full bg-blue-100 text-blue-800">기한 설정됨</span>;
                     } else if (task.status === "SUSPENDED") {
@@ -591,7 +591,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                               <div className="font-bold text-red-600 flex items-center gap-1.5">
                                 🚨 {getDDay(task.suspendDueDate)}
                               </div>
-                              <div className="text-xs text-gray-500 font-medium">정지 예정: {formatDate(task.suspendDueDate)}</div>
+                              <div className="text-sm text-gray-500 font-medium">정지 예정: {formatDate(task.suspendDueDate)}</div>
                             </div>
                           )}
                           {task.status === "SUSPENDED" && (
@@ -599,7 +599,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                               <div className="font-bold text-gray-700 flex items-center gap-1.5">
                                 🛑 {getDDay(getEffectiveDeleteDue(task))}
                               </div>
-                              <div className="text-xs text-gray-500 font-medium">삭제 예정: {formatDate(getEffectiveDeleteDue(task))}</div>
+                              <div className="text-sm text-gray-500 font-medium">삭제 예정: {formatDate(getEffectiveDeleteDue(task))}</div>
                             </div>
                           )}
 
