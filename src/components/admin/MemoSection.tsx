@@ -736,8 +736,10 @@ function MemoDetailPanel({
     <div className="flex flex-col h-full bg-slate-50/40 relative">
       {/* 1. 제목 및 메타 영역 (상단 헤더 구획) */}
       <div className="bg-white px-6 py-4 border-b border-slate-200 shadow-2xs">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
+        {/* flex-wrap: 좁은 폭에서 버튼 묶음이 제목을 짜부라뜨리지 않고 아랫줄로 내려간다
+            (2026-08-20 실기기 — 보낸사람·제목이 세로 한 글자씩으로 꺾임) */}
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div className="flex-1 min-w-[12rem]">
             {/* 메타 정보: 작고 옅게 한 줄로 정리 */}
             <div className="text-sm text-slate-500 flex items-center gap-2 flex-wrap mb-1.5">
               {effectiveTab === "inbox" ? (
@@ -759,7 +761,7 @@ function MemoDetailPanel({
           </div>
 
           {/* 액션 버튼 */}
-          <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+          <div className="flex items-center gap-2 flex-shrink-0 mt-0.5 ml-auto">
             {/* 별 토글 버튼 */}
             <button
               type="button"
