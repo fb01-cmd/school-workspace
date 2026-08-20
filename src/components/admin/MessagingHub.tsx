@@ -9,6 +9,7 @@ import { useAuth, TeacherProfile } from "@/context/AuthContext";
 import { getClientCache } from "@/lib/cache/clientCache";
 import { buildGwsNameMap } from "@/lib/org/roster";
 import { resolveDisplayName } from "@/lib/org/displayName";
+import { canUseMessaging } from "@/lib/org/eligibility";
 import HubOrgTree from "./hub/HubOrgTree";
 import HubTaskComposer from "./hub/HubTaskComposer";
 import HubMemoComposer from "./hub/HubMemoComposer";
@@ -32,7 +33,7 @@ export default function MessagingHub({
   const { userData, teacherProfile } = useAuth();
 
   // 발신 자격 = 교직원 조직도에 부서 등록 여부 (§4)
-  const canSend = !!userData && !!(teacherProfile?.departments && teacherProfile.departments.length > 0);
+  const canSend = canUseMessaging(userData, teacherProfile);
 
   // 카테고리: "tasks" (업무) | "memo" (쪽지) — 기본값은 [업무] (§2-3, §2-5)
   const [activeCategory, setActiveCategory] = useState<"tasks" | "memo">(initialCategory);

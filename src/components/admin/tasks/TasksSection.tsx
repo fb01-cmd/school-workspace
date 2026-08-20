@@ -17,6 +17,7 @@ import {
 } from "firebase/firestore";
 import type { TaskDoc, TaskRecipientStatus, TaskSubmission } from "@/lib/tasks/logic";
 import { toTransportSafeFile } from "@/lib/tasks/logic";
+import { canUseMessaging } from "@/lib/org/eligibility";
 import MemoRichBody from "@/components/common/MemoRichBody";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
@@ -73,6 +74,9 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
   const { user, userData, teacherProfile } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "hmh.or.kr";
+
+  // 발신 자격 = 교직원 조직도에 부서 등록 여부 (§4)
+  const canSend = canUseMessaging(userData, teacherProfile);
 
   // 탭: "inbox" (내 할 일) | "sent" (보낸 업무 현황)
   const [activeTab, setActiveTab] = useState<"inbox" | "sent">(initialTab || "inbox");
@@ -1121,14 +1125,37 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
             </button>
           </div>
 
-          {/* 업무 등록 버튼 (피드백 15번 명칭) */}
-          <button
-            type="button"
-            onClick={() => setIsComposerOpen(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <span>+ 업무 등록</span>
-          </button>
+          {/* 업무 등록 버튼 (피드백 15번 명칭) 및 미자격 안내 */}
+          {canSend ? (
+            <button
+              type="button"
+              onClick={() => setIsComposerOpen(true)}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>+ 업무 등록</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
+                <span>🔒</span>
+                <span>조직 정보가 등록되면 업무를 보낼 수 있습니다.</span>
+                <button
+                  type="button"
+                  onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer ml-1"
+                >
+                  내 조직 정보 신청 →
+                </button>
+              </div>
+              <button
+                type="button"
+                disabled
+                className="px-4 py-2 bg-slate-200 text-slate-400 text-xs font-bold rounded-xl cursor-default opacity-60 flex items-center gap-1.5"
+              >
+                <span>+ 업무 등록</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
