@@ -531,7 +531,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
       {/* 토스트 메세지 */}
       {toast && (
         <div
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg border text-xs font-bold transition-all flex items-center gap-2 ${
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg border text-sm font-bold transition-all flex items-center gap-2 ${
             toast.type === "success"
               ? "bg-emerald-50 text-emerald-900 border-emerald-300"
               : toast.type === "warning"
@@ -561,7 +561,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
             <button
               type="button"
               onClick={() => setSelectedDept(null)}
-              className="px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-lg text-xs font-extrabold flex items-center gap-1.5 shadow-xs border border-amber-300 shrink-0 cursor-pointer transition-colors"
+              className="px-3 py-1.5 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-lg text-sm font-extrabold flex items-center gap-1.5 shadow-xs border border-amber-300 shrink-0 cursor-pointer transition-colors"
               title="클릭하여 받는 부서 고정 해제"
             >
               <span>🎯</span>
@@ -574,17 +574,17 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
         {/* §7-1 상단 스테이징 커밋 바 */}
         <div className="flex flex-wrap items-center justify-between gap-3 bg-white/10 p-3 rounded-xl border border-white/10">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs font-bold">
+            <div className="flex items-center gap-1.5 text-sm font-bold">
               <span className="text-amber-400 text-base">●</span>
               <span>미반영 변경:</span>
-              <span className={`px-2 py-0.5 rounded-full font-extrabold text-xs ${
+              <span className={`px-2 py-0.5 rounded-full font-extrabold text-sm ${
                 stagedCount > 0 ? "bg-amber-400 text-amber-950" : "bg-white/20 text-indigo-200"
               }`}>
                 {stagedCount}명
               </span>
             </div>
             {isCommitting && commitProgress && (
-              <span className="text-xs text-emerald-300 font-semibold animate-pulse">
+              <span className="text-sm text-emerald-300 font-semibold animate-pulse">
                 ({commitProgress.current}/{commitProgress.total} 반영 중...)
               </span>
             )}
@@ -595,7 +595,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
               type="button"
               onClick={handleRevertAll}
               disabled={stagedCount === 0 || isCommitting}
-              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-40 text-white text-xs font-bold rounded-lg transition-all border border-white/20"
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-40 text-white text-sm font-bold rounded-lg transition-all border border-white/20 cursor-pointer"
             >
               ↺ 모두 취소
             </button>
@@ -603,7 +603,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
               type="button"
               onClick={handleCommitStaged}
               disabled={stagedCount === 0 || isCommitting}
-              className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white text-xs font-extrabold rounded-lg shadow-md transition-all flex items-center gap-1.5 border border-emerald-400/40"
+              className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white text-sm font-extrabold rounded-lg shadow-md transition-all flex items-center gap-1.5 border border-emerald-400/40 cursor-pointer"
             >
               <span>💾</span>
               <span>{isCommitting ? "반영 중..." : `${stagedCount}명 반영하기`}</span>
@@ -706,7 +706,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                           return (
                             <div
                               key={`${deptName}-${email}`}
-                              className={`group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all border shadow-2xs ${
+                              className={`group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all border shadow-2xs ${
                                 staged
                                   ? "bg-amber-50/80 border-amber-300 hover:border-amber-400"
                                   : "bg-slate-50 hover:bg-indigo-50/40 border-slate-200 hover:border-indigo-300"
@@ -714,11 +714,11 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                             >
                               {/* §7-1 미반영 주황 점(●) 표시 */}
                               {staged ? (
-                                <span className="text-amber-500 font-extrabold text-xs" title="미반영 변경사항 존재">
+                                <span className="text-amber-500 font-extrabold text-sm" title="미반영 변경사항 존재">
                                   ●
                                 </span>
                               ) : (
-                                <span className="text-slate-400 text-xs">👤</span>
+                                <span className="text-slate-400 text-sm">👤</span>
                               )}
 
                               <span className="font-bold text-slate-900">
@@ -765,7 +765,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                                     const val = Number(e.target.value);
                                     handleSetHomeroomClass(email, gradeNum, val === 0 ? null : val);
                                   }}
-                                  className="text-xs font-bold bg-white border border-gray-300 rounded px-1.5 py-0.5 text-gray-800 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer shrink-0"
+                                  className="text-sm font-bold bg-white border border-gray-300 rounded px-1.5 py-0.5 text-gray-800 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer shrink-0"
                                 >
                                   <option value={0}>반 미지정</option>
                                   {Array.from({ length: classCount }, (_, i) => i + 1).map((c) => (
@@ -781,7 +781,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                                 <button
                                   type="button"
                                   onClick={() => handleToggleHead(email, deptName)}
-                                  className={`p-1 rounded text-xs font-bold transition-colors ${
+                                  className={`p-1 rounded text-sm font-bold transition-colors cursor-pointer ${
                                     isHead
                                       ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
                                       : "text-gray-400 hover:text-amber-600 hover:bg-amber-50"
@@ -793,7 +793,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                                 <button
                                   type="button"
                                   onClick={() => openDetailEditor(email)}
-                                  className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 text-xs transition-colors"
+                                  className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 text-sm transition-colors cursor-pointer"
                                   title="세부 편집 폼 열기"
                                 >
                                   ✏️
@@ -801,7 +801,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveTeacherFromDept(email, deptName)}
-                                  className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 text-xs transition-colors"
+                                  className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 text-sm transition-colors cursor-pointer"
                                   title="이 부서에서 제거"
                                 >
                                   ✕
@@ -837,18 +837,18 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                     return (
                       <div
                         key={email}
-                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border shadow-2xs ${
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border shadow-2xs ${
                           staged
                             ? "bg-amber-50 border-amber-300 text-amber-950"
                             : "bg-white border-slate-200 text-slate-700"
                         }`}
                       >
                         {staged ? (
-                          <span className="text-amber-500 font-extrabold text-xs" title="미반영 변경사항 존재">
+                          <span className="text-amber-500 font-extrabold text-sm" title="미반영 변경사항 존재">
                             ●
                           </span>
                         ) : (
-                          <span className="text-slate-400 text-xs">👤</span>
+                          <span className="text-slate-400 text-sm">👤</span>
                         )}
                         <span className="font-bold">{getDisplayName(email, teacher)}</span>
                         {teacher.extension && (
@@ -864,7 +864,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                         <button
                           type="button"
                           onClick={() => openDetailEditor(email)}
-                          className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 text-xs transition-colors"
+                          className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 text-sm transition-colors cursor-pointer"
                           title="세부 편집 폼 열기"
                         >
                           ✏️
@@ -893,12 +893,12 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                 )}
               </p>
             </div>
-            <label className="flex items-center gap-1.5 text-xs text-amber-900 font-bold bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 cursor-pointer select-none">
+            <label className="flex items-center gap-1.5 text-sm text-amber-900 font-bold bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={unassignedOnly}
                 onChange={(e) => setUnassignedOnly(e.target.checked)}
-                className="rounded text-amber-600 focus:ring-amber-500"
+                className="rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
               />
               <span>🍊 미배치만 보기</span>
             </label>
@@ -911,7 +911,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="교사 이름 또는 이메일 검색..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
           </div>
 
@@ -956,21 +956,20 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       {staged ? (
-                        <span className="text-amber-500 font-extrabold text-xs shrink-0" title="미반영 변경사항 존재">
+                        <span className="text-amber-500 font-extrabold text-sm shrink-0" title="미반영 변경사항 존재">
                           ●
                         </span>
                       ) : (
-                        <span className="text-xs text-gray-400 shrink-0">👤</span>
+                        <span className="text-sm text-gray-400 shrink-0">👤</span>
                       )}
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-gray-900 truncate flex items-center gap-1">
+                        <p className="text-sm font-bold text-gray-900 truncate flex items-center gap-1">
                           <span>{realName}</span>
                           {profile.extension && (
-                            <span className="text-slate-500 font-normal">({profile.extension})</span>
+                            <span className="text-xs text-slate-500 font-normal">({profile.extension})</span>
                           )}
 
                           {staged && (
-
                             <span className="text-[11px] text-amber-700 bg-amber-100 font-extrabold px-1 rounded">
                               미반영
                             </span>
@@ -1004,7 +1003,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                           e.stopPropagation();
                           openDetailEditor(email);
                         }}
-                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded text-xs transition-colors"
+                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded text-sm transition-colors cursor-pointer"
                         title="세부 편집 창 열기"
                       >
                         ✏️
@@ -1017,7 +1016,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                             e.stopPropagation();
                             handleAssignTeacherToDept(email, selectedDept);
                           }}
-                          className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded shadow-2xs"
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded shadow-2xs cursor-pointer"
                         >
                           + 추가
                         </button>

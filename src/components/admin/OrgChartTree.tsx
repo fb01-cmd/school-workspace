@@ -206,18 +206,18 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="이름, 이메일, 부서 검색..."
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-900 w-48 bg-white"
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-900 w-48 bg-white"
           />
           <button
             onClick={expandAll}
-            className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-colors"
+            className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-colors cursor-pointer"
             title="전체 펼치기"
           >
             📂 모두 펼치기
           </button>
           <button
             onClick={collapseAll}
-            className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-colors"
+            className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-colors cursor-pointer"
             title="전체 접기"
           >
             📁 모두 접기
@@ -318,7 +318,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
                             <button
                               type="button"
                               onClick={() => onEditTeacher(teacher.email)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 text-xs font-semibold flex items-center gap-1"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 text-sm font-semibold flex items-center gap-1 cursor-pointer"
                               title="수동 배치 편집"
                             >
                               <span>✏️</span>
