@@ -682,7 +682,7 @@ export default function GraduationTab({ s, ud }: any) {
                     ))}
                   </select>
                 </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">매년 지정된 월-일 새벽에 대상자의 계정이 자동으로 일시정지(접속차단) 됩니다.</span>
+                <span className="text-xs text-slate-400 mt-1 block">매년 지정된 월-일 새벽에 대상자의 계정이 자동으로 일시정지(접속차단) 됩니다.</span>
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-600">계정 영구삭제 예정일 (매년 반복)</label>
@@ -706,7 +706,7 @@ export default function GraduationTab({ s, ud }: any) {
                     ))}
                   </select>
                 </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">매년 지정된 월-일 새벽에 대상자의 구글 계정이 영구 삭제(소멸) 됩니다.</span>
+                <span className="text-xs text-slate-400 mt-1 block">매년 지정된 월-일 새벽에 대상자의 구글 계정이 영구 삭제(소멸) 됩니다.</span>
               </div>
             </div>
 
@@ -819,7 +819,7 @@ export default function GraduationTab({ s, ud }: any) {
                     <td className="px-6 py-3.5 font-bold flex items-center gap-1.5">
                       <span>{c.name}</span>
                       {(c.isTest || c.originalOU === "/학생/테스트") && (
-                        <span className="bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded text-[9px] border border-purple-200">테스트</span>
+                         <span className="bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded text-[11px] border border-purple-200">테스트</span>
                       )}
                     </td>
                     <td className="px-6 py-3.5 font-mono text-slate-500">{c.email}</td>
@@ -852,7 +852,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleViewSignature(c.email)}
                           disabled={runningAction !== null || loadingConsent}
-                          className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-[10px] transition-colors"
+                          className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-xs transition-colors"
                         >
                           서명 보기
                         </button>
@@ -863,7 +863,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleToggleConsent(c.email, false)}
                           disabled={runningAction !== null}
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition-colors"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors"
                         >
                           수동 동의 완료
                         </button>
@@ -872,7 +872,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleToggleConsent(c.email, true)}
                           disabled={runningAction !== null}
-                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[10px] transition-colors"
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs transition-colors"
                         >
                           동의 취소
                         </button>
@@ -883,7 +883,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleSendIndividualWarning(c.email)}
                           disabled={runningAction !== null}
-                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-[10px] transition-colors"
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors"
                         >
                           리마인더 발송
                         </button>
@@ -894,7 +894,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleIndividualRestore(c.email)}
                           disabled={runningAction !== null}
-                          className="px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-lg text-[10px] transition-colors"
+                          className="px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-lg text-xs transition-colors"
                         >
                           일시정지 해제
                         </button>
@@ -905,7 +905,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleDeleteTestStudent(c.email)}
                           disabled={runningAction !== null}
-                          className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-[10px] transition-colors"
+                          className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-colors"
                           title="테스트 학생을 목록에서 삭제합니다."
                         >
                           테스트 삭제
@@ -913,7 +913,7 @@ export default function GraduationTab({ s, ud }: any) {
                       )}
 
                       {c.status === "DELETED" && (
-                        <span className="text-[10px] text-slate-400 font-medium">-</span>
+                        <span className="text-xs text-slate-400 font-medium">-</span>
                       )}
                     </td>
                   </tr>
@@ -1000,7 +1000,7 @@ export default function GraduationTab({ s, ud }: any) {
               <div className="bg-white border rounded-xl p-4 space-y-4 shadow-2xs">
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 items-end">
                   <div>
-                    <label className="text-[10px] text-slate-400 block font-bold">테스트 이름</label>
+                    <label className="text-xs text-slate-400 block font-bold">테스트 이름</label>
                     <input
                       type="text"
                       placeholder="예: 홍길동(테스트)"
@@ -1010,7 +1010,7 @@ export default function GraduationTab({ s, ud }: any) {
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-slate-400 block font-bold">테스트 학번 (선택)</label>
+                    <label className="text-xs text-slate-400 block font-bold">테스트 학번 (선택)</label>
                     <input
                       type="text"
                       placeholder="예: 39999"
@@ -1021,7 +1021,7 @@ export default function GraduationTab({ s, ud }: any) {
                   </div>
                   <div className="sm:col-span-2 flex gap-2 items-end">
                     <div className="flex-1">
-                      <label className="text-[10px] text-slate-400 block font-bold">수신 가능한 테스트 이메일</label>
+                      <label className="text-xs text-slate-400 block font-bold">수신 가능한 테스트 이메일</label>
                       <input
                         type="email"
                         placeholder="예: test-student@hyeomyung.hs.kr"
@@ -1040,7 +1040,7 @@ export default function GraduationTab({ s, ud }: any) {
                     </button>
                   </div>
                 </div>
-                <span className="text-[9px] text-slate-400 leading-relaxed block">
+                <span className="text-xs text-slate-400 leading-relaxed block">
                   ※ 본인이 실제로 소유하거나 수신을 확인할 수 있는 이메일을 입력한 뒤 이메일 필터를 걸어 크론을 실행하면, 안내 리마인더 메일과 구글 챗 DM을 수신해볼 수 있습니다.
                 </span>
               </div>
@@ -1062,14 +1062,14 @@ export default function GraduationTab({ s, ud }: any) {
                     <summary className="cursor-pointer text-yellow-400 hover:text-yellow-300 font-sans">🔍 실행 로그 ({cronTestResult.debug.length}줄) 펼치기</summary>
                     <div className="mt-1 max-h-60 overflow-y-auto space-y-0.5 border-t border-slate-700 pt-1">
                       {cronTestResult.debug.map((line: string, i: number) => (
-                        <div key={i} className={`text-[10px] leading-relaxed ${line.includes("❌") ? "text-red-400" : line.includes("✅") ? "text-emerald-400" : line.includes("SKIP") ? "text-slate-500" : "text-slate-300"}`}>
+                        <div key={i} className={`text-xs leading-relaxed ${line.includes("❌") ? "text-red-400" : line.includes("✅") ? "text-emerald-400" : line.includes("SKIP") ? "text-slate-500" : "text-slate-300"}`}>
                           {line}
                         </div>
                       ))}
                     </div>
                   </details>
                 )}
-                <div className="text-[10px] text-slate-400 mt-2 font-sans leading-relaxed">※ 이 시뮬레이션은 테스트 모드 여부와 상관없이 실제 데이터를 그대로 변경하므로, 지정한 테스트 대상 계정에 대해 정지·삭제·알림 발송이 실제로 수행됩니다.</div>
+                <div className="text-xs text-slate-400 mt-2 font-sans leading-relaxed">※ 이 시뮬레이션은 테스트 모드 여부와 상관없이 실제 데이터를 그대로 변경하므로, 지정한 테스트 대상 계정에 대해 정지·삭제·알림 발송이 실제로 수행됩니다.</div>
               </div>
             )}
           </div>
@@ -1096,19 +1096,19 @@ export default function GraduationTab({ s, ud }: any) {
             <div className="p-5 space-y-4 text-xs text-slate-600 leading-relaxed">
               <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border rounded-xl">
                 <div>
-                  <span className="text-[10px] text-slate-400 block font-medium">이름</span>
+                  <span className="text-[11px] text-slate-400 block font-medium">이름</span>
                   <span className="text-slate-800 font-bold mt-0.5 block">{selectedConsent.name}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block font-medium">학번</span>
+                  <span className="text-[11px] text-slate-400 block font-medium">학번</span>
                   <span className="text-slate-800 font-bold mt-0.5 block font-mono">{selectedConsent.studentId}</span>
                 </div>
                 <div className="col-span-2 border-t border-slate-100 pt-2 mt-1">
-                  <span className="text-[10px] text-slate-400 block font-medium">이메일 계정</span>
+                  <span className="text-[11px] text-slate-400 block font-medium">이메일 계정</span>
                   <span className="text-slate-800 font-bold mt-0.5 block font-mono">{selectedConsent.email}</span>
                 </div>
                 <div className="col-span-2 border-t border-slate-100 pt-2">
-                  <span className="text-[10px] text-slate-400 block font-medium">서명 일시</span>
+                  <span className="text-[11px] text-slate-400 block font-medium">서명 일시</span>
                   <span className="text-slate-800 font-bold mt-0.5 block font-mono">
                     {selectedConsent.consentedAt?.toDate 
                       ? selectedConsent.consentedAt.toDate().toLocaleString("ko-KR") 
@@ -1118,7 +1118,7 @@ export default function GraduationTab({ s, ud }: any) {
               </div>
 
               <div className="space-y-1.5">
-                <span className="text-[10px] text-slate-400 block font-medium">학생 친필 서명 (손가락/마우스 드로잉)</span>
+                <span className="text-[11px] text-slate-400 block font-medium">학생 친필 서명 (손가락/마우스 드로잉)</span>
                 <div className="border border-slate-200 rounded-xl bg-slate-50 p-4 h-32 flex items-center justify-center">
                   {selectedConsent.signature?.startsWith("data:image/") ? (
                     <img 

@@ -335,7 +335,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                   />
                   <span className="text-xs text-gray-600">일 후 계정 정지 (마지노선)</span>
                 </div>
-                <span className="text-[10px] text-gray-400 mt-1 block font-medium">전출 등록 직후 학생이 포털에서 직접 정지 기한을 선택하지 않을 경우 자동 정지되는 최장 마지노선 기간입니다. (기본 30일)</span>
+                <span className="text-xs text-gray-400 mt-1 block font-medium">전출 등록 직후 학생이 포털에서 직접 정지 기한을 선택하지 않을 경우 자동 정지되는 최장 마지노선 기간입니다. (기본 30일)</span>
               </div>
 
               <div>
@@ -353,7 +353,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                   />
                   <span className="text-xs text-gray-600">일 후 계정 영구 삭제</span>
                 </div>
-                <span className="text-[10px] text-gray-400 mt-1 block font-medium">계정이 일시정지(Suspend)된 시점부터 계정이 영구 삭제(Delete)될 때까지의 유예 기간입니다. (기본 7일)</span>
+                <span className="text-xs text-gray-400 mt-1 block font-medium">계정이 일시정지(Suspend)된 시점부터 계정이 영구 삭제(Delete)될 때까지의 유예 기간입니다. (기본 7일)</span>
               </div>
             </div>
 
@@ -372,18 +372,18 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                       setChatTemplateBody(DEFAULT_CHAT_BODY);
                     }
                   }}
-                  className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold"
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
                 >
                   기본 템플릿 불러오기
                 </button>
               </div>
-              <p className="text-[10px] text-gray-400 leading-relaxed font-medium">
+              <p className="text-xs text-gray-400 leading-relaxed font-medium">
                 사용 가능한 치환자: <code>{"{name}"}</code> (이름), <code>{"{email}"}</code> (이메일), <code>{"{suspendDate}"}</code> (정지예정일), <code>{"{deleteDate}"}</code> (삭제예정일), <code>{"{deadlineUrl}"}</code> (포털 기한설정 링크), <code>{"{maxSuspendDate}"}</code> (마지노선일), <code>{"{suspendGraceDays}"}</code> (마지노선일수), <code>{"{deleteGraceDays}"}</code> (삭제유예일수)
               </p>
 
               <div className="space-y-3.5">
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 mb-1">안내 메일 제목</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">안내 메일 제목</label>
                   <input
                     type="text"
                     value={emailTemplateSubject}
@@ -393,7 +393,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 mb-1">안내 메일 본문</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">안내 메일 본문</label>
                   <textarea
                     rows={6}
                     value={emailTemplateBody}
@@ -403,7 +403,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 mb-1">구글 챗 알림 본문</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">구글 챗 알림 본문</label>
                   <textarea
                     rows={3}
                     value={chatTemplateBody}
@@ -463,7 +463,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                     <span className="font-semibold text-gray-700">{st.name.givenName || "이름없음"}</span>
                     <span className="text-gray-400 ml-1.5 font-mono">({st.name.familyName || "학번없음"})</span>
                   </div>
-                  <span className="text-indigo-600 font-mono text-[10px]">{st.primaryEmail}</span>
+                  <span className="text-indigo-600 font-mono text-xs">{st.primaryEmail}</span>
                 </button>
               ))}
             </div>
@@ -492,7 +492,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                 <span className="col-span-2 text-slate-800 font-mono">{selectedStudent.primaryEmail}</span>
                 
                 <span className="font-semibold">현재 OU:</span>
-                <span className="col-span-2 text-slate-800 text-[10px] break-all">{selectedStudent.orgUnitPath}</span>
+                <span className="col-span-2 text-slate-800 text-xs break-all">{selectedStudent.orgUnitPath}</span>
               </div>
               
               <div className="pt-2">
@@ -556,13 +556,13 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                     
                     let statusBadge = null;
                     if (task.status === "OU_MOVED") {
-                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-[10px] rounded-full bg-sky-100 text-sky-800">OU 격리됨</span>;
+                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-xs rounded-full bg-sky-100 text-sky-800">OU 격리됨</span>;
                     } else if (task.status === "DEADLINE_SET") {
-                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-[10px] rounded-full bg-blue-100 text-blue-800">기한 설정됨</span>;
+                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-xs rounded-full bg-blue-100 text-blue-800">기한 설정됨</span>;
                     } else if (task.status === "SUSPENDED") {
-                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-[10px] rounded-full bg-amber-100 text-amber-800">일시정지됨</span>;
+                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-xs rounded-full bg-amber-100 text-amber-800">일시정지됨</span>;
                     } else {
-                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-[10px] rounded-full bg-gray-100 text-gray-600">영구삭제됨</span>;
+                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-xs rounded-full bg-gray-100 text-gray-600">영구삭제됨</span>;
                     }
 
                     return (
@@ -570,17 +570,17 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                         {/* Student Info */}
                         <td className="px-3 py-3">
                           <div className="font-bold text-gray-800">
-                            {task.name} <span className="font-mono text-[10px] text-gray-400">({task.studentId})</span>
+                            {task.name} <span className="font-mono text-xs text-gray-400">({task.studentId})</span>
                           </div>
-                          <div className="text-[10px] font-mono text-slate-500 break-all">{task.email}</div>
-                          <div className="text-[9px] text-gray-400 mt-0.5">이전 OU: {task.originalOU}</div>
+                          <div className="text-xs font-mono text-slate-500 break-all">{task.email}</div>
+                          <div className="text-xs text-gray-400 mt-0.5">이전 OU: {task.originalOU}</div>
                         </td>
 
                         {/* Status */}
                         <td className="px-3 py-3 font-medium">
                           <div className="space-y-1">
                             <div>{statusBadge}</div>
-                            <div className="text-[9px] text-gray-400">등록: {formatDate(task.registeredAt)}</div>
+                            <div className="text-xs text-gray-400">등록: {formatDate(task.registeredAt)}</div>
                           </div>
                         </td>
 
@@ -591,7 +591,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                               <div className="font-bold text-red-600 flex items-center gap-1.5">
                                 🚨 {getDDay(task.suspendDueDate)}
                               </div>
-                              <div className="text-[10px] text-gray-500 font-medium">정지 예정: {formatDate(task.suspendDueDate)}</div>
+                              <div className="text-xs text-gray-500 font-medium">정지 예정: {formatDate(task.suspendDueDate)}</div>
                             </div>
                           )}
                           {task.status === "SUSPENDED" && (
@@ -599,7 +599,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                               <div className="font-bold text-gray-700 flex items-center gap-1.5">
                                 🛑 {getDDay(getEffectiveDeleteDue(task))}
                               </div>
-                              <div className="text-[10px] text-gray-500 font-medium">삭제 예정: {formatDate(getEffectiveDeleteDue(task))}</div>
+                              <div className="text-xs text-gray-500 font-medium">삭제 예정: {formatDate(getEffectiveDeleteDue(task))}</div>
                             </div>
                           )}
 

@@ -612,7 +612,7 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
                               <td className="p-3 font-medium text-gray-600">
                                 <div>{c.ownerName}</div>
                                 {c.ownerEmail && c.ownerEmail !== c.ownerName && (
-                                  <div className="text-[10px] text-gray-400 font-mono">{c.ownerEmail}</div>
+                                  <div className="text-xs text-gray-400 font-mono">{c.ownerEmail}</div>
                                 )}
                               </td>
                               <td className="p-3 text-center font-mono">

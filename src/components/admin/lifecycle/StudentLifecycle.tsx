@@ -127,7 +127,7 @@ function NewYearStepBar({
               {step.label}
             </span>
             {isCompleted && (
-              <span className="text-[10px] text-green-600 bg-green-100/50 px-1 py-0.5 rounded font-semibold mt-0.5">완료</span>
+              <span className="text-[11px] text-green-600 bg-green-100/50 px-1 py-0.5 rounded font-semibold mt-0.5">완료</span>
             )}
           </button>
         );

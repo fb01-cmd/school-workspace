@@ -171,10 +171,10 @@ export function GroupCreateTab({ ud, ouPaths, onDone, onComplete }: any) {
                     <div key={idx} className="py-1.5 flex justify-between items-center text-green-900">
                       <div>
                         <span className="font-bold">{g.name}</span>
-                        <span className="text-gray-400 font-mono text-[10px] ml-1.5">{g.email}</span>
+                        <span className="text-gray-400 font-mono text-xs ml-1.5">{g.email}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
+                        <span className={`text-[11px] px-1.5 py-0.2 rounded font-medium ${
                           g.status === "created" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
                         }`}>
                           {g.status === "created" ? "신규 생성" : "기존 동기화"}

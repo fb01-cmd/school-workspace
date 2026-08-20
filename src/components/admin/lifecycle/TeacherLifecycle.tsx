@@ -493,7 +493,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
         {showTemplateAccordion && (
           <div className="p-5 border-t border-gray-100 bg-white space-y-5">
             <div>
-              <p className="text-[10px] text-gray-400 leading-relaxed font-medium mb-3">
+              <p className="text-xs text-gray-400 leading-relaxed font-medium mb-3">
                 사용 가능한 치환자: <code>{'{name}'}</code> (이름), <code>{'{email}'}</code> (이메일),{" "}
                 <code>{'{deadlineUrl}'}</code> (기한 설정 링크), <code>{'{maxDeadlineDate}'}</code> (최대 기한일),{" "}
                 <code>{'{warnedCount}'}</code> (리마인더 차수)
@@ -510,14 +510,14 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                       setReminderChatBody(DEFAULT_TEACHER_REMINDER_CHAT_BODY);
                     }
                   }}
-                  className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold"
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
                 >
                   기본 템플릿 불러오기
                 </button>
               </div>
               <div className="space-y-3.5">
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 mb-1">안내 메일 제목</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">안내 메일 제목</label>
                   <input
                     type="text"
                     value={emailTemplateSubject}
@@ -526,7 +526,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 mb-1">안내 메일 본문</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">안내 메일 본문</label>
                   <textarea
                     rows={7}
                     value={emailTemplateBody}
@@ -535,7 +535,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 mb-1">구글 챗 알림 본문 (전출 등록 시)</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">구글 챗 알림 본문 (전출 등록 시)</label>
                   <textarea
                     rows={4}
                     value={chatTemplateBody}
@@ -544,7 +544,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 mb-1">구글 챗 리마인더 본문 (기한 미설정 시 주기적 발송)</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">구글 챗 리마인더 본문 (기한 미설정 시 주기적 발송)</label>
                   <textarea
                     rows={4}
                     value={reminderChatBody}
@@ -702,7 +702,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                               <div className="font-bold text-gray-700 flex items-center gap-1.5">
                                 🛑 {dDay !== null ? (dDay > 0 ? `D-${dDay}` : dDay === 0 ? "D-Day" : `D+${Math.abs(dDay)}`) : "-"}
                               </div>
-                              <div className="text-[10px] text-gray-500 font-medium">
+                              <div className="text-xs text-gray-500 font-medium">
                                 삭제 예정: {deleteDueDate.toLocaleDateString("ko-KR")}
                               </div>
                             </div>
