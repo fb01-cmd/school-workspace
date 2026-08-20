@@ -253,13 +253,13 @@ export default function TaskRecipientPickerModal({
                       handlePersonToggle(c.email);
                       setSearchQuery("");
                     }}
-                    className="w-full text-left px-3.5 py-2 hover:bg-indigo-50 flex items-center justify-between text-xs cursor-pointer"
+                    className="w-full text-left px-3.5 py-2 hover:bg-indigo-50 flex items-center justify-between text-sm cursor-pointer"
                   >
                     <span className="font-semibold text-slate-800">
                       {c.name}
                       {c.extension && <span className="text-slate-400 font-normal ml-1">({c.extension})</span>}
                     </span>
-                    <span className="text-slate-400">{c.dept}</span>
+                    <span className="text-slate-400 text-xs">{c.dept}</span>
                   </button>
                 ))}
               </div>
@@ -267,7 +267,7 @@ export default function TaskRecipientPickerModal({
           </div>
 
           {/* 선택 제어 버튼 */}
-          <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center justify-between text-sm">
             <span className="font-bold text-slate-700">
               선택됨: <span className="text-indigo-600 font-extrabold">{selectedEmails.size}명</span>
               {summaryText && <span className="text-slate-500 font-normal ml-1.5">({summaryText})</span>}
@@ -327,7 +327,7 @@ export default function TaskRecipientPickerModal({
                       <button
                         type="button"
                         onClick={() => toggleDeptExpand(section.dept)}
-                        className="flex-1 text-left text-xs font-bold text-slate-800 cursor-pointer"
+                        className="flex-1 text-left text-sm font-bold text-slate-800 cursor-pointer"
                       >
                         {section.dept}
                       </button>
@@ -343,7 +343,7 @@ export default function TaskRecipientPickerModal({
                         {section.members.map((m) => (
                           <label
                             key={m.email}
-                            className="flex items-center gap-2 py-1 px-1.5 rounded hover:bg-white cursor-pointer text-xs"
+                            className="flex items-center gap-2 py-1 px-1.5 rounded hover:bg-white cursor-pointer text-sm"
                           >
                             <input
                               type="checkbox"
@@ -373,7 +373,7 @@ export default function TaskRecipientPickerModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
+            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
           >
             취소
           </button>
@@ -381,7 +381,7 @@ export default function TaskRecipientPickerModal({
             type="button"
             onClick={handleApply}
             disabled={selectedEmails.size === 0}
-            className="px-5 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-colors cursor-pointer"
+            className="px-5 py-2 text-sm font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-colors cursor-pointer"
           >
             선택 완료 ({selectedEmails.size}명)
           </button>

@@ -318,7 +318,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
         </div>
 
         {/* 단계 인디케이터 */}
-        <div className="flex items-center gap-2 px-6 py-2.5 bg-indigo-50/50 border-b border-slate-100 text-xs font-bold select-none">
+        <div className="flex items-center gap-2 px-6 py-2.5 bg-indigo-50/50 border-b border-slate-100 text-sm font-bold select-none">
           <span className={step === 1 ? "text-indigo-600 font-extrabold" : "text-slate-500"}>
             ① 업무 내용 및 기한 설정
           </span>
@@ -331,7 +331,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
         {/* 본문 */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {error && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl p-3">
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm font-semibold rounded-xl p-3">
               ⚠️ {error}
             </div>
           )}
@@ -341,7 +341,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
             <div className="space-y-4">
               {/* 업무명 */}
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                <label className="block text-sm font-bold text-slate-800 mb-1.5">
                   업무명 <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -357,7 +357,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
 
               {/* 업무 유형 선택 */}
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                <label className="block text-sm font-bold text-slate-800 mb-1.5">
                   업무 유형 <span className="text-rose-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-3">
@@ -401,7 +401,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
 
               {/* 기한 설정 */}
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                <label className="block text-sm font-bold text-slate-800 mb-1.5">
                   기한 (마감 일시) <span className="text-rose-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-3">
@@ -429,7 +429,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
 
               {/* 내용 (피드백 8번 명칭 + 피드백 9번 MemoEditorToolbar 서식 편집기) */}
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                <label className="block text-sm font-bold text-slate-800 mb-1.5">
                   내용
                 </label>
                 <div className="rounded-xl border border-slate-300 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent">
@@ -463,7 +463,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
                       <span>📎</span>
                       <span>작성 양식 파일 첨부 (선택, 최대 5개)</span>
                     </h4>
@@ -482,7 +482,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
                       />
                       <label
                         htmlFor="task-form-file-input"
-                        className="px-3 py-1.5 bg-white border border-slate-300 hover:border-indigo-500 hover:text-indigo-600 text-xs font-bold text-slate-700 rounded-lg cursor-pointer transition-colors inline-block"
+                        className="px-3 py-1.5 bg-white border border-slate-300 hover:border-indigo-500 hover:text-indigo-600 text-sm font-bold text-slate-700 rounded-lg cursor-pointer transition-colors inline-block"
                       >
                         {uploadingForm ? "올리는 중…" : "+ 파일 추가"}
                       </label>
@@ -495,7 +495,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
                     {formFiles.map((file, idx) => (
                       <div
                         key={idx}
-                        className="px-3 py-2 flex items-center justify-between text-xs"
+                        className="px-3 py-2 flex items-center justify-between text-sm"
                       >
                         <span className="font-semibold text-slate-800 truncate flex-1 mr-2">
                           📄 {file.name}
@@ -518,13 +518,13 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
               {/* 수신자 선택 영역 */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800">
+                  <label className="text-sm font-bold text-slate-800">
                     업무 수신자 지정 <span className="text-rose-500">*</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => setIsPickerOpen(true)}
-                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-sm font-bold transition-colors cursor-pointer"
                   >
                     👥 조직도에서 선택
                   </button>
@@ -532,7 +532,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
 
                 {selectedUsers.length > 0 ? (
                   <div className="border border-slate-200 rounded-xl p-3.5 bg-slate-50/50 space-y-2">
-                    <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                    <div className="text-sm font-bold text-slate-700 flex items-center justify-between">
                       <span>지정된 수신자: {selectedUsers.length}명</span>
                       {recipientSummary && (
                         <span className="text-indigo-600 font-normal">({recipientSummary})</span>
@@ -579,7 +579,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
               <button
                 type="button"
                 onClick={handleModalClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
               >
                 취소
               </button>
@@ -587,7 +587,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
                 type="button"
                 onClick={handlePrepare}
                 disabled={loading || !title.trim()}
-                className="px-5 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-colors cursor-pointer flex items-center gap-1.5"
+                className="px-5 py-2 text-sm font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-colors cursor-pointer flex items-center gap-1.5"
               >
                 {loading ? "준비 중…" : "다음 (수신자 지정) ›"}
               </button>
@@ -598,7 +598,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
                 type="button"
                 onClick={() => setStep(1)}
                 disabled={loading}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
               >
                 ← 이전
               </button>
@@ -606,7 +606,7 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
                 type="button"
                 onClick={handleSend}
                 disabled={loading || selectedUsers.length === 0}
-                className="px-6 py-2.5 text-xs font-extrabold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
+                className="px-6 py-2.5 text-sm font-extrabold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
               >
                 {loading ? (
                   <>

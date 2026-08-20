@@ -595,7 +595,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
     return (
       <div key={task.id} className="space-y-3">
         {monthDividerKey && (
-          <div className="flex items-center gap-3 pt-2 pb-1 text-xs select-none">
+          <div className="flex items-center gap-3 pt-2 pb-1 text-sm select-none">
             <span className="h-px flex-1 bg-slate-200" />
             <span className="px-3 py-1 bg-slate-100/90 text-slate-600 font-extrabold rounded-full border border-slate-200 shadow-2xs">
               📅 {monthDividerKey}
@@ -618,7 +618,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
         >
           <div className="space-y-1.5 flex-1 min-w-0">
             {/* 1행: 발신자 및 메타 정보 */}
-            <div className="flex items-center gap-2 flex-wrap text-xs">
+            <div className="flex items-center gap-2 flex-wrap text-sm">
               <span className="font-semibold text-slate-600">
                 {task.selfAssigned ? "본인 등록" : `${task.senderName} 선생님`}
               </span>
@@ -646,31 +646,31 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
           {/* 우측: 상태 칩 & D-Day 뱃지 */}
           <div className="flex items-center gap-2 flex-shrink-0">
             {isCanceled ? (
-              <span className="px-2.5 py-1 bg-slate-100 text-slate-500 rounded-full text-xs font-bold">
+              <span className="px-2.5 py-1 bg-slate-100 text-slate-500 rounded-full text-sm font-bold">
                 🚫 철회됨
               </span>
             ) : myStatus.state === "DONE" ? (
-              <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-extrabold flex items-center gap-1">
+              <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full text-sm font-extrabold flex items-center gap-1">
                 <span>✅</span>
                 <span>완료됨</span>
               </span>
             ) : myStatus.state === "DECLINED" ? (
-              <span className="px-2.5 py-1 bg-rose-100 text-rose-800 rounded-full text-xs font-bold">
+              <span className="px-2.5 py-1 bg-rose-100 text-rose-800 rounded-full text-sm font-bold">
                 거절함
               </span>
             ) : myStatus.state === "ACCEPTED" ? (
-              <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-extrabold flex items-center gap-1">
+              <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-extrabold flex items-center gap-1">
                 <span>진행 중</span>
               </span>
             ) : (
-              <span className="px-2.5 py-1 bg-amber-100 text-amber-900 rounded-full text-xs font-extrabold flex items-center gap-1">
+              <span className="px-2.5 py-1 bg-amber-100 text-amber-900 rounded-full text-sm font-extrabold flex items-center gap-1">
                 <span>수락 전</span>
               </span>
             )}
 
             {!isCanceled && myStatus.state !== "DONE" && (
               <span
-                className={`px-2.5 py-1 rounded-full text-xs font-black ${
+                className={`px-2.5 py-1 rounded-full text-sm font-black ${
                   task.noDue
                     ? "bg-slate-100 text-slate-600 border border-slate-200"
                     : remaining.isPast
@@ -696,11 +696,11 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
             {/* 업무 내용 (피드백 8번 '내용' + 피드백 6,9번 autolink) */}
             {task.body && (
               <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-1.5 shadow-2xs">
-                <div className="text-xs font-bold text-slate-700">내용</div>
+                <div className="text-sm font-bold text-slate-700">내용</div>
                 <MemoRichBody
                   body={task.body}
                   isPlain={task.contentFormat !== "md1"}
-                  className="text-xs text-slate-800 leading-relaxed font-sans"
+                  className="text-sm text-slate-800 leading-relaxed font-sans"
                 />
               </div>
             )}
@@ -708,14 +708,14 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
             {/* 배포 양식 파일 다운로드 */}
             {task.formFiles && task.formFiles.length > 0 && (
               <div className="space-y-1.5">
-                <div className="text-xs font-bold text-slate-700">작성 양식 파일 내려받기</div>
+                <div className="text-sm font-bold text-slate-700">작성 양식 파일 내려받기</div>
                 <div className="flex flex-wrap gap-2">
                   {task.formFiles.map((f, i) => (
                     <a
                       key={i}
                       href={`/api/tasks/file?taskId=${task.id}&fileId=${f.driveFileId}`}
                       download
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-400 hover:text-indigo-600 rounded-xl text-xs font-semibold text-slate-700 transition-colors shadow-2xs"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-400 hover:text-indigo-600 rounded-xl text-sm font-semibold text-slate-700 transition-colors shadow-2xs"
                     >
                       <span>📄</span>
                       <span>{f.name}</span>
@@ -731,12 +731,12 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
 
             {/* 거절 사유 또는 완료 메모 표시 (피드백 27번) */}
             {myStatus.state === "DECLINED" && myStatus.note && (
-              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-800">
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-800">
                 <strong>거절 사유:</strong> {myStatus.note}
               </div>
             )}
             {myStatus.state === "DONE" && myStatus.note && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800">
                 <strong>완료 메모:</strong> {myStatus.note}
               </div>
             )}
@@ -751,7 +751,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                       type="button"
                       onClick={() => handleTransition(task.id, "accept")}
                       disabled={transitionLoading}
-                      className="flex-1 sm:flex-initial px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
+                      className="flex-1 sm:flex-initial px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <span>🤝</span>
                       <span>{transitionLoading ? "처리 중…" : "업무 수락하기"}</span>
@@ -763,7 +763,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                         setDeclineReason("");
                       }}
                       disabled={transitionLoading}
-                      className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                      className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
                     >
                       거절
                     </button>
@@ -775,7 +775,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                   <div className="w-full space-y-3">
                     {task.kind === "confirm" ? (
                       <div className="flex items-center justify-between flex-wrap gap-2">
-                        <span className="text-xs text-slate-500">
+                        <span className="text-sm text-slate-500">
                           업무를 확인하고 처리를 완료하셨다면 완료 버튼을 눌러주세요.
                         </span>
                         <button
@@ -785,7 +785,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                             setCompleteNote("");
                           }}
                           disabled={transitionLoading}
-                          className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5"
+                          className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5"
                         >
                           <span>✅</span>
                           <span>{transitionLoading ? "처리 중…" : "처리 완료 체크"}</span>
@@ -801,12 +801,12 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                             return (
                               <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-4 space-y-3">
                                 <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 text-xs">
+                                  <div className="flex items-center gap-2 text-sm">
                                     <span className="text-base">📄</span>
                                     <span className="font-bold text-slate-900">
                                       {staged.displayName}
                                     </span>
-                                    <span className="text-slate-500">
+                                    <span className="text-slate-500 text-xs">
                                       ({(staged.file.size / 1024).toFixed(0)} KB)
                                     </span>
                                   </div>
@@ -819,7 +819,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                         return next;
                                       });
                                     }}
-                                    className="text-xs text-slate-400 hover:text-rose-600 font-bold"
+                                    className="text-sm text-slate-400 hover:text-rose-600 font-bold"
                                   >
                                     ✕ 취소
                                   </button>
@@ -837,7 +837,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                     }}
                                     placeholder="제출 시 남길 메모 (선택, 예: 수정본 포함)"
                                     maxLength={500}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 text-slate-900"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 text-slate-900"
                                   />
                                 </div>
 
@@ -846,7 +846,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                     type="button"
                                     onClick={() => handleSubmitFile(task.id, staged.file, staged.note)}
                                     disabled={submittingTaskId === task.id}
-                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs flex items-center gap-1.5"
+                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold transition-colors shadow-2xs flex items-center gap-1.5"
                                   >
                                     {submittingTaskId === task.id ? (
                                       <>
@@ -864,7 +864,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
 
                           return (
                             <div className="flex items-center justify-between flex-wrap gap-2">
-                              <div className="text-xs text-slate-500">
+                              <div className="text-sm text-slate-500">
                                 작성한 서식 파일을 첨부하여 제출해 주세요. (파일명은 규칙에 따라 자동 정리됩니다)
                               </div>
                               <div>
@@ -892,7 +892,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                 />
                                 <label
                                   htmlFor={`submit-file-${task.id}`}
-                                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer inline-flex items-center gap-1.5"
+                                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-colors shadow-2xs cursor-pointer inline-flex items-center gap-1.5"
                                 >
                                   <span>📁</span>
                                   <span>작성 파일 선택하기</span>
@@ -912,7 +912,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                     <div className="space-y-2">
                       {task.kind === "confirm" ? (
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
+                          <span className="text-sm text-emerald-700 font-bold flex items-center gap-1">
                             <span>✅</span>
                             <span>완료 처리되었습니다. ({formatFull(myStatus.at)})</span>
                           </span>
@@ -920,7 +920,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                             type="button"
                             onClick={() => handleTransition(task.id, "undone")}
                             disabled={transitionLoading}
-                            className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                            className="text-sm text-slate-500 hover:text-slate-800 underline cursor-pointer"
                           >
                             완료 취소 (다시 진행 중으로)
                           </button>
@@ -928,7 +928,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                       ) : (
                         <div className="bg-white border border-emerald-200 rounded-xl p-3.5 space-y-3">
                           <div className="flex items-center justify-between">
-                            <div className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                            <div className="text-sm font-bold text-emerald-800 flex items-center gap-1.5">
                               <span>✅</span>
                               <span>제출 완료 ({formatFull(myStatus.at)})</span>
                             </div>
@@ -954,7 +954,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                               />
                               <label
                                 htmlFor={`resubmit-file-${task.id}`}
-                                className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                                className="text-sm text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
                               >
                                 파일 다시 제출 (교체)
                               </label>
@@ -967,7 +967,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                             if (!staged) return null;
                             return (
                               <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3 space-y-2">
-                                <div className="flex items-center justify-between text-xs">
+                                <div className="flex items-center justify-between text-sm">
                                   <div className="flex items-center gap-1.5">
                                     <span>📄</span>
                                     <span className="font-bold text-slate-900 truncate max-w-xs">
@@ -986,7 +986,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                         return next;
                                       });
                                     }}
-                                    className="text-xs text-slate-400 hover:text-rose-600 font-bold"
+                                    className="text-sm text-slate-400 hover:text-rose-600 font-bold"
                                   >
                                     ✕ 취소
                                   </button>
@@ -1004,7 +1004,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                     }}
                                     placeholder="재제출 시 남길 메모 (선택, 예: 수정본 반영)"
                                     maxLength={500}
-                                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 text-slate-900"
+                                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 text-slate-900"
                                   />
                                 </div>
 
@@ -1016,7 +1016,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                                     type="button"
                                     onClick={() => handleSubmitFile(task.id, staged.file, staged.note)}
                                     disabled={submittingTaskId === task.id}
-                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs flex items-center justify-center gap-1 shrink-0 cursor-pointer self-end sm:self-auto"
+                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold transition-colors shadow-2xs flex items-center justify-center gap-1 shrink-0 cursor-pointer self-end sm:self-auto"
                                   >
                                     {submittingTaskId === task.id ? (
                                       <>
@@ -1034,7 +1034,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
 
                           {/* 기존 제출물 확인 링크 */}
                           {mySubmission && (
-                            <div className="flex items-center justify-between text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-200/80">
+                            <div className="flex items-center justify-between text-sm bg-slate-50 p-2.5 rounded-lg border border-slate-200/80">
                               <span className="font-semibold text-slate-800 truncate mr-2">
                                 📄 {mySubmission.name}
                               </span>
@@ -1056,14 +1056,14 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                 {/* 4) DECLINED 상태: 다시 수락하기 */}
                 {myStatus.state === "DECLINED" && (
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-rose-700 font-semibold">
+                    <span className="text-sm text-rose-700 font-semibold">
                       거절 처리된 업무입니다.
                     </span>
                     <button
                       type="button"
                       onClick={() => handleTransition(task.id, "accept")}
                       disabled={transitionLoading}
-                      className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                      className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-sm font-bold transition-colors cursor-pointer"
                     >
                       다시 수락하기
                     </button>
@@ -1073,7 +1073,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
             )}
           </div>
         )}
-      </div>
+        </div>
       </div>
     );
   };
@@ -1098,7 +1098,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
             <button
               type="button"
               onClick={() => setActiveTab("inbox")}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === "inbox"
                   ? "bg-white text-indigo-700 shadow-2xs font-extrabold"
                   : "text-slate-600 hover:text-slate-900"
@@ -1115,7 +1115,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
             <button
               type="button"
               onClick={() => setActiveTab("sent")}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === "sent"
                   ? "bg-white text-indigo-700 shadow-2xs font-extrabold"
                   : "text-slate-600 hover:text-slate-900"
@@ -1130,19 +1130,19 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
             <button
               type="button"
               onClick={() => setIsComposerOpen(true)}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <span>+ 업무 등록</span>
             </button>
           ) : (
             <div className="flex items-center gap-2 flex-wrap justify-end">
-              <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
+              <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
                 <span>🔒</span>
                 <span>조직 정보가 등록되면 업무를 보낼 수 있습니다.</span>
                 <button
                   type="button"
                   onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
-                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer ml-1"
+                  className="text-sm font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer ml-1"
                 >
                   내 조직 정보 신청 →
                 </button>
@@ -1150,7 +1150,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               <button
                 type="button"
                 disabled
-                className="px-4 py-2 bg-slate-200 text-slate-400 text-xs font-bold rounded-xl cursor-default opacity-60 flex items-center gap-1.5"
+                className="px-4 py-2 bg-slate-200 text-slate-400 text-sm font-bold rounded-xl cursor-default opacity-60 flex items-center gap-1.5"
               >
                 <span>+ 업무 등록</span>
               </button>
@@ -1164,12 +1164,12 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
         <div className="space-y-4">
           {/* 구독 오류 안내 블록 (피드백 5번 조용한 실패 금지) */}
           {loadError && (
-            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-semibold flex items-center justify-between">
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-800 font-semibold flex items-center justify-between">
               <span>{loadError}</span>
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="text-rose-700 underline font-bold ml-2"
+                className="text-rose-700 underline font-bold ml-2 cursor-pointer"
               >
                 새로고침
               </button>
@@ -1177,7 +1177,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
           )}
 
           {/* 필터 칩 및 셀프 등록 버튼 */}
-          <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 text-xs">
+          <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 text-sm">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -1236,13 +1236,13 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               </button>
             ) : (
               <div className="flex items-center gap-2 flex-wrap justify-end">
-                <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
+                <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
                   <span>🔒</span>
                   <span>조직 정보가 등록되면 내 할 일을 쓸 수 있습니다.</span>
                   <button
                     type="button"
                     onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
-                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer ml-1"
+                    className="text-sm font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer ml-1"
                   >
                     내 조직 정보 신청 →
                   </button>
@@ -1284,7 +1284,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               {/* 2. 기한 없음 구역 (A안, 0건이면 감춤, task_no_due_spec §3-2) */}
               {visibleNoDueTasks.length > 0 && (
                 <div className="space-y-3 pt-2">
-                  <div className="flex items-center gap-3 pt-2 pb-1 text-xs select-none">
+                  <div className="flex items-center gap-3 pt-2 pb-1 text-sm select-none">
                     <span className="h-px flex-1 bg-slate-200" />
                     <span className="px-3 py-1 bg-slate-100/90 text-slate-600 font-extrabold rounded-full border border-slate-200 shadow-2xs">
                       기한 없음 {visibleNoDueTasks.length}
@@ -1301,7 +1301,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                   <button
                     type="button"
                     onClick={() => setPageSize((prev) => prev + 25)}
-                    className="px-6 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-colors cursor-pointer"
+                    className="px-6 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-sm rounded-xl shadow-2xs transition-colors cursor-pointer"
                   >
                     더 보기 ({sortedFilteredTasks.length - visibleTasks.length}개 남음) ↓
                   </button>
@@ -1315,7 +1315,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                     type="button"
                     onClick={loadOlderTasks}
                     disabled={olderLoading}
-                    className="px-6 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 font-semibold text-xs rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                    className="px-6 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 font-semibold text-sm rounded-xl transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {olderLoading ? "불러오는 중…" : "지난 업무 보기 (90일 이전)"}
                   </button>
@@ -1359,9 +1359,9 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               </button>
             </div>
 
-            <div className="space-y-3.5 text-xs">
+            <div className="space-y-3.5 text-sm">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block text-sm font-bold text-slate-700 mb-1">
                   할 일 제목 <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -1369,17 +1369,17 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                   value={selfTitle}
                   onChange={(e) => setSelfTitle(e.target.value)}
                   placeholder="예: 2학기 교과진도표 작성"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900 font-medium"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900 font-medium"
                   maxLength={100}
                 />
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-700">
+                  <label className="text-sm font-bold text-slate-700">
                     마감 기한 {!selfNoDue && <span className="text-rose-500">*</span>}
                   </label>
-                  <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-medium cursor-pointer select-none">
+                  <label className="inline-flex items-center gap-1.5 text-sm text-slate-700 font-medium cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={selfNoDue}
@@ -1391,7 +1391,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                 </div>
                 <div className={`grid grid-cols-2 gap-2 transition-opacity ${selfNoDue ? "opacity-50" : ""}`}>
                   <div>
-                    <label className="block text-[11px] text-slate-500 mb-1">
+                    <label className="block text-sm text-slate-500 mb-1">
                       마감 날짜 {!selfNoDue && <span className="text-rose-500">*</span>}
                     </label>
                     <input
@@ -1399,11 +1399,11 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                       value={selfDueDate}
                       onChange={(e) => setSelfDueDate(e.target.value)}
                       disabled={selfNoDue}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] text-slate-500 mb-1">
+                    <label className="block text-sm text-slate-500 mb-1">
                       마감 시각 {!selfNoDue && <span className="text-rose-500">*</span>}
                     </label>
                     <input
@@ -1411,7 +1411,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                       value={selfDueTime}
                       onChange={(e) => setSelfDueTime(e.target.value)}
                       disabled={selfNoDue}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-900 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -1419,7 +1419,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
 
               {/* 내용 칸 (피드백 32-ⓐ 서식 지원) */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">내용 / 메모 (선택)</label>
+                <label className="block text-sm font-bold text-slate-700 mb-1">내용 / 메모 (선택)</label>
                 <div className="rounded-xl border border-slate-300 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent">
                   <MemoEditorToolbar
                     editorRef={selfEditorRef}
@@ -1437,7 +1437,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                     aria-multiline="true"
                     aria-label="할 일 내용"
                     data-placeholder="유의사항이나 메모를 자유롭게 적어두세요."
-                    className="w-full px-3.5 py-2.5 text-xs leading-relaxed min-h-[100px] max-h-[200px] overflow-y-auto focus:outline-none bg-white text-slate-900 font-sans empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 [&_blockquote]:py-0.5 [&_blockquote]:px-2.5 [&_blockquote]:rounded-r-md [&_blockquote]:my-1 [&_blockquote]:text-slate-700 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic"
+                    className="w-full px-3.5 py-2.5 text-sm leading-relaxed min-h-[100px] max-h-[200px] overflow-y-auto focus:outline-none bg-white text-slate-900 font-sans empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 [&_blockquote]:py-0.5 [&_blockquote]:px-2.5 [&_blockquote]:rounded-r-md [&_blockquote]:my-1 [&_blockquote]:text-slate-700 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic"
                   />
                 </div>
               </div>
@@ -1446,7 +1446,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               <div className="space-y-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-bold text-slate-800 flex items-center gap-1">
+                    <div className="text-sm font-bold text-slate-800 flex items-center gap-1">
                       <span>📎</span>
                       <span>참고 파일 추가 (선택, 최대 5개)</span>
                     </div>
@@ -1479,7 +1479,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                       />
                       <label
                         htmlFor="self-add-file-input"
-                        className="px-2.5 py-1 bg-white border border-slate-300 hover:border-indigo-500 hover:text-indigo-600 text-slate-700 rounded-lg cursor-pointer transition-colors inline-block font-bold text-[11px]"
+                        className="px-2.5 py-1 bg-white border border-slate-300 hover:border-indigo-500 hover:text-indigo-600 text-slate-700 rounded-lg cursor-pointer transition-colors inline-block font-bold text-sm"
                       >
                         + 파일 선택
                       </label>
@@ -1490,7 +1490,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                 {selfFiles.length > 0 && (
                   <div className="divide-y divide-slate-200 border border-slate-200 rounded-lg bg-white overflow-hidden">
                     {selfFiles.map((f, i) => (
-                      <div key={i} className="px-2.5 py-1.5 flex items-center justify-between text-xs">
+                      <div key={i} className="px-2.5 py-1.5 flex items-center justify-between text-sm">
                         <span className="font-medium text-slate-800 truncate mr-2 flex-1">
                           📄 {f.name} ({(f.size / 1024).toFixed(0)} KB)
                         </span>
@@ -1512,7 +1512,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               <button
                 type="button"
                 onClick={() => setIsSelfAddOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
               >
                 취소
               </button>
@@ -1520,7 +1520,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                 type="button"
                 onClick={handleSelfAdd}
                 disabled={selfSubmitting || !selfTitle.trim()}
-                className="px-5 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 cursor-pointer shadow-2xs"
+                className="px-5 py-2 text-sm font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 cursor-pointer shadow-2xs"
               >
                 {selfSubmitting ? (selfUploadProgress || "등록 중…") : "등록하기"}
               </button>
@@ -1534,7 +1534,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-sm w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div>
-              <h4 className="text-sm font-bold text-slate-900">업무 거절 사유 입력</h4>
+              <h4 className="text-base font-bold text-slate-900">업무 거절 사유 입력</h4>
               <p className="text-xs text-slate-500 mt-1">
                 업무를 수행하기 어려운 사유를 입력해 주세요. (발신 선생님께 전달됩니다)
               </p>
@@ -1544,7 +1544,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               value={declineReason}
               onChange={(e) => setDeclineReason(e.target.value)}
               placeholder="예: 해당 기간 출장 일정으로 인하여 작성이 어렵습니다."
-              className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 text-slate-900"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 text-slate-900"
               maxLength={500}
             />
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
@@ -1554,7 +1554,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                   setDecliningTaskId(null);
                   setDeclineReason("");
                 }}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
+                className="px-3.5 py-1.5 text-sm font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
               >
                 취소
               </button>
@@ -1568,7 +1568,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                   handleTransition(decliningTaskId, "decline", declineReason.trim());
                 }}
                 disabled={transitionLoading || !declineReason.trim()}
-                className="px-4 py-1.5 text-xs font-bold bg-rose-600 text-white rounded-xl hover:bg-rose-700 disabled:opacity-50 cursor-pointer shadow-2xs"
+                className="px-4 py-1.5 text-sm font-bold bg-rose-600 text-white rounded-xl hover:bg-rose-700 disabled:opacity-50 cursor-pointer shadow-2xs"
               >
                 {transitionLoading ? "처리 중…" : "거절 확정"}
               </button>
@@ -1582,7 +1582,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-sm w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div>
-              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <h4 className="text-base font-bold text-slate-900 flex items-center gap-1.5">
                 <span>✅</span>
                 <span>업무 처리 완료</span>
               </h4>
@@ -1595,7 +1595,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
               value={completeNote}
               onChange={(e) => setCompleteNote(e.target.value)}
               placeholder="예: 요청하신 서류 확인 후 교무실 서랍에 비치해 두었습니다. (선택)"
-              className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-slate-900"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-slate-900"
               maxLength={500}
             />
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
@@ -1605,7 +1605,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                   setCompletingTaskId(null);
                   setCompleteNote("");
                 }}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
+                className="px-3.5 py-1.5 text-sm font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
               >
                 취소
               </button>
@@ -1615,7 +1615,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                   handleTransition(completingTaskId, "done", completeNote.trim());
                 }}
                 disabled={transitionLoading}
-                className="px-4 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 cursor-pointer shadow-2xs"
+                className="px-4 py-1.5 text-sm font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 cursor-pointer shadow-2xs"
               >
                 {transitionLoading ? "처리 중…" : "완료 확정"}
               </button>

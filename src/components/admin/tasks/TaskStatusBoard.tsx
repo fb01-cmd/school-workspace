@@ -258,7 +258,7 @@ export default function TaskStatusBoard() {
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       {/* 좌측: 보낸 업무 목록 사이드 */}
       <div className="lg:col-span-4 space-y-2">
-        <div className="text-xs font-bold text-slate-500 px-1 mb-2">보낸 업무 목록 ({normalTasks.length}건)</div>
+        <div className="text-sm font-bold text-slate-500 px-1 mb-2">보낸 업무 목록 ({normalTasks.length}건)</div>
         <div className="space-y-2 max-h-[75vh] overflow-y-auto pr-1">
           {normalTasks.map((task) => {
             const isSelected = selectedTaskId === task.id;
@@ -307,7 +307,7 @@ export default function TaskStatusBoard() {
                   )}
                 </div>
 
-                <div className="font-bold text-slate-900 text-xs line-clamp-1 mb-1.5">
+                <div className="font-bold text-slate-900 text-sm line-clamp-1 mb-1.5">
                   {task.title}
                 </div>
 
@@ -327,7 +327,7 @@ export default function TaskStatusBoard() {
               <button
                 type="button"
                 onClick={() => setShowSelfTasks(!showSelfTasks)}
-                className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                className="w-full flex items-center justify-between px-2 py-1.5 text-sm font-bold text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
                 <span>📝 내가 등록한 할 일 ({selfTasks.length}건)</span>
                 <span className="text-xs">{showSelfTasks ? "▲ 접기" : "▼ 펼치기"}</span>
@@ -342,13 +342,13 @@ export default function TaskStatusBoard() {
                         key={task.id}
                         type="button"
                         onClick={() => setSelectedTaskId(task.id)}
-                        className={`w-full text-left p-2.5 rounded-lg border transition-all cursor-pointer text-xs ${
+                        className={`w-full text-left p-2.5 rounded-lg border transition-all cursor-pointer text-sm ${
                           isSelected
                             ? "bg-indigo-50 border-indigo-500 font-bold"
                             : "bg-slate-50/70 border-slate-200 hover:bg-slate-100"
                         }`}
                       >
-                        <div className="truncate text-slate-800">{task.title}</div>
+                        <div className="truncate text-slate-800 font-medium">{task.title}</div>
                         <div className="text-xs text-slate-400 mt-0.5">{remaining.text}</div>
                       </button>
                     );
@@ -366,7 +366,7 @@ export default function TaskStatusBoard() {
           {/* 상단 헤더 및 액션 버튼들 */}
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 border-b border-slate-100 pb-5">
             <div className="space-y-1.5 flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap text-xs">
+              <div className="flex items-center gap-2 flex-wrap text-sm">
                 <span
                   className={`font-bold px-2 py-0.5 rounded-full ${
                     selectedTask.kind === "submit"
@@ -421,7 +421,7 @@ export default function TaskStatusBoard() {
                   onClick={handleNudge}
                   disabled={nudging || doneCount + declinedCount === totalCount}
                   title="미완료 선생님들께 리마인드 알림을 발송합니다 (하루 1회 제한)"
-                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold transition-colors disabled:opacity-40 cursor-pointer flex items-center gap-1.5"
+                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-sm font-bold transition-colors disabled:opacity-40 cursor-pointer flex items-center gap-1.5"
                 >
                   <span>📢</span>
                   <span>{nudging ? "발송 중…" : "리마인드 알림"}</span>
@@ -434,7 +434,7 @@ export default function TaskStatusBoard() {
                     target="_blank"
                     rel="noopener noreferrer"
                     title="컴퓨터의 드라이브 폴더에서도 보려면 — 드라이브에서 이 폴더에 [바로가기 추가]를 해두세요."
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 rounded-xl text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 rounded-xl text-sm font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <span>📁</span>
                     <span>제출함 열기</span>
@@ -445,7 +445,7 @@ export default function TaskStatusBoard() {
                 <button
                   type="button"
                   onClick={() => setShowCancelModal(true)}
-                  className="px-3 py-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  className="px-3 py-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl text-sm font-bold transition-colors cursor-pointer"
                 >
                   철회
                 </button>
@@ -456,11 +456,11 @@ export default function TaskStatusBoard() {
           {/* 내용 카드 (피드백 8번 '내용' + 피드백 6,9번 MemoRichBody autolink) */}
           {selectedTask.body && (
             <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 space-y-2">
-              <div className="text-xs font-bold text-slate-500">내용</div>
+              <div className="text-sm font-bold text-slate-700">내용</div>
               <MemoRichBody
                 body={selectedTask.body}
                 isPlain={selectedTask.contentFormat !== "md1"}
-                className="text-xs text-slate-800 leading-relaxed font-sans"
+                className="text-sm text-slate-800 leading-relaxed font-sans"
               />
             </div>
           )}
@@ -468,14 +468,14 @@ export default function TaskStatusBoard() {
           {/* 첨부된 양식 파일 목록 */}
           {selectedTask.formFiles && selectedTask.formFiles.length > 0 && (
             <div className="space-y-1.5">
-              <div className="text-xs font-bold text-slate-700">배포 양식 파일</div>
+              <div className="text-sm font-bold text-slate-700">배포 양식 파일</div>
               <div className="flex flex-wrap gap-2">
                 {selectedTask.formFiles.map((f, i) => (
                   <a
                     key={i}
                     href={`/api/tasks/file?taskId=${selectedTask.id}&fileId=${f.driveFileId}`}
                     download
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-400 hover:text-indigo-600 rounded-xl text-xs font-semibold text-slate-700 transition-colors shadow-2xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-400 hover:text-indigo-600 rounded-xl text-sm font-semibold text-slate-700 transition-colors shadow-2xs"
                   >
                     <span>📄</span>
                     <span>{f.name}</span>
@@ -523,12 +523,12 @@ export default function TaskStatusBoard() {
 
           {/* 수신자별 상태 테이블 */}
           <div className="space-y-2">
-            <div className="text-xs font-bold text-slate-800">
+            <div className="text-sm font-bold text-slate-800">
               수신자별 처리 현황 ({recipients.length}명)
             </div>
             <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
-              <table className="w-full text-left text-xs divide-y divide-slate-100">
-                <thead className="bg-slate-50/80 text-slate-600 font-semibold">
+              <table className="w-full text-left text-sm divide-y divide-slate-100">
+                <thead className="bg-slate-50/80 text-slate-600 font-semibold text-sm">
                   <tr>
                     <th className="px-3.5 py-2.5">이름</th>
                     <th className="px-3.5 py-2.5">소속</th>
@@ -628,7 +628,7 @@ export default function TaskStatusBoard() {
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-sm w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div>
               <h4 className="text-sm font-bold text-slate-900">업무를 철회하시겠습니까?</h4>
-              <p className="text-xs text-slate-600 mt-2 leading-relaxed bg-amber-50 p-2.5 rounded-xl border border-amber-200 font-medium">
+              <p className="text-sm text-slate-600 mt-2 leading-relaxed bg-amber-50 p-2.5 rounded-xl border border-amber-200 font-medium">
                 ⚠️ 이미 수락 {acceptedCount}명 · 완료 {doneCount}명이 있습니다. 철회하면 전원의 할 일에서 사라지며, 제출물은 보존 기간까지 남습니다.
               </p>
             </div>
@@ -637,7 +637,7 @@ export default function TaskStatusBoard() {
                 type="button"
                 onClick={() => setShowCancelModal(false)}
                 disabled={canceling}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
+                className="px-3.5 py-1.5 text-sm font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
               >
                 취소
               </button>
@@ -645,7 +645,7 @@ export default function TaskStatusBoard() {
                 type="button"
                 onClick={handleCancel}
                 disabled={canceling}
-                className="px-4 py-1.5 text-xs font-bold bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-50 cursor-pointer shadow-2xs"
+                className="px-4 py-1.5 text-sm font-bold bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-50 cursor-pointer shadow-2xs"
               >
                 {canceling ? "철회 중…" : "업무 철회 확정"}
               </button>

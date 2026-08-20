@@ -540,7 +540,7 @@ export default function MobileTasksSection() {
           <button
             type="button"
             onClick={() => document.dispatchEvent(new CustomEvent("openMyProfileModal"))}
-            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+            className="text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
           >
             내 조직 정보 신청 →
           </button>
@@ -562,7 +562,7 @@ export default function MobileTasksSection() {
       if (!staged) return null;
       return (
         <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3 space-y-2.5">
-          <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-1.5 min-w-0">
               <span>📄</span>
               <span className="font-bold text-slate-900 dark:text-white truncate">
@@ -581,7 +581,7 @@ export default function MobileTasksSection() {
                   return n;
                 });
               }}
-              className="text-xs text-slate-400 hover:text-rose-600 font-bold ml-1"
+              className="text-sm text-slate-400 hover:text-rose-600 font-bold ml-1 cursor-pointer"
             >
               취소
             </button>
@@ -598,7 +598,7 @@ export default function MobileTasksSection() {
             }
             placeholder="제출 시 남길 메모 (선택)"
             maxLength={500}
-            className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white"
+            className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
           />
 
           {mySubmission && (
@@ -611,7 +611,7 @@ export default function MobileTasksSection() {
             type="button"
             onClick={() => handleMobileSubmit(task.id, staged.file, staged.note)}
             disabled={submittingId === task.id}
-            className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shadow-xs"
+            className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-sm transition-colors shadow-xs cursor-pointer"
           >
             {submittingId === task.id ? uploadProgress || "제출 중…" : "🚀 제출 확정하기"}
           </button>
@@ -622,7 +622,7 @@ export default function MobileTasksSection() {
     return (
       <li key={task.id} className={isPending ? "bg-indigo-50/20 dark:bg-indigo-950/20" : "bg-white dark:bg-slate-900"}>
         {showMonthDivider && currentMonthKey && (
-          <div className="flex items-center gap-2 px-4 py-1.5 bg-slate-100/80 dark:bg-slate-800/80 text-[11px] font-extrabold text-slate-600 dark:text-slate-300 select-none border-b border-slate-200/50 dark:border-slate-700/50">
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-slate-100/80 dark:bg-slate-800/80 text-xs font-extrabold text-slate-600 dark:text-slate-300 select-none border-b border-slate-200/50 dark:border-slate-700/50">
             <span>📅</span>
             <span>{currentMonthKey}</span>
           </div>
@@ -689,7 +689,7 @@ export default function MobileTasksSection() {
         {/* 상세 펼침 */}
         {isOpen && (
           <div className="px-4 pb-4 pt-2 bg-slate-50 dark:bg-slate-850 border-t border-slate-100 dark:border-slate-800 space-y-3">
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between flex-wrap gap-1">
+            <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between flex-wrap gap-1">
               <span>{task.noDue ? "기한 없음" : `기한: ${formatFull(task.dueAt)}`}</span>
               <span className="font-semibold text-indigo-600 dark:text-indigo-400">
                 {task.kind === "submit" ? "📁 파일 제출 필요" : "✅ 확인 완료 필요"}
@@ -698,11 +698,11 @@ export default function MobileTasksSection() {
 
             {/* 내용 (피드백 8번 '내용' + 피드백 6,9번 autolink) */}
             {task.body && (
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-700/80 p-3 text-xs text-slate-800 dark:text-slate-200">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-700/80 p-3 text-sm text-slate-800 dark:text-slate-200">
                 <MemoRichBody
                   body={task.body}
                   isPlain={task.contentFormat !== "md1"}
-                  className="text-xs space-y-1.5 font-sans leading-relaxed"
+                  className="text-sm space-y-1.5 font-sans leading-relaxed"
                 />
               </div>
             )}
@@ -710,8 +710,8 @@ export default function MobileTasksSection() {
             {/* 양식 파일 */}
             {task.formFiles && task.formFiles.length > 0 && (
               <div className="space-y-1">
-                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                  양식 파일 내려받기
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  작성 양식 파일 내려받기
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {task.formFiles.map((f, i) => (
@@ -719,7 +719,7 @@ export default function MobileTasksSection() {
                       key={i}
                       href={`/api/tasks/file?taskId=${task.id}&fileId=${f.driveFileId}`}
                       download
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-300"
                     >
                       <span>📄</span>
                       <span className="truncate max-w-[150px]">{f.name}</span>
@@ -734,12 +734,12 @@ export default function MobileTasksSection() {
             <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 space-y-2">
               {/* 거절 사유 또는 완료 메모 표출 (피드백 27번) */}
               {myStatus.state === "DECLINED" && myStatus.note && (
-                <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl p-2.5 text-xs text-rose-700 dark:text-rose-300">
+                <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl p-2.5 text-sm text-rose-700 dark:text-rose-300">
                   <strong>거절 사유:</strong> {myStatus.note}
                 </div>
               )}
               {myStatus.state === "DONE" && myStatus.note && (
-                <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl p-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+                <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl p-2.5 text-sm text-emerald-700 dark:text-emerald-300">
                   <strong>완료 메모:</strong> {myStatus.note}
                 </div>
               )}
@@ -750,7 +750,7 @@ export default function MobileTasksSection() {
                     type="button"
                     onClick={() => handleTransition(task.id, "accept")}
                     disabled={actionLoadingId === task.id}
-                    className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-colors cursor-pointer"
                   >
                     {actionLoadingId === task.id ? "처리 중…" : "🤝 수락하기"}
                   </button>
@@ -758,7 +758,7 @@ export default function MobileTasksSection() {
                     type="button"
                     onClick={() => setDecliningId(task.id)}
                     disabled={actionLoadingId === task.id}
-                    className="px-3 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold rounded-xl text-xs cursor-pointer"
+                    className="px-3 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold rounded-xl text-sm cursor-pointer"
                   >
                     거절
                   </button>
@@ -770,18 +770,15 @@ export default function MobileTasksSection() {
                   {task.kind === "confirm" ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        setCompletingId(task.id);
-                        setCompleteNote("");
-                      }}
+                      onClick={() => setCompletingId(task.id)}
                       disabled={actionLoadingId === task.id}
-                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                     >
                       <span>✅</span>
                       <span>{actionLoadingId === task.id ? "처리 중…" : "완료 체크"}</span>
                     </button>
                   ) : (
-                    <div className="space-y-2">
+                    <div>
                       {stagedSubmitMap[task.id] ? (
                         renderStagedCard()
                       ) : (
@@ -810,7 +807,7 @@ export default function MobileTasksSection() {
                           />
                           <label
                             htmlFor={`mobile-submit-${task.id}`}
-                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                           >
                             <span>📁</span>
                             <span>파일/사진 선택하기</span>
@@ -824,14 +821,14 @@ export default function MobileTasksSection() {
 
               {myStatus.state === "DONE" && (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                  <div className="flex items-center justify-between text-sm text-emerald-600 dark:text-emerald-400 font-bold">
                     <span>✅ 완료 처리됨</span>
                     {task.kind === "confirm" ? (
                       <button
                         type="button"
                         onClick={() => handleTransition(task.id, "undone")}
                         disabled={actionLoadingId === task.id}
-                        className="text-[11px] text-slate-400 hover:text-slate-600 underline"
+                        className="text-sm text-slate-500 hover:text-slate-700 underline cursor-pointer"
                       >
                         완료 취소
                       </button>
@@ -858,7 +855,7 @@ export default function MobileTasksSection() {
                         />
                         <label
                           htmlFor={`mobile-resubmit-${task.id}`}
-                          className="text-[11px] text-indigo-500 font-bold underline cursor-pointer"
+                          className="text-sm text-indigo-500 font-bold underline cursor-pointer"
                         >
                           다시 제출 (교체)
                         </label>
@@ -875,13 +872,13 @@ export default function MobileTasksSection() {
               )}
 
               {myStatus.state === "DECLINED" && (
-                <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center justify-between text-sm">
                   <span className="text-rose-600 font-medium">거절됨</span>
                   <button
                     type="button"
                     onClick={() => handleTransition(task.id, "accept")}
                     disabled={actionLoadingId === task.id}
-                    className="text-xs text-indigo-600 font-bold underline cursor-pointer"
+                    className="text-sm text-indigo-600 font-bold underline cursor-pointer"
                   >
                     다시 수락하기
                   </button>
@@ -911,7 +908,7 @@ export default function MobileTasksSection() {
           <button
             type="button"
             onClick={() => setIsSelfAddOpen(true)}
-            className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+            className="text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 cursor-pointer"
           >
             + 추가
           </button>
@@ -922,7 +919,7 @@ export default function MobileTasksSection() {
       </div>
 
       {/* 탭 필터 바 (지시서 33번) */}
-      <div className="flex items-center border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 px-3 py-1.5 gap-1.5 text-xs">
+      <div className="flex items-center border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 px-3 py-1.5 gap-1.5 text-sm">
         <button
           type="button"
           onClick={() => setFilter("pending")}
@@ -960,12 +957,12 @@ export default function MobileTasksSection() {
 
       {/* 구독 오류 안내 블록 (피드백 5번 조용한 실패 금지) */}
       {loadError && (
-        <div className="p-3 bg-rose-50 border-b border-rose-200 text-xs text-rose-800 font-semibold flex items-center justify-between">
+        <div className="p-3 bg-rose-50 border-b border-rose-200 text-sm text-rose-800 font-semibold flex items-center justify-between">
           <span>{loadError}</span>
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="text-rose-700 underline font-bold ml-2"
+            className="text-rose-700 underline font-bold ml-2 cursor-pointer"
           >
             새로고침
           </button>
@@ -995,7 +992,7 @@ export default function MobileTasksSection() {
             {/* 2. 기한 없음 구역 (A안, 0건이면 감춤, task_no_due_spec §3-2) */}
             {visibleNoDueTasks.length > 0 && (
               <>
-                <li className="bg-slate-100/90 dark:bg-slate-800/90 px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 select-none border-b border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
+                <li className="bg-slate-100/90 dark:bg-slate-800/90 px-4 py-2 text-sm font-bold text-slate-600 dark:text-slate-300 select-none border-b border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <span>📋</span>
                     <span>기한 없음</span>
@@ -1015,7 +1012,7 @@ export default function MobileTasksSection() {
               <button
                 type="button"
                 onClick={() => setPageSize((prev) => prev + 20)}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-bold rounded-xl transition-colors cursor-pointer"
               >
                 더 보기 ({sortedFilteredTasks.length - visibleTasks.length}개 남음) ↓
               </button>
@@ -1029,19 +1026,19 @@ export default function MobileTasksSection() {
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 max-w-sm w-full space-y-3 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-            <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1">
               <span>📝</span>
               <span>내 할 일 추가</span>
             </h4>
             <button
               type="button"
               onClick={() => setIsSelfAddOpen(false)}
-              className="text-slate-400 text-xs p-1 cursor-pointer"
+              className="text-slate-400 text-sm p-1 cursor-pointer"
             >
               ✕
             </button>
           </div>
-          <div className="space-y-3 text-xs">
+          <div className="space-y-3 text-sm">
             <div>
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-0.5">할 일 제목 *</label>
               <input
@@ -1049,16 +1046,16 @@ export default function MobileTasksSection() {
                 value={selfTitle}
                 onChange={(e) => setSelfTitle(e.target.value)}
                 placeholder="예: 교과진도표 작성"
-                className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
                 maxLength={100}
               />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="font-bold text-slate-700 dark:text-slate-300 text-xs">
+                <label className="font-bold text-slate-700 dark:text-slate-300 text-sm">
                   마감 기한 {!selfNoDue && <span className="text-rose-500">*</span>}
                 </label>
-                <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 font-medium cursor-pointer select-none">
+                <label className="inline-flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-300 font-medium cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={selfNoDue}
@@ -1078,7 +1075,7 @@ export default function MobileTasksSection() {
                     value={selfDueDate}
                     onChange={(e) => setSelfDueDate(e.target.value)}
                     disabled={selfNoDue}
-                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:bg-slate-100 disabled:dark:bg-slate-800/50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:bg-slate-100 disabled:dark:bg-slate-800/50 disabled:text-slate-400 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div>
@@ -1090,7 +1087,7 @@ export default function MobileTasksSection() {
                     value={selfDueTime}
                     onChange={(e) => setSelfDueTime(e.target.value)}
                     disabled={selfNoDue}
-                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:bg-slate-100 disabled:dark:bg-slate-800/50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:bg-slate-100 disabled:dark:bg-slate-800/50 disabled:text-slate-400 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -1116,7 +1113,7 @@ export default function MobileTasksSection() {
                   aria-multiline="true"
                   aria-label="할 일 내용"
                   data-placeholder="메모를 자유롭게 적어두세요."
-                  className="w-full p-2 text-xs leading-relaxed min-h-[70px] max-h-[140px] overflow-y-auto focus:outline-none bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-sans empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 dark:[&_blockquote]:bg-indigo-950/40 [&_blockquote]:py-0.5 [&_blockquote]:px-2 [&_blockquote]:my-0.5 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic"
+                  className="w-full p-2 text-sm leading-relaxed min-h-[70px] max-h-[140px] overflow-y-auto focus:outline-none bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-sans empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-indigo-400 [&_blockquote]:bg-indigo-50/40 dark:[&_blockquote]:bg-indigo-950/40 [&_blockquote]:py-0.5 [&_blockquote]:px-2 [&_blockquote]:my-0.5 [&_blockquote]:italic [&_a]:text-indigo-600 [&_a]:underline [&_u]:underline [&_u]:underline-offset-2 [&_s]:line-through [&_strike]:line-through [&_del]:line-through [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic"
                 />
               </div>
             </div>
@@ -1124,7 +1121,7 @@ export default function MobileTasksSection() {
             {/* 참고 파일 추가 (피드백 32-ⓑ) */}
             <div className="space-y-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5">
               <div className="flex items-center justify-between">
-                <div className="font-bold text-slate-800 dark:text-slate-200 text-[11px]">
+                <div className="font-bold text-slate-800 dark:text-slate-200 text-sm">
                   참고 파일 (최대 5개, ≤30MB)
                 </div>
                 {selfFiles.length < 5 && (
@@ -1152,7 +1149,7 @@ export default function MobileTasksSection() {
                     />
                     <label
                       htmlFor="mobile-self-add-file-input"
-                      className="px-2 py-0.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded cursor-pointer text-xs font-bold"
+                      className="px-2.5 py-1 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded cursor-pointer text-sm font-bold"
                     >
                       + 파일 추가
                     </label>
@@ -1163,7 +1160,7 @@ export default function MobileTasksSection() {
               {selfFiles.length > 0 && (
                 <div className="divide-y divide-slate-200 dark:divide-slate-700 border border-slate-200 dark:border-slate-700 rounded bg-white dark:bg-slate-800">
                   {selfFiles.map((f, i) => (
-                    <div key={i} className="px-2 py-1 flex items-center justify-between text-[11px]">
+                    <div key={i} className="px-2.5 py-1.5 flex items-center justify-between text-sm">
                       <span className="truncate mr-1 text-slate-800 dark:text-slate-200 flex-1">
                         📄 {f.name} ({(f.size / 1024).toFixed(0)}KB)
                       </span>
@@ -1184,7 +1181,7 @@ export default function MobileTasksSection() {
             <button
               type="button"
               onClick={() => setIsSelfAddOpen(false)}
-              className="px-3 py-1.5 text-xs text-slate-500 cursor-pointer"
+              className="px-3.5 py-1.5 text-sm font-semibold text-slate-500 cursor-pointer"
             >
               취소
             </button>
@@ -1192,7 +1189,7 @@ export default function MobileTasksSection() {
               type="button"
               onClick={handleSelfAdd}
               disabled={selfSubmitting || !selfTitle.trim()}
-              className="px-3.5 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg disabled:opacity-50 cursor-pointer shadow-2xs"
+              className="px-4 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg disabled:opacity-50 cursor-pointer shadow-2xs"
             >
               {selfSubmitting ? (selfUploadProgress || "등록 중…") : "등록하기"}
             </button>
@@ -1205,13 +1202,13 @@ export default function MobileTasksSection() {
       {decliningId && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 max-w-xs w-full space-y-3 animate-in fade-in zoom-in-95">
-            <h4 className="text-xs font-bold text-slate-900 dark:text-white">거절 사유 입력</h4>
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white">거절 사유 입력</h4>
             <input
               type="text"
               value={declineReason}
               onChange={(e) => setDeclineReason(e.target.value)}
               placeholder="사유를 입력해 주세요"
-              className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             />
             <div className="flex justify-end gap-2">
               <button
@@ -1220,7 +1217,7 @@ export default function MobileTasksSection() {
                   setDecliningId(null);
                   setDeclineReason("");
                 }}
-                className="px-3 py-1.5 text-xs text-slate-500"
+                className="px-3.5 py-1.5 text-sm font-semibold text-slate-500"
               >
                 취소
               </button>
@@ -1233,7 +1230,7 @@ export default function MobileTasksSection() {
                   }
                   handleTransition(decliningId, "decline", declineReason.trim());
                 }}
-                className="px-3 py-1.5 text-xs bg-rose-600 text-white font-bold rounded-lg"
+                className="px-3.5 py-1.5 text-sm bg-rose-600 text-white font-bold rounded-lg"
               >
                 거절 확정
               </button>
@@ -1246,11 +1243,11 @@ export default function MobileTasksSection() {
       {completingId && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 max-w-xs w-full space-y-3 animate-in fade-in zoom-in-95">
-            <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1">
               <span>✅</span>
               <span>업무 완료 처리</span>
             </h4>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               완료 메모나 전달사항을 남길 수 있습니다 (선택).
             </p>
             <input
@@ -1259,7 +1256,7 @@ export default function MobileTasksSection() {
               onChange={(e) => setCompleteNote(e.target.value)}
               placeholder="완료 메모 (선택)"
               maxLength={500}
-              className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              className="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             />
             <div className="flex justify-end gap-2">
               <button
@@ -1268,7 +1265,7 @@ export default function MobileTasksSection() {
                   setCompletingId(null);
                   setCompleteNote("");
                 }}
-                className="px-3 py-1.5 text-xs text-slate-500"
+                className="px-3.5 py-1.5 text-sm font-semibold text-slate-500"
               >
                 취소
               </button>
@@ -1277,7 +1274,7 @@ export default function MobileTasksSection() {
                 onClick={() => {
                   handleTransition(completingId, "done", completeNote.trim());
                 }}
-                className="px-3 py-1.5 text-xs bg-emerald-600 text-white font-bold rounded-lg shadow-xs"
+                className="px-3.5 py-1.5 text-sm bg-emerald-600 text-white font-bold rounded-lg shadow-xs"
               >
                 완료 확정
               </button>
