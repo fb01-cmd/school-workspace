@@ -355,7 +355,7 @@ export async function GET(req: NextRequest) {
 
                     // 크론 호출 origin은 vercel.app 내부 주소일 수 있음 — 공식 도메인 우선
                     const portalOrigin = process.env.NEXT_PUBLIC_BASE_URL || new URL(req.url).origin;
-                    const portalUrl = `${portalOrigin}/student-portal`;
+                    const portalUrl = `${portalOrigin}/student`;
 
                     let emailSubject = activeGradSettings.emailTemplateSubject || "[중요] 구글 워크스페이스 계정 삭제 사전 안내 — 안내 확인 서명이 필요합니다";
                     let emailBody = activeGradSettings.emailTemplateBody || `안녕하세요, {name}님.
@@ -594,7 +594,7 @@ export async function GET(req: NextRequest) {
                   process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL ||
                   "hmnotice@hmh.or.kr";
                 const warnedCount = (task.warnedCount || 0) + 1;
-                const reminderDeadlineUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/admin/transfer-deadline`;
+                const reminderDeadlineUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/teacher/transfer-deadline`;
                 const defaultReminderBody = `📢 *[효명고등학교 - 데이터 백업 기한 설정 안내 ${warnedCount}차]*\n\n안녕하세요, *${task.name}*님.\n아직 데이터 백업 기한을 설정하지 않으셨습니다.\n\n아래 주소에서 기한을 직접 설정해 주세요:\n→ ${reminderDeadlineUrl}\n\n설정 기한은 최대 1년 이내로 지정 가능합니다.`;
                 let chatBody = defaultReminderBody;
                 if (reminderTemplate) {

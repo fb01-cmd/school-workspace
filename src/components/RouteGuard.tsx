@@ -36,9 +36,9 @@ export default function RouteGuard({
 
     if (!allowedRoles.includes(userData.role)) {
       if (userData.role === "student") {
-        router.replace("/student-portal");
+        router.replace("/student");
       } else {
-        router.replace("/admin");
+        router.replace("/teacher");
       }
       return;
     }
@@ -78,9 +78,9 @@ export default function RouteGuard({
     }
 
     // 2. 전출 대기 교사 강제 리다이렉트 체크
-    // /admin/transfer-deadline 페이지 자체는 예외 처리
+    // /teacher/transfer-deadline 페이지 자체는 예외 처리
     // (완료 플래그가 서 있으면 재조회하지 않음 — 세션당 1회)
-    const isTransferPage = pathname?.startsWith("/admin/transfer-deadline");
+    const isTransferPage = pathname?.startsWith("/teacher/transfer-deadline");
     if (transferCheckDone) {
       // 이미 확인 완료 — 재조회 불필요
     } else if (!isTransferPage && userData.domain && userData.email) {
@@ -90,7 +90,7 @@ export default function RouteGuard({
         .then((snap) => {
           const status = snap.data()?.status;
           if (snap.exists() && (status === "PENDING_DEADLINE" || status === "DEADLINE_SET")) {
-            router.replace("/admin/transfer-deadline");
+            router.replace("/teacher/transfer-deadline");
           } else if (snap.exists() && status === "SUSPENDED") {
             signOut(auth).then(() => {
               router.replace("/login");
@@ -118,7 +118,7 @@ export default function RouteGuard({
   }
 
   // 로딩 및 유효성 검사 완료 대기
-  const isTransferPage = pathname?.startsWith("/admin/transfer-deadline");
+  const isTransferPage = pathname?.startsWith("/teacher/transfer-deadline");
   if (!isTransferPage && (!transferCheckDone || !securityGroupCheckDone)) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">

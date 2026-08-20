@@ -18,7 +18,7 @@
 ## 2. 산출물 B — 최초 로그인 고지 확인 화면
 
 - **버전 상수**: `src/lib/policy/version.ts`에 `export const POLICY_VERSION = "2026-08"`. 정책 개정 시 이 문자열을 올리면 전 사용자에게 자동 재고지된다.
-- **트리거**: 로그인 후 `users/{uid}` 로드 시 `policyAck?.version !== POLICY_VERSION`이면 전면 고지 화면(닫기 불가, 스크롤 후 확인 버튼). 관리자 화면(`/admin`)과 학생 포털(`/student-portal`) 공통. 역할(role)에 따라 교사용/학생용 문안 표시.
+- **트리거**: 로그인 후 `users/{uid}` 로드 시 `policyAck?.version !== POLICY_VERSION`이면 전면 고지 화면(닫기 불가, 스크롤 후 확인 버튼). 교사 화면(`/teacher`)과 학생 포털(`/student`) 공통. 역할(role)에 따라 교사용/학생용 문안 표시.
 - **확인 기록**: `POST /api/policy/ack` (본문 없음, 인증 토큰의 본인만 처리) —
   1. `users/{uid}.policyAck = { version, ackedAt }` 갱신 (최신 상태 판별용)
   2. `policy_acks/{uid}_{version}` 이력 문서 생성: `{ uid, email, role, version, ackedAt }` (개정 이력 증빙용, 서버만 쓰기)

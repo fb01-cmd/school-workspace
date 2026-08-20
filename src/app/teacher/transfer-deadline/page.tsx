@@ -46,7 +46,7 @@ export default function TransferDeadlinePage() {
       .then((snap) => {
         if (!snap.exists()) {
           // 전출 레코드 없음 → 정상 어드민으로 복귀
-          router.replace("/admin");
+          router.replace("/teacher");
           return;
         }
         const data = snap.data();
@@ -62,7 +62,7 @@ export default function TransferDeadlinePage() {
             });
             return;
           } else {
-            router.replace("/admin");
+            router.replace("/teacher");
             return;
           }
         }

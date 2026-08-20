@@ -480,7 +480,7 @@ export async function POST(req: NextRequest) {
       await taskRef.set(taskData);
 
       // 치환자 공통 헬퍼
-      const studentDeadlineUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/student-portal`;
+      const studentDeadlineUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/student`;
       const maxSuspendDateStr = suspendDueDate.toLocaleDateString("ko-KR");
       const applyStudentVars = (tpl: string) =>
         tpl
@@ -1353,7 +1353,7 @@ export async function POST(req: NextRequest) {
         }
 
         const portalOrigin = new URL(req.url).origin;
-        const portalUrl = `${portalOrigin}/student-portal`;
+        const portalUrl = `${portalOrigin}/student`;
 
         const name = task.name || "학생";
         const replaceVars = (txt: string) =>
@@ -1680,7 +1680,7 @@ export async function POST(req: NextRequest) {
           "hmnotice@hmh.or.kr";
 
         // 치환자 공통 값
-        const deadlineUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/admin/transfer-deadline`;
+        const deadlineUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "https://portal.hmh.or.kr"}/teacher/transfer-deadline`;
         const maxDeadline = new Date();
         maxDeadline.setFullYear(maxDeadline.getFullYear() + 1);
         const maxDeadlineDateStr = maxDeadline.toLocaleDateString("ko-KR");

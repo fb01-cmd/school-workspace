@@ -29,10 +29,10 @@ export default function LoginPage() {
     // If the user is already logged in and we have their data, redirect them based on their role
     if (!loading && user && userData) {
       if (userData.role === "student") {
-        router.push("/student-portal");
+        router.push("/student");
       } else {
-        // 2026-08-21 /m 폐지 — 뷰포트 분기 없이 전 기기 /admin (반응형 단일화)
-        router.push("/admin");
+        // 2026-08-21 /m 폐지 — 뷰포트 분기 없이 전 기기 /teacher (반응형 단일화)
+        router.push("/teacher");
       }
     }
   }, [user, userData, loading, router]);

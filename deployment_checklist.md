@@ -35,7 +35,7 @@
 
 | 환경 변수명 | 권장 설정값 (운영 기준) | 설명 |
 | :--- | :--- | :--- |
-| **`NEXT_PUBLIC_BASE_URL`** | `https://portal.hmh.or.kr` | **[중요]** 플랫폼의 실제 상용 도메인 주소입니다. 메일이나 챗 안내문에 기재되는 바로가기 링크(예: `/admin/transfer-deadline`)의 호스트명으로 사용됩니다. |
+| **`NEXT_PUBLIC_BASE_URL`** | `https://portal.hmh.or.kr` | **[중요]** 플랫폼의 실제 상용 도메인 주소입니다. 메일이나 챗 안내문에 기재되는 바로가기 링크(예: `/teacher/transfer-deadline`)의 호스트명으로 사용됩니다. |
 
 ---
 

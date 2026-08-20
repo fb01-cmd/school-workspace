@@ -62,7 +62,7 @@ function ensureVapid(): boolean {
 export interface PushPayload {
   title: string;
   body: string;
-  url?: string; // 없으면 발송 시 구독 역할로 결정 (학생 → /student-portal)
+  url?: string; // 없으면 발송 시 구독 역할로 결정 (학생 → /student)
   tag?: string;
 }
 
@@ -89,7 +89,7 @@ async function sendToSubs(
   await Promise.allSettled(
     subs.map(async (sub) => {
       const url =
-        payload.url || (sub.data.role === "student" ? "/student-portal" : "/");
+        payload.url || (sub.data.role === "student" ? "/student" : "/");
       const body = JSON.stringify({
         title: payload.title,
         body: payload.body,

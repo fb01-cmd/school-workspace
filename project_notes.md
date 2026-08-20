@@ -1168,3 +1168,14 @@ Codex 통과 5/실패 36 (커밋 4개 대조). Claude가 36건 전건 열람, �
 - **[미확인 — 착수 전 필수]** 안내문 본문은 **Firestore `settings/{domain}`의 관리자 편집 템플릿이 우선**한다. 치환자를 안 쓰고 주소를 직접 타이핑한 템플릿이 있으면 DB에 굳어 있고 **코드 grep으로 안 보인다.** 실제 DB 확인 필요.
 - 검증 상태: 조사·기록만. **코드 변경 없음.**
 - **[사실 추가 — 형제 프로젝트]** 사용자 지적으로 `course-selection-app`을 열어 확인했다. `src/app/api/roster/sync/route.ts:6`이 `https://portal.hmh.or.kr/api/roster/feed`를 코드에 박고 있고(환경변수 `HMH_ROSTER_FEED_URL` 우회로 있음), **같은 파일 5행에 선례 주석이 있다** — *"2026-08 플랫폼 도메인이 admin.hmh.or.kr → portal.hmh.or.kr 로 변경됨 (구 도메인 DNS 소멸)"*. 주소를 바꾸면 형제 프로젝트를 따로 고쳐 따로 배포해야 한다는 것이 **이미 한 번 실증된 비용**이다. 그 앱의 `privacy/page.tsx:100`은 학생에게 보이는 개인정보 처리방침에 `portal.hmh.or.kr`을 적고 있다. **→ `/api/*` 불변 결론이 더 굳어졌다.** 화면 주소(`/admin`·`/student-portal`)만 바꾸는 안은 이 앱과 무관하다.
+
+## [2026-08-21] Claude(Opus) — 화면 주소 이름 통일 실행 (`admin`→`teacher`, `student-portal`→`student`)
+
+- **[사용자 지시]** *"화면 주소 이름 통일 진행해. 로드맵 §2 「화면 주소 이름 통일」 그대로, API는 건드리지 말고 화면 주소만. 착수 전에 Firestore 안내문 템플릿부터 확인해줘."*
+- **[사실] 착수 전 점검 — 직접 박힌 주소 0건.** `scripts/inspect_notice_templates.ts`(신규)로 `settings` 컬렉션을 읽었다. 문서는 `settings/hmh.or.kr` **1건**뿐이고 그 안에 있는 `*Settings` 키는 `teacherSettings` 하나 — **`transferOutSettings`·`teacherTransferSettings`·`graduationSettings`가 전부 없다.** 즉 관리자가 편집한 안내문 템플릿이 아예 없고 세 안내문 모두 **코드 폴백**을 쓴다. 코드 폴백은 주소를 `NEXT_PUBLIC_BASE_URL + 경로`로 조립하므로 **코드만 바꾸면 안내문이 새 주소를 자동으로 따라간다.** (읽기 1건 — 예산 무시 가능)
+- **[사실] 바꾼 것**: 폴더 2개(`src/app/admin`→`teacher`, `src/app/student-portal`→`student`, `git mv`로 이력 보존) + 라우트 문자열 **24곳** + 동적 import 1곳(`teacher/page.tsx:30`) + 주석 3곳 + **발송 안내문 주소 4곳**(`lifecycle/route.ts:483·1356·1683`, `cron/route.ts:358·597`). `@/components/admin/*`는 **컴포넌트 폴더 이름이지 주소가 아니라서 그대로 뒀다.**
+- **[판단→조치] 옛 주소는 `next.config.ts`의 `redirects()`로 308 영구 보존.** `/admin`·`/admin/:path*`·`/student-portal`·`/student-portal/:path*` 네 규칙. **와일드카드가 필수인 이유**: 메일에 박힌 링크가 `/admin/transfer-deadline`이라는 **하위 경로**여서, `/m`에 쓴 페이지 단위 `redirect()` 방식으로는 안 덮인다. 이 규칙을 지우면 이미 학교를 떠난 사람들의 링크가 죽는다는 경위를 **설정 파일 주석에 직접 박아 두었다** — 다음 사람이 "안 쓰는 규칙"으로 오해하고 지우는 것을 막기 위해서다.
+- **[사실] `/api/*` 불변.** 지시대로 손대지 않았다. 빌드 산출 라우트 목록에서 `/api/**` 36개가 전부 옛 이름 그대로임을 확인했다.
+- **검증 상태**: `npx tsc --noEmit` 통과 / `npm run build` 통과(라우트 목록 = `/`·`/login`·`/m`·`/privacy`·`/student`·`/teacher`·`/teacher/classroom`·`/teacher/transfer-deadline`) / 코드 내 옛 라우트 문자열 **0건** / dev 서버 실측 — 옛 주소 4개 **전부 308**(`/admin`·`/admin/transfer-deadline`·`/admin/classroom`·`/student-portal`), 새 주소 3개 200, `/m`→`/teacher` 307 / 브라우저에서 `/admin/transfer-deadline` 진입 시 `/teacher/transfer-deadline`→(미로그인)`/login` 체인 정상, 콘솔 오류 0건.
+- **[사실] 문서**: 살아 있는 스펙 3곳을 새 주소로 고쳤다(`web_push_spec` 69행, `phase11_privacy_spec` 21행, `deployment_checklist` 38행). `docs/mobile_m_spec.md`와 `archive/*`는 **이력 문서라 옛 주소 그대로 둔다.**
+- **[판단] 실기기 확인이 남았다.** 특히 **전출 교사 안내 메일의 링크**를 실제로 눌러 보는 항목 — 이 전환에서 가장 되돌리기 어려운 지점이다. STATUS 실기기 표에 ⓐ~ⓔ로 등재했다.

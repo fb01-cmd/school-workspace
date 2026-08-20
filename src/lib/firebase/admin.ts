@@ -105,7 +105,7 @@ const VALID_ROLES = new Set<DecodedAuthAccess["role"]>(["student", "teacher", "s
  *
  * 첫 로그인이 깨지지 않는 이유(전환 전 실측): 클라이언트는 users 문서가 도착하기 전에는
  * API를 부를 수 없다 — `RouteGuard`가 `userData`(users 스냅샷) 없이는 자식을 렌더하지
- * 않고(전 인증 페이지 /admin·/m·/student-portal이 이걸 씀), `AuthContext`의 프리페치
+ * 않고(전 인증 페이지 /teacher·/m·/student가 이걸 씀), `AuthContext`의 프리페치
  * 4종도 `userSnap.exists()` 안에 있다. 문서를 만드는 것은 쿠키가 아니라 `sync-user`이고,
  * 문서가 없으면 AuthContext가 자가 치유로 그것을 다시 호출한다.
  * 실측(2026-08-13, `scripts/inspect_user_roles.ts`): users 29건 전부 유효한 role 보유,

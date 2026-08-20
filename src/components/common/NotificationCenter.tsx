@@ -508,10 +508,10 @@ export default function NotificationCenter() {
 
     if (item.refType === "task" || item.type?.startsWith("task-")) {
       if (isStudent) return;
-      if (pathname === "/admin") {
+      if (pathname === "/teacher") {
         window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "tasks", taskId: item.refId } }));
       } else {
-        router.push("/admin");
+        router.push("/teacher");
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "tasks", taskId: item.refId } }));
         }, 150);
@@ -521,10 +521,10 @@ export default function NotificationCenter() {
 
     if (item.refType === "usage_alert") {
       if (role !== "super_admin") return;
-      if (pathname === "/admin") {
+      if (pathname === "/teacher") {
         window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "usage" } }));
       } else {
-        router.push("/admin");
+        router.push("/teacher");
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "usage" } }));
         }, 150);
@@ -537,10 +537,10 @@ export default function NotificationCenter() {
       // refId 를 함께 실어야 그 쪽지가 열린 채로 도착한다 (스펙 §8-12).
       // 업무 분기(:512)는 처음부터 taskId 를 실었는데 쪽지만 빠져 있어,
       // 알림을 눌러도 목록까지만 가고 어느 쪽지였는지는 다시 찾아야 했다.
-      if (pathname === "/admin") {
+      if (pathname === "/teacher") {
         window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "memo", memoId: item.refId } }));
       } else {
-        router.push("/admin");
+        router.push("/teacher");
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "memo", memoId: item.refId } }));
         }, 150);
@@ -550,13 +550,13 @@ export default function NotificationCenter() {
 
     if (item.refType === "swap_request" || item.type === "request-resolved") {
       if (isStudent) return;
-      if (pathname === "/admin") {
+      if (pathname === "/teacher") {
         window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "my_timetable" } }));
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent("teacher_portal_nav", { detail: { tab: "my_requests" } }));
         }, 50);
       } else {
-        router.push("/admin");
+        router.push("/teacher");
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "my_timetable" } }));
           setTimeout(() => {
@@ -569,13 +569,13 @@ export default function NotificationCenter() {
 
     if (item.refType === "swap_draft") {
       if (isStudent) return;
-      if (pathname === "/admin") {
+      if (pathname === "/teacher") {
         window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "my_timetable" } }));
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent("teacher_portal_nav", { detail: { tab: "my_tt" } }));
         }, 50);
       } else {
-        router.push("/admin");
+        router.push("/teacher");
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "my_timetable" } }));
           setTimeout(() => {
@@ -588,16 +588,16 @@ export default function NotificationCenter() {
 
     if (item.refType === "weekly" || item.refType === "timetable_change" || item.type === "lesson-changed") {
       if (isStudent) {
-        if (pathname !== "/student-portal") router.push("/student-portal");
+        if (pathname !== "/student") router.push("/student");
         return;
       }
-      if (pathname === "/admin") {
+      if (pathname === "/teacher") {
         window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "my_timetable" } }));
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent("teacher_portal_nav", { detail: { tab: "my_tt" } }));
         }, 50);
       } else {
-        router.push("/admin");
+        router.push("/teacher");
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent("admin_navigate", { detail: { menu: "my_timetable" } }));
         }, 150);
