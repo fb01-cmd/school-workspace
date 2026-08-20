@@ -532,6 +532,68 @@ export default function MobileTasksSection() {
     const isPending = myStatus.state === "PENDING";
     const remaining = formatRemainingTime(task.dueAt, task.noDue);
 
+    const renderStagedCard = () => {
+      const staged = stagedSubmitMap[task.id];
+      if (!staged) return null;
+      return (
+        <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3 space-y-2.5">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span>📄</span>
+              <span className="font-bold text-slate-900 dark:text-white truncate">
+                {staged.file.name}
+              </span>
+              <span className="text-[10px] text-slate-500">
+                ({(staged.file.size / 1024).toFixed(0)} KB)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setStagedSubmitMap((prev) => {
+                  const n = { ...prev };
+                  delete n[task.id];
+                  return n;
+                });
+              }}
+              className="text-xs text-slate-400 hover:text-rose-600 font-bold ml-1"
+            >
+              취소
+            </button>
+          </div>
+
+          <input
+            type="text"
+            value={staged.note}
+            onChange={(e) =>
+              setStagedSubmitMap((prev) => ({
+                ...prev,
+                [task.id]: { ...staged, note: e.target.value },
+              }))
+            }
+            placeholder="제출 시 남길 메모 (선택)"
+            maxLength={500}
+            className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white"
+          />
+
+          {mySubmission && (
+            <p className="text-[11px] text-amber-800 dark:text-amber-300 font-medium">
+              이전 제출본은 교체되며 30일이 지나면 복구할 수 없습니다.
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={() => handleMobileSubmit(task.id, staged.file, staged.note)}
+            disabled={submittingId === task.id}
+            className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shadow-xs"
+          >
+            {submittingId === task.id ? uploadProgress || "제출 중…" : "🚀 제출 확정하기"}
+          </button>
+        </div>
+      );
+    };
+
     return (
       <li key={task.id} className={isPending ? "bg-indigo-50/20 dark:bg-indigo-950/20" : "bg-white dark:bg-slate-900"}>
         {showMonthDivider && currentMonthKey && (
@@ -695,95 +757,34 @@ export default function MobileTasksSection() {
                     </button>
                   ) : (
                     <div className="space-y-2">
-                      {(() => {
-                        const staged = stagedSubmitMap[task.id];
-                        if (staged) {
-                          return (
-                            <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3 space-y-2.5">
-                              <div className="flex items-center justify-between text-xs">
-                                <div className="flex items-center gap-1.5 min-w-0">
-                                  <span>📄</span>
-                                  <span className="font-bold text-slate-900 dark:text-white truncate">
-                                    {staged.file.name}
-                                  </span>
-                                  <span className="text-[10px] text-slate-500">
-                                    ({(staged.file.size / 1024).toFixed(0)} KB)
-                                  </span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setStagedSubmitMap((prev) => {
-                                      const n = { ...prev };
-                                      delete n[task.id];
-                                      return n;
-                                    });
-                                  }}
-                                  className="text-xs text-slate-400 hover:text-rose-600 font-bold ml-1"
-                                >
-                                  취소
-                                </button>
-                              </div>
-
-                              <input
-                                type="text"
-                                value={staged.note}
-                                onChange={(e) =>
-                                  setStagedSubmitMap((prev) => ({
-                                    ...prev,
-                                    [task.id]: { ...staged, note: e.target.value },
-                                  }))
-                                }
-                                placeholder="제출 시 남길 메모 (선택)"
-                                maxLength={500}
-                                className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white"
-                              />
-
-                              {mySubmission && (
-                                <p className="text-[11px] text-amber-800 dark:text-amber-300 font-medium">
-                                  이전 제출본은 교체되며 30일이 지나면 복구할 수 없습니다.
-                                </p>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={() => handleMobileSubmit(task.id, staged.file, staged.note)}
-                                disabled={submittingId === task.id}
-                                className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shadow-xs"
-                              >
-                                {submittingId === task.id ? uploadProgress || "제출 중…" : "🚀 제출 확정하기"}
-                              </button>
-                            </div>
-                          );
-                        }
-
-                        return (
-                          <div>
-                            <input
-                              ref={fileInputRef}
-                              type="file"
-                              onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                if (f) {
-                                  setStagedSubmitMap((prev) => ({
-                                    ...prev,
-                                    [task.id]: { file: f, note: "" },
-                                  }));
-                                }
-                              }}
-                              className="hidden"
-                              id={`mobile-submit-${task.id}`}
-                            />
-                            <label
-                              htmlFor={`mobile-submit-${task.id}`}
-                              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
-                            >
-                              <span>📁</span>
-                              <span>파일/사진 선택하기</span>
-                            </label>
-                          </div>
-                        );
-                      })()}
+                      {stagedSubmitMap[task.id] ? (
+                        renderStagedCard()
+                      ) : (
+                        <div>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) {
+                                setStagedSubmitMap((prev) => ({
+                                  ...prev,
+                                  [task.id]: { file: f, note: "" },
+                                }));
+                              }
+                            }}
+                            className="hidden"
+                            id={`mobile-submit-${task.id}`}
+                          />
+                          <label
+                            htmlFor={`mobile-submit-${task.id}`}
+                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                          >
+                            <span>📁</span>
+                            <span>파일/사진 선택하기</span>
+                          </label>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -802,7 +803,7 @@ export default function MobileTasksSection() {
                       >
                         완료 취소
                       </button>
-                    ) : (
+                    ) : !stagedSubmitMap[task.id] ? (
                       <div>
                         <input
                           type="file"
@@ -825,13 +826,14 @@ export default function MobileTasksSection() {
                           다시 제출 (교체)
                         </label>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                   {mySubmission && (
                     <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                       내 제출: {mySubmission.name}
                     </div>
                   )}
+                  {task.kind !== "confirm" && renderStagedCard()}
                 </div>
               )}
 
