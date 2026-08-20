@@ -16,7 +16,7 @@ Next.js + Firebase(Firestore·Auth) + Vercel, 전 구성 무료 티어 원칙.
 
 ```bash
 npm run dev    # 개발 서버 (localhost:3000)
-npx tsc --noEmit && npm run build   # 배포 전 확인 (NODE_OPTIONS=--max-old-space-size=4096 필요할 수 있음)
+npx tsc --noEmit && npm run build   # 배포 전 확인 (힙 옵션은 build 스크립트에 이미 들어 있다 — 따로 붙이지 마라)
 ```
 
 환경 변수는 `.env.local`(로컬)과 Vercel 프로젝트 설정(배포)에 있으며 저장소에 커밋하지 않는다.
