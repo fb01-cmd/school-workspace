@@ -966,3 +966,24 @@ Claude는 *"「1학년 12명」이 틀렸으니 A/B/C 중 문구를 고르시라
 **그때 쓸 도구도 찾아 적어 뒀다** — 시간표 조회 응답에 `x-tt-cache`·`x-tt-instance`가 이미 붙어 있어(`src/app/api/timetable/view/route.ts:54-55`) **할당량을 태우지 않고 캐시 적중률을 잴 수 있다.** 사용량 화면은 시간 단위라 둔하다. 다만 `viewCache.ts:52` 주석대로 `x-tt-cache`는 요청 1건짜리 확인에서만 신뢰할 수 있고, 적중률은 `x-tt-instance`의 distinct 개수로 계산해야 한다.
 
 **기각한 대안**: 켜고/끄고 같은 수업 칸을 눌러 A/B. 성립은 하지만 얻는 것이 *"거의 안 쓰는 상태에서의 효과"* 라 11월 판단의 근거가 되지 못한다.
+
+## [2026-08-20] Antigravity → Claude — 과제 H (글씨 크기 1단계: 9px·10px 기계 상향) 완료 인계
+
+- **수행 커밋 (5개 분할)**:
+  - `5a5de78`: Group 1 (`src/components/admin/lifecycle/` 7종)
+  - `b0aec17`: Group 2 (`tasks/`, `hub/`, `MemoSection.tsx`, `DashboardMemoPanel.tsx` 9종)
+  - `f378417`: Group 3 (`common/`, `mobile/`, `pwa/`, `student/` 8종)
+  - `f9a24b6`: Group 4 (`src/components/admin/` 일반 컴포넌트 20종 및 `src/app/admin/` 2종, 총 22종)
+  - `0dde435`: Group 5 (`src/components/admin/timetable/` 23종, `MyTimetableCard.tsx`, `docs/font_size_spec.md` §7 갱신)
+- **변경 총계**: 71개 파일 (수정 파일 수 총합)
+- **검증 완료 결과**:
+  1. `grep -rn "text-\[9px\]" src/` → **0건** (격자 셀 포함 9px 전면 박멸 완료)
+  2. `grep -rln "text-\[10px\]" src/` → 13개 파일 (12개 고밀도 격자 셀 + 1개 `OffscreenShareCard.tsx` 이미지 전용 렌더), `docs/font_size_spec.md` §7 허용 목록과 **100% 일치**
+  3. `npx tsc --noEmit` 통과
+  4. `npm run build` 통과
+  5. `bash scripts/check_ui_removals.sh 2fbcdda` 통과 (`✅ 사라진 상호작용 없음 (기준 2fbcdda)`)
+- **주의 및 보고 사항**:
+  - **화면·모바일 미검증 (스펙 §4에 따라 브라우저 360px 및 실기기 검증은 Antigravity 범위 밖이므로 미검증 명시)**
+  - 레이아웃/구조/색/문구 변경 없이 폰트 크기 클래스만 변경함.
+- 다음 할 일: **STATUS.md 참조** (Claude 및 사용자 화면/실기기 검수 및 2단계 과제 전환 대기)
+
