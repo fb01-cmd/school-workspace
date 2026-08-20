@@ -711,7 +711,7 @@ export default function MobileTasksSection() {
             {task.formFiles && task.formFiles.length > 0 && (
               <div className="space-y-1">
                 <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                  작성 양식 파일 내려받기
+                  양식 파일 내려받기
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {task.formFiles.map((f, i) => (
