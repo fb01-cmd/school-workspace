@@ -281,14 +281,17 @@ function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, 
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        style={{ paddingLeft: `${depth * 20 + 6}px` }}
+        style={{ "--bm-depth": depth } as React.CSSProperties}
         className={[
+          // 들여쓰기: 폰은 칸당 10px, 넓은 화면은 20px — 깊은 폴더도 이름 폭을 남긴다
           "group flex items-center gap-2 py-1.5 pr-2 rounded-lg select-none transition-colors",
+          "pl-[calc(var(--bm-depth)*10px+4px)] lg:pl-[calc(var(--bm-depth)*20px+6px)]",
           isDropInto ? "ring-2 ring-inset ring-indigo-400 bg-indigo-50" : "hover:bg-gray-50",
         ].join(" ")}
       >
         {/* Drag handle */}
-        <span className="text-gray-300 text-xs cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 w-3 flex-shrink-0 text-center leading-none">
+        {/* 드래그 손잡이 — 터치 화면에선 숨김(HTML5 드래그는 터치에서 안 되고 폭만 차지) */}
+        <span className="max-lg:hidden text-gray-300 text-xs cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 w-3 flex-shrink-0 text-center leading-none">
           ⠿
         </span>
 
@@ -346,7 +349,8 @@ function BookmarkNode({ item, path, depth, dropTarget, setDropTarget, onUpdate, 
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        {/* 터치 화면(lg 미만)에선 상시 표시 — hover 의존 버튼은 폰에서 영원히 안 보인다 (2026-08-20 실기기) */}
+        <div className="flex items-center gap-0.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button onClick={e => { e.stopPropagation(); setShowEditModal(true); }}
             className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 text-[11px] transition-colors" title="수정">✏️</button>
           {isFolder && <>
