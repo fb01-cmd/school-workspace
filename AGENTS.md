@@ -278,6 +278,19 @@ Claude 비용의 대부분은 판단이 아니라 **읽기**에서 나온다(202
 - **항상 금지**: `git push` · `gh` · `.env.local` · `~/.ssh/` · `rm -rf` · 승인 우회 옵션(`--dangerously-*`, `--full-auto`).
 - **푸시는 Claude 또는 사용자만 한다.**
 
+**⚠️ `agy` 권한은 설정 파일에 적어도 생기지 않는다 (2026-08-20 실측, 하루를 태운 뒤)**
+
+`~/.gemini/antigravity-cli/settings.json`의 `permissions.allow`에 `command(...)`를 **손으로 적어 넣어도 무시된다.** 대화형 창에서 **명령 종류마다 한 번 승인**해야 실제 권한이 되고, 그 뒤로는 헤드리스(`--print`)에서도 통과한다.
+
+- **증거**: `command(git status)`를 파일에 적어 둔 상태에서 대화형 실행 시 승인창이 그대로 떴다. 승인(3번) 후에도 파일 내용은 변하지 않았다(이미 있어서 추가할 게 없었다). 즉 **파일의 항목은 존재해도 효력이 없다.**
+- **로그가 이유를 말한다**: 설정은 정상 로드되는데(`CLI settings initialized: permissions=...`) 바로 다음 줄에서 `ApplyProjectPermissionGrants: no grants for project "CLI Project", cleared project permissions` 로 **통째로 지워진다.**
+- **승인창에서 고를 것**: `3. Yes, and always allow ... (Persist to settings.json)`. 2번은 그 대화창에서만 살아 있어 껐다 켜면 사라진다.
+- **헤드리스는 물어볼 자리가 없다.** 승인 안 된 명령을 만나면 `soft-denying tool confirmation "RunCommand"` 로 **즉시** 죽는다(실측 12초). 타임아웃처럼 보이지만 아니다 — **`--print-timeout`을 늘려도 해결되지 않는다.**
+- **한 번씩만 하면 된다.** 명령 종류(`npx tsc`·`git commit`·`grep` 등)마다 최초 1회이고, 새 종류가 나올 때만 다시 뜬다.
+- **`--dangerously-skip-permissions`로 우회하지 않는다** — 위 「항상 금지」 그대로다. 그 옵션은 모든 도구를 무조건 승인하므로 `git push`·`gh`·`rm -rf` 차단까지 함께 무력화된다.
+
+> **왜 규칙에 적는가**: 2026-08-20에 Claude 두 세션과 사용자가 **같은 벽에 각자 부딪혔다.** 원인 추정도 두 번 틀렸다(타임아웃 오진, 설정 파일 오진). 지식이 대화창에만 있으면 다음 세션이 처음부터 다시 헤맨다.
+
 **막혔을 때** — 같은 문제로 두 번 막히면 다른 에이전트에게 **사실 수집까지만** 시킨다(무엇이 어디서 어떤 조건에서 실패하는가). **진단과 처방은 Claude.** 그래야 두 진단이 갈리지 않는다.
 
 **기록** — 커밋 메시지에 출처를 적는다(*"Codex가 찾음"*, *"agy 구현 + Claude 검수"*). git 작성자만으로는 구분되지 않는다.
