@@ -39,6 +39,7 @@
 | 항목 | 담당 | 시점 | 확인 방법 |
 |---|---|---|---|
 | 전출 교사 hjl@ 자동 삭제 | Claude | 8/24 이후 | `npx tsx --env-file=.env.local scripts/check_cron_health.ts` |
+| **쪽지 월별 사본(레버 ②') 구현 재판정** | Claude+사용자 | **2026-11월** (무료 한도 복귀 판단과 같은 자리) | 그 시점 발송량·검색량 실측 + 무료 한도 여유 + 백필 대상 건수 → `docs/memo_monthly_mirror_spec.md` §8. **설계는 8/20 종결, 남은 건 착수 여부뿐** |
 | **Codex 2차 시험 — 누적 표본** | Claude | 9월 초 | `docs/codex_trial_2026-08.md` §4·§9 (토큰 분산 판정선) |
 | 시트 브리지 일몰 | 사용자 | 9/10 | — |
 | 9c 시간표: 컴시간 재계약 판단 | Claude | 11월 말 시한 | 백지 편성 소프트 30점 vs 기준선 39점 (solve_blank) |
