@@ -418,12 +418,14 @@ export default function HubOrgTree({
                     }`}
                   >
                     <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => onToggleEmail(email)}
-                        className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      />
+                      <label className="p-1.5 -m-1.5 flex items-center justify-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => onToggleEmail(email)}
+                          className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </label>
                       <button
                         type="button"
                         onClick={() => setPopoverTeacher(teacher)}
@@ -524,12 +526,14 @@ export default function HubOrgTree({
                           }`}
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => onToggleEmail(email)}
-                              className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                            />
+                            <label className="p-1.5 -m-1.5 flex items-center justify-center cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => onToggleEmail(email)}
+                                className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                              />
+                            </label>
                             <button
                               type="button"
                               onClick={() => setPopoverTeacher(teacher)}
