@@ -24,9 +24,10 @@ export default function MobileTeacherHome() {
     }
   };
 
-  // GWS 이름 우선 + 굳어진 로컬부 가드 (§11-7) — profile.name을 먼저 보면 오염 계정이 "sabian07님"으로 인사받는다
+  // 굳어진 로컬부 가드 (§11-7). user.displayName은 첫 로그인 때의 스냅샷이라 GWS에서
+  // 이름을 고쳐도 낡은 값(영문 병기 등)이 계속 나온다 — gwsName 인자로 쓰지 않는다 (2026-08-20 실기기).
   const displayName = user?.email
-    ? resolveDisplayName(user.email, teacherProfile ?? undefined, user.displayName ?? undefined).name
+    ? resolveDisplayName(user.email, teacherProfile ?? undefined).name
     : "선생님";
 
   return (
@@ -35,7 +36,7 @@ export default function MobileTeacherHome() {
         {/* 1. 최상단 고정 헤더 */}
         <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-2.5 shadow-2xs">
           <div className="max-w-md mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <span className="text-lg">🏫</span>
               <div>
                 <h1 className="text-sm font-extrabold text-slate-900 dark:text-white leading-tight inline">
@@ -46,10 +47,10 @@ export default function MobileTeacherHome() {
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={handleSignOut}
-                className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                className="whitespace-nowrap text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
               >
                 로그아웃
               </button>

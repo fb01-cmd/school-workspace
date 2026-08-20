@@ -169,7 +169,9 @@ export default function AutocompleteInput({
       const familyName = (nameObj.familyName || "").trim();
       const givenName = (nameObj.givenName || "").trim();
       if (/^\d{5}$/.test(familyName)) {
-        return givenName;
+        // 학생 계정 규약: 성 자리에 학번. 떼어 버리면 학번 검색이 왜 걸렸는지 안 보인다
+        // (2026-08-20 실기기 "검색엔진 망" 신고 — 검색은 정상, 근거 미표시가 문제였다)
+        return givenName ? `${givenName} (${familyName})` : familyName;
       }
       return `${familyName}${givenName}`;
     }

@@ -572,7 +572,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                           <div className="font-bold text-gray-800">
                             {task.name} <span className="font-mono text-xs text-gray-400">({task.studentId})</span>
                           </div>
-                          <div className="text-xs font-mono text-slate-500 break-all">{task.email}</div>
+                          <div className="text-xs font-mono text-slate-500 whitespace-nowrap">{task.email}</div>
                           <div className="text-xs text-gray-400 mt-0.5">이전 OU: {task.originalOU}</div>
                         </td>
 
@@ -591,7 +591,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                               <div className="font-bold text-red-600 flex items-center gap-1.5">
                                 🚨 {getDDay(task.suspendDueDate)}
                               </div>
-                              <div className="text-sm text-gray-500 font-medium">정지 예정: {formatDate(task.suspendDueDate)}</div>
+                              <div className="text-sm text-gray-500 font-medium whitespace-nowrap">정지 예정: {formatDate(task.suspendDueDate)}</div>
                             </div>
                           )}
                           {task.status === "SUSPENDED" && (
@@ -599,7 +599,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                               <div className="font-bold text-gray-700 flex items-center gap-1.5">
                                 🛑 {getDDay(getEffectiveDeleteDue(task))}
                               </div>
-                              <div className="text-sm text-gray-500 font-medium">삭제 예정: {formatDate(getEffectiveDeleteDue(task))}</div>
+                              <div className="text-sm text-gray-500 font-medium whitespace-nowrap">삭제 예정: {formatDate(getEffectiveDeleteDue(task))}</div>
                             </div>
                           )}
 

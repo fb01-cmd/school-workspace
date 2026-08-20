@@ -101,6 +101,13 @@ export default function AdminPage() {
     } catch (e) {}
   }, []);
 
+  // 모바일 드로어: 메뉴를 고르면 닫는다 — 개별 버튼 40곳 대신 activeMenu 변화 한 지점에서
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+      setIsSidebarOpen(false);
+    }
+  }, [activeMenu]);
+
   // admin_navigate 이벤트 리스너 (탭/메뉴간 이동 및 허브 별칭 라우팅 — spec §1-2-3)
   useEffect(() => {
     const handleAdminNav = (e: any) => {
@@ -567,15 +574,18 @@ export default function AdminPage() {
               </div>
             </div>
           ) : (
-              /* 일반 교사(role teacher) 홈: 넓은 화면 2단 그리드(좌: 시간표+급식+할일, 우: 받은 쪽지), 좁은 화면 세로 스택 (2026-08-18 피드백 덤프 ⑤) */
+              /* 일반 교사(role teacher) 홈: 넓은 화면 2단(좌: 할일+시간표+급식, 우: 받은 쪽지).
+                 좁은 화면은 DOM 순서대로 세로 스택 — 열 래퍼로 묶으면 쪽지가 급식 아래로
+                 통째로 떨어지므로(2026-08-20 실기기), 네 카드를 그리드 직속 자식으로 두고
+                 모바일 순서 = 할 일 → 쪽지 → 시간표 → 급식 (피드백 13·19 순서 원칙과 정합) */
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-                  <DashboardTaskCard onNavigate={() => { setInitialHubCategory("tasks"); setActiveMenu("hub"); }} />
-                  <MyTimetableCard onNavigateToMyTimetable={() => setActiveMenu("my_timetable")} />
-                  <MealCard />
+                <div className="contents lg:block lg:col-span-7 xl:col-span-8 lg:space-y-6">
+                  <div className="order-1"><DashboardTaskCard onNavigate={() => { setInitialHubCategory("tasks"); setActiveMenu("hub"); }} /></div>
+                  <div className="order-3"><MyTimetableCard onNavigateToMyTimetable={() => setActiveMenu("my_timetable")} /></div>
+                  <div className="order-4"><MealCard /></div>
                 </div>
-                <div className="lg:col-span-5 xl:col-span-4">
-                  <DashboardMemoPanel onNavigateToMemo={handleNavigateToMemo} />
+                <div className="contents lg:block lg:col-span-5 xl:col-span-4">
+                  <div className="order-2"><DashboardMemoPanel onNavigateToMemo={handleNavigateToMemo} /></div>
                 </div>
               </div>
             )}
@@ -588,16 +598,28 @@ export default function AdminPage() {
     <RouteGuard allowedRoles={["teacher", "super_admin"]}>
       {/* h-screen + main overflow-auto: 본문을 main 스크롤로 고정해야 우측 미리보기 패널의 sticky가 작동한다 */}
       <div className="h-screen bg-gray-50 flex">
-        {/* Left Sidebar */}
+        {/* 모바일 드로어 배경 — 사이드바를 본문 위에 겹치게 바꾸면서 추가 (2026-08-20 실기기:
+            밀어내기형은 열면 본문이 ~150px로 눌려 글자가 세로로 쏟아졌다). 탭하면 닫힘 */}
+        {isSidebarOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/40 md:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+        {/* Left Sidebar — md 미만에서는 겹침형(드로어), md 이상은 기존 밀착형 그대로 */}
         <aside
-          className={`bg-indigo-950 text-gray-300 w-64 flex-shrink-0 transition-all flex flex-col justify-between overflow-y-auto ${
+          className={`bg-indigo-950 text-gray-300 w-64 flex-shrink-0 transition-all flex flex-col justify-between overflow-y-auto max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-2xl ${
             isSidebarOpen ? "block" : "hidden"
           } md:flex`}
         >
           {/* Logo & Navigation */}
           <div>
-            {/* Brand Header (피드백 21번: 효명 배지 -> 교표 아이콘) */}
-            <div className="h-16 flex items-center gap-3 px-6 bg-indigo-900 text-white font-bold tracking-wide border-b border-indigo-800">
+            {/* Brand Header (피드백 21번: 효명 배지 -> 교표 아이콘)
+                로고 탭 = 사이드바 접기 (2026-08-20 사용자: 3줄 메뉴보다 로고가 직관) */}
+            <div
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="h-16 flex items-center gap-3 px-6 bg-indigo-900 text-white font-bold tracking-wide border-b border-indigo-800 cursor-pointer select-none">
               <div className="w-8 h-8 rounded-lg bg-white p-0.5 shadow-xs flex items-center justify-center flex-shrink-0">
                 <img
                   src="/icon-192.png"
