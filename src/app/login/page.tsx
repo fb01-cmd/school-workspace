@@ -31,12 +31,8 @@ export default function LoginPage() {
       if (userData.role === "student") {
         router.push("/student-portal");
       } else {
-        const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
-        if (isMobile) {
-          router.push("/m");
-        } else {
-          router.push("/admin");
-        }
+        // 2026-08-21 /m 폐지 — 뷰포트 분기 없이 전 기기 /admin (반응형 단일화)
+        router.push("/admin");
       }
     }
   }, [user, userData, loading, router]);

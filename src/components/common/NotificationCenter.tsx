@@ -534,7 +534,6 @@ export default function NotificationCenter() {
 
     if (item.refType === "memo" || item.type === "memo") {
       if (isStudent) return;
-      if (pathname === "/m") return;
       // refId 를 함께 실어야 그 쪽지가 열린 채로 도착한다 (스펙 §8-12).
       // 업무 분기(:512)는 처음부터 taskId 를 실었는데 쪽지만 빠져 있어,
       // 알림을 눌러도 목록까지만 가고 어느 쪽지였는지는 다시 찾아야 했다.
@@ -597,8 +596,6 @@ export default function NotificationCenter() {
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent("teacher_portal_nav", { detail: { tab: "my_tt" } }));
         }, 50);
-      } else if (pathname === "/m") {
-        // 모바일 홈
       } else {
         router.push("/admin");
         setTimeout(() => {

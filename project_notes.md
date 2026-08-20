@@ -1139,3 +1139,13 @@ Codex 통과 5/실패 36 (커밋 4개 대조). Claude가 36건 전건 열람, �
 - **[판단] 전환 설계**: ① `/m` 페이지를 `redirect("/admin")`으로 교체 — **404 금지**(북마크·설치 앱 보호) ② 로그인 모바일 분기 제거(전 기기 /admin) ③ NotificationCenter /m 분기 정리 ④ 모바일 전용 4파일(2,103줄: m/page·MobileMemoSection·MobileTasksSection·TodayTimetableCard)은 **이번에 지우지 말 것** — 안정 확인 후 별도 커밋(MealCard는 공용이라 삭제 대상 아님) ⑤ `docs/mobile_m_spec.md` 폐지 표시 + 로드맵 상태 줄 갱신을 같은 커밋에서(⑨-12).
 - **[사실] 주의**: 실기기 확인 목록 ①~⑮(STATUS 표)의 명시적 통과 보고는 **안 받았다** — 사용자가 밤새 눌러보고 폐지를 결정했으므로 사실상 승인이나, 전환 커밋 후 실기기 확인 항목에 「/m 리다이렉트」를 얹어 한 번에 확인받는 것이 싸다.
 - 검증 상태: 이 인계 자체는 문서만. 직전 배포분까지 tsc/build 전부 통과.
+
+## [2026-08-21] Claude(Opus) — /m 폐지 전환 (1단계 완료)
+
+- **[사실] 인계대로 3곳 + 리다이렉트를 처리했다.** ① `src/app/m/page.tsx` — 93줄 클라이언트 모바일 홈을 `redirect("/admin")` 서버 컴포넌트로 교체(경로 유지, 404 금지 원칙 준수) ② `src/app/login/page.tsx` — `matchMedia("(max-width: 767px)")` 뷰포트 분기 삭제, 교사·수퍼어드민은 전 기기 `/admin` ③ `src/components/common/NotificationCenter.tsx` — 쪽지 분기의 `if (pathname === "/m") return`(537)과 시간표 분기의 `else if (pathname === "/m")` 빈 가지(600) 제거. 두 경우 모두 이제 일반 경로(`/admin` push + `admin_navigate` 이벤트)로 떨어진다.
+- **[판단→조치] 인계에 없던 4번째 지점을 찾아 같이 고쳤다 — `src/app/admin/page.tsx`의 `isSidebarOpen` 기본값.** `useState(true)`였다. `/m`이 있을 땐 폰이 `/admin`에 **랜딩**하지 않았으므로(PC 링크로 들어갈 때만 봤다) 문제가 드러나지 않았는데, 이번 전환으로 폰의 첫 화면이 `/admin`이 되면서 **로그인 직후 화면 전체가 드로어+검은 배경에 덮이는** 상태가 된다. `false`로 바꿨다. 데스크톱은 무영향 — aside가 `${isSidebarOpen ? "block" : "hidden"} md:flex`라 md 이상에서는 `md:flex`가 항상 이겨 이 상태값이 md 미만에서만 의미를 갖는다. 폰에서 여는 수단(좌상단 三, `md:hidden`)은 그대로 있다.
+- **[사실] 전수 확인**: `/m`을 가리키는 코드 참조는 저장소 전체에서 위 3곳이 전부였다(문서 언급 제외). `public/sw.js`·push 발송부·`manifest` 무수정 — `start_url`이 `/`라 로그인 분기만 바꾸면 따라온다는 인계 판단이 맞았다.
+- **[사실] 삭제 대상 정정 — 4파일이 아니라 3파일이다.** `m/page.tsx`는 리다이렉트 본체가 됐으므로 2단계 삭제 목록에서 뺀다. 남는 건 `src/components/mobile/` 3파일(`MobileMemoSection` 505 + `MobileTasksSection` 1,290 + `TodayTimetableCard` 215 = 2,010줄)이고, `grep -rn "components/mobile" src/`가 이제 0건이라 **어디서도 import되지 않는 상태**다. 안정 확인 후 별도 커밋.
+- **[사실] 부수 정정 1건**: `admin/page.tsx` 헤더 주석의 *"모바일 설치 안내는 /m 랜딩에 이미 있다"* 는 원래부터 사실이 아니었다(`/m`에는 `PushNotificationManager`만 있었고 `PWAInstallPrompt`는 없었다). 폰의 설치 안내는 **로그인 화면**이 담당한다 — 375px에서 "앱으로 설치하기"가 뜨는 것을 실측했다. 주석을 사실대로 고쳤다. 헤더 pill의 `hidden sm:block`은 그대로 둔다(폰 헤더 겹침 방지가 원래 이유).
+- **검증 상태**: `npx tsc --noEmit` 통과. `npm run build` 통과(`/m`은 정적 프리렌더된 리다이렉트로 출력). dev 서버 실측 — `curl -i /m` → **307 + `location: /admin`**, 브라우저 375px에서 `/m` 진입 시 `/admin` → (미로그인) `/login` 체인이 정상 동작. **실기기 확인은 못 한다**(로그인 세션 필요) — STATUS 실기기 표에 「/m 폐지 전환」 행 ⓐ~ⓔ로 얹었다.
+- **[판단] 남은 위험**: 반응형 `/admin`이 폰에서 못 덮는 자리가 있으면 그건 이번 전환이 만든 게 아니라 **드러낸** 것이다. 실기기 확인 ⓔ가 그걸 찾는 항목이다. 되돌리려면 login의 뷰포트 분기 한 줄과 `m/page.tsx`만 복원하면 되고, 모바일 3파일을 아직 안 지운 이유가 이것이다.

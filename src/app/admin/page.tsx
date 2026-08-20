@@ -67,7 +67,9 @@ export default function AdminPage() {
   // 알림·카드에서 온 이동 요청의 일련번호 (같은 항목을 다시 눌러도 전달되게 한다)
   const [navSeq, setNavSeq] = useState(0);
   const [targetTaskId, setTargetTaskId] = useState<string | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // 기본 닫힘. md 이상은 aside의 md:flex가 항상 이기므로 이 값은 md 미만(드로어)에서만 의미가 있고,
+  // /m 폐지(2026-08-21)로 폰이 여기로 바로 랜딩하게 되면서 열림이 기본이면 첫 화면이 드로어에 덮인다.
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [pendingProfileCount, setPendingProfileCount] = useState(0);
   const [pendingDisciplineCount, setPendingDisciplineCount] = useState<number | null>(null);
   const [pendingSwapCount, setPendingSwapCount] = useState<number | null>(null);
@@ -1074,7 +1076,8 @@ export default function AdminPage() {
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Top Navbar */}
           {/* 모바일 헤더 겹침 방지 (2026-08-20 실기기): 제목은 truncate, 우측은 shrink-0,
-              앱 실행 안내 pill은 sm 미만 숨김 — 모바일 설치 안내는 /m 랜딩에 이미 있다 */}
+              앱 실행 안내 pill은 sm 미만 숨김 — 폰의 설치 안내는 로그인 화면이 담당한다
+              (/m 폐지 전에는 "모바일 설치 안내는 /m에 있다"고 적혀 있었으나 /m에는 알림 켜기만 있었다) */}
           <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between gap-2 px-4 md:px-8">
             <div className="flex items-center gap-3 min-w-0">
               <button
