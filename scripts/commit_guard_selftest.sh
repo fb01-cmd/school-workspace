@@ -54,6 +54,10 @@ cmd_probe() { rm -f .git/commit-guard/COMMITTER
 for c in 'git commit -m x' 'git add a && git commit -qm y' 'git -C /repo commit' 'git -c user.name=t commit'; do
   cmd_probe "$c"; check $? "커밋 명령으로 인식: $c"
 done
+# 에이전트가 보내는 명령은 여러 줄인 경우가 흔하다. 줄 앞을 안 보면 그런 커밋을 통째로 놓치고,
+# 그러면 가드가 **자기 세션을 남으로 오인해** 정상 커밋을 막는다 (2026-08-21 실측).
+cmd_probe 'cd /repo\ngit add a\ngit commit -m x'
+check $? "커밋 명령으로 인식: 여러 줄 명령의 셋째 줄에 있는 git commit"
 for c in 'ls .git/commit-guard/' 'cat .git/commit-guard/COMMITTER' 'git log --oneline' 'echo git commit'; do
   cmd_probe "$c"; [ $? -ne 0 ]; check $? "커밋이 아닌 것으로 인식: $c"
 done

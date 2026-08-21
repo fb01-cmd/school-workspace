@@ -81,9 +81,12 @@ def main() -> int:
         cmd = str((payload.get("tool_input") or {}).get("command") or "")
         # `git`이 **명령어 자리**에 오고 `commit`이 그 하위 명령일 때만. 느슨하게 잡으면
         # 경로 문자열(.git/commit-guard/…)에도 걸린다 — 초판이 실제로 그랬다(2026-08-21 실측).
-        # -C <경로> · -c <키=값> 처럼 값을 받는 전역 옵션이 앞에 붙을 수 있다
+        # 구분자에 **줄바꿈이 반드시 들어가야 한다** — 에이전트가 보내는 명령은 여러 줄인 경우가
+        # 흔하고(`cd …\ngit add …\ngit commit …`), 줄 앞을 안 보면 그런 커밋을 통째로 놓친다.
+        # 2026-08-21 실측: 이 누락 때문에 가드가 **자기 세션을 남으로 오인**해 정상 커밋을 막았다.
+        # -C <경로> · -c <키=값> 처럼 값을 받는 전역 옵션이 앞에 붙을 수 있다.
         if re.search(
-            r"(?:^|[;&|])\s*git\s+(?:(?:-[cC])\s+\S+\s+|-{1,2}\S+\s+)*commit\b", cmd
+            r"(?:^|[;&|\n])\s*git\s+(?:(?:-[cC])\s+\S+\s+|-{1,2}\S+\s+)*commit\b", cmd
         ):
             with open(os.path.join(state, "COMMITTER"), "w", encoding="utf-8") as f:
                 f.write(sid + "\n")
