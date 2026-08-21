@@ -1000,7 +1000,7 @@ export default function GraduationTab({ s, ud }: any) {
               <div className="bg-white border rounded-xl p-4 space-y-4 shadow-2xs">
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 items-end">
                   <div>
-                    <label className="text-xs text-slate-400 block font-bold">테스트 이름</label>
+                    <label className="text-sm text-slate-400 block font-bold">테스트 이름</label>
                     <input
                       type="text"
                       placeholder="예: 홍길동(테스트)"
@@ -1010,7 +1010,7 @@ export default function GraduationTab({ s, ud }: any) {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-slate-400 block font-bold">테스트 학번 (선택)</label>
+                    <label className="text-sm text-slate-400 block font-bold">테스트 학번 (선택)</label>
                     <input
                       type="text"
                       placeholder="예: 39999"
@@ -1021,7 +1021,7 @@ export default function GraduationTab({ s, ud }: any) {
                   </div>
                   <div className="sm:col-span-2 flex gap-2 items-end">
                     <div className="flex-1">
-                      <label className="text-xs text-slate-400 block font-bold">수신 가능한 테스트 이메일</label>
+                      <label className="text-sm text-slate-400 block font-bold">수신 가능한 테스트 이메일</label>
                       <input
                         type="email"
                         placeholder="예: test-student@hyeomyung.hs.kr"

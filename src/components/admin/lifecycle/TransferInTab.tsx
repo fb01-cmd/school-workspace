@@ -401,7 +401,7 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
         <>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="block text-xs font-semibold text-gray-600 mb-1">이름 (성+이름 전체)</label>
+              <label className="block text-sm font-semibold text-gray-600 mb-1">이름 (성+이름 전체)</label>
               <input
                 value={form.fullName}
                 onChange={(e) => setF("fullName", e.target.value)}
@@ -411,7 +411,7 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">배정 학년</label>
+              <label className="block text-sm font-semibold text-gray-600 mb-1">배정 학년</label>
               <select
                 value={form.grade}
                 onChange={(e) => setF("grade", e.target.value)}
@@ -423,14 +423,14 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">배정 OU</label>
+              <label className="block text-sm font-semibold text-gray-600 mb-1">배정 OU</label>
               <div className="w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-500 truncate">
                 {gradeOU || <span className="text-red-400">미설정</span>}
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">배정 반</label>
+              <label className="block text-sm font-semibold text-gray-600 mb-1">배정 반</label>
               <input
                 type="number"
                 value={form.classNum}
@@ -440,7 +440,7 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">배정 번호</label>
+              <label className="block text-sm font-semibold text-gray-600 mb-1">배정 번호</label>
               <input
                 type="number"
                 value={form.studentNum}

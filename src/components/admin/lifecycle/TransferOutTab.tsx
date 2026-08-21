@@ -321,7 +321,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
           <div className="p-5 border-t border-gray-100 bg-white space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   자동 정지 마지노선 (등록일 기준)
                 </label>
                 <div className="flex items-center gap-2">
@@ -339,7 +339,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   영구삭제 유예 기간 (정지일 기준)
                 </label>
                 <div className="flex items-center gap-2">
@@ -383,7 +383,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
 
               <div className="space-y-3.5">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">안내 메일 제목</label>
+                  <label className="block text-sm font-semibold text-gray-500 mb-1">안내 메일 제목</label>
                   <input
                     type="text"
                     value={emailTemplateSubject}
@@ -393,7 +393,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">안내 메일 본문</label>
+                  <label className="block text-sm font-semibold text-gray-500 mb-1">안내 메일 본문</label>
                   <textarea
                     rows={6}
                     value={emailTemplateBody}
@@ -403,7 +403,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">구글 챗 알림 본문</label>
+                  <label className="block text-sm font-semibold text-gray-500 mb-1">구글 챗 알림 본문</label>
                   <textarea
                     rows={3}
                     value={chatTemplateBody}

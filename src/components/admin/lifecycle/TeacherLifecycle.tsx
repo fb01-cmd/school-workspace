@@ -517,7 +517,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
               </div>
               <div className="space-y-3.5">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">안내 메일 제목</label>
+                  <label className="block text-sm font-semibold text-gray-500 mb-1">안내 메일 제목</label>
                   <input
                     type="text"
                     value={emailTemplateSubject}
@@ -526,7 +526,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">안내 메일 본문</label>
+                  <label className="block text-sm font-semibold text-gray-500 mb-1">안내 메일 본문</label>
                   <textarea
                     rows={7}
                     value={emailTemplateBody}
@@ -535,7 +535,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">구글 챗 알림 본문 (전출 등록 시)</label>
+                  <label className="block text-sm font-semibold text-gray-500 mb-1">구글 챗 알림 본문 (전출 등록 시)</label>
                   <textarea
                     rows={4}
                     value={chatTemplateBody}
@@ -544,7 +544,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">구글 챗 리마인더 본문 (기한 미설정 시 주기적 발송)</label>
+                  <label className="block text-sm font-semibold text-gray-500 mb-1">구글 챗 리마인더 본문 (기한 미설정 시 주기적 발송)</label>
                   <textarea
                     rows={4}
                     value={reminderChatBody}
