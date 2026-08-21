@@ -59,7 +59,15 @@ export async function POST(req: NextRequest) {
     // 교사/학생 셀프 기한 제출 및 상태 조회 액션은 일반 사용자 계정도 허용, 나머지는 수퍼어드민 전용
     // ─────────────────────────────────────────
     const TEACHER_ALLOWED_ACTIONS = ["submit_teacher_deadline", "get_teacher_transfer_status", "join_security_group"];
-    const STUDENT_ALLOWED_ACTIONS = ["submit_student_transfer_deadline", "get_student_transfer_status"];
+    // submit_student_consent: 졸업 안내 확인 서명 — **학생 본인이 하는 행위**다.
+    // 2026-08-21까지 이 목록에서 빠져 있어 학생이 자기 서명을 제출하면 403이 났다.
+    // 안내 메일·챗이 "학생 포털에서 서명을 완료하라"고 링크까지 보내는 흐름이라
+    // 링크를 따라간 학생이 반드시 실패했다.
+    const STUDENT_ALLOWED_ACTIONS = [
+      "submit_student_transfer_deadline",
+      "get_student_transfer_status",
+      "submit_student_consent",
+    ];
     const authUser = await verifyAuthAccess(req);
     if (!authUser) {
       return NextResponse.json({ error: "인증되지 않은 요청입니다." }, { status: 401 });
@@ -88,7 +96,11 @@ export async function POST(req: NextRequest) {
     // submit_student_transfer_deadline / get_student_transfer_status: 학생 본인 레코드 전용.
     // 대상 이메일을 토큰의 본인 이메일로 강제 — 타 학생 기한을 악의적으로 변경하는 권한 상승 구멍 차단.
     if (
-      (action === "submit_student_transfer_deadline" || action === "get_student_transfer_status") &&
+      (action === "submit_student_transfer_deadline" ||
+        action === "get_student_transfer_status" ||
+        // 서명도 같은 규칙 — 대상 이메일을 토큰 본인으로 강제해야 남의 동의서를
+        // 대신 제출하는 구멍이 막힌다. 서명은 법적 성격의 확인 기록이라 특히 중요하다.
+        action === "submit_student_consent") &&
       authUser.role !== "super_admin"
     ) {
       body.email = authUser.email;
