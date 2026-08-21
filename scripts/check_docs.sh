@@ -7,6 +7,7 @@
 # 150KB 규칙에 220KB가 방치돼 있었다. 셋을 한 명령으로 묶는다.
 set -u
 fail=0
+warn=""   # set -u 라 미리 비워 둔다 — 안 그러면 경고가 뜨는 순간 스크립트가 죽는다
 
 echo "── 1/3 로드맵 상태 표기 모순 ──────────────────"
 bash "$(dirname "$0")/check_roadmap_status_drift.sh" || fail=1
@@ -35,14 +36,23 @@ for f in project_notes.md development_roadmap.md; do
     fail=1
   elif [ "$kb" -gt "$WARN_KB" ]; then
     echo "  🟡 $f = ${kb}KB (한도 ${LIMIT_KB}KB까지 $(( LIMIT_KB - kb ))KB) — 회전 준비 권고, 이번 커밋은 막지 않는다 (④-1)"
+    warn="${warn}${warn:+, }$f ${kb}KB"
   else
     echo "  ✅ $f = ${kb}KB"
   fi
 done
 
 echo
+# 마지막 줄이 경고를 삼키지 않게 한다 (2026-08-21 실사고).
+# 예전에는 🟡가 떠도 마지막 줄이 "✅ 문서 점검 통과"였다. 사람도 기계도 **마지막 줄에
+# 기대는데**(`| tail -2`, `> /dev/null` 뒤 종료 코드만 보기) 그 줄이 경고를 지워 버렸다.
+# 실제로 136KB 경고가 그렇게 두 번 묻혔고, 그 뒤 152KB로 한도를 넘어 작업 중에 발이 묶였다.
+# 종료 코드는 그대로 0이다 — 막지 않는다는 판단은 유지하고, **보이게만** 한다.
 if [ "$fail" -ne 0 ]; then
   echo "❌ 문서 점검에서 조치할 항목이 있다. 위 내용을 확인하고 처리한 뒤 커밋한다."
+elif [ -n "${warn:-}" ]; then
+  echo "🟡 문서 점검 통과 — 다만 회전 준비 권고가 있다: ${warn}"
+  echo "   (지금 막지는 않는다. 한가할 때 아카이브로 돌려라 — 넘고 나면 작업 중에 발이 묶인다)"
 else
   echo "✅ 문서 점검 통과"
 fi
