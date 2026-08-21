@@ -2269,7 +2269,7 @@ export default function DraftAutoTab({
                 )}
               </div>
               <p className="text-[11px] text-gray-500 font-normal">
-                신학기 주당 수업 시간 계획과 교육과정 고정 시간을 결합해 시간표를 백지에서 새로 짭니다.
+                신학기 주당 수업 시간 계획과 창체·SLAT 배치를 결합해 시간표를 백지에서 새로 짭니다.
               </p>
               {plans.length === 0 && !loadingPlans && (
                 <div className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 font-medium">
@@ -2372,7 +2372,7 @@ export default function DraftAutoTab({
                   <span>교육과정 미등록 학년 안내</span>
                 </div>
                 <p className="text-[11px] text-amber-800">
-                  {preflightData.stats.cohortMissingGrades.join(", ")}학년의 교육과정 고정 시간이 등록돼 있지 않습니다. 창체·SLAT 자리가 비게 됩니다.
+                  {preflightData.stats.cohortMissingGrades.join(", ")}학년의 창체·SLAT 배치가 등록돼 있지 않습니다. 창체·SLAT 자리가 비게 됩니다.
                 </p>
               </div>
             )}

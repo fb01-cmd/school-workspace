@@ -39,7 +39,11 @@ export default function TimetableCreationSection() {
     | "draft"
     | "revision"
     | "neis_batch_export"
-  >("hours_plan");
+    // 기본 진입 = 학기 관리 (2026-08-21 변경). 종전 기본값은 "hours_plan"이었는데,
+    // 초안 학기를 만들기 전에 시수 계획을 파생하면 targetTermId 가 **운영 중인 학기**로
+    // 찍힌다(HoursPlanTab -> effectiveTermId 기본값 = 활성 학기). 처음 들어온 사람이
+    // 가장 먼저 보는 화면이 그 함정이어서는 안 된다.
+  >("import");
 
   // 편집 대상 학기 상태 (term_transition_spec §2: 기본값 = 활성 학기)
   const [workingTermId, setWorkingTermId] = useState<string>("");
@@ -241,15 +245,21 @@ export default function TimetableCreationSection() {
 
       {/* 작성 네비게이션 탭 */}
       <div className="bg-white rounded-xl p-2 shadow-sm border border-gray-200 flex flex-wrap gap-2 text-xs font-bold">
+        {/* 탭 순서 = 신학기 세팅의 실제 작업 순서 (2026-08-21 재배치).
+            근거: 컴시간 매뉴얼 §2 「기본적인 시간표 작성 순서」 ② 새 시간표 작성 → ③ 시수표
+            불러오기 → §6 특별작업 → ⑥ 작성하기. 우리 서버 가드도 같은 순서를 강제한다 —
+            초안 학기(term_create_draft)가 없으면 등록부 편집은 423 잠금, 자동 작성·채택은
+            거부(server.ts). 종전에는 9c-H로 새로 생긴 두 탭이 맨 앞에 붙어 학기 관리가
+            3번으로 밀려 있었다(timetable_ia_split_spec §3은 원래 1번으로 뒀다). */}
         <button
-          onClick={() => setActiveTab("hours_plan")}
+          onClick={() => setActiveTab("import")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
-            activeTab === "hours_plan"
+            activeTab === "import"
               ? "bg-indigo-600 text-white shadow-sm"
               : "text-gray-600 hover:bg-gray-100"
           }`}
         >
-          <span>📋 선생님별 주당 수업 시간</span>
+          <span>⚙️ 학기 & 권한 관리</span>
         </button>
 
         <button
@@ -260,18 +270,18 @@ export default function TimetableCreationSection() {
               : "text-gray-600 hover:bg-gray-100"
           }`}
         >
-          <span>⏱️ 교육과정 고정 시간</span>
+          <span>⏱️ 창체·SLAT 배치</span>
         </button>
 
         <button
-          onClick={() => setActiveTab("import")}
+          onClick={() => setActiveTab("hours_plan")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
-            activeTab === "import"
+            activeTab === "hours_plan"
               ? "bg-indigo-600 text-white shadow-sm"
               : "text-gray-600 hover:bg-gray-100"
           }`}
         >
-          <span>⚙️ 학기 & 권한 관리</span>
+          <span>📋 선생님별 주당 수업 시간</span>
         </button>
 
         <button

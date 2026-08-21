@@ -148,7 +148,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
       const data = await res.json();
       if (res.ok) {
         setModalOpen(false);
-        setSuccessMessage("교육과정 고정 시간이 안전하게 저장되었습니다.");
+        setSuccessMessage("창체·SLAT 배치가 안전하게 저장되었습니다.");
         setTimeout(() => setSuccessMessage(null), 3000);
         await loadCohorts();
       } else {
@@ -191,7 +191,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <span>⏱️ 교육과정 고정 시간</span>
+            <span>⏱️ 창체·SLAT 배치</span>
           </h2>
           <p className="text-xs text-gray-500 mt-1">
             교육과정별(입학년도 기준)로 고정되는 창체·SLAT 등의 전교 고정 교시를 등록합니다.
@@ -240,7 +240,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
       ) : cohorts.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center space-y-3">
           <span className="text-3xl">🗓️</span>
-          <h3 className="text-sm font-bold text-gray-800">등록된 교육과정 고정 시간이 없습니다</h3>
+          <h3 className="text-sm font-bold text-gray-800">등록된 창체·SLAT 배치가 없습니다</h3>
           <p className="text-xs text-gray-500 max-w-md mx-auto">
             새 교육과정을 추가하고 창체·SLAT 등 전교 고정 교시를 등록해보세요.
           </p>
@@ -364,7 +364,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-gray-900">
-                  {editingCohortId ? "교육과정 고정 시간 수정" : "새 교육과정 고정 시간 등록"}
+                  {editingCohortId ? "창체·SLAT 배치 수정" : "새 창체·SLAT 배치 등록"}
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
                   해당 교육과정이 처음 적용된 입학생 연도와 전교 고정 교시를 설정합니다.

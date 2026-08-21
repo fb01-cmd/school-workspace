@@ -541,7 +541,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
             </div>
           ) : (
             <div className="overflow-x-auto border border-gray-200 rounded-xl max-h-[500px]">
-              <table className="w-full text-sm text-left border-collapse">
+              <table className="min-w-full text-sm text-left border-collapse">
                 <thead className="bg-slate-50 sticky top-0 border-b border-gray-200 text-gray-700">
                   <tr>
                     <th className="px-3 py-2.5 font-bold">학생 정보</th>

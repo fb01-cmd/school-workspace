@@ -937,10 +937,10 @@ export default function AssignmentHoursModal({
       if (!confirmContinue) return;
     }
 
-    // 교육과정 고정 시간 등록부 확인
+    // 창체·SLAT 배치 등록부 확인
     if (cohorts.length === 0) {
       const confirmNoCohort = confirm(
-        "교육과정 고정 시간 등록부가 비어 있어 창체·SLAT 고정 시간이 추가되지 않습니다.\n\n이대로 계속 진행하시겠습니까?"
+        "창체·SLAT 배치 등록부가 비어 있어 창체·SLAT 고정 시간이 추가되지 않습니다.\n\n이대로 계속 진행하시겠습니까?"
       );
       if (!confirmNoCohort) return;
     }

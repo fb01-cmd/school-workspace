@@ -638,7 +638,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
           <p className="text-gray-400 text-sm text-center py-8">현재 전출 대기 중인 교직원이 없습니다.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-left text-gray-700 text-sm font-bold">
                   <th className="pb-3 pr-4 font-bold">이름/이메일</th>

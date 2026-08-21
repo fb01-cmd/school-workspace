@@ -536,7 +536,7 @@ export interface AssembledHoursRow {
 
 export interface AssembleResult {
   rows: AssembledHoursRow[]; // 배정표 개인표 유래 — **창체 제외** (§9-A: 최종 시수표 실측상
-  // 창체는 시수표에 없고 교육과정 고정 시간 몫. 불러오기의 코호트 함의 행과 이중 계상 차단)
+  // 창체는 시수표에 없고 창체·SLAT 배치 몫. 불러오기의 코호트 함의 행과 이중 계상 차단)
   /** 창체 담당 파일 유래(반별 담당 1시간) — 배정표 창체와 관계가 확정되지 않아 **합치지 않고 따로** 준다.
    *  포함 여부는 화면에서 일과계가 정한다 (이중 계상 방지 — 9c-I H1 무력화 함정과 같은 정신). */
   creativeRows: AssembledHoursRow[];

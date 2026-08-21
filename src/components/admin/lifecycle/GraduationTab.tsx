@@ -800,7 +800,7 @@ export default function GraduationTab({ s, ud }: any) {
           ) : filteredCandidates.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-xs">대상 학생이 없습니다.</div>
           ) : (
-            <table className="w-full text-left text-sm border-collapse">
+            <table className="min-w-full text-left text-sm border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b text-slate-500 uppercase font-semibold">
                   <th className="px-6 py-3.5 w-24">학번</th>

@@ -388,7 +388,7 @@ export default function DisciplineSummarySection({
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-center text-xs border-collapse">
+                <table className="min-w-full text-center text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 font-semibold">
                       <th className="py-2 px-1.5 text-left w-14">학년</th>
@@ -575,7 +575,7 @@ export default function DisciplineSummarySection({
                 </div>
               ) : (
                 <div className="overflow-x-auto max-h-[340px]">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="min-w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 font-semibold">
                         <th className="py-2 px-2 text-center w-8">#</th>
@@ -650,7 +650,7 @@ export default function DisciplineSummarySection({
           </div>
 
           <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl max-h-[500px]">
-            <table className="w-full text-left text-sm border-collapse">
+            <table className="min-w-full text-left text-sm border-collapse">
               <thead className="bg-gray-50 dark:bg-gray-700/50 sticky top-0 border-b border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold z-10">
                 <tr>
                   <th className="p-3 w-20">학번</th>
