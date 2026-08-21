@@ -949,15 +949,43 @@ interface SoftState {
   classSubjects: Map<string, Map<number, Map<string, number>>>;
 }
 
-function teacherDayPenalty(
-  periods: Set<number>,
-  subjects: Map<string, number>,
-  L: number
-): number {
-  let pts = 0;
-  if (periods.size >= 5) pts += periods.size - 4; // S1
-  // S2: 연속 블록마다 (len-2)
+/**
+ * S2(교사 연속) 실험 레버 — 2026-08-21 실측이 연 자리.
+ *
+ * 같은 잣대로 재 보니 **실제 운영 시간표(컴시간·사람 손)의 연속 3교시 이상은 0건**인데
+ * 백지 편성은 10점이 나왔다. 30학급에서 0은 우연이 아니다 — 저쪽은 이것을 사실상 지켜야
+ * 할 선으로 다룬다. 반면 우리 목적함수에서 S2는 가중 1이고 S4는 8이라, **중복 한 건을
+ * 피하려고 4연속을 받는 것이 솔버에게는 이득**이었다. 게다가 그렇게 생긴 연속은 양 끝이
+ * 분반이면 사후에 못 고친다(해결안 탐색기가 손댈 수 없다) — 배치 단계에서 막는 수밖에 없다.
+ *
+ * 기본값은 **현행 그대로**다(가중 1·상한 없음). 환경변수로만 켜서 백지 벤치마크로 재고,
+ * 관문(S4=0·미배정 0·하드 0·총점 기준선 이하)을 통과한 값만 기본값으로 승격한다.
+ * 근거: S7을 목적함수에 넣었다가 전 시드에서 S4가 되살아나고 34→43.5로 무너진 전례.
+ */
+const S2_WEIGHT = Math.max(0, Number(process.env.SOLVER_S2_WEIGHT || "") || 1);
+/** 0 = 끔. 3이면 "교사 연속 3교시 이상"을 배치 단계에서 금지한다 (S4의 dayLimit 승격과 같은 처방) */
+const S2_MAX_RUN = Math.max(0, Number(process.env.SOLVER_S2_MAXRUN || "") || 0);
+/** 1이면 상한을 배치 불가 폴백(relaxDayLimit)에서도 풀지 않는다 — 진짜 「선」.
+ *  실측(2026-08-21): 폴백에서 같이 풀리게 하면 금지했는데도 4연속 2건이 그 틈으로 샜다 —
+ *  새는 선은 선이 아니다. 대신 미배정이 생길 위험을 감수하는 것이므로 실험으로만 켠다. */
+const S2_STRICT = process.env.SOLVER_S2_STRICT === "1";
+
+/** 교시 집합의 최장 연속 길이 */
+function longestRun(periods: Set<number>): number {
   const sorted = [...periods].sort((a, b) => a - b);
+  let best = 0;
+  let run = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    run = i > 0 && sorted[i] === sorted[i - 1] + 1 ? run + 1 : 1;
+    if (run > best) best = run;
+  }
+  return best;
+}
+
+/** S2 공식 점수 (검사기 등가) — 연속 블록마다 (len-2) */
+function s2OfficialPoints(periods: Set<number>): number {
+  const sorted = [...periods].sort((a, b) => a - b);
+  let pts = 0;
   let run = 1;
   for (let i = 1; i <= sorted.length; i++) {
     if (i < sorted.length && sorted[i] === sorted[i - 1] + 1) run++;
@@ -966,11 +994,25 @@ function teacherDayPenalty(
       run = 1;
     }
   }
+  return pts;
+}
+
+function teacherDayPenalty(
+  periods: Set<number>,
+  subjects: Map<string, number>,
+  L: number
+): number {
+  let pts = 0;
+  if (periods.size >= 5) pts += periods.size - 4; // S1
+  // S2: 연속 블록마다 (len-2) — 공식 등가 그대로. 내부 가중(S2_WEIGHT)은 apply()가
+  // 초과분을 따로 얹고 따로 추적한다(softScoreS2x) — S4와 같은 구조. 여기서 직접 가중하면
+  // 추정과 공식 점수가 어긋나 포트폴리오가 나쁜 시드를 뽑는다(2ea8a49 이전 S4 실사고 재현).
+  pts += s2OfficialPoints(periods);
   if (periods.has(L) && periods.has(L + 1)) pts += 1; // S3
   const subjectCount = [...subjects.values()].filter((n) => n > 0).length;
   if (subjectCount >= 3) pts += subjectCount - 2; // S5
-  const afternoon = sorted.filter((p) => p > L).length;
-  if (afternoon >= 3 && afternoon === sorted.length) pts += 1; // S6
+  const afternoon = [...periods].filter((p) => p > L).length;
+  if (afternoon >= 3 && afternoon === periods.size) pts += 1; // S6
   return pts;
 }
 
@@ -1043,6 +1085,9 @@ export function solveTimetable(input: SolverInput): SolverResult {
    *  relaxDayLimit 폴백이 S4를 허용하면서 추정(가중)과 실측(공식)이 어긋났고, 포트폴리오가
    *  어긋난 추정으로 나쁜 시드를 뽑았다 (실측: 추정 39/실측 32 시드를 선발해 실측 30 시드를 놓쳤다). */
   let softScoreS4 = 0;
+  /** softScore 중 S2 내부 가중의 **초과분**(공식 점수를 넘는 몫)만 — 보고 시 통째로 뺀다.
+   *  S2_WEIGHT=1(기본)이면 항상 0이라 현행 동작 불변. */
+  let softScoreS2x = 0;
 
   // S4(학급 과목 중복) 집계 대상 과목 — 전원 가상 교사(창체·SLAT 자리표시) 수업은 검사기와 동일하게 제외
   const subjectsOf = (s: SolverSection, ck: string): string[] =>
@@ -1110,9 +1155,11 @@ export function solveTimetable(input: SolverInput): SolverResult {
     // 소프트 delta: 영향 받는 (교사,day)·(학급,day)의 전후 점수 차
     let before = 0;
     let beforeS4 = 0;
+    let beforeS2x = 0;
     for (const tk of s.teacherKeys) {
       const snap = teacherDaySnapshot(tk, occ.day);
       before += teacherDayPenalty(snap.periods, snap.subjects, L);
+      if (S2_WEIGHT !== 1) beforeS2x += s2OfficialPoints(snap.periods) * (S2_WEIGHT - 1);
     }
     for (const ck of s.classKeys)
       beforeS4 += classDayPenalty(nested(soft.classSubjects, ck, occ.day));
@@ -1145,14 +1192,17 @@ export function solveTimetable(input: SolverInput): SolverResult {
 
     let after = 0;
     let afterS4 = 0;
+    let afterS2x = 0;
     for (const tk of s.teacherKeys) {
       const snap = teacherDaySnapshot(tk, occ.day);
       after += teacherDayPenalty(snap.periods, snap.subjects, L);
+      if (S2_WEIGHT !== 1) afterS2x += s2OfficialPoints(snap.periods) * (S2_WEIGHT - 1);
     }
     for (const ck of s.classKeys)
       afterS4 += classDayPenalty(nested(soft.classSubjects, ck, occ.day));
-    softScore += after + afterS4 - (before + beforeS4);
+    softScore += after + afterS4 + afterS2x - (before + beforeS4 + beforeS2x);
     softScoreS4 += afterS4 - beforeS4;
+    softScoreS2x += afterS2x - beforeS2x;
 
     if (!sectionDayCount.has(occ.sectionIdx)) sectionDayCount.set(occ.sectionIdx, new Map());
     bump(sectionDayCount.get(occ.sectionIdx)!, occ.day, dir);
@@ -1212,6 +1262,18 @@ export function solveTimetable(input: SolverInput): SolverResult {
       for (const ck of s.classKeys) if (classOcc.has(`${ck}|${slot}`)) return false;
       for (const tk of s.teacherKeys) if (teacherOcc.has(`${tk}|${slot}`)) return false;
       if (s.room && roomOcc.has(`${s.room}|${slot}`)) return false;
+    }
+    // S2 상한 실험(SOLVER_S2_MAXRUN) — 이 배치로 어느 교사든 연속이 상한을 넘으면 금지.
+    // S4가 가중으로 안 풀려 dayLimit(배치 규칙)로 승격된 것과 같은 처방을 S2에 실험한다.
+    // 실제 운영 시간표(사람 손)는 연속 3+가 0건 — 사람은 이걸 점수가 아니라 선으로 다룬다.
+    // relaxDayLimit(배치 불가 폴백)에서는 함께 풀린다 — 못 놓는 것보다는 연속이 낫다.
+    if (S2_MAX_RUN > 0 && (S2_STRICT || !relaxDayLimit) && s.teacherKeys.length) {
+      for (const tk of s.teacherKeys) {
+        const periods = new Set<number>();
+        for (const [p, n] of soft.teacherDays.get(tk)?.get(day) || []) if (n > 0) periods.add(p);
+        for (let p = start; p < start + len; p++) periods.add(p);
+        if (longestRun(periods) >= S2_MAX_RUN) return false;
+      }
     }
     return true;
   }
@@ -1706,9 +1768,10 @@ export function solveTimetable(input: SolverInput): SolverResult {
       placedGreedy,
       placedByEjection,
       localSearchAccepted: accepted,
+      // S2 내부 가중 초과분(softScoreS2x)도 통째로 벗긴다 — 공식 등가 보고 원칙 동일.
       // S4 내부 가중을 벗겨 공식 점수 등가로 보고 — classDayPenalty는 S4만 담고 그 점수는
       // 전부 (n-1)×S4_INTERNAL_WEIGHT 꼴이라 나눗셈이 정확히 떨어진다.
-      softScoreEstimate: softScore - softScoreS4 + softScoreS4 / S4_INTERNAL_WEIGHT,
+      softScoreEstimate: softScore - softScoreS2x - softScoreS4 + softScoreS4 / S4_INTERNAL_WEIGHT,
       s4Estimate: softScoreS4 / S4_INTERNAL_WEIGHT,
     },
   };

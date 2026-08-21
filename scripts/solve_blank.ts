@@ -354,6 +354,13 @@ async function main() {
   console.log(
     `코드별: ${Object.entries(report.soft.byCode).map(([c, n]) => `${c}=${n}`).join(" ") || "없음"}`
   );
+  // S2 상세 — 2026-08-21 실측에서 열린 축: 실제 운영 시간표(사람 손)는 연속 3+가 0건이다.
+  // 총점이 좋아도 연속 4+가 남으면 "사람이 안 하는 배치"라 대체 주장을 못 한다.
+  {
+    const s2 = report.soft.details.filter((d) => d.code === "S2");
+    console.log(`S2 상세 ${s2.length}건 (실제 운영 시간표 기준 0건):`);
+    for (const d of s2) console.log(`  ${/연속 [4-9]/.test(d.text) ? "⚠ " : "  "}${d.text}`);
+  }
 
   // ── 결정론: 같은 시드 재실행 = 동일 출력 ──
   const rerun = solveTimetable({
