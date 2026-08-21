@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# 이 저장소의 훅은 .githooks/ 에 있다 (git config core.hooksPath .githooks).
+# .git/hooks 는 버전 관리가 안 돼 다른 에이전트·클론에 전달되지 않기 때문이다.
+exec "$(git rev-parse --show-toplevel)/scripts/commit_scope_guard.sh"
