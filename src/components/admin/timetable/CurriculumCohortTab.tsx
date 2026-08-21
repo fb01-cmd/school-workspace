@@ -60,7 +60,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
       if (res.ok) {
         setCohorts(data.cohorts || []);
       } else {
-        setError(data.error || "교육과정 등록부 목록을 불러오지 못했습니다.");
+        setError(data.error || "창체·SLAT 배치 목록을 불러오지 못했습니다.");
       }
     } catch (err: any) {
       setError(`로드 오류: ${err.message || String(err)}`);
@@ -152,7 +152,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
         setTimeout(() => setSuccessMessage(null), 3000);
         await loadCohorts();
       } else {
-        setError(data.error || "교육과정 저장에 실패했습니다.");
+        setError(data.error || "창체·SLAT 배치 저장에 실패했습니다.");
       }
     } catch (err: any) {
       setError(`저장 오류: ${err.message || String(err)}`);
@@ -162,7 +162,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
   };
 
   const handleDeleteCohort = async (cohortId: string, label: string) => {
-    if (!confirm(`정말 '${label}' 교육과정 설정을 삭제하시겠습니까?`)) return;
+    if (!confirm(`정말 '${label}' 배치를 삭제하시겠습니까?`)) return;
     try {
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
@@ -173,7 +173,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
         }),
       });
       if (res.ok) {
-        setSuccessMessage("교육과정이 삭제되었습니다.");
+        setSuccessMessage("창체·SLAT 배치가 삭제되었습니다.");
         setTimeout(() => setSuccessMessage(null), 3000);
         await loadCohorts();
       } else {
@@ -194,7 +194,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
             <span>⏱️ 창체·SLAT 배치</span>
           </h2>
           <p className="text-xs text-gray-500 mt-1">
-            교육과정별(입학년도 기준)로 고정되는 창체·SLAT 등의 전교 고정 교시를 등록합니다.
+            창체·SLAT을 어느 요일 몇 교시에 넣을지 정합니다. 적용 범위는 「○○년 입학생부터」로 지정합니다.
           </p>
         </div>
 
@@ -214,7 +214,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
             onClick={handleOpenNew}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
           >
-            <span>+ 교육과정 추가</span>
+            <span>+ 배치 추가</span>
           </button>
         </div>
       </div>
@@ -235,20 +235,20 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
       {loading ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent mb-4"></div>
-          <p className="text-sm font-semibold text-gray-600">교육과정 데이터를 불러오는 중입니다...</p>
+          <p className="text-sm font-semibold text-gray-600">창체·SLAT 배치를 불러오는 중입니다...</p>
         </div>
       ) : cohorts.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center space-y-3">
           <span className="text-3xl">🗓️</span>
           <h3 className="text-sm font-bold text-gray-800">등록된 창체·SLAT 배치가 없습니다</h3>
           <p className="text-xs text-gray-500 max-w-md mx-auto">
-            새 교육과정을 추가하고 창체·SLAT 등 전교 고정 교시를 등록해보세요.
+            창체·SLAT이 들어갈 요일·교시를 등록해 주세요.
           </p>
           <button
             onClick={handleOpenNew}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
           >
-            + 첫 번째 교육과정 등록하기
+            + 첫 번째 배치 등록하기
           </button>
         </div>
       ) : (
@@ -258,7 +258,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
             const applicableGrades = gradesForCohort(cohorts, c.id, currentSchoolYear);
             const gradeText =
               applicableGrades.length > 0
-                ? `${applicableGrades.map((g) => `${g}학년`).join(" · ")}이 이 교육과정을 따릅니다`
+                ? `${currentSchoolYear}학년도 기준 ${applicableGrades.map((g) => `${g}학년`).join(" · ")}에 적용됩니다`
                 : `${currentSchoolYear}학년도에는 해당하는 학년이 없습니다`;
 
             return (
@@ -367,7 +367,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
                   {editingCohortId ? "창체·SLAT 배치 수정" : "새 창체·SLAT 배치 등록"}
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  해당 교육과정이 처음 적용된 입학생 연도와 전교 고정 교시를 설정합니다.
+                  이 배치를 어느 입학생부터 적용할지와, 창체·SLAT이 들어갈 요일·교시를 정합니다.
                 </p>
               </div>
               <button
