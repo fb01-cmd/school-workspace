@@ -662,3 +662,11 @@ Codex 통과 5/실패 36 (커밋 4개 대조). Claude가 36건 전건 열람, �
 - 검증 상태: 자가 테스트 **67/67**(기존 35건 회귀 0 + 신규 32건) / tsc ✅ / build ✅ / `check_ui_removals` ✅(사라진 상호작용 0) / Firestore 규칙 변경 불요 확인(기본 거부 + 서버 전용 컬렉션이라 새 서브컬렉션도 자동 커버)
 - 다음 할 일: 구현 3(화면, Antigravity — 스펙 §5) → 구현 4(Codex 검증, §2↔§4 대조). STATUS 「창체·SLAT 고정 슬롯」 절 참조
 - 주의: ⓐ `expandCohortFixedBlocks`에 5번째 인자 `overrides`가 생겼다 — 화면 작업 시 새 호출부는 반드시 재정의 목록을 함께 넘길 것(안 넘기면 코호트만 전개돼 서버와 어긋난다) ⓑ `basedOnCohortId`는 서버가 저장 시 덮어쓴다 — 화면에서 채워 보낼 필요 없음 ⓒ 학년도 계산은 `schoolYearOfDate`(cohort.ts)가 단일 소재지 — `CurriculumCohortTab.tsx:22`의 `getFullYear()` 교체가 구현 3에 포함돼 있다
+
+## [2026-08-21] Claude(Fable) — 과제 L 검증 종결 (기계 검사 + Codex 구현 4 + 표적 리뷰)
+
+- 변경 파일: `src/components/admin/timetable/CurriculumCohortTab.tsx`(문구·편집기 보정), `src/lib/timetable/cohort.ts`(검증 보정), `scripts/cohort_selftest.ts`(케이스 3건 추가)
+- 검증 상태: 자가 테스트 **70/70** / tsc ✅ / build ✅ / `check_ui_removals` — 삭제 3건 전부 개명·대체 확인(회귀 0)
+- Codex 결과(구현 4): **통과 13 · 실패 3 · 판정불가 1.** 실패 3건 전건 재확인 → 전부 사실이라 수정 — ⓐ 화면 문구 「(코호트)」 잔존(`9f7fd9d`) ⓑ `validateOverrideInput`이 비정규 학년 키("01"·"1.0") 허용 → 정규형 강제 ⓒ 비활성 저장 건까지 충돌 거부 → active끼리만 검사 ⓓ 편집기에서 적용 학년도를 바꿔도 미리 채움이 안 바뀜 → 격자 미수정 상태에서만 재계산(편집 유실 방지 dirty 플래그). 판정불가 1건(재정의 0건 동등성)은 자가 테스트 실행으로 해소
+- 다음 할 일: 푸시·배포 후 사용자 실기기 확인(STATUS 행). 고3 SL 표현 방식은 여전히 사용자 결정 대기
+- 주의: 화면 검증은 코드 리뷰까지 — 이 화면은 관리자 로그인 뒤라 Claude 브라우저 확인 불가(기존 확인된 제약)

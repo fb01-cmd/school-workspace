@@ -339,6 +339,19 @@ console.log("⑨ 재정의 서버 검증 — validateOverrideInput");
     "비활성 기존 건과는 충돌 아님",
     validateOverrideInput(ok, 2026, [{ ...other, active: false }]) === null
   );
+  // Codex 검증 B 지적 2건의 회귀 방지
+  check(
+    "비정규 학년 키(\"01\") 거부",
+    validateOverrideInput({ ...ok, gradeSlots: { "01": okSlots } }, 2026) !== null
+  );
+  check(
+    "비정규 학년 키(\"1.0\") 거부",
+    validateOverrideInput({ ...ok, gradeSlots: { "1.0": okSlots } }, 2026) !== null
+  );
+  check(
+    "비활성으로 저장하는 건은 충돌 검사 면제",
+    validateOverrideInput({ ...ok, active: false }, 2026, [other]) === null
+  );
 }
 
 console.log("⑩ 학년도 계산 — 3월 시작 (KST)");

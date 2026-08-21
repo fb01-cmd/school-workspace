@@ -299,6 +299,7 @@ export function validateOverrideInput(
     label?: unknown;
     effectiveFromSchoolYear?: unknown;
     gradeSlots?: unknown;
+    active?: unknown;
   },
   currentSchoolYear: number,
   otherActiveOverrides: FixedSlotOverride[] = [],
@@ -325,7 +326,8 @@ export function validateOverrideInput(
   }
   for (const gk of gradeKeys) {
     const grade = Number(gk);
-    if (!Number.isInteger(grade) || grade < 1 || grade > maxGrade) {
+    // 키 정규형 강제 — "01"·"1.0"을 허용하면 같은 학년이 두 키로 들어와 저장 시 조용히 합쳐진다
+    if (!Number.isInteger(grade) || grade < 1 || grade > maxGrade || String(grade) !== gk) {
       return `학년은 1~${maxGrade}이어야 합니다`;
     }
     const entry = (gradeSlots as Record<string, { slots?: unknown }>)[gk];
@@ -354,7 +356,9 @@ export function validateOverrideInput(
       seen.add(key);
     }
   }
-  // 해석 규칙(§2)의 "가장 최근 것 하나"가 항상 유일하도록 — 같은 학년도·같은 학년 충돌 금지
+  // 해석 규칙(§2)의 "가장 최근 것 하나"가 항상 유일하도록 — 같은 학년도·같은 학년 충돌 금지.
+  // 유일성은 active끼리만 문제가 되므로, 비활성으로 저장하는 건은 검사하지 않는다 (Codex 검증 B 지적)
+  if (override.active === false) return null;
   for (const other of otherActiveOverrides) {
     if (!other.active || other.effectiveFromSchoolYear !== y) continue;
     const overlap = gradeKeys.filter((gk) => other.gradeSlots?.[Number(gk)]);

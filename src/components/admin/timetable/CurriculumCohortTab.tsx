@@ -41,6 +41,8 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
   const [editingOverrideId, setEditingOverrideId] = useState<string | null>(null);
   const [overrideFormLabel, setOverrideFormLabel] = useState<string>("");
   const [overrideFormYear, setOverrideFormYear] = useState<number>(() => schoolYearOfDate(new Date()));
+  // 격자를 손으로 고친 적이 있는가 — 없을 때만 학년도 변경 시 미리 채움을 다시 계산한다 (편집 유실 방지)
+  const [overrideFormTouched, setOverrideFormTouched] = useState<boolean>(false);
   const [overrideFormSelectedGrades, setOverrideFormSelectedGrades] = useState<number[]>([1, 2, 3]);
   const [overrideFormGradeSlots, setOverrideFormGradeSlots] = useState<Record<number, CohortFixedSlot[]>>({});
   const [overrideFormActive, setOverrideFormActive] = useState<boolean>(true);
@@ -241,6 +243,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
     }
     setOverrideFormGradeSlots(initialSlotsMap);
     setOverrideFormActive(true);
+    setOverrideFormTouched(false);
     setOverrideModalOpen(true);
   };
 
@@ -261,10 +264,12 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
     }
     setOverrideFormGradeSlots(initialSlotsMap);
     setOverrideFormActive(o.active);
+    setOverrideFormTouched(false);
     setOverrideModalOpen(true);
   };
 
   const handleToggleOverrideSlot = (grade: number, day: number, period: number) => {
+    setOverrideFormTouched(true);
     const currentSlots = overrideFormGradeSlots[grade] || [];
     const existing = currentSlots.find((s) => s.day === day && s.period === period);
     if (existing) {
@@ -283,6 +288,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
 
   const handleSaveOverrideSlotName = () => {
     if (!overrideSlotNameModal) return;
+    setOverrideFormTouched(true);
     const trimmed = overrideSlotNameModal.name.trim() || "창체";
     const grade = overrideSlotNameModal.grade;
     const currentSlots = overrideFormGradeSlots[grade] || [];
@@ -1066,6 +1072,17 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
                       onChange={(e) => {
                         const val = parseInt(e.target.value, 10) || currentSchoolYear;
                         setOverrideFormYear(val);
+                        // 격자를 아직 손대지 않았다면 바뀐 학년도 기준으로 미리 채움을 다시 계산한다
+                        // — 전환기(두 교육과정 공존)에는 학년도에 따라 기본값이 달라진다 (Codex 검증 F② 지적)
+                        if (!editingOverrideId && !overrideFormTouched) {
+                          const remap: Record<number, CohortFixedSlot[]> = {};
+                          for (const g of [1, 2, 3]) {
+                            remap[g] = resolveFixedSlots(cohorts, overrides, val, g).slots.map(
+                              (s) => ({ ...s })
+                            );
+                          }
+                          setOverrideFormGradeSlots(remap);
+                        }
                       }}
                       className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg font-mono text-sm font-bold text-gray-900 focus:bg-white focus:outline-none focus:border-purple-600"
                     />
