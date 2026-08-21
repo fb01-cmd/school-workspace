@@ -3840,7 +3840,7 @@ export default function TeacherPortalSection() {
       <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 rounded-xl p-5 text-white shadow-md border border-indigo-700/40">
         <h2 className="text-lg font-bold">📅 내 시간표 &amp; 수업교환 신청</h2>
         <p className="text-sm text-indigo-200/80 mt-1">
-          내 주간 시간표를 확인하고 수업교환을 신청합니다. 교체가 가능한 자리만 후보로 표시됩니다.
+          교체가 가능한 자리만 후보로 표시됩니다.
         </p>
       </div>
 

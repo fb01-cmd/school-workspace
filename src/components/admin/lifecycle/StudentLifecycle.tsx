@@ -243,13 +243,7 @@ export default function StudentLifecycle() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-violet-700 to-indigo-800 rounded-xl text-white p-6 shadow-lg">
-        <h2 className="text-xl font-bold mb-1">📚 학적 관리</h2>
-        <p className="text-violet-200 text-sm">
-          신입생 입학 · 진급 · 전입/전출 · 졸업 — 학생 계정 생애주기 전체 관리
-        </p>
-      </div>
+      {/* 배너 없음 — 상단 머리줄이 이미 「학생 계정 생애주기 관리」를 띄운다 */}
 
       {/* Section Selector */}
       <div className="flex gap-3">

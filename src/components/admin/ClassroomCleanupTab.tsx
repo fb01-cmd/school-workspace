@@ -478,9 +478,6 @@ export default function ClassroomCleanupTab() {
               </HelpTip>
             </div>
             <h2 className="text-xl font-bold">클래스룸·캘린더 학기말 일괄 정리</h2>
-            <p className="text-indigo-200 text-sm mt-1 max-w-2xl">
-              지난 학년도 클래스룸 및 캘린더를 정돈하고 보관 처리합니다.
-            </p>
           </div>
           <div className="flex gap-2 shrink-0">
             <button
@@ -768,7 +765,7 @@ export default function ClassroomCleanupTab() {
                   <h3 className="text-base font-bold">보관된 클래스룸 잔여 정리</h3>
                 </div>
                 <p className="text-xs text-slate-300">
-                  교사가 클래스룸 앱에서 직접 보관(Archive)하여 캘린더 구독이나 드라이브 폴더가 방치된 잔여 항목을 탐지하여 정돈합니다.
+                  교사가 클래스룸 앱에서 직접 보관해 캘린더·드라이브가 방치된 것을 찾아 정돈합니다.
                 </p>
               </div>
               <button
@@ -925,7 +922,7 @@ export default function ClassroomCleanupTab() {
                   <h3 className="text-base font-bold">삭제된 클래스룸 고아 폴더</h3>
                 </div>
                 <p className="text-xs text-slate-300">
-                  교사가 클래스룸을 직접 삭제하여 드라이브('Classroom' 폴더)에 남아있는 고아 폴더를 탐지하여 '이전년도 클래스룸/삭제된 클래스룸'으로 정돈합니다.
+                  교사가 클래스룸을 직접 지워 드라이브에만 남은 폴더를 찾아 &apos;이전년도 클래스룸/삭제된 클래스룸&apos;으로 옮깁니다.
                 </p>
               </div>
               <button

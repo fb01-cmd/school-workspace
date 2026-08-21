@@ -232,16 +232,6 @@ export default function UsageDashboardTab() {
   if (data && !data.available) {
     return (
       <div className="space-y-6">
-        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-2xl text-white p-6 sm:p-8 shadow-xl border border-indigo-900/40">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-2xl">📊</span>
-            <h2 className="text-xl font-bold">사용량 모니터링</h2>
-          </div>
-          <p className="text-indigo-200 text-xs sm:text-sm">
-            데이터베이스 사용 현황 및 일일 무료 한도 소진율을 확인합니다.
-          </p>
-        </div>
-
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
           <div className="flex items-start gap-4">
             <div className="p-3 bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 rounded-2xl border border-amber-200 dark:border-amber-900/50 text-2xl shrink-0">
@@ -366,9 +356,6 @@ export default function UsageDashboardTab() {
               <span>오늘 {todayBadge.label} ({Math.round(today.topPercent)}%)</span>
             </span>
           </div>
-          <p className="text-indigo-200 text-xs sm:text-sm">
-            데이터베이스 일일 사용 현황 및 최근 30일 사용 추세를 확인합니다.
-          </p>
         </div>
 
         <div className="flex items-center sm:flex-col sm:items-end justify-between gap-2 shrink-0">

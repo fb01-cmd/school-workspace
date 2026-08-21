@@ -275,7 +275,7 @@ export default function ManualProfileEditor({ initialEmail = "", initialProfile,
           </span>
         </h2>
         <p className="text-xs text-gray-500 mt-1">
-          신청·승인 절차 없이 인사 배치표를 보고 즉시 승인 프로필로 저장합니다. 교사에게 알림이 발송되지 않으며 연속 입력 UX가 지원됩니다.
+          신청·승인 절차 없이 바로 저장되며, 교사에게 알림이 가지 않습니다.
         </p>
       </div>
 

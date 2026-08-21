@@ -993,33 +993,28 @@ export default function TimetableImportTab({
 
   return (
     <div className="space-y-6">
-      {/* 헤더 배너 */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white rounded-xl p-6 shadow-md border border-indigo-800/40">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-500/20 text-indigo-200 border border-indigo-400/30">
-                일과계 전용 관리자
-              </span>
-              <HelpTip title="학기 관리 상세 안내" variant="dark">
-                <p>등록된 학기 목록을 확인하고, 초안 학기를 정식 시간표로 활성화하거나 삭제할 수 있습니다.</p>
-                <p>시간표 담당 관리자와 열람 전용 참관자 지정도 이 화면에서 합니다.</p>
-              </HelpTip>
-            </div>
-            <h2 className="text-xl font-bold text-white tracking-tight">
-              📦 학기 & 권한 관리
-            </h2>
-            <p className="text-sm text-indigo-200/80 mt-1 max-w-2xl">
-              학기 활성화·보관과 시간표 관리자·참관자 지정을 관리합니다.
-            </p>
-          </div>
-          <button
-            onClick={() => setActiveStep(4)}
-            className="px-4 py-2 bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-semibold rounded-lg shadow transition-all border border-indigo-400/30"
-          >
-            📋 등록된 학기 목록 ({terms.length}개)
-          </button>
+      {/* 헤더 — 다른 탭과 같은 흰 카드로 맞춘다.
+          짙은 배너였던 것은 이 화면이 「컴시간 가져오기」 4단계 마법사였던 시절(779dedc)의 잔재다.
+          마법사가 꺼지고(SHOW_COMCIGAN_IMPORT) 탭 하나가 된 뒤로는 이 탭만 상위 화면처럼 보였다. */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+            <span>📦 학기 &amp; 권한 관리</span>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+              일과계 전용 관리자
+            </span>
+            <HelpTip title="학기 관리 상세 안내" variant="light">
+              <p>등록된 학기 목록을 확인하고, 초안 학기를 정식 시간표로 활성화하거나 삭제할 수 있습니다.</p>
+              <p>시간표 담당 관리자와 열람 전용 참관자 지정도 이 화면에서 합니다.</p>
+            </HelpTip>
+          </h2>
         </div>
+        <button
+          onClick={() => setActiveStep(4)}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-all self-start md:self-auto"
+        >
+          📋 등록된 학기 목록 ({terms.length}개)
+        </button>
       </div>
 
       {/* 워크플로우 4단계 스테퍼 (Stepper) — 컴시간 가져오기 숨김 시 스테퍼 전체 비노출 (4단계만 남아 무의미) */}

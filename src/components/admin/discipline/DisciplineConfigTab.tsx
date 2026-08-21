@@ -425,7 +425,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
             <span>🔄 학년별 회차 리셋</span>
           </h3>
           <p className="text-xs text-amber-800 dark:text-amber-400 mt-1">
-            새 학기 또는 학학년 초기화 시 해당 학년의 회차 누적을 0부터 다시 시작합니다. (과거 지도 기록 데이터 자체는 삭제되지 않습니다)
+            회차 누적만 0부터 다시 시작합니다. 과거 지도 기록은 지워지지 않습니다.
           </p>
         </div>
 
