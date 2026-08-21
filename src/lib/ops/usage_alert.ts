@@ -12,6 +12,7 @@
 // 권한이 생기는 순간 재배포 없이 스스로 동작하기 시작한다.
 import { adminDb } from "@/lib/firebase/admin";
 import { emitNotificationsBatch } from "@/lib/notifications/server";
+import { isWebPushConfigured, sendPushToEmail } from "@/lib/push/webpush";
 import {
   AlertLevel,
   AlertState,
@@ -190,6 +191,7 @@ export async function runUsageAlert(
         refId: usage.day,
       }))
     );
+    await pushAlertToRecipients(domain, admins, title, message, `usage:${usage.day}`);
     await stateRef().set(decision.nextState, { merge: true });
   } else {
     base.emitted = admins.length; // 예상 발송 수
@@ -278,6 +280,42 @@ export async function setAlertRecipients(input: unknown): Promise<SetRecipientsR
 // 크론은 «아무도 화면을 안 볼 때»의 약한 안전망으로 남긴다(Vercel Hobby 크론 2개 한도가
 // 이미 차 있어 주기를 더 줄일 수도 없다 — `docs/midterm_ops_risk_2026-08-14.md`).
 
+/**
+ * 경보를 **휴대폰 푸시로도** 보낸다 (2026-08-21 사용자 신고: *"이 알림은 휴대폰 알림으로도
+ * 가야 할 것 같아. 종에만 보여"*).
+ *
+ * `emitNotificationsBatch`는 **앱 안 알림(종 아이콘)만** 만든다 — 푸시는 별도 통로다.
+ * 사용량 경보는 «지금 멈추라»는 성격이라, 관리자가 마침 화면을 보고 있어야만 닿는
+ * 종 알림만으로는 목적을 못 이룬다.
+ *
+ * 실패해도 던지지 않는다 — 푸시가 안 되더라도 종 알림은 이미 만들어져 있다.
+ */
+async function pushAlertToRecipients(
+  domain: string,
+  emails: string[],
+  title: string,
+  body: string,
+  tag: string
+): Promise<number> {
+  if (!isWebPushConfigured()) return 0;
+  let sent = 0;
+  for (const email of emails) {
+    try {
+      const r = await sendPushToEmail(domain, email, {
+        title,
+        body,
+        // 관리자만 여는 화면이라 목적지는 사용량 메뉴가 있는 교사 포털이다
+        url: "/teacher",
+        tag,
+      });
+      sent += r.sent;
+    } catch (e: any) {
+      console.error(`[usage_alert] 푸시 실패(${email}):`, e?.message || e);
+    }
+  }
+  return sent;
+}
+
 export interface LiveAlertSummary {
   level: AlertLevel;
   emitted: number;
@@ -328,6 +366,9 @@ export async function runLiveUsageAlert(
         refId: `live:${usage.day}`,
       }))
     );
+    // 종 알림만으로는 «지금 멈추라»가 닿지 않는다 — 휴대폰 푸시도 함께
+    await pushAlertToRecipients(domain, emails, `[진행 중] ${title}`, message, `usage:live:${usage.day}`);
+
     await stateRef().set(d.nextLive, { merge: true });
     return { level, emitted, decision: d.reason };
   } catch (e: any) {
