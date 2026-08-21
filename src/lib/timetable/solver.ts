@@ -99,6 +99,10 @@ export interface SolverResult {
     relaxQuotaUsed: number;
     /** S4(같은 날 동일 과목) 공식 점수 몫 — 사용자 기준 금기라 포트폴리오 선발이 사전식으로 우선한다 */
     s4Estimate: number;
+    /** S2(교사 연속 3+) 공식 점수 몫 — 실제 운영 시간표가 0건이라 선발이 총점보다 우선한다 (2026-08-22) */
+    s2Estimate: number;
+    /** S2 중 죽음 연속(점심 안 끼는 3연속+) 몫 — 사용자: "1-2-3·2-3-4·5-6-7은 죽음" */
+    s2DeathEstimate: number;
   };
 }
 
@@ -1007,6 +1011,17 @@ const S2_FELT_WEIGHT = envNum("SOLVER_S2_FELT_WEIGHT", 0);
  *  전 후보가 feasibility 탈락하는 자리 — 2자·3자 반경의 한계로, 다음 수단은 Kempe 체인/LNS
  *  (로드맵 §2 리서치 항목). 상세는 일지). 되돌리기: SOLVER_REPAIR_S2FELT=0 */
 const REPAIR_S2FELT = (process.env.SOLVER_REPAIR_S2FELT ?? "1") === "1";
+/** Kempe 체인 이웃 (리서치 문서 추천 2안 — docs/research/timetabling_search_ideas_2026-08-22.md).
+ *  ⑦-e의 2자 교환·3자 회전이 전부 막힌 위반에 한해, **같은 요일의 두 교시(p↔q) 사이**
+ *  충돌 연결 요소 전체를 통째로 맞바꾼다. 같은 요일 한정인 이유: 요일 부하·몫(S4)·섹션 요일
+ *  한도가 자동 불변이라 검사가 패턴 축(S2·S3·S6)으로 좁혀진다. 다학급(동시수업) 섹션도 체인에
+ *  포함된다 — 2자 교환이 구조적으로 못 닿던 반경이 바로 이것. 수용 기준은 ⑦-e와 동일.
+ *
+ *  기본값 켬 (2026-08-22 관문 통과 승격 — 시드 확대 +4·선발 S2 사전식과 한 묶음. 벤치마크
+ *  선발 시드 23: 총점 27→25.5(최저 경신)·S2 0(사람 손과 동일)·죽음 0·S1 2·S4 0·폴백 0·
+ *  결정론 ✅. 2단 탐색까지 얹은 근거·잔존 시드 1의 불가능 증명은 일지 「Kempe 체인」 참조).
+ *  되돌리기: SOLVER_REPAIR_KEMPE=0 (시드 목록·선발 기준은 env 밖 — 구판 완전 재현은 git) */
+const REPAIR_KEMPE = (process.env.SOLVER_REPAIR_KEMPE ?? "1") === "1";
 /** 0 = 끔(기본). 4면 교사의 하루 수업을 4시간 이하로 배치 단계에서 강제한다.
  *
  *  ❌ 선 승격 **실험 부결** (2026-08-22 실측 — 다음 세션이 같은 막다른 길을 다시 파지 않도록 기록):
@@ -2356,6 +2371,174 @@ export function solveTimetable(input: SolverInput): SolverResult {
             done = true;
           }
         }
+
+        // ── Kempe 체인 (같은 요일 p↔q) — 2자·3자가 전부 막힌 위반의 최후 이웃 ──
+        // 체인 = 수업을 q교시로 옮길 때 충돌하는 q의 수업들(→p로), 그것들이 p에서 만드는
+        // 충돌들(→q로) … 의 연결 요소 전체. 폐포가 완성되면 학급·교사·특별실 겹침이 구조적으로
+        // 보존된다. 블록(len≥2)·고정 섹션이 연쇄에 들어오면 그 체인은 포기. 같은 요일이라
+        // 요일 부하·몫·S4 불변 — 검사할 것은 금지 슬롯·학년 교시수·연속 상한·점수 축뿐.
+        //
+        // **2단 탐색이 핵심이다** (실측 — 김원선 목: 빈 교시 {1,4}에서 연속 없는 배열의 빈 교시는
+        // {3,6}·{2,5}·{3,5}뿐이라 어떤 단일 수로도 ds2<0이 불가능하고, 점수가 같은 중간 판을
+        // 한 번 거쳐야 한다). 1단 = 단일 개선 체인. 없으면 2단 = 무손실 가로 체인(전 Δ≤0·패턴
+        // 변경 있는 것)을 하나 두고 다시 1단 — 실패 시 저널로 원복. 채택 시 (S2합,죽음합)이
+        // 두 수 합산으로 엄격 감소하므로 종료 보장. 결정론 — 정렬 순회·rng 무사용.
+        if (!done && REPAIR_KEMPE) {
+          type ChainEval = { key: string; q: number; di: number; ds2: number; df: number; ds1: number; capOk: boolean; changed: boolean };
+          /** tk의 그 요일 len-1 수업들 — 현재 판 기준 (2단에서 판이 바뀌면 다시 구한다) */
+          const myKeys = (): string[] => {
+            const out: string[] = [];
+            for (const [k2, o] of placed) {
+              if (o.day !== day || o.len !== 1) continue;
+              const os = sections[o.sectionIdx];
+              if (os.kind === "fixed") continue;
+              if (!os.teacherKeys.includes(tk)) continue;
+              out.push(k2);
+            }
+            return out.sort();
+          };
+          /** 체인 전개 — 성립하면 [A(p→q), B(q→p)], 아니면 null */
+          const buildChain = (startKey: string, q: number): [string[], string[]] | null => {
+            const start = placed.get(startKey);
+            if (!start || start.len !== 1 || q === start.start) return null;
+            const p0 = start.start;
+            const occIndex = new Map<string, string>();
+            for (const [k2, o] of placed)
+              for (let pp = o.start; pp < o.start + o.len; pp++)
+                occIndex.set(`${o.sectionIdx}|${o.day}-${pp}`, k2);
+            const inA = new Set<string>([startKey]);
+            const inB = new Set<string>();
+            const queue: Array<[string, "A" | "B"]> = [[startKey, "A"]];
+            while (queue.length) {
+              const [k2, side] = queue.shift()!;
+              const o = placed.get(k2);
+              if (!o) return null;
+              const os = sections[o.sectionIdx];
+              if (os.kind === "fixed" || o.len !== 1) return null;
+              const to = side === "A" ? q : p0;
+              if (to < 1 || to > (gdp[os.grade]?.[day] || 0)) return null;
+              const slot = `${day}-${to}`;
+              if (os.bannedSlots.has(slot)) return null;
+              if (os.allowedSlots && !os.allowedSlots.has(slot)) return null;
+              let ok = true;
+              const pull = (occupantIdx: number | undefined): boolean => {
+                if (occupantIdx === undefined) return true;
+                const ok2 = occIndex.get(`${occupantIdx}|${day}-${to}`);
+                if (!ok2) return false; // 역색인 불일치 — 방어적 포기
+                const oppSet = side === "A" ? inB : inA;
+                const ownSet = side === "A" ? inA : inB;
+                if (oppSet.has(ok2)) return true;
+                if (ownSet.has(ok2)) return false; // 같은 편에 이미 있으면 모순
+                oppSet.add(ok2);
+                queue.push([ok2, side === "A" ? "B" : "A"]);
+                return true;
+              };
+              for (const ck of os.classKeys) if (!pull(classOcc.get(`${ck}|${slot}`))) { ok = false; break; }
+              if (ok) for (const tk2 of os.teacherKeys) if (!pull(teacherOcc.get(`${tk2}|${slot}`))) { ok = false; break; }
+              if (ok && os.room && !pull(roomOcc.get(`${os.room}|${slot}`))) ok = false;
+              if (!ok) return null;
+              if (inA.size + inB.size > 12) return null; // 체인 상한 (리서치 권고 6~8보다 여유)
+            }
+            return [[...inA].sort(), [...inB].sort()];
+          };
+          const patternOf = (): string => [...teacherDaySnapshot(tk, day).periods].sort((a, b) => a - b).join(",");
+          /** 체인을 임시 적용해 평가하고 원복 */
+          const evalChain = (startKey: string, q: number): ChainEval | null => {
+            const chain = buildChain(startKey, q);
+            if (!chain) return null;
+            const [A, B] = chain;
+            const p0 = placed.get(startKey)!.start;
+            const tksAff = [
+              ...new Set([...A, ...B].flatMap((k2) => sections[placed.get(k2)!.sectionIdx].teacherKeys)),
+            ];
+            const [s2Before, fBefore, s1Before] = feltSum(tksAff, [day]);
+            const before = softScore;
+            const patBefore = patternOf();
+            const mark = ejectJournal.length;
+            const movedA = A.map((k2) => placed.get(k2)!);
+            const movedB = B.map((k2) => placed.get(k2)!);
+            for (const o of [...movedA, ...movedB]) japply(o, -1);
+            for (const o of movedA) japply({ ...o, start: q }, 1);
+            for (const o of movedB) japply({ ...o, start: p0 }, 1);
+            // 연속 상한 검사 — 체인이 다른 교사에게 4연속을 만들면 안 된다 (배치 규칙 등가)
+            let capOk = true;
+            if (S2_MAX_RUN > 0) {
+              for (const tk2 of tksAff) {
+                if (longestRun(teacherDaySnapshot(tk2, day).periods) >= S2_MAX_RUN) { capOk = false; break; }
+              }
+            }
+            const di = softScore - before;
+            const [s2After, fAfter, s1After] = feltSum(tksAff, [day]);
+            const changed = patternOf() !== patBefore;
+            rollbackTo(mark);
+            return { key: startKey, q, di, ds2: s2After - s2Before, df: fAfter - fBefore, ds1: s1After - s1Before, capOk, changed };
+          };
+          const applyChain = (startKey: string, q: number): void => {
+            const chain = buildChain(startKey, q)!;
+            const [A, B] = chain;
+            const p0 = placed.get(startKey)!.start;
+            const movedA = A.map((k2) => placed.get(k2)!);
+            const movedB = B.map((k2) => placed.get(k2)!);
+            for (const o of [...movedA, ...movedB]) japply(o, -1);
+            for (const o of movedA) japply({ ...o, start: q }, 1);
+            for (const o of movedB) japply({ ...o, start: p0 }, 1);
+          };
+          const accepts = (e: ChainEval): boolean =>
+            e.capOk && e.di <= 0 && e.ds1 <= 0 && e.df <= 0 && (e.ds2 < 0 || e.df < 0);
+          const better = (a: ChainEval, b: ChainEval): boolean =>
+            a.ds2 < b.ds2 || (a.ds2 === b.ds2 && (a.df < b.df || (a.df === b.df && a.di < b.di)));
+          /** 1단 — 단일 개선 체인 탐색 (현재 판 기준) */
+          const searchImproving = (): ChainEval | null => {
+            let bst: ChainEval | null = null;
+            for (const k2 of myKeys()) {
+              const o = placed.get(k2)!;
+              const maxQ = gdp[sections[o.sectionIdx].grade]?.[day] || 0;
+              for (let q = 1; q <= maxQ; q++) {
+                const e = evalChain(k2, q);
+                if (process.env.SOLVER_S1_DEBUG === "1" && e)
+                  console.error(`[kempe] tk=${tk} d=${day} ${k2} p=${o.start} q=${q} capOk=${e.capOk} di=${e.di} ds2=${e.ds2} df=${e.df} ds1=${e.ds1}`);
+                if (e && accepts(e) && (bst === null || better(e, bst))) bst = e;
+              }
+            }
+            return bst;
+          };
+          const imp1 = searchImproving();
+          if (imp1) {
+            applyChain(imp1.key, imp1.q);
+            improved++;
+            done = true;
+          } else {
+            // 2단 — 무손실 가로 체인(전 Δ≤0·capOk·교사 패턴이 실제로 바뀌는 것)을 두고 재탐색
+            const sideways: ChainEval[] = [];
+            for (const k2 of myKeys()) {
+              const o = placed.get(k2)!;
+              const maxQ = gdp[sections[o.sectionIdx].grade]?.[day] || 0;
+              for (let q = 1; q <= maxQ; q++) {
+                const e = evalChain(k2, q);
+                if (e && e.capOk && e.changed && e.di <= 0 && e.ds1 <= 0 && e.df <= 0 && e.ds2 <= 0)
+                  sideways.push(e);
+              }
+            }
+            sideways.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.q - b.q));
+            let tried = 0;
+            for (const sw of sideways) {
+              if (tried >= 12) break; // 중간 판 시도 상한 — 위반당 비용 통제
+              tried++;
+              const mark2 = ejectJournal.length;
+              applyChain(sw.key, sw.q);
+              const imp2 = searchImproving();
+              if (imp2) {
+                applyChain(imp2.key, imp2.q);
+                if (process.env.SOLVER_S1_DEBUG === "1")
+                  console.error(`[kempe-2step] tk=${tk} d=${day} via=${sw.key}→q${sw.q} then=${imp2.key}→q${imp2.q} ds2=${imp2.ds2}`);
+                improved++;
+                done = true;
+                break;
+              }
+              rollbackTo(mark2);
+            }
+          }
+        }
       }
       if (!improved) break;
     }
@@ -2397,6 +2580,16 @@ export function solveTimetable(input: SolverInput): SolverResult {
     remaining,
   }));
 
+  // S2 공식·죽음 몫 집계 (포트폴리오 선발용) — 최종 판 기준
+  let s2FinalOfficial = 0;
+  let s2FinalDeath = 0;
+  for (const [tk, dm] of soft.teacherDays)
+    for (const [d] of dm) {
+      const periods = teacherDaySnapshot(tk, d).periods;
+      s2FinalOfficial += s2OfficialPoints(periods);
+      s2FinalDeath += feltDeathPoints(periods, L);
+    }
+
   return {
     grids: [...gridMap.values()],
     unplaced,
@@ -2412,6 +2605,8 @@ export function solveTimetable(input: SolverInput): SolverResult {
       softScoreEstimate: softScore - softScoreS2x - softScoreFeltx - softScoreS4 + softScoreS4 / S4_INTERNAL_WEIGHT,
       relaxQuotaUsed,
       s4Estimate: softScoreS4 / S4_INTERNAL_WEIGHT,
+      s2Estimate: s2FinalOfficial,
+      s2DeathEstimate: s2FinalDeath,
     },
   };
 }
@@ -2423,14 +2618,21 @@ export function solveTimetable(input: SolverInput): SolverResult {
 
 // 시드 확대 실험 (2026-08-18 실측): 16개 추가(소수 17~79)해 24개로 돌려도 30점 미만 시드
 // 없음(신규 최선 71=31점, 8개 최선 1=30점 유지). 편성 시간만 25초→82초로 늘어 8개 유지.
-export const DEFAULT_SEED_PORTFOLIO = [1, 2, 3, 5, 7, 11, 13, 42];
+// [2026-08-22 재확대 +4] 보수 패스(⑦-d·e·Kempe)가 생긴 뒤 지형이 달라져 재실측 — 시드 23이
+// 총점 25.5·S2 0(사람 손과 동일)·S1 2로 종전 최선(시드 1)을 전 축에서 이겼다. 8/18의 부정
+// 결과는 보수 패스 이전 지형 기준이라 이 확대와 모순되지 않는다. 12개 = 편성 시간 +50%.
+export const DEFAULT_SEED_PORTFOLIO = [1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 42];
 
 export interface PortfolioRanking {
   seed: number;
   soft: number; // 내부 추정치, 공식 점수 등가로 환산된 값 (S4 내부 가중 제거 — 공식 판정은 validateTimetable)
   unplacedHours: number;
-  /** S4 공식 점수 몫 — 선발 사전식 2순위 (미배정 → S4 → 총점) */
+  /** S4 공식 점수 몫 — 선발 사전식 2순위 (미배정 → S4 → 죽음 연속 → S2 → 총점) */
   s4?: number;
+  /** 죽음 연속(점심 안 끼는 3연속+) 몫 — 선발 3순위 (2026-08-22, 사용자 잣대) */
+  s2Death?: number;
+  /** S2 공식 몫 — 선발 4순위 (실제 운영 시간표 = 0건) */
+  s2?: number;
 }
 
 export interface PortfolioResult {
@@ -2457,18 +2659,32 @@ export function solveTimetablePortfolio(
         : undefined,
     });
     const unplacedHours = r.unplaced.reduce((s, u) => s + u.remaining, 0);
-    ranking.push({ seed, soft: r.stats.softScoreEstimate, unplacedHours, s4: r.stats.s4Estimate });
+    ranking.push({
+      seed,
+      soft: r.stats.softScoreEstimate,
+      unplacedHours,
+      s4: r.stats.s4Estimate,
+      s2Death: r.stats.s2DeathEstimate,
+      s2: r.stats.s2Estimate,
+    });
     // 선발은 사전식: 미배정 → S4(금기 — 총점이 낮아도 S4 있는 해가 없는 해를 이기면 안 된다.
     // 2026-08-21 실측: S7 도입으로 지형이 바뀌자 총점 34·S4 2건 시드가 37·S4 0건 시드를
-    // 눌렀다 — 총점 합산만으로는 금기 서열이 지켜지지 않는다) → 총점 순.
-    if (
-      !best ||
-      unplacedHours < bestUnplaced ||
-      (unplacedHours === bestUnplaced &&
-        (r.stats.s4Estimate < best.stats.s4Estimate ||
-          (r.stats.s4Estimate === best.stats.s4Estimate &&
-            r.stats.softScoreEstimate < best.stats.softScoreEstimate)))
-    ) {
+    // 눌렀다) → 죽음 연속 → S2 공식 → 총점 순. S2 두 단은 2026-08-22 사용자 잣대(*"실제
+    // 시간표는 뭐가 되었든 연속 3교시가 없다"* — 총점 한 숫자보다 이 축이 우선)의 코드화다.
+    const lex = (x: SolverResult & { seed: number }, xu: number): number[] => [
+      xu,
+      x.stats.s4Estimate,
+      x.stats.s2DeathEstimate,
+      x.stats.s2Estimate,
+      x.stats.softScoreEstimate,
+    ];
+    const cmpLex = (a: number[], b: number[]): number => {
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i];
+      return 0; // 완전 동률이면 목록 앞 시드 유지 (종전 결정론 규칙)
+    };
+    const cand = lex({ ...r, seed }, unplacedHours);
+    const wins = !best || cmpLex(cand, lex(best, bestUnplaced)) < 0;
+    if (wins) {
       best = { ...r, seed };
       bestUnplaced = unplacedHours;
     }
@@ -2477,6 +2693,8 @@ export function solveTimetablePortfolio(
     (a, b) =>
       a.unplacedHours - b.unplacedHours ||
       (a.s4 ?? 0) - (b.s4 ?? 0) ||
+      (a.s2Death ?? 0) - (b.s2Death ?? 0) ||
+      (a.s2 ?? 0) - (b.s2 ?? 0) ||
       a.soft - b.soft ||
       a.seed - b.seed
   );
