@@ -1117,9 +1117,17 @@ function* askFixGenerator(params: AskFixParams): Generator<AskFixProgress, FixPl
     beam = next.slice(0, beamWidth);
   }
 
-  // 못 풀었다 — 목표에 가장 가까운 상태를 부분 답으로 내되 resolvesGoal:false를 명시한다.
-  // 한 발짝도 가까워지지 않았으면 빈 계획이다 (없는 진전을 있는 것처럼 말하지 않는다).
-  const partial = best.distance < root.distance ? best : root;
+  // 못 풀었다 — "찾은 데까지"를 부분 답으로 내되 resolvesGoal:false를 명시한다 (스펙 §3-1).
+  //
+  // **진전의 기준이 둘이다.** 목표에 가까워지는 것(distance)만 진전으로 치면, 점수는 확실히
+  // 좋아지는데 목표 항목은 그대로인 안을 통째로 버린다. 실사용에서 바로 걸렸다 —
+  // *"수요일 연속 4교시"* 질문에서 4연속을 3연속으로 줄이는 안(감점 −2.5)이 있는데도
+  // 화면이 「0단계·점수 변화 없음」을 냈다(2026-08-21 사용자 시연). 감점 항목은 건수로 세므로
+  // 4연속→3연속은 distance가 그대로다. 같은 항목에 [해결안 찾기]는 그 안을 5건 내놓고 있었다.
+  // **한 화면의 두 버튼이 다른 답을 하면 안 된다.**
+  const improved =
+    best.distance < root.distance || best.report.soft.total < root.report.soft.total;
+  const partial = improved ? best : root;
   return finish(partial, false, evaluated, budgetExhausted);
 }
 

@@ -313,6 +313,65 @@ console.log("── ⑥ S8 교사 희망 위반 ──");
     found.map((c) => `${c.desc} resolves=${c.resolvesTarget}`).join(" / "));
 }
 
+// ── ⑥-2 목표엔 못 닿아도 점수가 좋아지면 부분 답을 낸다 ─────────
+// 2026-08-21 사용자 시연에서 걸린 것: 「수요일 연속 4교시」 질문에 화면이 「0단계·점수 변화
+// 없음」을 냈는데, 같은 항목의 [해결안 찾기]는 −2.5점 안을 5건 내놓고 있었다. 감점을 **건수**로
+// 세기 때문에 4연속→3연속은 목표 거리가 그대로였고, 거리만 진전으로 치던 구현이 그 안을 버렸다.
+// **한 화면의 두 버튼이 다른 답을 하면 안 된다.**
+console.log("── ⑥-2 목표 미달이어도 점수 개선이면 부분 답 ──");
+{
+  // 전용 그리드: 한 교사가 수요일 1~4교시 연속. 연속 4교시를 **없애려면** 가운데 칸을 빼야
+  // 하는데 S2의 원인 셀은 블록의 양 끝뿐이라, 한 수로는 4연속→3연속(점수만 개선)이 최선이다.
+  // 사용자 시연에서 걸린 모양 그 자체다.
+  const S1t = { email: "s1@hmh.or.kr", name: "연속교사" };
+  const S2t = { email: "s2@hmh.or.kr", name: "옆반교사" };
+  const runCells = [];
+  for (let d = 1; d <= 5; d++)
+    for (let p = 1; p <= 7; p++)
+      runCells.push({
+        day: d,
+        period: p,
+        lessons:
+          d === 3 && p <= 4
+            ? [lesson(`과목${p}`, S1t)]
+            : d !== 3 && p === 6
+              ? [lesson("타교과", S2t)]
+              : [],
+      });
+  const runGrids: ClassGrid[] = [{ grade: 1, classNum: 1, cells: runCells }];
+  const runModel: TimetableConstraintModel = {
+    lunchAfterPeriod: 4,
+    periodsPerDay: 7,
+    gradeDayPeriods: { 1: { 1: 7, 2: 7, 3: 7, 4: 7, 5: 7 } },
+  };
+  const runReport = validateTimetable(runGrids, runModel);
+  const runCommon = { baseGrids: runGrids, ops: [], currentGrids: runGrids, model: runModel };
+  const s2 = runReport.soft.details.find((d) => d.code === "S2");
+  expect("연속 4교시 감점이 실제로 잡힌다 (케이스가 성립한다)", !!s2, JSON.stringify(runReport.soft.details));
+
+  const v1 = findFixCandidates({ ...runCommon, target: s2! });
+  const plan = findFixPlan({
+    ...runCommon,
+    goal: { kind: "existing-detail", code: "S2", key: s2!.key, day: s2!.day },
+    maxDepth: 1,
+    evalBudget: 3000,
+  });
+  expect("케이스 성립 — 한 수로는 목표에 못 닿고 v1은 안을 낸다",
+    !plan.resolvesGoal && v1.length > 0, `resolvesGoal=${plan.resolvesGoal} v1=${v1.length}건`);
+  expect("[해결안 찾기]가 안을 내면 [물어보고 고치기]도 빈손으로 끝나지 않는다",
+    plan.steps.length > 0, `v1 ${v1.length}건 vs v3 ${plan.steps.length}단계`);
+  expect("부분 답은 실제로 점수가 좋아진 상태다",
+    plan.finalSoftTotal < runReport.soft.total,
+    `${runReport.soft.total} → ${plan.finalSoftTotal}`);
+
+  // 반대 방향 — 진전이 정말 없으면 없는 진전을 있는 것처럼 말하지 않는다
+  const already = findFixPlan({
+    ...common,
+    goal: { kind: "teacher-period-days", teacherEmail: T1.email, period: 1, maxDays: 5 },
+  });
+  expect("진전이 없으면 빈 계획 그대로", already.steps.length === 0 && already.resolvesGoal);
+}
+
 // ── ⑦ 사전 걸러내기 등가성 (v1 회귀 — Firestore 없이도 도는 그물) ──
 // 실데이터 판은 fixfinder_selftest ③이 하지만 그건 초안이 있어야 돈다. 1수 후보 생성기는
 // v1·v3이 공유하므로, 여기가 깨지면 두 기능이 함께 깨진다.
