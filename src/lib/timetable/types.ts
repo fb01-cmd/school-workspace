@@ -60,6 +60,16 @@ export type BaseRevisionOp =
       day: number;
       period: number;
       lessons: TimetableLesson[];
+    }
+  | {
+      /** 학급 간 교환 (timetable_fix_assist_spec §7 v2) — 여러 학급이 **같은 두 슬롯**을
+       *  동시에 맞바꾼다. 한 학급만 바꾸면 상대 학급에서 교사 겹침(H2)이 나는 경우,
+       *  그 상대 학급이 같은 슬롯 쌍을 함께 바꾸면 겹침이 정확히 상쇄된다.
+       *  하나의 연산이므로 적용·미리보기·undo가 원자적이다 (반쪽 적용 상태가 생기지 않는다). */
+      type: "swap_pair";
+      a: { day: number; period: number };
+      b: { day: number; period: number };
+      classes: Array<{ grade: number; classNum: number }>;
     };
 
 export interface TimetableBaseRevision {

@@ -109,24 +109,47 @@ export function applyRevisionOps(grids: ClassGrid[], ops: BaseRevisionOp[]): str
     }
     return cell;
   };
+  const swapInGrid = (
+    grid: ClassGrid,
+    a: { day: number; period: number },
+    b: { day: number; period: number }
+  ): boolean => {
+    const cellA = getOrCreateCell(grid, a.day, a.period);
+    const cellB = getOrCreateCell(grid, b.day, b.period);
+    if (cellA.lessons.length === 0 && cellB.lessons.length === 0) return false;
+    const tmp = cellA.lessons;
+    cellA.lessons = cellB.lessons;
+    cellB.lessons = tmp;
+    return true;
+  };
   for (const op of ops) {
+    if (op.type === "swap_pair") {
+      // 학급 간 교환 — 담긴 학급 전부가 같은 두 슬롯을 맞바꾼다 (원자: 한 연산이 전부 수행)
+      for (const cls of op.classes) {
+        const grid = findGrid(cls.grade, cls.classNum);
+        if (!grid) {
+          warnings.push(`${cls.grade}-${cls.classNum}반 시간표가 없어 학급 간 교환 일부를 건너뜀`);
+          continue;
+        }
+        if (!swapInGrid(grid, op.a, op.b)) {
+          warnings.push(
+            `${cls.grade}-${cls.classNum}반 ${DAY_KO[op.a.day]}${op.a.period}·${DAY_KO[op.b.day]}${op.b.period}교시 모두 빈 교시라 맞바꿈을 건너뜀`
+          );
+        }
+      }
+      continue;
+    }
     const grid = findGrid(op.grade, op.classNum);
     if (!grid) {
       warnings.push(`${op.grade}-${op.classNum}반 시간표가 없어 편집 1건을 건너뜀`);
       continue;
     }
     if (op.type === "swap") {
-      const cellA = getOrCreateCell(grid, op.a.day, op.a.period);
-      const cellB = getOrCreateCell(grid, op.b.day, op.b.period);
-      if (cellA.lessons.length === 0 && cellB.lessons.length === 0) {
+      if (!swapInGrid(grid, op.a, op.b)) {
         warnings.push(
           `${op.grade}-${op.classNum}반 ${DAY_KO[op.a.day]}${op.a.period}·${DAY_KO[op.b.day]}${op.b.period}교시 모두 빈 교시라 맞바꿈을 건너뜀`
         );
-        continue;
       }
-      const tmp = cellA.lessons;
-      cellA.lessons = cellB.lessons;
-      cellB.lessons = tmp;
     } else {
       const cell = getOrCreateCell(grid, op.day, op.period);
       cell.lessons = op.lessons.map((l) => ({

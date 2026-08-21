@@ -86,12 +86,23 @@ export function findPlaceholderLesson(
  * @returns 막아야 하면 사람이 읽는 사유, 통과면 null
  */
 export function checkPlaceholderOp(grids: ClassGrid[], op: BaseRevisionOp): string | null {
-  const slots =
-    op.type === "swap" ? [op.a, op.b] : [{ day: op.day, period: op.period }];
-  for (const s of slots) {
-    const hit = findPlaceholderLesson(grids, op.grade, op.classNum, s.day, s.period);
+  // (학급, 슬롯) 쌍으로 펼친다 — swap_pair(학급 간 교환)는 담긴 학급 전부의 두 슬롯을 본다
+  const targets: Array<{ grade: number; classNum: number; day: number; period: number }> =
+    op.type === "swap_pair"
+      ? op.classes.flatMap((c) => [
+          { grade: c.grade, classNum: c.classNum, ...op.a },
+          { grade: c.grade, classNum: c.classNum, ...op.b },
+        ])
+      : op.type === "swap"
+        ? [
+            { grade: op.grade, classNum: op.classNum, ...op.a },
+            { grade: op.grade, classNum: op.classNum, ...op.b },
+          ]
+        : [{ grade: op.grade, classNum: op.classNum, day: op.day, period: op.period }];
+  for (const t of targets) {
+    const hit = findPlaceholderLesson(grids, t.grade, t.classNum, t.day, t.period);
     if (!hit) continue;
-    return `${op.grade}학년 ${op.classNum}반 ${DAY_LABEL[s.day]}요일 ${s.period}교시는 '${hit.subjectName}' 자리입니다. 담당 선생님이 지정되지 않은 수업(창체·SLAT 등)은 학교 전체가 같은 시간에 묶여 있어 한 학급만 옮기거나 맞바꿀 수 없습니다.`;
+    return `${t.grade}학년 ${t.classNum}반 ${DAY_LABEL[t.day]}요일 ${t.period}교시는 '${hit.subjectName}' 자리입니다. 담당 선생님이 지정되지 않은 수업(창체·SLAT 등)은 학교 전체가 같은 시간에 묶여 있어 한 학급만 옮기거나 맞바꿀 수 없습니다.`;
   }
   return null;
 }

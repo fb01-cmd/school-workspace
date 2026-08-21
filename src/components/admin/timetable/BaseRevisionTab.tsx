@@ -469,15 +469,23 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                               selectedSlotA?.day === d.num && selectedSlotA?.period === period;
 
                             // 이 셀과 관련된 현재 ops가 존재하는지 체크
-                            const hasOp = ops.some(
-                              (op) =>
-                                op.grade === selectedGrade &&
-                                op.classNum === selectedClassNum &&
-                                (op.type === "swap"
-                                  ? (op.a.day === d.num && op.a.period === period) ||
+                            const hasOp = ops.some((op) => {
+                              if (op.type === "swap_pair") {
+                                return (
+                                  op.classes.some(
+                                    (c) => c.grade === selectedGrade && c.classNum === selectedClassNum
+                                  ) &&
+                                  ((op.a.day === d.num && op.a.period === period) ||
+                                    (op.b.day === d.num && op.b.period === period))
+                                );
+                              }
+                              if (op.grade !== selectedGrade || op.classNum !== selectedClassNum)
+                                return false;
+                              return op.type === "swap"
+                                ? (op.a.day === d.num && op.a.period === period) ||
                                     (op.b.day === d.num && op.b.period === period)
-                                  : op.day === d.num && op.period === period)
-                            );
+                                : op.day === d.num && op.period === period;
+                            });
 
                             return (
                               <td
@@ -563,18 +571,31 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                     className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50 text-xs flex items-center justify-between gap-2"
                   >
                     <div>
-                      <span className="font-bold text-amber-900">
-                        {op.grade}학년 {op.classNum}반:
-                      </span>{" "}
-                      {op.type === "swap" ? (
-                        <span>
-                          {DAY_LABEL[op.a.day]} {op.a.period}교시 ↔ {DAY_LABEL[op.b.day]} {op.b.period}교시 맞바꿈
-                        </span>
+                      {op.type === "swap_pair" ? (
+                        <>
+                          <span className="font-bold text-amber-900">
+                            {op.classes.map((c) => `${c.grade}학년 ${c.classNum}반`).join("·")}:
+                          </span>{" "}
+                          <span>
+                            {DAY_LABEL[op.a.day]} {op.a.period}교시 ↔ {DAY_LABEL[op.b.day]} {op.b.period}교시 함께 맞바꿈 (학급 간 교환)
+                          </span>
+                        </>
                       ) : (
-                        <span>
-                          {DAY_LABEL[op.day]} {op.period}교시 내용 변경 (
-                          {op.lessons?.[0]?.subjectName || "공강"})
-                        </span>
+                        <>
+                          <span className="font-bold text-amber-900">
+                            {op.grade}학년 {op.classNum}반:
+                          </span>{" "}
+                          {op.type === "swap" ? (
+                            <span>
+                              {DAY_LABEL[op.a.day]} {op.a.period}교시 ↔ {DAY_LABEL[op.b.day]} {op.b.period}교시 맞바꿈
+                            </span>
+                          ) : (
+                            <span>
+                              {DAY_LABEL[op.day]} {op.period}교시 내용 변경 (
+                              {op.lessons?.[0]?.subjectName || "공강"})
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                     <button

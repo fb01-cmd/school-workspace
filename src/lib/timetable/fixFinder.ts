@@ -42,7 +42,8 @@ const norm = (e: string) => (e || "").trim().toLowerCase();
 const CHUNK_SIZE = 25;
 
 export interface FixCandidate {
-  /** 항상 type:"swap" (v1) — 빈 교시로의 이동도 swap으로 표현된다 */
+  /** type:"swap"(같은 학급 이동·맞교환) 또는 type:"swap_pair"(학급 간 교환, v2 — 두 학급이
+   *  같은 두 슬롯을 동시에 맞바꿔 교사 겹침을 상쇄). 미리보기·적용 경로는 op 종류를 모른다 */
   op: BaseRevisionOp;
   /** "2학년 5반 화요일 2교시(수학Ⅰ·김한별) ↔ 수요일 3교시(빈 교시)" */
   desc: string;
@@ -100,10 +101,18 @@ const slotKey = (s: Slot) => `${s.day}-${s.period}`;
 const classKey = (grade: number, classNum: number) => `${grade}-${classNum}`;
 const detailKey = (d: TermPenaltyDetail) => `${d.code}|${d.scope}|${d.key}|${d.day}`;
 
-/** 맞교환 op의 정규화 키 — 같은 두 슬롯을 순서만 바꾼 중복 후보를 제거한다 */
-const opKey = (op: Extract<BaseRevisionOp, { type: "swap" }>) => {
-  const [x, y] = [slotKey(op.a), slotKey(op.b)].sort();
-  return `${op.grade}-${op.classNum}|${x}|${y}`;
+/** 후보 op의 정규화 키 — 같은 두 슬롯·같은 학급 조합을 순서만 바꾼 중복 후보를 제거한다 */
+const opKey = (op: BaseRevisionOp): string => {
+  if (op.type === "swap") {
+    const [x, y] = [slotKey(op.a), slotKey(op.b)].sort();
+    return `${op.grade}-${op.classNum}|${x}|${y}`;
+  }
+  if (op.type === "swap_pair") {
+    const [x, y] = [slotKey(op.a), slotKey(op.b)].sort();
+    const cls = op.classes.map((c) => `${c.grade}-${c.classNum}`).sort().join("+");
+    return `pair|${cls}|${x}|${y}`;
+  }
+  return `edit|${op.grade}-${op.classNum}|${op.day}-${op.period}`;
 };
 
 const findCell = (grid: ClassGrid | undefined, day: number, period: number) =>
@@ -224,6 +233,32 @@ function buildOccupancy(grids: ClassGrid[]): Occupancy {
   return occ;
 }
 
+/** 교사 위치 색인 — (교사 이메일 → 슬롯 → 그 시간에 수업하는 학급키 집합).
+ *  학급 간 교환(v2)의 상대 학급 탐색용: "이 교사가 그 시간에 어느 반에 있나"를 답한다 */
+type OccupancyWhere = Map<string, Map<string, Set<string>>>;
+
+function buildOccupancyWhere(grids: ClassGrid[]): OccupancyWhere {
+  const where: OccupancyWhere = new Map();
+  for (const g of grids) {
+    const ck = classKey(g.grade, g.classNum);
+    for (const c of g.cells || []) {
+      const sk = slotKey(c);
+      for (const l of c.lessons || []) {
+        for (const t of l.teachers || []) {
+          const email = norm(t.email);
+          if (!email) continue;
+          let bySlot = where.get(email);
+          if (!bySlot) where.set(email, (bySlot = new Map()));
+          let set = bySlot.get(sk);
+          if (!set) bySlot.set(sk, (set = new Set()));
+          set.add(ck);
+        }
+      }
+    }
+  }
+  return where;
+}
+
 const realTeachersOf = (lessons: TimetableLesson[]) => {
   const out = new Set<string>();
   for (const l of lessons) for (const t of l.teachers || []) if (norm(t.email)) out.add(norm(t.email));
@@ -293,6 +328,20 @@ function describeOp(grid: ClassGrid | undefined, op: Extract<BaseRevisionOp, { t
   return `${op.grade}학년 ${op.classNum}반 ${slotLabel(grid, op.a)} ↔ ${slotLabel(grid, op.b)}`;
 }
 
+/** 학급 간 교환 설명 — 두 학급 각각 무엇이 오가는지 밝힌다 (첫 학급이 감점 원인 쪽) */
+function describePairOp(
+  grids: ClassGrid[],
+  op: Extract<BaseRevisionOp, { type: "swap_pair" }>
+) {
+  return op.classes
+    .map((c) => {
+      const grid = findGrid(grids, c.grade, c.classNum);
+      return `${c.grade}학년 ${c.classNum}반 ${slotLabel(grid, op.a)} ↔ ${slotLabel(grid, op.b)}`;
+    })
+    .join(" + ")
+    .concat(" (두 학급이 같은 두 교시를 함께 맞바꿔 선생님 겹침을 상쇄)");
+}
+
 // ── 본체 ────────────────────────────────────────────────────
 
 /**
@@ -352,9 +401,80 @@ function* searchGenerator(
   // S2·S3은 같은 요일 안에서 교시를 바꾸는 것만으로 풀리므로 모든 슬롯을 본다.
   const differentDayOnly = target.code !== "S2" && target.code !== "S3";
 
+  const occWhere = buildOccupancyWhere(currentGrids);
+
+  /**
+   * 학급 간 교환(v2) 후보 완성 — 같은 학급 맞교환(X: a↔b)이 **교사 겹침(H2) 때문에만**
+   * 죽을 때, 겹침 상대 학급 Y가 **같은 두 슬롯을 함께** 맞바꾸면 겹침이 정확히 상쇄된다
+   * (X@a의 교사가 b 시간에 Y에서 수업 중이라면, Y의 b 수업도 a로 오므로 그 교사는 여전히
+   * a·b에 한 번씩만 선다). 상대가 정확히 한 학급일 때만 성립 — 둘 이상이면 3중 연쇄(v3 범위).
+   */
+  const tryBuildPair = (
+    gridX: ClassGrid,
+    a: Slot,
+    b: Slot
+  ): Extract<BaseRevisionOp, { type: "swap_pair" }> | null => {
+    const xKey = classKey(gridX.grade, gridX.classNum);
+    const cellXa = findCell(gridX, a.day, a.period);
+    const cellXb = findCell(gridX, b.day, b.period);
+    const lessonsXa = cellXa?.lessons || [];
+    const lessonsXb = cellXb?.lessons || [];
+    // ① 겹침 상대 학급 수집 — X의 두 수업이 옮겨 갈 시간에 그 교사가 서 있는 다른 학급
+    const partners = new Set<string>();
+    for (const email of realTeachersOf(lessonsXa)) {
+      if ((occ.get(email)?.get(slotKey(b)) || 0) - countInCell(cellXb, email) <= 0) continue;
+      for (const ck of occWhere.get(email)?.get(slotKey(b)) || []) if (ck !== xKey) partners.add(ck);
+    }
+    for (const email of realTeachersOf(lessonsXb)) {
+      if ((occ.get(email)?.get(slotKey(a)) || 0) - countInCell(cellXa, email) <= 0) continue;
+      for (const ck of occWhere.get(email)?.get(slotKey(a)) || []) if (ck !== xKey) partners.add(ck);
+    }
+    if (partners.size !== 1) return null;
+    const yKey = [...partners][0];
+    const [gy, cy] = yKey.split("-").map(Number);
+    const gridY = findGrid(currentGrids, gy, cy);
+    if (!gridY) return null;
+    if (isLocked(gridY, a) || isLocked(gridY, b)) return null; // 상대 학급의 동시수업 칸 보호
+    const cellYa = findCell(gridY, a.day, a.period);
+    const cellYb = findCell(gridY, b.day, b.period);
+    const lessonsYa = cellYa?.lessons || [];
+    const lessonsYb = cellYb?.lessons || [];
+    if (!lessonsYa.length && !lessonsYb.length) return null; // 상대가 양쪽 빈 교시면 상쇄가 성립 안 함
+    // ② H11 — 수업이 운영 밖 교시로 밀리는 조합 제거 (학년이 다를 수 있어 학급별 판정)
+    if (lessonsXa.length && b.period > operatingPeriods(gridX.grade, b.day)) return null;
+    if (lessonsXb.length && a.period > operatingPeriods(gridX.grade, a.day)) return null;
+    if (lessonsYa.length && b.period > operatingPeriods(gridY.grade, b.day)) return null;
+    if (lessonsYb.length && a.period > operatingPeriods(gridY.grade, a.day)) return null;
+    // ③ 짝 밖 겹침 사전 걸러내기 — 네 칸의 교사들이 새 시간에 (함께 비켜나는 네 칸을 빼고도)
+    //    다른 반 수업을 갖고 있으면 검사기가 어차피 H2로 떨어뜨린다
+    for (const email of new Set([...realTeachersOf(lessonsXa), ...realTeachersOf(lessonsYa)])) {
+      const remain =
+        (occ.get(email)?.get(slotKey(b)) || 0) -
+        countInCell(cellXb, email) -
+        countInCell(cellYb, email);
+      if (remain > 0) return null;
+    }
+    for (const email of new Set([...realTeachersOf(lessonsXb), ...realTeachersOf(lessonsYb)])) {
+      const remain =
+        (occ.get(email)?.get(slotKey(a)) || 0) -
+        countInCell(cellXa, email) -
+        countInCell(cellYa, email);
+      if (remain > 0) return null;
+    }
+    return {
+      type: "swap_pair",
+      a: { day: a.day, period: a.period },
+      b: { day: b.day, period: b.period },
+      classes: [
+        { grade: gridX.grade, classNum: gridX.classNum },
+        { grade: gy, classNum: cy },
+      ],
+    };
+  };
+
   const sources = collectSourceCells(target, currentGrids, model);
   const seenOps = new Set<string>();
-  const candidates: { op: Extract<BaseRevisionOp, { type: "swap" }>; grid: ClassGrid }[] = [];
+  const candidates: { op: BaseRevisionOp; grid: ClassGrid }[] = [];
 
   outer: for (const src of sources) {
     const grid = findGrid(currentGrids, src.grade, src.classNum);
@@ -377,7 +497,22 @@ function* searchGenerator(
         if (seenOps.has(k)) continue;
         // 자리표시 관문은 편집 경로와 **같은 함수**를 쓴다 — 규약이 갈라지지 않도록
         if (checkPlaceholderOp(currentGrids, op)) continue;
-        if (!includeDoomed && isDoomed(grid, op.a, op.b, occ, operatingPeriods)) continue;
+        const doomed = isDoomed(grid, op.a, op.b, occ, operatingPeriods);
+        if (doomed) {
+          // v2 — 같은 학급 안이 죽은 자리에서 학급 간 교환을 시도한다.
+          // includeDoomed(자가 테스트 등가 증명)와 무관하게 항상 같은 규칙으로 생성해야
+          // 걸러내기 on/off 결과가 동일하다.
+          const pairOp = tryBuildPair(grid, op.a, op.b);
+          if (pairOp) {
+            const pk = opKey(pairOp);
+            if (!seenOps.has(pk) && !checkPlaceholderOp(currentGrids, pairOp)) {
+              seenOps.add(pk);
+              candidates.push({ op: pairOp, grid });
+              if (candidates.length >= maxCandidates) break outer;
+            }
+          }
+        }
+        if (doomed && !includeDoomed) continue;
         seenOps.add(k);
         candidates.push({ op, grid });
         if (candidates.length >= maxCandidates) break outer;
@@ -411,7 +546,12 @@ function* searchGenerator(
 
         results.push({
           op,
-          desc: describeOp(grid, op),
+          desc:
+            op.type === "swap_pair"
+              ? describePairOp(currentGrids, op)
+              : op.type === "swap"
+                ? describeOp(grid, op)
+                : "",
           oldSoftTotal,
           newSoftTotal: rep.soft.total,
           deltaScore,

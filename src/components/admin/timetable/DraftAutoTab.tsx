@@ -1503,7 +1503,7 @@ export default function DraftAutoTab({
                                             </p>
                                             <p className="text-gray-600 leading-relaxed">
                                               {item.code === "S1" || item.code === "S4" || item.code === "S6"
-                                                ? `이 수업을 다른 요일로 옮기려면 그 날의 빈 교시가 필요합니다. 같은 학급 안에서 비어 있는 자리는 대부분 창체·SLAT 자리표시 칸이라, 규칙상 옮길 수 없습니다. 학급 간 교환(현재 미지원)이나 학급 전체 편성 조정이 필요합니다.`
+                                                ? `이 수업을 다른 요일로 옮기려면 그 날의 빈 교시가 필요합니다. 같은 학급 안의 이동·맞교환과 두 학급이 함께 맞바꾸는 학급 간 교환까지 찾아봤지만, 전부 다른 조건(창체·SLAT 자리, 선생님 겹침)에 막혀 있습니다. 학급 전체 편성 조정이 필요합니다.`
                                                 : item.code === "S2"
                                                 ? `이 교사의 연속 수업을 분산하려면 같은 요일 내 빈 교시가 필요합니다. 빈 자리가 있더라도 옮겼을 때 다른 조건(교사 중복·운영 교시 초과)이 새로 생기면 후보에서 제외됩니다.`
                                                 : item.code === "S3"
@@ -2148,7 +2148,10 @@ export default function DraftAutoTab({
                       >
                         <div className="flex justify-between items-center">
                           <span>
-                            #{idx + 1} {op.type === "swap" ? "맞교환/이동" : "셀 통째 수정"} ({op.grade}학년 {op.classNum}반)
+                            #{idx + 1}{" "}
+                            {op.type === "swap_pair"
+                              ? `학급 간 교환 (${op.classes.map((c) => `${c.grade}학년 ${c.classNum}반`).join("·")})`
+                              : `${op.type === "swap" ? "맞교환/이동" : "셀 통째 수정"} (${op.grade}학년 ${op.classNum}반)`}
                           </span>
                           {isCurrent && (
                             <span className="text-xs bg-purple-700 text-white font-extrabold px-1.5 py-0.5 rounded">
