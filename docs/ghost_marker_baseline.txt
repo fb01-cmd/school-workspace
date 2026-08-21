@@ -52,5 +52,6 @@ docs/september_questionnaire.md	| 4-2 | 소프트 S7(순배) 구현 여부 결�
 docs/timetable_fix_assist_spec.md	- S7(순배) 규칙: 타입에만 있고 미구현.
 phase9b_spec.md	5. 징검다리 체인: 접힌 영역 + "통상 사용하지 않습니다" 문구만. 클릭 시 "일과계에 직접 문의" 안내 (1차 미구현).
 project_notes.md	- **과제 K(시간표)는 착수 대기 상태**이며, 과제 J 검증 완료 후 지시에 따라 착수 예정.
+project_notes.md	- **미착수로 남긴 것**: 학사일정 기존 주 갱신(A10 — STATUS 행 등재), 이연 대장 유령 3건(A1·A2·A3) 문서 정정은 사용자 지시 대기
 project_notes.md	- Codex 구현 4 커밋 검증(해석 규칙 §2 ↔ 검증 §4 ↔ 화면 §5 대조) 및 Claude 360px 검수 대기.
 project_notes.md	> ⚠️ **검증 범위 고지**: **화면·모바일 미검증** (360px 및 실기기 검증은 Claude 및 사용자 몫). `tsc`·`build`·`check_ui_removals`·`grep` 회귀 관문 전수 통과 완료. **과제 K(시간표)는 착수 대기 상태 유지.**
