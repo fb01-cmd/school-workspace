@@ -23,7 +23,9 @@ import {
   computeLevel,
   decideEmit,
   decideEmitLive,
+  currentPacificDayStart,
   lastCompletePacificDay,
+  pacificDayLabel,
 } from "./usage_logic";
 import { UnavailableReason, fetchTotal, toUnavailable } from "./monitoring";
 
@@ -331,5 +333,74 @@ export async function runLiveUsageAlert(
   } catch (e: any) {
     console.error("[usage_alert] 진행 중 경보 실패(화면은 계속 동작):", e?.message || e);
     return { level: 0, emitted: 0, decision: `실패: ${e?.message || e}` };
+  }
+}
+
+// ── 로그인 맥박 (2026-08-21 사용자 발안 「로그인 픽셀」) ──────────────────
+//
+// **발상**: 메일 수신확인 픽셀처럼, **누가 로그인하든 그 순간** 사용량을 읽어 판정한다.
+// 사용자 원문 — *"누가 로그인 하지 않으면 읽기가 올라가지도 않으니 꽤 합리적일 것 같은데"*.
+//
+// **전제가 이 파일 머리 주석으로 이미 증명돼 있다**: 읽기의 다수는 브라우저 onSnapshot
+// 구독이다. 즉 **사용량이 오르는 것과 누군가 로그인해 있는 것은 사실상 같은 사건**이고,
+// 아무도 안 들어오면 점검할 필요도 없다.
+//
+// 이것이 메우는 빈틈: 판정을 사용량 화면 조회로 옮겼지만(`usage_query.ts`) **관리자가 그
+// 화면을 열어야만** 돌았다. 크론은 Vercel Hobby 2개 한도가 차 있어 주기를 줄일 수 없다.
+// 로그인 훅이면 교사 누구든 방아쇠가 된다.
+//
+// **보이지 않아야 한다** — 호출부에 숫자를 일절 돌려주지 않는다. 교사가 사용량을 볼 이유가
+// 없고, 화면 노출이 0이어야 «픽셀»이다.
+
+/** 점검 간격 — 70명이 아침에 몰려도 이 간격에 1회만 실제로 읽는다 */
+export const PULSE_THROTTLE_MS = 5 * 60 * 1000;
+
+/** 진행 중인 오늘 주기의 누계 — 완결일용 `fetchDailyUsage`와 구간이 다르다 */
+export async function fetchTodayUsage(now = new Date()): Promise<UsageFetchResult> {
+  const startMs = currentPacificDayStart(now);
+  try {
+    const [reads, writes, deletes] = await Promise.all([
+      fetchTotal("reads", startMs, now.getTime()),
+      fetchTotal("writes", startMs, now.getTime()),
+      fetchTotal("deletes", startMs, now.getTime()),
+    ]);
+    return { available: true, usage: { day: pacificDayLabel(startMs), reads, writes, deletes } };
+  } catch (err: any) {
+    const u = toUnavailable(err);
+    return { available: false, reason: u.reason, detail: u.detail };
+  }
+}
+
+export interface PulseResult {
+  /** 실제로 지표를 읽고 판정했는가 (false면 쓰로틀에 걸렸거나 권한이 없다) */
+  checked: boolean;
+  reason: string;
+}
+
+/**
+ * 로그인 시 1회 호출되는 점검. **절대 throw 하지 않는다** — 로그인 흐름을 막으면 본말전도다.
+ */
+export async function runUsagePulse(domain: string, now = new Date()): Promise<PulseResult> {
+  try {
+    const snap = await stateRef().get();
+    const last = snap.exists ? (snap.data() || {}).lastLiveCheckAt : 0;
+    const lastMs = typeof last === "number" ? last : 0;
+    if (now.getTime() - lastMs < PULSE_THROTTLE_MS) {
+      return { checked: false, reason: "쓰로틀 — 최근에 이미 점검함" };
+    }
+
+    // **읽기 전에 먼저 시각을 찍는다.** 아침에 여러 명이 동시에 들어와도 한 명만 통과한다
+    // (뒤늦게 온 요청은 위 쓰로틀에 걸린다). 실패해도 다음 간격에 다시 시도한다.
+    await stateRef().set({ lastLiveCheckAt: now.getTime() }, { merge: true });
+
+    const fetched = await fetchTodayUsage(now);
+    if (!fetched.available || !fetched.usage) {
+      return { checked: false, reason: `지표 조회 불가 — ${fetched.reason ?? "알 수 없음"}` };
+    }
+    const r = await runLiveUsageAlert(domain, fetched.usage);
+    return { checked: true, reason: r.decision };
+  } catch (e: any) {
+    console.error("[usage_alert] 로그인 맥박 실패(로그인은 계속 진행):", e?.message || e);
+    return { checked: false, reason: `실패: ${e?.message || e}` };
   }
 }

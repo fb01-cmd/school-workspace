@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { auth, db } from "@/lib/firebase/config";
@@ -20,6 +20,8 @@ export default function RouteGuard({
   
   const [transferCheckDone, setTransferCheckDone] = useState(false);
   const [securityGroupCheckDone, setSecurityGroupCheckDone] = useState(false);
+  // 사용량 맥박 — 세션당 1회만. state가 아니라 ref다(재렌더를 일으킬 이유가 없다)
+  const usagePulseSentRef = useRef(false);
 
   // allowedRoles는 호출부에서 인라인 배열로 넘어와 렌더마다 참조가 바뀌므로,
   // 문자열 키로 변환해 deps에 사용 (메뉴 전환 등 부모 리렌더마다 effect가
@@ -80,6 +82,24 @@ export default function RouteGuard({
         });
     } else {
       setSecurityGroupCheckDone(true);
+    }
+
+    // 1-2. 사용량 「로그인 맥박」 (2026-08-21 사용자 발안 — 「로그인 픽셀」)
+    //
+    // 메일 수신확인 픽셀처럼, **로그인했다는 사실 자체**를 사용량 점검의 방아쇠로 쓴다.
+    // 근거: 읽기의 다수가 브라우저 onSnapshot 구독이라(`usage_alert.ts` 머리 주석)
+    // **사용량이 오르는 것과 누군가 로그인해 있는 것은 사실상 같은 사건**이다.
+    // 아무도 안 들어오면 읽기가 오르지도 않으니 점검할 필요도 없다.
+    //
+    // 이것이 메우는 빈틈: 판정을 사용량 화면 조회로 옮겼지만 **관리자가 그 화면을
+    // 열어야만** 돌았다. 크론은 Vercel Hobby 2개 한도가 차 있어 주기를 못 줄인다.
+    //
+    // 화면에는 아무것도 나타나지 않는다 — 응답은 `{ok:true}`뿐이고 숫자는 안 돌려준다.
+    // 실제 점검은 서버가 5분에 1회로 쓰로틀한다(70명이 몰려도 1회).
+    // 세션당 1회만 던지고, 실패해도 조용히 넘어간다 — 로그인 흐름을 막지 않는다.
+    if (!usagePulseSentRef.current) {
+      usagePulseSentRef.current = true;
+      fetch("/api/ops/usage/pulse", { method: "POST" }).catch(() => {});
     }
 
     // 2. 전출 대기 교사 강제 리다이렉트 체크
