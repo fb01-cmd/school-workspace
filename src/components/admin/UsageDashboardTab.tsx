@@ -628,6 +628,7 @@ export default function UsageDashboardTab() {
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               완결된 1시간 단위 사용량입니다. 특정 시간대 급증이나 폭주 여부를 식별합니다.
+              <span className="font-semibold text-slate-700 dark:text-slate-300"> 시각은 한국 시간입니다.</span>
             </p>
           </div>
 
@@ -703,6 +704,10 @@ export default function UsageDashboardTab() {
 
             <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-1">
               💡 시간대별 합계가 오늘 누계보다 작은 것은 정상입니다 (완결된 시간대만 집계됩니다).
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              💡 왼쪽 끝이 {data?.resetHourLabel || "오후 4시"}인 것도 정상입니다 — 하루가 그때 시작하므로
+              막대는 자정을 넘어 다음 날 아침까지 이어집니다.
             </p>
           </div>
         )}
