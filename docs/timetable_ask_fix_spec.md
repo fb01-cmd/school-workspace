@@ -32,18 +32,28 @@
 AI가 자유문을 아래 **목표 어휘 중 하나**로 번역한다. 어휘 밖 요구는 "이 질문은 아직 못 알아듣습니다 + 알아듣는 질문의 예"로 정직하게 반환한다(할루시네이션 봉쇄 — E2와 같은 방식).
 
 ```ts
+export type AskFixThreshold = number | "reduce";
+
 export type AskFixGoal =
-  | { kind: "teacher-period-days"; teacherEmail: string; period: number; maxDays: number }
+  | { kind: "teacher-period-days"; teacherEmail: string; period: number; maxDays: AskFixThreshold }
     // "T의 p교시가 주 N일을 넘지 않게" — 발안 예시("1교시 5일 연속")가 정확히 이것
-  | { kind: "teacher-day-hours"; teacherEmail: string; day: number; maxHours: number }
+  | { kind: "teacher-day-hours"; teacherEmail: string; day: number; maxHours: AskFixThreshold }
     // "T의 d요일 수업을 N시간 이하로" (S1의 일반화 — 임계값을 질문이 정한다)
   | { kind: "subject-rotation"; grade: number; classNum: number; subjectName: string }
     // "c반 s과목이 매번 같은 교시인 것 좀" (S7과 동일 판정 재사용)
   | { kind: "move-cell"; grade: number; classNum: number; day: number; period: number }
     // "c반 d요일 p교시 수업을 다른 데로" (가장 원초적 — 목표는 '그 셀이 비거나 다른 수업')
-  | { kind: "existing-detail"; code: SoftCode; key: string; day: number };
+  | { kind: "existing-detail"; code: SoftPenaltyCode; key: string; day: number };
     // 질문이 기존 감점과 일치하면 기존 표적 경로로 (F-1 목록과 같은 입력)
 ```
+
+> **구현이 정한 것 3가지 (2026-08-21, 구현 1·2 — 스펙 초판이 비워 둔 자리)**
+>
+> ⓐ **임계값 `"reduce"`**: 발안 원문(*"1교시가 5일 연속인데 너무 많은 것 같아"*)에 **숫자가 없다.** 질문이 목표치를 말하지 않는 것이 오히려 보통이다. 그때 AI에게 숫자를 지어내게 하면 안 되고(그리드를 못 본다) 해석 단계에서도 정할 수 없으므로, **"지금보다 하나 적게"를 그리드를 쥔 엔진이 정한다.**
+>
+> ⓑ **`existing-detail`은 AI가 색인(#N)으로만 지목한다.** `key`는 교사 이메일이라 프롬프트에 실을 수 없고, AI가 `code`·`key`·`day`를 지어내면 존재하지 않는 감점을 가리킨다. 프롬프트에는 **가명화된 감점 문장에 번호를 붙여** 보여 주고, 번호 → (code, key, day) 복원은 서버가 한다.
+>
+> ⓒ **반쯤 해석된 목표는 만들지 않는다.** 별칭·학급·범위 중 하나라도 어긋나면 goal 자체를 null로 돌린다. 엉뚱한 목표로 3초를 뒤진 뒤의 "못 찾았습니다"는 "못 알아들었습니다"보다 나쁘다 — 사용자가 기능이 무능하다고 읽는다.
 
 - **성공 판정은 목표별 순수 함수다** (엔진 구현, AI 무관): 적용 후 그리드에서 목표 조건 충족 여부를 계산한다. 예: `teacher-period-days` → 그 교사가 그 교시에 서는 요일 수 ≤ maxDays.
 - 해석 파이프라인은 **E2(말로 입력)와 동일 골격**을 재사용한다: 실명·이메일은 전송 전 가명(T01…) 치환, 응답 역치환, 치환표는 요청 생명주기 안에서만(phase9c_e_spec §2 — **가명화 제거 변경은 Claude 재검토 필수**). 과목명·학급번호는 개인정보가 아니므로 치환 대상이 아니다.
@@ -76,8 +86,15 @@ export interface FixPlan {
   resolvesGoal: boolean;
   finalSoftTotal: number;      // 전 수 적용 후 공식 점수
   newPenalties: TermPenaltyDetail[]; // 적용 후 "새로 생기거나 커진" 감점 전부 — 수락 전 고지용 (요약 아님)
+  // ↓ 실패 문구(§4)의 재료 — "어디까지 시도했고 무엇에 막혔는지"를 화면이 말하려면 필요하다
+  remaining: number;           // 목표까지 남은 거리 (0 = 충족)
+  initialRemaining: number;    // 시작 시점의 거리 — "5칸 중 3칸은 옮겼다"가 여기서 나온다
+  evaluated: number;           // 검사기를 돌린 횟수
+  budgetExhausted: boolean;    // 예산 소진으로 멈췄나 (깊이 소진과 구분 — 문구가 달라진다)
 }
 ```
+
+`newPenalties`는 **다중집합**으로 뽑는다 — `detailKey`는 유일하지 않아(S2는 한 교사·한 요일에 블록이 둘이면 2건) 단순 대조는 같은 키의 건수 증가를 놓친다. 하드 위반 쪽 `diffNewHardViolations`와 같은 이유의 같은 처방이다.
 
 **부작용 고지는 전수다.** 기존 카드의 "최대 3건" 요약과 달리, 수락 버튼 앞에서는 새 감점 전부를 보여준다 — 발안 원문의 *"추가로 생기는 감점 요소들을 다 알려주고"* 가 요구 그 자체다.
 
@@ -102,6 +119,8 @@ export interface FixPlan {
 지금 등록부는 확정 금지(assign/move)뿐이라 *"금요일 오후는 되도록 비워 주세요"* 같은 부탁을 담을 곳이 없다. 질문지 회수(§3 서열 확정)로 대기가 풀린 항목.
 
 - **저장 모델**: `TeacherSlotBan`에 `soft?: boolean` 추가 (기본 false = 현행 하드 금지와 완전 호환, 마이그레이션 없음). soft 항목은 솔버의 `bannedSlots`(하드)에 넣지 않는다.
+  - **soft는 `kind:"assign"` 전용이다** (구현이 정함, 2026-08-21). 이동금지는 솔버 단계 제약이라 *"되도록 움직이지 마세요"* 가 성립하지 않는다. 조용히 무시하면 사용자 의도가 사라지므로 **저장 검증이 거절**하고, E2 해석은 그 조합의 soft를 버린다.
+  - soft 금지는 **H5(배정금지 위반)로 잡지 않는다** — 하드에서 빠지고 S8로만 남는다.
 - **새 감점 코드 S8 「교사 희망 위반」**: soft 금지 슬롯에 그 교사 수업이 배치되면 1점/건. 검사기 집계 + 화면 표시 + fixFinder 표적(원인 셀 = 그 슬롯의 그 교사 수업). 절대치는 11월 리허설 조정 대상(S6·S7과 함께).
 - **말로 입력(E2) 확장**: 해석 어휘에 셋째 kind — 문장이 "되도록·가능하면·피해 주세요"면 soft. 확인 다이얼로그에 "부탁(어길 수 있음)"임을 명시.
 - **솔버 반영은 실측 관문을 통과해야 채택한다.** ⚠️ S7에서 배운 것: 낮은 가중 목표도 탐색 지형을 흔들어 금기(S4)를 되살릴 수 있다(2026-08-21 실측 — S7을 목적함수에 넣자 전 시드 S4 재발, 결국 검사기 전용으로 확정). S8도 같은 위험이 있으므로 **①검사기 전용으로 먼저 출시 → ②slotCost 반영 실험은 백지 벤치마크에서 S4=0·총점 기준선 이하 유지를 확인한 것만 채택.** 실험 없이 목적함수에 넣지 않는다.

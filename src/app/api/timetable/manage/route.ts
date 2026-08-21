@@ -76,6 +76,7 @@ import {
   computeAiDiagnosis,
   computeAiFormalize,
   computeAiExplain,
+  computeAiAskFix,
   computeAiCritique,
   listCurriculumCohorts,
   saveCurriculumCohort,
@@ -1599,6 +1600,20 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
         const critiqueResult = await computeAiCritique(domain, body.draftId);
         return NextResponse.json({ success: true, action, enabled: true, result: critiqueResult });
+      }
+
+      case "ai_ask_fix": {
+        // 말로 묻는 해결사 — **해석만** 반환한다. 저장 없음, 수(手)도 만들지 않는다
+        // (ask_fix_spec §1: AI는 통역, 수는 엔진. 탐색·채점은 화면에서 검사기가 한다)
+        if (!isAiEnabled()) {
+          return NextResponse.json({ success: true, action, enabled: false });
+        }
+        if (!body.draftId)
+          return NextResponse.json({ error: "draftId가 필요합니다." }, { status: 400 });
+        if (typeof body.aiText !== "string" || !body.aiText.trim())
+          return NextResponse.json({ error: "질문(aiText)이 필요합니다." }, { status: 400 });
+        const askFix = await computeAiAskFix(domain, body.draftId, body.aiText);
+        return NextResponse.json({ success: true, action, enabled: true, result: askFix });
       }
 
       // ── Phase 9c-H: 교육과정 코호트 등록부 ──

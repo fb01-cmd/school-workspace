@@ -57,14 +57,15 @@
 | ✅ 구현 4 — Codex 커밋 검증 **(2026-08-21 완료)** — 통과 13 · 실패 3(Claude 전건 재확인 → 전부 사실, 같은 날 수정: 문구 「코호트」 잔존 `9f7fd9d` · 비정규 학년 키 · 비활성 충돌 과잉거부 · 편집기 학년도 변경 시 미리 채움 미갱신) · 판정불가 1(자가 테스트 실행 — Claude가 70/70으로 해소) | Codex→Claude | 일지 2026-08-21 「과제 L 검증 종결」 · `cohort_selftest` 70/70 |
 | **실기기 확인(사용자) — 푸시·배포 후**: 시간표 작성 → 창체·SLAT 배치 탭에서 ⓐ 맨 위 「지금은 어떻게 되나」에 학년별 격자·출처 표시 ⓑ 「+ ○○학년도부터 바꾸기」로 등록 → 저장 → 목록 카드 표시 ⓒ 적용 학년도를 지난 학년도로 입력하면 저장 거부 문구 ⓓ 기존 교육과정 카드·수정이 이전과 동일 | 사용자 | 위 ⓐ~ⓓ 눈으로 확인, 깨지는 곳은 화면 이름과 함께 신고 |
 
-## 말로 묻는 시간표 해결사 — 스펙 종결(2026-08-21 Fable), 구현 대기
+## 말로 묻는 시간표 해결사 — 엔진·해석 완료(2026-08-21), 화면 대기
 
 설계 본문 = [`docs/timetable_ask_fix_spec.md`](./docs/timetable_ask_fix_spec.md) (B6 「말로 선호도」는 §6으로 합류). 대원칙: AI는 질문 해석만, 수(手)는 엔진(체인 탐색 v3)이 만들고 검사기가 전수 채점.
 
 | 항목 | 담당 | 확인 방법 |
 |---|---|---|
-| 구현 1·2·3 — 목표 어휘·체인 탐색·해석 프롬프트·S8 soft 금지 (스펙 §8) | Claude(Opus — 스펙 상세) | 스펙 §8 말미 자가 테스트 케이스 통과 + `fixfinder_selftest`·`ai_selftest` 회귀 0 |
-| 구현 4 — 「물어보고 고치기」 카드 + E-4 제거 | Antigravity | tsc·build + 질문→해석 확인→계획→적용 왕복 |
+| ✅ 구현 1·2·3 — 목표 어휘·체인 탐색·해석 프롬프트·S8 부탁성 희망 **(2026-08-21 Opus 완료)** | Claude | `npx tsx scripts/askfix_selftest.ts` **42/42 통과**(스펙 §8 케이스 전종, Firestore 무의존) · `npx tsx scripts/ai_selftest.ts` 전체 통과 · tsc 0건 · build ✅ — 일지 2026-08-21 「말로 묻는 해결사 구현 1·2·3」 |
+| **실데이터 회귀 `fixfinder_selftest` — 판정 불가(초안 0건)** | Claude | 초안이 하나라도 생기면 `npx tsx --env-file=.env.local scripts/fixfinder_selftest.ts` 실행. 대체 근거로 리팩터링 전후 결과 완전 일치를 합성 그리드(감점 9종 × 걸러내기 on/off)로 확인해 뒀다 |
+| 구현 4 — 「물어보고 고치기」 카드 + E-4 제거 | Antigravity | tsc·build + 질문→해석 확인→계획→적용 왕복. **엔진 진입점** = `findFixPlanAsync`(fixFinder), **해석 진입점** = `ai_ask_fix`(draftId+aiText → 목표 1건). 실패 문구 재료는 `FixPlan.remaining`·`initialRemaining`·`budgetExhausted` |
 | 구현 5 — S8 slotCost 실험 | Claude | **11월 리허설 전** — 백지 벤치마크 S4=0·기준선 이하 유지 시만 채택 (스펙 §6 관문) |
 | 구현 6 — Codex 검증 | Codex | 스펙 §8 표 |
 

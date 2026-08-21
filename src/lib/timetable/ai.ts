@@ -344,6 +344,12 @@ export interface AiFormalizeEntry {
   teacherEmail: string;
   teacherName?: string;
   kind: "assign" | "move";
+  /**
+   * 「되도록·가능하면」 부탁 — 어겨도 되는 요청 (ask_fix_spec §6, B6).
+   * 솔버의 하드 제약에 들어가지 않고 결과에 남으면 S8 감점으로만 표시된다.
+   * 확인 다이얼로그가 "부탁(어길 수 있음)"임을 반드시 밝혀야 한다.
+   */
+  soft?: boolean;
   slots: Array<{ day: number; period: number }>;
 }
 
@@ -371,10 +377,11 @@ export function buildFormalizePrompt(
     `규칙:`,
     `1. 교사는 가명(${aliases.slice(0, 5).join(", ")}…)으로만 지칭됩니다. 문장에 등장한 가명만 사용하세요.`,
     `2. kind: "assign" = 배정금지(그 교시에 수업을 아예 두지 않음), "move" = 이동금지(솔버가 그 교시의 수업을 옮기지 못함). 문장이 "회피·금지·비우기"면 assign, "고정·움직이지 말 것"이면 move. 애매하면 assign.`,
-    `3. days: 1=월 2=화 3=수 4=목 5=금. periods: 1~${periodsPerDay}. 요일 전체면 periods에 "all".`,
-    `4. 반드시 JSON 하나만 출력:`,
-    `{"interpretation": "해석을 한 문장으로 (가명 사용)", "items": [{"teacher": "T01", "kind": "assign", "days": [1], "periods": [1, 2]}]}`,
-    `5. 문장에 없는 요구를 만들지 마세요. 해석 불가면 items를 빈 배열로 하고 interpretation에 이유를 쓰세요.`,
+    `3. soft: 문장이 "되도록·가능하면·웬만하면·피해 주세요·부탁" 처럼 **양보 가능한 부탁**이면 true, "반드시·절대·불가" 처럼 지켜야 하는 요구면 false. 애매하면 false. soft는 kind가 "assign"일 때만 씁니다.`,
+    `4. days: 1=월 2=화 3=수 4=목 5=금. periods: 1~${periodsPerDay}. 요일 전체면 periods에 "all".`,
+    `5. 반드시 JSON 하나만 출력:`,
+    `{"interpretation": "해석을 한 문장으로 (가명 사용)", "items": [{"teacher": "T01", "kind": "assign", "soft": false, "days": [1], "periods": [1, 2]}]}`,
+    `6. 문장에 없는 요구를 만들지 마세요. 해석 불가면 items를 빈 배열로 하고 interpretation에 이유를 쓰세요.`,
     ``,
     `## 요구 문장`,
     maskedText,
@@ -384,6 +391,8 @@ export function buildFormalizePrompt(
 interface RawFormalizeItem {
   teacher: string;
   kind: "assign" | "move";
+  /** 「되도록」 부탁 — 이동금지에는 붙지 않는다 (§6: 「되도록 움직이지 마세요」는 성립하지 않는다) */
+  soft: boolean;
   days: number[];
   periods: number[] | "all";
 }
@@ -413,9 +422,13 @@ export function parseFormalizeResponse(
       } else {
         periods = [];
       }
+      const kind = it.kind === "move" ? "move" : "assign";
       items.push({
         teacher: it.teacher,
-        kind: it.kind === "move" ? "move" : "assign",
+        kind,
+        // 이동금지에 붙은 soft는 버린다 — 솔버 단계 제약이라 「되도록」이 성립하지 않고,
+        // 저장 검증(validateTeacherSlotBanPayload)도 그 조합을 거절한다
+        soft: it.soft === true && kind === "assign",
         days: Array.isArray(it.days) ? it.days.map(Number) : [],
         periods,
       });
@@ -466,6 +479,7 @@ export function normalizeFormalizeItems(
       teacherEmail: (teacher.email || "").toLowerCase(),
       ...(teacher.name ? { teacherName: teacher.name } : {}),
       kind: it.kind,
+      ...(it.soft ? { soft: true } : {}),
       slots: slots.slice(0, MAX_SLOTS_PER_ENTRY),
     });
   }
