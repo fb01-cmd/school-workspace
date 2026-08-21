@@ -37,11 +37,11 @@ function formatDate(ms: number): string {
   return d.toLocaleDateString("ko-KR", { year: "numeric", month: "numeric", day: "numeric" });
 }
 
-interface DashboardMemoPanelProps {
-  onNavigateToMemo?: (memoId?: string) => void;
-}
-
-export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPanelProps) {
+/** 내 수신 쪽지 구독 훅 — 페이지 레벨에서 한 번만 부른다.
+ *  홈 패널과 사이드바 안읽음 배지가 이 결과를 나눠 쓴다 — 리스너를 두 개 만들지 않는 것이
+ *  핵심이다(구독 시작마다 최근 50건 읽기가 다시 발생하므로, AGENTS ⑪ 읽기량 규율).
+ *  반환 memos는 안 읽은 것 우선 정렬. */
+export function useIncomingMemos() {
   const { user, userData, teacherProfile } = useAuth();
   const myEmail = (user?.email || userData?.email || "").toLowerCase();
   const domain = myEmail.split("@")[1] || "";
@@ -90,6 +90,19 @@ export default function DashboardMemoPanel({ onNavigateToMemo }: DashboardMemoPa
   }, [myEmail, domain, notEligible]);
 
   const unreadCount = memos.filter((m) => !m.reads?.[myEmail]).length;
+  return { memos, loading, unreadCount, notEligible };
+}
+
+interface DashboardMemoPanelProps {
+  onNavigateToMemo?: (memoId?: string) => void;
+  /** 페이지 레벨 useIncomingMemos 결과 — 패널이 자체 구독을 만들지 않는다 */
+  feed: ReturnType<typeof useIncomingMemos>;
+}
+
+export default function DashboardMemoPanel({ onNavigateToMemo, feed }: DashboardMemoPanelProps) {
+  const { user, userData } = useAuth();
+  const myEmail = (user?.email || userData?.email || "").toLowerCase();
+  const { memos, loading, unreadCount, notEligible } = feed;
 
   return (
     <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
