@@ -557,7 +557,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
               <span>📚 교육과정별 기본 배치</span>
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              입학생(코호트)을 기준으로 3년간 적용되는 기본 창체·SLAT 배치입니다.
+              입학생을 기준으로 3년간 적용되는 기본 창체·SLAT 배치입니다.
             </p>
           </div>
           <button
