@@ -9,7 +9,7 @@ interface AutocompleteInputProps {
   onSelect: (email: string, name?: string) => void;
   className?: string;
   inputRef?: React.RefObject<HTMLInputElement | null>;
-  /** 교직원 검색용 — 학생 OU 계정을 후보에서 제외 (기간제 이관 마법사 등, 2026-08-18 실기기 신고) */
+  /** 교직원 검색용 — 학생 OU 계정을 후보에서 제외 (대체 교사 이관 마법사 등, 2026-08-18 실기기 신고) */
   teachersOnly?: boolean;
 }
 

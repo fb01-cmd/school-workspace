@@ -1,6 +1,12 @@
 "use client";
 
-// 기간제 교사 담당 일괄 이관 마법사 — docs/substitute_handover_spec.md §3~§5, §8 순서 2
+// 대체 교사 담당 일괄 이관 마법사 — docs/substitute_handover_spec.md §3~§5, §8 순서 2
+//
+// 화면 용어는 「기간제」가 아니라 **「대체 교사」**다 (2026-08-21 사용자 지적).
+// 이유 둘: ⓐ 기간제 교사 중에는 몇 해째 정교사처럼 계속 근무하시는 분들이 있어
+// 「기간제」가 이 화면이 다루는 「자리를 대신 맡는 상황」과 어긋난다 ⓑ 그 자리를
+// **시간강사**가 대신할 때도 있다 — 신분으로 이름 붙이면 그 경우가 빠진다.
+// 이 화면이 다루는 것은 신분이 아니라 **역할**이다.
 //
 // 5단계 마법사 흐름:
 // (1) 대상 교사 및 인수일 선택
@@ -77,7 +83,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
     const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
     return kst.toISOString().slice(0, 10);
   });
-  const [isReturn, setIsReturn] = useState(false); // false: 기간제 부임(인수), true: 원 교사 복직(역이관)
+  const [isReturn, setIsReturn] = useState(false); // false: 대체 교사 부임(인수), true: 원 교사 복직(역이관)
 
   // 2단계 미리보기 데이터
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -228,7 +234,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
         <div>
           <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
             <span>🔄</span>
-            <span>기간제 교사 담당 일괄 이관 마법사</span>
+            <span>대체 교사 담당 일괄 이관 마법사</span>
           </h3>
           <p className="text-sm text-gray-500 mt-0.5">
             수업 시간표 · 담임 학급 · 클래스룸을 함께 넘깁니다.
@@ -284,9 +290,9 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
                     : "border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
                 }`}
               >
-                <div className="text-sm font-bold">기간제 부임 (신규 인수)</div>
+                <div className="text-sm font-bold">대체 교사 부임 (신규 인수)</div>
                 <div className="text-xs text-gray-500 font-normal mt-0.5">
-                  원 교사의 수업과 클래스룸을 기간제 교사에게 넘깁니다.
+                  원 교사의 수업과 클래스룸을 대체 교사에게 넘깁니다.
                 </div>
               </button>
               <button
@@ -300,7 +306,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
               >
                 <div className="text-sm font-bold">원 교사 복직 (역이관)</div>
                 <div className="text-xs text-gray-500 font-normal mt-0.5">
-                  기간제 교사의 수업을 원 교사에게 원상 복귀하고 클래스룸에서 정리합니다.
+                  대체 교사의 수업을 원 교사에게 원상 복귀하고 클래스룸에서 정리합니다.
                 </div>
               </button>
             </div>
@@ -309,7 +315,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
           {/* 이관 전 교사 */}
           <div>
             <label className="block text-sm font-semibold text-gray-800 mb-1">
-              {isReturn ? "기간제 교사 (이관 전)" : "휴직·원 교사 (이관 전)"}
+              {isReturn ? "대체 교사 (이관 전)" : "휴직·원 교사 (이관 전)"}
             </label>
             <AutocompleteInput
               type="user"
@@ -339,7 +345,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
           {/* 이관 후 교사 */}
           <div>
             <label className="block text-sm font-semibold text-gray-800 mb-1">
-              {isReturn ? "복직 교사 (이관 후)" : "기간제 교사 (이관 후)"}
+              {isReturn ? "복직 교사 (이관 후)" : "대체 교사 (이관 후)"}
             </label>
             <AutocompleteInput
               type="user"
@@ -832,7 +838,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-emerald-900 space-y-2">
             <div className="flex items-center gap-2 text-base font-bold text-emerald-800">
               <span>🎉</span>
-              <span>기간제 교사 담당 일괄 이관이 성공적으로 완료되었습니다!</span>
+              <span>대체 교사 담당 일괄 이관이 성공적으로 완료되었습니다!</span>
             </div>
             <p className="text-xs text-emerald-700">
               {previewData.fromName} 선생님의 담당 업무가 {previewData.toName} 선생님에게 안전하게 이관되었습니다.

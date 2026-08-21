@@ -72,7 +72,7 @@ export default function TeacherLifecycle() {
         <SectionBtn active={section === "enroll"} onClick={() => setSection("enroll")} icon="➕" title="교직원 전입 (신규 등록)" desc="계정 생성 + 지정 그룹 자동 가입" />
         <SectionBtn active={section === "transfer"} onClick={() => setSection("transfer")} icon="🚪" title="교직원 전출 관리" desc="보안 즉시 해제 + 기한 설정 관리" />
         <SectionBtn active={section === "ob"} onClick={() => setSection("ob")} icon="🏅" title="명예퇴임 처리" desc="OB 보존실 이동 + 계정 영구 보존" />
-        <SectionBtn active={section === "handover"} onClick={() => setSection("handover")} icon="🔄" title="기간제 인수인계" desc="수업·시간표·담임·클래스룸 일괄 이관" />
+        <SectionBtn active={section === "handover"} onClick={() => setSection("handover")} icon="🔄" title="대체 교사 인수인계" desc="수업·시간표·담임·클래스룸 일괄 이관" />
       </div>
 
       {/* Content */}
