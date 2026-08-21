@@ -147,7 +147,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
         {inputMode === "csv" && parsed.length === 0 && (
           <button
             onClick={downloadTemplate}
-            className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+            className="px-3.5 py-1.5 text-sm font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100"
           >
             📥 CSV 양식
           </button>
@@ -159,7 +159,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => setInputMode("csv")}
-              className={`flex-1 py-2 text-center text-xs font-semibold border-b-2 transition-all ${
+              className={`flex-1 py-2 text-center text-sm font-semibold border-b-2 transition-all ${
                 inputMode === "csv"
                   ? "border-indigo-600 text-indigo-600 border-b-indigo-600"
                   : "border-transparent text-gray-500 hover:text-gray-700"
@@ -169,7 +169,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
             </button>
             <button
               onClick={() => setInputMode("sheet")}
-              className={`flex-1 py-2 text-center text-xs font-semibold border-b-2 transition-all ${
+              className={`flex-1 py-2 text-center text-sm font-semibold border-b-2 transition-all ${
                 inputMode === "sheet"
                   ? "border-indigo-600 text-indigo-600 border-b-indigo-600"
                   : "border-transparent text-gray-500 hover:text-gray-700"
@@ -228,7 +228,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                 });
               if (isTemplateData) {
                 return (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800 font-medium">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800 font-medium">
                     ⚠️ <strong>주의:</strong> 업로드된 파일이 수정하지 않은 <strong>기본 예시 템플릿 데이터</strong>입니다. 
                     엑셀에서 편집하신 <code>진급처리_양식.xlsx</code> 파일을 <strong>[파일] → [다른 이름으로 저장] → [CSV (쉼표로 분리) (*.csv)]</strong> 형식으로 저장한 후, 해당 실제 데이터 파일을 다시 업로드해 주세요!
                   </div>
@@ -247,22 +247,22 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-green-50 border border-green-200 rounded-xl p-3">
                   <p className="text-2xl font-bold text-green-700">{matched.length}명</p>
-                  <p className="text-xs text-green-600 mt-0.5">✅ 정상 매칭</p>
+                  <p className="text-sm font-bold text-green-700 mt-0.5">✅ 정상 매칭</p>
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                   <p className="text-2xl font-bold text-amber-700">{typeA.length}명</p>
-                  <p className="text-xs text-amber-600 mt-0.5">
+                  <p className="text-sm font-bold text-amber-700 mt-0.5">
                     ⚠️ 유형A: 구글에만 있음
                     <br />
-                    (전출/학업중단 미반영)
+                    <span className="text-xs font-normal text-amber-600">(전출/학업중단 미반영)</span>
                   </p>
                 </div>
                 <div className="bg-red-50 border border-red-200 rounded-xl p-3">
                   <p className="text-2xl font-bold text-red-700">{typeB.length}명</p>
-                  <p className="text-xs text-red-600 mt-0.5">
+                  <p className="text-sm font-bold text-red-700 mt-0.5">
                     ❌ 유형B: CSV에만 있음
                     <br />
-                    (전입 미반영)
+                    <span className="text-xs font-normal text-red-600">(전입 미반영)</span>
                   </p>
                 </div>
               </div>
@@ -273,9 +273,9 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                     ⚠️ 유형A 상세 ▼
                   </summary>
                   <div className="mt-2 overflow-auto max-h-40">
-                    <table className="w-full text-xs">
+                    <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-amber-100 text-amber-800">
+                        <tr className="bg-amber-100 text-amber-800 font-bold">
                           <th className="px-2 py-1 text-left">이름</th>
                           <th className="px-2 py-1 text-left">이메일</th>
                           <th className="px-2 py-1 text-left">학번</th>
@@ -284,8 +284,8 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                       <tbody>
                         {typeA.map((a, i) => (
                           <tr key={i} className="border-t border-amber-100">
-                            <td className="px-2 py-1">{a.name}</td>
-                            <td className="px-2 py-1">{a.email}</td>
+                            <td className="px-2 py-1 font-bold">{a.name}</td>
+                            <td className="px-2 py-1 text-xs font-mono">{a.email}</td>
                             <td className="px-2 py-1 font-mono">{a.fn}</td>
                           </tr>
                         ))}
@@ -301,9 +301,9 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                     ❌ 유형B 상세 ▼
                   </summary>
                   <div className="mt-2 overflow-auto max-h-40">
-                    <table className="w-full text-xs text-center">
+                    <table className="w-full text-sm text-center">
                       <thead>
-                        <tr className="bg-red-100 text-red-800">
+                        <tr className="bg-red-100 text-red-800 font-bold">
                           <th className="px-2 py-1">이전학년</th>
                           <th>이전반</th>
                           <th>이전번호</th>
@@ -314,7 +314,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                       </thead>
                       <tbody>
                         {typeB.map((r, i) => (
-                          <tr key={i} className="border-t border-red-100">
+                          <tr key={i} className="border-t border-red-100 font-medium">
                             <td className="px-2 py-1">{r.prevGrade}</td>
                             <td>{r.prevClass}</td>
                             <td>{r.prevNum}</td>
@@ -335,9 +335,9 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                     ✅ 진급 예정 {matched.length}명 ▼
                   </summary>
                   <div className="mt-2 overflow-auto max-h-48">
-                    <table className="w-full text-xs">
+                    <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-green-100 text-green-700">
+                        <tr className="bg-green-100 text-green-700 font-bold">
                           <th className="px-2 py-1 text-left">이름</th>
                           <th className="px-2 py-1 text-left">이메일</th>
                           <th className="px-2 py-1">이전 학번</th>
@@ -347,8 +347,8 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                       <tbody>
                         {matched.map((m, i) => (
                           <tr key={i} className="border-t border-green-100">
-                            <td className="px-2 py-1">{m.name}</td>
-                            <td className="px-2 py-1 text-xs">{m.email}</td>
+                            <td className="px-2 py-1 font-bold">{m.name}</td>
+                            <td className="px-2 py-1 text-xs font-mono">{m.email}</td>
                             <td className="px-2 py-1 font-mono text-center">{m.prevStudentId}</td>
                             <td className="px-2 py-1 font-mono text-center font-bold text-green-700">
                               {m.newStudentId}
@@ -387,7 +387,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                   <p className="text-sm mt-1">
                     요청한 모든 학생의 진급 처리에 실패했습니다. 구글 계정 권한 또는 데이터 일치 여부를 확인해 주세요.
                   </p>
-                  <p className="text-xs font-semibold mt-2">
+                  <p className="text-sm font-semibold mt-2">
                     성공: 0명 / 실패: <strong>{result.failed?.length || 0}명</strong>
                   </p>
                 </div>
@@ -397,7 +397,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                   <p className="text-sm mt-1">
                     일부 학생의 진급 처리가 성공했으나, 일부 학생의 학번 업데이트에 실패했습니다. 아래 실패 상세 목록을 확인해 주세요.
                   </p>
-                  <p className="text-xs font-semibold mt-2">
+                  <p className="text-sm font-semibold mt-2">
                     성공: <strong>{result.succeeded?.length}명</strong> / 실패: <strong>{result.failed?.length}명</strong>
                   </p>
                 </div>
@@ -407,7 +407,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                   <p className="text-sm mt-1">
                     모든 학생의 학번 업데이트(진급)가 성공적으로 완료되었습니다.
                   </p>
-                  <p className="text-xs font-semibold mt-2">
+                  <p className="text-sm font-semibold mt-2">
                     성공: <strong>{result.succeeded?.length}명</strong> / 실패: 0명
                   </p>
                 </div>
@@ -416,9 +416,9 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
               {/* Failures Detail List */}
               {(result.failed?.length || 0) > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-bold text-red-700">⚠️ 진급 실패 상세 내역 ({result.failed.length}건)</p>
+                  <p className="text-sm font-bold text-red-700">⚠️ 진급 실패 상세 내역 ({result.failed.length}건)</p>
                   <div className="overflow-auto max-h-52 rounded-xl border border-red-100">
-                    <table className="w-full text-xs">
+                    <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-red-50 text-red-700 font-semibold">
                         <tr>
                           <th className="px-3 py-2 text-left">이름</th>
@@ -430,7 +430,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                       <tbody className="divide-y divide-red-50 bg-red-50/10">
                         {result.failed.map((f: any, idx: number) => (
                           <tr key={idx} className="hover:bg-red-50/20 text-red-900">
-                            <td className="px-3 py-2 font-medium">{f.name}</td>
+                            <td className="px-3 py-2 font-bold">{f.name}</td>
                             <td className="px-3 py-2 font-mono text-xs">{f.email}</td>
                             <td className="px-3 py-2 font-mono">{f.studentId}</td>
                             <td className="px-3 py-2 font-medium text-red-600">

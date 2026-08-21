@@ -87,7 +87,7 @@ export default function OUTab({ s, ud, onDone, onNext }: any) {
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-700 font-semibold">
               ✅ OU 전환 완료! 다음: 그룹 초기화 탭으로 이동하세요.
               {onNext && (
-                <button onClick={onNext} className="ml-3 px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700">
+                <button onClick={onNext} className="ml-3 px-3 py-1 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700">
                   다음 단계로 →
                 </button>
               )}

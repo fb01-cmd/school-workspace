@@ -72,7 +72,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
         {inputMode === "csv" && parsed.length === 0 && (
           <button
             onClick={downloadTemplate}
-            className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+            className="px-3.5 py-1.5 text-sm font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100"
           >
             📥 CSV 양식
           </button>
@@ -81,7 +81,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">
+          <label className="block text-sm font-semibold text-gray-700 mb-1">
             입학연도 (이메일 앞 2자리)
           </label>
           <input
@@ -93,7 +93,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
           />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">시작 일련번호</label>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">시작 일련번호</label>
           <input
             type="number"
             value={startSerial}
@@ -105,7 +105,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
       </div>
 
       {!g1OU && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
           ⚠️ 조직단위 설정(⚙️)에서 1학년 OU를 먼저 설정해 주세요.
         </div>
       )}
@@ -115,7 +115,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => setInputMode("csv")}
-              className={`flex-1 py-2 text-center text-xs font-semibold border-b-2 transition-all ${
+              className={`flex-1 py-2 text-center text-sm font-semibold border-b-2 transition-all ${
                 inputMode === "csv"
                   ? "border-indigo-600 text-indigo-600 border-b-indigo-600"
                   : "border-transparent text-gray-500 hover:text-gray-700"
@@ -125,7 +125,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
             </button>
             <button
               onClick={() => setInputMode("sheet")}
-              className={`flex-1 py-2 text-center text-xs font-semibold border-b-2 transition-all ${
+              className={`flex-1 py-2 text-center text-sm font-semibold border-b-2 transition-all ${
                 inputMode === "sheet"
                   ? "border-indigo-600 text-indigo-600 border-b-indigo-600"
                   : "border-transparent text-gray-500 hover:text-gray-700"
@@ -184,8 +184,8 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
           {!result ? (
             <>
               <div className="overflow-auto max-h-52 rounded-xl border">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-indigo-50">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-indigo-50 font-bold">
                     <tr className="text-indigo-700">
                       <th className="px-3 py-2 text-left">이름</th>
                       <th className="px-3 py-2 text-left">이메일</th>
@@ -196,19 +196,19 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
                   <tbody>
                     {students.map((st, i) => (
                       <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
-                        <td className="px-3 py-1">
+                        <td className="px-3 py-1.5 font-bold">
                           {st.familyName}
                           {st.givenName}
                         </td>
-                        <td className="px-3 py-1 font-mono text-indigo-600">
+                        <td className="px-3 py-1.5 font-mono text-indigo-600 text-xs">
                           {admYear}
                           {String(st.serialNum).padStart(3, "0")}@{s?.domain}
                         </td>
-                        <td className="px-3 py-1 font-mono">
+                        <td className="px-3 py-1.5 font-mono">
                           1{String(st.classNum).padStart(2, "0")}
                           {String(st.studentNum).padStart(2, "0")}
                         </td>
-                        <td className="px-3 py-1">
+                        <td className="px-3 py-1.5">
                           {st.classNum}반 {st.studentNum}번
                         </td>
                       </tr>
@@ -238,7 +238,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
                   <p className="text-sm mt-1">
                     요청한 모든 신입생 계정 생성에 실패했습니다. 이미 등록된 학번/이메일이 있는지 양식을 다시 한 번 확인해 주세요.
                   </p>
-                  <p className="text-xs font-semibold mt-2">
+                  <p className="text-sm font-semibold mt-2">
                     성공: 0명 / 실패: <strong>{result.failed?.length || 0}명</strong>
                   </p>
                 </div>
@@ -248,7 +248,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
                   <p className="text-sm mt-1">
                     신입생 계정 중 일부는 성공적으로 생성되었으나, 일부 계정은 생성에 실패했습니다. 아래 실패 상세 목록을 참조해 주세요.
                   </p>
-                  <p className="text-xs font-semibold mt-2">
+                  <p className="text-sm font-semibold mt-2">
                     성공: <strong>{result.succeeded?.length}명</strong> / 실패: <strong>{result.failed?.length}명</strong>
                   </p>
                 </div>
@@ -258,7 +258,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
                   <p className="text-sm mt-1">
                     모든 신입생 계정이 성공적으로 생성되었습니다.
                   </p>
-                  <p className="text-xs font-semibold mt-2">
+                  <p className="text-sm font-semibold mt-2">
                     성공: <strong>{result.succeeded?.length}명</strong> / 실패: 0명
                   </p>
                 </div>
@@ -267,9 +267,9 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
               {/* Failures Detail List */}
               {(result.failed?.length || 0) > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-bold text-red-700">⚠️ 실패 상세 내역 ({result.failed.length}건)</p>
+                  <p className="text-sm font-bold text-red-700">⚠️ 실패 상세 내역 ({result.failed.length}건)</p>
                   <div className="overflow-auto max-h-52 rounded-xl border border-red-100">
-                    <table className="w-full text-xs">
+                    <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-red-50 text-red-700 font-semibold">
                         <tr>
                           <th className="px-3 py-2 text-left">이름</th>
@@ -281,7 +281,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
                       <tbody className="divide-y divide-red-50 bg-red-50/10">
                         {result.failed.map((f: any, idx: number) => (
                           <tr key={idx} className="hover:bg-red-50/20 text-red-900">
-                            <td className="px-3 py-2 font-medium">{f.name}</td>
+                            <td className="px-3 py-2 font-bold">{f.name}</td>
                             <td className="px-3 py-2 font-mono text-xs">{f.email}</td>
                             <td className="px-3 py-2 font-mono">{f.studentId}</td>
                             <td className="px-3 py-2 font-medium text-red-600">

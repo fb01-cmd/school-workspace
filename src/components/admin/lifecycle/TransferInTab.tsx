@@ -560,7 +560,7 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
                   </div>
 
                   <div className="border border-gray-200 rounded-xl overflow-hidden shadow-2xs">
-                    <table className="w-full text-left text-xs text-gray-700">
+                    <table className="w-full text-left text-sm text-gray-700">
                       <thead className="bg-gray-100 text-gray-700 font-bold border-b border-gray-200">
                         <tr>
                           <th className="p-3 text-center w-10">
@@ -606,16 +606,16 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
                                   className="w-4 h-4 text-indigo-600 rounded border-gray-300 disabled:opacity-40 cursor-pointer"
                                 />
                               </td>
-                              <td className="p-3 font-semibold text-gray-900">
+                              <td className="p-3 font-semibold text-gray-900 text-sm">
                                 <div>{c.name} {c.section ? <span className="text-gray-500 font-normal">({c.section})</span> : ""}</div>
                               </td>
-                              <td className="p-3 font-medium text-gray-600">
+                              <td className="p-3 font-medium text-gray-600 text-sm">
                                 <div>{c.ownerName}</div>
                                 {c.ownerEmail && c.ownerEmail !== c.ownerName && (
                                   <div className="text-xs text-gray-400 font-mono">{c.ownerEmail}</div>
                                 )}
                               </td>
-                              <td className="p-3 text-center font-mono">
+                              <td className="p-3 text-center font-mono text-sm">
                                 <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded font-bold">
                                   {c.classMemberCount}/{c.totalClassCount}명 ({Math.round(c.coverage * 100)}%)
                                 </span>
@@ -624,25 +624,25 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
                                 {resInfo ? (
                                   resInfo.success ? (
                                     resInfo.alreadyEnrolled ? (
-                                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[11px] font-semibold">
+                                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs font-semibold">
                                         이미 가입됨
                                       </span>
                                     ) : (
-                                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[11px] font-bold">
+                                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold">
                                         🎉 추가 완료
                                       </span>
                                     )
                                   ) : (
-                                    <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded-full text-[11px] font-bold" title={resInfo.error}>
+                                    <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded-full text-xs font-bold" title={resInfo.error}>
                                       ❌ 실패
                                     </span>
                                   )
                                 ) : c.alreadyEnrolled ? (
-                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[11px] font-semibold">
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs font-semibold">
                                     이미 가입됨
                                   </span>
                                 ) : (
-                                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-[11px] font-semibold">
+                                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold">
                                     미가입 (배정 가능)
                                   </span>
                                 )}
@@ -662,7 +662,7 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
               <button
                 type="button"
                 onClick={() => setShowScanModal(false)}
-                className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 text-sm font-bold rounded-lg transition-colors cursor-pointer"
               >
                 닫기
               </button>
@@ -671,7 +671,7 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
                   type="button"
                   onClick={handleEnrollSelected}
                   disabled={enrolling || selectedCourseIds.size === 0}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-bold rounded-lg transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-sm font-bold rounded-lg transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   {enrolling ? (
                     <>

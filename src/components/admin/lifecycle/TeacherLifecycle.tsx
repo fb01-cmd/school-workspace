@@ -595,7 +595,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
               className="w-full"
             />
             {transferEmail && (
-              <p className="text-xs text-indigo-600 font-medium mt-1.5">
+              <p className="text-sm text-indigo-700 font-medium mt-1.5">
                 🎯 선택된 교사: <span className="font-bold">{transferName || transferEmail}</span> ({transferEmail})
               </p>
             )}
@@ -640,13 +640,13 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 text-left text-gray-500 text-xs uppercase tracking-wider">
-                  <th className="pb-3 pr-4 font-semibold">이름/이메일</th>
-                  <th className="pb-3 pr-4 font-semibold">상태</th>
-                  <th className="pb-3 pr-4 font-semibold">전출 등록일</th>
-                  <th className="pb-3 pr-4 font-semibold">기한 선택일</th>
-                  <th className="pb-3 pr-4 font-semibold">D-Day</th>
-                  <th className="pb-3 font-semibold text-right">작업</th>
+                <tr className="border-b border-gray-200 text-left text-gray-700 text-sm font-bold">
+                  <th className="pb-3 pr-4 font-bold">이름/이메일</th>
+                  <th className="pb-3 pr-4 font-bold">상태</th>
+                  <th className="pb-3 pr-4 font-bold">전출 등록일</th>
+                  <th className="pb-3 pr-4 font-bold">기한 선택일</th>
+                  <th className="pb-3 pr-4 font-bold">D-Day</th>
+                  <th className="pb-3 font-bold text-right">작업</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -681,18 +681,18 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                   return (
                     <tr key={task.email} className="py-2">
                       <td className="py-3 pr-4">
-                        <p className="font-medium text-gray-900">{task.name}</p>
-                        <p className="text-xs text-gray-400">{task.email}</p>
+                        <p className="font-bold text-gray-900">{task.name}</p>
+                        <p className="text-xs font-mono text-gray-400">{task.email}</p>
                       </td>
                       <td className="py-3 pr-4">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${st.color}`}>{st.label}</span>
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span>
                       </td>
-                      <td className="py-3 pr-4 text-gray-600">
+                      <td className="py-3 pr-4 text-gray-700 font-mono">
                         {task.registeredAt?.toDate
                           ? task.registeredAt.toDate().toLocaleDateString("ko-KR")
                           : "-"}
                       </td>
-                      <td className="py-3 pr-4 text-gray-600">
+                      <td className="py-3 pr-4 text-gray-700 font-mono">
                         {deadline ? deadline.toLocaleDateString("ko-KR") : "미설정"}
                       </td>
                       <td className="py-3">
@@ -721,7 +721,7 @@ function TransferTeacherPanel({ domain, operatorEmail, operatorName }: { domain:
                         <button
                           onClick={() => handleCancelTransfer(task.email, task.name)}
                           disabled={cancelling === task.email}
-                          className="text-xs bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 hover:border-red-200 transition-colors focus:outline-none disabled:opacity-50"
+                          className="text-sm bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-700 font-semibold px-3 py-1.5 rounded-lg border border-gray-200 hover:border-red-200 transition-colors focus:outline-none disabled:opacity-50"
                         >
                           {cancelling === task.email ? "취소 중..." : "전출 취소"}
                         </button>
@@ -829,7 +829,7 @@ function OBTeacherPanel({ domain, operatorEmail, operatorName, settingsOBPath }:
             className="w-full"
           />
           {obEmail && (
-            <p className="text-xs text-indigo-600 font-medium mt-1.5">
+            <p className="text-sm text-indigo-700 font-medium mt-1.5">
               🎯 선택된 교사: <span className="font-bold">{obName || obEmail}</span> ({obEmail})
             </p>
           )}

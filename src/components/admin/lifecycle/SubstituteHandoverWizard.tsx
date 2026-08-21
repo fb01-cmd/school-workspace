@@ -246,7 +246,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
       </div>
 
       {/* 단계 인디케이터 */}
-      <div className="flex items-center justify-between gap-1 text-xs border-b border-gray-100 pb-3 overflow-x-auto select-none">
+      <div className="flex items-center justify-between gap-1 text-sm border-b border-gray-100 pb-3 overflow-x-auto select-none">
         <span className={`px-2.5 py-1 rounded-full font-bold whitespace-nowrap ${step === 1 ? "bg-indigo-600 text-white" : step > 1 ? "bg-indigo-100 text-indigo-700" : "text-gray-400"}`}>
           ① 대상·일자 선택
         </span>
@@ -284,7 +284,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
                     : "border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
                 }`}
               >
-                <div className="text-sm">기간제 부임 (신규 인수)</div>
+                <div className="text-sm font-bold">기간제 부임 (신규 인수)</div>
                 <div className="text-xs text-gray-500 font-normal mt-0.5">
                   원 교사의 수업과 클래스룸을 기간제 교사에게 넘깁니다.
                 </div>
@@ -298,7 +298,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
                     : "border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
                 }`}
               >
-                <div className="text-sm">원 교사 복직 (역이관)</div>
+                <div className="text-sm font-bold">원 교사 복직 (역이관)</div>
                 <div className="text-xs text-gray-500 font-normal mt-0.5">
                   기간제 교사의 수업을 원 교사에게 원상 복귀하고 클래스룸에서 정리합니다.
                 </div>
@@ -330,7 +330,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
               className="w-full"
             />
             {fromEmail && (
-              <p className="text-xs text-indigo-600 font-medium mt-1">
+              <p className="text-sm text-indigo-700 font-medium mt-1">
                 ✓ 선택됨: <span className="font-bold">{fromName}</span> ({fromEmail})
               </p>
             )}
@@ -360,7 +360,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
               className="w-full"
             />
             {toEmail && (
-              <p className="text-xs text-indigo-600 font-medium mt-1">
+              <p className="text-sm text-indigo-700 font-medium mt-1">
                 ✓ 선택됨: <span className="font-bold">{toName}</span> ({toEmail})
               </p>
             )}
@@ -508,8 +508,8 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
                 걸치는 주 즉시 변경 수업 목록 ({previewData.weekIntents.length}건)
               </h4>
               <div className="border border-gray-200 rounded-lg overflow-hidden max-h-52 overflow-y-auto">
-                <table className="w-full text-left text-xs divide-y divide-gray-200">
-                  <thead className="bg-gray-50 text-gray-600 font-semibold sticky top-0">
+                <table className="w-full text-left text-sm divide-y divide-gray-200">
+                  <thead className="bg-gray-50 text-gray-700 font-bold sticky top-0">
                     <tr>
                       <th className="px-3 py-2">학급</th>
                       <th className="px-3 py-2">요일</th>
@@ -521,13 +521,13 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
                   <tbody className="divide-y divide-gray-100 bg-white">
                     {previewData.weekIntents.map((item, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="px-3 py-1.5 font-medium text-slate-900">
+                        <td className="px-3 py-2 font-medium text-slate-900">
                           {item.grade}학년 {item.classNum}반
                         </td>
-                        <td className="px-3 py-1.5 text-slate-700">{DAY_NAMES[item.day]}요일</td>
-                        <td className="px-3 py-1.5 text-slate-700">{item.period}교시</td>
-                        <td className="px-3 py-1.5 text-slate-900 font-medium">{item.subjectName}</td>
-                        <td className="px-3 py-1.5 text-indigo-600 font-semibold">
+                        <td className="px-3 py-2 text-slate-700">{DAY_NAMES[item.day]}요일</td>
+                        <td className="px-3 py-2 text-slate-700">{item.period}교시</td>
+                        <td className="px-3 py-2 text-slate-900 font-medium">{item.subjectName}</td>
+                        <td className="px-3 py-2 text-indigo-700 font-bold">
                           {previewData.fromName} → {previewData.toName}
                         </td>
                       </tr>
@@ -623,7 +623,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
                         className="w-full"
                       />
                       {customHomeroomEmail && (
-                        <p className="text-xs text-indigo-600 font-medium mt-1">
+                        <p className="text-sm text-indigo-700 font-medium mt-1">
                           ✓ 담임 승계자: <span className="font-bold">{customHomeroomName}</span> ({customHomeroomEmail})
                         </p>
                       )}
@@ -761,7 +761,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
                   return (
                     <label
                       key={course.id}
-                      className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-slate-50 cursor-pointer text-xs"
+                      className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-slate-50 cursor-pointer text-sm"
                     >
                       <input
                         type="checkbox"

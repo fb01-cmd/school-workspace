@@ -434,7 +434,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
           <h4 className="text-sm font-bold text-gray-800">👤 대상 학생 등록 및 OU 격리</h4>
           
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">학생 이름 또는 이메일 검색</label>
+            <label className="block text-sm font-semibold text-gray-600 mb-1">학생 이름 또는 이메일 검색</label>
             <input
               type="text"
               placeholder="예: 홍길동 또는 25001"
@@ -443,7 +443,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                 setSearchQuery(e.target.value);
                 setSelectedStudent(null);
               }}
-              className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800"
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800"
             />
           </div>
 
@@ -457,11 +457,11 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                     setSelectedStudent(st);
                     setSearchQuery(`${st.name.familyName || ""} ${st.name.givenName || ""}`);
                   }}
-                  className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex items-center justify-between"
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center justify-between"
                 >
                   <div>
                     <span className="font-semibold text-gray-700">{st.name.givenName || "이름없음"}</span>
-                    <span className="text-gray-400 ml-1.5 font-mono">({st.name.familyName || "학번없음"})</span>
+                    <span className="text-gray-400 ml-1.5 font-mono text-xs">({st.name.familyName || "학번없음"})</span>
                   </div>
                   <span className="text-indigo-600 font-mono text-xs">{st.primaryEmail}</span>
                 </button>
@@ -481,15 +481,15 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
           {selectedStudent && (
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5 text-xs text-slate-800">
               <p className="font-bold text-indigo-700 text-center text-sm border-b border-slate-200 pb-1.5">선택된 학생 정보</p>
-              <div className="grid grid-cols-3 gap-y-1 text-slate-600">
+              <div className="grid grid-cols-3 gap-y-1 text-slate-600 text-sm">
                 <span className="font-semibold">이름:</span>
                 <span className="col-span-2 text-slate-800 font-bold">{selectedStudent.name.givenName}</span>
                 
                 <span className="font-semibold">학번:</span>
-                <span className="col-span-2 text-slate-800 font-mono">{selectedStudent.name.familyName}</span>
+                <span className="col-span-2 text-slate-800 font-mono font-bold">{selectedStudent.name.familyName}</span>
                 
                 <span className="font-semibold">이메일:</span>
-                <span className="col-span-2 text-slate-800 font-mono">{selectedStudent.primaryEmail}</span>
+                <span className="col-span-2 text-slate-800 font-mono text-xs">{selectedStudent.primaryEmail}</span>
                 
                 <span className="font-semibold">현재 OU:</span>
                 <span className="col-span-2 text-slate-800 text-xs break-all">{selectedStudent.orgUnitPath}</span>
@@ -505,7 +505,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                     selectedStudent.orgUnitPath
                   )}
                   disabled={runningAction !== null}
-                  className="w-full text-xs font-semibold py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                  className="w-full text-sm font-semibold py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors shadow-sm disabled:opacity-50"
                 >
                   {runningAction === selectedStudent.primaryEmail ? "⌛ 격리 처리 중..." : "🚪 전출/자퇴 격리 및 처리 시작"}
                 </button>
@@ -541,7 +541,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
             </div>
           ) : (
             <div className="overflow-x-auto border border-gray-200 rounded-xl max-h-[500px]">
-              <table className="w-full text-xs text-left border-collapse">
+              <table className="w-full text-sm text-left border-collapse">
                 <thead className="bg-slate-50 sticky top-0 border-b border-gray-200 text-gray-700">
                   <tr>
                     <th className="px-3 py-2.5 font-bold">학생 정보</th>
@@ -556,21 +556,21 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                     
                     let statusBadge = null;
                     if (task.status === "OU_MOVED") {
-                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-sm rounded-full bg-sky-100 text-sky-800">OU 격리됨</span>;
+                      statusBadge = <span className="inline-flex px-2.5 py-0.5 font-bold text-sm rounded-full bg-sky-100 text-sky-800">OU 격리됨</span>;
                     } else if (task.status === "DEADLINE_SET") {
-                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-xs rounded-full bg-blue-100 text-blue-800">기한 설정됨</span>;
+                      statusBadge = <span className="inline-flex px-2.5 py-0.5 font-bold text-sm rounded-full bg-blue-100 text-blue-800">기한 설정됨</span>;
                     } else if (task.status === "SUSPENDED") {
-                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-xs rounded-full bg-amber-100 text-amber-800">일시정지됨</span>;
+                      statusBadge = <span className="inline-flex px-2.5 py-0.5 font-bold text-sm rounded-full bg-amber-100 text-amber-800">일시정지됨</span>;
                     } else {
-                      statusBadge = <span className="inline-flex px-2 py-0.5 font-bold text-xs rounded-full bg-gray-100 text-gray-600">영구삭제됨</span>;
+                      statusBadge = <span className="inline-flex px-2.5 py-0.5 font-bold text-sm rounded-full bg-gray-100 text-gray-600">영구삭제됨</span>;
                     }
 
                     return (
                       <tr key={task.email} className="hover:bg-slate-50/30">
                         {/* Student Info */}
                         <td className="px-3 py-3">
-                          <div className="font-bold text-gray-800">
-                            {task.name} <span className="font-mono text-xs text-gray-400">({task.studentId})</span>
+                          <div className="font-bold text-gray-800 text-sm">
+                            {task.name} <span className="font-mono text-sm text-gray-500">({task.studentId})</span>
                           </div>
                           <div className="text-xs font-mono text-slate-500 whitespace-nowrap">{task.email}</div>
                           <div className="text-xs text-gray-400 mt-0.5">이전 OU: {task.originalOU}</div>
@@ -588,7 +588,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                         <td className="px-3 py-3">
                           {(task.status === "OU_MOVED" || task.status === "DEADLINE_SET") && (
                             <div className="space-y-0.5">
-                              <div className="font-bold text-red-600 flex items-center gap-1.5">
+                              <div className="font-bold text-red-600 flex items-center gap-1.5 text-sm">
                                 🚨 {getDDay(task.suspendDueDate)}
                               </div>
                               <div className="text-sm text-gray-500 font-medium whitespace-nowrap">정지 예정: {formatDate(task.suspendDueDate)}</div>
@@ -596,7 +596,7 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                           )}
                           {task.status === "SUSPENDED" && (
                             <div className="space-y-0.5">
-                              <div className="font-bold text-gray-700 flex items-center gap-1.5">
+                              <div className="font-bold text-gray-700 flex items-center gap-1.5 text-sm">
                                 🛑 {getDDay(getEffectiveDeleteDue(task))}
                               </div>
                               <div className="text-sm text-gray-500 font-medium whitespace-nowrap">삭제 예정: {formatDate(getEffectiveDeleteDue(task))}</div>
@@ -613,21 +613,21 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                                  <button
                                    onClick={() => handleLifecycleAction("execute_transfer_out_suspend", task.email)}
                                    disabled={isTaskRunning || runningAction !== null}
-                                   className="px-2 py-1 text-[11px] font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-md transition-colors whitespace-nowrap"
+                                   className="px-2.5 py-1 text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-md transition-colors whitespace-nowrap"
                                  >
                                    {isTaskRunning ? "..." : "즉시 정지"}
                                  </button>
                                  <button
                                    onClick={() => handleLifecycleAction("execute_transfer_out_delete", task.email)}
                                    disabled={isTaskRunning || runningAction !== null}
-                                   className="px-2 py-1 text-[11px] font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors whitespace-nowrap"
+                                   className="px-2.5 py-1 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors whitespace-nowrap"
                                  >
                                    {isTaskRunning ? "..." : "즉시 삭제"}
                                  </button>
                                  <button
                                    onClick={() => handleLifecycleAction("restore_transfer_out", task.email)}
                                    disabled={isTaskRunning || runningAction !== null}
-                                   className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-md transition-colors whitespace-nowrap"
+                                   className="px-2.5 py-1 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-md transition-colors whitespace-nowrap"
                                  >
                                    복구 (취소)
                                  </button>
@@ -639,14 +639,14 @@ export default function TransferOutTab({ s, ud, ouList }: { s: any; ud: any; ouL
                                  <button
                                    onClick={() => handleLifecycleAction("execute_transfer_out_delete", task.email)}
                                    disabled={isTaskRunning || runningAction !== null}
-                                   className="px-2 py-1 text-[11px] font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors animate-pulse whitespace-nowrap"
+                                   className="px-2.5 py-1 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors animate-pulse whitespace-nowrap"
                                  >
                                    {isTaskRunning ? "..." : "즉시 삭제"}
                                  </button>
                                  <button
                                    onClick={() => handleLifecycleAction("restore_transfer_out", task.email)}
                                    disabled={isTaskRunning || runningAction !== null}
-                                   className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-md transition-colors whitespace-nowrap"
+                                   className="px-2.5 py-1 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-md transition-colors whitespace-nowrap"
                                  >
                                    복구 (취소)
                                  </button>

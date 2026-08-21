@@ -601,7 +601,7 @@ export default function GraduationTab({ s, ud }: any) {
           </div>
           <button
             onClick={() => setShowSettings(true)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs shrink-0 ${
+            className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all shadow-xs shrink-0 ${
               diffDays < 0
                 ? "bg-rose-600 hover:bg-rose-700 text-white"
                 : "bg-amber-600 hover:bg-amber-700 text-white"
@@ -661,7 +661,7 @@ export default function GraduationTab({ s, ud }: any) {
           <div className="p-6 space-y-5 border-t border-slate-100 bg-white">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-bold text-slate-600">계정 일시정지 예정일 (매년 반복)</label>
+                <label className="text-sm font-bold text-slate-700">계정 일시정지 예정일 (매년 반복)</label>
                 <div className="flex gap-2 mt-1">
                   <select
                     value={suspendMonth}
@@ -685,7 +685,7 @@ export default function GraduationTab({ s, ud }: any) {
                 <span className="text-xs text-slate-400 mt-1 block">매년 지정된 월-일 새벽에 대상자의 계정이 자동으로 일시정지(접속차단) 됩니다.</span>
               </div>
               <div>
-                <label className="text-xs font-bold text-slate-600">계정 영구삭제 예정일 (매년 반복)</label>
+                <label className="text-sm font-bold text-slate-700">계정 영구삭제 예정일 (매년 반복)</label>
                 <div className="flex gap-2 mt-1">
                   <select
                     value={deleteMonth}
@@ -712,7 +712,7 @@ export default function GraduationTab({ s, ud }: any) {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-slate-600">안내/리마인더 메일 제목</label>
+                <label className="text-sm font-bold text-slate-700">안내/리마인더 메일 제목</label>
                 <input
                   value={emailTemplateSubject}
                   onChange={(e) => setEmailTemplateSubject(e.target.value)}
@@ -722,7 +722,7 @@ export default function GraduationTab({ s, ud }: any) {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-slate-600">안내/리마인더 메일 본문 (치환문자: &#123;name&#125;, &#123;suspendDate&#125;, &#123;deleteDate&#125;)</label>
+                  <label className="text-sm font-bold text-slate-700">안내/리마인더 메일 본문 (치환문자: &#123;name&#125;, &#123;suspendDate&#125;, &#123;deleteDate&#125;)</label>
                   <textarea
                     rows={6}
                     value={emailTemplateBody}
@@ -732,7 +732,7 @@ export default function GraduationTab({ s, ud }: any) {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-600">안내/리마인더 구글 챗 본문 (치환문자 동일)</label>
+                  <label className="text-sm font-bold text-slate-700">안내/리마인더 구글 챗 본문 (치환문자 동일)</label>
                   <textarea
                     rows={6}
                     value={chatTemplateBody}
@@ -771,7 +771,7 @@ export default function GraduationTab({ s, ud }: any) {
               <button
                 key={tab.id}
                 onClick={() => setStatusFilter(tab.id)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all ${
                   statusFilter === tab.id
                     ? "bg-indigo-600 text-white shadow-sm"
                     : "bg-slate-100 hover:bg-slate-200 text-slate-600"
@@ -788,7 +788,7 @@ export default function GraduationTab({ s, ud }: any) {
               placeholder="이름, 학번, 이메일로 검색"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-3.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-full px-3.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
           </div>
         </div>
@@ -800,7 +800,7 @@ export default function GraduationTab({ s, ud }: any) {
           ) : filteredCandidates.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-xs">대상 학생이 없습니다.</div>
           ) : (
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-sm border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b text-slate-500 uppercase font-semibold">
                   <th className="px-6 py-3.5 w-24">학번</th>
@@ -819,25 +819,25 @@ export default function GraduationTab({ s, ud }: any) {
                     <td className="px-6 py-3.5 font-bold flex items-center gap-1.5">
                       <span>{c.name}</span>
                       {(c.isTest || c.originalOU === "/학생/테스트") && (
-                         <span className="bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded text-[11px] border border-purple-200">테스트</span>
+                         <span className="bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded text-xs border border-purple-200">테스트</span>
                       )}
                     </td>
-                    <td className="px-6 py-3.5 font-mono text-slate-500">{c.email}</td>
+                    <td className="px-6 py-3.5 font-mono text-xs text-slate-500">{c.email}</td>
                     <td className="px-6 py-3.5 text-center">
                       {c.status === "PENDING" && (
-                        <span className="inline-block bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md font-bold border border-amber-100">대기</span>
+                        <span className="inline-block bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-md font-bold border border-amber-100 text-sm">대기</span>
                       )}
                       {c.status === "CONSENTED" && (
-                        <span className="inline-block bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md font-bold border border-emerald-100">완료</span>
+                        <span className="inline-block bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-md font-bold border border-emerald-100 text-sm">완료</span>
                       )}
                       {c.status === "SUSPENDED" && (
-                        <span className="inline-block bg-red-50 text-red-700 px-2 py-0.5 rounded-md font-bold border border-red-100">정지됨</span>
+                        <span className="inline-block bg-red-50 text-red-700 px-2.5 py-0.5 rounded-md font-bold border border-red-100 text-sm">정지됨</span>
                       )}
                       {c.status === "DELETED" && (
-                        <span className="inline-block bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-bold border border-slate-200">삭제됨</span>
+                        <span className="inline-block bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-md font-bold border border-slate-200 text-sm">삭제됨</span>
                       )}
                     </td>
-                    <td className="px-6 py-3.5 text-slate-500 font-mono">
+                    <td className="px-6 py-3.5 text-slate-600 font-mono text-sm">
                       {c.status === "CONSENTED" && formatDate(c.consentedAt)}
                       {c.status === "SUSPENDED" && formatDate(c.suspendedAt)}
                       {c.status === "DELETED" && formatDate(c.deletedAt)}
@@ -863,7 +863,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleToggleConsent(c.email, false)}
                           disabled={runningAction !== null}
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-sm transition-colors"
                         >
                           수동 동의 완료
                         </button>
@@ -872,7 +872,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleToggleConsent(c.email, true)}
                           disabled={runningAction !== null}
-                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs transition-colors"
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-sm transition-colors"
                         >
                           동의 취소
                         </button>
@@ -883,7 +883,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleSendIndividualWarning(c.email)}
                           disabled={runningAction !== null}
-                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors"
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-sm transition-colors"
                         >
                           리마인더 발송
                         </button>
@@ -894,7 +894,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleIndividualRestore(c.email)}
                           disabled={runningAction !== null}
-                          className="px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-lg text-xs transition-colors"
+                          className="px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-lg text-sm transition-colors"
                         >
                           일시정지 해제
                         </button>
@@ -905,7 +905,7 @@ export default function GraduationTab({ s, ud }: any) {
                         <button
                           onClick={() => handleDeleteTestStudent(c.email)}
                           disabled={runningAction !== null}
-                          className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-colors"
+                          className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-sm transition-colors"
                           title="테스트 학생을 목록에서 삭제합니다."
                         >
                           테스트 삭제
@@ -1080,7 +1080,7 @@ export default function GraduationTab({ s, ud }: any) {
       {showConsentModal && selectedConsent && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full overflow-hidden animate-scale-up flex flex-col">
-            <div className="bg-indigo-700 text-white p-4 font-bold text-xs flex justify-between items-center">
+            <div className="bg-indigo-700 text-white p-4 font-bold text-sm flex justify-between items-center">
               <span>✍️ 졸업 백업 안내 확인 서명</span>
               <button
                 type="button"
@@ -1088,28 +1088,28 @@ export default function GraduationTab({ s, ud }: any) {
                   setShowConsentModal(false);
                   setSelectedConsent(null);
                 }}
-                className="text-white hover:text-slate-200 font-bold"
+                className="text-white hover:text-slate-200 font-bold text-sm"
               >
                 ✕
               </button>
             </div>
-            <div className="p-5 space-y-4 text-xs text-slate-600 leading-relaxed">
+            <div className="p-5 space-y-4 text-sm text-slate-600 leading-relaxed">
               <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border rounded-xl">
                 <div>
-                  <span className="text-[11px] text-slate-400 block font-medium">이름</span>
-                  <span className="text-slate-800 font-bold mt-0.5 block">{selectedConsent.name}</span>
+                  <span className="text-xs text-slate-500 block font-medium">이름</span>
+                  <span className="text-slate-800 font-bold mt-0.5 block text-sm">{selectedConsent.name}</span>
                 </div>
                 <div>
-                  <span className="text-[11px] text-slate-400 block font-medium">학번</span>
-                  <span className="text-slate-800 font-bold mt-0.5 block font-mono">{selectedConsent.studentId}</span>
+                  <span className="text-xs text-slate-500 block font-medium">학번</span>
+                  <span className="text-slate-800 font-bold mt-0.5 block font-mono text-sm">{selectedConsent.studentId}</span>
                 </div>
                 <div className="col-span-2 border-t border-slate-100 pt-2 mt-1">
-                  <span className="text-[11px] text-slate-400 block font-medium">이메일 계정</span>
-                  <span className="text-slate-800 font-bold mt-0.5 block font-mono">{selectedConsent.email}</span>
+                  <span className="text-xs text-slate-500 block font-medium">이메일 계정</span>
+                  <span className="text-slate-800 font-bold mt-0.5 block font-mono text-sm">{selectedConsent.email}</span>
                 </div>
                 <div className="col-span-2 border-t border-slate-100 pt-2">
-                  <span className="text-[11px] text-slate-400 block font-medium">서명 일시</span>
-                  <span className="text-slate-800 font-bold mt-0.5 block font-mono">
+                  <span className="text-xs text-slate-500 block font-medium">서명 일시</span>
+                  <span className="text-slate-800 font-bold mt-0.5 block font-mono text-sm">
                     {selectedConsent.consentedAt?.toDate 
                       ? selectedConsent.consentedAt.toDate().toLocaleString("ko-KR") 
                       : new Date(selectedConsent.consentedAt || Date.now()).toLocaleString("ko-KR")}
@@ -1118,7 +1118,7 @@ export default function GraduationTab({ s, ud }: any) {
               </div>
 
               <div className="space-y-1.5">
-                <span className="text-[11px] text-slate-400 block font-medium">학생 친필 서명 (손가락/마우스 드로잉)</span>
+                <span className="text-xs text-slate-500 block font-medium">학생 친필 서명 (손가락/마우스 드로잉)</span>
                 <div className="border border-slate-200 rounded-xl bg-slate-50 p-4 h-32 flex items-center justify-center">
                   {selectedConsent.signature?.startsWith("data:image/") ? (
                     <img 
@@ -1127,7 +1127,7 @@ export default function GraduationTab({ s, ud }: any) {
                       className="max-w-full max-h-full object-contain"
                     />
                   ) : (
-                    <span className="text-slate-400 font-bold text-[11px]">{selectedConsent.signature}</span>
+                    <span className="text-slate-400 font-bold text-xs">{selectedConsent.signature}</span>
                   )}
                 </div>
               </div>
@@ -1139,7 +1139,7 @@ export default function GraduationTab({ s, ud }: any) {
                   setShowConsentModal(false);
                   setSelectedConsent(null);
                 }}
-                className="px-4 py-2 bg-slate-700 hover:bg-indigo-950 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+                className="px-4 py-2 bg-slate-700 hover:bg-indigo-950 text-white font-bold text-sm rounded-xl shadow-xs transition-colors"
               >
                 닫기
               </button>

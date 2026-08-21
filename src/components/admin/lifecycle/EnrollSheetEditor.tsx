@@ -278,13 +278,13 @@ export default function EnrollSheetEditor({ onApply, onCancel }: EnrollSheetEdit
               max="1000"
               value={addCount}
               onChange={(e) => setAddCount(Math.max(1, parseInt(e.target.value) || 0))}
-              className="w-14 px-2 py-1 text-xs text-center bg-transparent border-0 border-r border-slate-200 focus:outline-none text-slate-700 font-medium"
+              className="w-14 px-2 py-1 text-sm text-center bg-transparent border-0 border-r border-slate-200 focus:outline-none text-slate-700 font-medium"
               placeholder="행 수"
             />
             <button
               type="button"
               onClick={() => handleAddRows(addCount || 100)}
-              className="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 bg-white transition-all active:bg-slate-200"
+              className="px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 bg-white transition-all active:bg-slate-200"
             >
               ➕ 행 추가
             </button>
@@ -292,7 +292,7 @@ export default function EnrollSheetEditor({ onApply, onCancel }: EnrollSheetEdit
           <button
             type="button"
             onClick={handleClearSheet}
-            className="px-3 py-1.5 text-xs font-semibold bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 rounded-lg transition-all"
+            className="px-3 py-1.5 text-sm font-semibold bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 rounded-lg transition-all"
           >
             🗑️ 전체 초기화
           </button>
@@ -300,7 +300,7 @@ export default function EnrollSheetEditor({ onApply, onCancel }: EnrollSheetEdit
             type="button"
             onClick={handleUndo}
             disabled={history.length === 0}
-            className="px-3 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all"
+            className="px-3 py-1.5 text-sm font-semibold bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all"
             title="되돌리기 (Ctrl+Z)"
           >
             ↩️ 실행 취소
@@ -309,7 +309,7 @@ export default function EnrollSheetEditor({ onApply, onCancel }: EnrollSheetEdit
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[400px]">
-        <table className="min-w-full divide-y divide-slate-200 text-xs border-collapse">
+        <table className="min-w-full divide-y divide-slate-200 text-sm border-collapse">
           <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
             <tr>
               <th className="px-3 py-2 text-center text-slate-500 w-12 font-bold border-r border-slate-200">No</th>
@@ -337,7 +337,7 @@ export default function EnrollSheetEditor({ onApply, onCancel }: EnrollSheetEdit
                       data-enroll-row-index={index}
                       data-enroll-col-index={0}
                       placeholder="예: 김민준"
-                      className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+                      className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
                         hasError && !row.givenName.trim() ? "border-red-400 bg-red-50/50" : "border-slate-200"
                       }`}
                     />
@@ -352,7 +352,7 @@ export default function EnrollSheetEditor({ onApply, onCancel }: EnrollSheetEdit
                       data-enroll-row-index={index}
                       data-enroll-col-index={1}
                       placeholder="예: 1"
-                      className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+                      className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
                         hasError && (!row.classNum.trim() || isNaN(parseInt(row.classNum)) || parseInt(row.classNum) < 1 || parseInt(row.classNum) > 10)
                           ? "border-red-400 bg-red-50/50"
                           : "border-slate-200"
@@ -369,7 +369,7 @@ export default function EnrollSheetEditor({ onApply, onCancel }: EnrollSheetEdit
                       data-enroll-row-index={index}
                       data-enroll-col-index={2}
                       placeholder="예: 5"
-                      className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+                      className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
                         hasError && (!row.studentNum.trim() || isNaN(parseInt(row.studentNum)) || parseInt(row.studentNum) < 1 || parseInt(row.studentNum) > 99)
                           ? "border-red-400 bg-red-50/50"
                           : "border-slate-200"
@@ -394,9 +394,9 @@ export default function EnrollSheetEditor({ onApply, onCancel }: EnrollSheetEdit
       </div>
 
       {showErrorsSummary && rows.some((r) => r.error) && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-800 text-xs">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-800 text-sm">
           ⚠️ <strong>입력 에러 내용:</strong>
-          <ul className="list-disc pl-5 mt-1 space-y-0.5">
+          <ul className="list-disc pl-5 mt-1 space-y-0.5 text-xs">
             {rows
               .filter((r) => r.error)
               .map((r, i) => (
@@ -412,14 +412,14 @@ export default function EnrollSheetEditor({ onApply, onCancel }: EnrollSheetEdit
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-lg transition-colors"
+          className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold rounded-lg transition-colors"
         >
           취소
         </button>
         <button
           type="button"
           onClick={handleSubmit}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm"
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
         >
           작성 완료 및 적용
         </button>

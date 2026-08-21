@@ -120,14 +120,14 @@ function NewYearStepBar({
               {isCompleted ? "✓" : idx + 1}
             </div>
             <span className="text-lg">{step.icon}</span>
-            <span className={`text-xs font-semibold leading-tight ${
+            <span className={`text-sm font-semibold leading-tight ${
               isCompleted ? "text-green-700" :
               isCurrent ? "text-indigo-700" : "text-gray-600"
             }`}>
               {step.label}
             </span>
             {isCompleted && (
-              <span className="text-[11px] text-green-600 bg-green-100/50 px-1 py-0.5 rounded font-semibold mt-0.5">완료</span>
+              <span className="text-xs font-bold text-green-600 bg-green-100/50 px-1.5 py-0.5 rounded mt-0.5">완료</span>
             )}
           </button>
         );
@@ -145,7 +145,7 @@ function TabBtn({ active, onClick, icon, label }: {
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+      className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5 ${
         active ? "bg-indigo-700 text-white shadow" : "bg-white border border-gray-200 text-gray-600 hover:bg-indigo-50 hover:text-indigo-700"
       }`}
     >
@@ -281,7 +281,7 @@ export default function StudentLifecycle() {
         <>
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
             <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-              <p className="text-xs font-bold text-gray-600">📋 신학기 준비 단계 — 순서대로 진행해 주세요</p>
+              <p className="text-sm font-bold text-gray-700">📋 신학기 준비 단계 — 순서대로 진행해 주세요</p>
               <div className="flex items-center gap-3">
                 {allDone && (
                   <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
@@ -295,7 +295,7 @@ export default function StudentLifecycle() {
                 )}
                 <button
                   onClick={resetWizardState}
-                  className="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded transition-colors font-medium flex items-center gap-1"
+                  className="text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded transition-colors font-medium flex items-center gap-1"
                   title="신학기 준비 마법사 단계를 1단계(초기 상태)로 되돌립니다."
                 >
                   🔄 단계 초기화
@@ -316,7 +316,7 @@ export default function StudentLifecycle() {
             const hasUnfinishedPrev = prevStep && !completedSteps.has(prevStep.id);
             if (!hasUnfinishedPrev) return null;
             return (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 flex items-start gap-2.5">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900 flex items-start gap-2.5">
                 <span>⚠️</span>
                 <div>
                   <p className="font-bold">이전 단계 미완료 안내</p>

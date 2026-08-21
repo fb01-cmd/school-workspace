@@ -330,13 +330,13 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
               max="1000"
               value={addCount}
               onChange={(e) => setAddCount(Math.max(1, parseInt(e.target.value) || 0))}
-              className="w-14 px-2 py-1 text-xs text-center bg-transparent border-0 border-r border-slate-200 focus:outline-none text-slate-700 font-medium"
+              className="w-14 px-2 py-1 text-sm text-center bg-transparent border-0 border-r border-slate-200 focus:outline-none text-slate-700 font-medium"
               placeholder="행 수"
             />
             <button
               type="button"
               onClick={() => handleAddRows(addCount || 100)}
-              className="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 bg-white transition-all active:bg-slate-200"
+              className="px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 bg-white transition-all active:bg-slate-200"
             >
               ➕ 행 추가
             </button>
@@ -344,7 +344,7 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
           <button
             type="button"
             onClick={handleClearSheet}
-            className="px-3 py-1.5 text-xs font-semibold bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 rounded-lg transition-all"
+            className="px-3 py-1.5 text-sm font-semibold bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 rounded-lg transition-all"
           >
             🗑️ 전체 초기화
           </button>
@@ -352,7 +352,7 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
             type="button"
             onClick={handleUndo}
             disabled={history.length === 0}
-            className="px-3 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all"
+            className="px-3 py-1.5 text-sm font-semibold bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all"
             title="되돌리기 (Ctrl+Z)"
           >
             ↩️ 실행 취소
@@ -361,21 +361,21 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[400px]">
-        <table className="min-w-full divide-y divide-slate-200 text-xs border-collapse">
+        <table className="min-w-full divide-y divide-slate-200 text-sm border-collapse">
           <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200 text-slate-700">
             <tr>
               <th className="px-3 py-2 text-center text-slate-500 w-12 font-bold border-r border-slate-200" rowSpan={2}>No</th>
-              <th className="px-3 py-1 text-center font-bold bg-indigo-50/50 border-r border-slate-200" colSpan={3}>이전 정보 (대상 학생)</th>
-              <th className="px-3 py-1 text-center font-bold bg-emerald-50/50 border-r border-slate-200" colSpan={3}>새 정보 (진급 대상)</th>
+              <th className="px-3 py-1.5 text-center font-bold bg-indigo-50/50 border-r border-slate-200" colSpan={3}>이전 정보 (대상 학생)</th>
+              <th className="px-3 py-1.5 text-center font-bold bg-emerald-50/50 border-r border-slate-200" colSpan={3}>새 정보 (진급 대상)</th>
               <th className="px-3 py-2 text-center text-slate-500 w-16" rowSpan={2}>삭제</th>
             </tr>
             <tr className="border-t border-slate-200">
-              <th className="px-3 py-1 text-left font-semibold border-r border-slate-200">학년*</th>
-              <th className="px-3 py-1 text-left font-semibold border-r border-slate-200">반*</th>
-              <th className="px-3 py-1 text-left font-semibold border-r border-slate-200">번호*</th>
-              <th className="px-3 py-1 text-left font-semibold border-r border-slate-200">학년*</th>
-              <th className="px-3 py-1 text-left font-semibold border-r border-slate-200">반*</th>
-              <th className="px-3 py-1 text-left font-semibold border-r border-slate-200">번호*</th>
+              <th className="px-3 py-1.5 text-left font-semibold border-r border-slate-200">학년*</th>
+              <th className="px-3 py-1.5 text-left font-semibold border-r border-slate-200">반*</th>
+              <th className="px-3 py-1.5 text-left font-semibold border-r border-slate-200">번호*</th>
+              <th className="px-3 py-1.5 text-left font-semibold border-r border-slate-200">학년*</th>
+              <th className="px-3 py-1.5 text-left font-semibold border-r border-slate-200">반*</th>
+              <th className="px-3 py-1.5 text-left font-semibold border-r border-slate-200">번호*</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-slate-100">
@@ -398,7 +398,7 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
                       data-promote-row-index={index}
                       data-promote-col-index={0}
                       placeholder="학년"
-                      className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+                      className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
                         hasError && (!row.prevGrade.trim() || isNaN(parseInt(row.prevGrade)) || parseInt(row.prevGrade) < 1 || parseInt(row.prevGrade) > 3)
                           ? "border-red-400 bg-red-50/50"
                           : "border-slate-200"
@@ -417,7 +417,7 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
                       data-promote-row-index={index}
                       data-promote-col-index={1}
                       placeholder="반"
-                      className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+                      className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
                         hasError && (!row.prevClass.trim() || isNaN(parseInt(row.prevClass)) || parseInt(row.prevClass) < 1 || parseInt(row.prevClass) > 10)
                           ? "border-red-400 bg-red-50/50"
                           : "border-slate-200"
@@ -436,7 +436,7 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
                       data-promote-row-index={index}
                       data-promote-col-index={2}
                       placeholder="번호"
-                      className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+                      className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
                         hasError && (!row.prevNum.trim() || isNaN(parseInt(row.prevNum)) || parseInt(row.prevNum) < 1 || parseInt(row.prevNum) > 99)
                           ? "border-red-400 bg-red-50/50"
                           : "border-slate-200"
@@ -455,7 +455,7 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
                       data-promote-row-index={index}
                       data-promote-col-index={3}
                       placeholder="학년"
-                      className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+                      className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
                         hasError && (!row.newGrade.trim() || isNaN(parseInt(row.newGrade)) || parseInt(row.newGrade) < 1 || parseInt(row.newGrade) > 3)
                           ? "border-red-400 bg-red-50/50"
                           : "border-slate-200"
@@ -474,7 +474,7 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
                       data-promote-row-index={index}
                       data-promote-col-index={4}
                       placeholder="반"
-                      className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+                      className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
                         hasError && (!row.newClass.trim() || isNaN(parseInt(row.newClass)) || parseInt(row.newClass) < 1 || parseInt(row.newClass) > 10)
                           ? "border-red-400 bg-red-50/50"
                           : "border-slate-200"
@@ -493,7 +493,7 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
                       data-promote-row-index={index}
                       data-promote-col-index={5}
                       placeholder="번호"
-                      className={`w-full px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
+                      className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 ${
                         hasError && (!row.newNum.trim() || isNaN(parseInt(row.newNum)) || parseInt(row.newNum) < 1 || parseInt(row.newNum) > 99)
                           ? "border-red-400 bg-red-50/50"
                           : "border-slate-200"
@@ -519,9 +519,9 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
       </div>
 
       {showErrorsSummary && rows.some((r) => r.error) && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-800 text-xs">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-800 text-sm">
           ⚠️ <strong>입력 에러 내용:</strong>
-          <ul className="list-disc pl-5 mt-1 space-y-0.5">
+          <ul className="list-disc pl-5 mt-1 space-y-0.5 text-xs">
             {rows
               .filter((r) => r.error)
               .map((r, i) => (
@@ -537,14 +537,14 @@ export default function PromoteSheetEditor({ onApply, onCancel }: PromoteSheetEd
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-lg transition-colors"
+          className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold rounded-lg transition-colors"
         >
           취소
         </button>
         <button
           type="button"
           onClick={handleSubmit}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm"
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
         >
           작성 완료 및 적용
         </button>

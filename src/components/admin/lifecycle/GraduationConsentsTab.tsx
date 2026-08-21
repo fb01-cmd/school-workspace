@@ -106,14 +106,14 @@ export default function GraduationConsentsTab({ ud }: { s: any; ud: any }) {
         <div className="flex items-center gap-2">
           <button
             onClick={loadConsents}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-xs text-slate-700 font-bold transition-all"
+            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 border rounded-lg text-sm text-slate-700 font-bold transition-all"
           >
             🔄 새로고침
           </button>
           <button
             onClick={handlePrint}
             disabled={filteredConsents.length === 0}
-            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50"
+            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold transition-all shadow-xs disabled:opacity-50"
           >
             🖨️ 현재 명단 인쇄
           </button>
@@ -122,7 +122,7 @@ export default function GraduationConsentsTab({ ud }: { s: any; ud: any }) {
 
       {/* Filters & Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50 p-4 border rounded-2xl">
-        <div className="text-xs font-bold text-slate-700">
+        <div className="text-sm font-bold text-slate-700">
           총 보관 건수: <span className="text-indigo-600 font-mono">{filteredConsents.length}</span> / {consents.length}건
         </div>
         <div className="w-full sm:w-72">
@@ -131,7 +131,7 @@ export default function GraduationConsentsTab({ ud }: { s: any; ud: any }) {
             placeholder="이름, 학번, 이메일로 검색"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white text-slate-700"
+            className="w-full px-3.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white text-slate-700"
           />
         </div>
       </div>
@@ -144,7 +144,7 @@ export default function GraduationConsentsTab({ ud }: { s: any; ud: any }) {
           ) : filteredConsents.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-xs">보관된 동의서 내역이 없습니다.</div>
           ) : (
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-sm border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b text-slate-500 uppercase font-semibold">
                   <th className="px-6 py-3.5 w-24">학번</th>
@@ -160,13 +160,13 @@ export default function GraduationConsentsTab({ ud }: { s: any; ud: any }) {
                   <tr key={c.email} className="hover:bg-slate-50/50">
                     <td className="px-6 py-3.5 font-bold font-mono">{c.studentId || "-"}</td>
                     <td className="px-6 py-3.5 font-bold">{c.name}</td>
-                    <td className="px-6 py-3.5 font-mono text-slate-500">{c.email}</td>
+                    <td className="px-6 py-3.5 font-mono text-xs text-slate-500">{c.email}</td>
                     <td className="px-6 py-3.5 font-mono text-slate-600">{formatDate(c.consentedAt)}</td>
-                    <td className="px-6 py-3.5 font-mono text-slate-400">{getFormatExpiry(c.expiresAt)}</td>
+                    <td className="px-6 py-3.5 font-mono text-slate-500">{getFormatExpiry(c.expiresAt)}</td>
                     <td className="px-6 py-3.5 text-center print:hidden">
                       <button
                         onClick={() => setSelectedConsent(c)}
-                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold border border-indigo-100 rounded-lg text-xs transition-colors"
+                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold border border-indigo-100 rounded-lg text-sm transition-colors"
                       >
                         📄 증빙 보기
                       </button>
@@ -183,7 +183,7 @@ export default function GraduationConsentsTab({ ud }: { s: any; ud: any }) {
       {selectedConsent && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 print:hidden">
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full overflow-hidden animate-scale-up flex flex-col">
-            <div className="bg-indigo-700 text-white p-4 font-bold text-xs flex justify-between items-center">
+            <div className="bg-indigo-700 text-white p-4 font-bold text-sm flex justify-between items-center">
               <span>✍️ 영구 보관 동의 증빙</span>
               <button
                 type="button"
@@ -194,36 +194,36 @@ export default function GraduationConsentsTab({ ud }: { s: any; ud: any }) {
               </button>
             </div>
             
-            <div className="p-5 space-y-4 text-xs text-slate-600 leading-relaxed">
+            <div className="p-5 space-y-4 text-sm text-slate-600 leading-relaxed">
               <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border rounded-xl">
                 <div>
-                  <span className="text-[11px] text-slate-400 block font-medium">졸업생 이름</span>
-                  <span className="text-slate-800 font-bold mt-0.5 block">{selectedConsent.name}</span>
+                  <span className="text-xs text-slate-500 block font-medium">졸업생 이름</span>
+                  <span className="text-slate-800 font-bold mt-0.5 block text-sm">{selectedConsent.name}</span>
                 </div>
                 <div>
-                  <span className="text-[11px] text-slate-400 block font-medium">학번</span>
-                  <span className="text-slate-800 font-bold mt-0.5 block font-mono">{selectedConsent.studentId}</span>
+                  <span className="text-xs text-slate-500 block font-medium">학번</span>
+                  <span className="text-slate-800 font-bold mt-0.5 block font-mono text-sm">{selectedConsent.studentId}</span>
                 </div>
                 <div className="col-span-2 border-t border-slate-100 pt-2 mt-1">
-                  <span className="text-[11px] text-slate-400 block font-medium">구글 계정 이메일</span>
-                  <span className="text-slate-800 font-bold mt-0.5 block font-mono">{selectedConsent.email}</span>
+                  <span className="text-xs text-slate-500 block font-medium">구글 계정 이메일</span>
+                  <span className="text-slate-800 font-bold mt-0.5 block font-mono text-sm">{selectedConsent.email}</span>
                 </div>
                 <div className="col-span-2 border-t border-slate-100 pt-2">
-                  <span className="text-[11px] text-slate-400 block font-medium">동의 및 서명 일시</span>
-                  <span className="text-slate-800 font-bold mt-0.5 block font-mono">
+                  <span className="text-xs text-slate-500 block font-medium">동의 및 서명 일시</span>
+                  <span className="text-slate-800 font-bold mt-0.5 block font-mono text-sm">
                     {formatDate(selectedConsent.consentedAt)}
                   </span>
                 </div>
                 <div className="col-span-2 border-t border-slate-100 pt-2">
-                  <span className="text-[11px] text-slate-400 block font-medium">법적 보존 연한 (3년)</span>
-                  <span className="text-slate-500 font-bold mt-0.5 block font-mono">
+                  <span className="text-xs text-slate-500 block font-medium">법적 보존 연한 (3년)</span>
+                  <span className="text-slate-600 font-bold mt-0.5 block font-mono text-sm">
                     {getFormatExpiry(selectedConsent.expiresAt)} 까지 보관
                   </span>
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <span className="text-[11px] text-slate-400 block font-medium">수집된 친필 서명 데이터</span>
+                <span className="text-xs text-slate-500 block font-medium">수집된 친필 서명 데이터</span>
                 <div className="border border-slate-200 rounded-xl bg-slate-50 p-4 h-32 flex items-center justify-center">
                   {selectedConsent.signature?.startsWith("data:image/") ? (
                     <img 
@@ -232,7 +232,7 @@ export default function GraduationConsentsTab({ ud }: { s: any; ud: any }) {
                       className="max-w-full max-h-full object-contain"
                     />
                   ) : (
-                    <span className="text-slate-400 font-bold text-[11px]">{selectedConsent.signature}</span>
+                    <span className="text-slate-400 font-bold text-xs">{selectedConsent.signature}</span>
                   )}
                 </div>
               </div>
@@ -242,7 +242,7 @@ export default function GraduationConsentsTab({ ud }: { s: any; ud: any }) {
               <button
                 type="button"
                 onClick={() => setSelectedConsent(null)}
-                className="px-4 py-2 bg-slate-700 hover:bg-slate-850 text-white font-bold text-xs rounded-xl transition-colors"
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-850 text-white font-bold text-sm rounded-xl transition-colors"
               >
                 닫기
               </button>

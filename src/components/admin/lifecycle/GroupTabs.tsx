@@ -43,7 +43,7 @@ export function GroupDeleteTab({ ud, ouPaths, onDone, onNext }: any) {
       </div>
 
       {isTestMode && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900 leading-relaxed">
           ✨ <strong>테스트 모드 활성화됨:</strong> 학생 조직단위 경로에 '테스트'가 포함되어 있습니다. 
           실제 운영 중인 반별 그룹을 보호하기 위해, 이 작업은 <strong>test-</strong> 접두사가 붙은 그룹(예: <code>test-101@{ud?.domain}</code>)만 안전하게 삭제합니다.
         </div>
@@ -62,7 +62,7 @@ export function GroupDeleteTab({ ud, ouPaths, onDone, onNext }: any) {
             {/* Deleted Groups List */}
             {res.succeededList && res.succeededList.length > 0 && (
               <div className="mt-4 space-y-1.5">
-                <p className="text-xs font-bold text-green-800">🗑️ 삭제된 그룹 목록 ({res.succeededList.length}개)</p>
+                <p className="text-sm font-bold text-green-800">🗑️ 삭제된 그룹 목록 ({res.succeededList.length}개)</p>
                 <div className="max-h-40 overflow-y-auto border border-green-100 rounded-xl p-3 bg-white font-mono text-xs text-green-700 divide-y divide-green-50">
                   {res.succeededList.map((email: string, idx: number) => (
                     <div key={idx} className="py-1">{email}</div>
@@ -74,7 +74,7 @@ export function GroupDeleteTab({ ud, ouPaths, onDone, onNext }: any) {
             {/* Failed Deletions List */}
             {res.failedList && res.failedList.length > 0 && (
               <div className="mt-4 space-y-1.5">
-                <p className="text-xs font-bold text-red-700">❌ 삭제 실패 그룹 목록 ({res.failedList.length}개)</p>
+                <p className="text-sm font-bold text-red-700">❌ 삭제 실패 그룹 목록 ({res.failedList.length}개)</p>
                 <div className="max-h-40 overflow-y-auto border border-red-100 rounded-xl p-3 bg-white font-mono text-xs text-red-600 divide-y divide-red-50">
                   {res.failedList.map((f: any, idx: number) => (
                     <div key={idx} className="py-1.5 flex justify-between">
@@ -146,7 +146,7 @@ export function GroupCreateTab({ ud, ouPaths, onDone, onComplete }: any) {
       </div>
 
       {isTestMode && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900 leading-relaxed">
           ✨ <strong>테스트 모드 활성화됨:</strong> 학생 조직단위 경로에 '테스트'가 포함되어 있습니다. 
           실제 운영 중인 반별 그룹을 보호하기 위해, 이 작업은 <strong>test-</strong> 접두사가 붙은 그룹(예: <code>test-101@{ud?.domain}</code>)으로 안전하게 생성하고 멤버를 구성합니다.
         </div>
@@ -165,21 +165,21 @@ export function GroupCreateTab({ ud, ouPaths, onDone, onComplete }: any) {
             {/* Created Groups List */}
             {res.succeededList && res.succeededList.length > 0 && (
               <div className="mt-4 space-y-1.5">
-                <p className="text-xs font-bold text-green-800">👥 생성/동기화된 그룹 목록 ({res.succeededList.length}개)</p>
+                <p className="text-sm font-bold text-green-800">👥 생성/동기화된 그룹 목록 ({res.succeededList.length}개)</p>
                 <div className="max-h-48 overflow-y-auto border border-green-100 rounded-xl p-3 bg-white text-xs divide-y divide-green-50">
                   {res.succeededList.map((g: any, idx: number) => (
-                    <div key={idx} className="py-1.5 flex justify-between items-center text-green-900">
+                    <div key={idx} className="py-2 flex justify-between items-center text-green-900">
                       <div>
-                        <span className="font-bold">{g.name}</span>
+                        <span className="font-bold text-sm">{g.name}</span>
                         <span className="text-gray-400 font-mono text-xs ml-1.5">{g.email}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className={`text-[11px] px-1.5 py-0.2 rounded font-medium ${
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
                           g.status === "created" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
                         }`}>
                           {g.status === "created" ? "신규 생성" : "기존 동기화"}
                         </span>
-                        <span className="font-semibold text-gray-700">{g.membersCount}명 배정</span>
+                        <span className="font-semibold text-sm text-gray-700">{g.membersCount}명 배정</span>
                       </div>
                     </div>
                   ))}
@@ -190,7 +190,7 @@ export function GroupCreateTab({ ud, ouPaths, onDone, onComplete }: any) {
             {/* Failed Creations List */}
             {res.failedList && res.failedList.length > 0 && (
               <div className="mt-4 space-y-1.5">
-                <p className="text-xs font-bold text-red-700">❌ 생성 실패 그룹 목록 ({res.failedList.length}개)</p>
+                <p className="text-sm font-bold text-red-700">❌ 생성 실패 그룹 목록 ({res.failedList.length}개)</p>
                 <div className="max-h-48 overflow-y-auto border border-red-100 rounded-xl p-3 bg-white font-mono text-xs text-red-600 divide-y divide-red-50">
                   {res.failedList.map((f: any, idx: number) => (
                     <div key={idx} className="py-1.5 flex justify-between">
