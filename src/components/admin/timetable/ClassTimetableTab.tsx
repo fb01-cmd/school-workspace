@@ -3,18 +3,41 @@
 import { useEffect, useState } from "react";
 import { ClassGrid, TimetableCell } from "@/lib/timetable/types";
 import { useAvailableClasses } from "./useAvailableClasses";
+import { getDayDateLabel } from "@/lib/timetable/utils";
 
 interface ClassTimetableTabProps {
   periodsPerDay?: number;
+  activeTermId?: string | null;
 }
 
-export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableTabProps) {
+export default function ClassTimetableTab({ periodsPerDay = 7, activeTermId }: ClassTimetableTabProps) {
+  // 이 화면은 **그 주에 실제로 돌아가는 시간표**를 보여준다 — 학기 고정표가 아니다.
+  // 예전에는 주를 고를 수도, 날짜를 볼 수도 없어서 「학기 고정 시간표」로 읽혔고,
+  // 공휴일이라 비어 있는 월요일이 "수업이 없는 것"으로 오해됐다 (2026-08-21 사용자 지적).
+  // 교사 포털 「다른 시간표 조회」에는 이미 있던 것을 여기에도 맞춘다.
+  const [weeks, setWeeks] = useState<{ id: string; startDate: string }[]>([]);
+  const [selectedWeekId, setSelectedWeekId] = useState<string>("");
   const [selectedGrade, setSelectedGrade] = useState<number>(1);
   const [selectedClassNum, setSelectedClassNum] = useState<number>(1);
   const [classGrid, setClassGrid] = useState<ClassGrid | null>(null);
   const [termMeta, setTermMeta] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 주 목록 — 고를 수 있어야 "지금 어느 주를 보는지"가 화면에 드러난다
+  useEffect(() => {
+    if (!activeTermId) return;
+    fetch("/api/timetable/manage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "week_list", termId: activeTermId }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (Array.isArray(d?.weeks)) setWeeks(d.weeks); })
+      .catch(() => {});
+  }, [activeTermId]);
+
+  const selectedWeek = weeks.find((w) => w.id === selectedWeekId) || null;
 
   const { getClassesForGrade } = useAvailableClasses();
   const currentClasses = getClassesForGrade(selectedGrade, false);
@@ -27,7 +50,7 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
     { num: 5, label: "금요일" },
   ];
 
-  const fetchClassTimetable = async (grade: number, classNum: number) => {
+  const fetchClassTimetable = async (grade: number, classNum: number, weekId?: string) => {
     setLoading(true);
     setError(null);
 
@@ -39,12 +62,15 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
           action: "class",
           grade,
           classNum,
+          weekId: weekId || undefined,
         }),
       });
 
       if (res.ok) {
         const result = await res.json();
         setTermMeta(result.term || null);
+        // 서버가 실제로 고른 주를 그대로 따른다 — 화면이 "무엇을 보고 있는지"의 단일 원본
+        if (result.week?.id && !weekId) setSelectedWeekId(result.week.id);
         if (result.data) {
           setClassGrid(result.data);
         } else {
@@ -66,12 +92,12 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
       if (!currentClasses.includes(selectedClassNum)) {
         setSelectedClassNum(currentClasses[0]);
       } else {
-        fetchClassTimetable(selectedGrade, selectedClassNum);
+        fetchClassTimetable(selectedGrade, selectedClassNum, selectedWeekId || undefined);
       }
     } else {
       setClassGrid(null);
     }
-  }, [selectedGrade, selectedClassNum, currentClasses]);
+  }, [selectedGrade, selectedClassNum, currentClasses, selectedWeekId]);
 
   // 특정 요일·교시의 수업 셀 찾기
   const getCellForSlot = (day: number, period: number): TimetableCell | null => {
@@ -94,10 +120,23 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
               )}
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              각 학년 및 반별 주간 기초시간표를 확인합니다.
+              고른 주에 <strong>실제로 운영되는</strong> 시간표입니다 — 휴업일·수업교환·보강이 반영돼 있습니다.
             </p>
           </div>
-          {loading && <span className="text-xs text-indigo-600 font-semibold animate-pulse">조회 중...</span>}
+          <div className="flex items-center gap-2">
+            {weeks.length > 0 && (
+              <select
+                value={selectedWeekId}
+                onChange={(e) => setSelectedWeekId(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500"
+              >
+                {weeks.map((w) => (
+                  <option key={w.id} value={w.id}>{w.startDate} 주</option>
+                ))}
+              </select>
+            )}
+            {loading && <span className="text-xs text-indigo-600 font-semibold animate-pulse">조회 중...</span>}
+          </div>
         </div>
 
         {/* 학년 버튼 필터 */}
@@ -155,14 +194,14 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
               <span className="font-black text-indigo-950 text-sm">
                 {selectedGrade}학년 {selectedClassNum}반
               </span>{" "}
-              기초시간표
+              {selectedWeek ? `${selectedWeek.startDate} 주` : "이번 주"} 시간표
             </>
           ) : (
             <>
               <span className="font-black text-indigo-950 text-sm">
                 {selectedGrade}학년
               </span>{" "}
-              기초시간표 (등록된 반 없음)
+              시간표 (등록된 반 없음)
             </>
           )}
         </div>
@@ -180,8 +219,15 @@ export default function ClassTimetableTab({ periodsPerDay = 7 }: ClassTimetableT
               <tr className="bg-indigo-950 text-white font-bold">
                 <th className="py-3 px-2 border-b border-r border-indigo-800 w-16 text-center">교시</th>
                 {DAYS.map((d) => (
-                  <th key={d.num} className="py-3 px-2 border-b border-indigo-800 text-center">
-                    {d.label}
+                  /* 열 폭을 균등 고정한다 — 예전에는 폭 지정이 없어 **내용이 없는 요일(공휴일)이
+                     좁아지는** 문제가 있었다 (2026-08-21 사용자 지적). */
+                  <th key={d.num} className="py-3 px-2 border-b border-indigo-800 text-center w-1/5">
+                    <div>{d.label}</div>
+                    {selectedWeek && (
+                      <div className="text-[10px] font-normal text-indigo-300 mt-0.5">
+                        {getDayDateLabel(selectedWeek.startDate, d.num)}
+                      </div>
+                    )}
                   </th>
                 ))}
               </tr>

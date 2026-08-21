@@ -5,8 +5,6 @@ import { useTimetableSettings } from "./useTimetableSettings";
 import WeekManageTab from "./WeekManageTab";
 import SwapRequestLedgerTab from "./SwapRequestLedgerTab";
 import DirectSubstituteTab from "./DirectSubstituteTab";
-import FreeTeacherTab from "./FreeTeacherTab";
-import TeacherTimetableTab from "./TeacherTimetableTab";
 import ClassTimetableTab from "./ClassTimetableTab";
 import NeisExportTab from "./NeisExportTab";
 import HourTotalsTab from "./HourTotalsTab";
@@ -29,8 +27,6 @@ export default function TimetableOperationSection() {
     | "calendar"
     | "ledger"
     | "direct"
-    | "free"
-    | "view"
     | "class"
     | "neis_export"
     | "hours"
@@ -141,28 +137,16 @@ export default function TimetableOperationSection() {
           <span>⚡ 직권 배정</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab("free")}
-          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
-            activeTab === "free"
-              ? "bg-gray-800 text-white shadow-sm"
-              : "text-gray-600 hover:bg-gray-100"
-          }`}
-        >
-          <span>☕ 공강 교사</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("view")}
-          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
-            activeTab === "view"
-              ? "bg-gray-800 text-white shadow-sm"
-              : "text-gray-600 hover:bg-gray-100"
-          }`}
-        >
-          <span>👤 교사별 시간표</span>
-        </button>
-
+        {/*
+          「☕ 공강 교사」·「👤 교사별 시간표」 탭을 2026-08-21에 걷었다 (사용자 판단).
+          둘 다 더 나은 화면이 이미 있었다 —
+            공강 교사   → 직권 배정에서 결강 수업을 누르면 그 시간 빈 교사가 **보강 누계까지** 함께 나온다.
+                          이 탭에는 누계가 없어 "누가 이미 많이 했는지" 모른 채 고르게 된다.
+                          「결강과 무관하게 이 시간에 누가 비나」는 수요는 없다고 사용자가 확인(2026-08-21).
+            교사별 시간표 → 교사 포털 「🔍 다른 시간표 조회」가 상위 집합이다(주 선택 + 요일별 날짜).
+                          이쪽 사본에는 그 둘이 없어 **이번 주를 보여주면서 학기 고정 시간표처럼 읽혔다.**
+          같은 것을 두 번 그리면서 한쪽만 못한 상태였다.
+        */}
         <button
           onClick={() => setActiveTab("class")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
@@ -213,11 +197,7 @@ export default function TimetableOperationSection() {
 
       {activeTab === "direct" && <DirectSubstituteTab activeTermId={activeTermId} />}
 
-      {activeTab === "free" && <FreeTeacherTab periodsPerDay={periodsPerDay} />}
-
-      {activeTab === "view" && <TeacherTimetableTab periodsPerDay={periodsPerDay} />}
-
-      {activeTab === "class" && <ClassTimetableTab periodsPerDay={periodsPerDay} />}
+      {activeTab === "class" && <ClassTimetableTab periodsPerDay={periodsPerDay} activeTermId={activeTermId} />}
 
       {activeTab === "neis_export" && <NeisExportTab activeTermId={activeTermId} />}
 
