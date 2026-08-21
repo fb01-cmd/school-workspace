@@ -2627,11 +2627,12 @@ export interface PortfolioRanking {
   seed: number;
   soft: number; // 내부 추정치, 공식 점수 등가로 환산된 값 (S4 내부 가중 제거 — 공식 판정은 validateTimetable)
   unplacedHours: number;
-  /** S4 공식 점수 몫 — 선발 사전식 2순위 (미배정 → S4 → 죽음 연속 → S2 → 총점) */
+  /** S4 공식 점수 몫 — 선발 사전식 2순위 (미배정 → S4 → 총점) */
   s4?: number;
-  /** 죽음 연속(점심 안 끼는 3연속+) 몫 — 선발 3순위 (2026-08-22, 사용자 잣대) */
+  /** 죽음 연속(점심 안 끼는 3연속+) 몫 — **표시·진단용, 선발에 안 쓴다** (선발에 끼웠다
+   *  철회한 경위는 solveTimetablePortfolio 주석 — 실전에서 S2 0의 값이 S1 5건이었다) */
   s2Death?: number;
-  /** S2 공식 몫 — 선발 4순위 (실제 운영 시간표 = 0건) */
+  /** S2 공식 몫 — 표시·진단용 (위와 동일) */
   s2?: number;
 }
 
@@ -2669,13 +2670,17 @@ export function solveTimetablePortfolio(
     });
     // 선발은 사전식: 미배정 → S4(금기 — 총점이 낮아도 S4 있는 해가 없는 해를 이기면 안 된다.
     // 2026-08-21 실측: S7 도입으로 지형이 바뀌자 총점 34·S4 2건 시드가 37·S4 0건 시드를
-    // 눌렀다) → 죽음 연속 → S2 공식 → 총점 순. S2 두 단은 2026-08-22 사용자 잣대(*"실제
-    // 시간표는 뭐가 되었든 연속 3교시가 없다"* — 총점 한 숫자보다 이 축이 우선)의 코드화다.
+    // 눌렀다) → 총점 순.
+    //
+    // ❌ 「죽음 연속 → S2 공식」 단을 여기 끼웠다가 **몇 시간 만에 철회**했다 (2026-08-22 새벽,
+    // 실전 실측): 벤치마크에는 S2 0·S1 2·총점 최저를 동시에 주는 시드(23)가 있어 무해했지만,
+    // 실전 입력(시수 계획 gdp·코호트 재정의)에는 그런 시드가 없어 **S2 0의 값이 S1 5건**이었고
+    // 사전식은 그 값을 무한정 지불한다(사용자: 균형 잡힌 25.5·S2 3·S1 1 판을 두고 "갑자기
+    // 이모양"). 축간 상충의 6번째 실측 — 이번엔 목적함수가 아니라 **선발 단계**에서 났다.
+    // S2·죽음은 ranking 표시 필드로만 남긴다(진단·향후 「후보 프로필 선택」 UI의 밑감).
     const lex = (x: SolverResult & { seed: number }, xu: number): number[] => [
       xu,
       x.stats.s4Estimate,
-      x.stats.s2DeathEstimate,
-      x.stats.s2Estimate,
       x.stats.softScoreEstimate,
     ];
     const cmpLex = (a: number[], b: number[]): number => {
@@ -2693,8 +2698,6 @@ export function solveTimetablePortfolio(
     (a, b) =>
       a.unplacedHours - b.unplacedHours ||
       (a.s4 ?? 0) - (b.s4 ?? 0) ||
-      (a.s2Death ?? 0) - (b.s2Death ?? 0) ||
-      (a.s2 ?? 0) - (b.s2 ?? 0) ||
       a.soft - b.soft ||
       a.seed - b.seed
   );
