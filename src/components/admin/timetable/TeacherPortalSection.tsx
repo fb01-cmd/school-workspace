@@ -3630,7 +3630,30 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
     cells.filter((c) => c.day === day && c.period === period);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+    <div className="space-y-4">
+      {/*
+        주 선택기를 **카드 밖 공용 자리**로 뺐다 (2026-08-21 사용자 지적 —
+        *"이게 박스 안에 갇혀 있으니까 학생 시간표에도 반영되는 주라는 생각이 안 들어"*).
+        하나가 두 표를 함께 미는 구조인데 교사 카드 안에 있으니 **그 카드만 미는 것처럼 보였다.**
+        고칠 것은 동작이 아니라 **어디에 놓이느냐**였다.
+      */}
+      <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-xs font-bold text-indigo-900 shrink-0">📅 조회할 주</span>
+        <select
+          value={selectedWeekId}
+          onChange={(e) => setSelectedWeekId(e.target.value)}
+          className="border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500"
+        >
+          <option value="">이번 주 (오늘 기준)</option>
+          {weeks.map((w) => <option key={w.id} value={w.id}>{w.startDate} 주</option>)}
+          {isManager && <option value="base">기초시간표 (주 반영 없음)</option>}
+        </select>
+        <span className="text-[11px] text-indigo-700">
+          아래 <strong>교사 시간표</strong>와 <strong>학급 시간표</strong>에 함께 적용됩니다.
+        </span>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-gray-100 pb-4">
         <div>
           <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
@@ -3641,14 +3664,6 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
           </h3>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-          <select
-            value={selectedWeekId}
-            onChange={(e) => setSelectedWeekId(e.target.value)}
-            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs"
-          >
-            {isManager && <option value="">기초시간표</option>}
-            {weeks.map((w) => <option key={w.id} value={w.id}>{w.startDate} 주</option>)}
-          </select>
           {/* ② 교사 드롭다운 — action:teachers 가나다순 */}
           <select
             value={targetEmail}
@@ -3745,6 +3760,8 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
           </tbody>
         </table>
       </div>
+      </div>
+
       {/*
         학급 시간표 조회 (2026-08-21 사용자 요청 — "학급 시간표 열람도 필요해").
         격자를 새로 그리지 않고 ClassTimetableTab을 그대로 재사용한다 — 오늘 하루에만

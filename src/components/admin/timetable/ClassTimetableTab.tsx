@@ -48,6 +48,7 @@ export default function ClassTimetableTab({
 
   // 바깥이 주를 정해 주면 그것이 이긴다
   const effectiveWeekId = controlledWeekId ?? selectedWeekId;
+  const isBaseView = effectiveWeekId === "base";
   const selectedWeek = weeks.find((w) => w.id === effectiveWeekId) || null;
 
   const { getClassesForGrade } = useAvailableClasses();
@@ -131,7 +132,9 @@ export default function ClassTimetableTab({
               )}
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              고른 주에 <strong>실제로 운영되는</strong> 시간표입니다 — 휴업일·수업교환·보강이 반영돼 있습니다.
+              {isBaseView
+                ? "학기 기초시간표입니다 — 휴업일·수업교환·보강이 반영되지 않은 원본입니다."
+                : "고른 주에 실제로 운영되는 시간표입니다 — 휴업일·수업교환·보강이 반영돼 있습니다."}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -205,7 +208,7 @@ export default function ClassTimetableTab({
               <span className="font-black text-indigo-950 text-sm">
                 {selectedGrade}학년 {selectedClassNum}반
               </span>{" "}
-              {selectedWeek ? `${selectedWeek.startDate} 주` : "이번 주"} 시간표
+              {isBaseView ? "기초시간표" : selectedWeek ? `${selectedWeek.startDate} 주` : "이번 주"} 시간표
             </>
           ) : (
             <>

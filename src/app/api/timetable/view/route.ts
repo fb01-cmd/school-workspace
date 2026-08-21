@@ -137,7 +137,13 @@ async function handleView(req: NextRequest): Promise<NextResponse> {
     //      weekId 지정 시 그 주, 미지정 시 현재 주 폴백. 둘 다 없으면 기초시간표 그대로.
     //      ctx.weeks는 이 학기의 주 전체이므로 목록 미포함 = 미등록 또는 타 학기.
     let week = null;
-    if (body.weekId) {
+    if (body.weekId === "base") {
+      // 「기초시간표」를 **명시적으로** 요청한 경우 — 주 합성 없이 원본 그대로.
+      // 2026-08-21 이전에는 빈 값(`""`)이 그 뜻이었는데, 빈 값은 아래 else로 흘러
+      // **오늘이 속한 주로 폴백**했다. 그래서 학기 중에 「기초시간표」를 골라도
+      // 이번 주가 나왔고, 방학처럼 주 밖일 때만 우연히 기초표가 나왔다 (사용자 지적).
+      week = null;
+    } else if (body.weekId) {
       week = ctx.weeks.find((w) => w.id === body.weekId) || null;
       if (!week) {
         return NextResponse.json(
