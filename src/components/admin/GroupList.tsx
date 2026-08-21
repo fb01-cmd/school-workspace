@@ -531,10 +531,25 @@ export default function GroupList() {
       {/* ── Group Details & Edit Modal (Slide-over overlay style) ── */}
       {selectedGroup && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-end">
-          <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col justify-between border-l">
+          {/*
+            ⚠️ 높이를 어림잡지 않는다 (2026-08-21 사용자 신고).
+            예전에는 본문에 `max-h-[calc(100vh-210px)]`가 박혀 있었다 — **머리 높이를 210px로
+            가정한 숫자**다. 그런데 머리는 고정 높이가 아니다: 그룹 설명이 길거나(「클래스룸
+            선생님」은 3줄) 성공 알림이 뜨면 그만큼 커진다. 그러면 머리 + 본문(100vh-210px) +
+            바닥의 합이 화면을 넘어 **[그룹 삭제]·[닫기]가 화면 밖으로 밀리고 멤버 이름까지
+            잘렸다.** 인원이 많을수록 심해 보이는 이유는 본문이 그만큼 상한까지 차서다.
+
+            이제 어림잡지 않는다 — 머리와 바닥은 shrink-0으로 제 높이를 갖고, 본문만
+            flex-1 min-h-0 으로 남는 공간을 먹는다. `min-h-0`이 없으면 flex 항목의 기본
+            min-height:auto 때문에 본문이 안 줄어들어 같은 증상이 남는다.
+
+            그룹 설명은 스크롤되는 본문 첫 줄로 내렸다 — 고정 영역은 작을수록 좋고,
+            설명은 항상 보여야 하는 정보가 아니다.
+          */}
+          <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col border-l">
             {/* Header info */}
-            <div>
-              <div className="bg-indigo-950 text-white p-6 relative">
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="bg-indigo-950 text-white p-6 relative shrink-0">
                 <button
                   onClick={() => setSelectedGroup(null)}
                   className="absolute right-4 top-4 text-gray-400 hover:text-white text-2xl font-bold p-1"
@@ -546,16 +561,11 @@ export default function GroupList() {
                 </span>
                 <h3 className="text-lg font-bold truncate pr-8">{selectedGroup.name}</h3>
                 <p className="text-xs text-indigo-300 font-mono mt-0.5 truncate">{selectedGroup.email}</p>
-                {selectedGroup.description && (
-                  <p className="text-xs text-indigo-100/90 mt-2 border-t border-indigo-900/50 pt-2 leading-relaxed">
-                    {selectedGroup.description}
-                  </p>
-                )}
               </div>
 
               {/* Action alert internally */}
               {(error || success) && (
-                <div className="p-4 border-b">
+                <div className="p-4 border-b shrink-0">
                   {error && (
                     <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs font-semibold">
                       ❌ {error}
@@ -570,7 +580,12 @@ export default function GroupList() {
               )}
 
               {/* Detail settings scroll area */}
-              <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-210px)]">
+              <div className="flex-1 min-h-0 p-6 space-y-6 overflow-y-auto">
+                {selectedGroup.description && (
+                  <p className="text-xs text-gray-500 leading-relaxed bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                    {selectedGroup.description}
+                  </p>
+                )}
                 {/* ── Collapsible Permissions Settings Accordion ── */}
                 <div className="border border-gray-200 rounded-xl overflow-hidden">
                   <button
@@ -778,8 +793,8 @@ export default function GroupList() {
               </div>
             </div>
 
-            {/* Footer containing delete action */}
-            <div className="p-6 border-t bg-gray-50 flex items-center justify-between">
+            {/* Footer containing delete action — 항상 보인다 (shrink-0) */}
+            <div className="shrink-0 p-6 border-t bg-gray-50 flex items-center justify-between">
               <button
                 onClick={() => handleDeleteGroup(selectedGroup.email)}
                 className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow transition-colors"
