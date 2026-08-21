@@ -979,6 +979,15 @@ const S2_WEIGHT = envNum("SOLVER_S2_WEIGHT", 1);
  *  계기 = 실제 운영 시간표(사람 손)는 연속 3+가 0건인데 종전 기본이 4연속을 냈다(이시내 실사례).
  *  되돌리기: SOLVER_S2_MAXRUN=0 SOLVER_S2_STRICT=0 */
 const S2_MAX_RUN = envNum("SOLVER_S2_MAXRUN", 4);
+/** 0 = 끔(기본). 4면 교사의 하루 수업을 4시간 이하로 배치 단계에서 강제한다.
+ *
+ *  ❌ 선 승격 **실험 부결** (2026-08-22 실측 — 다음 세션이 같은 막다른 길을 다시 파지 않도록 기록):
+ *  실제 운영 시간표는 (교사,요일)이 4시간×108 vs 5시간×1로 4에서 끊기지만, 상한 4를 걸자
+ *  총점 33→45(실격), S2(연속)가 5→18로 폭발, 최후 완화가 S2 상한까지 풀면서 **4연속 1건 재발**.
+ *  하루 상한은 연속 상한과 달리 용량 제약이라 발동 빈도가 높고, 짓눌린 배치가 연속·점심으로
+ *  새는 축간 상충이 구조적이다. 상한 5는 무의미 — 기본값 산출물의 쏠림 6건이 전부 정확히
+ *  5시간(6시간+ 0건). S1 축은 상한이 아니라 사후 보수(⑦-d 후보) 쪽이 유망하다. */
+const S1_MAX_DAY = envNum("SOLVER_S1_MAXDAY", 0);
 /** 1이면 상한을 배치 불가 폴백(relaxDayLimit)에서도 풀지 않는다 — 진짜 「선」.
  *  실측(2026-08-21): 폴백에서 같이 풀리게 하면 금지했는데도 4연속 2건이 그 틈으로 샜다 —
  *  새는 선은 선이 아니다. 대신 미배정이 생길 위험을 감수하는 것이므로 실험으로만 켠다. */
@@ -1355,6 +1364,15 @@ export function solveTimetable(input: SolverInput): SolverResult {
         for (const [p, n] of soft.teacherDays.get(tk)?.get(day) || []) if (n > 0) periods.add(p);
         for (let p = start; p < start + len; p++) periods.add(p);
         if (longestRun(periods) >= S2_MAX_RUN) return false;
+      }
+    }
+    // S1 상한 — 이 배치로 어느 교사든 하루 시수가 상한을 넘으면 금지. 같은 슬롯 중복은
+    // teacherOcc가 먼저 막으므로 새 교시는 항상 disjoint — 집합 크기 + len으로 충분하다.
+    if (S1_MAX_DAY > 0 && !lastResortRelax && s.teacherKeys.length) {
+      for (const tk of s.teacherKeys) {
+        let count = 0;
+        for (const [, n] of soft.teacherDays.get(tk)?.get(day) || []) if (n > 0) count++;
+        if (count + len > S1_MAX_DAY) return false;
       }
     }
     return true;

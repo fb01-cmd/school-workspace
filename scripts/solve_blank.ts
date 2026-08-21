@@ -367,6 +367,9 @@ async function main() {
     const s2 = report.soft.details.filter((d) => d.code === "S2");
     console.log(`S2 상세 ${s2.length}건 (실제 운영 시간표 기준 0건):`);
     for (const d of s2) console.log(`  ${/연속 [4-9]/.test(d.text) ? "⚠ " : "  "}${d.text}`);
+    const s1 = report.soft.details.filter((d) => d.code === "S1");
+    console.log(`S1 상세 ${s1.length}건 (실제 운영 시간표 기준 1건 — 5시간×1):`);
+    for (const d of s1) console.log(`    ${d.text}`);
   }
 
   // ── 결정론: 같은 시드 재실행 = 동일 출력 ──
