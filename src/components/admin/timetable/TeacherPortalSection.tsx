@@ -3773,7 +3773,6 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
         periodsPerDay={periodsPerDay}
         activeTermId={settings?.activeTermId}
         weekId={selectedWeekId}
-        hideWeekPicker
       />
     </div>
 

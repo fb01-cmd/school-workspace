@@ -8,24 +8,26 @@ import { getDayDateLabel } from "@/lib/timetable/utils";
 interface ClassTimetableTabProps {
   periodsPerDay?: number;
   activeTermId?: string | null;
-  /** 바깥에서 주를 정해 줄 때 (교사 포털처럼 한 화면에 주 선택기가 이미 있는 경우) */
+  /**
+   * 어느 주를 볼지 — **바깥이 정한다.** 빈 값이면 오늘 주, `"base"`면 기초시간표.
+   * 2026-08-21에 일과계의 「학급별 시간표」 탭이 철거되면서 이 컴포넌트를 부르는 곳은
+   * 교사 화면 하나가 됐고, 그 화면은 교사 표와 함께 쓰는 **공용 주 선택기**를 갖고 있다.
+   * 그래서 자체 선택기를 들고 있을 이유가 없어져 걷었다 — 안 쓰는 조작부는 남기지 않는다.
+   */
   weekId?: string;
-  /** 자체 주 선택기를 숨긴다 — 한 화면에 주 고르는 칸이 둘이면 어느 쪽이 미는지 헷갈린다 */
-  hideWeekPicker?: boolean;
 }
 
 export default function ClassTimetableTab({
   periodsPerDay = 7,
   activeTermId,
-  weekId: controlledWeekId,
-  hideWeekPicker = false,
+  weekId = "",
 }: ClassTimetableTabProps) {
   // 이 화면은 **그 주에 실제로 돌아가는 시간표**를 보여준다 — 학기 고정표가 아니다.
   // 예전에는 주를 고를 수도, 날짜를 볼 수도 없어서 「학기 고정 시간표」로 읽혔고,
   // 공휴일이라 비어 있는 월요일이 "수업이 없는 것"으로 오해됐다 (2026-08-21 사용자 지적).
   // 교사 포털 「다른 시간표 조회」에는 이미 있던 것을 여기에도 맞춘다.
+  // 주 목록은 여전히 필요하다 — 요일 밑 날짜(8/17…)를 붙이려면 그 주의 시작일을 알아야 한다
   const [weeks, setWeeks] = useState<{ id: string; startDate: string }[]>([]);
-  const [selectedWeekId, setSelectedWeekId] = useState<string>("");
   const [selectedGrade, setSelectedGrade] = useState<number>(1);
   const [selectedClassNum, setSelectedClassNum] = useState<number>(1);
   const [classGrid, setClassGrid] = useState<ClassGrid | null>(null);
@@ -46,8 +48,7 @@ export default function ClassTimetableTab({
       .catch(() => {});
   }, [activeTermId]);
 
-  // 바깥이 주를 정해 주면 그것이 이긴다
-  const effectiveWeekId = controlledWeekId ?? selectedWeekId;
+  const effectiveWeekId = weekId;
   const isBaseView = effectiveWeekId === "base";
   const selectedWeek = weeks.find((w) => w.id === effectiveWeekId) || null;
 
@@ -82,7 +83,6 @@ export default function ClassTimetableTab({
         const result = await res.json();
         setTermMeta(result.term || null);
         // 서버가 실제로 고른 주를 그대로 따른다 — 화면이 "무엇을 보고 있는지"의 단일 원본
-        if (result.week?.id && !weekId && !controlledWeekId) setSelectedWeekId(result.week.id);
         if (result.data) {
           setClassGrid(result.data);
         } else {
@@ -137,20 +137,7 @@ export default function ClassTimetableTab({
                 : "고른 주에 실제로 운영되는 시간표입니다 — 휴업일·수업교환·보강이 반영돼 있습니다."}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {weeks.length > 0 && !hideWeekPicker && (
-              <select
-                value={selectedWeekId}
-                onChange={(e) => setSelectedWeekId(e.target.value)}
-                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500"
-              >
-                {weeks.map((w) => (
-                  <option key={w.id} value={w.id}>{w.startDate} 주</option>
-                ))}
-              </select>
-            )}
-            {loading && <span className="text-xs text-indigo-600 font-semibold animate-pulse">조회 중...</span>}
-          </div>
+          {loading && <span className="text-xs text-indigo-600 font-semibold animate-pulse">조회 중...</span>}
         </div>
 
         {/* 학년 버튼 필터 */}

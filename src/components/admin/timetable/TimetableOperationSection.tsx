@@ -5,7 +5,6 @@ import { useTimetableSettings } from "./useTimetableSettings";
 import WeekManageTab from "./WeekManageTab";
 import SwapRequestLedgerTab from "./SwapRequestLedgerTab";
 import DirectSubstituteTab from "./DirectSubstituteTab";
-import ClassTimetableTab from "./ClassTimetableTab";
 import NeisExportTab from "./NeisExportTab";
 import HourTotalsTab from "./HourTotalsTab";
 import CalendarManageTab from "./CalendarManageTab";
@@ -27,7 +26,6 @@ export default function TimetableOperationSection() {
     | "calendar"
     | "ledger"
     | "direct"
-    | "class"
     | "neis_export"
     | "hours"
   >("weeks");
@@ -147,17 +145,13 @@ export default function TimetableOperationSection() {
                           이쪽 사본에는 그 둘이 없어 **이번 주를 보여주면서 학기 고정 시간표처럼 읽혔다.**
           같은 것을 두 번 그리면서 한쪽만 못한 상태였다.
         */}
-        <button
-          onClick={() => setActiveTab("class")}
-          className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
-            activeTab === "class"
-              ? "bg-gray-800 text-white shadow-sm"
-              : "text-gray-600 hover:bg-gray-100"
-          }`}
-        >
-          <span>🏫 학급별 시간표</span>
-        </button>
-
+        {/*
+          「🏫 학급별 시간표」 탭도 2026-08-21에 걷었다 (사용자 판단).
+          같은 날 교사 화면(내 시간표 → 「다른 시간표 조회」)에 학급 조회를 붙이면서
+          **그쪽이 완전한 부분집합**이 됐다 — 교사 표까지 한 화면, 주 선택기 공용,
+          관리자에겐 「기초시간표」까지. 일과계 탭에만 있는 것이 하나도 남지 않았다.
+          그 결과 이 메뉴는 **「손대는 곳」만 남는다** — 열람은 「내 시간표」 한 곳으로.
+        */}
         <button
           onClick={() => setActiveTab("neis_export")}
           className={`px-4 py-2.5 rounded-lg transition-all flex items-center gap-1.5 ${
@@ -196,8 +190,6 @@ export default function TimetableOperationSection() {
       {activeTab === "ledger" && <SwapRequestLedgerTab activeTermId={activeTermId} />}
 
       {activeTab === "direct" && <DirectSubstituteTab activeTermId={activeTermId} />}
-
-      {activeTab === "class" && <ClassTimetableTab periodsPerDay={periodsPerDay} activeTermId={activeTermId} />}
 
       {activeTab === "neis_export" && <NeisExportTab activeTermId={activeTermId} />}
 
