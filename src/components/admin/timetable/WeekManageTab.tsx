@@ -2,17 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { TimetableWeek, TimetableWeekDay } from "@/lib/timetable/types";
+import { getTodayKSTISO } from "@/lib/timetable/utils";
 
 interface WeekManageTabProps {
   activeTermId: string | null;
   periodsPerDay?: number;
   publishWeeksAhead?: number;
   onSettingsChange?: () => void;
-}
-
-/** KST 기준 오늘 날짜 (YYYY-MM-DD) — 서버/클라이언트 KST 동기화 */
-function getTodayKSTISO(): string {
-  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 /** 주 시작일(월요일)로부터 6일 뒤인 일요일 날짜 계산 (YYYY-MM-DD) */

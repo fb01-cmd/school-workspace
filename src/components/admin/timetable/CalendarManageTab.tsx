@@ -3,15 +3,11 @@
 import { useEffect, useState } from "react";
 import { CalendarEventType, TimetableCalendarEvent } from "@/lib/timetable/types";
 import CalendarSubscribeCard from "@/components/calendar/CalendarSubscribeCard";
+import { getTodayKSTISO } from "@/lib/timetable/utils";
 
 
 interface CalendarManageTabProps {
   activeTermId?: string | null;
-}
-
-/** KST 기준 오늘 날짜 (YYYY-MM-DD) — 서버/클라이언트 KST 동기화 */
-function getTodayKSTISO(): string {
-  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 export default function CalendarManageTab({ activeTermId }: CalendarManageTabProps) {
