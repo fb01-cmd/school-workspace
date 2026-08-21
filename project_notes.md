@@ -4,6 +4,51 @@
 > 2026-08-14 이전은 [`archive/project_notes_2026-08.md`](./archive/project_notes_2026-08.md)·[`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다
 > (원문 그대로, 블록 무손실 대조 완료). 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-21] Antigravity → Claude/사용자 (과제 M 완결 — 「물어보고 고치기」 카드 구현 및 E-4 제거)
+
+> ⚠️ **검증 범위 고지**: **화면 왕복·실기기 미검증(판정 불가)** (360px 브라우저 확인 및 실기기 검증은 Claude 및 사용자 몫). `tsc` 0건 · `build` 49/49 · `check:ui` 통과 · `check_ui_removals`(E-4 9건 외 삭제 0건) · `askfix_selftest`(42/42) · `ai_selftest`(전체 통과) · `grep` 금지어 0건 회귀 관문 전수 통과 완료.
+
+- **배경**: `docs/timetable_ask_fix_spec.md` §4 및 `docs/handoff/NEXT.md` 과제 M 지시서에 따라, 자동 작성 탭(`DraftAutoTab.tsx`)에 「물어보고 고치기」 카드(자유문 질문 → AI 목표 해석 1회 → 클라이언트 비동기 체인 탐색 `findFixPlanAsync` → 부작용 전수 고지 → 순차 적용)를 구현하고, 무용 판정을 받은 기존 E-4(개선 제안)를 화면에서 제거.
+- **주요 구현 내용**:
+  1. **E-4(개선 제안) 제거**:
+     - 상단 툴바 E-4 버튼 제거.
+     - 하단 접이식 개선 제안 카드 제거.
+     - 컴포넌트 상태(`aiCritique`, `aiCritiquing`, `aiCritiqueError`, `aiCritiqueCardOpen`) 및 핸들러 `handleAiCritique`, `AiCritiqueResult` import 제거.
+     - 공용 에러 배너에서 `aiCritiqueError`를 `askFixError`로 전환.
+     - `check_ui_removals.sh 7b9f015` 기준 사라진 항목이 E-4 9건에 정확히 일치함을 확인.
+  2. **상단 툴바 「물어보고 고치기」 버튼 배선**:
+     - `[💡 물어보고 고치기 (AI 도움)]` 버튼 추가. 질문 해석 중 / 탐색 중 스피너 표시 연동.
+  3. **「물어보고 고치기」 카드 UI (스펙 §4)**:
+     - 질문 입력창 + Enter 제출 + `ASK_FIX_EXAMPLES` 기반 빠른 질문 칩 제공.
+     - **진행률 표시**: 비동기 탐색(`findFixPlanAsync`) 중 평가 횟수(`evaluated / budget`) 및 실시간 프로그레스 바 렌더링.
+     - **해석 실패 대응 (출구 제공)**: `result.goal === null` 시 사유 문구, 경고 및 추천 질문 예시 카드 표출.
+     - **해석 확인 및 참고 의견**: `"이렇게 이해했습니다: 「goalText」"` + `"⚠️ AI가 질문을 해석한 결과입니다 — 아래 수순과 점수는 계산된 결과입니다"` 배너 분리 (수순과 점수는 계산된 사실임을 명시).
+     - **점수 변화 및 출구 문구**: 감점 총점 변화 표시. 미해결 시 예산 소진(`budgetExhausted`)과 탐색 한계에 따라 출구 문구 분기.
+     - **맞교환 수순**: 번호 순서(`1)`, `2)`...) + `step.desc` + `step.sideEffects` + `[미리보기]`(`analyzeOpImpact` 기존 모달 재사용).
+     - **[핵심 요구] 부작용 전수 고지 (`newPenalties[]`)**: 생략/축약 없이 새로 발생하는 모든 감점 요소(`SOFT_CODE_LABELS`, `text`, `points`)를 수락 버튼 직전에 목록으로 표출.
+     - **순차 적용 (`handleApplyFixPlan`)**: `draft_op` 순차 호출, 단계별 상태 업데이트, 실패 시 즉시 중단 및 적용 위치 고지, 완료 후 [↩ 실행취소] 한 수씩 되돌림 안내.
+  4. **서버 호출 및 읽기량 규격 (`AGENTS.md` ⑪)**:
+     - 질문 1건당 **해석 1회** (`/api/timetable/manage` action: `ai_ask_fix`), 탐색 0회(클라이언트 비동기 연산), 적용은 수순 길이(`steps.length`)만큼 `draft_op` 호출.
+     - Firestore 추가 읽기 0건.
+  5. **문구 및 글씨 크기 규격**:
+     - 금지어(체인, 빔, 엔진, 목표 어휘, 탐색기 등) 화면 문구 0건 준수.
+     - `docs/font_size_spec.md` 3등급(14px / 12px / 11px) 규격 준수.
+- **검증 관문 결과**:
+  - `npx tsc --noEmit` ✅ (**0 errors**)
+  - `npm run build` ✅ (**49/49 static pages prerendered**)
+  - `npm run check:ui` ✅ (**화면 머리 규칙 전수 통과**)
+  - `bash scripts/check_ui_removals.sh 7b9f015` ✅ (E-4 9건 외 UI 유실 0건)
+  - `npx tsx scripts/askfix_selftest.ts` ✅ (**42/42 통과**)
+  - `npx tsx scripts/ai_selftest.ts` ✅ (**전체 통과**)
+  - `grep -nE "체인|빔 서치|FixPlan|AskFixGoal|resolvesGoal"` ✅ (화면 문구 0건)
+- **실기기 확인 항목 (사용자·Claude 검증 대상)**:
+  - ⓐ 자동 작성 탭 상단에 `[💡 물어보고 고치기 (AI 도움)]` 버튼 노출 및 기존 `[개선 제안]` 버튼 소멸 확인.
+  - ⓑ 버튼 클릭 시 질문 카드 오픈 → 예시 질문 칩 클릭 또는 직접 질문 입력 → [해결 방법 찾기] 클릭.
+  - ⓒ AI 해석 문장(`"이렇게 이해했습니다: ..."`) 확인 및 탐색 진행률 바 동작 확인.
+  - ⓓ 결과 카드에서 맞교환 순서 및 `[미리보기]` 팝업 동작 확인.
+  - ⓔ 부작용 목록(새로 발생하는 감점 전수) 표출 확인.
+  - ⓕ `[모두 적용]` 클릭 시 순차 반영 및 상단 `[↩ 실행취소]`를 통한 단계별 원상복귀 동작 확인.
+
 ## [2026-08-21] Antigravity → Claude/사용자 (과제 L 완결 — 창체·SLAT 배치 화면: 「학년도별 변경」 추가)
 
 > ⚠️ **검증 범위 고지**: **화면·모바일 미검증** (360px 브라우저 확인 및 실기기 검증은 Claude 및 사용자 몫). `cohort_selftest`(67/67) · `tsc` · `build` · `check_ui_removals` · `grep` 회귀 관문 전수 통과 완료.
