@@ -623,3 +623,10 @@ Codex 통과 5/실패 36 (커밋 4개 대조). Claude가 36건 전건 열람, �
 - **[사실] 시간표 폴더 45곳은 손대지 않았다.** 작업 중 `git status`에 **창체·SLAT 축 설계(Fable) 세션의 미커밋 변경 7파일**이 떠 있었고(`timetable/AssignmentHoursModal`·`DraftAutoTab`·`HoursPlanTab`·`api/timetable/manage/route`·`lib/timetable/{cohort,server,types}`), 두 세션이 같은 작업 트리를 공유하므로 같은 파일을 고치면 서로 덮어쓴다(AGENTS.md §3-1). 사용자에게 물어 제외를 확정했고 **2차 과제로 STATUS에 등재**했다.
 - **[사실] 검증** — `npx tsc --noEmit` 통과. `npm run build` 통과(1차 시도는 상대 세션의 `ManageAction` 타입이 편집 중이라 실패했고, 그쪽이 고친 뒤 재실행해 통과 — **내 변경과 무관**임을 파일 경로로 확인). `bash scripts/check_ui_removals.sh HEAD` = 사라진 항목 **전부 화면 문구**, 핸들러·상태·버튼 **0건**(①-1-3). 삭제가 추가보다 많다는 경고는 이 작업의 성격상 정상이며, 무엇을 왜 지웠는지가 위 항목이다. 커밋은 35개 파일을 **경로로 명시해** add 했고 시간표 파일 혼입 0건을 `git diff --name-only --cached`로 확인했다(§3-3).
 - **[남은 것]** 화면 확인은 사용자 몫이다(STATUS 「실기기 확인」에 등재). Claude는 로그인 뒤 화면을 못 본다. **없어져서 곤란한 설명이 나오면 위 존치 기준 ⓐ~ⓓ에 비춰 되살린다.**
+
+## [2026-08-21] Claude(Fable) — 창체·SLAT 학년도 재정의 층 구현 1·2 (스펙 §8)
+
+- 변경 파일: `src/lib/timetable/types.ts`·`cohort.ts`·`server.ts`, `src/app/api/timetable/manage/route.ts`, `src/components/admin/timetable/HoursPlanTab.tsx`·`AssignmentHoursModal.tsx`·`DraftAutoTab.tsx`, `scripts/cohort_selftest.ts`
+- 검증 상태: 자가 테스트 **67/67**(기존 35건 회귀 0 + 신규 32건) / tsc ✅ / build ✅ / `check_ui_removals` ✅(사라진 상호작용 0) / Firestore 규칙 변경 불요 확인(기본 거부 + 서버 전용 컬렉션이라 새 서브컬렉션도 자동 커버)
+- 다음 할 일: 구현 3(화면, Antigravity — 스펙 §5) → 구현 4(Codex 검증, §2↔§4 대조). STATUS 「창체·SLAT 고정 슬롯」 절 참조
+- 주의: ⓐ `expandCohortFixedBlocks`에 5번째 인자 `overrides`가 생겼다 — 화면 작업 시 새 호출부는 반드시 재정의 목록을 함께 넘길 것(안 넘기면 코호트만 전개돼 서버와 어긋난다) ⓑ `basedOnCohortId`는 서버가 저장 시 덮어쓴다 — 화면에서 채워 보낼 필요 없음 ⓒ 학년도 계산은 `schoolYearOfDate`(cohort.ts)가 단일 소재지 — `CurriculumCohortTab.tsx:22`의 `getFullYear()` 교체가 구현 3에 포함돼 있다

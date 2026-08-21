@@ -80,6 +80,9 @@ import {
   listCurriculumCohorts,
   saveCurriculumCohort,
   deleteCurriculumCohort,
+  listFixedSlotOverrides,
+  saveFixedSlotOverride,
+  deleteFixedSlotOverride,
   listHoursPlans,
   getHoursPlan,
   deriveHoursPlanFromGrids,
@@ -1632,6 +1635,42 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
         return NextResponse.json({ success: true, action, cohortId: body.cohortId });
+      }
+
+      // ── 창체·SLAT 학년도 재정의 (fixed_slot_override_spec §4) ──
+      case "cohort_override_list": {
+        const overrides = await listFixedSlotOverrides(domain);
+        return NextResponse.json({ success: true, action, overrides });
+      }
+
+      case "cohort_override_save": {
+        if (!body.override) {
+          return NextResponse.json({ error: "override 객체가 누락되었습니다." }, { status: 400 });
+        }
+        const override = await saveFixedSlotOverride(domain, body.override, auth.email);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "save_fixed_slot_override",
+          details: `창체·SLAT 학년도별 변경 저장 (${override.label}, ${override.effectiveFromSchoolYear}학년도부터)`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, override });
+      }
+
+      case "cohort_override_delete": {
+        if (!body.overrideId) {
+          return NextResponse.json({ error: "overrideId가 필요합니다." }, { status: 400 });
+        }
+        await deleteFixedSlotOverride(domain, body.overrideId);
+        await writeAuditLog({
+          operatorEmail: auth.email,
+          targetEmail: domain,
+          action: "delete_fixed_slot_override",
+          details: `창체·SLAT 학년도별 변경 삭제 (${body.overrideId})`,
+          status: "success",
+        });
+        return NextResponse.json({ success: true, action, overrideId: body.overrideId });
       }
 
       // ── Phase 9c-H: 신학기 주당 수업 시간 계획 ──

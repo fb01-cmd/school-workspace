@@ -412,6 +412,10 @@ export type ManageAction =
   | "cohort_list"
   | "cohort_save"
   | "cohort_delete"
+  // ── 창체·SLAT 학년도 재정의 (fixed_slot_override_spec §4) ──
+  | "cohort_override_list"
+  | "cohort_override_save"
+  | "cohort_override_delete"
   // ── 학기 전환 스펙 (term_transition_spec) ──
   | "term_create_draft"
   | "registry_inherit"
@@ -511,6 +515,8 @@ export interface ManageTimetableRequest {
   }>;
   cohort?: Partial<CurriculumCohort>;
   cohortId?: string;
+  override?: Partial<FixedSlotOverride>;
+  overrideId?: string;
   // ── 학기 전환 스펙 (term_transition_spec) ──
   newTermId?: string;
   newTermName?: string;
@@ -530,6 +536,8 @@ export interface ManageTimetableResponse {
   plan?: HoursPlan | null;
   cohorts?: CurriculumCohort[];
   cohort?: CurriculumCohort | null;
+  overrides?: FixedSlotOverride[];
+  override?: FixedSlotOverride | null;
   inheritedCounts?: Record<string, number>; // registry_inherit 종별 복사 건수
   adoptedGridCount?: number; // draft_adopt 반영된 그리드 학급 수
 }
@@ -1213,6 +1221,32 @@ export interface CohortFixedSlot {
   displayName: string; // "창체" / "SLAT"
   day: number; // 1=월 … 5=금
   period: number;
+}
+
+/** 창체·SLAT 배치의 학년도 재정의 층 (fixed_slot_override_spec §1).
+ *  코호트 축(교육과정)이 기본값이고, 이 재정의가 「○○학년도부터」 그 위를 덮는다.
+ *  gradeSlots에 키가 있는 학년만 덮는다 — 키 없는 학년은 코호트를 그대로 따른다.
+ *  저장은 학년별 전체 사본이다(차분 아님 — 9c-H §0-2와 같은 원칙). */
+export interface FixedSlotOverride {
+  id: string;
+  /** "2027학년도 창체 수요일 이동" — 사람이 붙임. 화면 문구에 「재정의」·「오버라이드」 금지 */
+  label: string;
+  /** 이 학년도부터 적용. 끝 학년도는 없다 — 더 나중의 재정의가 나오면 그것이 대신한다 */
+  effectiveFromSchoolYear: number;
+  /** 학년(1~3) → 그 학년의 고정 슬롯 전체 사본. 빈 배열 [] = "이 학년은 고정 슬롯 없음"(의미 있는 값) */
+  gradeSlots: Record<number, FixedSlotOverrideGrade>;
+  active: boolean;
+  createdBy: string;
+  updatedBy: string;
+  updatedAt: number;
+}
+
+export interface FixedSlotOverrideGrade {
+  /** 작성 시점(effectiveFromSchoolYear 기준)에 이 학년이 따르던 교육과정 id.
+   *  서버가 저장 시 직접 계산해 찍는다 — 클라이언트 값을 믿지 않는다.
+   *  해석 시점에 실제 교육과정과 다르면 이 재정의는 그 학년에 적용하지 않는다(스펙 §2 부적용 규칙). */
+  basedOnCohortId: string | null;
+  slots: CohortFixedSlot[];
 }
 
 /** 연속수업 등록부 (매뉴얼 §6-라) — 콤마 표기 "2"·"2,2"·"3" = 연속 블록 길이 목록(잔여 시수는 단독 1교시).

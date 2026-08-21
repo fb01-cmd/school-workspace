@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useRef } from "react";
-import { CurriculumCohort, HoursPlanRow } from "@/lib/timetable/types";
+import { CurriculumCohort, FixedSlotOverride, HoursPlanRow } from "@/lib/timetable/types";
 import { expandCohortFixedBlocks, impliedHoursFromFixedBlocks } from "@/lib/timetable/cohort";
 import { SubjectResolutionItem, SubjectConfirmation } from "@/lib/timetable/subjectDict";
 
@@ -34,6 +34,8 @@ interface AssignmentHoursModalProps {
   activeTermId?: string | null;
   teachers: TeacherOption[];
   cohorts: CurriculumCohort[];
+  /** 창체·SLAT 학년도별 변경 (fixed_slot_override_spec) — 전개 시 코호트 위를 덮는다 */
+  slotOverrides?: FixedSlotOverride[];
   onApply: (params: {
     rows: HoursPlanRow[];
     targetYear: number;
@@ -341,6 +343,7 @@ export default function AssignmentHoursModal({
   activeTermId,
   teachers,
   cohorts,
+  slotOverrides = [],
   onApply,
 }: AssignmentHoursModalProps) {
   // 모달 단계: "input" (파일 선택) -> "extracting" (부서별 순차 추출) -> "result" (결과 검토 및 매칭)
@@ -937,8 +940,8 @@ export default function AssignmentHoursModal({
       if (!confirmContinue) return;
     }
 
-    // 창체·SLAT 배치 등록부 확인
-    if (cohorts.length === 0) {
+    // 창체·SLAT 배치 등록부 확인 (학년도별 변경까지 어느 층도 없을 때만)
+    if (cohorts.length === 0 && slotOverrides.length === 0) {
       const confirmNoCohort = confirm(
         "창체·SLAT 배치 등록부가 비어 있어 창체·SLAT 고정 시간이 추가되지 않습니다.\n\n이대로 계속 진행하시겠습니까?"
       );
@@ -971,8 +974,8 @@ export default function AssignmentHoursModal({
       return { grade: g, classNum: c };
     });
 
-    if (cohorts.length > 0 && classList.length > 0) {
-      const fixedBlocks = expandCohortFixedBlocks(cohorts, targetYear, classList);
+    if ((cohorts.length > 0 || slotOverrides.length > 0) && classList.length > 0) {
+      const fixedBlocks = expandCohortFixedBlocks(cohorts, targetYear, classList, "", slotOverrides);
       const impliedHours = impliedHoursFromFixedBlocks(fixedBlocks);
       for (const imp of impliedHours) {
         const virtualName = imp.teacherKey.replace(/^name:/, "");

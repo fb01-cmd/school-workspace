@@ -14,7 +14,16 @@ import { getKnobsCached } from "@/lib/ops/saving_mode";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
 import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardViolationKey, normSubject, teacherKeyOf, validateTimetable } from "./validate";
-import { cohortForGrade, expandCohortFixedBlocks, hoursFromPlanRows, validateCohortInput } from "./cohort";
+import {
+  cohortForGrade,
+  expandCohortFixedBlocks,
+  hoursFromPlanRows,
+  overrideSkipsForYear,
+  resolveFixedSlots,
+  schoolYearOfDate,
+  validateCohortInput,
+  validateOverrideInput,
+} from "./cohort";
 import { compileSectionsFromHours } from "./solver";
 import { SOFT_CODE_LABELS } from "./labels";
 import { applyRevisionOps, cloneClassGrids, rankReferenceTerms } from "./utils";
@@ -52,6 +61,8 @@ import {
   UnmatchedTeacherIssue,
   SCHEDULE_AFFECTING_TYPES,
   CurriculumCohort,
+  FixedSlotOverride,
+  FixedSlotOverrideGrade,
   HoursPlan,
   HoursPlanRow,
   HoursPlanSummary,
@@ -96,6 +107,10 @@ export const hoursPlansColRef = (domain: string) =>
 
 export const curriculumCohortsColRef = (domain: string) =>
   adminDb.collection("timetable_curriculum_cohorts").doc(domain).collection("cohorts");
+
+// 학년도 재정의 (fixed_slot_override_spec §4) — 코호트와 같은 도메인 문서 아래 형제 서브컬렉션
+export const fixedSlotOverridesColRef = (domain: string) =>
+  adminDb.collection("timetable_curriculum_cohorts").doc(domain).collection("overrides");
 
 // ── 직렬화 헬퍼 ────────────────────────────────────────────────
 
@@ -7651,6 +7666,116 @@ export async function deleteCurriculumCohort(
   await curriculumCohortsColRef(domain).doc(cohortId).delete();
 }
 
+// ── 창체·SLAT 학년도 재정의 (fixed_slot_override_spec §4) ─────────
+
+export async function listFixedSlotOverrides(domain: string): Promise<FixedSlotOverride[]> {
+  const snap = await fixedSlotOverridesColRef(domain).get();
+  const list: FixedSlotOverride[] = [];
+  snap.forEach((doc) => {
+    const d = doc.data() as any;
+    const gradeSlots: Record<number, FixedSlotOverrideGrade> = {};
+    for (const [gk, entry] of Object.entries((d.gradeSlots || {}) as Record<string, any>)) {
+      const grade = Number(gk);
+      if (!Number.isInteger(grade)) continue;
+      gradeSlots[grade] = {
+        basedOnCohortId: typeof entry?.basedOnCohortId === "string" ? entry.basedOnCohortId : null,
+        slots: Array.isArray(entry?.slots) ? entry.slots : [],
+      };
+    }
+    list.push({
+      id: doc.id,
+      label: d.label || "",
+      effectiveFromSchoolYear: Number(d.effectiveFromSchoolYear) || 0,
+      gradeSlots,
+      active: d.active !== false,
+      createdBy: d.createdBy || "",
+      updatedBy: d.updatedBy || "",
+      updatedAt: toMillis(d.updatedAt) || 0,
+    });
+  });
+  return list.sort((a, b) => b.effectiveFromSchoolYear - a.effectiveFromSchoolYear);
+}
+
+/** 저장(신규·수정 겸용). basedOnCohortId는 서버가 계산해 찍는다 — 클라이언트 값을 믿지 않는다.
+ *  소급 금지(스펙 §3): 적용 학년도가 현재 학년도 미만인 문서는 새로 만들 수도, 고칠 수도 없다. */
+export async function saveFixedSlotOverride(
+  domain: string,
+  override: Partial<FixedSlotOverride>,
+  userEmail: string
+): Promise<FixedSlotOverride> {
+  const currentSchoolYear = schoolYearOfDate(new Date());
+  const [cohorts, existing] = await Promise.all([
+    listCurriculumCohorts(domain),
+    listFixedSlotOverrides(domain),
+  ]);
+
+  const id = override.id?.trim() || randomUUID();
+  const stored = existing.find((o) => o.id === id);
+  if (stored && stored.effectiveFromSchoolYear < currentSchoolYear) {
+    throw new Error(
+      `「${stored.label}」은 지난 학년도(${stored.effectiveFromSchoolYear}학년도)부터 적용된 기록이라 고칠 수 없습니다. 바꾸려면 새 학년도로 새로 등록해 주세요.`
+    );
+  }
+
+  const validationError = validateOverrideInput(
+    override,
+    currentSchoolYear,
+    existing.filter((o) => o.id !== id && o.active)
+  );
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  const effectiveFromSchoolYear = Number(override.effectiveFromSchoolYear);
+  const gradeSlots: Record<number, FixedSlotOverrideGrade> = {};
+  for (const [gk, entry] of Object.entries(
+    (override.gradeSlots || {}) as Record<string, Partial<FixedSlotOverrideGrade>>
+  )) {
+    const grade = Number(gk);
+    gradeSlots[grade] = {
+      // 작성 당시 교육과정 스탬프 — 적용 학년도 기준 역산 (스펙 §1 결정 3)
+      basedOnCohortId: cohortForGrade(cohorts, effectiveFromSchoolYear, grade)?.id ?? null,
+      slots: (entry.slots || []).map((s) => ({
+        displayName: (s.displayName || "창체").trim(),
+        day: Number(s.day),
+        period: Number(s.period),
+      })),
+    };
+  }
+
+  const now = Date.now();
+  const data: FixedSlotOverride = {
+    id,
+    label: (override.label || "").trim(),
+    effectiveFromSchoolYear,
+    gradeSlots,
+    active: override.active !== false,
+    createdBy: stored?.createdBy || userEmail,
+    updatedBy: userEmail,
+    updatedAt: now,
+  };
+
+  await fixedSlotOverridesColRef(domain).doc(id).set(data);
+  return data;
+}
+
+export async function deleteFixedSlotOverride(
+  domain: string,
+  overrideId: string
+): Promise<void> {
+  if (!overrideId) throw new Error("overrideId가 누락되었습니다.");
+  const snap = await fixedSlotOverridesColRef(domain).doc(overrideId).get();
+  if (!snap.exists) return;
+  const effectiveFrom = Number((snap.data() as any)?.effectiveFromSchoolYear) || 0;
+  const currentSchoolYear = schoolYearOfDate(new Date());
+  if (effectiveFrom < currentSchoolYear) {
+    throw new Error(
+      `지난 학년도(${effectiveFrom}학년도)부터 적용된 기록은 지울 수 없습니다 — 지난 기록 보존을 위한 규칙입니다.`
+    );
+  }
+  await fixedSlotOverridesColRef(domain).doc(overrideId).delete();
+}
+
 // ── 신학기 주당 수업 시간 계획 (phase9c_h_spec §1-2, §1-3) ────────
 
 export async function listHoursPlans(domain: string): Promise<HoursPlanSummary[]> {
@@ -8090,6 +8215,7 @@ export async function buildBlankSolveInput(
     fixedSlotCount: number;
     droppedVirtual: number;
     cohortMissingGrades: number[];
+    overrideSkips: Array<{ grade: number; overrideId: string; label: string }>;
   };
   planLabel: string;
   termId: string;
@@ -8123,9 +8249,9 @@ export async function buildBlankSolveInput(
     throw new Error("시수 계획에 학년별·요일별 수업 시간(교시수) 정보가 없습니다.");
   }
 
-  // ③ 설정, 등록부 5종, 코호트 로드
+  // ③ 설정, 등록부 5종, 코호트·학년도 재정의 로드
   const settings = await loadTimetableSettings(domain);
-  const [simulGroups, venueGroups, teacherSlotBans, consecutiveRules, coTeaching, cohorts] =
+  const [simulGroups, venueGroups, teacherSlotBans, consecutiveRules, coTeaching, cohorts, slotOverrides] =
     await Promise.all([
       loadSimulGroups(domain, termId),
       loadVenueGroups(domain, termId),
@@ -8133,6 +8259,7 @@ export async function buildBlankSolveInput(
       loadConsecutiveRules(domain, termId),
       loadCoTeachingRules(domain, termId),
       listCurriculumCohorts(domain),
+      listFixedSlotOverrides(domain),
     ]);
 
   // ④ 학급 목록: plan.rows에서 (grade, classNum) 중복 제거 및 정렬
@@ -8151,8 +8278,8 @@ export async function buildBlankSolveInput(
     throw new Error("시수 계획에 학급 정보가 없습니다.");
   }
 
-  // ⑤ fixedBlocks = expandCohortFixedBlocks(cohorts, schoolYear, classList, termId)
-  const fixedBlocks = expandCohortFixedBlocks(cohorts, schoolYear, classList, termId);
+  // ⑤ fixedBlocks — 학년별 슬롯은 코호트 + 학년도 재정의를 resolveFixedSlots가 정한다 (fixed_slot_override_spec §2)
+  const fixedBlocks = expandCohortFixedBlocks(cohorts, schoolYear, classList, termId, slotOverrides);
 
   // ⑥ hours = hoursFromPlanRows(plan.rows, fixedBlocks)
   const { hours, droppedVirtual } = hoursFromPlanRows(plan.rows, fixedBlocks);
@@ -8214,11 +8341,14 @@ export async function buildBlankSolveInput(
     subjectShorts,
   });
 
-  // 코호트 등록이 누락된 학년 추출
+  // 창체·SLAT 자리를 아무 데서도 못 받는 학년 추출 — 재정의가 슬롯을 주는 학년은 누락이 아니다
+  // (빈 배열 []도 "고정 슬롯 없음"이라는 유효한 답이다. fixed_slot_override_spec §2)
   const distinctGrades = [...new Set(classList.map((c) => c.grade))].sort((a, b) => a - b);
   const cohortMissingGrades = distinctGrades.filter(
-    (g) => cohortForGrade(cohorts, schoolYear, g) === null
+    (g) => resolveFixedSlots(cohorts, slotOverrides, schoolYear, g).source.kind === "none"
   );
+  // 교육과정 불일치로 적용되지 않은 재정의 — 조용히 지나가지 않게 통지로 올린다
+  const overrideSkips = overrideSkipsForYear(cohorts, slotOverrides, schoolYear, distinctGrades);
 
   const stats = {
     classCount: classList.length,
@@ -8227,6 +8357,7 @@ export async function buildBlankSolveInput(
     fixedSlotCount: fixedBlocks.reduce((acc, b) => acc + b.entries.length, 0),
     droppedVirtual,
     cohortMissingGrades,
+    overrideSkips,
   };
 
   return {

@@ -151,6 +151,7 @@ export default function DraftAutoTab({
       fixedSlotCount: number;
       droppedVirtual: number;
       cohortMissingGrades: number[];
+      overrideSkips?: Array<{ grade: number; overrideId: string; label: string }>;
     };
     planLabel: string;
     termId: string;
@@ -2374,6 +2375,23 @@ export default function DraftAutoTab({
                 <p className="text-[11px] text-amber-800">
                   {preflightData.stats.cohortMissingGrades.join(", ")}학년의 창체·SLAT 배치가 등록돼 있지 않습니다. 창체·SLAT 자리가 비게 됩니다.
                 </p>
+              </div>
+            )}
+
+            {/* 학년도별 변경 부적용 안내 (fixed_slot_override_spec §2 — 교육과정이 바뀌어 옛 변경이 비켜난 경우) */}
+            {(preflightData.stats.overrideSkips?.length ?? 0) > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <span>⚠️</span>
+                  <span>창체·SLAT 학년도별 변경이 적용되지 않은 학년</span>
+                </div>
+                {preflightData.stats.overrideSkips!.map((s) => (
+                  <p key={`${s.overrideId}-${s.grade}`} className="text-[11px] text-amber-800">
+                    「{s.label}」은 {s.grade}학년에 적용되지 않았습니다 — 만들 당시와 지금의 {s.grade}학년
+                    교육과정이 다릅니다. 이 학년은 교육과정에 등록된 배치를 따랐습니다. 창체·SLAT 배치
+                    화면에서 확인해 주세요.
+                  </p>
+                ))}
               </div>
             )}
 

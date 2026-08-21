@@ -9,6 +9,7 @@ import {
   HoursPlanSummary,
   SimulGroup,
   CurriculumCohort,
+  FixedSlotOverride,
 } from "@/lib/timetable/types";
 import { parseHoursExcel, ParsedHoursResult } from "@/lib/timetable/excelHoursParser";
 import { expandCohortFixedBlocks, impliedHoursFromFixedBlocks } from "@/lib/timetable/cohort";
@@ -148,6 +149,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
   const [terms, setTerms] = useState<Array<{ id: string; name: string }>>([]);
   const [simulGroups, setSimulGroups] = useState<SimulGroup[]>([]);
   const [cohorts, setCohorts] = useState<CurriculumCohort[]>([]);
+  const [slotOverrides, setSlotOverrides] = useState<FixedSlotOverride[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
 
   // 진입 경로 / 모달 상태
@@ -241,7 +243,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         setSimulGroups(dataSimul.groups || []);
       }
 
-      // 4) 코호트 목록
+      // 4) 코호트 목록 + 학년도별 변경 (창체·SLAT 자리의 두 층 — 함께 있어야 전개가 서버와 같다)
       const resCohorts = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -250,6 +252,15 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
       if (resCohorts.ok) {
         const dataCohorts = await resCohorts.json();
         setCohorts(dataCohorts.cohorts || []);
+      }
+      const resOverrides = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cohort_override_list" }),
+      });
+      if (resOverrides.ok) {
+        const dataOverrides = await resOverrides.json();
+        setSlotOverrides(dataOverrides.overrides || []);
       }
 
       // 5) 교직원 목록 로드 (교직원 OU 한정 + users:staff 캐시)
@@ -485,9 +496,15 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
       }
     }
 
-    // 코호트 등록부의 고정 슬롯 함의 행 보강 (스펙 §0-1a-③ 및 cohort.ts)
-    if (cohorts.length > 0 && excelResult.classList.length > 0) {
-      const fixedBlocks = expandCohortFixedBlocks(cohorts, excelTargetYear, excelResult.classList);
+    // 코호트 등록부의 고정 슬롯 함의 행 보강 (스펙 §0-1a-③ 및 cohort.ts) — 학년도별 변경 포함
+    if ((cohorts.length > 0 || slotOverrides.length > 0) && excelResult.classList.length > 0) {
+      const fixedBlocks = expandCohortFixedBlocks(
+        cohorts,
+        excelTargetYear,
+        excelResult.classList,
+        "",
+        slotOverrides
+      );
       const impliedHours = impliedHoursFromFixedBlocks(fixedBlocks);
       for (const imp of impliedHours) {
         const virtualName = imp.teacherKey.replace(/^name:/, "");
@@ -1632,6 +1649,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         activeTermId={activeTermId}
         teachers={teachers}
         cohorts={cohorts}
+        slotOverrides={slotOverrides}
         onApply={handleApplyAssignment}
       />
     </div>
