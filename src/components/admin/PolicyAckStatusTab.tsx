@@ -168,9 +168,6 @@ export default function PolicyAckStatusTab() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-slate-900">🔍 개별 사용자 확인 여부 조회</h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              이름 또는 이메일을 입력하여 특정 사용자의 고지 확인 상태와 시각을 조회하세요.
-            </p>
           </div>
           <div className="relative">
             <input

@@ -169,12 +169,9 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
       {/* Top Banner & Action */}
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">
             ⚙️ 생활지도 규정 및 단계 매핑 편집기
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            학교 생활지도 항목, 단계 순서, n회차 도달 시 자동 단계 매핑 규칙을 설정합니다.
-          </p>
         </div>
 
         <div className="flex items-center space-x-3">
@@ -215,7 +212,6 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white">1. 지도 항목 목록</h3>
-            <p className="text-xs text-gray-500">기록 시 선택할 생활지도 항목입니다.</p>
           </div>
           <button
             onClick={addItem}
@@ -264,7 +260,7 @@ export default function DisciplineConfigTab({ initialConfig, onConfigUpdated }: 
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white">2. 지도 단계 정의</h3>
-            <p className="text-xs text-gray-500">조치 단계를 순서대로 등록합니다. 단계 순서가 클수록 상위 단계입니다.</p>
+            <p className="text-xs text-gray-500">숫자가 클수록 상위 단계입니다.</p>
           </div>
           <button
             onClick={addStage}

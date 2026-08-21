@@ -166,9 +166,6 @@ export default function DisciplineStatusTab({
       <div id="discipline-student-cards" className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">👤 학생별 지도 카드 목록</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            학생별 생활지도 기록 횟수 및 실시간으로 계산된 조치 단계를 확인합니다.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

@@ -412,9 +412,6 @@ export default function StudentRoster() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-slate-900">📋 학급 명렬표 인쇄 & 관리</h2>
-            <p className="text-slate-500 text-xs mt-1">
-              학년과 학반을 선택하고 명렬표 조회 버튼을 클릭하여 학생 목록을 로드할 수 있습니다.
-            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -522,7 +519,6 @@ export default function StudentRoster() {
           <div className="py-24 text-center text-slate-400">
             <div className="text-4xl mb-3">📋</div>
             <p className="text-sm font-semibold text-slate-500">출력할 학년과 학급을 선택한 후 [명렬표 조회] 버튼을 눌러주세요.</p>
-            <p className="text-xs text-slate-400 mt-1">대량 조회를 방지하여 로딩 성능을 최적화합니다.</p>
           </div>
         ) : studentGroups.length === 0 ? (
           <div className="py-24 text-center text-slate-400">

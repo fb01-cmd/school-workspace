@@ -1097,9 +1097,6 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
             <span>📌</span>
             <span>교직원 업무 관리</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            공지 확인 및 서식 파일 제출 업무를 전달하고, 실시간 처리 현황을 확인합니다.
-          </p>
         </div>
 
         <div className="flex items-center gap-3 overflow-x-auto">
@@ -1548,9 +1545,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-sm w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div>
               <h4 className="text-base font-bold text-slate-900">업무 거절 사유 입력</h4>
-              <p className="text-xs text-slate-500 mt-1">
-                업무를 수행하기 어려운 사유를 입력해 주세요. (발신 선생님께 전달됩니다)
-              </p>
+              <p className="text-xs text-slate-500 mt-1">발신 선생님께 전달됩니다.</p>
             </div>
             <textarea
               rows={3}
@@ -1599,9 +1594,7 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                 <span>✅</span>
                 <span>업무 처리 완료</span>
               </h4>
-              <p className="text-xs text-slate-500 mt-1">
-                업무를 완료 처리합니다. 발신 선생님께 남길 간단한 메모나 코멘트가 있다면 적어주세요. (선택 사항)
-              </p>
+              <p className="text-xs text-slate-500 mt-1">발신 선생님께 남길 메모 (선택)</p>
             </div>
             <textarea
               rows={3}

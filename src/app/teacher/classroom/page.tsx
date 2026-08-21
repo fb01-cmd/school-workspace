@@ -468,9 +468,6 @@ export default function ClassroomPage() {
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6">
         <div>
           <h2 className="text-xl font-bold text-gray-900">구글 클래스룸 학생 강제 배정 (즉시 가입)</h2>
-          <p className="text-gray-500 text-xs mt-1">
-            학생이 개별적으로 클래스룸 초대장을 수락하는 대기 과정 없이, 교사가 실시간으로 수업을 개설하고 학생들을 즉시 강제 가입(배정)시킵니다.
-          </p>
         </div>
 
       {/* Tabs */}
@@ -719,10 +716,7 @@ export default function ClassroomPage() {
           <div className="lg:col-span-5 space-y-4">
             <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm flex flex-col h-[550px]">
               <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
-                <div>
-                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">강제 배정 대기 명단</h3>
-                  <p className="text-xs text-gray-400">강제 배정 대상 임시 버퍼</p>
-                </div>
+                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">강제 배정 대기 명단</h3>
                 {studentBasket.length > 0 && (
                   <div className="flex gap-2">
                     <button

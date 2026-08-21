@@ -194,9 +194,6 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
               총 {structuredTree.totalCount}명
             </span>
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            §1 정렬 규칙: 부서장 최상단, 학년부는 담임 반 순서(1반~N반) 배치.
-          </p>
         </div>
 
         {/* Search Bar & Expand/Collapse Toggle */}

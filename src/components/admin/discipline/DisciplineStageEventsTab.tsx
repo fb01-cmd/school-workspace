@@ -148,9 +148,6 @@ export default function DisciplineStageEventsTab({ domain, config, canResolve }:
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">📥 조치 처리함</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            지도 단계에 도달한 학생의 조치를 입력하거나 수동으로 단계를 지정합니다.
-          </p>
         </div>
 
         <div className="flex items-center space-x-3">

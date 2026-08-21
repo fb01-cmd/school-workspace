@@ -329,10 +329,8 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="text-lg font-bold mb-1">➕ 전입생 계정 생성</h3>
-        <p className="text-sm text-gray-500">
-          배정 학년의 코호트 연도 시리즈에서 최대 일련번호 + 1을 자동 부여합니다.
-        </p>
+        <h3 className="text-lg font-bold">➕ 전입생 계정 생성</h3>
+        <p className="text-sm text-gray-500">학번은 배정 학년의 마지막 번호 다음으로 자동 부여됩니다.</p>
       </div>
 
       {result ? (

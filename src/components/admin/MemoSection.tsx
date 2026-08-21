@@ -1024,7 +1024,6 @@ function MemoDetailPanel({
                 <span>주고받은 이력</span>
                 <span className="text-[11px] font-normal text-slate-500">({threadMemos.length}건)</span>
               </span>
-              <span className="text-[11px] text-slate-400">클릭하여 해당 쪽지 확인</span>
             </div>
             <div className="divide-y divide-slate-200/60 max-h-60 overflow-y-auto bg-white/70">
               {threadMemos.map((item) => {

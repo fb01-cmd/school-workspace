@@ -136,9 +136,6 @@ export default function HomeroomAssignmentTab({ domain: _domain }: HomeroomAssig
                 조직도 단일 원본 연동
               </span>
             </div>
-            <p className="text-sm text-blue-100/80 max-w-2xl leading-relaxed">
-              승인된 교직원 프로필에서 자동으로 추출된 학급 담임 목록입니다. 담임 교사는 담당 학급 학생들의 생활지도 기록 작성 및 지도 이력 열람 권한을 자동으로 보유합니다.
-            </p>
           </div>
           <button
             onClick={fetchHomeroom}

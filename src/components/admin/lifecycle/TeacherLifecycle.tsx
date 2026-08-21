@@ -69,7 +69,6 @@ export default function TeacherLifecycle() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">교직원 계정 및 생애주기 관리</h2>
-        <p className="text-sm text-gray-500 mt-1">교사 전입(계정 생성 및 자동 그룹 가입), 전출(보안 즉시 해제 및 기한 설정), 명예퇴임(OB 보존실 이동), 기간제 교사 수업·담임·클래스룸 일괄 이관을 담당합니다.</p>
       </div>
 
       {/* Section Selector */}

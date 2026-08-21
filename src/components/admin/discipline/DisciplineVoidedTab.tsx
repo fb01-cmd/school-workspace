@@ -76,9 +76,6 @@ export default function DisciplineVoidedTab({ config }: DisciplineVoidedTabProps
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center space-x-2">
             <span>🗑️ 무효화 보관함</span>
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            입력 착오 등으로 무효화 처리된 지도 기록 보관함입니다. (회차 계산 제외 및 읽기 전용)
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -155,7 +152,7 @@ export default function DisciplineVoidedTab({ config }: DisciplineVoidedTabProps
             <span className="text-sm font-bold text-gray-700 dark:text-gray-300">
               무효화 목록 (총 {filteredRecords.length}건)
             </span>
-            <span className="text-xs text-gray-400">※ 이 목록은 읽기 전용입니다.</span>
+            <span className="text-xs text-gray-400">※ 읽기 전용 · 회차 계산 제외</span>
           </div>
 
           <div className="divide-y divide-gray-100 dark:divide-gray-700">

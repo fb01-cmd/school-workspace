@@ -231,7 +231,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
             <span>기간제 교사 담당 일괄 이관 마법사</span>
           </h3>
           <p className="text-sm text-gray-500 mt-0.5">
-            휴직·부임·복직 시 수업 시간표, 담임 학급, 클래스룸 공동교사를 단계별로 안전하게 일괄 이관합니다.
+            수업 시간표 · 담임 학급 · 클래스룸을 함께 넘깁니다.
           </p>
         </div>
         {step > 1 && (

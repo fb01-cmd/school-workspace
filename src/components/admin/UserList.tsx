@@ -860,7 +860,6 @@ export default function UserList() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-gray-900">학교 계정 명단 목록</h2>
-          <p className="text-gray-500 text-xs mt-1">구글 워크스페이스에 등록되어 실시간 매핑된 전체 계정입니다.</p>
         </div>
         {isSuperAdmin && (
           <div className="flex gap-2 self-start sm:self-center">
@@ -1417,7 +1416,6 @@ export default function UserList() {
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-lg font-bold text-gray-900">새 구글 워크스페이스 계정 추가</h3>
-              <p className="text-xs text-gray-500 mt-0.5">학생 뱸크 업로드를 제외한 일반 단일 계정 생성입니다.</p>
             </div>
 
             <form onSubmit={handleAddUser} className="p-6 space-y-4">

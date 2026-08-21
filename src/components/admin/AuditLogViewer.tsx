@@ -116,9 +116,6 @@ export default function AuditLogViewer() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900">🛡️ 작업 감사 로그 (Audit Logs)</h2>
-          <p className="text-slate-500 text-xs mt-1">
-            수퍼관리자가 학교 계정 및 조직단위에 수행한 모든 실시간 변경 이력입니다.
-          </p>
         </div>
         <button
           type="button"

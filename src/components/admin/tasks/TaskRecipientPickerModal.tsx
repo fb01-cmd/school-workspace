@@ -219,9 +219,6 @@ export default function TaskRecipientPickerModal({
               <span>👥</span>
               <span>업무 수신자 선택</span>
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              조직도 부서별 또는 이름 검색으로 업무를 전달할 선생님을 선택해 주세요.
-            </p>
           </div>
           <button
             type="button"

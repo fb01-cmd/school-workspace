@@ -282,10 +282,7 @@ export default function DisciplineRecordTab({
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-10">
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">📝 지도 기록 입력</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-          학생의 생활지도 항목 및 발생 사실을 기록합니다. 입력된 사안은 실시간으로 단계 조건이 자동 계산됩니다.
-        </p>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">📝 지도 기록 입력</h2>
 
         {message && (
           <div

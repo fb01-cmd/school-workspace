@@ -216,9 +216,6 @@ export default function ChromeBookmarks() {
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">구글 크롬 브라우저 관리 북마크 배정</h2>
-        <p className="text-gray-500 text-xs mt-1">
-          크롬 브라우저 최상단 북마크바(Managed Bookmarks)를 조직단위별로 일괄 배포 및 제어합니다.
-        </p>
       </div>
 
       {/* Tabs */}

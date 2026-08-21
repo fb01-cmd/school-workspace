@@ -143,9 +143,6 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">🔑 생활지도 특별 권한 관리</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            담임 기본 권한 외에 특정 교직원(학년부장, 인성부장 등)에게 생활지도 개별 권한 및 범위를 지정 부여합니다.
-          </p>
         </div>
 
         <div className="flex items-center space-x-3">
@@ -244,12 +241,9 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 dark:border-gray-700">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
               새 특별 권한 부여
             </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              특정 교사에게 지정 범위 및 생활지도 실행 권한을 부여합니다.
-            </p>
 
             <form onSubmit={handleCreateGrant} className="space-y-4">
               {/* 교사 선택 */}

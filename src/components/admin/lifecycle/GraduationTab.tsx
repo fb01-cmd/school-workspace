@@ -575,9 +575,6 @@ export default function GraduationTab({ s, ud }: any) {
       {/* Title */}
       <div>
         <h3 className="text-xl font-bold text-slate-800">🏫 졸업예정자 관리 및 동의서 현황</h3>
-        <p className="text-sm text-slate-500 mt-1">
-          졸업생 데이터 백업 안내 동의서 수집 상태를 실시간 모니터링하고 일정에 따라 정지/삭제 생애주기를 관리합니다.
-        </p>
       </div>
 
       {/* Suspension Warning Banner */}

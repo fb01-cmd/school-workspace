@@ -431,9 +431,6 @@ export default function GroupList() {
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             👥 구글 메일링 그룹 관리
           </h2>
-          <p className="text-xs text-gray-500 mt-1">
-            도메인 내 반별 메일링 그룹 및 업무용 구글 그룹스를 일괄 관리하고 게시 권한을 설정합니다.
-          </p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}

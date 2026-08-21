@@ -347,9 +347,6 @@ export default function HubTaskComposer({
             <span>📌</span>
             <span>새 업무 등록</span>
           </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            기한과 제출 양식이 있는 정식 업무를 배분합니다.
-          </p>
         </div>
 
         {/* Switch to Memo with Helper Copy (§2-5) */}
@@ -545,9 +542,6 @@ export default function HubTaskComposer({
                   </button>
                 </div>
               ))}
-              <p className="text-[11px] text-slate-500 px-1">
-                고른 파일은 업무를 보낼 때 함께 올라갑니다.
-              </p>
             </div>
           ) : (
             <div className="py-4 text-center text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">

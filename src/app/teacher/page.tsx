@@ -382,10 +382,7 @@ export default function AdminPage() {
             )}
             {/* Summary Banner */}
             <div className="bg-gradient-to-r from-indigo-800 to-blue-900 rounded-lg text-white p-6 shadow-md">
-              <h2 className="text-xl font-bold mb-2">효명고등학교 관리 시스템</h2>
-              <p className="text-blue-100 text-sm">
-                Google Workspace 계정과 학적 데이터를 관리합니다.
-              </p>
+              <h2 className="text-xl font-bold">효명고등학교 관리 시스템</h2>
             </div>
 
             {/* 알림 카드는 공통 최상단 */}
@@ -428,7 +425,6 @@ export default function AdminPage() {
                         </svg>
                       </span>
                     </div>
-                    <p className="text-gray-500 text-sm mb-6">교직원 소속 부서, 직책, 담임 정보 등 프로필 변경 신청 내역을 검토하고 승인합니다.</p>
                   </div>
                   <div>
                     <button
@@ -464,7 +460,6 @@ export default function AdminPage() {
                         </svg>
                       </span>
                     </div>
-                    <p className="text-gray-500 text-sm mb-6">학생 생활지도 기록 입력, 단계 자동 계산 현황, 단계 처리함 및 학급 담임 배정을 종합 관리합니다.</p>
                   </div>
                   <div>
                     <button
@@ -500,7 +495,6 @@ export default function AdminPage() {
                         </svg>
                       </span>
                     </div>
-                    <p className="text-gray-500 text-sm mb-6">주간 시간표 일과 운영, 결보강 및 교사 간 수업 교환 신청 내역을 검토하고 승인합니다.</p>
                   </div>
                   <div>
                     <button
@@ -523,7 +517,6 @@ export default function AdminPage() {
                         </svg>
                       </span>
                     </div>
-                    <p className="text-gray-500 text-sm mb-6">사용자를 조회하거나 추가하고, 비밀번호 및 계정을 직접 제어합니다.</p>
                   </div>
                   <div className="flex flex-col gap-2">
                     <button
@@ -546,7 +539,7 @@ export default function AdminPage() {
                         </svg>
                       </span>
                     </div>
-                    <p className="text-gray-500 text-sm mb-6">반별 구글 메일링 그룹 및 학년별 교직원 그룹을 조회하고 가입/게시판 권한을 조정합니다.</p>
+                    <p className="text-gray-500 text-sm mb-6">반별·업무별 구글 메일링 그룹</p>
                   </div>
                   <div>
                     <button
@@ -569,7 +562,7 @@ export default function AdminPage() {
                         </svg>
                       </span>
                     </div>
-                    <p className="text-gray-500 text-sm mb-6">구글 워크스페이스 조직 트리(OU)를 불러와 교사와 학년제 매핑 규칙을 지정합니다.</p>
+                    <p className="text-gray-500 text-sm mb-6">구글 조직단위(OU)와 학년·교사 연결</p>
                   </div>
                   <div>
                     <button
@@ -592,7 +585,6 @@ export default function AdminPage() {
                         </svg>
                       </span>
                     </div>
-                    <p className="text-gray-500 text-sm mb-6">새로운 클래스룸 수업을 개설하거나 기존 수업에 학생들을 즉시 강제 배정합니다.</p>
                   </div>
                   <div>
                     <button

@@ -1425,9 +1425,6 @@ export default function UserSheetEditor({
           <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
             📊 웹 시트 일괄 편집기
           </h3>
-          <p className="text-xs text-slate-500">
-            성과 이름, 아이디, 비밀번호 등을 표 형식으로 한 번에 수정한 뒤 일괄 저장할 수 있습니다.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

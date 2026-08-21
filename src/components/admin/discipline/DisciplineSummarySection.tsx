@@ -286,9 +286,6 @@ export default function DisciplineSummarySection({
               실시간 분석
             </span>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            권한 범위 내 실시간 지도 건수, 학년·반별 히트맵, 단계별 인원 및 상위 지도 학생 현황
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

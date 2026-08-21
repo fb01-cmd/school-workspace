@@ -131,10 +131,7 @@ export default function OUManager() {
 
       {/* OU Creation Form */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">조직단위(OU) 신규 생성</h2>
-        <p className="text-gray-600 text-sm mb-6">
-          구글 워크스페이스에 매핑할 적절한 조직단위가 없다면 아래 폼을 통해 새로 만들 수 있습니다.
-        </p>
+        <h2 className="text-xl font-bold text-gray-900 mb-6">조직단위(OU) 신규 생성</h2>
 
         <form onSubmit={handleCreateOU} className="space-y-4 max-w-md">
           <div>

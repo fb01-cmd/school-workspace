@@ -305,9 +305,6 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
               <span>📌</span>
               <span>업무 등록</span>
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              선생님들께 완료 확인이나 파일 제출을 요청하는 업무를 배분합니다.
-            </p>
           </div>
           <button
             type="button"

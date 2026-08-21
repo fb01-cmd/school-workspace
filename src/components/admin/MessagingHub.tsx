@@ -256,7 +256,6 @@ export default function MessagingHub({
         >
           👥 수신자 선택{selectedEmails.size > 0 ? ` (${selectedEmails.size}명)` : ""}
         </button>
-        <span className="text-xs text-slate-400 truncate">넓은 화면에서는 조직도가 함께 보입니다</span>
       </div>
 
       {/* ── 2. 메인 화면 (조직도 패널은 1024px 이상에서만 상주) ── */}

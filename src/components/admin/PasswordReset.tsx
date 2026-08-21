@@ -132,9 +132,6 @@ export default function PasswordReset() {
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6 max-w-2xl mx-auto">
       <div>
         <h2 className="text-xl font-bold text-gray-900">학생 계정 비밀번호 초기화</h2>
-        <p className="text-gray-500 text-xs mt-1">
-          담임 또는 교과 교사가 학생의 비밀번호 분실 시 신속하게 임시 비밀번호로 재설정합니다.
-        </p>
       </div>
 
       {error && (

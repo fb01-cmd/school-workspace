@@ -493,9 +493,6 @@ export default function HubMemoComposer({
             <span>✉️</span>
             <span>쪽지 쓰기</span>
           </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            가벼운 공지나 일반 연락 사항을 발송합니다.
-          </p>
         </div>
 
         {/* Switch to Task with Helper Copy (§2-5) */}

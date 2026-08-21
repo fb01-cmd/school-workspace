@@ -249,10 +249,7 @@ export default function ProfileApprovals() {
       {activeSubTab === "pending" && isSuperAdmin && (
         <div className="space-y-6">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-1">📥 조직 정보 승인 대기</h2>
-            <p className="text-sm text-gray-500">
-              교직원이 제출한 소속/직책 정보 신청을 검토하고 승인 또는 반려하세요.
-            </p>
+            <h2 className="text-xl font-bold text-gray-900">📥 조직 정보 승인 대기</h2>
           </div>
 
           {loading ? (

@@ -627,8 +627,7 @@ export default function UsageDashboardTab() {
               </h3>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              완결된 1시간 단위 사용량입니다. 특정 시간대 급증이나 폭주 여부를 식별합니다.
-              <span className="font-semibold text-slate-700 dark:text-slate-300"> 시각은 한국 시간입니다.</span>
+              완결된 1시간 단위 · 한국 시간
             </p>
           </div>
 

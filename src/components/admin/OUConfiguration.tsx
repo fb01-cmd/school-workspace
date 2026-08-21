@@ -790,7 +790,7 @@ export default function OUConfiguration() {
               10. 일과표 (교시별 시간) 설정
             </label>
             <p className="text-gray-500 text-xs mb-3">
-              시간표 및 티칭러닝 라이센스 배정에 활용됩니다. 교시는 자유롭게 추가/삭제하세요.
+              시간표와 티칭러닝 라이센스 배정에 쓰입니다.
             </p>
             <div className="space-y-2 max-w-2xl">
               {schedule.map((p, idx) => (
