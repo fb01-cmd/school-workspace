@@ -1,8 +1,15 @@
 import type { TeacherProfile } from "@/context/AuthContext";
+import { gradeOfDepartment, type GradeDeptSettings } from "./gradeDept";
 
 export interface SortMembersOptions<T> {
   profileMap?: Map<string, TeacherProfile>;
   getName?: (item: T, profile?: TeacherProfile) => string;
+  /**
+   * 학년부 판정에 쓸 설정. 넘기면 설정의 「부서→학년」 연결 표를 먼저 본다.
+   * 안 넘겨도 이름으로 짐작하므로 동작은 유지된다 — 다만 부서를 개명한 도메인에서는
+   * 넘기는 쪽이 정확하다 (docs/grade_dept_spec.md §3-2).
+   */
+  settings?: GradeDeptSettings | null;
 }
 
 /**
@@ -21,8 +28,11 @@ export function sortMembersForDept<T extends { email?: string }>(
   const profileMap = options instanceof Map ? options : options?.profileMap;
   const customGetName = options instanceof Map ? undefined : options?.getName;
 
-  const gradeMatch = deptName.match(/^([1-3])학년/);
-  const gradeNum = gradeMatch ? Number(gradeMatch[1]) : 0;
+  // 학년부 판정은 gradeDept.ts 한 곳에서만 한다. 여기에 정규식을 되살리지 마라 —
+  // 화면과 정렬이 서로 다른 정규식을 쓰다가 담임 반 선택이 조용히 사라진 적이 있다
+  // (2026-08-21, docs/grade_dept_spec.md §1-1).
+  const settings = options instanceof Map ? undefined : options?.settings;
+  const gradeNum = gradeOfDepartment(deptName, settings);
 
   return [...members].sort((a, b) => {
     const emailA = (a.email || "").toLowerCase();

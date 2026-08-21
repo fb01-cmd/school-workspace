@@ -69,7 +69,7 @@ for (let i = 0; i < aside.length; i++) {
 }
 
 // ── ① 이름 대조 ─────────────────────────────────────────
-say("── 1/3 사이드바 이름 == 맨 위 줄 이름 ──────────");
+say("── 1/4 사이드바 이름 == 맨 위 줄 이름 ──────────");
 const mismatches: string[] = [];
 for (const [key, side] of sidebar) {
   const top = topBar.get(key);
@@ -94,7 +94,7 @@ if (mismatches.length) {
 
 // ── ② 화면 안 페이지 제목 재사용 ─────────────────────────
 say("");
-say("── 2/3 화면 안에 페이지 제목이 다시 있는가 ─────");
+say("── 2/4 화면 안에 페이지 제목이 다시 있는가 ─────");
 
 const menuNames = [...topBar.values()];
 const norm = (s: string) =>
@@ -143,7 +143,7 @@ if (hits.length) {
 // 제목이 또 있었다. ②는 메뉴 이름하고만 대조하므로 이걸 못 잡았다 — 사용자가 눈으로
 // 찾았다. 탭 라벨은 파일 안에 있으므로 같은 파일 안에서 대조할 수 있다.
 say("");
-say("── 3/3 탭 이름을 아래에서 제목으로 다시 쓰는가 ─");
+say("── 3/4 탭 이름을 아래에서 제목으로 다시 쓰는가 ─");
 
 const tabHits: string[] = [];
 for (const f of files) {
@@ -180,6 +180,65 @@ if (tabHits.length) {
   fail = true;
 } else {
   say("  ✅ 탭 이름을 제목으로 반복하는 화면 없음");
+}
+
+// ── ④ 부서 이름에 학년 정규식을 직접 쓰는가 ────────────
+//
+// 판정이 두 곳에 흩어져 서로 다른 정규식을 쓰다가, 부서를 「1학년부」로 개명하면
+// 담임 반 선택이 조용히 사라졌다(docs/grade_dept_spec.md §1-1). 판정은
+// src/lib/org/gradeDept.ts 하나로 모았고, 다시 흩어지는 것을 여기서 막는다.
+//
+// 시간표·엑셀 파서(src/lib/timetable/**)는 대상이 아니다 — 거기서 「N학년」을 뽑는 것은
+// 부서 판정이 아니라 외부 문서 파싱이다.
+say("");
+say("── 4/4 부서 이름에 학년 정규식을 직접 쓰는가 ──");
+
+const GRADE_OWNER = path.join(ROOT, "src/lib/org/gradeDept.ts");
+const gradeHits: string[] = [];
+const allSrc: string[] = [];
+(function walk(d: string) {
+  for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+    const p = path.join(d, e.name);
+    if (e.isDirectory()) walk(p);
+    else if (/\.tsx?$/.test(e.name)) allSrc.push(p);
+  }
+})(path.join(ROOT, "src"));
+
+for (const f of allSrc) {
+  if (f === GRADE_OWNER) continue;
+  if (f.includes(`${path.sep}lib${path.sep}timetable${path.sep}`)) continue; // 외부 문서 파싱
+  const raw = fs.readFileSync(f, "utf-8");
+  // 파일 전체가 문장·문서 파싱인 경우 — 머리말에 `grade-regex-ok-file:` 과 사유를 적는다.
+  // 줄마다 같은 주석을 다는 것보다 낫고, 사유가 파일 머리에 한 번 남는다.
+  if (raw.slice(0, 4000).includes("grade-regex-ok-file:")) continue;
+  const fl = raw.split("\n");
+  for (let i = 0; i < fl.length; i++) {
+    const l = fl[i];
+    if (!l.includes("학년")) continue;
+
+    // 주석 줄은 대상이 아니다. `/* 학년 */` 같은 주석이 정규식 리터럴처럼 보여서
+    // 처음엔 18곳이 오탐으로 걸렸다 — 검사를 좁히는 것도 검사의 일이다.
+    const t = l.trim();
+    if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") || t.startsWith("{/*")) continue;
+
+    // 「쓰는 것」만 본다 — 정규식 리터럴이 match/test/exec/replace에 넘어가거나
+    // 변수에 담기는 형태. 화면 문구·문자열 비교는 대상이 아니다.
+    const used =
+      /(match|test|exec|replace|search|split)\s*\(\s*\/[^/\n]*학년/.test(l) ||
+      /[=:]\s*\/[^/\n]*학년[^/\n]*\/[gimsuy]*\s*[;,)]?\s*$/.test(l);
+    if (!used) continue;
+
+    if (fl.slice(Math.max(0, i - 4), i + 1).some((x) => x.includes("grade-regex-ok:"))) continue;
+    gradeHits.push(`  ❌ ${f.replace(ROOT + "/", "")}:${i + 1}  ${t.slice(0, 100)}`);
+  }
+}
+if (gradeHits.length) {
+  gradeHits.forEach((h) => say(h));
+  say("  → 학년부 판정은 src/lib/org/gradeDept.ts의 gradeOfDepartment 하나만 쓴다.");
+  say('  → 부서 판정이 아닌 정규식이라면 그 줄 위에 `// grade-regex-ok: 사유` 를 달아라.');
+  fail = true;
+} else {
+  say("  ✅ 학년 정규식이 gradeDept.ts 밖에 없음");
 }
 
 say("");

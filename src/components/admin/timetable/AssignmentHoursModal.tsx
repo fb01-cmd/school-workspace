@@ -1,5 +1,10 @@
 "use client";
 
+// grade-regex-ok-file: 이 파일의 「N학년」 정규식은 **부서 판정이 아니다.**
+// 무결성 검증기가 뱉은 사람 말 문장("2학년 3반: 배정표 반과 이동수업 개설 반이 …")에서
+// 학년·반 숫자를 다시 뽑아 화면에 접어 보여주려는 것이다. 부서 이름과는 무관하다.
+// 학년부 판정은 src/lib/org/gradeDept.ts 하나뿐이다 (docs/grade_dept_spec.md).
+
 import React, { useState, useMemo, useRef } from "react";
 import { CurriculumCohort, FixedSlotOverride, HoursPlanRow } from "@/lib/timetable/types";
 import { expandCohortFixedBlocks, impliedHoursFromFixedBlocks } from "@/lib/timetable/cohort";

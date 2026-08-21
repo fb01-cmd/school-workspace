@@ -53,6 +53,12 @@ export interface SchoolSettings {
   departments?: string[];
   positions?: string[];
   blockedOuPaths?: string[];
+  /**
+   * 부서 이름 → 학년 번호 (docs/grade_dept_spec.md §3-1).
+   * 없으면 `gradeOfDepartment`가 이름에서 짐작한다 — 기존 도메인은 이 필드가 없고
+   * 그때의 동작이 지금과 같으므로 **마이그레이션이 필요 없다.**
+   */
+  gradeDepartments?: Record<string, number>;
 }
 
 export interface OrgUnit {

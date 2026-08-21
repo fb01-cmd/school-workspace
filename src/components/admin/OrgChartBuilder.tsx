@@ -10,6 +10,7 @@ import ManualProfileEditor from "@/components/admin/ManualProfileEditor";
 import { DEFAULT_DEPARTMENTS, POSITION_LIKE_DEPARTMENTS } from "@/lib/org/departments";
 import { resolveDisplayName } from "@/lib/org/displayName";
 import { sortMembersForDept } from "@/lib/org/sort";
+import { gradeOfDepartment } from "@/lib/org/gradeDept";
 import { loadTeacherProfiles, filterActiveTeachers } from "@/lib/org/roster";
 
 
@@ -252,6 +253,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
         d,
         sortMembersForDept(d, list, {
           getName: (p) => getDisplayName(p.email, p),
+          settings: schoolSettings,
         })
       );
     });
@@ -627,8 +629,10 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
               const isSelected = selectedDept === deptName;
               const isDragOver = dragOverDept === deptName;
               const members = deptMembersMap.sortedMap.get(deptName) || [];
-              const isGradeDept = /^([1-3])학년$/.test(deptName);
-              const gradeNum = isGradeDept ? parseInt(deptName[0], 10) : 0;
+              // 이름 글자를 세지 않는다 — 「1학년부」로 개명해도 담임 반 선택이 따라오도록
+              // 판정과 학년 번호를 gradeDept.ts에서 함께 받는다 (docs/grade_dept_spec.md).
+              const gradeNum = gradeOfDepartment(deptName, schoolSettings);
+              const isGradeDept = gradeNum > 0;
               const classCount = isGradeDept
                 ? Number(schoolSettings?.classCounts?.[gradeNum] ?? 10)
                 : 0;

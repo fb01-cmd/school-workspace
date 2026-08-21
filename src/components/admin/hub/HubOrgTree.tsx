@@ -209,6 +209,7 @@ export default function HubOrgTree({
     allDepts.forEach((d) => {
       const sorted = sortMembersForDept(d, deptMap[d] || [], {
         getName: (p) => getDisplayName(p),
+        settings: schoolSettings,
       });
 
       if (sorted.length > 0) {

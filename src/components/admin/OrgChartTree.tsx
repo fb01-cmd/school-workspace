@@ -6,6 +6,7 @@ import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
 import { DEFAULT_DEPARTMENTS } from "@/lib/org/departments";
 import { resolveDisplayName } from "@/lib/org/displayName";
 import { sortMembersForDept } from "@/lib/org/sort";
+import { isGradeDepartment } from "@/lib/org/gradeDept";
 import { loadTeacherProfiles, buildGwsNameMap, getActiveTeacherEmails } from "@/lib/org/roster";
 
 
@@ -154,6 +155,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
     departmentOrder.forEach((d) => {
       const sorted = sortMembersForDept(d, deptMap[d] || [], {
         getName: (p) => getDisplayName(p),
+        settings: schoolSettings,
       });
       if (sorted.length > 0 || !q) {
         // Always show departments when no search query, or when search matches
@@ -253,7 +255,7 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
                   ) : (
                     members.map((teacher) => {
                       const isHead = !!teacher.deptHeadMap?.[deptName] || (teacher.departments?.length === 1 && teacher.isDeptHead);
-                      const isGradeDept = /^([1-3])학년$/.test(deptName);
+                      const isGradeDept = isGradeDepartment(deptName, schoolSettings);
                       const isHomeroomMatch = teacher.isHomeroom && teacher.homeroom;
 
                       return (

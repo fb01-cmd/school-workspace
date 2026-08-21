@@ -68,6 +68,8 @@ export default function DisciplineRecordTab({
         const classNum = Number((hc as any).classNum);
         return Number.isInteger(grade) && Number.isInteger(classNum) ? { grade, classNum } : null;
       }
+      // grade-regex-ok: 부서 이름이 아니라 담임 배정값이 문자열로 들어온 경우("2-3"·"2학년 3반")를
+      // 숫자로 되돌리는 것이다. 바로 위 분기가 객체 형태를 먼저 처리하고 여기는 옛 형태 폴백이다.
       const m = String(hc).match(/(\d+)\s*[-학년\s]\s*(\d+)/);
       return m ? { grade: Number(m[1]), classNum: Number(m[2]) } : null;
     })
