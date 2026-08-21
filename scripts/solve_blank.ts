@@ -410,6 +410,16 @@ async function main() {
       for (const d of death.sort()) console.log(`  ☠ ${d}`);
       for (const v of viaLunch.sort()) console.log(`  ~ ${v}`);
     }
+    // 공강 대조 (summary.teacherGaps — 점수 밖 참고 지표, 2026-08-22): 사람 손이 연속 0을
+    // 만든 수단이 공강 배치였음이 실측돼 신설. 첫 실측 = 총량 동등(450 vs 456칸) — 기울기 가설 반증.
+    {
+      const g = report.summary.teacherGaps;
+      const b = baseline.summary.teacherGaps;
+      if (g && b)
+        console.log(
+          `공강(점수 밖): 산출 ${g.days}건/${g.slots}칸(하루 2칸+ ${g.heavyDays}건) vs 실제 운영 시간표 ${b.days}건/${b.slots}칸(2칸+ ${b.heavyDays}건)`
+        );
+    }
     const s1 = report.soft.details.filter((d) => d.code === "S1");
     console.log(`S1 상세 ${s1.length}건 (실제 운영 시간표 기준 1건 — 5시간×1):`);
     for (const d of s1) console.log(`    ${d.text}`);

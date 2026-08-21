@@ -1372,6 +1372,8 @@ export type SoftPenaltyCode =
   | "S6" // 오전/오후 균형 (매뉴얼 '오후' — 가중치 잠정, 질문지 회수 후 확정)
   | "S7" // 순배 — 같은 과목 3회+ 전 교시 동일 0.5점 (2026-08-21 구현, 절대치 11월 조정)
   | "S8"; // 교사 희망 위반 — 부탁성(soft) 금지 슬롯에 배치 1점/건 (ask_fix_spec §6, 절대치 11월 조정)
+// 공강(창문)은 감점 코드가 아니라 summary.teacherGaps 참고 지표다 (2026-08-22 — 상세 행로 내면
+// 0점 수백 행이 화면을 덮고, 실측 결과 총량이 사람 손과 동등해 점수화 근거도 없다)
 
 /** 학기 전체 감점 1건 — (scope, text, points) 규약 유지 (수집 18 점수 병기·21 3인칭 라벨) */
 export interface TermPenaltyDetail {
@@ -1400,6 +1402,11 @@ export interface TimetableAuditReport {
     hardByCode: Partial<Record<HardViolationCode, number>>;
     /** 등록부 미비 추정(registryGap) 제외 — 지금 조치 가능한 위반 수 (§3-4) */
     actionableHard: number;
+    /** 교사 공강(창문) 집계 — **점수 밖 참고 지표** (2026-08-22 신설). 상세 행으로 내보내면
+     *  0점짜리 수백 행이 화면 감점 목록을 덮어 요약으로만 둔다. days = 공강 있는 (교사,요일) 수,
+     *  slots = 공강 총 칸수, heavyDays = 하루 2칸 이상. 용도 = 재계약 대조표·벤치마크
+     *  (첫 실측: 산출 450칸 vs 사람 손 456칸 — 총량 동등, 기울기 가설 반증) */
+    teacherGaps?: { days: number; slots: number; heavyDays: number };
   };
 }
 

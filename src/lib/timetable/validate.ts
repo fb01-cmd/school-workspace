@@ -660,6 +660,9 @@ export function validateTimetable(
 
   // ── 소프트 S1~S6 (기존 감점 엔진 가중치 계승 — swap.ts teacherDayPenalties·classDuplicatePenalty) ──
   const details: TermPenaltyDetail[] = [];
+  let gapDays = 0;
+  let gapSlots = 0;
+  let gapHeavyDays = 0;
   {
     // 교사별 요일별 점유 (실교사만 — 가상 교사는 사람이 아니다)
     interface TeacherDays {
@@ -698,6 +701,23 @@ export function validateTimetable(
         // S3 '점심': 점심 직전·직후 연속 — 1점 고정
         if (d.periods.has(L) && d.periods.has(L + 1))
           push("S3", `${td.label} ${DAY_LABEL[day]}요일 점심 전후 연속 수업 발생`, 1);
+        // 공강(창문) 집계 — **점수 밖 참고 지표** (2026-08-22): 첫 수업과 끝 수업 사이 빈 교시.
+        // 계기 = 사람 손 시간표가 연속 3교시 0건을 만든 수단이 공강 배치였음이 실측됨(장예빈
+        // 목 1·3·5·7). 상세 행(감점 목록)으로 내보내지 않는 이유: 0점짜리 수백 행이 화면을
+        // 덮는다 — summary.teacherGaps로만 집계한다. 첫 실측: 산출 450칸 vs 사람 손 456칸 —
+        // 총량 동등이라 「사람 손 총점에 공강 비용이 숨어 대조가 기운다」던 가설은 반증됐고,
+        // 이 지표는 재계약 대조표의 공정성 확인용으로 남는다. 점수화는 현재 근거 없음.
+        {
+          const sorted = [...d.periods].sort((a, b) => a - b);
+          let holes = 0;
+          for (let p = sorted[0] + 1; p < sorted[sorted.length - 1]; p++)
+            if (!d.periods.has(p)) holes++;
+          if (holes > 0) {
+            gapDays++;
+            gapSlots += holes;
+            if (holes >= 2) gapHeavyDays++;
+          }
+        }
         // S5 '학년': 같은 요일 3과목 이상 — 3과목=1점, 초과 과목당 +1
         const subjectCount = new Set(d.subjects).size;
         if (subjectCount >= 3)
@@ -828,6 +848,7 @@ export function validateTimetable(
       teachers: teacherEmails.size,
       hardByCode,
       actionableHard: hard.filter((v) => !v.registryGap).length,
+      teacherGaps: { days: gapDays, slots: gapSlots, heavyDays: gapHeavyDays },
     },
   };
 }
