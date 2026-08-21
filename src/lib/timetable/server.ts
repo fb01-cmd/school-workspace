@@ -7165,6 +7165,31 @@ export async function applyDraftOp(
   const placeholderBlock = checkPlaceholderOp(oldGrids, op);
   if (placeholderBlock) throw new DraftOpConflictError(placeholderBlock);
 
+  // 학급 간 교환(swap_pair) 유효성 — 원자성 보장 (Codex 검증 I 지적, 2026-08-21).
+  // 재생기(applyRevisionOps)는 학급 누락·양쪽 빈 교시를 경고 후 건너뛰는 관용 규약이라
+  // (이미 저장된 초안이 재생 불가가 되면 안 된다 — F-3 원칙), 접수 시점에 그 관용이
+  // 발동할 조합을 아예 거부한다. 여기서 통과한 op는 재생 때 항상 전 학급이 함께 바뀐다.
+  if (op.type === "swap_pair") {
+    for (const cls of op.classes) {
+      const grid = oldGrids.find((g) => g.grade === cls.grade && g.classNum === cls.classNum);
+      if (!grid) {
+        throw new DraftOpConflictError(
+          `${cls.grade}학년 ${cls.classNum}반 시간표가 없어 학급 간 교환을 접수할 수 없습니다.`
+        );
+      }
+      const hasLesson = [op.a, op.b].some(
+        (s) =>
+          (grid.cells?.find((c) => c.day === s.day && c.period === s.period)?.lessons || [])
+            .length > 0
+      );
+      if (!hasLesson) {
+        throw new DraftOpConflictError(
+          `${cls.grade}학년 ${cls.classNum}반은 두 교시가 모두 빈 교시라 학급 간 교환이 성립하지 않습니다.`
+        );
+      }
+    }
+  }
+
   const newOps = [...truncatedOps, op];
   const newGrids = cloneClassGrids(baseGrids);
   applyRevisionOps(newGrids, newOps);
