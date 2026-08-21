@@ -4,6 +4,36 @@
 > 2026-08-14 이전은 [`archive/project_notes_2026-08.md`](./archive/project_notes_2026-08.md)·[`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다
 > (원문 그대로, 블록 무손실 대조 완료). 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-21] Antigravity → Claude/사용자 (과제 J 완결 — 글씨 크기 2단계 2묶음: 생활지도·수명주기 1급 정보 14px 승격)
+
+> ⚠️ **검증 범위 고지**: **화면·모바일 미검증** (360px 및 실기기 검증은 Claude 및 사용자 몫). `tsc`·`build`·`check_ui_removals`·`grep` 회귀 관문 전수 통과 완료. **과제 K(시간표)는 착수 대기 상태 유지.**
+
+- **배경**: `docs/handoff/NEXT.md` 과제 J 지시서에 따라 생활지도(`src/components/admin/discipline/`) 및 수명주기(`src/components/admin/lifecycle/`) 컴포넌트의 1급 정보(학생/교사 식별자, 날짜/기한, 상태 뱃지, 조치/액션 버튼, 모달 텍스트, 입력 필드 값/라벨, 테이블 헤더/데이터)를 `docs/font_size_spec.md` 3등급 체계에 맞춰 `text-sm`(14px)으로 승격. 2급(12px)·3급(11px) 정보와 10px 미만 잔재 0건 유지.
+- **구현 및 커밋 내역 (2개 그룹 커밋)**:
+  1. `b81ee80`: **Commit 1 (`style(discipline): 글씨 크기 2단계 — 생활지도 화면 1급 정보 14px 승격`)** —
+     - `src/components/admin/discipline/` 8개 파일 (`DisciplineConfigTab.tsx`, `DisciplinePermissionsTab.tsx`, `DisciplineRecordTab.tsx`, `DisciplineStageEventsTab.tsx`, `DisciplineStatusTab.tsx`, `DisciplineSummarySection.tsx`, `DisciplineVoidedTab.tsx`, `HomeroomAssignmentTab.tsx`).
+     - 학생 이름/학번/학년반번호, 징계 발생일시/단계전환일, 단계 뱃지/명칭, 조치 버튼, 필터 토글, 입력 필드 라벨/값 `text-sm` 승격. 임의의 `text-[11px]` 잔재를 표준 `text-xs`/`text-sm`으로 정비.
+  2. `86805ae`: **Commit 2 (`style(lifecycle): 글씨 크기 2단계 — 수명주기 화면 1급 정보 14px 승격`)** —
+     - `src/components/admin/lifecycle/` 13개 파일 (`GroupTabs.tsx`, `EnrollSheetEditor.tsx`, `EnrollTab.tsx`, `GraduationConsentsTab.tsx`, `GraduationTab.tsx`, `OUTab.tsx`, `PromoteSheetEditor.tsx`, `PromoteTab.tsx`, `StudentLifecycle.tsx`, `SubstituteHandoverWizard.tsx`, `TeacherLifecycle.tsx`, `TransferInTab.tsx`, `TransferOutTab.tsx`). (`shared.tsx`는 기존 표준 `text-sm` 준수 확인).
+     - 학생/교사 이름, 학번, 전입/전출일, 졸업/정지/삭제 예정일 및 D-Day, 상태 뱃지, 테이블 헤더/데이터 셀, 마법사 단계 인디케이터, 액션/제어 버튼, 폼 인풋/라벨 `text-sm` 승격.
+- **공용 파일 영향 및 파급 분석**:
+  - `shared.tsx`: `Btn`, `ErrBox`, `StepTracker` 등이 이미 표준 `text-sm`으로 작성되어 수정 없이 규격 만족.
+  - `GroupTabs.tsx`: 테스트 모드 경고 띠(`text-sm text-amber-900`), 그룹 리스트 헤더(`text-sm font-bold`), 생성/삭제 상태 뱃지(`text-xs font-bold`), 배정 인원수(`text-sm font-semibold`) 승격. `StudentLifecycle.tsx`의 2단계(그룹 삭제) 및 5단계(그룹 생성) 탭 화면에 적용됨.
+- **1급 후보 중 2급(12px)으로 유지한 항목 및 사유**:
+  - 이메일 주소 (`text-xs font-mono`, `text-slate-500` / `text-indigo-600`): 식별 보조 정보(2급)로 규정되어 `text-xs` 유지.
+  - 날짜/카운트다운 보조 힌트 텍스트(`text-xs text-gray-400` / `text-xs text-slate-500`): 주 정보(D-Day, 예정일)는 14px 승격하고 부가 설명은 12px 유지.
+  - 모달 레이블 텍스트(`text-xs text-slate-500`): 속성명 레이블은 12px, 실제 대상자 값은 14px 볼드로 분리하여 시각 계층 확립.
+  - 긴 안내 도움말 블록 내부 설명문(`text-xs text-gray-500` / `text-xs text-indigo-900`): 본문 설명문으로 12px 유지.
+- **검증 관문 결과**:
+  - `grep -rnE "text-\[[0-9](\.[0-9]+)?px\]" src/` ✅ (0 matches — 1단계 회귀 없음)
+  - `grep -rln "text-\[10px\]" src/` ✅ (13개 파일 정확 일치 — `docs/font_size_spec.md` §7 허용 목록 13개)
+  - `npx tsc --noEmit` ✅ (0 errors)
+  - `npm run build` ✅ (47/47 static pages prerendered)
+  - `bash scripts/check_ui_removals.sh 6c95c62` ✅ (`✅ 사라진 상호작용 없음 (기준 6c95c62)`)
+- **다음 단계 인계**:
+  - Claude / Codex에게 **과제 J 검증** 및 **화면/모바일(360px) 레이아웃 검수** 인계.
+  - **과제 K(시간표)는 착수 대기 상태**이며, 과제 J 검증 완료 후 지시에 따라 착수 예정.
+
 ## [2026-08-20] Antigravity → Claude/사용자 (과제 I 완결 — 글씨 크기 2단계 1묶음 14px 승격)
 
 > ⚠️ **검증 범위 고지**: **화면·모바일 미검증** (360px 및 실기기 검증은 Claude 및 사용자 몫). `tsc`·`build`·`check_ui_removals`·`grep` 회귀 관문 전수 통과 완료.
