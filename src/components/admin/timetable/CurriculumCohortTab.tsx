@@ -414,12 +414,13 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
             <span className="text-gray-500">학년도</span>
           </div>
 
-          <button
-            onClick={handleOpenNew}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
-          >
-            <span>+ 교육과정 추가</span>
-          </button>
+          {/*
+            여기 있던 「+ 교육과정 추가」를 걷었다 (2026-08-21 사용자 지적 —
+            *"위의 +교육과정 추가랑 아래의 +교육과정 추가는 뭔 차이야?"*).
+            차이가 없었다 — 둘 다 handleOpenNew를 부르는 **같은 버튼**이었다.
+            아래 「교육과정별 기본 배치」 머리의 것만 남긴다. 만드는 대상 바로 옆이 제자리이고,
+            짝인 「학년도별 변경」도 자기 구역 머리에 자기 버튼을 갖는 대칭이 된다.
+          */}
         </div>
       </div>
 
@@ -457,11 +458,14 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[1, 2, 3].map((grade) => {
             const resolved = resolveFixedSlots(cohorts, overrides, currentSchoolYear, grade);
+            // 이름을 그대로 이어 붙이면 「현행 교육과정 **교육과정에** 따름」처럼 겹친다
+            // (2026-08-21 사용자 캡처에서 실제로 그렇게 나왔다). 이름은 「」로 감싸고
+            // 종류는 앞에 붙여, 이름에 무슨 글자가 들어 있든 겹치지 않게 한다.
             const sourceLabel =
               resolved.source.kind === "override"
-                ? `「${resolved.source.label}」에 따름`
+                ? `「${resolved.source.label}」 변경 적용`
                 : resolved.source.kind === "cohort"
-                ? `${resolved.source.label} 교육과정에 따름`
+                ? `교육과정 「${resolved.source.label}」`
                 : "등록된 고정 시간 없음";
 
             return (
