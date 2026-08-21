@@ -994,14 +994,18 @@ const S2_FELT_RUN = envNum("SOLVER_S2_FELTRUN", 0);
  *  관문(기존 기본 28.5 이하) 미달. 낮은 가중도 탐색 궤적 전체를 흔들어 S3로 새는 것이
  *  S7 전례(0.5점에 S4 부활)와 동일. 채택된 수단은 사후 보수(⑦-e, REPAIR_S2FELT). */
 const S2_FELT_WEIGHT = envNum("SOLVER_S2_FELT_WEIGHT", 0);
-/** ⑦-e — 죽음 연속 사후 보수. 배치·탐색 지형은 일절 건드리지 않고(위 ⓒ·ⓑ가 그래서 실격),
- *  완성된 판에서 죽음 연속에 걸린 수업을 같은 학급의 다른 요일 수업과 맞바꾼다. 채택 기준이
- *  ⑦-d와 다르다: **내부 점수 비악화 + 죽음 점수 엄격 감소 + S1 비악화** — 공식 점수가 같은
- *  「가로 이동」(죽음 3연속 → 점심 경유)이 이 패스의 존재 이유다.
+/** ⑦-e — 연속 3교시 사후 보수. 배치·탐색 지형은 일절 건드리지 않고(위 ⓒ·ⓑ가 그래서 실격),
+ *  완성된 판에서 연속 3교시에 걸린 수업을 같은 학급의 다른 수업(다른 요일 또는 **같은 요일
+ *  다른 교시** — 연속 쪼개기는 요일 안에서도 된다)과 맞바꾼다. 채택 기준: **내부 점수 비악화 +
+ *  S1 비악화 + 죽음 비증가 + (S2 공식 감소 또는 죽음 감소)**.
  *
- *  기본값 켬 (2026-08-22 관문 통과 승격 — 벤치마크 총점 28.5→27.5·죽음 연속 4→1·S2 공식 4→1·
- *  S1 3 비회귀·S4 0·4연속 0·미배정 0·폴백 0·결정론 ✅. S1 가드가 없던 1차 실험에서 S1 3→4
- *  회귀가 실측돼 가드를 추가했다. 상세는 일지). 되돌리기: SOLVER_REPAIR_S2FELT=0 */
+ *  기본값 켬 (2026-08-22 관문 통과 승격, 같은 날 2차로 전량 표적 일반화 — 벤치마크 총점
+ *  28.5→27·S2 공식 4→1·죽음 4→1·S1 3 비회귀·S4 0·4연속 0·미배정 0·폴백 0·결정론 ✅.
+ *  경위: 1차 승격판은 죽음 연속만 표적(27.5·죽음 1)이었고, 사용자 지시(실제 시간표는 연속 3
+ *  자체가 0건)로 전량 표적 + 같은 요일 교환·회전을 추가해 27이 됐다. S1 가드는 1차 실험에서
+ *  S1 3→4 회귀(내부Δ=0 교환이 S2를 S1로 바꿔치기) 실측 후 추가. 잔존 1건(시드 1 기준)은
+ *  전 후보가 feasibility 탈락하는 자리 — 2자·3자 반경의 한계로, 다음 수단은 Kempe 체인/LNS
+ *  (로드맵 §2 리서치 항목). 상세는 일지). 되돌리기: SOLVER_REPAIR_S2FELT=0 */
 const REPAIR_S2FELT = (process.env.SOLVER_REPAIR_S2FELT ?? "1") === "1";
 /** 0 = 끔(기본). 4면 교사의 하루 수업을 4시간 이하로 배치 단계에서 강제한다.
  *
@@ -2150,19 +2154,23 @@ export function solveTimetable(input: SolverInput): SolverResult {
     }
   }
 
-  // ── ⑦-e 죽음 연속 사후 보수 (2026-08-22) — 로드맵 §2 「S2 연속을 점심 경유로 차등」 ──
+  // ── ⑦-e 연속 3교시 사후 보수 (2026-08-22) — 로드맵 §2 「S2 연속을 점심 경유로 차등」 ──
   // 실측 경위: ⓒ(배치 하드 상한 SOLVER_S2_FELTRUN=3) = 총점 39 실격 + 폴백 틈 4연속 재발,
   // ⓑ(내부 가중 SOLVER_S2_FELT_WEIGHT 1·2) = 총점 34.5·31로 관문(기존 기본 이하) 미달 —
   // 조이는 힘이 S3·폴백으로 새는 축간 상충의 4·5번째 실측. 그래서 배치·탐색 지형은 일절
-  // 건드리지 않고 사후 보수만 한다(⑦-d와 같은 처방). 수용 기준이 ⑦-d와 다르다:
-  // **내부 점수 비악화 + 죽음 점수(feltDeathPoints) 엄격 감소** — 공식 점수가 같은
-  // 「가로 이동」(죽음 3연속 → 점심 경유)이 존재 이유다. 총점은 절대 나빠질 수 없고
-  // 죽음 점수는 단조 감소라 종료 보장. 결정론 — 정렬 순회·rng 무사용.
+  // 건드리지 않고 사후 보수만 한다(⑦-d와 같은 처방).
+  // 표적은 처음(1차 승격판)에는 죽음 연속만이었으나, 사용자 지시(*"실제 시간표는 뭐가 되었든
+  // 연속 3교시가 없다 — 그걸 맞춰야 한다"*)로 **연속 3교시 전량**으로 일반화했다. 수용 기준:
+  // 내부 점수 비악화 + S1 비악화 + 죽음 비증가 + (S2 공식 감소 또는 죽음 감소) —
+  // 1순위는 연속 해체(S2 −1, 사람 손이 S3 28건을 안고 S2 0을 지키는 것과 같은 맞바꿈 허용),
+  // 2순위는 공식 점수가 같은 「가로 이동」(죽음 → 점심 경유). 총점은 절대 나빠질 수 없고
+  // (S2합, 죽음합)이 사전식 단조 감소라 종료 보장. 결정론 — 정렬 순회·rng 무사용.
   if (REPAIR_S2FELT) {
-    /** 영향권 (교사×요일)들의 [죽음 점수 합, S1 점수 합] — 교환 전후를 같은 집합으로 재서 Δ를
-     *  얻는다. S1까지 같이 재는 이유: 내부Δ=0 가로 이동이 S2 −1을 S1 +1로 바꿔치기하는 것이
-     *  실측됐다(1차 실험 S1 3→4 회귀) — 오늘 ⑦-d가 벌어 둔 축을 이 패스가 도로 잃으면 안 된다. */
-    const feltSum = (tks: readonly string[], days: number[]): [number, number] => {
+    /** 영향권 (교사×요일)들의 [S2 공식 점수 합, 죽음 점수 합, S1 점수 합] — 교환 전후를 같은
+     *  집합으로 재서 Δ를 얻는다. S1까지 같이 재는 이유: 내부Δ=0 가로 이동이 S2 −1을 S1 +1로
+     *  바꿔치기하는 것이 실측됐다(1차 실험 S1 3→4 회귀) — ⑦-d가 벌어 둔 축을 도로 잃으면 안 된다. */
+    const feltSum = (tks: readonly string[], days: number[]): [number, number, number] => {
+      let s2 = 0;
       let death = 0;
       let s1 = 0;
       const seen = new Set<string>();
@@ -2172,25 +2180,26 @@ export function solveTimetable(input: SolverInput): SolverResult {
           if (seen.has(k)) continue;
           seen.add(k);
           const periods = teacherDaySnapshot(tk, d).periods;
+          s2 += s2OfficialPoints(periods);
           death += feltDeathPoints(periods, L);
           if (periods.size >= 5) s1 += periods.size - 4;
         }
-      return [death, s1];
+      return [s2, death, s1];
     };
-    const deathDays = (): Array<{ tk: string; day: number }> => {
+    const runDays = (): Array<{ tk: string; day: number }> => {
       const out: Array<{ tk: string; day: number }> = [];
       for (const [tk, dm] of soft.teacherDays)
         for (const [day] of dm)
-          if (feltDeathPoints(teacherDaySnapshot(tk, day).periods, L) > 0)
+          if (s2OfficialPoints(teacherDaySnapshot(tk, day).periods) > 0)
             out.push({ tk, day });
       out.sort((a, b) => (a.tk < b.tk ? -1 : a.tk > b.tk ? 1 : a.day - b.day));
       return out;
     };
     for (let pass = 0; pass < 3; pass++) {
       let improved = 0;
-      for (const { tk, day } of deathDays()) {
+      for (const { tk, day } of runDays()) {
         // 앞선 교환이 이미 풀었을 수 있다 — 재판정
-        if (feltDeathPoints(teacherDaySnapshot(tk, day).periods, L) <= 0) continue;
+        if (s2OfficialPoints(teacherDaySnapshot(tk, day).periods) <= 0) continue;
         const mine: string[] = [];
         for (const [key, occ] of placed) {
           if (occ.day !== day) continue;
@@ -2200,6 +2209,10 @@ export function solveTimetable(input: SolverInput): SolverResult {
           mine.push(key);
         }
         mine.sort();
+        if (process.env.SOLVER_S1_DEBUG === "1") {
+          const all = [...placed.entries()].filter(([, o]) => o.day === day && sections[o.sectionIdx].teacherKeys.includes(tk));
+          console.error(`[s2e-v] tk=${tk} d=${day} 이동가능=${mine.length}/${all.length} (제외 사유: ${all.filter(([, o]) => sections[o.sectionIdx].classKeys.length !== 1).length}건 다학급, ${all.filter(([, o]) => sections[o.sectionIdx].kind === "fixed").length}건 고정)`);
+        }
         let done = false;
         for (const key of mine) {
           if (done) break;
@@ -2207,23 +2220,30 @@ export function solveTimetable(input: SolverInput): SolverResult {
           if (!cur || cur.day !== day) continue;
           const s = sections[cur.sectionIdx];
           const peers = (byClass.get(s.classKeys[0]) || []).slice().sort();
-          // 2자 교환 — (죽음Δ, 내부Δ) 사전식 최선. 내부Δ ≤ 0 그리고 죽음Δ < 0 만 후보
-          let best: { k: string; di: number; df: number } | null = null;
+          // 2자 교환 — (S2Δ, 죽음Δ, 내부Δ) 사전식 최선. 후보 조건: 내부Δ ≤ 0 · S1Δ ≤ 0 ·
+          // 죽음Δ ≤ 0 · 그리고 (S2Δ < 0 또는 죽음Δ < 0) — 연속 해체가 1순위, 죽음→경유 가로
+          // 이동이 2순위. (S2합, 죽음합)이 사전식 단조 감소라 종료 보장.
+          let best: { k: string; di: number; df: number; ds2: number } | null = null;
           for (const otherKey of peers) {
             if (otherKey === key) continue;
             const other = placed.get(otherKey);
-            if (!other || other.len !== cur.len || other.day === cur.day) continue;
+            // 같은 요일 다른 교시와의 교환도 허용한다 — 요일 부하는 그대로 두고 연속만 쪼개는
+            // 사람 손의 기법(5시간 요일을 1-2-4-5-7처럼 흩는 것). 요일 간 교환이 전부 막힌
+            // 5-6-7류 잔존 위반의 유일한 출구가 이것이다 (⑦-d와 다른 점 — S1은 요일을 옮겨야만
+            // 풀리지만 S2는 같은 요일 안에서도 풀린다).
+            if (!other || other.len !== cur.len || (other.day === cur.day && other.start === cur.start)) continue;
             const so = sections[other.sectionIdx];
             if (so.classKeys.length !== 1 || so.kind === "fixed") continue;
             const tksAff = [...new Set([...s.teacherKeys, ...so.teacherKeys])];
             const daysAff = [cur.day, other.day];
-            const [fBefore, s1Before] = feltSum(tksAff, daysAff);
+            const [s2Before, fBefore, s1Before] = feltSum(tksAff, daysAff);
             const before = softScore;
             apply(cur, -1);
             apply(other, -1);
             let di: number | null = null;
             let df = 0;
             let ds1 = 0;
+            let ds2 = 0;
             if (feasible(cur.sectionIdx, other.day, other.start, cur.len)) {
               const movedCur: Occurrence = { ...cur, day: other.day, start: other.start };
               apply(movedCur, 1);
@@ -2231,7 +2251,8 @@ export function solveTimetable(input: SolverInput): SolverResult {
                 const movedOther: Occurrence = { ...other, day: cur.day, start: cur.start };
                 apply(movedOther, 1);
                 di = softScore - before;
-                const [fAfter, s1After] = feltSum(tksAff, daysAff);
+                const [s2After, fAfter, s1After] = feltSum(tksAff, daysAff);
+                ds2 = s2After - s2Before;
                 df = fAfter - fBefore;
                 ds1 = s1After - s1Before;
                 apply(movedOther, -1);
@@ -2240,11 +2261,15 @@ export function solveTimetable(input: SolverInput): SolverResult {
             }
             apply(cur, 1);
             apply(other, 1);
+            if (process.env.SOLVER_S1_DEBUG === "1" && di !== null)
+              console.error(`[s2e] tk=${tk} d=${day} ${key}<->${otherKey} sameday=${other.day === cur.day} di=${di} ds2=${ds2} df=${df} ds1=${ds1}`);
             if (
-              di !== null && di <= 0 && df < 0 && ds1 <= 0 &&
-              (best === null || df < best.df || (df === best.df && di < best.di))
+              di !== null && di <= 0 && ds1 <= 0 && df <= 0 && (ds2 < 0 || df < 0) &&
+              (best === null ||
+                ds2 < best.ds2 ||
+                (ds2 === best.ds2 && (df < best.df || (df === best.df && di < best.di))))
             )
-              best = { k: otherKey, di, df };
+              best = { k: otherKey, di, df, ds2 };
           }
           if (best) {
             const other = placed.get(best.k)!;
@@ -2256,12 +2281,13 @@ export function solveTimetable(input: SolverInput): SolverResult {
             done = true;
             continue;
           }
-          // 3자 회전 — 같은 기준 (⑦-d 실측: 2자 교환은 목적지가 좁아 자주 막힌다)
-          let rBest: { k1: string; k2: string; di: number; df: number } | null = null;
+          // 3자 회전 — 같은 기준 (⑦-d 실측: 2자 교환은 목적지가 좁아 자주 막힌다).
+          // 같은 요일 회전도 허용 — 2자 교환과 같은 이유(연속 쪼개기는 요일 안에서도 된다).
+          let rBest: { k1: string; k2: string; di: number; df: number; ds2: number } | null = null;
           for (const k1 of peers) {
             if (k1 === key) continue;
             const o1 = placed.get(k1);
-            if (!o1 || o1.len !== cur.len || o1.day === cur.day) continue;
+            if (!o1 || o1.len !== cur.len || (o1.day === cur.day && o1.start === cur.start)) continue;
             if (sections[o1.sectionIdx].classKeys.length !== 1 || sections[o1.sectionIdx].kind === "fixed") continue;
             for (const k2 of peers) {
               if (k2 === key || k2 === k1) continue;
@@ -2276,7 +2302,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
                 ]),
               ];
               const daysAff = [...new Set([cur.day, o1.day, o2.day])];
-              const [fBefore, s1Before] = feltSum(tksAff, daysAff);
+              const [s2Before, fBefore, s1Before] = feltSum(tksAff, daysAff);
               const before = softScore;
               apply(cur, -1);
               apply(o1, -1);
@@ -2284,6 +2310,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
               let di: number | null = null;
               let df = 0;
               let ds1 = 0;
+              let ds2 = 0;
               if (feasible(cur.sectionIdx, o1.day, o1.start, cur.len)) {
                 const mCur: Occurrence = { ...cur, day: o1.day, start: o1.start };
                 apply(mCur, 1);
@@ -2294,7 +2321,8 @@ export function solveTimetable(input: SolverInput): SolverResult {
                     const mO2: Occurrence = { ...o2, day: cur.day, start: cur.start };
                     apply(mO2, 1);
                     di = softScore - before;
-                    const [fAfter, s1After] = feltSum(tksAff, daysAff);
+                    const [s2After, fAfter, s1After] = feltSum(tksAff, daysAff);
+                    ds2 = s2After - s2Before;
                     df = fAfter - fBefore;
                     ds1 = s1After - s1Before;
                     apply(mO2, -1);
@@ -2307,10 +2335,12 @@ export function solveTimetable(input: SolverInput): SolverResult {
               apply(o1, 1);
               apply(o2, 1);
               if (
-                di !== null && di <= 0 && df < 0 && ds1 <= 0 &&
-                (rBest === null || df < rBest.df || (df === rBest.df && di < rBest.di))
+                di !== null && di <= 0 && ds1 <= 0 && df <= 0 && (ds2 < 0 || df < 0) &&
+                (rBest === null ||
+                  ds2 < rBest.ds2 ||
+                  (ds2 === rBest.ds2 && (df < rBest.df || (df === rBest.df && di < rBest.di))))
               )
-                rBest = { k1, k2, di, df };
+                rBest = { k1, k2, di, df, ds2 };
             }
           }
           if (rBest) {
