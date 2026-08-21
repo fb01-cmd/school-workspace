@@ -95,6 +95,8 @@ export interface SolverResult {
     placedByEjection: number;
     localSearchAccepted: number;
     softScoreEstimate: number; // 내부 추정치 — 공식 점수는 validateTimetable
+    /** S4(같은 날 동일 과목) 공식 점수 몫 — 사용자 기준 금기라 포트폴리오 선발이 사전식으로 우선한다 */
+    s4Estimate: number;
   };
 }
 
@@ -981,6 +983,11 @@ function classDayPenalty(subjects: Map<string, number>): number {
   return pts;
 }
 
+// S7(순배)은 솔버 목적함수에 넣지 않는다 (2026-08-21 실측 후 결정) — 0.5점을 배치·국소
+// 탐색에 넣자 탐색 지형이 흔들려 전 시드에서 S4(금기)가 되살아나고 총점이 기준선을 넘었다
+// (34·S4 0 → 43.5·S4 1). 서열 요구(S6 > S7)는 가중 1 > 0으로 성립하며, 절대치는 11월
+// 리허설 조정 대상. S7은 검사기가 표시하고(0.5점) 해결안 탐색기(fixFinder)가 사후에 푼다.
+
 // ── 솔버 본체 ─────────────────────────────────────────────────
 
 interface Occurrence {
@@ -1697,6 +1704,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
       // S4 내부 가중을 벗겨 공식 점수 등가로 보고 — classDayPenalty는 S4만 담고 그 점수는
       // 전부 (n-1)×S4_INTERNAL_WEIGHT 꼴이라 나눗셈이 정확히 떨어진다.
       softScoreEstimate: softScore - softScoreS4 + softScoreS4 / S4_INTERNAL_WEIGHT,
+      s4Estimate: softScoreS4 / S4_INTERNAL_WEIGHT,
     },
   };
 }
@@ -1714,6 +1722,8 @@ export interface PortfolioRanking {
   seed: number;
   soft: number; // 내부 추정치, 공식 점수 등가로 환산된 값 (S4 내부 가중 제거 — 공식 판정은 validateTimetable)
   unplacedHours: number;
+  /** S4 공식 점수 몫 — 선발 사전식 2순위 (미배정 → S4 → 총점) */
+  s4?: number;
 }
 
 export interface PortfolioResult {
@@ -1740,18 +1750,29 @@ export function solveTimetablePortfolio(
         : undefined,
     });
     const unplacedHours = r.unplaced.reduce((s, u) => s + u.remaining, 0);
-    ranking.push({ seed, soft: r.stats.softScoreEstimate, unplacedHours });
+    ranking.push({ seed, soft: r.stats.softScoreEstimate, unplacedHours, s4: r.stats.s4Estimate });
+    // 선발은 사전식: 미배정 → S4(금기 — 총점이 낮아도 S4 있는 해가 없는 해를 이기면 안 된다.
+    // 2026-08-21 실측: S7 도입으로 지형이 바뀌자 총점 34·S4 2건 시드가 37·S4 0건 시드를
+    // 눌렀다 — 총점 합산만으로는 금기 서열이 지켜지지 않는다) → 총점 순.
     if (
       !best ||
       unplacedHours < bestUnplaced ||
       (unplacedHours === bestUnplaced &&
-        r.stats.softScoreEstimate < best.stats.softScoreEstimate)
+        (r.stats.s4Estimate < best.stats.s4Estimate ||
+          (r.stats.s4Estimate === best.stats.s4Estimate &&
+            r.stats.softScoreEstimate < best.stats.softScoreEstimate)))
     ) {
       best = { ...r, seed };
       bestUnplaced = unplacedHours;
     }
   });
-  ranking.sort((a, b) => a.unplacedHours - b.unplacedHours || a.soft - b.soft || a.seed - b.seed);
+  ranking.sort(
+    (a, b) =>
+      a.unplacedHours - b.unplacedHours ||
+      (a.s4 ?? 0) - (b.s4 ?? 0) ||
+      a.soft - b.soft ||
+      a.seed - b.seed
+  );
   return { best: best!, ranking };
 }
 

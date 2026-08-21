@@ -168,10 +168,30 @@ function collectSourceCells(
   model: TimetableConstraintModel
 ): SourceCell[] {
   if (target.scope === "class") {
-    // S4 — 그 학급 그 요일의 중복 과목 셀 (첫 건 제외)
     const [grade, classNum] = target.key.split("-").map(Number);
     const grid = findGrid(grids, grade, classNum);
     if (!grid) return [];
+    if (target.code === "S7") {
+      // S7 — 그 학급에서 "3회 이상 전부 같은 교시"인 과목의 셀 전부.
+      // 어느 한 회차만 다른 교시로 옮겨도 회전이 생기므로 전 회차가 이동 후보다.
+      const bySubj = new Map<string, { periods: Set<number>; cells: SourceCell[] }>();
+      for (const c of grid.cells || []) {
+        for (const l of c.lessons || []) {
+          if (!(l.teachers || []).some((t) => norm(t.email))) continue; // 자리표시 제외 (검사기 규약)
+          const s = normSubject(l.subjectName);
+          if (!bySubj.has(s)) bySubj.set(s, { periods: new Set(), cells: [] });
+          const e = bySubj.get(s)!;
+          e.periods.add(c.period);
+          e.cells.push({ grade, classNum, day: c.day, period: c.period });
+        }
+      }
+      const out: SourceCell[] = [];
+      for (const { periods, cells } of bySubj.values()) {
+        if (cells.length >= 3 && periods.size === 1) out.push(...cells);
+      }
+      return out;
+    }
+    // S4 — 그 학급 그 요일의 중복 과목 셀 (첫 건 제외)
     const seen = new Set<string>();
     const out: SourceCell[] = [];
     const cells = (grid.cells || [])
@@ -398,8 +418,10 @@ function* searchGenerator(
   };
 
   // S1·S4·S5·S6은 "다른 요일"로만 옮긴다(요일 단위 감점이라 같은 요일 안에서 옮겨봐야 그대로다).
-  // S2·S3은 같은 요일 안에서 교시를 바꾸는 것만으로 풀리므로 모든 슬롯을 본다.
-  const differentDayOnly = target.code !== "S2" && target.code !== "S3";
+  // S2·S3은 같은 요일 안에서 교시를 바꾸는 것만으로 풀리고, S7(순배)은 교시 축 감점이라
+  // 같은 요일의 다른 교시로 옮기는 것으로도 풀린다 — 셋은 모든 슬롯을 본다.
+  const differentDayOnly =
+    target.code !== "S2" && target.code !== "S3" && target.code !== "S7";
 
   const occWhere = buildOccupancyWhere(currentGrids);
 
