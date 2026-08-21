@@ -334,8 +334,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
               <span>🛠️ 기초시간표 개정 (학기 중 원본 수정)</span>
             </h3>
             <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-              개학 첫 주 학기 시간표 수정분을 편집하고 <strong>지정된 다음 주 월요일부터 효력이 발생</strong>하도록 적용합니다.<br />
-              현재 진행 중인 이번 주 시간표 교체와 꼬이지 않도록 독립 개정판으로 운영됩니다.
+              <strong>지정된 다음 주 월요일부터 효력이 발생</strong>합니다. 진행 중인 이번 주 시간표는 건드리지 않습니다.
             </p>
           </div>
         </div>

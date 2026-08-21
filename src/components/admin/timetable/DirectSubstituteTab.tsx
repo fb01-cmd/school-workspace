@@ -1372,7 +1372,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             <span>일과계 직권 배정</span>
           </h2>
           <p className="text-xs text-gray-500 mt-1">
-            교사를 선택하면 그 교사의 모든 주 시간표가 함께 표시됩니다. 수업을 고르고 후보를 선택해 여러 건을 [담기]로 모은 뒤 한 번에 반영할 수 있으며, 상대 선생님께 보낼 양해 이미지도 만들 수 있습니다.
+            여러 건을 [담기]로 모아 한 번에 반영할 수 있고, 상대 선생님께 보낼 양해 이미지도 만들 수 있습니다.
           </p>
         </div>
       </div>

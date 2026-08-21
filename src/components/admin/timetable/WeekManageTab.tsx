@@ -204,7 +204,7 @@ export default function WeekManageTab({
             <span>교사 시간표 공개 범위 설정</span>
           </h3>
           <p className="text-xs text-gray-500 mt-1">
-            교사 및 학생 화면에 오늘 기준으로 몇 주 앞까지 시간표를 공개할지 설정합니다.
+            교사·학생 화면에 오늘부터 몇 주 앞까지 보일지 정합니다.
           </p>
         </div>
         <div className="flex items-center gap-3 self-start md:self-auto">

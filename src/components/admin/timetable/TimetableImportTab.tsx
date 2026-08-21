@@ -1365,9 +1365,6 @@ export default function TimetableImportTab({
           <div className="flex justify-between items-center border-b border-gray-100 pb-4">
             <div>
               <h3 className="text-base font-bold text-gray-900">Step 2. 교사 성명 매핑</h3>
-              <p className="text-xs text-gray-500 mt-1">
-                시간표 엑셀 상의 교사 이름과 Google Workspace 계정 이메일을 대조합니다.
-              </p>
             </div>
             <button
               onClick={runValidation}
@@ -1477,7 +1474,7 @@ export default function TimetableImportTab({
             <div>
               <h3 className="text-base font-bold text-gray-900">Step 3. 시간표 무결성 검증 리포트</h3>
               <p className="text-xs text-gray-500 mt-1">
-                교사 오버랩, 학급 셀 누락, 시수표 불일치 항목을 점검하고 초안 학기로 저장합니다.
+                통과하면 초안 학기로 저장됩니다.
               </p>
             </div>
             <button
@@ -1626,7 +1623,7 @@ export default function TimetableImportTab({
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
             <h3 className="text-base font-bold text-gray-900">📋 시간표 학기 관리</h3>
             <p className="text-xs text-gray-500">
-              생성된 기초시간표 학기 목록입니다. 초안 학기 작성이 완료되면 정식 운영 학기로 전환하세요.
+              초안 작성이 끝나면 정식 운영 학기로 전환하세요.
             </p>
 
             <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -1701,9 +1698,6 @@ export default function TimetableImportTab({
                 <span>🔑</span>
                 <span>시간표 일과계 관리자 지정</span>
               </h3>
-              <p className="text-xs text-gray-500">
-                시간표 관리 메뉴 접근 및 가져오기 권한을 부여할 일과계 실무 교직원의 이메일을 관리합니다.
-              </p>
 
               <div className="flex gap-2 max-w-md">
                 <AutocompleteInput

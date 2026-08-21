@@ -520,9 +520,6 @@ export default function NeisBatchExportTab({ activeTermId }: NeisBatchExportTabP
         <div className="bg-slate-50 px-4 py-3 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h4 className="text-xs font-bold text-gray-900">과목 나이스 등재명 매핑표</h4>
-            <p className="text-[11px] text-gray-500">
-              시간표 내 약칭과 나이스 공식 등재명을 1:1 매핑합니다.
-            </p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -605,9 +602,6 @@ export default function NeisBatchExportTab({ activeTermId }: NeisBatchExportTabP
                 </span>
               )}
             </h4>
-            <p className="text-xs text-slate-500 mt-0.5">
-              사전 검증이 완료된 기초시간표 데이터를 나이스 일괄 등록 양식 파일로 생성하고 압축 파일(ZIP)로 내려받습니다.
-            </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {bundle && (

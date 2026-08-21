@@ -941,9 +941,6 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
             <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
               <span>📋 선생님별 주당 수업 시간</span>
             </h2>
-            <p className="text-xs text-gray-500 mt-1">
-              신학기 편성의 기초가 되는 선생님별·과목별 주당 수업 시간을 등록하고 조정합니다.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -1532,9 +1529,6 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-gray-900">📥 선생님별 주당 수업 시간 엑셀 불러오기</h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  엑셀의 교사 성명을 시스템 계정과 1:1로 매칭합니다.
-                </p>
               </div>
               <button
                 onClick={() => setUploadModalOpen(false)}

@@ -1066,9 +1066,6 @@ export default function AssignmentHoursModal({
             <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
               <span>📄 배정표에서 주당 수업 시간 만들기</span>
             </h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              과목별 배정표 등의 문서에서 교과별 배정 내용을 자동으로 읽어 선생님별 수업 시간을 생성합니다.
-            </p>
           </div>
           <button
             onClick={handleClose}
@@ -1476,7 +1473,7 @@ export default function AssignmentHoursModal({
                         </span>
                       </h4>
                       <p className="text-[11px] text-gray-500 mt-0.5">
-                        배정표 및 문서의 과목 이름을 시간표 시스템의 정식 과목과 연결합니다. 한 번 확인하면 다음 학기에도 자동으로 기억됩니다.
+                        한 번 확인해 두면 다음 학기에도 자동으로 기억됩니다.
                       </p>
                     </div>
 

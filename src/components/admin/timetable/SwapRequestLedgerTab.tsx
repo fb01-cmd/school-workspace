@@ -634,9 +634,6 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
                 </span>
               )}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              교사들의 수업교환 신청을 검토하고 승인·반려·취소를 처리합니다.
-            </p>
           </div>
 
           <button
@@ -823,7 +820,7 @@ export default function SwapRequestLedgerTab({ activeTermId }: SwapRequestLedger
             </div>
 
             <p className="text-xs text-gray-600">
-              <strong>{rejectingReq.requesterName}</strong> 선생님의 신청을 반려합니다. 반려 사유를 작성해 주세요 (신청자에게 전달됩니다).
+              <strong>{rejectingReq.requesterName}</strong> 선생님의 신청을 반려합니다. 사유는 신청자에게 전달됩니다.
             </p>
 
             {rejectError && (

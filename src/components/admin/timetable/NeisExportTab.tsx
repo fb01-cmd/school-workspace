@@ -120,8 +120,7 @@ export default function NeisExportTab({ activeTermId }: NeisExportTabProps) {
             </span>
           </h3>
           <p className="text-xs text-gray-500 mt-1">
-            실무사의 현행 수기 입력 흐름을 지원하기 위해 승인된 시간표 변경 사항을 NEIS 양식대로 조회 및
-            엑셀 다운로드합니다.
+            승인된 변경분만 실립니다.
           </p>
         </div>
 
