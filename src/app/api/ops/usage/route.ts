@@ -25,7 +25,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const [snapshot, alert] = await Promise.all([
-      getUsageSnapshot({ days: Number.isFinite(days) ? days : 30, force }),
+      getUsageSnapshot({
+        days: Number.isFinite(days) ? days : 30,
+        force,
+        // 도메인을 넘겨야 진행 중 경보가 돈다 (없으면 판정만 건너뛴다).
+        // 토큰에 domain 필드가 없어 로그인 이메일에서 뽑는다 — 이 화면은 교내 계정 전용이다.
+        domain: (auth.email.split("@")[1] || "").toLowerCase(),
+      }),
       getAlertRecipients(),
     ]);
     // available:false도 200으로 내린다 — 고장이 아니라 "아직 안 켠 기능"이고,

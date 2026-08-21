@@ -15,6 +15,7 @@ import {
   pacificDayStartDaysAgo,
 } from "./usage_logic";
 import { UnavailableReason, fetchBuckets, fetchTotal, toUnavailable } from "./monitoring";
+import { runLiveUsageAlert } from "./usage_alert";
 
 const METRICS: UsageMetric[] = ["reads", "writes", "deletes"];
 
@@ -111,7 +112,7 @@ const hourLabel = (startMs: number) =>
  * (사용량 0과 혼동 금지, usage_alert.ts와 같은 원칙).
  */
 export async function getUsageSnapshot(
-  opts: { days?: number; now?: Date; force?: boolean } = {}
+  opts: { days?: number; now?: Date; force?: boolean; domain?: string } = {}
 ): Promise<UsageSnapshot> {
   const days = Math.min(90, Math.max(7, opts.days ?? 30));
   const now = opts.now ?? new Date();
@@ -142,6 +143,17 @@ export async function getUsageSnapshot(
       deletes: todayTotals[2],
     };
     const { level, top } = computeLevel(todayUsage);
+
+    // ── 진행 중 경보 판정 (2026-08-21 신설) ──
+    // **경보의 주 경로를 여기로 옮겼다.** 크론은 「완결된 날」만 보는데 실행 시각 때문에
+    // 하루가 더 밀려, 오늘 82%를 써도 판정이 모레였다(실측: lastDay가 이틀 전에 정체,
+    // 발송 0건). 사용자가 개발 당시 *"크론은 의미가 없다, 관리자가 실시간 사용량을
+    // 플랫폼에서 볼 수 있게 하는 게 의미 있다"* 고 한 판단이 옳았다.
+    //
+    // **지표를 다시 읽지 않는다** — 바로 위에서 화면용으로 이미 읽은 `todayUsage`를 쓴다.
+    // 추가 비용 0. 화면 응답을 막지 않도록 기다리지 않고(await 없음) 던져 두며,
+    // `runLiveUsageAlert`는 내부에서 절대 throw 하지 않는다.
+    if (opts.domain) void runLiveUsageAlert(opts.domain, todayUsage);
 
     const pack = (arr: Awaited<ReturnType<typeof fetchBuckets>>[]) =>
       ({ reads: arr[0], writes: arr[1], deletes: arr[2] }) as Record<

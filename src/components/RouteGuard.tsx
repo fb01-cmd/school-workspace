@@ -62,10 +62,15 @@ export default function RouteGuard({
         }),
       })
         .then(async (res) => {
-          if (res.ok) {
-            // Firestore에 가입 완료 플래그 저장
-            await updateDoc(userRef, { isSecurityGroupJoined: true });
-          }
+          if (!res.ok) return;
+          // **실제로 붙은 게 1건 이상일 때만** 완료 도장을 찍는다 (2026-08-21).
+          // 종전에는 res.ok 만 보고 찍었다. 그래서 설정에서 보안그룹을 빼 둔 동안
+          // 로그인한 교사는 **0개 가입인데 «연동 완료»** 가 되고, 이 플래그가 재시도
+          // 조건이라(위 !userData.isSecurityGroupJoined) 나중에 보안그룹을 다시
+          // 등록해도 그 교사만 조용히 빠진 채 남았다.
+          const data = await res.json().catch(() => null);
+          if (data && typeof data.joinedCount === "number" && data.joinedCount < 1) return;
+          await updateDoc(userRef, { isSecurityGroupJoined: true });
         })
         .catch((err) => {
           console.error("보안그룹 자동 연동 실패 (다음 로그인 때 재시도):", err);

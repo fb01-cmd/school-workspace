@@ -2165,7 +2165,12 @@ export async function POST(req: NextRequest) {
           status: "success",
         });
 
-        return NextResponse.json({ success: true, isMock, groupResults });
+        // 실제로 몇 개 붙었는지 돌려준다 (2026-08-21). 종전에는 `success: true`만 보내서,
+        // **설정에 보안그룹이 없어 0개 가입**인 경우에도 화면이 «연동 완료» 플래그를 찍었다.
+        // 그 플래그는 재시도 조건이라, 나중에 보안그룹을 다시 등록해도 그 사이 로그인한
+        // 교사만 조용히 빠진 채 남았다. 화면은 이 수를 보고 판단한다.
+        const joinedCount = groupResults.filter((g) => g.success).length;
+        return NextResponse.json({ success: true, isMock, groupResults, joinedCount });
       } catch (err: any) {
         return NextResponse.json({ error: `보안그룹 가입 실패: ${err.message}` }, { status: 500 });
       }

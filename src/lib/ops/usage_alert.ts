@@ -18,9 +18,11 @@ import {
   DailyUsage,
   EMPTY_ALERT_STATE,
   UsageRatio,
+  LiveAlertFields,
   buildAlertText,
   computeLevel,
   decideEmit,
+  decideEmitLive,
   lastCompletePacificDay,
 } from "./usage_logic";
 import { UnavailableReason, fetchTotal, toUnavailable } from "./monitoring";
@@ -258,4 +260,76 @@ export async function setAlertRecipients(input: unknown): Promise<SetRecipientsR
 
   await stateRef().set({ recipients: cleaned }, { merge: true });
   return { ok: true, view: await getAlertRecipients() };
+}
+
+// ── 진행 중인 오늘 주기 경보 (2026-08-21 신설) ─────────────────────────
+//
+// **왜 만들었나 — 사용자 판단이 옳았음이 실측으로 확인됐다.**
+// 개발 당시 사용자가 *"크론 돌리는 건 의미가 없다, 차라리 관리자가 실시간 사용량을
+// 플랫폼에서 볼 수 있게 하는 게 의미 있다"* 고 했다. 2026-08-21 실측이 그 말을 확인했다 —
+// `platform_config/usage_alert.lastDay`가 **이틀 전(8/19)에 멈춰 있었고**, 그동안 발송된
+// 경보는 **0건**이었다. 크론은 «완결된 날»만 보는데 실행 시각(18:00 UTC = 태평양 11:00)
+// 때문에 하루가 더 밀려, 오늘 82%를 써도 판정은 모레다.
+//
+// 그래서 **판정의 주 경로를 화면 조회로 옮긴다.** 사용량 화면은 어차피 오늘치를 읽으므로
+// **추가 지표 조회가 0**이다 — 이미 손에 있는 숫자로 판정만 더 한다.
+// 크론은 «아무도 화면을 안 볼 때»의 약한 안전망으로 남긴다(Vercel Hobby 크론 2개 한도가
+// 이미 차 있어 주기를 더 줄일 수도 없다 — `docs/midterm_ops_risk_2026-08-14.md`).
+
+export interface LiveAlertSummary {
+  level: AlertLevel;
+  emitted: number;
+  decision: string;
+}
+
+/**
+ * 이미 조회된 오늘 사용량으로 즉시 판정·발송한다. **지표를 다시 읽지 않는다.**
+ * 호출부(사용량 조회 경로)가 실패해도 화면이 죽지 않도록, 이 함수는 절대 throw 하지 않는다.
+ */
+export async function runLiveUsageAlert(
+  domain: string,
+  usage: DailyUsage
+): Promise<LiveAlertSummary> {
+  try {
+    const { level, top } = computeLevel(usage);
+    const snap = await stateRef().get();
+    const state = {
+      ...EMPTY_ALERT_STATE,
+      ...((snap.exists ? snap.data() : {}) as AlertState & LiveAlertFields),
+    };
+
+    const d = decideEmitLive(level, state, usage.day);
+    if (!d.emit) {
+      // 판정만 바뀌었어도 축은 갱신해 둔다 (회복 시 다음 상승을 다시 알리기 위해)
+      if (state.liveDay !== d.nextLive.liveDay || state.liveLevel !== d.nextLive.liveLevel) {
+        await stateRef().set(d.nextLive, { merge: true });
+      }
+      return { level, emitted: 0, decision: d.reason };
+    }
+
+    const { emails } = await findAlertRecipients();
+    if (!emails.length) {
+      await stateRef().set(d.nextLive, { merge: true });
+      return { level, emitted: 0, decision: `${d.reason} · 수신자 없음 — 발송 보류` };
+    }
+
+    const { title, message } = buildAlertText(level, top, usage.day);
+    const emitted = await emitNotificationsBatch(
+      domain,
+      emails.map((email) => ({
+        recipientEmail: email,
+        type: "admin-action" as const,
+        title: `[진행 중] ${title}`,
+        message,
+        refType: "usage_alert",
+        // 완결일 경보와 refId가 겹치지 않게 접두사를 둔다 (알림 중복 판정 회피)
+        refId: `live:${usage.day}`,
+      }))
+    );
+    await stateRef().set(d.nextLive, { merge: true });
+    return { level, emitted, decision: d.reason };
+  } catch (e: any) {
+    console.error("[usage_alert] 진행 중 경보 실패(화면은 계속 동작):", e?.message || e);
+    return { level: 0, emitted: 0, decision: `실패: ${e?.message || e}` };
+  }
 }

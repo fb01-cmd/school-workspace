@@ -295,21 +295,21 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
                             <div className="flex items-center gap-1.5 flex-wrap ml-1">
                               {/* Head badge */}
                               {isHead && (
-                                <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-extrabold rounded-md shadow-2xs">
+                                <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-extrabold rounded-md shadow-2xs whitespace-nowrap">
                                   👑 {isGradeDept ? "부장" : "부서장"}
                                 </span>
                               )}
 
                               {/* Position badge */}
                               {teacher.position && (
-                                <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[11px] font-semibold rounded-md border border-slate-200">
+                                <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[11px] font-semibold rounded-md border border-slate-200 whitespace-nowrap">
                                   {teacher.position}
                                 </span>
                               )}
 
                               {/* Homeroom badge */}
                               {isHomeroomMatch && (
-                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-extrabold rounded-md">
+                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-extrabold rounded-md whitespace-nowrap">
                                   🏫 {teacher.homeroom?.grade}-{teacher.homeroom?.class} 담임
                                 </span>
                               )}

@@ -59,6 +59,60 @@ export interface AlertState {
 
 export const EMPTY_ALERT_STATE: AlertState = { lastLevel: 0, lastEmittedAt: 0 };
 
+/**
+ * 진행 중인 오늘 주기의 판정 결과 — **완결일 축과 별도로 둔다** (2026-08-21 신설).
+ *
+ * **왜 축을 나누는가**: 종전 경보는 `lastCompletePacificDay`, 즉 **완결된 마지막 날**만 봤다.
+ * 게다가 크론이 18:00 UTC(태평양 11:00)에 돌아 하루가 더 밀린다 — 8/21 새벽 크론이 8/19를
+ * 판정한다. **오늘 한도의 82%를 써도 경보는 모레 온다.** 한도 소진을 막는 데는 늦다
+ * (2026-08-08 실제 소진 사고가 이 형태였다).
+ *
+ * 두 축을 한 상태에 섞으면 «어제 80%» 와 «오늘 80%» 가 서로를 중복으로 눌러 버린다.
+ * 그래서 완결일(`lastDay`/`lastLevel`)과 진행일(`liveDay`/`liveLevel`)을 분리한다.
+ */
+export interface LiveAlertFields {
+  /** 진행 중 주기로 판정한 태평양 날짜 */
+  liveDay?: string;
+  /** 그 날에 대해 이미 알린 단계 — 같은 날 같은 단계 반복 발송 방지 */
+  liveLevel?: AlertLevel;
+}
+
+/**
+ * 진행 중인 오늘 주기의 발송 판정 — 하루 안에서 **단계가 올라갈 때만** 알린다.
+ * (50% 도달 1회, 80% 도달 1회. 같은 단계에 머무는 동안은 조용하다.)
+ *
+ * 완결일 판정(`decideEmit`)과 달리 **재알림 간격이 없다** — 진행 중 경보의 목적은
+ * "지금 멈추라"이고, 하루가 지나면 어차피 새 주기라 축적될 여지가 없다.
+ */
+export function decideEmitLive(
+  level: AlertLevel,
+  state: AlertState & LiveAlertFields,
+  day: string
+): { emit: boolean; reason: string; nextLive: LiveAlertFields } {
+  const sameDay = state.liveDay === day;
+  const prev: AlertLevel = sameDay ? (state.liveLevel ?? 0) : 0;
+
+  if (level === 0) {
+    return {
+      emit: false,
+      reason: sameDay && prev > 0 ? "진행 중 — 50% 아래로 회복" : "진행 중 — 조용함",
+      nextLive: { liveDay: day, liveLevel: 0 },
+    };
+  }
+  if (level > prev) {
+    return {
+      emit: true,
+      reason: `진행 중 단계 상승 ${prev}% → ${level}%`,
+      nextLive: { liveDay: day, liveLevel: level },
+    };
+  }
+  return {
+    emit: false,
+    reason: `진행 중 ${level}% 유지 — 이미 알림`,
+    nextLive: { liveDay: day, liveLevel: prev },
+  };
+}
+
 /** 같은 단계에 머무를 때의 재알림 간격 — 매일 잔소리와 영구 침묵 사이의 타협 */
 export const REPEAT_REMINDER_MS = 7 * 24 * 3600 * 1000;
 

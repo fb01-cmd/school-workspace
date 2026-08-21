@@ -617,7 +617,7 @@ export default function OUConfiguration() {
                   domain={domain}
                   onSelect={(email) => setNewGroupInput(email)}
                   placeholder="예: target-group@hmh.or.kr"
-                  className="flex-1"
+                  className="flex-1 min-w-0"
                 />
                 <button
                   type="button"
@@ -637,7 +637,7 @@ export default function OUConfiguration() {
                     setNewGroupInput("");
                     checkSecurityForGroups([val]);
                   }}
-                  className="bg-gray-800 hover:bg-gray-900 text-white font-medium px-4 py-2 rounded-md text-sm transition-colors"
+                  className="bg-gray-800 hover:bg-gray-900 text-white font-medium px-4 py-2 rounded-md text-sm transition-colors whitespace-nowrap shrink-0"
                 >
                   추가
                 </button>
@@ -749,7 +749,7 @@ export default function OUConfiguration() {
                       setSelectedBlockedOUInput("");
                     }
                   }}
-                  className="bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-md text-sm transition-colors shrink-0 cursor-pointer"
+                  className="bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-md text-sm transition-colors shrink-0 cursor-pointer whitespace-nowrap shrink-0"
                 >
                   추가
                 </button>
@@ -866,7 +866,7 @@ export default function OUConfiguration() {
                     if (v && !departments.includes(v)) setDepartments(prev => [...prev, v]);
                     setNewDeptInput("");
                   }}
-                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium transition-colors shrink-0"
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium transition-colors shrink-0 whitespace-nowrap shrink-0"
                 >
                   추가
                 </button>
@@ -956,7 +956,7 @@ export default function OUConfiguration() {
                     if (v && !positions.includes(v)) setPositions(prev => [...prev, v]);
                     setNewPosInput("");
                   }}
-                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-sm font-medium transition-colors shrink-0"
+                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-sm font-medium transition-colors shrink-0 whitespace-nowrap shrink-0"
                 >
                   추가
                 </button>

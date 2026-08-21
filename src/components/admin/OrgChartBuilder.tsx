@@ -739,19 +739,19 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
 
                               {/* 뱃지들 */}
                               {isHead && (
-                                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-extrabold rounded">
+                                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-extrabold rounded whitespace-nowrap shrink-0">
                                   👑 {isGradeDept ? "부장" : "부서장"}
                                 </span>
                               )}
 
                               {teacher.position && (
-                                <span className="px-1.5 py-0.5 bg-slate-200/60 text-slate-700 text-[11px] font-semibold rounded">
+                                <span className="px-1.5 py-0.5 bg-slate-200/60 text-slate-700 text-[11px] font-semibold rounded whitespace-nowrap shrink-0">
                                   {teacher.position}
                                 </span>
                               )}
 
                               {isGradeDept && isHomeroomMatch && (
-                                <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-800 border border-indigo-300 text-[11px] font-extrabold rounded">
+                                <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-800 border border-indigo-300 text-[11px] font-extrabold rounded whitespace-nowrap shrink-0">
                                   🏫 {teacher.homeroom?.grade}-{teacher.homeroom?.class} 담임
                                 </span>
                               )}
@@ -861,7 +861,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                         )}
 
                         <span className="text-[11px] text-slate-400 font-mono truncate min-w-0">{email}</span>
-                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-extrabold rounded">
+                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-extrabold rounded whitespace-nowrap shrink-0">
                           🚫 해당없음
                         </span>
                         <button

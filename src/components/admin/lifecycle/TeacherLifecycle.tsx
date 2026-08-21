@@ -254,6 +254,15 @@ function EnrollTeacherPanel({ domain, operatorEmail, operatorName }: { domain: s
                       {gr.success ? "✓" : "⚠"} {gr.group} 가입 {!gr.success && `(${gr.error})`}
                     </p>
                   ))}
+                  {/* 보안그룹이 목록에 없는 이유를 밝힌다 (2026-08-21 사용자 신고 조치).
+                      등록 시점에는 일부러 가입시키지 않는다 — 2단계 인증이 없는 새 계정을
+                      보안그룹에 넣으면 정책이 즉시 걸려 첫 로그인조차 못 하는 닭-달걀이 된다
+                      (`lifecycle/route.ts` enroll_teacher 주석). 첫 로그인 때 RouteGuard가
+                      자동으로 가입시킨다. 이 줄이 없어 관리자가 "가입 실패"로 오해했다. */}
+                  <p className="text-xs text-slate-600 mt-2 pt-2 border-t border-green-200">
+                    ℹ️ <strong>보안그룹</strong>은 이 목록에 없는 것이 정상입니다 — 본인이 <strong>처음 로그인할 때
+                    자동으로 가입</strong>됩니다. (2단계 인증 전에 미리 넣으면 계정이 잠겨 로그인 자체가 막히기 때문입니다)
+                  </p>
                 </div>
               )}
             </div>
