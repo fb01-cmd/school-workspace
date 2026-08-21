@@ -454,6 +454,11 @@ export default function TimetableImportTab({
   const handleFullFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert(`파일이 너무 큽니다 (${(file.size / (1024 * 1024)).toFixed(1)}MB). 시간표 파일은 10MB 이하여야 합니다 — 다른 파일을 고르신 것은 아닌지 확인해 주세요.`);
+      e.target.value = "";
+      return;
+    }
 
     setFullScheduleFileName(file.name);
     const reader = new FileReader();
@@ -484,6 +489,11 @@ export default function TimetableImportTab({
   const handleWeeklyFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert(`파일이 너무 큽니다 (${(file.size / (1024 * 1024)).toFixed(1)}MB). 시간표 파일은 10MB 이하여야 합니다 — 다른 파일을 고르신 것은 아닌지 확인해 주세요.`);
+      e.target.value = "";
+      return;
+    }
 
     setWeeklyScheduleFileName(file.name);
     const reader = new FileReader();

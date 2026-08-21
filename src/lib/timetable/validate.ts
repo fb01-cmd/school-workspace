@@ -7,8 +7,9 @@
  * 하드 H1~H11 = 컴시간 "중대한 문제(이동 실행 비활성)" 대응 — 하나라도 있으면 완성본이 아니다.
  * 소프트 S1~S6 = 기존 감점 엔진(swap.ts teacherDayPenalties·classDuplicatePenalty)의 학기 전체 일반화 —
  *   가중치·문구 규약을 그대로 계승한다.
- *   S7(순배)은 미구현 — 만들 때 S6보다 낮은 가중치로 넣는다(2026-08-14 질의 4-2 확정,
- *   docs/phase9c_questionnaire_result_2026-08-14.md §3). 서열 S6 > S7은 고정.
+ *   S7(순배) = 한 학급이 같은 과목 3회 이상을 전부 같은 교시에 듣는 극단만 0.5점 (2026-08-21 구현).
+ *   0.5인 이유: 서열 S6(1점) > S7 고정 요구(2026-08-14 질의 4-2, questionnaire_result §3).
+ *   절대 수치는 11월 리허설에서 조정.
  *
  * 판정 원칙:
  *  - 가상 교사(이메일 없음)는 자리표시이므로 교사 단위 검사(H2·H5·소프트)에서 제외한다.
@@ -706,12 +707,6 @@ export function validateTimetable(
         //   일과계 답: "웬만하면 피하지만 어쩔 수 없으면 둔다" → 중간. 하드가 아니다.
         //   현행 1점(다른 소프트와 동급)을 유지한다. 답이 "중요하게 지킨다"였다면 올려야
         //   했지만 양보 가능이라 올릴 근거가 없다.
-        //
-        // ⚠️ S7(같은 과목의 반별 교시 순배)은 아직 구현되지 않았다(이 파일 머리말 참조).
-        //   만들 때 반드시 S6보다 **낮은** 가중치로 넣는다 — 질의 4-2 답이
-        //   "가능하면 좋지만 필수는 아니다"로 S6보다 한 단계 더 약했다.
-        //   서열(S6 > S7)은 고정, 절대 수치는 11월 리허설에서 조정.
-        //   근거: docs/phase9c_questionnaire_result_2026-08-14.md §3
         const afternoon = [...d.periods].filter((p) => p > L).length;
         if (afternoon >= 3 && afternoon === d.periods.size)
           push("S6", `${td.label} ${DAY_LABEL[day]}요일 오후 쏠림 (오전 수업 없음, 오후 ${afternoon}시간)`, 1);
@@ -719,12 +714,47 @@ export function validateTimetable(
     }
     // S4 '중복': 같은 학급 같은 요일 동일 과목 n회 → (n−1)점. 창체·SLAT 자리표시(전원 가상) 수업은 제외.
     const byClassDaySubject = new Map<string, { count: number; sample: Placement }>();
+    // S7 '순배' 집계용 — (학급|과목) → 교시별 배치 수 (요일 무관)
+    const byClassSubjectPeriod = new Map<
+      string,
+      { periods: Map<number, number>; total: number; sample: Placement }
+    >();
     for (const p of placements) {
       if (isAllVirtual(p.lesson)) continue;
       const key = `${p.grade}-${p.classNum}|${p.day}|${normSubject(p.lesson.subjectName)}`;
       const cur = byClassDaySubject.get(key);
       if (cur) cur.count += 1;
       else byClassDaySubject.set(key, { count: 1, sample: p });
+      const s7Key = `${p.grade}-${p.classNum}|${normSubject(p.lesson.subjectName)}`;
+      const s7 = byClassSubjectPeriod.get(s7Key);
+      if (s7) {
+        s7.periods.set(p.period, (s7.periods.get(p.period) || 0) + 1);
+        s7.total += 1;
+      } else {
+        byClassSubjectPeriod.set(s7Key, {
+          periods: new Map([[p.period, 1]]),
+          total: 1,
+          sample: p,
+        });
+      }
+    }
+    // S7 '순배' (매뉴얼 "반 순회 배정 회전" — 질의 4-2 "가능하면 좋지만 필수 아님"):
+    // 한 학급이 같은 과목을 주 3회 이상 듣는데 **전부 같은 교시**면, 그 반 학생들은 그 과목을
+    // 항상 같은 컨디션의 시간에 듣는다 — 회전이 전혀 안 된 극단만 잡는다(판정이 애매하지 않은 선).
+    // 점수 0.5 = 서열 S6(1점) > S7 고정 요구(질의 결과 §3, 위 S6 주석). 절대치는 11월 리허설 조정.
+    // 연속 블록(2교시에 걸침)은 교시가 2종이 되어 자연히 제외된다.
+    for (const { periods, total, sample } of byClassSubjectPeriod.values()) {
+      if (total < 3 || periods.size !== 1) continue;
+      const period = [...periods.keys()][0];
+      details.push({
+        code: "S7",
+        scope: "class",
+        key: `${sample.grade}-${sample.classNum}`,
+        label: classText(sample.grade, sample.classNum),
+        day: 0, // 요일 무관 항목 — 교시 축 감점
+        text: `${classText(sample.grade, sample.classNum)} ${sample.lesson.subjectName} ${total}회가 전부 ${period}교시 (교시 회전 없음)`,
+        points: 0.5,
+      });
     }
     for (const { count, sample } of byClassDaySubject.values()) {
       if (count < 2) continue;

@@ -4,6 +4,11 @@
 
 export const DAY_LABEL: Record<number, string> = { 1: "월", 2: "화", 3: "수", 4: "목", 5: "금" };
 
+/** KST 기준 오늘 날짜 (YYYY-MM-DD) — 단일 소재지. 컴포넌트에 사본을 두지 않는다 (사본 3곳 → 여기로 단일화, 2026-08-21) */
+export function getTodayKSTISO(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 /** weekStartDate(월요일 YYYY-MM-DD)와 요일 index(1~5)로 "8/13" 문자열 생성 */
 export function getDayDateLabel(weekStartDate: string, day: number): string {
   if (!weekStartDate) return "";

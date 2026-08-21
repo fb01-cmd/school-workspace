@@ -47,7 +47,7 @@ import AdminUsageSummaryBanner from "@/components/admin/AdminUsageSummaryBanner"
 import PushNotificationManager from "@/components/common/PushNotificationManager";
 import NotificationCenter from "@/components/common/NotificationCenter";
 import MyTimetableCard from "@/components/admin/MyTimetableCard";
-import DashboardMemoPanel from "@/components/admin/DashboardMemoPanel";
+import DashboardMemoPanel, { useIncomingMemos } from "@/components/admin/DashboardMemoPanel";
 import DashboardTaskCard from "@/components/admin/DashboardTaskCard";
 
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
@@ -61,6 +61,9 @@ type MenuType = "home" | "hub" | "users" | "groups" | "settings" | "forms" | "lo
 export default function AdminPage() {
   const { userData, teacherProfile } = useAuth();
   const router = useRouter();
+  // 수신 쪽지 구독 — 페이지에서 한 번만. 홈 패널과 사이드바 안읽음 배지가 나눠 쓴다
+  // (읽기량: 접속당 최근 50건 1회 + 실시간 변경분. 리스너 추가 없음 — 홈 패널 것을 승격)
+  const memoFeed = useIncomingMemos();
   const [activeMenu, setActiveMenu] = useState<MenuType>("home");
   const [initialHubCategory, setInitialHubCategory] = useState<"tasks" | "memo">("tasks");
   const [targetMemoId, setTargetMemoId] = useState<string | null>(null);
@@ -395,7 +398,7 @@ export default function AdminPage() {
                 {/* 상단 개인 업무 및 쪽지 영역 */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                   <DashboardTaskCard onNavigate={() => { setInitialHubCategory("tasks"); setActiveMenu("hub"); }} />
-                  <DashboardMemoPanel onNavigateToMemo={handleNavigateToMemo} />
+                  <DashboardMemoPanel onNavigateToMemo={handleNavigateToMemo} feed={memoFeed} />
                 </div>
 
                 {/* 급식 카드 */}
@@ -609,7 +612,7 @@ export default function AdminPage() {
                   <div className="order-4"><MealCard /></div>
                 </div>
                 <div className="contents lg:block lg:col-span-5 xl:col-span-4">
-                  <div className="order-2"><DashboardMemoPanel onNavigateToMemo={handleNavigateToMemo} /></div>
+                  <div className="order-2"><DashboardMemoPanel onNavigateToMemo={handleNavigateToMemo} feed={memoFeed} /></div>
                 </div>
               </div>
             )}
@@ -705,6 +708,12 @@ export default function AdminPage() {
                     >
                       <span>✉️</span>
                       <span>쪽지·업무</span>
+                      {/* 안 읽은 쪽지 수 — 쪽지함에 들어가야만 보이던 것을 메뉴에서 바로 (backlog A12) */}
+                      {memoFeed.unreadCount > 0 && (
+                        <span className="ml-auto min-w-[1.35rem] text-center text-[11px] font-bold bg-rose-500 text-white rounded-full px-1.5 py-0.5">
+                          {memoFeed.unreadCount > 9 ? "9+" : memoFeed.unreadCount}
+                        </span>
+                      )}
                     </button>
 
                     {/* 내 시간표 (교사 최다 사용 메뉴 — 홈 바로 아래 이동) */}

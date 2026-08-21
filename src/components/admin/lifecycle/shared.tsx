@@ -101,7 +101,12 @@ export function CSVUploader({ onFile, label }: { onFile: (t: string) => void; la
       onDrop={(e) => {
         e.preventDefault();
         const f = e.dataTransfer.files[0];
-        if (f) readFile(f);
+        if (!f) return;
+        if (f.size > 10 * 1024 * 1024) {
+          alert(`파일이 너무 큽니다 (${(f.size / (1024 * 1024)).toFixed(1)}MB). 명단 파일은 10MB 이하여야 합니다 — 다른 파일을 고르신 것은 아닌지 확인해 주세요.`);
+          return;
+        }
+        readFile(f);
       }}
       onDragOver={(e) => e.preventDefault()}
     >
@@ -115,7 +120,13 @@ export function CSVUploader({ onFile, label }: { onFile: (t: string) => void; la
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) readFile(f);
+          if (f) {
+            if (f.size > 10 * 1024 * 1024) {
+              alert(`파일이 너무 큽니다 (${(f.size / (1024 * 1024)).toFixed(1)}MB). 명단 파일은 10MB 이하여야 합니다 — 다른 파일을 고르신 것은 아닌지 확인해 주세요.`);
+            } else {
+              readFile(f);
+            }
+          }
           e.target.value = "";
         }}
       />
