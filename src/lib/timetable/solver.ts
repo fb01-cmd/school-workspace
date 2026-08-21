@@ -1022,6 +1022,17 @@ const REPAIR_S2FELT = (process.env.SOLVER_REPAIR_S2FELT ?? "1") === "1";
  *  결정론 ✅. 2단 탐색까지 얹은 근거·잔존 시드 1의 불가능 증명은 일지 「Kempe 체인」 참조).
  *  되돌리기: SOLVER_REPAIR_KEMPE=0 (시드 목록·선발 기준은 env 밖 — 구판 완전 재현은 git) */
 const REPAIR_KEMPE = (process.env.SOLVER_REPAIR_KEMPE ?? "1") === "1";
+/** ⑦-f — 위반 표적 LNS(부분 파괴·재배치, 리서치 1안 Demirović & Musliu 소근방판).
+ *  ⑦-d·e·Kempe까지 전부 막힌 잔존 위반(S2 연속·S1 쏠림)에 한해, 위반 교사(주 전체) →
+ *  교사 2인 조합(주 전체) 사다리로 수업을 들어내고 기존 그리디(+밀어내기)로 다시 배치한다.
+ *  전 축(내부 총점·S4·S2·죽음·S1) 비악화 + 표적 축 하나 이상 엄격 개선일 때만 채택,
+ *  아니면 저널 원복(미배정 절대 불가). 결정론 — 정렬 순회, 재배치 동률은 (요일,교시) 순.
+ *
+ *  기본값 켬 (2026-08-22 — 벤치마크는 **효과 0·비회귀**로 통과: 선발 시드 23이 이미 구조적
+ *  바닥(S2 0·S1 2 = 장예빈 주 20시간 밀도)이라 개선 여지가 없고, 대안 배열은 만들어지나
+ *  전부 악화로 기각됨을 계측으로 확인(di=2·4 기각 사례). 실효 판정은 실전 입력(죽음 3건
+ *  잔존)의 초안 실측 — STATUS 행 참조. 안전은 구조가 보장: 채택 조건 미달 시 무조건 원복). */
+const REPAIR_LNS = (process.env.SOLVER_REPAIR_LNS ?? "1") === "1";
 /** 0 = 끔(기본). 4면 교사의 하루 수업을 4시간 이하로 배치 단계에서 강제한다.
  *
  *  ❌ 선 승격 **실험 부결** (2026-08-22 실측 — 다음 세션이 같은 막다른 길을 다시 파지 않도록 기록):
@@ -2579,6 +2590,160 @@ export function solveTimetable(input: SolverInput): SolverResult {
     label: sections[i].label,
     remaining,
   }));
+
+  // ── ⑦-f 위반 표적 LNS (2026-08-22) — 부분 파괴·재배치 (REPAIR_LNS 주석·리서치 1안) ──
+  // 파괴 = 잔존 위반 (교사,요일)의 수업 전부(고정 제외). 재배치 = 기존 그리디(직접 배치) +
+  // 밀어내기(제3자 이동 — 만석 그리드에서 직접 배치만으로는 들어낸 자리로 되돌아갈 수밖에
+  // 없어 공회전한다는 것이 설계 확인). 제3자가 움직이므로 영향권을 국소로 잴 수 없다 —
+  // **전역 3축(S2·죽음·S1) + S4 내부몫 + 내부 총점을 전후 대조**해 전 축 비악화 + 표적 축
+  // 하나 이상 엄격 개선일 때만 채택, 아니면 저널 원복(미배정 절대 불가). 채택마다 3축 합이
+  // 엄격 감소하므로 종료 보장. 결정론 — 정렬 순회(밀어내기의 rng는 시드 고정 스트림).
+  if (REPAIR_LNS) {
+    const globalAxes = (): [number, number, number] => {
+      let s2 = 0;
+      let death = 0;
+      let s1 = 0;
+      for (const [tk, dm] of soft.teacherDays)
+        for (const [d] of dm) {
+          const periods = teacherDaySnapshot(tk, d).periods;
+          s2 += s2OfficialPoints(periods);
+          death += feltDeathPoints(periods, L);
+          if (periods.size >= 5) s1 += periods.size - 4;
+        }
+      return [s2, death, s1];
+    };
+    const violators = (): Array<{ tk: string; day: number }> => {
+      const out: Array<{ tk: string; day: number }> = [];
+      for (const [tk, dm] of soft.teacherDays)
+        for (const [day] of dm) {
+          const periods = teacherDaySnapshot(tk, day).periods;
+          if (s2OfficialPoints(periods) > 0 || periods.size >= 5) out.push({ tk, day });
+        }
+      out.sort((a, b) => (a.tk < b.tk ? -1 : a.tk > b.tk ? 1 : a.day - b.day));
+      return out;
+    };
+    /** 교사 한 명의 주 전체 수업(비고정) — 파괴 단위. 하루만 들어내면 만석 그리드에서
+     *  각 수업의 유일한 직접 자리가 방금 비운 그 자리뿐이라 재배치가 항등사상이 된다
+     *  (1차 실험 실측: 파괴 5 → 전 Δ=0). 리서치 원문의 파괴 단위가 「자원 1~2개 조합의
+     *  수업 전부」인 이유가 이것 — 주 전체를 들어내야 조합 공간이 생긴다. */
+    const weekOf = (teacher: string): Occurrence[] => {
+      const out: Occurrence[] = [];
+      for (const [, o] of placed) {
+        const os = sections[o.sectionIdx];
+        if (os.kind === "fixed") continue;
+        if (!os.teacherKeys.includes(teacher)) continue;
+        out.push(o);
+      }
+      out.sort((a, b) => a.sectionIdx - b.sectionIdx || a.occIdx - b.occIdx);
+      return out;
+    };
+    /** 파괴→재배치 1회 시도 — 채택 시 true(저널 유지), 아니면 원복 후 false */
+    const tryDestroyRebuild = (destroyed: Occurrence[], label: string): boolean => {
+      if (!destroyed.length) return false;
+      const [s2B, dB, s1B] = globalAxes();
+      const s4Before = softScoreS4;
+      const before = softScore;
+      const mark = ejectJournal.length;
+      for (const o of destroyed) japply(o, -1);
+      // 재배치 — MRV(엄격 후보 수 최소 먼저), 슬롯은 내부 delta 최소(동률은 요일·교시 순 =
+      // candidateSlots 순회 순서). 직접 자리가 없으면 밀어내기(깊이 2·걸림돌 4·완화 없음).
+      let ok = true;
+      const todo = [...destroyed];
+      while (todo.length) {
+        let bi = 0;
+        let bCands = candidateSlots(todo[0].sectionIdx, todo[0].len);
+        for (let i = 1; i < todo.length; i++) {
+          const cands = candidateSlots(todo[i].sectionIdx, todo[i].len);
+          if (cands.length < bCands.length) {
+            bi = i;
+            bCands = cands;
+          }
+        }
+        const o = todo.splice(bi, 1)[0];
+        if (bCands.length) {
+          let pick = bCands[0];
+          let min = Infinity;
+          for (const c of bCands) {
+            const cost = slotCost(o.sectionIdx, c.day, c.start, o.len);
+            if (cost < min) {
+              min = cost;
+              pick = c;
+            }
+          }
+          japply({ ...o, day: pick.day, start: pick.start }, 1);
+        } else if (
+          !tryPlaceWithEjection({ sectionIdx: o.sectionIdx, occIdx: o.occIdx, len: o.len, tier: 0 }, 2, false, 4)
+        ) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) {
+        const di = softScore - before;
+        const [s2A, dA, s1A] = globalAxes();
+        if (process.env.SOLVER_S1_DEBUG === "1")
+          console.error(
+            `[lns] ${label} 파괴=${destroyed.length} di=${di} ds2=${s2A - s2B} dd=${dA - dB} ds1=${s1A - s1B} dS4=${softScoreS4 - s4Before}`
+          );
+        if (
+          di <= 0 &&
+          softScoreS4 <= s4Before &&
+          s2A <= s2B &&
+          dA <= dB &&
+          s1A <= s1B &&
+          (s2A < s2B || dA < dB || s1A < s1B)
+        )
+          return true; // 채택 — 저널은 그대로 둔다
+      }
+      rollbackTo(mark);
+      return false;
+    };
+    for (let pass = 0; pass < 2; pass++) {
+      let improved = 0;
+      for (const { tk, day } of violators()) {
+        const periods = teacherDaySnapshot(tk, day).periods;
+        if (s2OfficialPoints(periods) === 0 && periods.size < 5) continue; // 앞선 채택이 이미 풀었다
+        // ⓐ 위반 교사의 주 전체 파괴
+        if (tryDestroyRebuild(weekOf(tk), `tk=${tk}`)) {
+          improved++;
+          continue;
+        }
+        // ⓑ 교사 2인 조합 — 위반 요일에 같은 학급을 나눠 쓰는 교사들(교환 상대 후보) 순서대로
+        const partnerSet = new Set<string>();
+        for (const [, o] of placed) {
+          if (o.day !== day) continue;
+          const os = sections[o.sectionIdx];
+          if (!os.teacherKeys.includes(tk)) continue;
+          for (const ck of os.classKeys)
+            for (const [, o2] of placed) {
+              if (o2.day !== day) continue;
+              const os2 = sections[o2.sectionIdx];
+              if (os2.kind === "fixed" || !os2.classKeys.includes(ck)) continue;
+              for (const t2 of os2.teacherKeys) if (t2 !== tk) partnerSet.add(t2);
+            }
+        }
+        const partners = [...partnerSet].sort();
+        let done = false;
+        for (const p2 of partners.slice(0, 4)) {
+          const both = [...weekOf(tk), ...weekOf(p2)];
+          const seen = new Set<string>();
+          const dedup = both.filter((o) => {
+            const k = `${o.sectionIdx}:${o.occIdx}`;
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+          if (tryDestroyRebuild(dedup, `tk=${tk}+${p2}`)) {
+            improved++;
+            done = true;
+            break;
+          }
+        }
+        if (done) continue;
+      }
+      if (!improved) break;
+    }
+  }
 
   // S2 공식·죽음 몫 집계 (포트폴리오 선발용) — 최종 판 기준
   let s2FinalOfficial = 0;
