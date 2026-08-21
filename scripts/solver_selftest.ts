@@ -72,9 +72,14 @@ function solveAndValidate(grids: ClassGrid[], model: TimetableConstraintModel, s
     localSearchIterations: 2000,
   });
   const report = validateTimetable(result.grids, withHours);
-  if (result.stats.softScoreEstimate !== report.soft.total)
+  // S7(순배)·S8(희망 위반)은 **설계상 목적함수 밖**이다 — S7은 넣자 전 시드에서 S4가 재발한
+  // 실측(2026-08-21) 때문에, S8은 soft 금지가 솔버 하드 제약에서 빠지는 것과 같은 이유로.
+  // 따라서 등가 불변식은 "추정 = 공식 − (의도된 제외분)"이다. 제외를 모르는 등가 검사는
+  // 배치가 우연히 순배를 만드는 순간 오탐을 낸다(2026-08-22 실측 — 14 ≠ 14.5).
+  const excluded = (report.soft.byCode.S7 || 0) + (report.soft.byCode.S8 || 0);
+  if (result.stats.softScoreEstimate !== report.soft.total - excluded)
     estimateMismatches.push(
-      `추정 ${result.stats.softScoreEstimate} ≠ 실측 ${report.soft.total} (seed ${seed})`
+      `추정 ${result.stats.softScoreEstimate} ≠ 실측 ${report.soft.total}−제외 ${excluded} (seed ${seed})`
     );
   return { result, report };
 }

@@ -964,13 +964,41 @@ interface SoftState {
  * 관문(S4=0·미배정 0·하드 0·총점 기준선 이하)을 통과한 값만 기본값으로 승격한다.
  * 근거: S7을 목적함수에 넣었다가 전 시드에서 S4가 되살아나고 34→43.5로 무너진 전례.
  */
-const S2_WEIGHT = Math.max(0, Number(process.env.SOLVER_S2_WEIGHT || "") || 1);
-/** 0 = 끔. 3이면 "교사 연속 3교시 이상"을 배치 단계에서 금지한다 (S4의 dayLimit 승격과 같은 처방) */
-const S2_MAX_RUN = Math.max(0, Number(process.env.SOLVER_S2_MAXRUN || "") || 0);
+/** 환경변수 숫자 파서 — "0"으로 끄는 것이 가능해야 한다 (`|| 기본값` 패턴은 0을 삼킨다) */
+const envNum = (name: string, def: number): number => {
+  const raw = (process.env[name] || "").trim();
+  if (!raw) return def;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, n) : def;
+};
+const S2_WEIGHT = envNum("SOLVER_S2_WEIGHT", 1);
+/** 0 = 끔. 4면 "교사 연속 4교시 이상"을 배치 단계에서 금지한다 (S4의 dayLimit 승격과 같은 처방).
+ *
+ *  기본값 4 (2026-08-22 승격 — 관문 근거는 이 커밋의 벤치마크 기록과 일지).
+ *  S2_WEIGHT는 1 유지: 2로 올리면 그리디가 S3(점심)로 도망 — 실측 41.5점.
+ *  계기 = 실제 운영 시간표(사람 손)는 연속 3+가 0건인데 종전 기본이 4연속을 냈다(이시내 실사례).
+ *  되돌리기: SOLVER_S2_MAXRUN=0 SOLVER_S2_STRICT=0 */
+const S2_MAX_RUN = envNum("SOLVER_S2_MAXRUN", 4);
 /** 1이면 상한을 배치 불가 폴백(relaxDayLimit)에서도 풀지 않는다 — 진짜 「선」.
  *  실측(2026-08-21): 폴백에서 같이 풀리게 하면 금지했는데도 4연속 2건이 그 틈으로 샜다 —
  *  새는 선은 선이 아니다. 대신 미배정이 생길 위험을 감수하는 것이므로 실험으로만 켠다. */
-const S2_STRICT = process.env.SOLVER_S2_STRICT === "1";
+const S2_STRICT = (process.env.SOLVER_S2_STRICT ?? "1") === "1";
+/**
+ * 보수 패스 강화 실험 (2026-08-22 3라운드 — 일지 「3단 폴백 후 재실험」 ⓐⓑⓒ).
+ * 진단: S2 상한이 걸리면 최후 폴백(몫 완화)이 만든 S4를 보수 수단이 못 되잡는다 —
+ * 상한이 위반을 만들고 같은 상한이 수리 후보도 줄이는 구조.
+ * [2026-08-22 정밀화] ⓑ(보류)는 품질의 핵심이지만(벤치마크 33 vs 보류 없이 46.5)
+ * **몫 초과가 비둘기집으로 불가피한 섹션에는 치명적**이다(만석 후 미배정 — selftest 실측).
+ * 그래서 그런 섹션만 예외로 즉시 배치한다(eagerPlace). ⓑⓒ 기본 켜짐, ⓐ(SLACK)만 기본 0.
+ *  ⓑ REPAIR_DEFER: 그리디가 최후 폴백(③)을 직접 쓰지 않고 밀어내기(ejection)로 넘긴다 —
+ *     밀어내기는 걸림돌을 옮길 수 있어 ③ 없이 풀 확률이 높다. ③은 밀어내기 실패 후 최후.
+ *  ⓒ REPAIR_ROT: 맞교환 보수(⑦-c)에 3자 회전(rotation) 추가 — 만석에서 2자 교환이
+ *     막힐 때 세 수업을 한 칸씩 돌린다.
+ *  ⓐ REPAIR_SLACK: 위반을 없애는 교환에 한해 내부 점수 악화를 이만큼 허용 (기본 0 = 엄격).
+ */
+const REPAIR_DEFER = (process.env.SOLVER_REPAIR_DEFER ?? "1") === "1";
+const REPAIR_ROT = (process.env.SOLVER_REPAIR_ROT ?? "1") === "1";
+const REPAIR_SLACK = Math.max(0, Number(process.env.SOLVER_REPAIR_SLACK || "") || 0);
 
 /** 교시 집합의 최장 연속 길이 */
 function longestRun(periods: Set<number>): number {
@@ -1091,6 +1119,12 @@ export function solveTimetable(input: SolverInput): SolverResult {
    *  S2_WEIGHT=1(기본)이면 항상 0이라 현행 동작 불변. */
   let softScoreS2x = 0;
   let relaxQuotaUsed = 0;
+  /** 최후 완화 모드 — REPAIR_DEFER의 마지막 사다리단. 켜지면 feasible이 몫·연속 상한을 풀고
+   *  밀어내기 전체(걸림돌 재배치 포함)가 그 완화로 돈다. 엄격한 사다리(①②·밀어내기)가
+   *  전부 실패한 극단(작은 합성 세계·하루 통째 금지)에서만 발동한다 — 미배정을 내느니
+   *  몫·연속을 받는 것이 종전(구판 폴백) 동작과의 호환이자 「전 배치」 불변식이다.
+   *  feasible보다 먼저 선언해야 한다(TDZ — 그리디가 feasible을 먼저 부른다). */
+  let lastResortRelax = false;
 
   // S4(학급 과목 중복) 집계 대상 과목 — 전원 가상 교사(창체·SLAT 자리표시) 수업은 검사기와 동일하게 제외
   const subjectsOf = (s: SolverSection, ck: string): string[] =>
@@ -1131,6 +1165,35 @@ export function solveTimetable(input: SolverInput): SolverResult {
   }
   /** (학급|과목|요일) → 배치 횟수(occurrence 단위 — 연속 블록은 1로 센다). apply가 유지한다 */
   const classSubjDayOcc = new Map<string, number>();
+
+  /**
+   * ⓑ 보류(REPAIR_DEFER)의 예외 — **몫 초과가 비둘기집으로 불가피한 섹션은 보류하지 않는다.**
+   *
+   * 보류는 "몫을 깨느니 밀어내기로 자리를 찾는" 전략인데, 쓸 수 있는 요일 × 몫 < 회차인
+   * 섹션(예: 하루 통째 금지 + 주당 5회 = 요일 5)은 어떤 밀어내기로도 몫을 지킬 수 없다.
+   * 그런 섹션을 보류하면 빈칸이 남아 있을 때 놓을 기회만 잃고 만석 후 미배정이 된다
+   * (2026-08-22 solver_selftest 실측 — 상한과 무관하게 보류만으로 재현). 실세계에는 이런
+   * 섹션이 없어(금지 요일이 드묾) 이 예외는 발동 0이 정상이다.
+   */
+  const eagerPlace = sections.map((s, i) => {
+    if (s.kind !== "plain" || (s.fixedSlots && s.fixedSlots.length)) return false;
+    // 쓸 수 있는 요일 수 — 그 요일의 운영 교시 중 금지가 아닌 칸이 하나라도 있으면 쓸 수 있다
+    let availDays = 0;
+    for (let d = 1; d <= 5; d++) {
+      const maxP = gdp[s.grade]?.[d] || 0;
+      let usable = false;
+      for (let p = 1; p <= maxP && !usable; p++) {
+        if (!s.bannedSlots.has(`${d}-${p}`) && (!s.allowedSlots || s.allowedSlots.has(`${d}-${p}`)))
+          usable = true;
+      }
+      if (usable) availDays++;
+    }
+    let minQuota = Infinity;
+    for (const [ck, subjs] of sectionClassSubjects[i])
+      for (const subj of subjs) minQuota = Math.min(minQuota, subjDayQuota.get(`${ck}|${subj}`) || 1);
+    if (!Number.isFinite(minQuota)) return false;
+    return s.blockLens.length > availDays * minQuota;
+  });
 
   const bump = <K>(m: Map<K, number>, k: K, d: number) => {
     const v = (m.get(k) || 0) + d;
@@ -1239,7 +1302,11 @@ export function solveTimetable(input: SolverInput): SolverResult {
      *  ①정상 ②분산만 완화(몫 유지) ③몫까지 완화. ②를 새로 끼운 이유: 폴백이 몫을 같이
      *  풀면 S2를 조이는 모든 실험에서 S4가 되살아났다(1~5건). ③이 남아 있는 이유: 하루가
      *  통째로 막히면 같은 과목 2회가 불가피한 경우가 실재한다(solver_selftest가 증명). */
-    relaxQuota = false
+    relaxQuota = false,
+    /** S2 연속 상한까지 푼다 — 최후의 최후(④). 몫 완화(③)로도 못 놓는 극단(교사 소수의
+     *  작은 세계, 하루 금지 등)에서 미배정을 내느니 연속을 받는다. 실세계 벤치마크에서는
+     *  발동 0회가 정상이고, 합성 자가 테스트의 「전 배치」 불변식을 지키는 역할이다. */
+    relaxRunCap = false
   ): boolean {
     const s = sections[sectionIdx];
     const maxP = gdp[s.grade]?.[day] || 0;
@@ -1262,7 +1329,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
     // 폴백이 금기 검사를 풀기 때문. 폴백의 존재 이유(2026-08-18: 하루가 막히면 **다른 과목**이
     // 메워야 한다)는 분산 한도 완화만으로 충족된다 — 같은 과목을 같은 날 또 놓는 것은
     // 그 이유에 들어 있지 않다. skipSubjectQuota(국소 탐색 전용)는 종전 그대로.
-    if (!skipSubjectQuota && !relaxQuota && s.kind === "plain" && !(s.fixedSlots && s.fixedSlots.length)) {
+    if (!skipSubjectQuota && !(relaxQuota || lastResortRelax) && s.kind === "plain" && !(s.fixedSlots && s.fixedSlots.length)) {
       for (const [ck, subjs] of sectionClassSubjects[sectionIdx]) {
         for (const subj of subjs) {
           const quota = subjDayQuota.get(`${ck}|${subj}`) || 1;
@@ -1282,7 +1349,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
     // S4가 가중으로 안 풀려 dayLimit(배치 규칙)로 승격된 것과 같은 처방을 S2에 실험한다.
     // 실제 운영 시간표(사람 손)는 연속 3+가 0건 — 사람은 이걸 점수가 아니라 선으로 다룬다.
     // relaxDayLimit(배치 불가 폴백)에서는 함께 풀린다 — 못 놓는 것보다는 연속이 낫다.
-    if (S2_MAX_RUN > 0 && (S2_STRICT || !relaxDayLimit) && s.teacherKeys.length) {
+    if (S2_MAX_RUN > 0 && !(relaxRunCap || lastResortRelax) && (S2_STRICT || !relaxDayLimit) && s.teacherKeys.length) {
       for (const tk of s.teacherKeys) {
         const periods = new Set<number>();
         for (const [p, n] of soft.teacherDays.get(tk)?.get(day) || []) if (n > 0) periods.add(p);
@@ -1298,14 +1365,15 @@ export function solveTimetable(input: SolverInput): SolverResult {
     len: number,
     relaxDayLimit = false,
     skipSubjectQuota = false,
-    relaxQuota = false
+    relaxQuota = false,
+    relaxRunCap = false
   ): Array<{ day: number; start: number }> {
     const s = sections[sectionIdx];
     const out: Array<{ day: number; start: number }> = [];
     for (let day = 1; day <= 5; day++) {
       const maxP = gdp[s.grade]?.[day] || 0;
       for (let start = 1; start + len - 1 <= maxP; start++) {
-        if (feasible(sectionIdx, day, start, len, relaxDayLimit, skipSubjectQuota, relaxQuota))
+        if (feasible(sectionIdx, day, start, len, relaxDayLimit, skipSubjectQuota, relaxQuota, relaxRunCap))
           out.push({ day, start });
       }
     }
@@ -1382,7 +1450,9 @@ export function solveTimetable(input: SolverInput): SolverResult {
       bestCands = candidateSlots(p.sectionIdx, p.len, true);
       // 3단 폴백 (2026-08-22): 몫을 지키는 완화(②)가 비면 그때만 몫까지 푼다(③).
       // ②가 끼기 전에는 완화가 곧 몫 해제라 S4가 여기서 샜다.
-      if (!bestCands.length) {
+      // ⓑ REPAIR_V2 (3라운드): 그리디는 ③을 쓰지 않는다 — 여기서 ③을 쓰면 그 순간의
+      // 판만 보고 몫을 깨지만, 밀어내기 단계는 걸림돌을 옮겨 몫을 지킬 길을 찾을 수 있다.
+      if (!bestCands.length && (!REPAIR_DEFER || eagerPlace[p.sectionIdx])) {
         bestCands = candidateSlots(p.sectionIdx, p.len, true, false, true);
         if (bestCands.length) relaxQuotaUsed++;
       }
@@ -1440,7 +1510,41 @@ export function solveTimetable(input: SolverInput): SolverResult {
   progress("ejection", 0, stuck.length);
   for (const p of stuck) {
     if (tryPlaceWithEjection(p, 2)) placedByEjection++;
-    else unplacedFinal.push(p);
+    else if (REPAIR_DEFER) {
+      // ⓑ 최후 폴백(③) — V2에서는 그리디·밀어내기가 몫을 지키며 전부 실패한 뒤에만 온다.
+      // 미배정 0 보장은 유지한다 (③마저 비면 종전처럼 미배정으로 정직하게 보고).
+      // ③ 몫 완화(연속 상한은 유지) → 그래도 비면 ④ 상한까지 완화 — 미배정보다 낫다
+      const last = ((): Array<{ day: number; start: number }> => {
+        const q = candidateSlots(p.sectionIdx, p.len, true, false, true);
+        return q.length ? q : candidateSlots(p.sectionIdx, p.len, true, false, true, true);
+      })();
+      if (last.length) {
+        relaxQuotaUsed++;
+        let pick = last[0];
+        let minCost = Infinity;
+        for (const c of last) {
+          const cost = slotCost(p.sectionIdx, c.day, c.start, p.len);
+          if (cost < minCost) {
+            minCost = cost;
+            pick = c;
+          }
+        }
+        apply({ sectionIdx: p.sectionIdx, occIdx: p.occIdx, len: p.len, day: pick.day, start: pick.start }, 1);
+        placedByEjection++;
+      } else {
+        // 직접 놓을 자리조차 없다(만석) — 완화 모드로 밀어내기 전체를 다시 돌린다.
+        // 걸림돌 재배치까지 완화가 미쳐야 작은 세계의 「전 배치」가 성립한다.
+        lastResortRelax = true;
+        // 깊이 3·걸림돌 6 — 기본(2·2)보다 세게. 여기는 마지막 단이라 비용보다 성공이 중요하고,
+        // 실세계 벤치마크에서는 이 단 자체가 발동하지 않는 것이 정상이다(발동 0회 실측).
+        const ok = tryPlaceWithEjection(p, 3, true, 6);
+        lastResortRelax = false;
+        if (ok) {
+          relaxQuotaUsed++;
+          placedByEjection++;
+        } else unplacedFinal.push(p);
+      }
+    } else unplacedFinal.push(p);
   }
 
   function tryPlaceWithEjection(
@@ -1465,6 +1569,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
       const relaxed = ((): Array<{ day: number; start: number }> => {
         const kept = candidateSlots(p.sectionIdx, p.len, true);
         if (kept.length) return kept;
+        if (REPAIR_DEFER && !eagerPlace[p.sectionIdx]) return []; // ⓑ ③은 밀어내기 실패 후 최후 (비둘기집 예외는 즉시)
         const last = candidateSlots(p.sectionIdx, p.len, true, false, true);
         if (last.length) relaxQuotaUsed++;
         return last;
@@ -1687,7 +1792,9 @@ export function solveTimetable(input: SolverInput): SolverResult {
             false,
             6
           ) ||
-          softScore >= softBefore
+          // ⓐ REPAIR_SLACK: 위반 해소 재배치는 내부 점수 악화를 슬랙만큼 허용 (0 = 종전 동일).
+          // 관문(공식 총점 ≤ 기준선)이 최종 심판이므로 여기서의 양보는 실험 관찰 대상이다.
+          softScore >= softBefore + REPAIR_SLACK
         )
           rollbackTo(mark);
         else resolved++;
@@ -1712,7 +1819,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
         if (s.classKeys.length !== 1) continue; // 다학급(동시수업)은 교환 반경이 달라 제외
         const peers = (byClass.get(s.classKeys[0]) || []).slice().sort();
         let bestKey: string | null = null;
-        let bestDelta = 0; // 내부 점수 엄격 개선만 채택
+        let bestDelta = REPAIR_SLACK; // 기본 0 = 엄격 개선만. 슬랙만큼 악화 허용(ⓐ)
         for (const otherKey of peers) {
           if (otherKey === key) continue;
           const other = placed.get(otherKey);
@@ -1747,6 +1854,61 @@ export function solveTimetable(input: SolverInput): SolverResult {
           apply(other, -1);
           apply({ ...cur, day: other.day, start: other.start }, 1);
           apply({ ...other, day: cur.day, start: cur.start }, 1);
+          continue;
+        }
+        // ⓒ 3자 회전 (REPAIR_V2) — 2자 교환이 전부 막힌 위반에 한해, 같은 학급 세 수업을
+        // 한 칸씩 돌린다: 위반자 → A자리, A → B자리, B → 위반자 자리. 만석 그리드에서
+        // 2자 교환의 막힘(상대가 위반자 자리에 못 옴)을 세 번째 수업이 흡수한다.
+        // 결정론 유지 — peers 정렬 순회, rng 무사용. feasible이 몫·S2 상한을 그대로 지킨다.
+        if (REPAIR_ROT) {
+          let rBest: { k1: string; k2: string; delta: number } | null = null;
+          for (const k1 of peers) {
+            if (k1 === key) continue;
+            const o1 = placed.get(k1);
+            if (!o1 || o1.len !== cur.len || o1.day === cur.day) continue;
+            if (sections[o1.sectionIdx].classKeys.length !== 1 || sections[o1.sectionIdx].kind === "fixed") continue;
+            for (const k2 of peers) {
+              if (k2 === key || k2 === k1) continue;
+              const o2 = placed.get(k2);
+              if (!o2 || o2.len !== cur.len) continue;
+              if (sections[o2.sectionIdx].classKeys.length !== 1 || sections[o2.sectionIdx].kind === "fixed") continue;
+              const before = softScore;
+              apply(cur, -1);
+              apply(o1, -1);
+              apply(o2, -1);
+              let delta: number | null = null;
+              if (feasible(cur.sectionIdx, o1.day, o1.start, cur.len)) {
+                const mCur: Occurrence = { ...cur, day: o1.day, start: o1.start };
+                apply(mCur, 1);
+                if (feasible(o1.sectionIdx, o2.day, o2.start, o1.len)) {
+                  const mO1: Occurrence = { ...o1, day: o2.day, start: o2.start };
+                  apply(mO1, 1);
+                  if (feasible(o2.sectionIdx, cur.day, cur.start, o2.len)) {
+                    const mO2: Occurrence = { ...o2, day: cur.day, start: cur.start };
+                    apply(mO2, 1);
+                    delta = softScore - before;
+                    apply(mO2, -1);
+                  }
+                  apply(mO1, -1);
+                }
+                apply(mCur, -1);
+              }
+              apply(cur, 1);
+              apply(o1, 1);
+              apply(o2, 1);
+              if (delta !== null && delta < (rBest ? rBest.delta : REPAIR_SLACK)) rBest = { k1, k2, delta };
+            }
+          }
+          if (rBest) {
+            const o1 = placed.get(rBest.k1)!;
+            const o2 = placed.get(rBest.k2)!;
+            apply(cur, -1);
+            apply(o1, -1);
+            apply(o2, -1);
+            apply({ ...cur, day: o1.day, start: o1.start }, 1);
+            apply({ ...o1, day: o2.day, start: o2.start }, 1);
+            apply({ ...o2, day: cur.day, start: cur.start }, 1);
+          }
         }
       }
     }
