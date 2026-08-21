@@ -44,6 +44,8 @@ const CASES: Case[] = [
     why: "적어 둔 쪽이 우선 — 짐작보다 명시가 세다" },
   { name: "연결 표에 없는 부서는 폴백", dept: "2학년", settings: { gradeDepartments: { 저학년부: 1 } }, want: 2, why: "" },
   { name: "연결 표에 0", dept: "교무기획부", settings: { gradeDepartments: { 교무기획부: 0 } }, want: 0, why: "" },
+  { name: "★ 0으로 「학년부 아님」 못 박기", dept: "1학년", settings: { gradeDepartments: { "1학년": 0 } }, want: 0,
+    why: "이름이 「1학년」이어도 아니라고 지정할 수 있어야 한다 — 0을 폴백으로 흘리면 그 수단이 없어진다" },
 
   // ── 잡값 ──
   { name: "빈 문자열", dept: "", settings: null, want: 0, why: "" },

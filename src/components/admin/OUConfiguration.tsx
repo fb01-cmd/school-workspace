@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/context/AuthContext";
@@ -11,6 +11,7 @@ import RosterApiKeyManager from "@/components/admin/RosterApiKeyManager";
 import { SchedulePeriod } from "@/context/AuthContext";
 import { DEFAULT_DEPARTMENTS, DEFAULT_POSITIONS } from "@/lib/org/departments";
 import { DEFAULT_TEACHER_GROUPS } from "@/lib/org/teacherGroups";
+import { gradeOfDepartment } from "@/lib/org/gradeDept";
 
 interface OU {
   orgUnitId: string;
@@ -29,6 +30,9 @@ export default function OUConfiguration() {
   // Settings State
   const [gradesCount, setGradesCount] = useState<number>(6);
   const [classCounts, setClassCounts] = useState<Record<number, number>>({});
+  // 부서 이름 → 학년 번호 (docs/grade_dept_spec.md §3-1).
+  // 없으면 gradeOfDepartment가 이름으로 짐작한다 — 그래서 기존 도메인도 그대로 돈다.
+  const [gradeDepartments, setGradeDepartments] = useState<Record<string, number>>({});
   const [allowedBookmarkOUs, setAllowedBookmarkOUs] = useState<string[]>([]);
   const [teacherOU, setTeacherOU] = useState<string>("");
   const [studentOUMappings, setStudentOUMappings] = useState<Record<number, string>>({});
@@ -169,6 +173,7 @@ export default function OUConfiguration() {
     schedule: SchedulePeriod[];
     departments: string[];
     positions: string[];
+    gradeDepartments: Record<string, number>;
   }) => {
     return JSON.stringify({
       gradesCount: data.gradesCount,
@@ -184,6 +189,7 @@ export default function OUConfiguration() {
       schedule: data.schedule,
       departments: data.departments,
       positions: data.positions,
+      gradeDepartments: data.gradeDepartments,
     });
   };
 
@@ -201,9 +207,25 @@ export default function OUConfiguration() {
     schedule,
     departments,
     positions,
+    gradeDepartments,
   });
 
   const isDirty = Boolean(savedSnapshot && currentSnapshot !== savedSnapshot);
+
+  // 부서 → 실제 판정 결과 (연결 표 + 이름 폴백). 화면에 딱지로 보여 준다 —
+  // 「자동」으로 두었을 때 시스템이 실제로 몇 학년부로 보는지 눈에 보여야
+  // 이름을 바꿨을 때 뭐가 달라지는지 알 수 있다 (docs/grade_dept_spec.md §3-4).
+  const deptGrades = useMemo(() => {
+    const m = new Map<string, number>();
+    departments.forEach((d) => m.set(d, gradeOfDepartment(d, { gradeDepartments, gradesCount })));
+    return m;
+  }, [departments, gradeDepartments, gradesCount]);
+
+  // 학년 수에는 있는데 대응 부서가 없는 학년
+  const missingGradeDepts = useMemo(() => {
+    const covered = new Set([...deptGrades.values()].filter((g) => g > 0));
+    return Array.from({ length: gradesCount }, (_, i) => i + 1).filter((g) => !covered.has(g));
+  }, [deptGrades, gradesCount]);
 
   // effect가 참조할 최신 isDirty — dependency로 넣으면 매 키입력마다 effect가 재구성되므로 ref로 우회
   const isDirtyRef = useRef(false);
@@ -256,6 +278,7 @@ export default function OUConfiguration() {
       const sched = schoolSettings.schedule || DEFAULT_SCHEDULE;
       const depts = schoolSettings.departments || DEFAULT_DEPARTMENTS;
       const pos = schoolSettings.positions || DEFAULT_POSITIONS;
+      const gDepts = (schoolSettings as any).gradeDepartments || {};
 
       setGradesCount(gCount);
       setClassCounts(cCounts);
@@ -271,6 +294,7 @@ export default function OUConfiguration() {
       setSchedule(sched);
       setDepartments(depts);
       setPositions(pos);
+      setGradeDepartments(gDepts);
 
       // 미저장 변경 판단용 스냅샷 저장
       setSavedSnapshot(
@@ -288,6 +312,7 @@ export default function OUConfiguration() {
           schedule: sched,
           departments: depts,
           positions: pos,
+          gradeDepartments: gDepts,
         })
       );
     } else {
@@ -350,6 +375,7 @@ export default function OUConfiguration() {
         schedule,
         departments,
         positions,
+        gradeDepartments,
         updatedAt: new Date(),
       }, { merge: true }); // 전체 덮어쓰기 금지 — masterSheetId 등 이 폼에 없는 필드 보존
       setAutoJoinGroups(finalGroups);
@@ -370,6 +396,7 @@ export default function OUConfiguration() {
           schedule,
           departments,
           positions,
+          gradeDepartments,
         })
       );
 
@@ -843,6 +870,33 @@ export default function OUConfiguration() {
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">11. 부서 목록 관리</label>
               <p className="text-gray-500 text-xs mb-3">교직원이 조직 정보 신청 시 선택할 수 있는 부서 목록입니다. 행을 드래그하거나 위/아래 화살표(▲ ▼) 버튼으로 우선순위를 변경하세요.</p>
+
+              {/*
+                빠진 학년부 안내 (docs/grade_dept_spec.md §3-4).
+                자동으로 만들지 않고 **권한다.** 부서 이름은 학교마다 다르고(「1학년」/「1학년부」)
+                이름을 정하는 것은 관리자 몫이기 때문이다. 만들어 주되 잠그지는 않는다.
+              */}
+              {missingGradeDepts.length > 0 && (
+                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+                  <div className="font-bold mb-1">
+                    학년 수는 {gradesCount}학년까지인데, {missingGradeDepts.join("·")}학년부가 목록에 없습니다.
+                  </div>
+                  <p className="text-amber-800 mb-2">
+                    학년부가 있어야 조직도에서 그 학년 담임 반을 지정할 수 있습니다.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const added = missingGradeDepts.map((g) => `${g}학년`);
+                      setDepartments((prev) => [...prev, ...added.filter((d) => !prev.includes(d))]);
+                    }}
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    {missingGradeDepts.map((g) => `${g}학년`).join("·")} 만들기
+                  </button>
+                  <span className="ml-2 text-amber-700">이름은 만든 뒤 바꿔도 됩니다.</span>
+                </div>
+              )}
               <div className="flex gap-2 mb-3">
                 <input
                   type="text"
@@ -894,9 +948,44 @@ export default function OUConfiguration() {
                         {index + 1}.
                       </span>
                       <span className="text-gray-800 font-semibold truncate">{dept}</span>
+                      {deptGrades.get(dept) ? (
+                        <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          {deptGrades.get(dept)}학년부
+                        </span>
+                      ) : null}
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0 ml-2">
+                      {/*
+                        학년 연결 (docs/grade_dept_spec.md §3-4).
+                        「자동」 = 이름으로 판단(기존 동작). 이름을 「1학년부」로 바꿔도 자동으로 잡히지만,
+                        이름에 학년이 안 들어가는 부서(예: 「저학년부」)나 반대로 학년부가 아닌데 이름이
+                        「N학년」으로 시작하는 경우를 여기서 못 박는다.
+                      */}
+                      <select
+                        value={
+                          Object.prototype.hasOwnProperty.call(gradeDepartments, dept)
+                            ? String(gradeDepartments[dept])
+                            : ""
+                        }
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setGradeDepartments((prev) => {
+                            const next = { ...prev };
+                            if (v === "") delete next[dept];
+                            else next[dept] = Number(v);
+                            return next;
+                          });
+                        }}
+                        title="이 부서가 몇 학년부인지 — 「자동」은 부서 이름으로 판단합니다"
+                        className="text-[11px] border border-gray-200 rounded px-1.5 py-1 bg-white text-gray-700 cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      >
+                        <option value="">자동</option>
+                        <option value="0">학년부 아님</option>
+                        {Array.from({ length: gradesCount }, (_, i) => i + 1).map((g) => (
+                          <option key={g} value={g}>{g}학년</option>
+                        ))}
+                      </select>
                       <button
                         type="button"
                         disabled={index === 0}
@@ -917,7 +1006,17 @@ export default function OUConfiguration() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setDepartments(prev => prev.filter(d => d !== dept))}
+                        onClick={() => {
+                          setDepartments(prev => prev.filter(d => d !== dept));
+                          // 학년 연결도 같이 지운다 — 안 지우면 목록에 없는 부서 이름이
+                          // 연결 표에 유령으로 남고, 같은 이름으로 다시 만들면 되살아난다.
+                          setGradeDepartments((prev) => {
+                            if (!Object.prototype.hasOwnProperty.call(prev, dept)) return prev;
+                            const next = { ...prev };
+                            delete next[dept];
+                            return next;
+                          });
+                        }}
                         className="p-1 text-gray-300 hover:text-red-500 transition-colors cursor-pointer rounded hover:bg-red-50 ml-1"
                         title="삭제"
                       >

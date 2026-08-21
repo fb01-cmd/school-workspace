@@ -49,8 +49,14 @@ export function gradeOfDepartment(
 ): number {
   if (!deptName) return 0;
 
-  const mapped = settings?.gradeDepartments?.[deptName];
-  if (typeof mapped === "number" && Number.isInteger(mapped) && mapped > 0) return mapped;
+  // 연결 표에 **키가 있으면** 그것이 답이다 — 값이 0이어도 마찬가지다.
+  // 0은 「이름이 「N학년」처럼 보여도 학년부가 아니다」를 못 박는 수단이라,
+  // 여기서 폴백으로 흘리면 관리자가 아니라고 지정할 방법이 없어진다.
+  const table = settings?.gradeDepartments;
+  if (table && Object.prototype.hasOwnProperty.call(table, deptName)) {
+    const mapped = table[deptName];
+    return Number.isInteger(mapped) && mapped > 0 ? mapped : 0;
+  }
 
   const max = Number(settings?.gradesCount) || DEFAULT_GRADES_COUNT;
 
