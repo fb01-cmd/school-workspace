@@ -444,7 +444,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                 </div>
               )}
 
-              <p className="text-gray-500 text-xs mt-1">진급 이력이 Firestore 로그에 저장되었습니다.</p>
+              <p className="text-gray-500 text-xs mt-1">진급 이력이 기록으로 남았습니다.</p>
 
               <div className="flex gap-3">
                 <Btn

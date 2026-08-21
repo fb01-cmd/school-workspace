@@ -412,7 +412,9 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
     const entries = Object.entries(stagedProfiles);
     if (entries.length === 0) return;
 
-    if (!confirm(`미반영된 ${entries.length}명의 인사 배치를 Firestore 및 조직도에 일괄 반영하시겠습니까?`)) {
+    // 「Firestore」는 개발 용어다 — 쓰는 사람은 그게 무엇인지 알 필요가 없고,
+    // 알아야 할 것은 「지금 저장된다」는 사실뿐이다 (2026-08-21 훑기).
+    if (!confirm(`아직 반영하지 않은 인사 배치 ${entries.length}명을 조직도에 한 번에 저장할까요?`)) {
       return;
     }
 
@@ -892,7 +894,10 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
               </h3>
               <p className="text-[11px] text-gray-400 mt-0.5">
                 {selectedDept ? (
-                  <>클릭 시 <strong className="text-amber-600">[{selectedDept}]</strong>에 추가 (스테이징●)</>
+                  // 「스테이징」은 개발 용어다 (2026-08-21 사용자 지적). 이 화면이 하는 일을
+                  // 그대로 쓴다 — 바로 위 바에 「미반영 변경 N명」·「N명 반영하기」가 있으므로
+                  // 「반영 전」이 같은 말을 같은 낱말로 잇는다.
+                  <>클릭 시 <strong className="text-amber-600">[{selectedDept}]</strong>에 담기 (아직 반영 전 ●)</>
                 ) : (
                   <>클릭 시 <strong className="text-indigo-600">세부 편집 창</strong> 열기 (직책·해당없음)</>
                 )}

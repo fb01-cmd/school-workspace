@@ -813,7 +813,7 @@ export default function UserList() {
         {/* Modern tailwind spinner */}
         <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
         <p className="text-gray-500 text-sm font-medium animate-pulse">구글 워크스페이스 명단 및 조직 구성을 불러오는 중...</p>
-        <p className="text-xs text-gray-400">최초 진입 시 Google API 연동으로 인해 수 초가 소요될 수 있습니다.</p>
+        <p className="text-xs text-gray-400">처음 열 때는 구글에서 명단을 받아오느라 수 초가 걸릴 수 있습니다.</p>
       </div>
     );
   }

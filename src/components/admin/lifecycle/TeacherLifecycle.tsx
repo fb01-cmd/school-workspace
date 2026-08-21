@@ -146,7 +146,7 @@ function EnrollTeacherPanel({ domain, operatorEmail, operatorName }: { domain: s
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-6">
       <div>
         <h3 className="text-lg font-bold text-gray-900 mb-1">교직원 전입 등록</h3>
-        <p className="text-sm text-gray-500">GWS 계정을 생성하고 지정 연동 그룹들에 자동으로 가입시킵니다. (초기 비밀번호: <code className="bg-gray-100 px-1 rounded text-xs font-semibold">1234abcd!!!!</code>)</p>
+        <p className="text-sm text-gray-500">구글 계정을 만들고 지정된 연동 그룹에 자동으로 가입시킵니다. (초기 비밀번호: <code className="bg-gray-100 px-1 rounded text-xs font-semibold">1234abcd!!!!</code>)</p>
       </div>
 
       <form onSubmit={handleEnroll} className="space-y-4 max-w-lg">

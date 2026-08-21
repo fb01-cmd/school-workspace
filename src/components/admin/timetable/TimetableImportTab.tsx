@@ -1374,7 +1374,7 @@ export default function TimetableImportTab({
                 <tr>
                   <th className="px-4 py-3 text-left">시간표 교사명</th>
                   <th className="px-4 py-3 text-left">매칭 상태</th>
-                  <th className="px-4 py-3 text-left">매핑할 GWS 교사 계정 (이메일)</th>
+                  <th className="px-4 py-3 text-left">연결할 구글 계정 (이메일)</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
