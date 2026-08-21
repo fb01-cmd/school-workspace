@@ -104,9 +104,11 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
   const [olderTasks, setOlderTasks] = useState<TaskItem[]>([]);
   const [olderLoaded, setOlderLoaded] = useState(false);
   const [olderLoading, setOlderLoading] = useState(false);
+  const [olderError, setOlderError] = useState<string | null>(null);
   const loadOlderTasks = async () => {
     if (olderLoading || olderLoaded || !myEmail || !domain) return;
     setOlderLoading(true);
+    setOlderError(null); // 다시 누르면 지난 오류 문구는 지운다
     try {
       const windowStart = Date.now() - 90 * 24 * 3600 * 1000;
       const snap = await getDocs(
@@ -122,7 +124,14 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
       setOlderLoaded(true);
     } catch (err) {
       console.error("[tasks] 지난 업무 조회 실패", err);
-      alert("지난 업무를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      // 종전에는 alert 로 "잠시 후 다시 시도해 주세요"를 띄웠다. 두 가지가 틀렸다
+      // (2026-08-21 사용자 신고 → 콘솔 실측으로 원인 확인):
+      //  ① 이 경로는 **실패했을 때만** 온다(빈 결과는 아래 "90일 이전 기록이 없습니다").
+      //     그런데 문구가 일시적 장애처럼 읽혀, 기록이 있는데 못 불러온 것으로 오해된다.
+      //  ② 실제 원인은 Firestore 복합 인덱스 미생성이었다. 인덱스가 없으면 시간이
+      //     지나도 절대 성공하지 않으므로 "잠시 후 다시"는 영원히 거짓말이다.
+      // 화면 안 문구로 내리고, 시간이 해결해 준다는 약속을 뺀다.
+      setOlderError("지난 업무를 불러오지 못했습니다. 다시 눌러도 같으면 관리자에게 알려 주세요.");
     } finally {
       setOlderLoading(false);
     }
@@ -1320,6 +1329,9 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
                   >
                     {olderLoading ? "불러오는 중…" : "지난 업무 보기 (90일 이전)"}
                   </button>
+                  {olderError && (
+                    <p className="pt-2 text-sm text-rose-600 font-medium">{olderError}</p>
+                  )}
                 </div>
               )}
               {filter !== "pending" && olderLoaded && olderTasks.length === 0 && (
