@@ -39,7 +39,19 @@ export function escapeMd1Literal(s: string): string {
   return s.replace(/[\\*_~[]/g, (c) => "\\" + c);
 }
 
-/** `\*` 류를 리터럴로 되돌린다. 이스케이프 대상이 아닌 문자 앞의 `\`는 그대로 남긴다. */
+/**
+ * `\*` 류를 리터럴로 되돌린다. 이스케이프 대상이 아닌 문자 앞의 `\`는 그대로 남긴다.
+ *
+ * **평문 경로에서도 필요하다 (2026-08-21 실기기 신고 조치).** 작성기는 DOM을 직렬화할 때
+ * 토큰 문자를 무조건 이스케이프하는데(`escapeMd1Literal`), 그 본문에 실제 서식이 없으면
+ * `bodyHasMd1Formatting`이 false를 내어 **평문으로 저장**된다. 그때 이스케이프만 남아
+ * `좋은 하루\~\~\~`처럼 역슬래시가 화면에 새어 나왔다. `~`뿐 아니라 `* _ [ \` 전부
+ * 해당돼 `3*4`·`snake_case`·`[참고]` 같은 평범한 입력이 다 깨졌다.
+ */
+export function unescapeMd1Literal(s: string): string {
+  return unescapeMd1(s);
+}
+
 function unescapeMd1(s: string): string {
   let out = "";
   for (let i = 0; i < s.length; i++) {
@@ -354,5 +366,9 @@ export function autolinkBlocks(blocks: RichBlock[]): RichBlock[] {
  * 서식 해석이 아니라 렌더 표현(클릭 가능)만 바꾼다.
  */
 export function parsePlainAutolink(body: string): RichBlock[] {
-  return body.split("\n").map((line) => ({ kind: "paragraph" as const, children: autolinkText(line) }));
+  // 이스케이프를 여기서 푼다 — **이미 저장된 쪽지·업무를 구제하는 지점이다.**
+  // 저장 쪽도 함께 고쳤지만(작성기 5곳), 그 전에 보낸 것들은 본문에 `\~`가 박혀 있다.
+  return body
+    .split("\n")
+    .map((line) => ({ kind: "paragraph" as const, children: autolinkText(unescapeMd1(line)) }));
 }

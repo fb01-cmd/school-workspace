@@ -559,8 +559,8 @@ export default function TransferInTab({ s, ud, ouPaths }: any) {
                     <span>선택됨: <strong className="text-indigo-600 font-bold">{selectedCourseIds.size}개</strong></span>
                   </div>
 
-                  <div className="border border-gray-200 rounded-xl overflow-hidden shadow-2xs">
-                    <table className="w-full text-left text-sm text-gray-700">
+                  <div className="border border-gray-200 rounded-xl overflow-x-auto shadow-2xs">
+                    <table className="min-w-[700px] text-left text-sm text-gray-700">
                       <thead className="bg-gray-100 text-gray-700 font-bold border-b border-gray-200">
                         <tr>
                           <th className="p-3 text-center w-10">

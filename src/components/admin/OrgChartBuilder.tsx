@@ -721,15 +721,18 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                                 <span className="text-slate-400 text-sm">👤</span>
                               )}
 
-                              <span className="font-bold text-slate-900">
+                              {/* 이름은 1급이라 접힘·말줄임 금지, 이메일은 2급이라 말줄임 허용
+                                  (스펙 §4-3). 좁은 폭에서 "이 / 정 / 은"으로 쪼개지던 것을 막는다.
+                                  2026-08-21 실기기 신고. */}
+                              <span className="font-bold text-slate-900 whitespace-nowrap">
                                 {getDisplayName(email, teacher)}
                               </span>
                               {teacher.extension && (
-                                <span className="text-xs text-slate-500 font-normal">
+                                <span className="text-xs text-slate-500 font-normal whitespace-nowrap">
                                   {teacher.extension}
                                 </span>
                               )}
-                              <span className="text-[11px] text-slate-400 font-mono">
+                              <span className="text-[11px] text-slate-400 font-mono truncate min-w-0">
                                 {email}
                               </span>
 
@@ -850,14 +853,14 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
                         ) : (
                           <span className="text-slate-400 text-sm">👤</span>
                         )}
-                        <span className="font-bold">{getDisplayName(email, teacher)}</span>
+                        <span className="font-bold whitespace-nowrap">{getDisplayName(email, teacher)}</span>
                         {teacher.extension && (
-                          <span className="text-xs text-slate-500 font-normal">
+                          <span className="text-xs text-slate-500 font-normal whitespace-nowrap">
                             {teacher.extension}
                           </span>
                         )}
 
-                        <span className="text-[11px] text-slate-400 font-mono">{email}</span>
+                        <span className="text-[11px] text-slate-400 font-mono truncate min-w-0">{email}</span>
                         <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-extrabold rounded">
                           🚫 해당없음
                         </span>

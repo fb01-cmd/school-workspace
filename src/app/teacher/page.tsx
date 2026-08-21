@@ -761,19 +761,12 @@ export default function AdminPage() {
                       <span>학기말 클래스룸 정리</span>
                     </button>
 
-                    {/* 조직 정보 신청 (교사 본인) */}
-                    {!isSuperAdmin && (
-                      <button
-                        onClick={() => { setIsSidebarOpen(false); document.dispatchEvent(new CustomEvent("openMyProfileModal")); }}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors hover:bg-indigo-900/50 text-gray-400 hover:text-white"
-                      >
-                        <span>🏷️</span>
-                        <span>내 조직 정보 신청</span>
-                        {hasNoProfile && (
-                          <span className="ml-auto text-[11px] bg-amber-400 text-amber-900 font-bold px-1.5 py-0.5 rounded-full">미등록</span>
-                        )}
-                      </button>
-                    )}
+                    {/* 「내 조직 정보 신청」 사이드바 항목 제거 (2026-08-21 사용자 판단).
+                        하단 「내 정보 관리」 카드와 **완전히 같은 창**(MyProfileModal)을 여는
+                        중복 통로였다. 같은 창으로 가는 길이 5곳 더 있고(홈 미등록 배너의
+                        버튼 `:346`, MyProfileCard, 쪽지·업무 작성기 4곳), 미등록 상태 안내도
+                        홈 상단 배너(`:338`)가 이미 크게 하고 있어 뱃지도 중복이었다.
+                        `openMyProfileModal` 이벤트는 나머지 통로가 계속 쓴다. */}
                   </div>
                 )}
               </div>

@@ -21,7 +21,7 @@ import { canUseMessaging } from "@/lib/org/eligibility";
 import MemoRichBody from "@/components/common/MemoRichBody";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
-import { bodyHasMd1Formatting } from "@/lib/memo/richtext";
+import { bodyHasMd1Formatting, unescapeMd1Literal } from "@/lib/memo/richtext";
 import TaskComposerModal from "./TaskComposerModal";
 import TaskStatusBoard from "./TaskStatusBoard";
 
@@ -308,7 +308,8 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
           action: "self_add",
           title: selfTitle.trim(),
           ...(selfNoDue ? { noDue: true } : { dueAt }),
-          body: finalBody || undefined,
+          // 평문으로 강등해 보낼 땐 이스케이프를 풀어 저장한다 (2026-08-21)
+          body: (hasMd1 ? finalBody : unescapeMd1Literal(finalBody)) || undefined,
           contentFormat: hasMd1 ? "md1" : undefined,
         }),
       });

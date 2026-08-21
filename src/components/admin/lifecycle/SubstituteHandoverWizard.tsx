@@ -508,7 +508,7 @@ export default function SubstituteHandoverWizard({ domain, operatorEmail }: Prop
                 걸치는 주 즉시 변경 수업 목록 ({previewData.weekIntents.length}건)
               </h4>
               <div className="border border-gray-200 rounded-lg overflow-hidden max-h-52 overflow-y-auto">
-                <table className="min-w-full text-left text-sm divide-y divide-gray-200">
+                <table className="min-w-[700px] text-left text-sm divide-y divide-gray-200">
                   <thead className="bg-gray-50 text-gray-700 font-bold sticky top-0">
                     <tr>
                       <th className="px-3 py-2">학급</th>

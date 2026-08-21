@@ -273,7 +273,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                     ⚠️ 유형A 상세 ▼
                   </summary>
                   <div className="mt-2 overflow-auto max-h-40">
-                    <table className="w-full text-sm">
+                    <table className="min-w-[480px] text-sm">
                       <thead>
                         <tr className="bg-amber-100 text-amber-800 font-bold">
                           <th className="px-2 py-1 text-left">이름</th>
@@ -335,7 +335,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                     ✅ 진급 예정 {matched.length}명 ▼
                   </summary>
                   <div className="mt-2 overflow-auto max-h-48">
-                    <table className="w-full text-sm">
+                    <table className="min-w-[600px] text-sm">
                       <thead>
                         <tr className="bg-green-100 text-green-700 font-bold">
                           <th className="px-2 py-1 text-left">이름</th>
@@ -418,7 +418,7 @@ export default function PromoteTab({ s, ud, ouList, onDone, onNext }: any) {
                 <div className="space-y-2">
                   <p className="text-sm font-bold text-red-700">⚠️ 진급 실패 상세 내역 ({result.failed.length}건)</p>
                   <div className="overflow-auto max-h-52 rounded-xl border border-red-100">
-                    <table className="w-full text-sm">
+                    <table className="min-w-[600px] text-sm">
                       <thead className="sticky top-0 bg-red-50 text-red-700 font-semibold">
                         <tr>
                           <th className="px-3 py-2 text-left">이름</th>

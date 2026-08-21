@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
-import { bodyHasMd1Formatting, MEMO_CONTENT_FORMAT_MD1, collectMd1AttachmentIds, stripMd1 } from "@/lib/memo/richtext";
+import { bodyHasMd1Formatting, MEMO_CONTENT_FORMAT_MD1, collectMd1AttachmentIds, stripMd1, unescapeMd1Literal } from "@/lib/memo/richtext";
 import { previewRecipientLine, buildRecipientMeta, deriveRecipientChips, RecipientChip } from "@/lib/org/recipients";
 import type { TeacherProfile } from "@/context/AuthContext";
 import { resolveDisplayName } from "@/lib/org/displayName";
@@ -453,7 +453,8 @@ export default function HubMemoComposer({
         body: JSON.stringify({
           action: "send",
           title: title.trim() || undefined,
-          body: finalBody,
+          // 평문으로 강등해 보낼 땐 이스케이프를 풀어 저장한다 (2026-08-21)
+          body: hasMd1 ? finalBody : unescapeMd1Literal(finalBody),
           contentFormat: hasMd1 ? MEMO_CONTENT_FORMAT_MD1 : undefined,
           attachments: driveFileIds.length > 0 ? driveFileIds : undefined,
           recipientSummary,

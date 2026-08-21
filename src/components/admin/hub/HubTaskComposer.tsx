@@ -10,7 +10,7 @@ import {
 } from "@/lib/tasks/logic";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
-import { bodyHasMd1Formatting, stripMd1 } from "@/lib/memo/richtext";
+import { bodyHasMd1Formatting, stripMd1, unescapeMd1Literal } from "@/lib/memo/richtext";
 import { previewRecipientLine, buildRecipientMeta, deriveRecipientChips, RecipientChip } from "@/lib/org/recipients";
 import type { TeacherProfile } from "@/context/AuthContext";
 import { resolveDisplayName } from "@/lib/org/displayName";
@@ -271,7 +271,8 @@ export default function HubTaskComposer({
           body: JSON.stringify({
             action: "prepare",
             title: title.trim(),
-            body: finalBody,
+            // 평문으로 강등해 보낼 땐 이스케이프를 풀어 저장한다 (2026-08-21)
+            body: hasMd1 ? finalBody : unescapeMd1Literal(finalBody),
             contentFormat: hasMd1 ? "md1" : undefined,
             kind,
             dueAt,

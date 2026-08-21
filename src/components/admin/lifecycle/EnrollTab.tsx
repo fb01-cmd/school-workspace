@@ -184,7 +184,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
           {!result ? (
             <>
               <div className="overflow-auto max-h-52 rounded-xl border">
-                <table className="w-full text-sm">
+                <table className="min-w-[600px] text-sm">
                   <thead className="sticky top-0 bg-indigo-50 font-bold">
                     <tr className="text-indigo-700">
                       <th className="px-3 py-2 text-left">이름</th>
@@ -269,7 +269,7 @@ export default function EnrollTab({ s, ud, onDone, onNext }: any) {
                 <div className="space-y-2">
                   <p className="text-sm font-bold text-red-700">⚠️ 실패 상세 내역 ({result.failed.length}건)</p>
                   <div className="overflow-auto max-h-52 rounded-xl border border-red-100">
-                    <table className="w-full text-sm">
+                    <table className="min-w-[600px] text-sm">
                       <thead className="sticky top-0 bg-red-50 text-red-700 font-semibold">
                         <tr>
                           <th className="px-3 py-2 text-left">이름</th>

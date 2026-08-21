@@ -183,8 +183,8 @@ export default function DisciplinePermissionsTab({ domain, onPermissionsUpdated 
           부여된 특별 권한 내역이 없습니다. (수퍼어드민 및 담임 교사의 기본 권한은 자동으로 적용됩니다)
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <table className="w-full text-left text-sm text-gray-800 dark:text-gray-200">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-x-auto">
+          <table className="min-w-[700px] text-left text-sm text-gray-800 dark:text-gray-200">
             <thead className="bg-gray-50 dark:bg-gray-900/50 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
               <tr>
                 <th className="p-4">교사 이메일</th>

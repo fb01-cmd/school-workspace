@@ -144,7 +144,7 @@ export default function GraduationConsentsTab({ ud }: { s: any; ud: any }) {
           ) : filteredConsents.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-xs">보관된 동의서 내역이 없습니다.</div>
           ) : (
-            <table className="min-w-full text-left text-sm border-collapse">
+            <table className="min-w-[900px] text-left text-sm border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b text-slate-500 uppercase font-semibold">
                   <th className="px-6 py-3.5 w-24">학번</th>

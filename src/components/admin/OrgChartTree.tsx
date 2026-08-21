@@ -271,7 +271,10 @@ export default function OrgChartTree({ onEditTeacher }: Props) {
                               const dn = resolveDisplayName(teacher.email, teacher, gwsName);
                               return (
                                 <>
-                                  <span className="font-bold text-slate-800 text-sm">
+                                  {/* 이름은 1급 정보라 접히면 안 된다 — 좁은 폭에서 옆 요소
+                                      (이메일·뱃지)에 밀려 "장원 / 재"처럼 글자 단위로 쪼개지던
+                                      것을 막는다. 말줄임도 금지(스펙 §4-3). 2026-08-21 실기기 신고. */}
+                                  <span className="font-bold text-slate-800 text-sm whitespace-nowrap">
                                     {dn.name}
                                   </span>
                                   {dn.extension && (

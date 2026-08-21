@@ -309,7 +309,7 @@ export default function EnrollSheetEditor({ onApply, onCancel }: EnrollSheetEdit
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[400px]">
-        <table className="min-w-full divide-y divide-slate-200 text-sm border-collapse">
+        <table className="min-w-[700px] divide-y divide-slate-200 text-sm border-collapse">
           <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
             <tr>
               <th className="px-3 py-2 text-center text-slate-500 w-12 font-bold border-r border-slate-200">No</th>

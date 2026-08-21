@@ -11,7 +11,7 @@ import type { RecipientChip } from "@/lib/org/recipients";
 import type { TaskFormFile, TaskKind } from "@/lib/tasks/logic";
 import MemoEditorToolbar from "@/components/common/MemoEditorToolbar";
 import { serializeDomToMd1 } from "@/lib/memo/richtext_dom";
-import { bodyHasMd1Formatting } from "@/lib/memo/richtext";
+import { bodyHasMd1Formatting, unescapeMd1Literal } from "@/lib/memo/richtext";
 
 interface Props {
   isOpen: boolean;
@@ -133,7 +133,8 @@ export default function TaskComposerModal({ isOpen, onClose, onSuccess }: Props)
         body: JSON.stringify({
           action: "prepare",
           title: title.trim(),
-          body: finalBody,
+          // 평문으로 강등해 보낼 땐 이스케이프를 풀어 저장한다 (2026-08-21)
+          body: hasMd1 ? finalBody : unescapeMd1Literal(finalBody),
           contentFormat: hasMd1 ? "md1" : undefined,
           kind,
           dueAt,

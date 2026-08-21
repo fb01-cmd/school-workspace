@@ -336,6 +336,73 @@ export default function StudentPortal() {
           {/* 🔔 알림 설정 관리자 */}
           <PushNotificationManager />
 
+          {/* 졸업 안내는 **맨 위**에 둔다 (2026-08-21 사용자 지시).
+              종전에는 시간표·급식과 같은 2열 격자 안 세 번째라, 폰(1열)에서는
+              스크롤을 내려야 보였다. 기한이 걸린 유일한 조치 항목(계정 정지·영구
+              삭제)이 매일 보는 정보 뒤에 있으면 놓친다. */}
+          {gradTask && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-3.5">
+                    <h3 className="text-base font-bold text-slate-800">🏫 졸업예정 계정 백업 안내</h3>
+                    {gradTask.consentSubmitted ? (
+                      <span className="bg-emerald-50 text-emerald-700 text-xs px-2.5 py-1 rounded-lg font-bold border border-emerald-100">동의완료</span>
+                    ) : (
+                      <span className="bg-amber-50 text-amber-700 text-xs px-2.5 py-1 rounded-lg font-bold border border-amber-100 animate-pulse">동의대기</span>
+                    )}
+                  </div>
+
+                  {gradTask.consentSubmitted ? (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl text-xs text-emerald-800 leading-relaxed">
+                        ✅ <strong>동의서 제출 완료</strong><br />
+                        {gradTask.consentedAt?.toDate ? gradTask.consentedAt.toDate().toLocaleString("ko-KR") : new Date(gradTask.consentedAt || Date.now()).toLocaleString("ko-KR")} 에 계정 삭제 인지 및 백업 서명을 완료해 주셨습니다. 협조해 주셔서 감사합니다.
+                      </div>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        학교 계정이 정지/삭제되기 전에 구글 테이크아웃이나 데이터 이전 도구를 사용하여 중요한 과제 및 자료를 미리 백업하세요.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl text-xs text-amber-800 leading-relaxed">
+                        ⚠️ <strong>백업 확인 서명 필요</strong><br />
+                        학교 계정은 <strong>{suspendDateStr}</strong>에 정지되고, <strong>{deleteDateStr}</strong>에 영구 삭제됩니다. 안전한 자료 보관을 위해 데이터 백업 서명을 진행해 주세요.
+                      </div>
+                      <button
+                        onClick={() => setShowModal(true)}
+                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm"
+                      >
+                        ✍️ 데이터 이전 및 삭제 동의서 작성하기
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 백업 가이드 다운로드 링크 모음 */}
+                  <div className="border-t border-slate-100 mt-4 pt-4 space-y-2">
+                    <p className="text-xs font-bold text-slate-700">💾 데이터 이전/백업 방법</p>
+                    <a
+                      href="https://www.iorad.com/player/1813583/GW---------------------#trysteps-1"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 text-xs hover:bg-slate-50 text-slate-600 font-medium transition-colors"
+                    >
+                      <span>다른 구글 계정으로 데이터 이전 가이드</span>
+                      <span>↗️</span>
+                    </a>
+                    <a
+                      href="https://www.iorad.com/player/1765417/--------------#trysteps-1"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 text-xs hover:bg-slate-50 text-slate-600 font-medium transition-colors"
+                    >
+                      <span>개인 PC로 데이터 다운로드 가이드</span>
+                      <span>↗️</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
+
           {/* 📅 학사일정 구독 카드 */}
           <CalendarSubscribeCard variant="compact" />
 
@@ -343,68 +410,6 @@ export default function StudentPortal() {
             {/* 소속 정보 카드는 제거 — 이메일만 크게 보여줘 급식을 밀어내던 자리 (2026-08-07 사용자 지시) */}
             <StudentTimetableCard />
             <MealCard />
-            {gradTask && (
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between mb-3.5">
-                      <h3 className="text-base font-bold text-slate-800">🏫 졸업예정 계정 백업 안내</h3>
-                      {gradTask.consentSubmitted ? (
-                        <span className="bg-emerald-50 text-emerald-700 text-xs px-2.5 py-1 rounded-lg font-bold border border-emerald-100">동의완료</span>
-                      ) : (
-                        <span className="bg-amber-50 text-amber-700 text-xs px-2.5 py-1 rounded-lg font-bold border border-amber-100 animate-pulse">동의대기</span>
-                      )}
-                    </div>
-
-                    {gradTask.consentSubmitted ? (
-                      <div className="space-y-4">
-                        <div className="p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl text-xs text-emerald-800 leading-relaxed">
-                          ✅ <strong>동의서 제출 완료</strong><br />
-                          {gradTask.consentedAt?.toDate ? gradTask.consentedAt.toDate().toLocaleString("ko-KR") : new Date(gradTask.consentedAt || Date.now()).toLocaleString("ko-KR")} 에 계정 삭제 인지 및 백업 서명을 완료해 주셨습니다. 협조해 주셔서 감사합니다.
-                        </div>
-                        <p className="text-xs text-slate-500 leading-relaxed">
-                          학교 계정이 정지/삭제되기 전에 구글 테이크아웃이나 데이터 이전 도구를 사용하여 중요한 과제 및 자료를 미리 백업하세요.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl text-xs text-amber-800 leading-relaxed">
-                          ⚠️ <strong>백업 확인 서명 필요</strong><br />
-                          학교 계정은 <strong>{suspendDateStr}</strong>에 정지되고, <strong>{deleteDateStr}</strong>에 영구 삭제됩니다. 안전한 자료 보관을 위해 데이터 백업 서명을 진행해 주세요.
-                        </div>
-                        <button
-                          onClick={() => setShowModal(true)}
-                          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm"
-                        >
-                          ✍️ 데이터 이전 및 삭제 동의서 작성하기
-                        </button>
-                      </div>
-                    )}
-
-                    {/* 백업 가이드 다운로드 링크 모음 */}
-                    <div className="border-t border-slate-100 mt-4 pt-4 space-y-2">
-                      <p className="text-xs font-bold text-slate-700">💾 데이터 이전/백업 방법</p>
-                      <a
-                        href="https://www.iorad.com/player/1813583/GW---------------------#trysteps-1"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 text-xs hover:bg-slate-50 text-slate-600 font-medium transition-colors"
-                      >
-                        <span>다른 구글 계정으로 데이터 이전 가이드</span>
-                        <span>↗️</span>
-                      </a>
-                      <a
-                        href="https://www.iorad.com/player/1765417/--------------#trysteps-1"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 text-xs hover:bg-slate-50 text-slate-600 font-medium transition-colors"
-                      >
-                        <span>개인 PC로 데이터 다운로드 가이드</span>
-                        <span>↗️</span>
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              )}
             {/* 전출/자퇴 계정 정지 희망일 설정 카드 */}
             {transferTask && (
               <div className="bg-white rounded-2xl border border-amber-200 p-6 shadow-xs flex flex-col justify-between md:col-span-2">
