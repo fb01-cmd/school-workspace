@@ -433,7 +433,6 @@ export default function TaskStatusBoard() {
                     href={`https://drive.google.com/drive/folders/${selectedTask.submitFolderId}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    title="컴퓨터의 드라이브 폴더에서도 보려면 — 드라이브에서 이 폴더에 [바로가기 추가]를 해두세요."
                     className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 rounded-xl text-sm font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <span>📁</span>
@@ -452,6 +451,25 @@ export default function TaskStatusBoard() {
               </div>
             )}
           </div>
+
+          {/*
+            제출함을 컴퓨터의 드라이브 폴더에서 여는 법 (2026-08-19 사용자 발상, 로드맵 25번).
+            데스크톱용 드라이브는 「내 드라이브」와 「공유 드라이브」만 보여주는데, 담당자의
+            제출함 접근은 폴더 단위 권한이라 「공유 문서함」으로 잡혀 탐색기에 안 나타난다.
+            해법은 바로가기 추가 한 번이고 개발이 필요 없다 — 그래서 시스템 몫은 안내뿐이다.
+
+            ⚠️ 이 안내는 2026-08-19에 이미 들어갔었지만 `title` 툴팁이라 마우스를 올려야만
+            떴다(폰에서는 아예 안 뜬다). 알아야 할 사람이 알 방법이 없어 사실상 없는 것과
+            같았다 — 2026-08-21 사용자가 "그 아이디어 어디 묻힌 것 같다"고 물어 드러났다.
+            절차 안내는 보이는 자리에 둔다. 툴팁으로 숨기지 않는다.
+          */}
+          {selectedTask.kind === "submit" && selectedTask.submitFolderId && !isCanceled && (
+            <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200/80 rounded-lg px-3 py-2">
+              💡 컴퓨터의 드라이브 폴더에서도 보시려면 — <strong>[제출함 열기]</strong>로 연 뒤
+              그 폴더에서 <strong>[정리 → 바로가기 추가 → 내 드라이브]</strong>를 한 번 해 두세요.
+              그 뒤로는 탐색기에서 폴더처럼 열립니다.
+            </p>
+          )}
 
           {/* 내용 카드 (피드백 8번 '내용' + 피드백 6,9번 MemoRichBody autolink) */}
           {selectedTask.body && (

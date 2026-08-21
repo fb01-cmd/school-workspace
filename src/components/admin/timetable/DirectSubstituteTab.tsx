@@ -1417,7 +1417,16 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
                     <span>🗓️</span>
                     <span>{selectedTeacherName} 교사의 등록 주별 시간표 ({weeks.length}개 주간)</span>
                   </h3>
-                  <p className="text-xs text-gray-500 mt-0.5">수업 칸을 클릭하면 그 수업이 옮겨 갈 수 있는 자리가 모든 주의 빈 칸 위에 바로 표시됩니다.</p>
+                  {/*
+                    두 방향을 다 적는다. 「빈 칸 → 가져오기」(연쇄 이동)는 원래 빈 칸에 마우스를
+                    올려야만 「🔗 가져오기」가 드러나는 형태였다(`group-hover`). 마우스가 없는
+                    기기에서는 아예 드러나지 않아 기능이 있는 줄도 모른다 — 2026-08-21 훑기에서
+                    발견. 툴팁·hover에만 걸린 기능은 없는 기능과 같다.
+                  */}
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    수업 칸을 클릭하면 그 수업이 옮겨 갈 수 있는 자리가 모든 주의 빈 칸 위에 바로 표시됩니다.
+                    반대로 <strong>빈 칸을 클릭하면</strong> 그 자리로 가져올 수 있는 수업을 찾아 줍니다(연쇄 이동).
+                  </p>
                 </div>
                 {loadingTimetable && <span className="text-xs text-indigo-600 font-semibold animate-pulse">시간표 로딩 중...</span>}
               </div>
