@@ -1090,15 +1090,9 @@ export default function TasksSection({ initialTaskId, initialTab }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* 상단 타이틀 & 탭 전환 & 새 업무 작성 버튼 */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <span>📌</span>
-            <span>교직원 업무 관리</span>
-          </h2>
-        </div>
-
+      {/* 제목 없음 — 상단 머리줄 「쪽지·업무」 + 바로 위 업무/쪽지 탭이 이미 여기가 어딘지 말한다.
+          「교직원 업무 관리」까지 두면 같은 말이 한 화면에 세 번 나온다 (2026-08-21 사용자 지적) */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
         <div className="flex items-center gap-3 overflow-x-auto">
           {/* 탭 전환 */}
           <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 shrink-0 border border-slate-200">

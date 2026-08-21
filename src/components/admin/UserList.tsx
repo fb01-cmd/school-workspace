@@ -856,11 +856,8 @@ export default function UserList() {
         </div>
       )}
 
-      {/* Title & Add User */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">학교 계정 명단 목록</h2>
-        </div>
+      {/* 제목 없음 — 상단 머리줄이 화면 이름을 띄운다 (teacher/page.tsx의 h1) */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
         {isSuperAdmin && (
           <div className="flex gap-2 self-start sm:self-center">
             <button

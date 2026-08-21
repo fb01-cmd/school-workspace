@@ -463,32 +463,32 @@ export default function ClassroomCleanupTab() {
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-700 text-white rounded-xl p-6 shadow-lg relative">
+      {/* 제목 없음 — 상단 머리줄이 「학기말 클래스룸 정리」를 띄운다.
+          남은 것은 대상 학년도 표시·도움말·조작 버튼이라 다른 화면과 같은 흰 카드로 둔다. */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-500/30 backdrop-blur-md rounded-full text-xs font-bold text-indigo-200 border border-indigo-400/30">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 rounded-full text-xs font-bold text-indigo-700 border border-indigo-200">
                 📅 {currentSchoolYear}학년도 학기말 정리
               </span>
-              <HelpTip title="학기말 정리 상세 안내" variant="dark">
+              <HelpTip title="학기말 정리 상세 안내" variant="light">
                 <p>지난 학년도 클래스룸을 연도 접두어('2025 클래스명')와 함께 보관 처리하고 캘린더 구독을 정돈합니다.</p>
                 <p>언제든지 '최근 정리 내역 및 복원' 탭에서 원클릭으로 복원할 수 있습니다.</p>
                 <p>공동 교사는 소유 권한이 없어 직접 보관할 수 없으며, 동아리 등 정리가 불필요한 클래스룸은 '정리 제외' 버튼으로 제외할 수 있습니다.</p>
               </HelpTip>
             </div>
-            <h2 className="text-xl font-bold">클래스룸·캘린더 학기말 일괄 정리</h2>
           </div>
           <div className="flex gap-2 shrink-0">
             <button
               onClick={handleSnooze}
-              className="px-3.5 py-2 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 rounded-lg text-xs font-semibold backdrop-blur border border-indigo-500/40 transition-colors"
+              className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold border border-gray-200 transition-colors"
             >
               ⏰ 1주일 스누즈
             </button>
             <button
               onClick={loadData}
-              className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold backdrop-blur border border-white/20 transition-colors"
+              className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold border border-gray-200 transition-colors"
             >
               🔄 새로고침
             </button>

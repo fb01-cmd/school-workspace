@@ -122,10 +122,6 @@ export default function PolicyAckStatusTab() {
             </span>
             <span className="text-xs text-slate-400 font-mono">현재 버전: v{data.currentVersion}</span>
           </div>
-          <h2 className="text-xl font-bold text-slate-900">🔒 개인정보 처리 안내 고지 현황</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            현재 버전(v{POLICY_VERSION}) 기준 개인정보 처리 안내 고지 확인 수량 및 사용자별 확인 여부를 조회합니다.
-          </p>
         </div>
 
         <button

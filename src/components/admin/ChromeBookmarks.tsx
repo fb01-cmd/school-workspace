@@ -214,10 +214,6 @@ export default function ChromeBookmarks() {
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900">구글 크롬 브라우저 관리 북마크 배정</h2>
-      </div>
-
       {/* Tabs */}
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex space-x-6">

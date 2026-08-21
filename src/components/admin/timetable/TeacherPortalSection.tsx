@@ -3837,15 +3837,10 @@ export default function TeacherPortalSection() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 rounded-xl p-5 text-white shadow-md border border-indigo-700/40">
-        <h2 className="text-lg font-bold">📅 내 시간표 &amp; 수업교환 신청</h2>
-        <p className="text-sm text-indigo-200/80 mt-1">
-          교체가 가능한 자리만 후보로 표시됩니다.
-        </p>
-      </div>
-
       <CalendarSubscribeCard variant="compact" />
 
+      {/* 안내 문구 없음 — 「교체가 가능한 자리만 후보로 표시됩니다」를 두었다가 걷었다(2026-08-21 사용자).
+          체인 탐색(chainSearch*)이 들어오면서 빈 칸으로도 옮겨지므로 그 문장은 지금 동작보다 좁다. */}
       <div className="bg-white rounded-xl p-2 shadow-sm border border-gray-200 flex flex-wrap gap-2 text-xs font-bold">
 
         <button

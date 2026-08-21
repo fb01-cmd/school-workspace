@@ -130,10 +130,6 @@ export default function PasswordReset() {
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6 max-w-2xl mx-auto">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900">학생 계정 비밀번호 초기화</h2>
-      </div>
-
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-4 text-sm font-medium">
           ⚠️ {error}

@@ -383,11 +383,10 @@ export default function AdminPage() {
                 </button>
               </div>
             )}
-            {/* Summary Banner */}
-            <div className="bg-gradient-to-r from-indigo-800 to-blue-900 rounded-lg text-white p-6 shadow-md">
-              <h2 className="text-xl font-bold">효명고등학교 관리 시스템</h2>
-            </div>
-
+            {/* 배너 없음 — 학교 이름은 사이드바 맨 위 로고(:657)가 항상 띄우고 있고,
+                이 줄의 머리는 「홈」이다. 배너를 두면 학교 이름이 한 화면에 두 번 나온다.
+                (2026-08-21 사용자 질의 「홈 자리로 효명고 관리 시스템이 가면?」에 대한 결론 —
+                 머리줄을 학교 이름으로 바꾸면 「머리줄 = 사이드바에서 누른 이름」 규칙이 홈만 깨진다) */}
             {/* 알림 카드는 공통 최상단 */}
             <PushNotificationManager />
             {isSuperAdmin && <AdminUsageSummaryBanner onNavigate={() => setActiveMenu("usage")} />}
@@ -995,7 +994,7 @@ export default function AdminPage() {
                             }`}
                           >
                             <span>💬</span>
-                            <span>그룹스 전체관리</span>
+                            <span>구글 메일링 그룹</span>
                           </button>
 
                           <button
@@ -1112,26 +1111,31 @@ export default function AdminPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
+              {/* 이 줄이 각 화면의 유일한 제목이다 (2026-08-21 사용자 결정 「제목을 두 번 안 쓴다」).
+                  화면 컴포넌트 안에 페이지 제목을 다시 두지 않는다 — 안에 두면 같은 말이 두 번 나오고
+                  모양도 화면마다 갈린다(짙은 배너/흰 카드/없음 세 종류였다).
+                  ⚠️ 여기 이름은 사이드바 메뉴 이름과 글자까지 같아야 한다. 누른 이름과 뜨는 이름이
+                  다르면 다른 데로 온 것처럼 읽힌다 — 7곳이 어긋나 있던 것을 같은 날 맞췄다. */}
               <h1 className="text-lg font-bold text-gray-800 truncate">
                 {activeMenu === "home" && "홈"}
                 {activeMenu === "users" && "사용자 전체관리"}
-                {activeMenu === "groups" && "그룹스 전체관리"}
+                {activeMenu === "groups" && "구글 메일링 그룹"}
                 {activeMenu === "classroom_cleanup" && "학기말 클래스룸 정리"}
                 {activeMenu === "chrome_bookmarks" && "크롬 북마크 배정"}
                 {activeMenu === "password_reset" && "학생 비밀번호 초기화"}
                 {activeMenu === "profile_approvals" && "조직 정보 승인"}
                 {activeMenu === "discipline" && "생활지도 종합 관리"}
                 {activeMenu === "settings" && "Workspace 환경 설정"}
-                {activeMenu === "ou_manage" && "GWS 조직단위 관리"}
+                {activeMenu === "ou_manage" && "조직단위 관리"}
                 {activeMenu === "forms" && "생활지도 기록 작성"}
                 {activeMenu === "logs" && "작업 감사 로그"}
-                {activeMenu === "policy_ack" && "개인정보 처리 안내 고지 현황"}
+                {activeMenu === "policy_ack" && "개인정보 고지 현황"}
                 {activeMenu === "usage" && "사용량"}
                 {activeMenu === "pwa_guide" && "앱으로 설치하기 안내"}
-                {activeMenu === "roster" && "학급 명렬표 인쇄 & 관리"}
-                {activeMenu === "classroom" && "구글 클래스룸 학생 즉시 배정"}
+                {activeMenu === "roster" && "학생 명렬표 인쇄"}
+                {activeMenu === "classroom" && "클래스룸 학생 강제 배정"}
                 {activeMenu === "teachers" && "교직원 계정 및 생애주기 관리"}
-                {activeMenu === "lifecycle" && "학생 계정 생애주기 관리"}
+                {activeMenu === "lifecycle" && "학생 계정 생애주기"}
                 {activeMenu === "timetable_operation" && "시간표 운영 (학기 중)"}
                 {activeMenu === "timetable_creation" && "시간표 작성 & 학기 관리"}
                 {activeMenu === "my_timetable" && "내 시간표"}

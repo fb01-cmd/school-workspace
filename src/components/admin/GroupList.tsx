@@ -426,12 +426,7 @@ export default function GroupList() {
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6">
       {/* Upper header action bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-100 pb-5">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            👥 구글 메일링 그룹 관리
-          </h2>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4 border-b border-gray-100 pb-5">
         <button
           onClick={() => setShowAddModal(true)}
           className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors shadow-sm flex items-center gap-1.5 self-start sm:self-center"

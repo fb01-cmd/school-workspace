@@ -409,10 +409,7 @@ export default function StudentRoster() {
     <div className="space-y-6">
       {/* Settings Panel: Hides completely during print */}
       <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 space-y-4 no-print">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">📋 학급 명렬표 인쇄 & 관리</h2>
-          </div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
           <div className="flex flex-wrap gap-2">
             <button
               onClick={handleAddColumn}

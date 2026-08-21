@@ -345,17 +345,14 @@ export default function UsageDashboardTab() {
 
   return (
     <div className="space-y-6">
-      {/* 상단 배너 헤더 */}
-      <div className="bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 rounded-2xl text-white p-6 sm:p-8 shadow-xl border border-indigo-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">📊</span>
-            <h2 className="text-xl font-bold">사용량 모니터링</h2>
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${todayBadge.bg}`}>
-              <span className={`w-2 h-2 rounded-full ${todayBadge.dot}`} />
-              <span>오늘 {todayBadge.label} ({Math.round(today.topPercent)}%)</span>
-            </span>
-          </div>
+      {/* 제목 없음 — 상단 머리줄이 「사용량」을 띄운다. 남은 것은 오늘 상태와 다시 확인 버튼이다. */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">📊</span>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${todayBadge.bg}`}>
+            <span className={`w-2 h-2 rounded-full ${todayBadge.dot}`} />
+            <span>오늘 {todayBadge.label} ({Math.round(today.topPercent)}%)</span>
+          </span>
         </div>
 
         <div className="flex items-center sm:flex-col sm:items-end justify-between gap-2 shrink-0">
@@ -363,7 +360,7 @@ export default function UsageDashboardTab() {
             type="button"
             onClick={() => fetchUsageData(true)}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-700/80 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors border border-indigo-500/30 shadow-xs cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors shadow-xs cursor-pointer"
           >
             {refreshing ? (
               <>
@@ -377,7 +374,7 @@ export default function UsageDashboardTab() {
               </>
             )}
           </button>
-          <span className="text-[11px] text-indigo-300/80">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400">
             {getElapsedFetchText()}
           </span>
         </div>

@@ -113,10 +113,7 @@ export default function AuditLogViewer() {
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900">🛡️ 작업 감사 로그 (Audit Logs)</h2>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
         <button
           type="button"
           onClick={loadLogs}
