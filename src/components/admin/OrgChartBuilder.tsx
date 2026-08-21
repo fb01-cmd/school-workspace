@@ -544,15 +544,13 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
         </div>
       )}
 
-      {/* 안내 상단 배너 & §7-1 일괄 반영 스테이징 바 */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white rounded-xl p-5 shadow-md border border-indigo-800/40 space-y-4">
+      {/* 제목 없음 — 바로 위 서브탭 버튼이 「조직도 편집 (수동 배치)」로 켜져 있다.
+          짙은 배너였던 것은 이 탭만 상위 화면처럼 보이게 했다 (2026-08-21 사용자 지적).
+          안내 문구와 스테이징 바는 남긴다 — 제목이 아니라 동선 설명과 조작부다. */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
           <div>
-            <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-              <span>🏗️</span>
-              <span>교직원 조직도 편집 (수동 배치)</span>
-            </h2>
-            <p className="text-xs text-indigo-200/80 mt-1">
+            <p className="text-xs text-gray-600">
               <strong>주력 동선:</strong> 왼쪽 트리에서 [받는 부서]를 클릭 고정한 후, 오른쪽 명단에서 교사를 클릭하여 편하게 편집하세요. (로컬에서 편집 후 상단 반영 버튼으로 일괄 저장)
             </p>
           </div>
@@ -572,19 +570,19 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
         </div>
 
         {/* §7-1 상단 스테이징 커밋 바 */}
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-white/10 p-3 rounded-xl border border-white/10">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-sm font-bold">
-              <span className="text-amber-400 text-base">●</span>
+            <div className="flex items-center gap-1.5 text-sm font-bold text-gray-800">
+              <span className="text-amber-500 text-base">●</span>
               <span>미반영 변경:</span>
               <span className={`px-2 py-0.5 rounded-full font-extrabold text-sm ${
-                stagedCount > 0 ? "bg-amber-400 text-amber-950" : "bg-white/20 text-indigo-200"
+                stagedCount > 0 ? "bg-amber-400 text-amber-950" : "bg-gray-200 text-gray-600"
               }`}>
                 {stagedCount}명
               </span>
             </div>
             {isCommitting && commitProgress && (
-              <span className="text-sm text-emerald-300 font-semibold animate-pulse">
+              <span className="text-sm text-emerald-600 font-semibold animate-pulse">
                 ({commitProgress.current}/{commitProgress.total} 반영 중...)
               </span>
             )}
@@ -595,7 +593,7 @@ export default function OrgChartBuilder({ externalEditEmail, onExternalEditHandl
               type="button"
               onClick={handleRevertAll}
               disabled={stagedCount === 0 || isCommitting}
-              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-40 text-white text-sm font-bold rounded-lg transition-all border border-white/20 cursor-pointer"
+              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 text-gray-700 text-sm font-bold rounded-lg transition-all border border-gray-200 cursor-pointer"
             >
               ↺ 모두 취소
             </button>

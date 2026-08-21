@@ -993,21 +993,18 @@ export default function TimetableImportTab({
 
   return (
     <div className="space-y-6">
-      {/* 헤더 — 다른 탭과 같은 흰 카드로 맞춘다.
+      {/* 제목 없음 — 바로 위 탭 버튼이 「학기 & 권한 관리」로 켜져 있다.
           짙은 배너였던 것은 이 화면이 「컴시간 가져오기」 4단계 마법사였던 시절(779dedc)의 잔재다.
           마법사가 꺼지고(SHOW_COMCIGAN_IMPORT) 탭 하나가 된 뒤로는 이 탭만 상위 화면처럼 보였다. */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <span>📦 학기 &amp; 권한 관리</span>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
-              일과계 전용 관리자
-            </span>
-            <HelpTip title="학기 관리 상세 안내" variant="light">
-              <p>등록된 학기 목록을 확인하고, 초안 학기를 정식 시간표로 활성화하거나 삭제할 수 있습니다.</p>
-              <p>시간표 담당 관리자와 열람 전용 참관자 지정도 이 화면에서 합니다.</p>
-            </HelpTip>
-          </h2>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+            일과계 전용 관리자
+          </span>
+          <HelpTip title="학기 관리 상세 안내" variant="light">
+            <p>등록된 학기 목록을 확인하고, 초안 학기를 정식 시간표로 활성화하거나 삭제할 수 있습니다.</p>
+            <p>시간표 담당 관리자와 열람 전용 참관자 지정도 이 화면에서 합니다.</p>
+          </HelpTip>
         </div>
         <button
           onClick={() => setActiveStep(4)}

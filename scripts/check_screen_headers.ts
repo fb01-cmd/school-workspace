@@ -7,14 +7,21 @@
  * 원본이 없어서** 그때그때 옆 화면을 베낀 결과였다. 규칙을 문서에만 적으면 같은 일이
  * 다시 벌어진다(AGENTS.md ④-3의 「안 지켜지는 규칙은 잊혀서면 자동화한다」).
  *
- * 검사 두 가지:
+ * 검사 세 가지:
  *
  *  ① 사이드바에서 누른 이름 == 맨 위 줄에 뜨는 이름
- *     다르면 다른 데로 온 것처럼 읽힌다. 2026-08-21에 7곳이 어긋나 있었다.
+ *     다르면 다른 데로 온 것처럼 읽힌다. 2026-08-21에 11곳이 어긋나 있었다.
  *
  *  ② 화면 컴포넌트 안에 페이지 제목을 다시 두지 않는다
  *     맨 위 줄이 이미 이름을 띄우므로 같은 말이 두 번 나온다.
- *     정당한 예외는 그 줄 위·같은 줄에 `header-ok:` 주석을 달아 사유를 남긴다.
+ *
+ *  ③ 켜져 있는 탭 이름을 그 아래에서 제목으로 다시 쓰지 않는다
+ *     ①②를 통과하고도 「조직도 편집 (수동 배치)」 탭 밑에 「교직원 조직도 편집
+ *     (수동 배치)」 제목이 남아 있었다 — ②는 메뉴 이름하고만 대조하기 때문이다.
+ *     검사가 통과했다는 것이 규칙이 지켜졌다는 뜻은 아니라는 실례로 남긴다.
+ *
+ * 정당한 예외는 그 줄 위·같은 줄에 `header-ok:` 주석을 달아 사유를 남긴다.
+ * 예외 목록을 이 파일 안에 두지 않는 이유 = 코드와 사유가 떨어지면 낡는다.
  */
 import fs from "fs";
 import path from "path";
@@ -62,7 +69,7 @@ for (let i = 0; i < aside.length; i++) {
 }
 
 // ── ① 이름 대조 ─────────────────────────────────────────
-say("── 1/2 사이드바 이름 == 맨 위 줄 이름 ──────────");
+say("── 1/3 사이드바 이름 == 맨 위 줄 이름 ──────────");
 const mismatches: string[] = [];
 for (const [key, side] of sidebar) {
   const top = topBar.get(key);
@@ -87,7 +94,7 @@ if (mismatches.length) {
 
 // ── ② 화면 안 페이지 제목 재사용 ─────────────────────────
 say("");
-say("── 2/2 화면 안에 페이지 제목이 다시 있는가 ─────");
+say("── 2/3 화면 안에 페이지 제목이 다시 있는가 ─────");
 
 const menuNames = [...topBar.values()];
 const norm = (s: string) =>
@@ -128,6 +135,51 @@ if (hits.length) {
   fail = true;
 } else {
   say("  ✅ 페이지 제목을 다시 쓰는 화면 없음");
+}
+
+// ── ③ 탭 이름을 그 아래에서 제목으로 다시 쓰는가 ──────────
+//
+// 2026-08-21에 「조직도 편집 (수동 배치)」 탭 밑에 「교직원 조직도 편집 (수동 배치)」
+// 제목이 또 있었다. ②는 메뉴 이름하고만 대조하므로 이걸 못 잡았다 — 사용자가 눈으로
+// 찾았다. 탭 라벨은 파일 안에 있으므로 같은 파일 안에서 대조할 수 있다.
+say("");
+say("── 3/3 탭 이름을 아래에서 제목으로 다시 쓰는가 ─");
+
+const tabHits: string[] = [];
+for (const f of files) {
+  if (f === PAGE) continue;
+  const fl = fs.readFileSync(f, "utf-8").split("\n");
+
+  // 탭 버튼 라벨 수집 — 탭 전환 핸들러를 부르는 <button> 안의 한글 <span>
+  const tabLabels = new Set<string>();
+  for (let i = 0; i < fl.length; i++) {
+    if (!/set(Active)?(Sub)?(Tab|Section|View|Step)\s*\(/.test(fl[i])) continue;
+    for (let j = i; j < Math.min(fl.length, i + 20); j++) {
+      if (j > i && /<\/button>/.test(fl[j])) break;
+      const t = fl[j].match(/<span[^>]*>([^<{}]*[가-힣][^<{}]*)<\/span>/)?.[1];
+      if (t) tabLabels.add(norm(t));
+    }
+  }
+  if (!tabLabels.size) continue;
+
+  for (let i = 0; i < fl.length; i++) {
+    if (!/<h[123]\b/.test(fl[i])) continue;
+    if (fl.slice(Math.max(0, i - 4), i + 1).some((l) => l.includes("header-ok:"))) continue;
+    const text = norm(fl.slice(i, i + 4).join(" ").match(/>\s*([^<>{}]*[가-힣][^<>{}]*)</)?.[1] ?? "");
+    if (text.length < 6) continue;
+    const dup = [...tabLabels].find((t) => t.length >= 6 && (t === text || text.includes(t) || t.includes(text)));
+    if (dup) {
+      tabHits.push(`  ❌ ${f.replace(ROOT + "/", "")}:${i + 1}  제목 「${text}」 = 탭 「${dup}」`);
+    }
+  }
+}
+if (tabHits.length) {
+  tabHits.forEach((h) => say(h));
+  say("  → 켜져 있는 탭 이름을 그 아래에서 제목으로 반복하지 않는다.");
+  say('  → 정당한 예외라면 그 줄 위에 `{/* header-ok: 사유 */}` 를 달아라.');
+  fail = true;
+} else {
+  say("  ✅ 탭 이름을 제목으로 반복하는 화면 없음");
 }
 
 say("");
