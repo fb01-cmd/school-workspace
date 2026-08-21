@@ -409,6 +409,7 @@ export type ManageAction =
   | "ai_formalize"   // E2 선호 정식화 (aiText → slot_ban 제안, 저장은 UI 확인 후 slot_ban_save로만)
   | "ai_explain"     // E3 결과 설명 (draftId 대상, 표시 전용)
   | "ai_critique"    // E4 정성 비평 (draftId 대상, 표시 전용, v1은 셀 연동 없음)
+  | "ai_ask_fix"     // 말로 묻는 해결사 — 질문 해석만 (timetable_ask_fix_spec §2, 수는 엔진이 만든다)
   // ── Phase 9c-H 신학기 편성 입력 2종 (phase9c_h_spec) ──
   | "hours_plan_derive"
   | "hours_plan_list"
@@ -1124,6 +1125,14 @@ export interface TeacherSlotBan {
   teacherEmail: string;
   teacherName?: string;
   kind: SlotBanKind;
+  /**
+   * 「부탁성 희망」 — 어겨도 되는 금지 (timetable_ask_fix_spec §6, B6).
+   * 기본 false = 현행 하드 금지와 완전 호환(마이그레이션 없음). true면
+   *  · 솔버의 bannedSlots(하드 제약)에 넣지 않는다 — 못 지키면 그냥 배치한다
+   *  · H5(배정금지 위반)로 잡지 않고 **S8(교사 희망 위반) 감점 1점/건**으로만 표시한다
+   * kind:"move"(이동금지)는 솔버 단계 제약이라 「되도록」이 성립하지 않는다 — assign 전용.
+   */
+  soft?: boolean;
   slots: SimulSlot[];
   note?: string;
   active: boolean;
@@ -1361,7 +1370,8 @@ export type SoftPenaltyCode =
   | "S4" // 같은 학급 같은 요일 동일 과목 중복 (기존 '중복')
   | "S5" // 교사 같은 요일 3과목 이상 (매뉴얼 '학년')
   | "S6" // 오전/오후 균형 (매뉴얼 '오후' — 가중치 잠정, 질문지 회수 후 확정)
-  | "S7"; // 순배 — 같은 과목 3회+ 전 교시 동일 0.5점 (2026-08-21 구현, 절대치 11월 조정)
+  | "S7" // 순배 — 같은 과목 3회+ 전 교시 동일 0.5점 (2026-08-21 구현, 절대치 11월 조정)
+  | "S8"; // 교사 희망 위반 — 부탁성(soft) 금지 슬롯에 배치 1점/건 (ask_fix_spec §6, 절대치 11월 조정)
 
 /** 학기 전체 감점 1건 — (scope, text, points) 규약 유지 (수집 18 점수 병기·21 3인칭 라벨) */
 export interface TermPenaltyDetail {

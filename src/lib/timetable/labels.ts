@@ -27,4 +27,5 @@ export const SOFT_CODE_LABELS: Record<string, string> = {
   S5: "교사 하루 3과목 이상",
   S6: "오전/오후 불균형",
   S7: "순배",
+  S8: "교사 희망 위반",
 };

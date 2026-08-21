@@ -115,10 +115,12 @@ export function compileSectionsFromGrids(
   const venueMatch = buildVenueMatcher(venueGroups, model.subjects);
   const sections: SolverSection[] = [];
 
-  // 교사 assign-ban 색인: 교사키 → 금지 슬롯 집합
+  // 교사 assign-ban 색인: 교사키 → 금지 슬롯 집합.
+  // 부탁성(soft) 금지는 **넣지 않는다** — 어겨도 되는 요청이라 하드 제약이 되면 안 된다
+  // (ask_fix_spec §6: 검사기 전용 S8로만 표시. 목적함수 반영은 백지 벤치마크 관문 통과 후).
   const banByTeacher = new Map<string, Set<string>>();
   for (const ban of (model.teacherSlotBans || []).filter(
-    (b) => b.active && b.kind === "assign"
+    (b) => b.active && b.kind === "assign" && !b.soft
   )) {
     const key = norm(ban.teacherEmail);
     if (!banByTeacher.has(key)) banByTeacher.set(key, new Set());
@@ -420,10 +422,10 @@ export function compileSectionsFromHours(input: BlankCompileInput): BlankCompile
     };
   };
 
-  // 교사 assign-ban 색인 (compileSectionsFromGrids와 동일 규약)
+  // 교사 assign-ban 색인 (compileSectionsFromGrids와 동일 규약 — soft 제외도 그대로)
   const banByTeacher = new Map<string, Set<string>>();
   for (const ban of (model.teacherSlotBans || []).filter(
-    (b) => b.active && b.kind === "assign"
+    (b) => b.active && b.kind === "assign" && !b.soft
   )) {
     const key = norm(ban.teacherEmail);
     if (!banByTeacher.has(key)) banByTeacher.set(key, new Set());

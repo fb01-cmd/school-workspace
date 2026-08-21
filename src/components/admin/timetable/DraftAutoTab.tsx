@@ -51,6 +51,26 @@ interface DraftAutoTabProps {
 const DAYS = ["월", "화", "수", "목", "금"];
 
 // ── 유틸 ──
+/**
+ * 진행률에 뜨는 단계 이름을 사람 말로 (2026-08-21).
+ * 솔버는 단계를 `greedy`·`ejection`·`local`이라는 **영어 내부 이름**으로 알려 주고,
+ * 그것이 그대로 화면에 찍히고 있었다. 여러 시드로 돌 때는 앞에 「시드 2 (2/3) 」가
+ * 붙으므로 문자열을 통째로 바꾸지 않고 **단어만 치환**한다.
+ * 솔버 쪽 이름은 안 건드린다 — 로그·자가 테스트가 그 이름을 쓴다.
+ */
+const PHASE_LABELS: Record<string, string> = {
+  greedy: "빈자리 채우는 중",
+  ejection: "막힌 수업 밀어내는 중",
+  local: "더 나은 자리 찾는 중",
+};
+function phaseLabel(phase: string): string {
+  let out = phase;
+  for (const [en, ko] of Object.entries(PHASE_LABELS)) {
+    out = out.replace(new RegExp(`\\b${en}\\b`, "g"), ko);
+  }
+  return out;
+}
+
 function hardBadgeColor(n: number) {
   return n === 0 ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-red-100 text-red-800 border-red-300";
 }
@@ -2499,7 +2519,7 @@ export default function DraftAutoTab({
       {running && progress && (
         <div className="bg-white rounded-xl border border-indigo-200 p-5 space-y-3">
           <div className="flex justify-between items-center text-xs font-bold text-indigo-900">
-            <span>⚙️ {progress.phase}</span>
+            <span>⚙️ {phaseLabel(progress.phase)}</span>
             {progress.total > 0 && (
               <span>
                 {progress.done} / {progress.total}

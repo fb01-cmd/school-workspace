@@ -492,8 +492,9 @@ export function validateTimetable(
   }
 
   // ── H5: 배정금지 교시 위반 (이동금지는 솔버 단계 제약 — 완성본 정적 검사 대상 아님) ──
+  // 부탁성(soft) 금지는 어겨도 되는 요청이라 하드가 아니다 — 아래 S8로만 센다.
   for (const ban of (model.teacherSlotBans || []).filter(
-    (b) => b.active && b.kind === "assign"
+    (b) => b.active && b.kind === "assign" && !b.soft
   )) {
     const email = norm(ban.teacherEmail);
     const banned = new Set(ban.slots.map((s) => `${s.day}-${s.period}`));
@@ -755,6 +756,32 @@ export function validateTimetable(
         text: `${classText(sample.grade, sample.classNum)} ${sample.lesson.subjectName} ${total}회가 전부 ${period}교시 (교시 회전 없음)`,
         points: 0.5,
       });
+    }
+    // S8 '교사 희망 위반' (ask_fix_spec §6 — B6 「부탁성 희망」):
+    // 등록부의 soft 금지는 솔버에 하드로 걸지 않으므로(못 지키면 그냥 배치된다) 결과에 남은
+    // 어긋남을 여기서 1점/건으로 센다. **검사기 전용이다** — 목적함수(slotCost)에는 넣지 않는다.
+    // 근거: S7을 목적함수에 넣었더니 전 시드에서 금기(S4)가 되살아났다(2026-08-21 실측).
+    for (const ban of (model.teacherSlotBans || []).filter(
+      (b) => b.active && b.soft && b.kind === "assign"
+    )) {
+      const email = norm(ban.teacherEmail);
+      if (!email) continue;
+      const wanted = new Set(ban.slots.map((s) => `${s.day}-${s.period}`));
+      for (const p of placements) {
+        if (!wanted.has(`${p.day}-${p.period}`)) continue;
+        const hit = (p.lesson.teachers || []).find((t) => norm(t.email) === email);
+        if (!hit) continue;
+        const label = `${ban.teacherName || hit.name || ban.teacherEmail} 선생님`;
+        details.push({
+          code: "S8",
+          scope: "teacher",
+          key: email,
+          label,
+          day: p.day,
+          text: `${label} ${DAY_LABEL[p.day]}요일 ${p.period}교시 — 되도록 비워 달라고 한 시간에 ${classText(p.grade, p.classNum)} ${p.lesson.subjectName} 수업`,
+          points: 1,
+        });
+      }
     }
     for (const { count, sample } of byClassDaySubject.values()) {
       if (count < 2) continue;

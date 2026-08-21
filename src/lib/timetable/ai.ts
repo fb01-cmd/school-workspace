@@ -873,3 +873,300 @@ export async function runAssignmentExtract(
     modelUsed: model,
   };
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 말로 묻는 시간표 해결사 — 질문 해석 (docs/timetable_ask_fix_spec.md §2)
+// ═══════════════════════════════════════════════════════════════
+//
+// **AI가 하는 일은 여기까지다.** 질문 1건당 호출 1회, 출력은 아래 목표 어휘 하나뿐이고,
+// 교환 수(手)는 절대 만들지 않는다 (스펙 §1 대원칙 — 영구 금지). AI는 그리드 전문을 볼 수
+// 없고 자기 제안이 새 하드 위반을 만드는지 검증할 수 없기 때문이다. 수는 fixFinder의 체인
+// 탐색이 만들고 검사기가 전수 채점한다.
+//
+// 어휘 밖 요구는 goal:null로 정직하게 돌려준다 — 억지로 끼워 맞추면 엉뚱한 목표로 3초를
+// 태우고 "해결했다"는 잘못된 답이 나온다.
+
+import type { AskFixGoal } from "./fixFinder";
+import type { SoftPenaltyCode } from "./types";
+
+/** 질문 화면이 AI에게 보여 줄 기존 감점 1건 (text는 실명 포함 — 전송 직전 가명화된다) */
+export interface AiAskFixPenalty {
+  code: SoftPenaltyCode;
+  /** teacherEmail 또는 "grade-classNum" — **AI에게 보내지 않는다** (색인으로만 지목시킨다) */
+  key: string;
+  day: number;
+  text: string;
+  points: number;
+}
+
+export interface AiAskFixInput {
+  /** 일과계가 쓴 질문 원문 — 실명 포함 가능. runAskFix가 전송 전 가명화한다 */
+  text: string;
+  /** 실교사만 (이메일 있는) — 별칭 로스터·해석의 원천 */
+  teachers: AiTeacherRef[];
+  periodsPerDay: number;
+  /** 존재하는 학급 — 없는 반을 가리킨 해석을 버리는 관문 */
+  classes: Array<{ grade: number; classNum: number }>;
+  /** 현재 감점 상세 (점수 내림차순) — 질문이 기존 감점을 가리킬 때의 선택지 */
+  penalties: AiAskFixPenalty[];
+}
+
+export interface AiAskFixResult {
+  /** "이렇게 이해했습니다" 확인 문장 (역치환 완료) — 오해석이면 여기서 멈춘다 */
+  interpretation: string;
+  /** 어휘 밖이면 null */
+  goal: AskFixGoal | null;
+  /** 버린 항목·해석 실패 사유 (역치환 완료) */
+  warnings: string[];
+}
+
+const MAX_ASK_FIX_TEXT = 300;
+const MAX_ASK_FIX_PENALTY_LINES = 30;
+
+/** 알아듣는 질문의 예 — 어휘 밖 답변에 함께 내보낸다 (막다른 길을 만들지 않는다) */
+export const ASK_FIX_EXAMPLES = [
+  "이경호 선생님 1교시가 5일 연속인데 3일 이하로 줄일 수 있을까요?",
+  "권성민 선생님 화요일 수업이 너무 많습니다. 5시간 이하로 해 주세요.",
+  "2학년 3반 미적Ⅰ이 매번 같은 교시입니다.",
+  "1학년 5반 목요일 6교시 수업을 다른 시간으로 옮기고 싶습니다.",
+];
+
+/**
+ * 가명화 뒤에도 남아 있는 「○○○ 선생님」 — 등록부에 없는 이름(오타·전출자)이 원문 그대로
+ * 외부로 나가는 것을 막는 관문. E2의 "하나도 치환되지 않으면 거절"과 같은 계열이되,
+ * 질문에는 교사 이름이 아예 없는 정상 경우(학급·과목 질문)가 있어 조건을 좁혔다.
+ */
+export function findUnmaskedTeacherMention(maskedText: string): string | null {
+  const m = (maskedText || "").match(/([가-힣]{2,4})\s*(선생님|샘|쌤|교사님)/);
+  return m ? m[1] : null;
+}
+
+/** 프롬프트 조립 (순수) — maskedText·maskedPenalties는 이미 가명화된 문자열이어야 한다 */
+export function buildAskFixPrompt(
+  maskedText: string,
+  aliases: string[],
+  periodsPerDay: number,
+  maskedPenalties: string[]
+): string {
+  return [
+    `당신은 고등학교 시간표 담당 교사의 질문을 정해진 목표 어휘로 번역하는 해석기입니다.`,
+    `당신은 시간표를 고치는 방법을 제안하지 않습니다 — 질문이 무엇을 원하는지만 번역합니다.`,
+    ``,
+    `규칙:`,
+    `1. 교사는 가명(${aliases.slice(0, 5).join(", ")}…)으로만 지칭됩니다. 문장에 등장한 가명만 쓰세요.`,
+    `2. 아래 다섯 가지 중 하나로만 번역합니다. 어느 것에도 맞지 않으면 goal을 null로 두고 interpretation에 이유를 쓰세요.`,
+    `   - "teacher-period-days": 어떤 교사의 특정 교시가 여러 요일에 몰린 것을 줄이고 싶다 → {"kind":"teacher-period-days","teacher":"T01","period":1,"max":3}`,
+    `   - "teacher-day-hours": 어떤 교사의 특정 요일 수업 시간이 많은 것을 줄이고 싶다 → {"kind":"teacher-day-hours","teacher":"T01","day":2,"max":5}`,
+    `   - "subject-rotation": 어떤 학급의 어떤 과목이 매번 같은 교시인 것을 흩고 싶다 → {"kind":"subject-rotation","grade":2,"classNum":3,"subject":"미적Ⅰ"}`,
+    `   - "move-cell": 어떤 학급의 특정 요일·교시 수업을 다른 시간으로 옮기고 싶다 → {"kind":"move-cell","grade":1,"classNum":5,"day":4,"period":6}`,
+    `   - "existing-detail": 질문이 아래 「현재 감점 목록」의 한 항목을 그대로 가리킨다 → {"kind":"existing-detail","detailIndex":3}`,
+    `3. day: 1=월 2=화 3=수 4=목 5=금. period: 1~${periodsPerDay}.`,
+    `4. max는 질문이 숫자를 말했을 때만 넣습니다. 말하지 않았으면 넣지 마세요 — 지금보다 하나 줄이는 것으로 처리됩니다.`,
+    `5. **어떻게 바꿀지 제안하지 마세요.** 누구와 누구를 바꾸면 되는지는 이 시스템의 다른 부분이 계산합니다.`,
+    `6. 질문에 없는 요구를 만들지 마세요.`,
+    `7. 반드시 JSON 하나만 출력: {"interpretation": "질문을 한 문장으로 다시 쓴 것 (가명 사용)", "goal": {...} 또는 null}`,
+    ``,
+    `## 현재 감점 목록`,
+    maskedPenalties.length
+      ? maskedPenalties.map((t, i) => `#${i} ${t}`).join("\n")
+      : "(없음)",
+    ``,
+    `## 질문`,
+    maskedText,
+  ].join("\n");
+}
+
+/** AI가 낼 수 있는 날 목표 — 종류별로 모양이 다르면 모델이 자주 틀리므로 평평한 한 덩어리로 받는다 */
+export interface RawAskFixGoal {
+  kind: string;
+  teacher?: string;
+  day?: number;
+  period?: number;
+  max?: number;
+  grade?: number;
+  classNum?: number;
+  subject?: string;
+  detailIndex?: number;
+}
+
+/** 응답 파싱 (순수) — 형태 검증만. 별칭·범위 해석은 normalizeAskFixGoal이 담당 */
+export function parseAskFixResponse(
+  text: string
+): { interpretation: string; goal: RawAskFixGoal | null } | null {
+  let body = (text || "").trim();
+  const fence = body.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) body = fence[1].trim();
+  try {
+    const obj = JSON.parse(body);
+    if (!obj || typeof obj.interpretation !== "string") return null;
+    const g = obj.goal;
+    const goal: RawAskFixGoal | null =
+      g && typeof g === "object" && typeof g.kind === "string"
+        ? {
+            kind: g.kind,
+            ...(typeof g.teacher === "string" ? { teacher: g.teacher } : {}),
+            ...(g.day != null ? { day: Number(g.day) } : {}),
+            ...(g.period != null ? { period: Number(g.period) } : {}),
+            ...(g.max != null ? { max: Number(g.max) } : {}),
+            ...(g.grade != null ? { grade: Number(g.grade) } : {}),
+            ...(g.classNum != null ? { classNum: Number(g.classNum) } : {}),
+            ...(typeof g.subject === "string" ? { subject: g.subject } : {}),
+            ...(g.detailIndex != null ? { detailIndex: Number(g.detailIndex) } : {}),
+          }
+        : null;
+    return { interpretation: obj.interpretation.slice(0, 500), goal };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 별칭 해석·범위 검증 (순수) — 하나라도 어긋나면 **goal을 만들지 않는다**.
+ *
+ * 반쯤 해석된 목표로 탐색을 돌리면 엉뚱한 곳을 3초 뒤지고 "못 찾았습니다"가 나온다.
+ * 그건 "못 알아들었습니다"보다 나쁘다 — 사용자가 기능이 무능하다고 읽기 때문이다.
+ */
+export function normalizeAskFixGoal(
+  raw: RawAskFixGoal | null,
+  p: Pseudonymizer,
+  ctx: {
+    periodsPerDay: number;
+    classes: Array<{ grade: number; classNum: number }>;
+    penalties: AiAskFixPenalty[];
+  }
+): { goal: AskFixGoal | null; warnings: string[] } {
+  const warnings: string[] = [];
+  if (!raw) return { goal: null, warnings };
+
+  const int = (v: unknown) => (Number.isInteger(v) ? (v as number) : NaN);
+  const teacherEmailOf = (alias?: string): string | null => {
+    const t = alias ? p.resolve(alias) : null;
+    if (!t || !t.email) {
+      warnings.push(`${alias || "(교사 미지정)"}: 시간표에 있는 선생님과 연결하지 못했습니다.`);
+      return null;
+    }
+    return t.email.toLowerCase();
+  };
+  const classExists = (grade: number, classNum: number) =>
+    ctx.classes.some((c) => c.grade === grade && c.classNum === classNum);
+  /** 질문이 숫자를 말하지 않았으면 "지금보다 하나 적게" — 실제 임계값은 엔진이 그리드에서 정한다 */
+  const threshold = (v?: number): number | "reduce" =>
+    Number.isInteger(v) && (v as number) >= 0 ? (v as number) : "reduce";
+
+  switch (raw.kind) {
+    case "teacher-period-days": {
+      const email = teacherEmailOf(raw.teacher);
+      const period = int(raw.period);
+      if (!email) return { goal: null, warnings };
+      if (!(period >= 1 && period <= ctx.periodsPerDay)) {
+        warnings.push(`${raw.period}교시는 이 학교의 교시 범위가 아닙니다.`);
+        return { goal: null, warnings };
+      }
+      return {
+        goal: { kind: "teacher-period-days", teacherEmail: email, period, maxDays: threshold(raw.max) },
+        warnings,
+      };
+    }
+    case "teacher-day-hours": {
+      const email = teacherEmailOf(raw.teacher);
+      const day = int(raw.day);
+      if (!email) return { goal: null, warnings };
+      if (!(day >= 1 && day <= 5)) {
+        warnings.push(`요일을 해석하지 못했습니다.`);
+        return { goal: null, warnings };
+      }
+      return {
+        goal: { kind: "teacher-day-hours", teacherEmail: email, day, maxHours: threshold(raw.max) },
+        warnings,
+      };
+    }
+    case "subject-rotation": {
+      const grade = int(raw.grade);
+      const classNum = int(raw.classNum);
+      // 과목명은 개인정보가 아니라 가명화 대상이 아니지만, mask가 교사 이름과 같은 과목명을
+      // 과잉 치환했을 수 있어 역치환한다 (buildPseudonymizer 주석의 "안전한 실패" 되돌리기)
+      const subject = p.unmask((raw.subject || "").trim());
+      if (!classExists(grade, classNum)) {
+        warnings.push(`${raw.grade}학년 ${raw.classNum}반 시간표를 찾지 못했습니다.`);
+        return { goal: null, warnings };
+      }
+      if (!subject) {
+        warnings.push(`어떤 과목인지 해석하지 못했습니다.`);
+        return { goal: null, warnings };
+      }
+      return { goal: { kind: "subject-rotation", grade, classNum, subjectName: subject }, warnings };
+    }
+    case "move-cell": {
+      const grade = int(raw.grade);
+      const classNum = int(raw.classNum);
+      const day = int(raw.day);
+      const period = int(raw.period);
+      if (!classExists(grade, classNum)) {
+        warnings.push(`${raw.grade}학년 ${raw.classNum}반 시간표를 찾지 못했습니다.`);
+        return { goal: null, warnings };
+      }
+      if (!(day >= 1 && day <= 5) || !(period >= 1 && period <= ctx.periodsPerDay)) {
+        warnings.push(`요일·교시를 해석하지 못했습니다.`);
+        return { goal: null, warnings };
+      }
+      return { goal: { kind: "move-cell", grade, classNum, day, period }, warnings };
+    }
+    case "existing-detail": {
+      const i = int(raw.detailIndex);
+      const hit = ctx.penalties[i];
+      if (!hit) {
+        warnings.push(`가리킨 감점 항목을 찾지 못했습니다.`);
+        return { goal: null, warnings };
+      }
+      return {
+        goal: { kind: "existing-detail", code: hit.code, key: hit.key, day: hit.day },
+        warnings,
+      };
+    }
+    default:
+      return { goal: null, warnings };
+  }
+}
+
+/**
+ * 질문 해석 실행 — 가명화 → 호출 1회(재시도 포함) → 별칭 해석 → 역치환.
+ *
+ * PII 방어선: 가명화 후에도 「○○○ 선생님」이 남아 있으면 **외부 호출 없이** 422로 거절한다
+ * (등록부에 없는 이름·오타가 원문 그대로 나가는 것을 차단 — E2와 같은 계열).
+ */
+export async function runAskFix(
+  input: AiAskFixInput,
+  apiKey: string
+): Promise<AiAskFixResult> {
+  const text = (input.text || "").trim().slice(0, MAX_ASK_FIX_TEXT);
+  if (!text) throw new AiCallError("질문을 입력해 주세요.", 400);
+
+  const p = buildPseudonymizer(input.teachers);
+  const masked = p.mask(text);
+  const leaked = findUnmaskedTeacherMention(masked);
+  if (leaked) {
+    throw new AiCallError(
+      `"${leaked}" 선생님을 시간표에서 찾지 못했습니다. 시간표에 있는 선생님의 성명을 정확히 넣어 주세요.`,
+      422
+    );
+  }
+
+  const penalties = input.penalties.slice(0, MAX_ASK_FIX_PENALTY_LINES);
+  const prompt = buildAskFixPrompt(
+    masked,
+    p.aliases(),
+    input.periodsPerDay,
+    penalties.map((d) => p.mask(d.text))
+  );
+  const parsed = await callGeminiParsed(prompt, apiKey, parseAskFixResponse);
+  const { goal, warnings } = normalizeAskFixGoal(parsed.goal, p, {
+    periodsPerDay: input.periodsPerDay,
+    classes: input.classes,
+    penalties,
+  });
+  return {
+    interpretation: p.unmask(parsed.interpretation),
+    goal,
+    warnings: warnings.map((w) => p.unmask(w)),
+  };
+}

@@ -393,6 +393,8 @@ export async function loadTeacherSlotBans(domain: string, termId: string): Promi
       teacherEmail: data.teacherEmail || "",
       teacherName: data.teacherName || "",
       kind: data.kind === "move" ? "move" : "assign",
+      // 기존 문서에는 이 필드가 없다 — 없으면 하드 금지(false)가 현행 동작 (마이그레이션 없음)
+      ...(data.soft === true ? { soft: true } : {}),
       slots: Array.isArray(data.slots)
         ? data.slots.map((s: any) => ({ day: Number(s.day), period: Number(s.period) }))
         : [],
@@ -417,6 +419,12 @@ export function validateTeacherSlotBanPayload(raw: any): { ok: true; rule: Omit<
   }
   const teacherName = typeof raw?.teacherName === "string" ? raw.teacherName.trim() : undefined;
   const kind = raw?.kind === "move" ? "move" : "assign";
+  // 부탁성 희망(soft)은 배정 금지에만 붙는다 — 이동 금지는 솔버 단계 제약이라 「되도록」이
+  // 성립하지 않는다. 조용히 무시하면 사용자 의도가 사라지므로 거절한다 (ask_fix_spec §6).
+  const soft = raw?.soft === true;
+  if (soft && kind === "move") {
+    return { ok: false, error: "「되도록」 부탁은 배정 금지에만 쓸 수 있습니다. 이동 금지는 반드시 지켜지는 규칙입니다." };
+  }
   if (!Array.isArray(raw?.slots) || raw.slots.length === 0) {
     return { ok: false, error: "금지 교시를 최소 1개 이상 지정해 주세요." };
   }
@@ -438,6 +446,7 @@ export function validateTeacherSlotBanPayload(raw: any): { ok: true; rule: Omit<
       teacherEmail,
       ...(teacherName ? { teacherName } : {}),
       kind,
+      ...(soft ? { soft: true } : {}),
       slots,
       ...(note ? { note } : {}),
       active: raw?.active !== false,
@@ -7613,6 +7622,55 @@ export async function computeAiExplain(
   const input = await buildAiGridSummary(domain, draftId);
   const { runExplain } = await import("./ai");
   return runExplain(input, (process.env.GEMINI_API_KEY || "").trim());
+}
+
+/**
+ * 말로 묻는 해결사 — **질문 해석만** 한다 (timetable_ask_fix_spec §1 대원칙).
+ *
+ * 반환은 정형 목표 1건이 전부다. 교환 수(手)는 화면에서 fixFinder의 체인 탐색이 만들고
+ * 검사기가 전수 채점한다 — 서버는 탐색도, 저장도 하지 않는다.
+ * 읽기량: 초안 1건 + 등록부 5종 (ai_explain과 같은 경로, 추가 읽기 0건).
+ */
+export async function computeAiAskFix(
+  domain: string,
+  draftId: string,
+  text: string
+): Promise<import("./ai").AiAskFixResult> {
+  const { meta, baseGrids, currentGrids } = await getDraft(domain, draftId);
+  const { model } = await loadDraftConstraintModel(domain, meta, baseGrids);
+  const report = validateTimetable(currentGrids, model);
+
+  // 가명 사전 원천 = 그리드의 **실교사**. 가상 교사(창체·SLAT 자리표시)는 사람이 아니라
+  // 가명화 대상이 아니고, 사전에 넣으면 AI가 활동명을 교사로 착각한다 (2026-08-12 실사용 신고).
+  const teachers: import("./ai").AiTeacherRef[] = [];
+  const seen = new Set<string>();
+  for (const grid of currentGrids) {
+    for (const cell of grid.cells) {
+      for (const lesson of cell.lessons) {
+        for (const t of lesson.teachers || []) {
+          const email = (t.email || "").trim().toLowerCase();
+          if (!email || seen.has(email)) continue;
+          seen.add(email);
+          teachers.push({ email, name: t.name });
+        }
+      }
+    }
+  }
+
+  const { runAskFix } = await import("./ai");
+  return runAskFix(
+    {
+      text,
+      teachers,
+      periodsPerDay: model.periodsPerDay,
+      classes: currentGrids.map((g) => ({ grade: g.grade, classNum: g.classNum })),
+      // key(이메일·학급키)는 프롬프트에 나가지 않는다 — AI는 색인(#N)으로만 지목한다
+      penalties: [...report.soft.details]
+        .sort((a, b) => b.points - a.points)
+        .map((d) => ({ code: d.code, key: d.key, day: d.day, text: d.text, points: d.points })),
+    },
+    (process.env.GEMINI_API_KEY || "").trim()
+  );
 }
 
 /** E4 정성 비평 — 표시 전용 (spec §0 철칙: 어떤 저장도 하지 않는다) */
