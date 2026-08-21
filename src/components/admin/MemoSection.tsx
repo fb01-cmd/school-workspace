@@ -1182,9 +1182,10 @@ function ComposeModal({
 
   const [title, setTitle] = useState(initialTitle);
   const [bodyMd1, setBodyMd1] = useState("");
-  const [linkUrl, setLinkUrl] = useState("");
-  const [linkLabel, setLinkLabel] = useState("");
-  const [links, setLinks] = useState<{ url: string; label?: string }[]>([]);
+  // 「링크 첨부」 입력은 2026-08-19 피드백 28번으로 철거됐다. 그때 입력 UI만 지우고
+  // 상태·핸들러·발송 payload가 남아 있었다(setLinks를 부르는 곳이 없어 links는 항상 빈 배열).
+  // 2026-08-21 훑기에서 확인하고 정리한다.
+  // ⚠️ 지난 쪽지에 이미 저장된 링크를 보여주는 쪽(:983)은 그대로 둔다 — 그건 살아 있는 표시다.
   const [stagedAttachments, setStagedAttachments] = useState<StagedAttachment[]>([]);
   const [addSearchVal, setAddSearchVal] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1396,17 +1397,6 @@ function ComposeModal({
       next.delete(email);
       return next;
     });
-  };
-
-  // 링크 추가
-  const handleAddLink = () => {
-    if (!linkUrl.trim().startsWith("https://")) {
-      setError("링크는 https://로 시작해야 합니다.");
-      return;
-    }
-    if (links.length >= 5) { setError("링크는 최대 5개입니다."); return; }
-    setLinks((prev) => [...prev, { url: linkUrl.trim(), label: linkLabel.trim() || undefined }]);
-    setLinkUrl(""); setLinkLabel(""); setError("");
   };
 
   // 파일(이미지+일반 파일) 배열을 받아 전처리 & 업로드 큐에 추가하는 공통 함수 (피드백 10번)
@@ -1635,7 +1625,6 @@ function ComposeModal({
           title,
           body: md1,
           contentFormat,
-          links: links.length > 0 ? links : undefined,
           attachments: driveFileIds.length > 0 ? driveFileIds : undefined,
           recipientSummary: isReply ? (chips[0]?.label || "") : buildSummary(chips),
           recipients: { users: userEmails, groups: [] },
