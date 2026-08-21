@@ -62,8 +62,23 @@ service cloud.firestore {
     match /settings/{domain} {
       // 학생 포털도 설정(포털 안내 문구 등)을 읽으므로 학교 구성원 전체 읽기 허용
       allow read: if isSchool();
-      // 설정 변경은 교직원 화면(OU 설정, 전출 설정)에서만
-      allow write: if isTeacher();
+      // ⚠️ 2026-08-21 강화: isTeacher() → isSuperAdmin().
+      //
+      // 원래 주석이 *"설정 변경은 교직원 화면(OU 설정, 전출 설정)에서만"* 이라고 **의도를**
+      // 적어 두었는데, 조건은 그 의도와 달랐다. isTeacher()는 role in ['teacher','super_admin']
+      // 이라 **평교사 전원**이 통과한다. 사이드바 「관리자 전용」 구역에 숨겨 둔 것은 보안
+      // 장치가 아니다 — 로그인한 교사면 누구나 SDK·콘솔로 직접 쓸 수 있었다.
+      //
+      // 이 문서에 든 것: 로그인 차단 목록(blockedOuPaths) · 졸업/전출 계정이 옮겨 갈
+      // 조직단위(ouMapping) · 전입 자동 가입 그룹 · 학년 수 · 부서 목록 · 일과표.
+      // ouMapping을 바꾸면 **졸업·전출 자동화가 계정을 엉뚱한 조직단위로 옮긴다.**
+      //
+      // 잠가도 안 깨지는 근거 (2026-08-21 전수 확인): 이 문서를 쓰는 클라이언트 경로는
+      // 셋뿐이고 전부 관리자 화면이다 — OUConfiguration.tsx:359 · TeacherLifecycle.tsx:424 ·
+      // TransferOutTab.tsx:222. 나머지(student/page·UserList·AuthContext·StudentLifecycle·
+      // GraduationTab)는 전부 읽기이고 위 read 규칙은 그대로 두었다. 서버(admin SDK) 경로는
+      // 규칙을 우회하므로 영향이 없다.
+      allow write: if isSuperAdmin();
     }
 
     // ── teacher_profiles/{email} — 확정된 교직원 프로필 ────────

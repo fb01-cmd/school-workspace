@@ -149,7 +149,50 @@ const TASK_DOC = {
   title: "업무",
 };
 
+/** settings/{domain} 접근 케이스 (2026-08-21 강화 — 쓰기는 수퍼어드민만).
+ *  이 문서에는 로그인 차단 목록·졸업/전출 조직단위 매핑이 들어 있어, 평교사가 고칠 수 있으면
+ *  자동화가 계정을 엉뚱한 곳으로 옮긴다. 읽기는 학생 포털도 하므로 열어 둔 채여야 한다. */
+function settingsCase(opts: {
+  title: string;
+  method: "get" | "update";
+  auth?: { uid: string; email: string; role: string };
+  expect: "ALLOW" | "DENY";
+}) {
+  const after = { ouMapping: { graduates: "/공격자가_지정한_OU" } };
+  return {
+    title: opts.title,
+    testCase: {
+      expectation: opts.expect,
+      functionMocks: opts.auth ? userDocMocks(opts.auth.uid, opts.auth.role) : [],
+      request: {
+        ...(opts.auth ? { auth: authToken(opts.auth.email, opts.auth.uid) } : {}),
+        method: opts.method,
+        path: `/databases/(default)/documents/settings/hmh.or.kr`,
+        time: "2026-08-21T14:00:00Z",
+        ...(opts.method === "update" ? { resource: { data: after } } : {}),
+      },
+      ...(opts.method === "update" ? { resource: { data: { ouMapping: { graduates: "/졸업생" } } } } : {}),
+    },
+  };
+}
+
 const CASES = [
+  settingsCase({
+    title: "학교 설정 — 평교사 쓰기 → 막혀야 한다 (2026-08-21 강화 전에는 뚫려 있었다)",
+    method: "update", auth: TEACHER, expect: "DENY",
+  }),
+  settingsCase({
+    title: "학교 설정 — 수퍼어드민 쓰기 → 허용 (관리자 화면 3곳이 이 경로를 쓴다)",
+    method: "update", auth: SUPER, expect: "ALLOW",
+  }),
+  settingsCase({
+    title: "학교 설정 — 평교사 읽기 → 허용 유지 (읽기까지 잠그면 화면이 깨진다)",
+    method: "get", auth: TEACHER, expect: "ALLOW",
+  }),
+  settingsCase({
+    title: "학교 설정 — 로그인 안 한 사람 읽기 → 막힘",
+    method: "get", expect: "DENY",
+  }),
   updateCase({
     title: "① 본인이 내선번호만 수정 → 허용되어야 한다 (2계층 즉시 저장)",
     docEmail: ME,
