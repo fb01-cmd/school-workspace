@@ -36,6 +36,12 @@
 | **글씨 크기 2단계 — 2묶음(생활지도·수명주기) 코드 측 종결, 화면 검증 대기** — 적용 `b81ee80`(생활지도 8파일)·`86805ae`(수명주기 13파일) + Claude 검수 보정 `8c8f145`(누락 입력 라벨 17곳). 기계 관문 4종 통과 | 남은 것: **360px(Claude — 로그인 필요, 아래 주 참조)** → 사용자(실기기) | 회귀 2종 = 9px이하 **0건** + 10px 파일이 **§7 목록 13개와 정확히 일치**. 둘 다 통과 |
 | **글씨 크기 2단계 — 3묶음(시간표) 범위 확정, 착수 대기** — 31파일/1,368곳. §3-1 격자 예외가 여기 몰려 있어(§7 13개 중 12개) **K-1(예외 없는 19파일/573곳) · K-2(예외 있는 12파일/795곳)**로 갈라 `NEXT.md`에 범위만 적어 뒀다. **과제 J의 Codex 검증 통과 후** Claude가 과제로 승격한다 | Claude(승격) → Antigravity(적용) | 위와 같음. K-2는 추가로 **격자 셀 안 10px 불변** + 잠정 12px 버튼 3건(`BaseRevisionTab` 내용 변경 · `DirectSubstituteTab` 가져오기 · `TeacherPortalSection` 취소) 14px 해소 |
 
+## 결정 대기 — 실기기에서 나온 결함 (2026-08-21, 사용자 지시로 조치 보류·일괄 처리)
+
+| 항목 | 진단 | 확인 방법 |
+|---|---|---|
+| **표가 360px에서 짜부라진다 — `overflow-x-auto`와 `w-full`이 서로 상쇄** (졸업생 명단에서 발견, 사용자: *"버려도 될 것 같긴 해"*) | **버릴 문제가 아니다.** 표를 감싼 `<div className="overflow-x-auto">`는 있는데(`GraduationTab.tsx:797`) 표 자신이 `w-full`이라(`:803`) **넘치지 않고 칸 안으로 우그러진다** — 그래서 옆으로 스크롤되는 대신 글자가 한 자씩 세로로 쪼개진다. 스펙 §4-1이 요구하는 "자체 스크롤 컨테이너"의 의도가 무력화된 상태. **같은 패턴 8곳** = `GraduationTab`·`GraduationConsentsTab`·`SubstituteHandoverWizard`·`TeacherLifecycle`·`TransferOutTab` 각 1 + `DisciplineSummarySection` 3. 2단계 승격(12→14px)이 폭 압력을 키워 드러났다 | 처방은 **표마다 한 단어** — `w-full` → `min-w-full` 또는 `min-w-[Npx]`. **저장소에 이미 올바른 판이 있다**(`UserList.tsx:1124`·`AuditLogViewer.tsx:216`·`OUTreeManager.tsx:246` = `min-w-full`, `MyTimetableCard.tsx:107` = `min-w-[500px]`). 고친 뒤 360px에서 표가 **옆으로 밀리는지**(우그러지지 않는지) 확인 |
+
 ## 실기기 확인 (사용자)
 
 | 배포분 | 볼 것 |
