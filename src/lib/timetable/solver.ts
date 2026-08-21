@@ -1041,6 +1041,37 @@ export function solveTimetable(input: SolverInput): SolverResult {
       .filter((l) => (l.teachers || []).some((t) => norm(t.email)))
       .map((l) => normSubject(l.subjectName));
 
+  /** 섹션 × 학급의 실교사 과목(중복 제거) — 과목 단위 같은 날 중복 검사용 (feasible·⑦-b).
+   *  한 과목을 두 교사가 나눠 맡으면(예: 영Ⅱ 3+1시간) 섹션이 교사별로 갈라져
+   *  섹션 단위 요일 한도가 서로를 못 본다 — 그 구멍을 과목 축으로 막는다 (2026-08-21 실측 S4 5건 중 3건). */
+  const sectionClassSubjects: Array<Array<[string, string[]]>> = sections.map((s) =>
+    s.classKeys.map((ck) => [ck, [...new Set(subjectsOf(s, ck))]] as [string, string[]])
+  );
+
+  /** (학급|과목)의 요일당 배치 허용 횟수 = ceil(주당 배치 횟수 / 운영 요일 수).
+   *  절대 금지가 아니라 몫이다 — 주당 6회 과목(동시수업 몫 3 + 일반 3 등)은 5일에 다 못 펴서
+   *  같은 날 2회가 불가피하다. 절대 금지로 두면 그 불가피분이 완화 폴백으로 흘러 더 나쁜
+   *  자리(교사 겹침 회피 실패 등)에 앉는 것이 실측됐다(2026-08-21: 소프트 30→35 악화). */
+  const subjDayQuota = new Map<string, number>();
+  {
+    const totals = new Map<string, number>();
+    sections.forEach((s, i) => {
+      const nOcc = s.blockLens.length;
+      for (const [ck, subjs] of sectionClassSubjects[i])
+        for (const subj of subjs) {
+          const k = `${ck}|${subj}`;
+          totals.set(k, (totals.get(k) || 0) + nOcc);
+        }
+    });
+    for (const [k, total] of totals) {
+      const grade = Number(k.split("-")[0]);
+      const days = Math.max(1, Object.keys(gdp[grade] || {}).length);
+      subjDayQuota.set(k, Math.max(1, Math.ceil(total / days)));
+    }
+  }
+  /** (학급|과목|요일) → 배치 횟수(occurrence 단위 — 연속 블록은 1로 센다). apply가 유지한다 */
+  const classSubjDayOcc = new Map<string, number>();
+
   const bump = <K>(m: Map<K, number>, k: K, d: number) => {
     const v = (m.get(k) || 0) + d;
     if (v <= 0) m.delete(k);
@@ -1113,6 +1144,9 @@ export function solveTimetable(input: SolverInput): SolverResult {
 
     if (!sectionDayCount.has(occ.sectionIdx)) sectionDayCount.set(occ.sectionIdx, new Map());
     bump(sectionDayCount.get(occ.sectionIdx)!, occ.day, dir);
+    // 과목 단위 요일 배치 횟수 — occurrence당 1 (연속 블록도 1). feasible의 몫 검사가 쓴다
+    for (const [ck, subjs] of sectionClassSubjects[occ.sectionIdx])
+      for (const subj of subjs) bump(classSubjDayOcc, `${ck}|${subj}|${occ.day}`, dir);
 
     const key = `${occ.sectionIdx}:${occ.occIdx}`;
     if (dir === 1) placed.set(key, occ);
@@ -1131,7 +1165,11 @@ export function solveTimetable(input: SolverInput): SolverResult {
      * 요일을 다른 과목이 메워야 하는데, 분산 한도가 그것까지 막아 배정 불가가 났다).
      * 우선순위: ① 분산 지키며 배치 ② 분산 넘겨서라도 배치 ③ 남을 밀어내고 배치.
      */
-    relaxDayLimit = false
+    relaxDayLimit = false,
+    /** 과목 단위 몫 검사 생략 — 국소 탐색 전용. 탐색은 S4 내부 가중(×8)이 가격을 매기므로
+     *  자유롭게 두고, 몫 강제는 그리디·밀어내기·보수에만 둔다 (2026-08-21 실측: 탐색까지
+     *  조이면 실험 경로 소프트 30→37 악화 — 지형이 좁아져 좋은 궤적을 놓친다). */
+    skipSubjectQuota = false
   ): boolean {
     const s = sections[sectionIdx];
     const maxP = gdp[s.grade]?.[day] || 0;
@@ -1141,6 +1179,19 @@ export function solveTimetable(input: SolverInput): SolverResult {
     if (!(relaxDayLimit && !hasPattern[sectionIdx])) {
       if ((sectionDayCount.get(sectionIdx)?.get(day) || 0) >= dayLimit[sectionIdx])
         return false;
+      // 과목 단위 같은 날 중복 방지 (2026-08-21) — 섹션 단위 한도는 교사별 분할 섹션
+      // (영Ⅱ 3+1 등)을 못 보고, 그 틈으로 같은 날 중복(S4)이 새는 것이 실측됐다.
+      // 몫(subjDayQuota)까지만 허용 — 주당 5회 이하 과목은 사실상 요일당 1회다.
+      // 고정 슬롯·동시수업 섹션은 종전과 같이 검사 예외(등록부가 같은 날을 지정할 수
+      // 있다)지만, 배치 횟수는 카운터에 쌓이므로 일반 섹션이 그 몫을 잠식하지 못한다.
+      if (!skipSubjectQuota && s.kind === "plain" && !(s.fixedSlots && s.fixedSlots.length)) {
+        for (const [ck, subjs] of sectionClassSubjects[sectionIdx]) {
+          for (const subj of subjs) {
+            const quota = subjDayQuota.get(`${ck}|${subj}`) || 1;
+            if ((classSubjDayOcc.get(`${ck}|${subj}|${day}`) || 0) >= quota) return false;
+          }
+        }
+      }
     }
     for (let p = start; p < start + len; p++) {
       const slot = `${day}-${p}`;
@@ -1156,14 +1207,16 @@ export function solveTimetable(input: SolverInput): SolverResult {
   function candidateSlots(
     sectionIdx: number,
     len: number,
-    relaxDayLimit = false
+    relaxDayLimit = false,
+    skipSubjectQuota = false
   ): Array<{ day: number; start: number }> {
     const s = sections[sectionIdx];
     const out: Array<{ day: number; start: number }> = [];
     for (let day = 1; day <= 5; day++) {
       const maxP = gdp[s.grade]?.[day] || 0;
       for (let start = 1; start + len - 1 <= maxP; start++) {
-        if (feasible(sectionIdx, day, start, len, relaxDayLimit)) out.push({ day, start });
+        if (feasible(sectionIdx, day, start, len, relaxDayLimit, skipSubjectQuota))
+          out.push({ day, start });
       }
     }
     return out;
@@ -1424,9 +1477,9 @@ export function solveTimetable(input: SolverInput): SolverResult {
     const s = sections[cur.sectionIdx];
     const before = softScore;
 
-    // 이동 시도 (빈 슬롯이 있을 때만 성립)
+    // 이동 시도 (빈 슬롯이 있을 때만 성립) — 몫 검사는 생략, 가중이 가격을 매긴다 (feasible 주석)
     apply(cur, -1);
-    const cands = candidateSlots(cur.sectionIdx, cur.len).filter(
+    const cands = candidateSlots(cur.sectionIdx, cur.len, false, true).filter(
       (c) => !(c.day === cur.day && c.start === cur.start)
     );
     if (cands.length) {
@@ -1454,12 +1507,12 @@ export function solveTimetable(input: SolverInput): SolverResult {
     apply(cur, -1);
     apply(other, -1);
     if (
-      feasible(cur.sectionIdx, other.day, other.start, cur.len) &&
+      feasible(cur.sectionIdx, other.day, other.start, cur.len, false, true) &&
       // cur을 other 자리에 먼저 앉힌 뒤 other 가능성 검사 (교사 겹침 상호 검증)
       (() => {
         const movedCur: Occurrence = { ...cur, day: other.day, start: other.start };
         apply(movedCur, 1);
-        if (feasible(other.sectionIdx, cur.day, cur.start, other.len)) {
+        if (feasible(other.sectionIdx, cur.day, cur.start, other.len, false, true)) {
           apply({ ...other, day: cur.day, start: cur.start }, 1);
           return true;
         }
@@ -1490,35 +1543,109 @@ export function solveTimetable(input: SolverInput): SolverResult {
   // ⚠️ 반드시 국소 탐색 **뒤**에 두어야 한다 (2026-08-18 실측): 앞에 두면 rng 스트림을
   // 소모해 국소 탐색의 무작위 궤적 전체가 바뀌고, 실데이터 소프트가 30→35로 오히려 나빠졌다.
   {
-    const viol: Occurrence[] = [];
-    for (const [, occ] of placed) {
+    /** 이 occurrence가 같은 날 중복 위반인가 — 섹션 한도 초과 또는 과목 단위 몫 초과(분할 섹션 관통).
+     *  수집과 재판정이 같은 판을 쓰도록 함수로 묶는다. */
+    const isDayDupViolator = (occ: Occurrence): boolean => {
       if ((sectionDayCount.get(occ.sectionIdx)?.get(occ.day) || 0) > dayLimit[occ.sectionIdx])
-        viol.push(occ);
+        return true;
+      const s = sections[occ.sectionIdx];
+      if (s.kind !== "plain" || (s.fixedSlots && s.fixedSlots.length)) return false;
+      for (const [ck, subjs] of sectionClassSubjects[occ.sectionIdx]) {
+        for (const subj of subjs) {
+          const quota = subjDayQuota.get(`${ck}|${subj}`) || 1;
+          if ((classSubjDayOcc.get(`${ck}|${subj}|${occ.day}`) || 0) > quota) return true;
+        }
+      }
+      return false;
+    };
+    // 같은 날 중복은 사용자 기준 금기다 (2026-08-21) — 한 번에 안 풀리는 위반도 앞선 보수가
+    // 판을 바꾸면 풀릴 수 있어, 새로 풀리는 것이 없어질 때까지 반복한다(상한 3회전 — 실측상
+    // 2회전이면 수렴하고, 상한은 무한 루프 방지용). 걸림돌 상한도 4→6으로 넓힌다.
+    for (let pass = 0; pass < 3; pass++) {
+      const viol: Occurrence[] = [];
+      for (const [, occ] of placed) {
+        if (isDayDupViolator(occ)) viol.push(occ);
+      }
+      if (!viol.length) break;
+      viol.sort((a, b) => a.sectionIdx - b.sectionIdx || a.occIdx - b.occIdx);
+      let resolved = 0;
+      for (const v of viol) {
+        const cur = placed.get(`${v.sectionIdx}:${v.occIdx}`);
+        if (!cur) continue;
+        // 앞선 보수가 이 섹션을 옮겨 위반이 이미 해소됐을 수 있다 — 현재 상태로 재판정
+        if (!isDayDupViolator(cur)) continue;
+        const mark = ejectJournal.length;
+        const softBefore = softScore;
+        japply(cur, -1);
+        if (
+          !tryPlaceWithEjection(
+            { sectionIdx: cur.sectionIdx, occIdx: cur.occIdx, len: cur.len, tier: 0 },
+            2,
+            false,
+            6
+          ) ||
+          softScore >= softBefore
+        )
+          rollbackTo(mark);
+        else resolved++;
+      }
+      if (!resolved) break;
     }
-    viol.sort((a, b) => a.sectionIdx - b.sectionIdx || a.occIdx - b.occIdx);
-    for (const v of viol) {
-      const cur = placed.get(`${v.sectionIdx}:${v.occIdx}`);
-      if (!cur) continue;
-      // 앞선 보수가 이 섹션을 옮겨 위반이 이미 해소됐을 수 있다 — 현재 상태로 재판정
-      if ((sectionDayCount.get(cur.sectionIdx)?.get(cur.day) || 0) <= dayLimit[cur.sectionIdx])
-        continue;
-      const mark = ejectJournal.length;
-      const softBefore = softScore;
-      japply(cur, -1);
-      if (
-        // 걸림돌 상한 4 — 동시수업(다학급) 섹션은 슬롯당 걸림돌이 기본 상한 2를 넘기 쉬워
-        // 보수에서만 넓힌다. 2026-08-18 실데이터에선 2·4 모두 개선 0(잔여 S4 2건은 한도 내
-        // 재배치 여지가 없는 구조적 잔여)이었지만, 가드가 있어 넓혀도 해가 없고 다른
-        // 입력에선 잡을 수 있어 유지한다.
-        !tryPlaceWithEjection(
-          { sectionIdx: cur.sectionIdx, occIdx: cur.occIdx, len: cur.len, tier: 0 },
-          2,
-          false,
-          4
-        ) ||
-        softScore >= softBefore
-      )
-        rollbackTo(mark);
+
+    // ── ⑦-c 맞교환 보수 (2026-08-21) — 만석 그리드에서는 밀어내기(⑦-b)가 구조적으로 못 푼다:
+    // 걸림돌을 옮길 빈 자리가 없다. 만석에서 통하는 수단은 맞교환뿐이다. 잔여 위반마다
+    // 같은 학급의 다른 요일 수업과의 전 교환을 결정론적으로 훑어(무작위 아님 — rng 스트림 불변),
+    // 위반이 풀리고 내부 점수가 좋아지는 최선 교환을 채택한다. S4 내부 가중(8)이 실려 있어
+    // 다른 감점이 조금 늘더라도 중복 해소가 보통 이긴다 — 사용자 기준 금기 우선.
+    {
+      const viol: Occurrence[] = [];
+      for (const [, occ] of placed) if (isDayDupViolator(occ)) viol.push(occ);
+      viol.sort((a, b) => a.sectionIdx - b.sectionIdx || a.occIdx - b.occIdx);
+      for (const v of viol) {
+        const key = `${v.sectionIdx}:${v.occIdx}`;
+        const cur = placed.get(key);
+        if (!cur || !isDayDupViolator(cur)) continue;
+        const s = sections[cur.sectionIdx];
+        if (s.classKeys.length !== 1) continue; // 다학급(동시수업)은 교환 반경이 달라 제외
+        const peers = (byClass.get(s.classKeys[0]) || []).slice().sort();
+        let bestKey: string | null = null;
+        let bestDelta = 0; // 내부 점수 엄격 개선만 채택
+        for (const otherKey of peers) {
+          if (otherKey === key) continue;
+          const other = placed.get(otherKey);
+          if (!other || other.len !== cur.len || other.day === cur.day) continue;
+          const so = sections[other.sectionIdx];
+          if (so.classKeys.length !== 1 || so.kind === "fixed") continue;
+          const before = softScore;
+          apply(cur, -1);
+          apply(other, -1);
+          let delta: number | null = null;
+          if (feasible(cur.sectionIdx, other.day, other.start, cur.len)) {
+            const movedCur: Occurrence = { ...cur, day: other.day, start: other.start };
+            apply(movedCur, 1);
+            if (feasible(other.sectionIdx, cur.day, cur.start, other.len)) {
+              const movedOther: Occurrence = { ...other, day: cur.day, start: cur.start };
+              apply(movedOther, 1);
+              delta = softScore - before;
+              apply(movedOther, -1);
+            }
+            apply(movedCur, -1);
+          }
+          apply(cur, 1);
+          apply(other, 1);
+          if (delta !== null && delta < bestDelta) {
+            bestDelta = delta;
+            bestKey = otherKey;
+          }
+        }
+        if (bestKey) {
+          const other = placed.get(bestKey)!;
+          apply(cur, -1);
+          apply(other, -1);
+          apply({ ...cur, day: other.day, start: other.start }, 1);
+          apply({ ...other, day: cur.day, start: cur.start }, 1);
+        }
+      }
     }
   }
 
