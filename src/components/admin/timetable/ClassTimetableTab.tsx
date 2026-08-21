@@ -8,9 +8,18 @@ import { getDayDateLabel } from "@/lib/timetable/utils";
 interface ClassTimetableTabProps {
   periodsPerDay?: number;
   activeTermId?: string | null;
+  /** 바깥에서 주를 정해 줄 때 (교사 포털처럼 한 화면에 주 선택기가 이미 있는 경우) */
+  weekId?: string;
+  /** 자체 주 선택기를 숨긴다 — 한 화면에 주 고르는 칸이 둘이면 어느 쪽이 미는지 헷갈린다 */
+  hideWeekPicker?: boolean;
 }
 
-export default function ClassTimetableTab({ periodsPerDay = 7, activeTermId }: ClassTimetableTabProps) {
+export default function ClassTimetableTab({
+  periodsPerDay = 7,
+  activeTermId,
+  weekId: controlledWeekId,
+  hideWeekPicker = false,
+}: ClassTimetableTabProps) {
   // 이 화면은 **그 주에 실제로 돌아가는 시간표**를 보여준다 — 학기 고정표가 아니다.
   // 예전에는 주를 고를 수도, 날짜를 볼 수도 없어서 「학기 고정 시간표」로 읽혔고,
   // 공휴일이라 비어 있는 월요일이 "수업이 없는 것"으로 오해됐다 (2026-08-21 사용자 지적).
@@ -37,7 +46,9 @@ export default function ClassTimetableTab({ periodsPerDay = 7, activeTermId }: C
       .catch(() => {});
   }, [activeTermId]);
 
-  const selectedWeek = weeks.find((w) => w.id === selectedWeekId) || null;
+  // 바깥이 주를 정해 주면 그것이 이긴다
+  const effectiveWeekId = controlledWeekId ?? selectedWeekId;
+  const selectedWeek = weeks.find((w) => w.id === effectiveWeekId) || null;
 
   const { getClassesForGrade } = useAvailableClasses();
   const currentClasses = getClassesForGrade(selectedGrade, false);
@@ -70,7 +81,7 @@ export default function ClassTimetableTab({ periodsPerDay = 7, activeTermId }: C
         const result = await res.json();
         setTermMeta(result.term || null);
         // 서버가 실제로 고른 주를 그대로 따른다 — 화면이 "무엇을 보고 있는지"의 단일 원본
-        if (result.week?.id && !weekId) setSelectedWeekId(result.week.id);
+        if (result.week?.id && !weekId && !controlledWeekId) setSelectedWeekId(result.week.id);
         if (result.data) {
           setClassGrid(result.data);
         } else {
@@ -92,12 +103,12 @@ export default function ClassTimetableTab({ periodsPerDay = 7, activeTermId }: C
       if (!currentClasses.includes(selectedClassNum)) {
         setSelectedClassNum(currentClasses[0]);
       } else {
-        fetchClassTimetable(selectedGrade, selectedClassNum, selectedWeekId || undefined);
+        fetchClassTimetable(selectedGrade, selectedClassNum, effectiveWeekId || undefined);
       }
     } else {
       setClassGrid(null);
     }
-  }, [selectedGrade, selectedClassNum, currentClasses, selectedWeekId]);
+  }, [selectedGrade, selectedClassNum, currentClasses, effectiveWeekId]);
 
   // 특정 요일·교시의 수업 셀 찾기
   const getCellForSlot = (day: number, period: number): TimetableCell | null => {
@@ -124,7 +135,7 @@ export default function ClassTimetableTab({ periodsPerDay = 7, activeTermId }: C
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {weeks.length > 0 && (
+            {weeks.length > 0 && !hideWeekPicker && (
               <select
                 value={selectedWeekId}
                 onChange={(e) => setSelectedWeekId(e.target.value)}

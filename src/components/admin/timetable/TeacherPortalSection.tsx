@@ -35,6 +35,7 @@ import {
   ChainStepItem,
 } from "@/lib/timetable/types";
 import { getClientCache, setClientCache } from "@/lib/cache/clientCache";
+import ClassTimetableTab from "./ClassTimetableTab";
 import {
   DAY_LABEL,
   getDayDateLabel,
@@ -3744,7 +3745,21 @@ function OtherTimetableTab({ periodsPerDay, settings }: OtherTimetableTabProps) 
           </tbody>
         </table>
       </div>
+      {/*
+        학급 시간표 조회 (2026-08-21 사용자 요청 — "학급 시간표 열람도 필요해").
+        격자를 새로 그리지 않고 ClassTimetableTab을 그대로 재사용한다 — 오늘 하루에만
+        「같은 것을 두 번 그려서 한쪽만 못한」 사례를 셋 봤다(조직도 트리·교사별 시간표·공강 교사).
+        주는 위 선택기 하나가 민다(hideWeekPicker) — 한 화면에 주 고르는 칸이 둘이면
+        어느 쪽이 미는지 알 수 없다.
+      */}
+      <ClassTimetableTab
+        periodsPerDay={periodsPerDay}
+        activeTermId={settings?.activeTermId}
+        weekId={selectedWeekId}
+        hideWeekPicker
+      />
     </div>
+
   );
 }
 
