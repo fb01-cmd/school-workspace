@@ -979,6 +979,30 @@ const S2_WEIGHT = envNum("SOLVER_S2_WEIGHT", 1);
  *  계기 = 실제 운영 시간표(사람 손)는 연속 3+가 0건인데 종전 기본이 4연속을 냈다(이시내 실사례).
  *  되돌리기: SOLVER_S2_MAXRUN=0 SOLVER_S2_STRICT=0 */
 const S2_MAX_RUN = envNum("SOLVER_S2_MAXRUN", 4);
+/** 0 = 끔(기본). 3이면 「점심 경계로 끊은 체감 연속」 3교시+ 배치를 금지 (로드맵 §2
+ *  「S2 연속을 점심 경유로 차등」 ⓒ안, 2026-08-22 사용자 발안). 용어: 죽음 연속 = 점심을 안
+ *  끼는 내리 3연속(1-2-3·2-3-4·5-6-7), 경유 = 점심이 끼는 것(3-4-5·4-5-6, 체감상 숨을 쉰다).
+ *
+ *  ❌ 하드 상한 **실험 부결** (2026-08-22 실측 — 같은 막다른 길 재탐색 방지 기록):
+ *  상한 3을 걸자 총점 28.5→39(실격), 최후 폴백 2회 발동, 그 틈으로 숫자 4연속 1건 재발,
+ *  S1 3→4 회귀. 오전 4교시 안에서 「연속 2까지」는 상시 발동하는 용량급 제약이라 지형이
+ *  무너진다 — S1 상한 부결과 같은 기전. 채택된 수단은 사후 보수(⑦-e, REPAIR_S2FELT). */
+const S2_FELT_RUN = envNum("SOLVER_S2_FELTRUN", 0);
+/** ⓑ안 — 죽음 연속의 **내부 가중**. 0 = 끔(기본). 공식 점수·검사기 불변(보고 시 벗긴다).
+ *
+ *  ❌ 내부 가중도 **실험 부결** (2026-08-22 실측): 가중 1 = 총점 34.5(폴백 1회), 가중 2 = 31 —
+ *  관문(기존 기본 28.5 이하) 미달. 낮은 가중도 탐색 궤적 전체를 흔들어 S3로 새는 것이
+ *  S7 전례(0.5점에 S4 부활)와 동일. 채택된 수단은 사후 보수(⑦-e, REPAIR_S2FELT). */
+const S2_FELT_WEIGHT = envNum("SOLVER_S2_FELT_WEIGHT", 0);
+/** ⑦-e — 죽음 연속 사후 보수. 배치·탐색 지형은 일절 건드리지 않고(위 ⓒ·ⓑ가 그래서 실격),
+ *  완성된 판에서 죽음 연속에 걸린 수업을 같은 학급의 다른 요일 수업과 맞바꾼다. 채택 기준이
+ *  ⑦-d와 다르다: **내부 점수 비악화 + 죽음 점수 엄격 감소 + S1 비악화** — 공식 점수가 같은
+ *  「가로 이동」(죽음 3연속 → 점심 경유)이 이 패스의 존재 이유다.
+ *
+ *  기본값 켬 (2026-08-22 관문 통과 승격 — 벤치마크 총점 28.5→27.5·죽음 연속 4→1·S2 공식 4→1·
+ *  S1 3 비회귀·S4 0·4연속 0·미배정 0·폴백 0·결정론 ✅. S1 가드가 없던 1차 실험에서 S1 3→4
+ *  회귀가 실측돼 가드를 추가했다. 상세는 일지). 되돌리기: SOLVER_REPAIR_S2FELT=0 */
+const REPAIR_S2FELT = (process.env.SOLVER_REPAIR_S2FELT ?? "1") === "1";
 /** 0 = 끔(기본). 4면 교사의 하루 수업을 4시간 이하로 배치 단계에서 강제한다.
  *
  *  ❌ 선 승격 **실험 부결** (2026-08-22 실측 — 다음 세션이 같은 막다른 길을 다시 파지 않도록 기록):
@@ -1017,6 +1041,24 @@ const REPAIR_SLACK = Math.max(0, Number(process.env.SOLVER_REPAIR_SLACK || "") |
  *  핵심 실측: 2자 교환은 델타가 전부 0에 갇혔고(목적지가 죄다 그 교사의 4시간 요일)
  *  3자 회전이 있어야 개선이 나온다. 되돌리기: SOLVER_REPAIR_S1=0 */
 const REPAIR_S1 = (process.env.SOLVER_REPAIR_S1 ?? "1") === "1";
+
+/** 점심 경계로 끊은 「체감 연속」의 최장 길이 — 오전(≤L)·오후(>L)를 따로 재고 최대를 취한다.
+ *  3-4-5는 체감 2+1, 5-6-7은 체감 3 (ⓒ안 — S2_FELT_RUN 주석 참조) */
+function longestFeltRun(periods: Set<number>, L: number): number {
+  const am = new Set<number>();
+  const pm = new Set<number>();
+  for (const p of periods) (p <= L ? am : pm).add(p);
+  return Math.max(longestRun(am), longestRun(pm));
+}
+
+/** 죽음 연속 점수 — 점심 경계로 끊은 각 구간에 S2 공식 계산을 적용한 값. 경유 연속(3-4-5 등)은
+ *  구간이 갈라져 0이 된다. ⓑ(S2_FELT_WEIGHT)의 내부 가중 밑감 */
+function feltDeathPoints(periods: Set<number>, L: number): number {
+  const am = new Set<number>();
+  const pm = new Set<number>();
+  for (const p of periods) (p <= L ? am : pm).add(p);
+  return s2OfficialPoints(am) + s2OfficialPoints(pm);
+}
 
 /** 교시 집합의 최장 연속 길이 */
 function longestRun(periods: Set<number>): number {
@@ -1136,6 +1178,9 @@ export function solveTimetable(input: SolverInput): SolverResult {
   /** softScore 중 S2 내부 가중의 **초과분**(공식 점수를 넘는 몫)만 — 보고 시 통째로 뺀다.
    *  S2_WEIGHT=1(기본)이면 항상 0이라 현행 동작 불변. */
   let softScoreS2x = 0;
+  /** softScore 중 죽음 연속 내부 가중(ⓑ S2_FELT_WEIGHT) 몫 — 공식 점수 밖이라 보고 시 통째로
+   *  뺀다(softScoreS2x와 같은 구조). 가중 0(끔)이면 항상 0. */
+  let softScoreFeltx = 0;
   let relaxQuotaUsed = 0;
   /** 최후 완화 모드 — REPAIR_DEFER의 마지막 사다리단. 켜지면 feasible이 몫·연속 상한을 풀고
    *  밀어내기 전체(걸림돌 재배치 포함)가 그 완화로 돈다. 엄격한 사다리(①②·밀어내기)가
@@ -1240,10 +1285,12 @@ export function solveTimetable(input: SolverInput): SolverResult {
     let before = 0;
     let beforeS4 = 0;
     let beforeS2x = 0;
+    let beforeFx = 0;
     for (const tk of s.teacherKeys) {
       const snap = teacherDaySnapshot(tk, occ.day);
       before += teacherDayPenalty(snap.periods, snap.subjects, L);
       if (S2_WEIGHT !== 1) beforeS2x += s2OfficialPoints(snap.periods) * (S2_WEIGHT - 1);
+      if (S2_FELT_WEIGHT > 0) beforeFx += feltDeathPoints(snap.periods, L) * S2_FELT_WEIGHT;
     }
     for (const ck of s.classKeys)
       beforeS4 += classDayPenalty(nested(soft.classSubjects, ck, occ.day));
@@ -1277,16 +1324,19 @@ export function solveTimetable(input: SolverInput): SolverResult {
     let after = 0;
     let afterS4 = 0;
     let afterS2x = 0;
+    let afterFx = 0;
     for (const tk of s.teacherKeys) {
       const snap = teacherDaySnapshot(tk, occ.day);
       after += teacherDayPenalty(snap.periods, snap.subjects, L);
       if (S2_WEIGHT !== 1) afterS2x += s2OfficialPoints(snap.periods) * (S2_WEIGHT - 1);
+      if (S2_FELT_WEIGHT > 0) afterFx += feltDeathPoints(snap.periods, L) * S2_FELT_WEIGHT;
     }
     for (const ck of s.classKeys)
       afterS4 += classDayPenalty(nested(soft.classSubjects, ck, occ.day));
-    softScore += after + afterS4 + afterS2x - (before + beforeS4 + beforeS2x);
+    softScore += after + afterS4 + afterS2x + afterFx - (before + beforeS4 + beforeS2x + beforeFx);
     softScoreS4 += afterS4 - beforeS4;
     softScoreS2x += afterS2x - beforeS2x;
+    softScoreFeltx += afterFx - beforeFx;
 
     if (!sectionDayCount.has(occ.sectionIdx)) sectionDayCount.set(occ.sectionIdx, new Map());
     bump(sectionDayCount.get(occ.sectionIdx)!, occ.day, dir);
@@ -1367,12 +1417,14 @@ export function solveTimetable(input: SolverInput): SolverResult {
     // S4가 가중으로 안 풀려 dayLimit(배치 규칙)로 승격된 것과 같은 처방을 S2에 실험한다.
     // 실제 운영 시간표(사람 손)는 연속 3+가 0건 — 사람은 이걸 점수가 아니라 선으로 다룬다.
     // relaxDayLimit(배치 불가 폴백)에서는 함께 풀린다 — 못 놓는 것보다는 연속이 낫다.
-    if (S2_MAX_RUN > 0 && !(relaxRunCap || lastResortRelax) && (S2_STRICT || !relaxDayLimit) && s.teacherKeys.length) {
+    if ((S2_MAX_RUN > 0 || S2_FELT_RUN > 0) && !(relaxRunCap || lastResortRelax) && (S2_STRICT || !relaxDayLimit) && s.teacherKeys.length) {
       for (const tk of s.teacherKeys) {
         const periods = new Set<number>();
         for (const [p, n] of soft.teacherDays.get(tk)?.get(day) || []) if (n > 0) periods.add(p);
         for (let p = start; p < start + len; p++) periods.add(p);
-        if (longestRun(periods) >= S2_MAX_RUN) return false;
+        if (S2_MAX_RUN > 0 && longestRun(periods) >= S2_MAX_RUN) return false;
+        // ⓒ 체감 연속 상한 — 점심을 안 끼는 「죽음 연속」만 잡는다 (경유 3연속은 통과)
+        if (S2_FELT_RUN > 0 && longestFeltRun(periods, L) >= S2_FELT_RUN) return false;
       }
     }
     // S1 상한 — 이 배치로 어느 교사든 하루 시수가 상한을 넘으면 금지. 같은 슬롯 중복은
@@ -2098,6 +2150,187 @@ export function solveTimetable(input: SolverInput): SolverResult {
     }
   }
 
+  // ── ⑦-e 죽음 연속 사후 보수 (2026-08-22) — 로드맵 §2 「S2 연속을 점심 경유로 차등」 ──
+  // 실측 경위: ⓒ(배치 하드 상한 SOLVER_S2_FELTRUN=3) = 총점 39 실격 + 폴백 틈 4연속 재발,
+  // ⓑ(내부 가중 SOLVER_S2_FELT_WEIGHT 1·2) = 총점 34.5·31로 관문(기존 기본 이하) 미달 —
+  // 조이는 힘이 S3·폴백으로 새는 축간 상충의 4·5번째 실측. 그래서 배치·탐색 지형은 일절
+  // 건드리지 않고 사후 보수만 한다(⑦-d와 같은 처방). 수용 기준이 ⑦-d와 다르다:
+  // **내부 점수 비악화 + 죽음 점수(feltDeathPoints) 엄격 감소** — 공식 점수가 같은
+  // 「가로 이동」(죽음 3연속 → 점심 경유)이 존재 이유다. 총점은 절대 나빠질 수 없고
+  // 죽음 점수는 단조 감소라 종료 보장. 결정론 — 정렬 순회·rng 무사용.
+  if (REPAIR_S2FELT) {
+    /** 영향권 (교사×요일)들의 [죽음 점수 합, S1 점수 합] — 교환 전후를 같은 집합으로 재서 Δ를
+     *  얻는다. S1까지 같이 재는 이유: 내부Δ=0 가로 이동이 S2 −1을 S1 +1로 바꿔치기하는 것이
+     *  실측됐다(1차 실험 S1 3→4 회귀) — 오늘 ⑦-d가 벌어 둔 축을 이 패스가 도로 잃으면 안 된다. */
+    const feltSum = (tks: readonly string[], days: number[]): [number, number] => {
+      let death = 0;
+      let s1 = 0;
+      const seen = new Set<string>();
+      for (const tk of tks)
+        for (const d of days) {
+          const k = `${tk}|${d}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          const periods = teacherDaySnapshot(tk, d).periods;
+          death += feltDeathPoints(periods, L);
+          if (periods.size >= 5) s1 += periods.size - 4;
+        }
+      return [death, s1];
+    };
+    const deathDays = (): Array<{ tk: string; day: number }> => {
+      const out: Array<{ tk: string; day: number }> = [];
+      for (const [tk, dm] of soft.teacherDays)
+        for (const [day] of dm)
+          if (feltDeathPoints(teacherDaySnapshot(tk, day).periods, L) > 0)
+            out.push({ tk, day });
+      out.sort((a, b) => (a.tk < b.tk ? -1 : a.tk > b.tk ? 1 : a.day - b.day));
+      return out;
+    };
+    for (let pass = 0; pass < 3; pass++) {
+      let improved = 0;
+      for (const { tk, day } of deathDays()) {
+        // 앞선 교환이 이미 풀었을 수 있다 — 재판정
+        if (feltDeathPoints(teacherDaySnapshot(tk, day).periods, L) <= 0) continue;
+        const mine: string[] = [];
+        for (const [key, occ] of placed) {
+          if (occ.day !== day) continue;
+          const s = sections[occ.sectionIdx];
+          if (s.kind === "fixed" || s.classKeys.length !== 1) continue;
+          if (!s.teacherKeys.includes(tk)) continue;
+          mine.push(key);
+        }
+        mine.sort();
+        let done = false;
+        for (const key of mine) {
+          if (done) break;
+          const cur = placed.get(key);
+          if (!cur || cur.day !== day) continue;
+          const s = sections[cur.sectionIdx];
+          const peers = (byClass.get(s.classKeys[0]) || []).slice().sort();
+          // 2자 교환 — (죽음Δ, 내부Δ) 사전식 최선. 내부Δ ≤ 0 그리고 죽음Δ < 0 만 후보
+          let best: { k: string; di: number; df: number } | null = null;
+          for (const otherKey of peers) {
+            if (otherKey === key) continue;
+            const other = placed.get(otherKey);
+            if (!other || other.len !== cur.len || other.day === cur.day) continue;
+            const so = sections[other.sectionIdx];
+            if (so.classKeys.length !== 1 || so.kind === "fixed") continue;
+            const tksAff = [...new Set([...s.teacherKeys, ...so.teacherKeys])];
+            const daysAff = [cur.day, other.day];
+            const [fBefore, s1Before] = feltSum(tksAff, daysAff);
+            const before = softScore;
+            apply(cur, -1);
+            apply(other, -1);
+            let di: number | null = null;
+            let df = 0;
+            let ds1 = 0;
+            if (feasible(cur.sectionIdx, other.day, other.start, cur.len)) {
+              const movedCur: Occurrence = { ...cur, day: other.day, start: other.start };
+              apply(movedCur, 1);
+              if (feasible(other.sectionIdx, cur.day, cur.start, other.len)) {
+                const movedOther: Occurrence = { ...other, day: cur.day, start: cur.start };
+                apply(movedOther, 1);
+                di = softScore - before;
+                const [fAfter, s1After] = feltSum(tksAff, daysAff);
+                df = fAfter - fBefore;
+                ds1 = s1After - s1Before;
+                apply(movedOther, -1);
+              }
+              apply(movedCur, -1);
+            }
+            apply(cur, 1);
+            apply(other, 1);
+            if (
+              di !== null && di <= 0 && df < 0 && ds1 <= 0 &&
+              (best === null || df < best.df || (df === best.df && di < best.di))
+            )
+              best = { k: otherKey, di, df };
+          }
+          if (best) {
+            const other = placed.get(best.k)!;
+            apply(cur, -1);
+            apply(other, -1);
+            apply({ ...cur, day: other.day, start: other.start }, 1);
+            apply({ ...other, day: cur.day, start: cur.start }, 1);
+            improved++;
+            done = true;
+            continue;
+          }
+          // 3자 회전 — 같은 기준 (⑦-d 실측: 2자 교환은 목적지가 좁아 자주 막힌다)
+          let rBest: { k1: string; k2: string; di: number; df: number } | null = null;
+          for (const k1 of peers) {
+            if (k1 === key) continue;
+            const o1 = placed.get(k1);
+            if (!o1 || o1.len !== cur.len || o1.day === cur.day) continue;
+            if (sections[o1.sectionIdx].classKeys.length !== 1 || sections[o1.sectionIdx].kind === "fixed") continue;
+            for (const k2 of peers) {
+              if (k2 === key || k2 === k1) continue;
+              const o2 = placed.get(k2);
+              if (!o2 || o2.len !== cur.len) continue;
+              if (sections[o2.sectionIdx].classKeys.length !== 1 || sections[o2.sectionIdx].kind === "fixed") continue;
+              const tksAff = [
+                ...new Set([
+                  ...s.teacherKeys,
+                  ...sections[o1.sectionIdx].teacherKeys,
+                  ...sections[o2.sectionIdx].teacherKeys,
+                ]),
+              ];
+              const daysAff = [...new Set([cur.day, o1.day, o2.day])];
+              const [fBefore, s1Before] = feltSum(tksAff, daysAff);
+              const before = softScore;
+              apply(cur, -1);
+              apply(o1, -1);
+              apply(o2, -1);
+              let di: number | null = null;
+              let df = 0;
+              let ds1 = 0;
+              if (feasible(cur.sectionIdx, o1.day, o1.start, cur.len)) {
+                const mCur: Occurrence = { ...cur, day: o1.day, start: o1.start };
+                apply(mCur, 1);
+                if (feasible(o1.sectionIdx, o2.day, o2.start, o1.len)) {
+                  const mO1: Occurrence = { ...o1, day: o2.day, start: o2.start };
+                  apply(mO1, 1);
+                  if (feasible(o2.sectionIdx, cur.day, cur.start, o2.len)) {
+                    const mO2: Occurrence = { ...o2, day: cur.day, start: cur.start };
+                    apply(mO2, 1);
+                    di = softScore - before;
+                    const [fAfter, s1After] = feltSum(tksAff, daysAff);
+                    df = fAfter - fBefore;
+                    ds1 = s1After - s1Before;
+                    apply(mO2, -1);
+                  }
+                  apply(mO1, -1);
+                }
+                apply(mCur, -1);
+              }
+              apply(cur, 1);
+              apply(o1, 1);
+              apply(o2, 1);
+              if (
+                di !== null && di <= 0 && df < 0 && ds1 <= 0 &&
+                (rBest === null || df < rBest.df || (df === rBest.df && di < rBest.di))
+              )
+                rBest = { k1, k2, di, df };
+            }
+          }
+          if (rBest) {
+            const o1 = placed.get(rBest.k1)!;
+            const o2 = placed.get(rBest.k2)!;
+            apply(cur, -1);
+            apply(o1, -1);
+            apply(o2, -1);
+            apply({ ...cur, day: o1.day, start: o1.start }, 1);
+            apply({ ...o1, day: o2.day, start: o2.start }, 1);
+            apply({ ...o2, day: cur.day, start: cur.start }, 1);
+            improved++;
+            done = true;
+          }
+        }
+      }
+      if (!improved) break;
+    }
+  }
+
   // ── 그리드 출력 ──
   const gridMap = new Map<string, ClassGrid>();
   const allClassKeys = new Set<string>();
@@ -2143,10 +2376,10 @@ export function solveTimetable(input: SolverInput): SolverResult {
       placedGreedy,
       placedByEjection,
       localSearchAccepted: accepted,
-      // S2 내부 가중 초과분(softScoreS2x)도 통째로 벗긴다 — 공식 등가 보고 원칙 동일.
-      // S4 내부 가중을 벗겨 공식 점수 등가로 보고 — classDayPenalty는 S4만 담고 그 점수는
-      // 전부 (n-1)×S4_INTERNAL_WEIGHT 꼴이라 나눗셈이 정확히 떨어진다.
-      softScoreEstimate: softScore - softScoreS2x - softScoreS4 + softScoreS4 / S4_INTERNAL_WEIGHT,
+      // S2 내부 가중 초과분(softScoreS2x)·죽음 연속 가중(softScoreFeltx)도 통째로 벗긴다 —
+      // 공식 등가 보고 원칙 동일. S4 내부 가중을 벗겨 공식 점수 등가로 보고 — classDayPenalty는
+      // S4만 담고 그 점수는 전부 (n-1)×S4_INTERNAL_WEIGHT 꼴이라 나눗셈이 정확히 떨어진다.
+      softScoreEstimate: softScore - softScoreS2x - softScoreFeltx - softScoreS4 + softScoreS4 / S4_INTERNAL_WEIGHT,
       relaxQuotaUsed,
       s4Estimate: softScoreS4 / S4_INTERNAL_WEIGHT,
     },

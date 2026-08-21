@@ -367,6 +367,49 @@ async function main() {
     const s2 = report.soft.details.filter((d) => d.code === "S2");
     console.log(`S2 상세 ${s2.length}건 (실제 운영 시간표 기준 0건):`);
     for (const d of s2) console.log(`  ${/연속 [4-9]/.test(d.text) ? "⚠ " : "  "}${d.text}`);
+    // 죽음/경유 분류 (2026-08-22 ⓒ안 관문축) — 죽음 = 점심 안 끼는 내리 3연속(1-2-3·2-3-4·5-6-7),
+    // 경유 = 점심이 끼는 3연속(3-4-5·4-5-6, 체감상 숨을 쉰다). 사용자 기준 죽음 연속이 진짜 위반.
+    {
+      const L = model.lunchAfterPeriod;
+      const byTeacher = new Map<string, Map<number, Set<number>>>();
+      for (const g of result.grids)
+        for (const c of g.cells || [])
+          for (const l of c.lessons || [])
+            for (const t of l.teachers || []) {
+              const e = (t.email || "").trim().toLowerCase();
+              if (!e) continue;
+              if (!byTeacher.has(e)) byTeacher.set(e, new Map());
+              const dm = byTeacher.get(e)!;
+              if (!dm.has(c.day)) dm.set(c.day, new Set());
+              dm.get(c.day)!.add(c.period);
+            }
+      const DAY = ["", "월", "화", "수", "목", "금"];
+      const death: string[] = [];
+      const viaLunch: string[] = [];
+      for (const [e, dm] of byTeacher)
+        for (const [day, ps] of dm) {
+          const sorted = [...ps].sort((a, b) => a - b);
+          let run: number[] = [];
+          const flush = () => {
+            if (run.length >= 3) {
+              const label = `${teacherNames[e] || e} ${DAY[day]} ${run.join("-")}교시`;
+              if (run.includes(L) && run.includes(L + 1)) viaLunch.push(label);
+              else death.push(label);
+            }
+            run = [];
+          };
+          for (const p of sorted) {
+            if (run.length && p !== run[run.length - 1] + 1) flush();
+            run.push(p);
+          }
+          flush();
+        }
+      console.log(
+        `S2 분류: 죽음(점심 없이 3연속+) ${death.length}건 · 점심 경유 ${viaLunch.length}건 (실제 운영 시간표 = 0·0)`
+      );
+      for (const d of death.sort()) console.log(`  ☠ ${d}`);
+      for (const v of viaLunch.sort()) console.log(`  ~ ${v}`);
+    }
     const s1 = report.soft.details.filter((d) => d.code === "S1");
     console.log(`S1 상세 ${s1.length}건 (실제 운영 시간표 기준 1건 — 5시간×1):`);
     for (const d of s1) console.log(`    ${d.text}`);
