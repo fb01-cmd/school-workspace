@@ -95,6 +95,8 @@ export interface SolverResult {
     placedByEjection: number;
     localSearchAccepted: number;
     softScoreEstimate: number; // 내부 추정치 — 공식 점수는 validateTimetable
+    /** 최후 폴백(몫까지 완화, 3단 폴백의 ③)이 실제 발동한 횟수 — S4 유출 진단용 (2026-08-22) */
+    relaxQuotaUsed: number;
     /** S4(같은 날 동일 과목) 공식 점수 몫 — 사용자 기준 금기라 포트폴리오 선발이 사전식으로 우선한다 */
     s4Estimate: number;
   };
@@ -1019,7 +1021,7 @@ function teacherDayPenalty(
 /** S4 내부 가중 — 위 주석 참조. 공식 1점당 솔버 내부에서는 이만큼으로 취급한다.
  *  4 → 8 상향 (2026-08-15): 9c-I-2 힌트 직결로 탐색 공간이 좁아지자(동시수업 확정·특별실
  *  슬롯 제약) 가중 4로는 같은 교사 진짜 중복이 다시 새어 나왔다 (실측 1건→2~3건). */
-const S4_INTERNAL_WEIGHT = 8;
+const S4_INTERNAL_WEIGHT = Math.max(1, Number(process.env.SOLVER_S4_WEIGHT || "") || 8);
 
 function classDayPenalty(subjects: Map<string, number>): number {
   let pts = 0;
@@ -1088,6 +1090,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
   /** softScore 중 S2 내부 가중의 **초과분**(공식 점수를 넘는 몫)만 — 보고 시 통째로 뺀다.
    *  S2_WEIGHT=1(기본)이면 항상 0이라 현행 동작 불변. */
   let softScoreS2x = 0;
+  let relaxQuotaUsed = 0;
 
   // S4(학급 과목 중복) 집계 대상 과목 — 전원 가상 교사(창체·SLAT 자리표시) 수업은 검사기와 동일하게 제외
   const subjectsOf = (s: SolverSection, ck: string): string[] =>
@@ -1231,7 +1234,12 @@ export function solveTimetable(input: SolverInput): SolverResult {
     /** 과목 단위 몫 검사 생략 — 국소 탐색 전용. 탐색은 S4 내부 가중(×8)이 가격을 매기므로
      *  자유롭게 두고, 몫 강제는 그리디·밀어내기·보수에만 둔다 (2026-08-21 실측: 탐색까지
      *  조이면 실험 경로 소프트 30→37 악화 — 지형이 좁아져 좋은 궤적을 놓친다). */
-    skipSubjectQuota = false
+    skipSubjectQuota = false,
+    /** 몫(같은 날 같은 과목) 검사까지 푼다 — **최후 폴백 전용** (2026-08-22 3단 폴백).
+     *  ①정상 ②분산만 완화(몫 유지) ③몫까지 완화. ②를 새로 끼운 이유: 폴백이 몫을 같이
+     *  풀면 S2를 조이는 모든 실험에서 S4가 되살아났다(1~5건). ③이 남아 있는 이유: 하루가
+     *  통째로 막히면 같은 과목 2회가 불가피한 경우가 실재한다(solver_selftest가 증명). */
+    relaxQuota = false
   ): boolean {
     const s = sections[sectionIdx];
     const maxP = gdp[s.grade]?.[day] || 0;
@@ -1241,17 +1249,24 @@ export function solveTimetable(input: SolverInput): SolverResult {
     if (!(relaxDayLimit && !hasPattern[sectionIdx])) {
       if ((sectionDayCount.get(sectionIdx)?.get(day) || 0) >= dayLimit[sectionIdx])
         return false;
-      // 과목 단위 같은 날 중복 방지 (2026-08-21) — 섹션 단위 한도는 교사별 분할 섹션
-      // (영Ⅱ 3+1 등)을 못 보고, 그 틈으로 같은 날 중복(S4)이 새는 것이 실측됐다.
-      // 몫(subjDayQuota)까지만 허용 — 주당 5회 이하 과목은 사실상 요일당 1회다.
-      // 고정 슬롯·동시수업 섹션은 종전과 같이 검사 예외(등록부가 같은 날을 지정할 수
-      // 있다)지만, 배치 횟수는 카운터에 쌓이므로 일반 섹션이 그 몫을 잠식하지 못한다.
-      if (!skipSubjectQuota && s.kind === "plain" && !(s.fixedSlots && s.fixedSlots.length)) {
-        for (const [ck, subjs] of sectionClassSubjects[sectionIdx]) {
-          for (const subj of subjs) {
-            const quota = subjDayQuota.get(`${ck}|${subj}`) || 1;
-            if ((classSubjDayOcc.get(`${ck}|${subj}|${day}`) || 0) >= quota) return false;
-          }
+    }
+    // 과목 단위 같은 날 중복 방지 (2026-08-21) — 섹션 단위 한도는 교사별 분할 섹션
+    // (영Ⅱ 3+1 등)을 못 보고, 그 틈으로 같은 날 중복(S4)이 새는 것이 실측됐다.
+    // 몫(subjDayQuota)까지만 허용 — 주당 5회 이하 과목은 사실상 요일당 1회다.
+    // 고정 슬롯·동시수업 섹션은 종전과 같이 검사 예외(등록부가 같은 날을 지정할 수
+    // 있다)지만, 배치 횟수는 카운터에 쌓이므로 일반 섹션이 그 몫을 잠식하지 못한다.
+    //
+    // ⚠️ 이 검사는 **폴백(relaxDayLimit)에서도 풀지 않는다** (2026-08-22 — S2 승격 실험 결론).
+    // 원래는 위 블록 안에 있어 폴백이 분산 한도와 함께 몫 검사까지 풀었다. 그 틈이 S2를
+    // 조이는 모든 변형에서 S4를 되살렸다(실측 1~5건) — 지형이 좁아지면 폴백이 자주 발동하고,
+    // 폴백이 금기 검사를 풀기 때문. 폴백의 존재 이유(2026-08-18: 하루가 막히면 **다른 과목**이
+    // 메워야 한다)는 분산 한도 완화만으로 충족된다 — 같은 과목을 같은 날 또 놓는 것은
+    // 그 이유에 들어 있지 않다. skipSubjectQuota(국소 탐색 전용)는 종전 그대로.
+    if (!skipSubjectQuota && !relaxQuota && s.kind === "plain" && !(s.fixedSlots && s.fixedSlots.length)) {
+      for (const [ck, subjs] of sectionClassSubjects[sectionIdx]) {
+        for (const subj of subjs) {
+          const quota = subjDayQuota.get(`${ck}|${subj}`) || 1;
+          if ((classSubjDayOcc.get(`${ck}|${subj}|${day}`) || 0) >= quota) return false;
         }
       }
     }
@@ -1282,14 +1297,15 @@ export function solveTimetable(input: SolverInput): SolverResult {
     sectionIdx: number,
     len: number,
     relaxDayLimit = false,
-    skipSubjectQuota = false
+    skipSubjectQuota = false,
+    relaxQuota = false
   ): Array<{ day: number; start: number }> {
     const s = sections[sectionIdx];
     const out: Array<{ day: number; start: number }> = [];
     for (let day = 1; day <= 5; day++) {
       const maxP = gdp[s.grade]?.[day] || 0;
       for (let start = 1; start + len - 1 <= maxP; start++) {
-        if (feasible(sectionIdx, day, start, len, relaxDayLimit, skipSubjectQuota))
+        if (feasible(sectionIdx, day, start, len, relaxDayLimit, skipSubjectQuota, relaxQuota))
           out.push({ day, start });
       }
     }
@@ -1364,6 +1380,12 @@ export function solveTimetable(input: SolverInput): SolverResult {
       // (2026-08-18: 폴백을 ejection 단계에만 두었더니 이미 막다른 길이라 소용없었다).
       // 슬롯 선택은 아래 공통 경로가 소프트 비용 최소로 고르므로 품질 손해는 국소적이다.
       bestCands = candidateSlots(p.sectionIdx, p.len, true);
+      // 3단 폴백 (2026-08-22): 몫을 지키는 완화(②)가 비면 그때만 몫까지 푼다(③).
+      // ②가 끼기 전에는 완화가 곧 몫 해제라 S4가 여기서 샜다.
+      if (!bestCands.length) {
+        bestCands = candidateSlots(p.sectionIdx, p.len, true, false, true);
+        if (bestCands.length) relaxQuotaUsed++;
+      }
       if (!bestCands.length) {
         stuck.push(p);
         continue;
@@ -1439,7 +1461,14 @@ export function solveTimetable(input: SolverInput): SolverResult {
     //    (⑥-b 보수 패스는 allowRelaxed=false로 이 지름길을 막아 ③까지 가게 한다 —
     //     여기서 또 relax하면 위반을 그 자리에 도로 놓고 성공을 보고하기 때문)
     if (allowRelaxed) {
-      const relaxed = candidateSlots(p.sectionIdx, p.len, true);
+      // 3단 폴백 (2026-08-22): 몫 유지 완화(②) 우선, 비면 몫까지(③) — 그리디와 같은 사다리
+      const relaxed = ((): Array<{ day: number; start: number }> => {
+        const kept = candidateSlots(p.sectionIdx, p.len, true);
+        if (kept.length) return kept;
+        const last = candidateSlots(p.sectionIdx, p.len, true, false, true);
+        if (last.length) relaxQuotaUsed++;
+        return last;
+      })();
       if (relaxed.length) {
         let pick = relaxed[0];
         let minCost = Infinity;
@@ -1772,6 +1801,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
       // S4 내부 가중을 벗겨 공식 점수 등가로 보고 — classDayPenalty는 S4만 담고 그 점수는
       // 전부 (n-1)×S4_INTERNAL_WEIGHT 꼴이라 나눗셈이 정확히 떨어진다.
       softScoreEstimate: softScore - softScoreS2x - softScoreS4 + softScoreS4 / S4_INTERNAL_WEIGHT,
+      relaxQuotaUsed,
       s4Estimate: softScoreS4 / S4_INTERNAL_WEIGHT,
     },
   };
