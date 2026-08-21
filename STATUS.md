@@ -49,13 +49,13 @@
 | **왜 안 드러났나** | 효명고가 현재 **전 학년 동일**(수6·7 SLAT, 금5·6 창체)이라 8/14~18 검증이 전부 통과했다. 데이터가 우연히 단순해서 가려졌다. |
 | **참고 — `fixedBlocks`** | `phase9c_spec.md` §2-3 ②가 *"(요일,교시)에 **여러 학급** 고정 배치"*로 학급 단위를 전제했다. 되돌리기보다 **`CohortFixedSlot`에 적용 대상(학년/학급)과 학년도를 얹는 쪽**이 기존 전개 경로를 살린다. |
 | **정정 — 「로테이션」은 슬롯 이동이 아니다** | `phase9c_spec.md:37`의 *"§4-1b의 SLAT·창체 로테이션"*은 **끊긴 참조**다(그 문서 §4는 「Phase B — 역산·기준선」이고 §4-1b가 없다). 실제 뜻은 `consent_swap_opening_spec.md:163`에 있다: **SLAT 시간에 담임·부담임·교과 교사가 돌아가며 투입**되는 것 — **자리가 도는 게 아니라 사람이 돈다.** `types.ts:1119`도 *"로테이션(주중 여러 교시)은 블록 여러 건으로 표현"*이라 슬롯 축과 무관. 이 설계 판단에 영향 없음. |
-| **담당·다음 행동** | Claude(스펙 판단) → 구현. **탭 순서·이름 변경보다 이것이 먼저 정해져야** 합치기 여부가 갈린다 |
+| **담당·다음 행동** | **Claude Fable, 새 세션 (2026-08-21 사용자 배정 — *"오늘이 페이블 막 쓸 수 있는 마지막 날"*).** 스펙 판단 과제이고 8/22 Max5 전환 전 마지막 창이다. 읽을 것 = 이 행 전체 + `phase9c_questionnaire_result_2026-08-14.md` §2-1·§2-2(축을 코호트로 정한 경위와 *"학급 단위 예외를 막지 않는다"* 조건) + `phase9c_h_spec.md` §2 + `src/lib/timetable/cohort.ts`·`types.ts`의 `CurriculumCohort`/`CohortFixedSlot`. **탭 순서·이름은 이미 끝냈으므로(`c3f0639`) 기다릴 것 없다** |
 
 ## 결정 대기 — 실기기에서 나온 결함 (2026-08-21, 사용자 지시로 조치 보류·일괄 처리)
 
 | 항목 | 진단 | 확인 방법 |
 |---|---|---|
-| **표가 360px에서 짜부라진다 — `overflow-x-auto`와 `w-full`이 서로 상쇄** (졸업생 명단에서 발견, 사용자: *"버려도 될 것 같긴 해"*) | **버릴 문제가 아니다.** 표를 감싼 `<div className="overflow-x-auto">`는 있는데(`GraduationTab.tsx:797`) 표 자신이 `w-full`이라(`:803`) **넘치지 않고 칸 안으로 우그러진다** — 그래서 옆으로 스크롤되는 대신 글자가 한 자씩 세로로 쪼개진다. 스펙 §4-1이 요구하는 "자체 스크롤 컨테이너"의 의도가 무력화된 상태. **같은 패턴 8곳** = `GraduationTab`·`GraduationConsentsTab`·`SubstituteHandoverWizard`·`TeacherLifecycle`·`TransferOutTab` 각 1 + `DisciplineSummarySection` 3. 2단계 승격(12→14px)이 폭 압력을 키워 드러났다 | 처방은 **표마다 한 단어** — `w-full` → `min-w-full` 또는 `min-w-[Npx]`. **저장소에 이미 올바른 판이 있다**(`UserList.tsx:1124`·`AuditLogViewer.tsx:216`·`OUTreeManager.tsx:246` = `min-w-full`, `MyTimetableCard.tsx:107` = `min-w-[500px]`). 고친 뒤 360px에서 표가 **옆으로 밀리는지**(우그러지지 않는지) 확인 |
+| **표에 스크롤 상자가 아예 없다 — 8곳** (`EnrollTab` 2 · `PromoteTab` 4 · `TransferInTab` 1 · `DisciplinePermissionsTab` 1) | 위 10곳을 고치다 **새로 드러난 별건**. 이 8곳은 `overflow-x-auto` 래퍼 자체가 없어서 `min-w-full`을 주면 **페이지 몸통이 옆으로 밀린다**(스펙 §4-1 정면 위반) — 그래서 `c3f0639`에서 **일부러 되돌렸다**. 지금은 종전대로 좁은 폭에서 우그러진 채다 | 처방은 한 단어가 아니라 **`<table>`을 `<div className="overflow-x-auto">`로 감싸기**. 고친 뒤 360px에서 ⓐ 표는 옆으로 밀리고 ⓑ **페이지 몸통은 가로 스크롤 0**인지 둘 다 확인 |
 
 ## 실기기 확인 (사용자)
 
