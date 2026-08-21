@@ -52,6 +52,9 @@ import {
 import { applyRevisionOps, cloneClassGrids } from "@/lib/timetable/utils";
 import { buildSimulMatcher } from "@/lib/timetable/simul";
 import { HARD_CODE_LABELS, SOFT_CODE_LABELS } from "@/lib/timetable/labels";
+import { getClientCache } from "@/lib/cache/clientCache";
+import { resolveDisplayName } from "@/lib/org/displayName";
+import { buildGwsNameMap } from "@/lib/org/roster";
 
 interface DraftAutoTabProps {
   activeTermId?: string | null;
@@ -209,6 +212,15 @@ export default function DraftAutoTab({
   const [viewGrade, setViewGrade] = useState(1);
   const [viewClass, setViewClass] = useState(1);
   const [selectedTeacherEmail, setSelectedTeacherEmail] = useState<string | null>(null);
+  // GWS 이름 맵 — 렌더 중 캐시 직독 금지 원칙(AGENTS 「사람 이름 표시 원칙」)대로 마운트 시 state로 옮긴다.
+  // 캐시가 비어 있어도 추가 조회는 안 한다 — 초안 그리드의 수업에 교사 이름이 이미 박혀 있어
+  // 그쪽 폴백으로 충분하다 (읽기량: 추가 0건).
+  const [gwsUsers, setGwsUsers] = useState<unknown[]>([]);
+  useEffect(() => {
+    const cached = getClientCache("users:all");
+    if (Array.isArray(cached) && cached.length > 0) setGwsUsers(cached);
+  }, []);
+  const gwsNameMap = useMemo(() => buildGwsNameMap(gwsUsers), [gwsUsers]);
 
   // F-1 위반·감점 상세 패널 접힘/펼침 상태
   const [showHardDetails, setShowHardDetails] = useState(false);
@@ -1266,6 +1278,22 @@ export default function DraftAutoTab({
   const teacherSlots = openDraft && selectedTeacherEmail
     ? synthesizeTeacherGrid(openDraft.currentGrids, selectedTeacherEmail, periodsPerDay)
     : [];
+  // 선택 교사의 표시 이름 — 이메일 아이디를 그대로 찍지 않는다 (2026-08-21 사용자 신고).
+  // GWS 맵 우선, 없으면 초안 그리드에 박힌 이름(작성 시점 GWS 값) 폴백 — 프리페치 도착 전에도 아이디로 안 샌다.
+  const selectedTeacherName = useMemo(() => {
+    if (!selectedTeacherEmail) return null;
+    const key = selectedTeacherEmail.trim().toLowerCase();
+    let gridName = "";
+    outer: for (const g of openDraft?.currentGrids || [])
+      for (const c of g.cells || [])
+        for (const l of c.lessons || [])
+          for (const t of l.teachers || [])
+            if ((t.email || "").trim().toLowerCase() === key && (t.name || "").trim()) {
+              gridName = t.name.trim();
+              break outer;
+            }
+    return resolveDisplayName(selectedTeacherEmail, undefined, gwsNameMap.get(key) || gridName || undefined).name;
+  }, [selectedTeacherEmail, openDraft, gwsNameMap]);
 
   // ── 초안 편집기 화면 ──
   if (openDraft) {
@@ -2388,7 +2416,7 @@ export default function DraftAutoTab({
                 </h4>
                 {selectedTeacherEmail && (
                   <span className="text-[11px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded">
-                    {selectedTeacherEmail}
+                    {selectedTeacherName} 선생님
                   </span>
                 )}
               </div>
