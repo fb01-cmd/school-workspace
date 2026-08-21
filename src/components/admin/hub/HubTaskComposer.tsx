@@ -351,6 +351,10 @@ export default function HubTaskComposer({
 
         {/* Switch to Memo with Helper Copy (§2-5) */}
         <div className="flex items-center gap-3">
+          {/* 사유는 HubMemoComposer의 같은 자리 주석 참조 (2026-08-21) */}
+          <span className="text-[11px] text-slate-400 hidden lg:inline xl:hidden">
+            기한 있는 일은 업무로
+          </span>
           <span className="text-[11px] text-slate-400 hidden xl:inline">
             기한이 있는 일은 업무로 보내면 누가 끝냈는지 자동으로 모입니다.
           </span>

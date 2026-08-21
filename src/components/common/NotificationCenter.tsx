@@ -809,9 +809,26 @@ export default function NotificationCenter() {
                     {item.type === "task-assigned" && item.refId && (() => {
                       const taskInfo = taskStatusMap[item.refId];
                       if (taskInfo?.canceled || taskInfo?.notEligible) return null;
+                      // 거절은 수락이 아니다. 원 지시(피드백 17번)가 "PENDING이 아니면 수락함 ✓"
+                      // 였고 문자 그대로 구현돼 DECLINED까지 수락으로 잡혔다 — 지시서의 빈틈이지
+                      // 구현 이탈이 아니다. 화면에 사실과 다른 말이 뜨므로 갈라 놓는다
+                      // (2026-08-21 훑기에서 발견).
+                      const isDeclined = taskInfo?.state === "DECLINED";
                       const isAlreadyAccepted =
-                        acceptedTaskIds.has(item.refId) ||
-                        (taskInfo?.state && taskInfo.state !== "PENDING");
+                        !isDeclined &&
+                        (acceptedTaskIds.has(item.refId) ||
+                          (taskInfo?.state && taskInfo.state !== "PENDING"));
+
+                      if (isDeclined) {
+                        return (
+                          <div className="pt-1">
+                            <div className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
+                              <span>↩️</span>
+                              <span>거절함</span>
+                            </div>
+                          </div>
+                        );
+                      }
 
                       if (isAlreadyAccepted) {
                         return (

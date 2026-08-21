@@ -497,6 +497,16 @@ export default function HubMemoComposer({
 
         {/* Switch to Task with Helper Copy (§2-5) */}
         <div className="flex items-center gap-3">
+          {/*
+            쪽지와 업무 중 무엇을 고를지 알려주는 유일한 안내다 — 2026-08-21에 제목 밑 부제를
+            걷어내면서(사용자 지시) 이 줄만 남았는데, `hidden xl:inline`이라 1280px 미만에서는
+            그마저 사라져 **좁은 화면에는 설명이 하나도 없었다.** 짧은 판을 lg부터 띄운다.
+            폰(lg 미만)에서 계속 숨기는 것은 의도다 — 전환 버튼을 밀어내는 값어치가 없다
+            (MessagingHub.tsx의 같은 판단과 동일). 폰 사용자는 두 탭을 눌러 보고 안다.
+          */}
+          <span className="text-[11px] text-slate-400 hidden lg:inline xl:hidden">
+            기한 있는 일은 업무로
+          </span>
           <span className="text-[11px] text-slate-400 hidden xl:inline">
             기한이 있는 일은 업무로 보내면 누가 끝냈는지 자동으로 모입니다.
           </span>
@@ -684,9 +694,17 @@ export default function HubMemoComposer({
                             )
                           )}
                         </div>
-                        {item.status === "uploading" && (
+                        {/*
+                          "resizing"도 함께 그린다. 이미지는 크기를 줄이는 동안 status가
+                          "resizing"이고, 업로드 진행 콜백은 progressText만 바꾸고 status는
+                          안 건드리므로 끝날 때까지 "resizing"에 머문다. "uploading"만 그리면
+                          **이미지를 붙여넣을 때 진행 문구가 하나도 안 뜬다** — 라벨을 되살리면서
+                          그리는 쪽을 안 고쳐 생긴 회귀다(2026-08-21 훑기에서 발견).
+                          원본 화면은 둘을 함께 본다 — MemoSection.tsx:2013.
+                        */}
+                        {(item.status === "resizing" || item.status === "uploading") && (
                           <p className="text-xs text-indigo-600 font-medium">
-                            {item.progressText || "업로드 중…"}
+                            {item.progressText || "처리 중…"}
                           </p>
                         )}
                         {item.status === "error" && (
