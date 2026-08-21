@@ -66,7 +66,7 @@
 |---|---|---|
 | ✅ 구현 1·2·3 — 목표 어휘·체인 탐색·해석 프롬프트·S8 부탁성 희망 **(2026-08-21 Opus 완료)** | Claude | `npx tsx scripts/askfix_selftest.ts` **42/42 통과**(스펙 §8 케이스 전종, Firestore 무의존) · `npx tsx scripts/ai_selftest.ts` 전체 통과 · tsc 0건 · build ✅ — 일지 2026-08-21 「말로 묻는 해결사 구현 1·2·3」 |
 | **실데이터 회귀 `fixfinder_selftest` — 판정 불가(초안 0건)** | Claude | 초안이 하나라도 생기면 `npx tsx --env-file=.env.local scripts/fixfinder_selftest.ts` 실행. 대체 근거로 리팩터링 전후 결과 완전 일치를 합성 그리드(감점 9종 × 걸러내기 on/off)로 확인해 뒀다 |
-| 구현 4 — 「물어보고 고치기」 카드 + E-4 제거 | Antigravity | tsc·build + 질문→해석 확인→계획→적용 왕복. **엔진 진입점** = `findFixPlanAsync`(fixFinder), **해석 진입점** = `ai_ask_fix`(draftId+aiText → 목표 1건). 실패 문구 재료는 `FixPlan.remaining`·`initialRemaining`·`budgetExhausted` |
+| 구현 4 — 「물어보고 고치기」 카드 + E-4 제거 — **지시서 작성 완료(2026-08-21), 사용자가 Antigravity에 넘기면 착수** | Antigravity | 지시서 = [`docs/handoff/NEXT.md`](./docs/handoff/NEXT.md) 「과제 M」(기준 커밋 `7b9f015`, 완료 확인 5종 포함). 넘기는 법 = Antigravity 창에 `docs/handoff/NEXT.md 읽고 수행해` 한 줄 |
 | 구현 5 — S8 slotCost 실험 | Claude | **11월 리허설 전** — 백지 벤치마크 S4=0·기준선 이하 유지 시만 채택 (스펙 §6 관문) |
 | 구현 6 — Codex 검증 | Codex | 스펙 §8 표 |
 
