@@ -304,8 +304,8 @@ async function pushAlertToRecipients(
       const r = await sendPushToEmail(domain, email, {
         title,
         body,
-        // 관리자만 여는 화면이라 목적지는 사용량 메뉴가 있는 교사 포털이다
-        url: "/teacher",
+        // 눌렀을 때 사용량 화면이 바로 열리게 (관리자 전용 화면이라 교사 계열만 해당)
+        navQuery: "nav=usage",
         tag,
       });
       sent += r.sent;

@@ -63,6 +63,15 @@ export interface PushPayload {
   title: string;
   body: string;
   url?: string; // 없으면 발송 시 구독 역할로 결정 (학생 → /student)
+  /**
+   * 딥링크 파라미터 (2026-08-21 신설) — 예: `nav=memo&id=abc`.
+   *
+   * `url`을 직접 지정하면 **역할 라우팅이 무력화된다** — 시간표 알림은 학생도 받는데
+   * `/teacher?…`를 박아 보내면 학생이 못 여는 화면으로 떨어진다. 그래서 목적지는
+   * 역할이 정하게 두고, **교사 계열에만** 이 쿼리를 붙인다. 착지 처리는
+   * `/teacher`의 `?nav=` 리더가 한다(학생 화면에는 리더가 없으므로 붙이지 않는다).
+   */
+  navQuery?: string;
   tag?: string;
 }
 
@@ -88,8 +97,14 @@ async function sendToSubs(
 
   await Promise.allSettled(
     subs.map(async (sub) => {
+      const isStudent = sub.data.role === "student";
       const url =
-        payload.url || (sub.data.role === "student" ? "/student" : "/");
+        payload.url ||
+        (isStudent
+          ? "/student"
+          : payload.navQuery
+            ? `/teacher?${payload.navQuery}`
+            : "/");
       const body = JSON.stringify({
         title: payload.title,
         body: payload.body,
@@ -237,6 +252,9 @@ function buildPayload(lines: string[], tagSeed: string): PushPayload {
     // §3-2d S5(15번): 고정 tag는 브라우저가 이전 알림을 통째로 교체해, 승인·취소를 여러 번
     // 나눠 하면 마지막 1건만 남아 "1건만 바뀐 것"처럼 보였다. 발송 호출 단위로 tag를 달리해
     // 호출 간 교체를 막는다 — 한 호출 안의 여러 건은 여전히 lines 집계(외 N건)로 1건 발송.
+    // 눌렀을 때 시간표 운영 화면으로 (2026-08-21). 종전에는 url 자체가 없어
+    // 서비스 워커 기본값 "/" 로 떨어졌다 — 학생 구독은 발송 단계에서 /student 로 바뀐다.
+    navQuery: "nav=timetable_operation",
     tag: `timetable-${tagSeed}`,
   };
 }
@@ -368,7 +386,8 @@ export async function notifyTask(
     const r = await sendToSubs(domain, subs, {
       title: headline,
       body: `${senderName} 선생님: ${shortTitle}`,
-      url: "/",
+      // 눌렀을 때 그 업무가 열리게 (2026-08-21) — 위 쪽지와 같은 이유
+      navQuery: `nav=tasks&id=${encodeURIComponent(taskId)}`,
       tag: `task:${taskId}`,
     });
     console.log(`[web_push] 업무 알림 — 발송 ${r.sent}, 만료 정리 ${r.removed}, 실패 ${r.failed}`);
@@ -392,7 +411,9 @@ export async function notifyMemo(
     const r = await sendToSubs(domain, subs, {
       title: "새 쪽지",
       body: `${senderName} 선생님: ${shortTitle}`,
-      url: "/",
+      // 눌렀을 때 **그 쪽지가 열리게** 한다 (2026-08-21). 종전에는 "/" 라 앱 홈만 떴다 —
+      // memoId 를 tag 에만 쓰고 주소에는 안 쓰고 있었다. 착지 처리는 `/teacher` 가 한다.
+      navQuery: `nav=memo&id=${encodeURIComponent(memoId)}`,
       tag: `memo:${memoId}`,
     });
     console.log(

@@ -138,6 +138,36 @@ export default function AdminPage() {
     return () => window.removeEventListener("admin_navigate", handleAdminNav);
   }, []);
 
+  // 알림 딥링크 착지 — `?nav=memo&id=…` 로 들어오면 그 화면을 연다 (2026-08-21 신설)
+  //
+  // 사용자 신고: *"모바일 알림 플로트가 떠서 눌렀는데 그냥 앱 홈이 나오고 쪽지로 이동은
+  // 안 됐어."* 원인은 서비스 워커가 아니라 **보내는 쪽**이었다 — 푸시 payload의 `url`이
+  // `"/"` 로 하드코딩돼 있었다(`webpush.ts`). 쪽지·업무 번호는 이미 `tag`에 쓰고 있으면서
+  // 주소에는 안 썼다.
+  //
+  // 앱 안 알림함이 쓰는 `admin_navigate` 장치가 이미 잘 동작하므로 **그대로 재사용**한다.
+  // 여기서는 주소 → 이벤트로 옮겨 주기만 하면 된다.
+  //
+  // 처리 후 주소를 지운다(`replaceState`) — 안 지우면 새로고침·뒤로가기 때마다 같은
+  // 항목이 다시 열려, 사용자가 목록으로 못 빠져나온다.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const nav = params.get("nav");
+    if (!nav) return;
+
+    const id = params.get("id") || undefined;
+    const detail: Record<string, unknown> = { menu: nav };
+    if (id) {
+      if (nav === "memo") detail.memoId = id;
+      else if (nav === "tasks") detail.taskId = id;
+    }
+
+    // 주소부터 정리하고 이벤트를 쏜다 (이벤트 처리 중 리렌더가 나도 주소가 남지 않게)
+    window.history.replaceState({}, "", window.location.pathname);
+    window.dispatchEvent(new CustomEvent("admin_navigate", { detail }));
+  }, []);
+
   const toggleSection = (sectionKey: string) => {
     setCollapsedSections((prev) => {
       const next = { ...prev, [sectionKey]: !prev[sectionKey] };
