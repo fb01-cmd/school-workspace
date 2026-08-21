@@ -4,6 +4,38 @@
 > 2026-08-14 이전은 [`archive/project_notes_2026-08.md`](./archive/project_notes_2026-08.md)·[`archive/project_notes_2026-07.md`](./archive/project_notes_2026-07.md)에 있다
 > (원문 그대로, 블록 무손실 대조 완료). 이 파일은 최근 엔트리만 유지한다 — 150KB 초과 시 즉시 회전 (AGENTS.md ④-1).
 
+## [2026-08-21] Antigravity → Claude/사용자 (과제 L 완결 — 창체·SLAT 배치 화면: 「학년도별 변경」 추가)
+
+> ⚠️ **검증 범위 고지**: **화면·모바일 미검증** (360px 브라우저 확인 및 실기기 검증은 Claude 및 사용자 몫). `cohort_selftest`(67/67) · `tsc` · `build` · `check_ui_removals` · `grep` 회귀 관문 전수 통과 완료.
+
+- **배경**: `docs/fixed_slot_override_spec.md` §5 및 `docs/handoff/NEXT.md` 과제 L 지시서에 따라, 창체·SLAT 배치 화면(`CurriculumCohortTab.tsx`)에 학년도별 재정의 층(실무협의회 등의 학년도 축 즉시 변경 반영) UI를 추가하고 학년도 3월 시작 계산 버그를 교체.
+- **주요 구현 내용**:
+  1. **맨 위 「지금은 어떻게 되나」 (해석 결과 보기, 스펙 §5-⑴)**:
+     - 기준 학년도(`currentSchoolYear`) 선택 시 `resolveFixedSlots(cohorts, overrides, currentSchoolYear, grade)`를 단일 출처로 호출하여 1~3학년별 최종 배치 미니 격자와 출처(`override` / `cohort` / `none`)를 실시간 표출.
+     - 교육과정 불일치로 부적용된 변경이 있을 때(`skippedOverride`) 해당 학년에 경고/안내 배너를 표출하여 사용자가 불일치 사실을 즉시 인지(fail-loud).
+  2. **가운데 교육과정별 기본 배치 (스펙 §5-⑵)**:
+     - 기존 교육과정(코호트) 카드 목록 및 등록/수정 모달 기능 그대로 보존.
+     - 수정 진입부에 안내 문구 추가: *"자리를 옮기기로 결정된 것이라면 여기서 고치지 말고 「○○학년도부터 바꾸기」를 쓰세요 — 여기서 고치면 지난 학년도 화면 표시도 함께 바뀝니다."*
+  3. **아래 「학년도별 변경」 목록 + [+ ○○학년도부터 바꾸기] 편집기 (스펙 §5-⑶)**:
+     - 목록 카드: 변경 명칭, 적용 학년도(`effectiveFromSchoolYear`), 대상 학년별 미니 격자 표출.
+     - **지난 학년도 이력 보존 게이트**: `o.effectiveFromSchoolYear < currentSchoolYear`인 카드는 수정 및 삭제 버튼을 비활성화(`disabled`)하고 사유 툴팁 및 안내 문구 표출.
+     - 편집기 모달: 적용 시작 학년도(현재 학년도 이상 `min={currentSchoolYear}`), 학년 선택 체크박스(1~3학년), 선택 학년별 교육과정 안내 캡션("이 학년도의 N학년은 ○○ 교육과정을 따릅니다")과 `resolveFixedSlots` 초기값으로 사전 채워진 인터랙티브 격자 편집기 제공.
+     - API 연결: `/api/timetable/manage`의 `cohort_override_list`, `cohort_override_save`(신규/수정), `cohort_override_delete` 연동.
+  4. **학년도 계산 교체**:
+     - `CurriculumCohortTab.tsx:22`의 `new Date().getFullYear()`를 KST 3월 1일 기준 단일 헬퍼인 `schoolYearOfDate(new Date())`로 교체하여 1~2월 학년도 왜곡 해소.
+  5. **문구 및 글씨 크기 규격 준수**:
+     - 화면에 개발 용어(재정의, 오버라이드, 코호트) 일체 배제하고 「학년도별 변경」·「○○학년도부터 바꾸기」·「교육과정」으로 통일.
+     - `docs/font_size_spec.md` 3등급(1급 14px, 2급 12px, 3급 11px) 준수. `text-[10px]` 및 `text-[9px]` 미사용.
+- **검증 관문 결과**:
+  - `npx tsx scripts/cohort_selftest.ts` ✅ (**67/67 통과** — 순수 함수 및 규칙 전수 통과)
+  - `npx tsc --noEmit` ✅ (**0 errors**)
+  - `npm run build` ✅ (**48/48 static pages prerendered**)
+  - `bash scripts/check_ui_removals.sh 9fb78b3` ✅ (사라진 상호작용 0건, 스펙에 따른 문구 정비 3건만 발생)
+  - `grep -rnE "text-\[[0-9](\.[0-9]+)?px\]"` ✅ (0건)
+  - `grep -rn "text-\[10px\]"` ✅ (0건)
+- **다음 단계 인계**:
+  - Codex 구현 4 커밋 검증(해석 규칙 §2 ↔ 검증 §4 ↔ 화면 §5 대조) 및 Claude 360px 검수 대기.
+
 ## [2026-08-21] Antigravity → Claude/사용자 (과제 J 완결 — 글씨 크기 2단계 2묶음: 생활지도·수명주기 1급 정보 14px 승격)
 
 > ⚠️ **검증 범위 고지**: **화면·모바일 미검증** (360px 및 실기기 검증은 Claude 및 사용자 몫). `tsc`·`build`·`check_ui_removals`·`grep` 회귀 관문 전수 통과 완료. **과제 K(시간표)는 착수 대기 상태 유지.**
