@@ -33,6 +33,44 @@ def git(*args: str) -> str:
     ).stdout
 
 
+def prune(state: str) -> int:
+    """커밋·되돌리기 등으로 깨끗해진 파일의 기록을 지운다 (post-commit 훅이 부른다).
+
+    판정 기준은 「커밋됐나」가 아니라 **「아직 더러운가」**다. 더 넓고 더 정확하다 —
+    무엇으로 사라졌든 작업 트리가 깨끗하면 그 경로에 걸린 미커밋 작업은 없다.
+    그 세션이 다시 편집하면 claim이 다시 쌓여 스스로 회복된다.
+
+    왜 필요한가: 안 지우면 가드가 **이미 끝난 작업으로 다음 커밋을 막는다.** 그러면
+    사람이 COMMIT_GUARD_OK를 반사적으로 쓰게 되고 가드는 그 순간 죽는다
+    (2026-08-21 실측 — 남이 커밋한 지 34분 지난 파일에 막혔다).
+    """
+    try:
+        dirty = set()
+        for row in git("status", "--porcelain", "--untracked-files=all").splitlines():
+            path = row[3:]
+            if " -> " in path:
+                path = path.split(" -> ", 1)[1]
+            if path:
+                dirty.add(path.strip('"'))
+    except Exception:
+        return 0
+    for name in os.listdir(state):
+        if not name.endswith(".claim"):
+            continue
+        target = os.path.join(state, name)
+        try:
+            with open(target, encoding="utf-8") as f:
+                kept = [ln for ln in f.read().splitlines() if ln and ln in dirty]
+            if kept:
+                with open(target, "w", encoding="utf-8") as f:
+                    f.write("\n".join(kept) + "\n")
+            else:
+                os.remove(target)
+        except OSError:
+            pass
+    return 0
+
+
 def main() -> int:
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
     try:
@@ -49,6 +87,10 @@ def main() -> int:
     except Exception:
         payload = {}
     sid = re.sub(r"[^A-Za-z0-9_-]", "_", str(payload.get("session_id") or ""))
+    # prune 은 세션과 무관하다 — post-commit 훅이 stdin 없이 부른다. sid 검사보다 앞에 둔다
+    # (앞뒤가 바뀌면 조용히 아무것도 안 한다. 2026-08-21에 실제로 그렇게 썼다가 자가 테스트가 잡았다).
+    if mode == "prune":
+        return prune(state)
     if not sid:
         return 0
 

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# 방금 커밋된 파일은 더 이상 「작업 중」이 아니다 — 모든 세션의 기록에서 지운다.
+# 안 지우면 가드가 이미 끝난 작업으로 다음 커밋을 막고, 그러면 사람이 우회를
+# 반사적으로 쓰게 되어 가드가 죽는다.
+python3 "$(git rev-parse --show-toplevel)/scripts/commit_guard_record.py" prune </dev/null >/dev/null 2>&1 || true
+exit 0

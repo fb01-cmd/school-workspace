@@ -23,8 +23,8 @@ git init -q .
 git config user.email guard@test; git config user.name guard
 mkdir -p scripts .githooks src
 cp "$ROOT/scripts/commit_scope_guard.sh" "$ROOT/scripts/commit_guard_record.py" scripts/
-cp "$ROOT/.githooks/pre-commit" .githooks/
-chmod +x scripts/commit_scope_guard.sh .githooks/pre-commit
+cp "$ROOT/.githooks/pre-commit" "$ROOT/.githooks/post-commit" .githooks/
+chmod +x scripts/commit_scope_guard.sh .githooks/pre-commit .githooks/post-commit
 git config core.hooksPath .githooks
 printf 'base\n' > src/engine.ts; printf 'base\n' > src/screen.tsx; printf 'base\n' > notes.md
 git add -A && COMMIT_GUARD_OK=1 git commit -qm init
@@ -100,6 +100,21 @@ check $? "내 세션 시작 전부터 더럽고 내가 손대지 않은 파일�
 echo "── 4. 빠져나갈 문이 있다 ──"
 COMMIT_GUARD_OK=1 git commit -qm "C의 커밋 (의도적 통과)" 2>/dev/null
 check $? "COMMIT_GUARD_OK=1 이면 통과한다"
+
+echo "── 4-1. 끝난 작업의 기록은 스스로 사라진다 (늑대 외치기 방지) ──"
+# 가드가 이미 끝난 작업으로 다음 커밋을 막기 시작하면, 사람이 우회를 반사적으로 쓰게 되어
+# 가드가 죽는다. 2026-08-21 실측 — 남이 커밋한 지 34분 지난 파일에 막혔다.
+python3 scripts/commit_guard_record.py prune </dev/null
+[ ! -f .git/commit-guard/sessA.claim ]
+check $? "커밋돼 깨끗해진 파일의 기록은 지워진다"
+printf 'A가 다시 편집\n' > src/engine.ts
+rec claim "$(claim_json sessA src/engine.ts)"
+grep -qx 'src/engine.ts' .git/commit-guard/sessA.claim 2>/dev/null
+check $? "그 세션이 다시 편집하면 기록이 되살아난다 (스스로 회복)"
+git checkout -q -- src/engine.ts
+python3 scripts/commit_guard_record.py prune </dev/null
+[ ! -f .git/commit-guard/sessA.claim ]
+check $? "되돌려서 깨끗해져도 지워진다 (커밋 여부가 아니라 더러움 여부로 판정)"
 
 echo "── 5. 기록이 없으면 아무것도 막지 않는다 (열린 실패) ──"
 rm -rf .git/commit-guard
