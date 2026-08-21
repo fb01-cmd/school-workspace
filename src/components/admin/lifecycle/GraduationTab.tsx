@@ -800,7 +800,12 @@ export default function GraduationTab({ s, ud }: any) {
           ) : filteredCandidates.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-xs">대상 학생이 없습니다.</div>
           ) : (
-            <table className="min-w-full text-left text-sm border-collapse">
+            <table
+              /* min-w-full 은 부족하다 — 표가 칸에 맞추려고 글자를 접어버려 좁은 폭에서
+                 우그러진다. 열 고정폭 합(약 864px)+여백보다 큰 실치수를 줘야 넘쳐서
+                 바깥 overflow-x-auto 가 실제로 스크롤된다. 2026-08-21 실기기 재신고 조치. */
+              className="min-w-[1000px] text-left text-sm border-collapse"
+            >
               <thead>
                 <tr className="bg-slate-50 border-b text-slate-500 uppercase font-semibold">
                   <th className="px-6 py-3.5 w-24">학번</th>
@@ -816,11 +821,16 @@ export default function GraduationTab({ s, ud }: any) {
                 {filteredCandidates.map((c) => (
                   <tr key={c.email} className="hover:bg-slate-50/50">
                     <td className="px-6 py-3.5 font-bold font-mono">{c.studentId || "-"}</td>
-                    <td className="px-6 py-3.5 font-bold flex items-center gap-1.5">
-                      <span>{c.name}</span>
-                      {(c.isTest || c.originalOU === "/학생/테스트") && (
-                         <span className="bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded text-xs border border-purple-200">테스트</span>
-                      )}
+                    {/* td 에 직접 flex 를 주면 그 칸이 표 레이아웃에서 빠져 열 너비 계산이
+                        깨진다(좁은 폭에서 이름이 한 자씩 세로로 쪼개지던 원인). flex 는 안쪽
+                        div 로 내린다. 2026-08-21 실기기 신고 조치. */}
+                    <td className="px-6 py-3.5 font-bold">
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span>{c.name}</span>
+                        {(c.isTest || c.originalOU === "/학생/테스트") && (
+                           <span className="bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded text-xs border border-purple-200">테스트</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-3.5 font-mono text-xs text-slate-500">{c.email}</td>
                     <td className="px-6 py-3.5 text-center">
@@ -846,7 +856,8 @@ export default function GraduationTab({ s, ud }: any) {
                     <td className="px-6 py-3.5 text-center font-bold font-mono text-slate-600">
                       {c.warnedCount || 0}회
                     </td>
-                    <td className="px-6 py-3.5 text-center flex justify-center items-center gap-2 flex-wrap">
+                    <td className="px-6 py-3.5 text-center">
+                      <div className="flex justify-center items-center gap-2 flex-wrap">
                       {/* View Signature permanent record if submitted */}
                       {c.consentSubmitted && (
                         <button
@@ -915,6 +926,7 @@ export default function GraduationTab({ s, ud }: any) {
                       {c.status === "DELETED" && (
                         <span className="text-xs text-slate-400 font-medium">-</span>
                       )}
+                      </div>
                     </td>
                   </tr>
                 ))}
