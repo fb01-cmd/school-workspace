@@ -2708,7 +2708,8 @@ export function solveTimetable(input: SolverInput): SolverResult {
           improved++;
           continue;
         }
-        // ⓑ 교사 2인 조합 — 위반 요일에 같은 학급을 나눠 쓰는 교사들(교환 상대 후보) 순서대로
+        // ⓑ 교사 2인 조합 — 위반 요일에 같은 학급을 나눠 쓰는 교사들(교환 상대 후보) 순서대로.
+        // ⓒ(아래) 위반 요일 전체 파괴는 ⓑ까지 실패한 뒤의 최후 망치다.
         const partnerSet = new Set<string>();
         for (const [, o] of placed) {
           if (o.day !== day) continue;
@@ -2724,7 +2725,7 @@ export function solveTimetable(input: SolverInput): SolverResult {
         }
         const partners = [...partnerSet].sort();
         let done = false;
-        for (const p2 of partners.slice(0, 4)) {
+        for (const p2 of partners.slice(0, 6)) {
           const both = [...weekOf(tk), ...weekOf(p2)];
           const seen = new Set<string>();
           const dedup = both.filter((o) => {
@@ -2740,6 +2741,20 @@ export function solveTimetable(input: SolverInput): SolverResult {
           }
         }
         if (done) continue;
+        // ⓒ 위반 요일 전체 파괴 (리서치 원문의 요일 부분집합 근방) — 전 학급의 그 요일
+        // 비고정 수업을 다 들어내고 요일을 통째로 다시 짠다. 교사 1~2인 근방이 못 넘는
+        // 지형(실전 실측: 장예빈 수 1-2-3은 대화형 해결사까지 전부 막힘)용 최후 망치.
+        // 채택 조건은 동일(전 축 비악화·원복 보장)이라 크기만 클 뿐 위험은 같다.
+        {
+          const dayAll: Occurrence[] = [];
+          for (const [, o] of placed) {
+            if (o.day !== day) continue;
+            if (sections[o.sectionIdx].kind === "fixed") continue;
+            dayAll.push(o);
+          }
+          dayAll.sort((a, b) => a.sectionIdx - b.sectionIdx || a.occIdx - b.occIdx);
+          if (tryDestroyRebuild(dayAll, `day=${day} 전체`)) improved++;
+        }
       }
       if (!improved) break;
     }
