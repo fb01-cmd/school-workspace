@@ -67,10 +67,6 @@ export default function TeacherLifecycle() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900">교직원 계정 및 생애주기 관리</h2>
-      </div>
-
       {/* Section Selector */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <SectionBtn active={section === "enroll"} onClick={() => setSection("enroll")} icon="➕" title="교직원 전입 (신규 등록)" desc="계정 생성 + 지정 그룹 자동 가입" />

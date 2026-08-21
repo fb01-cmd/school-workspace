@@ -248,10 +248,7 @@ export default function ProfileApprovals() {
       {/* Sub-tab 1: Pending Approvals — super_admin 전용 */}
       {activeSubTab === "pending" && isSuperAdmin && (
         <div className="space-y-6">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <h2 className="text-xl font-bold text-gray-900">📥 조직 정보 승인 대기</h2>
-          </div>
-
+          {/* 제목 없음 — 바로 위 서브탭 버튼이 「조직 정보 승인 대기」로 이미 켜져 있다 */}
           {loading ? (
             <p className="text-center text-gray-500 py-8">불러오는 중...</p>
           ) : pending.length === 0 ? (

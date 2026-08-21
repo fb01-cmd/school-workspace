@@ -10,7 +10,8 @@
     "check:docs": "bash scripts/check_docs.sh",
     "roadmap": "grep -E '^- [^ ] \\*\\*' development_roadmap.md",
     "backup": "npx tsx --env-file=.env.local scripts/backup_firestore.ts",
-    "backup:verify": "npx tsx --env-file=.env.local scripts/restore_firestore.ts --all --verify"
+    "backup:verify": "npx tsx --env-file=.env.local scripts/restore_firestore.ts --all --verify",
+    "check:ui": "npx tsx scripts/check_screen_headers.ts"
   },
   "dependencies": {
     "fast-xml-parser": "^5.11.0",

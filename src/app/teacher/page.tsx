@@ -1123,7 +1123,7 @@ export default function AdminPage() {
                 {activeMenu === "classroom_cleanup" && "학기말 클래스룸 정리"}
                 {activeMenu === "chrome_bookmarks" && "크롬 북마크 배정"}
                 {activeMenu === "password_reset" && "학생 비밀번호 초기화"}
-                {activeMenu === "profile_approvals" && "조직 정보 승인"}
+                {activeMenu === "profile_approvals" && "교직원 조직도 관리"}
                 {activeMenu === "discipline" && "생활지도 종합 관리"}
                 {activeMenu === "settings" && "Workspace 환경 설정"}
                 {activeMenu === "ou_manage" && "조직단위 관리"}
@@ -1134,10 +1134,10 @@ export default function AdminPage() {
                 {activeMenu === "pwa_guide" && "앱으로 설치하기 안내"}
                 {activeMenu === "roster" && "학생 명렬표 인쇄"}
                 {activeMenu === "classroom" && "클래스룸 학생 강제 배정"}
-                {activeMenu === "teachers" && "교직원 계정 및 생애주기 관리"}
+                {activeMenu === "teachers" && "교직원 계정 생애주기"}
                 {activeMenu === "lifecycle" && "학생 계정 생애주기"}
-                {activeMenu === "timetable_operation" && "시간표 운영 (학기 중)"}
-                {activeMenu === "timetable_creation" && "시간표 작성 & 학기 관리"}
+                {activeMenu === "timetable_operation" && "시간표 운영"}
+                {activeMenu === "timetable_creation" && "시간표 작성"}
                 {activeMenu === "my_timetable" && "내 시간표"}
                 {(activeMenu === "hub" || activeMenu === "memo" || activeMenu === "tasks") && "쪽지·업무"}
               </h1>

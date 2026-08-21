@@ -326,6 +326,9 @@ export default function HubOrgTree({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <span className="text-base">👥</span>
+            {/* header-ok: 쪽지·업무 화면 안 「수신자 고르기」 패널의 제목이다.
+                페이지 제목이 아니라 좌우로 나뉜 패널 중 한쪽의 이름이라 필요하다.
+                「교직원 조직도 관리」 메뉴와 글자가 겹칠 뿐 다른 화면이다. */}
             <h2 className="text-sm font-bold text-slate-800">교직원 조직도</h2>
           </div>
           <button
