@@ -13,7 +13,6 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { useAuth, TeacherProfile } from "@/context/AuthContext";
-import OrgChartTree from "@/components/admin/OrgChartTree";
 import OrgChartBuilder from "@/components/admin/OrgChartBuilder";
 import { loadTeacherProfiles, invalidateTeacherProfilesCache } from "@/lib/org/roster";
 import { isMobileNumberPattern } from "@/components/admin/ManualProfileEditor";
@@ -29,7 +28,11 @@ interface ApprovedTeacherInfo {
   name: string;
 }
 
-type SubTabType = "pending" | "manual" | "tree";
+// 「조직도 트리 뷰」 탭은 2026-08-21에 걷었다 (사용자 판단).
+// 교사에게 조직도를 보여주던 몫은 쪽지·업무 화면의 좌측 조직도가 이미 하고 있고,
+// 편집은 어차피 「조직도 편집 (수동 배치)」 탭에서 한다 — 같은 트리를 세 번째로 그릴
+// 이유가 없었다. 컴포넌트(OrgChartTree.tsx)도 함께 삭제했다.
+type SubTabType = "pending" | "manual";
 
 export default function ProfileApprovals() {
   const { userData } = useAuth();
@@ -177,11 +180,6 @@ export default function ProfileApprovals() {
     }
   };
 
-  const handleTriggerEditFromTree = (email: string) => {
-    setSelectedTeacherForEdit(email);
-    setActiveSubTab("manual");
-  };
-
   if (!isSuperAdmin) {
     return (
       <div className="p-8 text-center text-slate-500 text-sm">
@@ -231,18 +229,6 @@ export default function ProfileApprovals() {
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={() => setActiveSubTab("tree")}
-          className={`flex-1 py-2.5 px-4 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-            activeSubTab === "tree"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-          }`}
-        >
-          <span>🌳</span>
-          <span>조직도 트리 뷰</span>
-        </button>
       </div>
 
       {/* Sub-tab 1: Pending Approvals — super_admin 전용 */}
@@ -437,11 +423,6 @@ export default function ProfileApprovals() {
           externalEditEmail={selectedTeacherForEdit || undefined}
           onExternalEditHandled={() => setSelectedTeacherForEdit("")}
         />
-      )}
-
-      {/* Sub-tab 3: Org Chart Tree View — ✏️는 빌더 탭으로 전환 후 빌더 모달로 열림 */}
-      {activeSubTab === "tree" && (
-        <OrgChartTree onEditTeacher={handleTriggerEditFromTree} />
       )}
     </div>
   );

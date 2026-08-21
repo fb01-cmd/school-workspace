@@ -212,7 +212,7 @@ export function buildGwsNameMap(users: unknown): Map<string, string> {
 }
 
 /**
- * GWS 유저 목록에서 재직 교직원 이메일 집합 추출 (OrgChartBuilder.teacherUserList / OrgChartTree.activeEmails 동일 기준)
+ * GWS 유저 목록에서 재직 교직원 이메일 집합 추출 (OrgChartBuilder.teacherUserList / HubOrgTree.activeEmails 동일 기준)
  * 전출·명퇴로 교직원 OU를 떠난 계정의 잔존 프로필 필터용. 캐시가 없으면 null 반환(필터 생략).
  */
 export function getActiveTeacherEmails(

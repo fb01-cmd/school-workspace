@@ -629,7 +629,7 @@ Claude는 출력뿐 아니라 **파일을 읽는 입력에도 비용이 든다.*
 
 - **표시 함수는 하나뿐**: `src/lib/org/displayName.ts`의 `resolveDisplayName` (우선순위 GWS 이름 > `profile.name` > 이메일 로컬부). 컴포넌트가 `p.name || email.split("@")[0]` 같은 폴백을 직접 쓰지 않는다.
 - **`teacher_profiles`는 이름의 원본이 아니다** — 소속·직책·담임·내선 등 *부가 정보*의 단일 원본이다. 편의를 위해 이름을 적어 둘 수는 있어도 **그것을 표시의 근거로 굳히지 않는다.** GWS에서 이름을 고쳐도 낡은 값이 되살아나기 때문이다(2026-08-17 백필안 폐기 사유).
-- **GWS 이름 맵은 state에 담는다. 렌더 중 캐시 직독 금지.** `users:all`은 로그인 후 백그라운드 프리페치로 채워지고 **TTL 5분에 만료**되며, 캐시 적재는 재렌더를 유발하지 않는다. 따라서 렌더 중에 `getClientCache("users:all")`로 이름 맵을 만들면 ⓐ 프리페치 도착 전 ⓑ TTL 만료 후 두 구간에서 **이름이 이메일 아이디로 표시된다**(2026-08-17 실사용 신고). 올바른 형태는 `OrgChartTree`·`OrgChartBuilder`·`MemoSection`이 쓰는 방식이다 — 마운트 시 캐시를 state로 옮기고, 캐시가 없으면 `POST /api/workspace/users`(`action:"list"`, 일반 교사도 허용)를 1회 호출한다.
+- **GWS 이름 맵은 state에 담는다. 렌더 중 캐시 직독 금지.** `users:all`은 로그인 후 백그라운드 프리페치로 채워지고 **TTL 5분에 만료**되며, 캐시 적재는 재렌더를 유발하지 않는다. 따라서 렌더 중에 `getClientCache("users:all")`로 이름 맵을 만들면 ⓐ 프리페치 도착 전 ⓑ TTL 만료 후 두 구간에서 **이름이 이메일 아이디로 표시된다**(2026-08-17 실사용 신고). 올바른 형태는 `OrgChartBuilder`·`HubOrgTree`·`MemoSection`이 쓰는 방식이다(2026-08-21에 같은 예로 들던 `OrgChartTree`가 삭제돼 대체) — 마운트 시 캐시를 state로 옮기고, 캐시가 없으면 `POST /api/workspace/users`(`action:"list"`, 일반 교사도 허용)를 1회 호출한다.
 
 ## 구현 패턴 예시
 
