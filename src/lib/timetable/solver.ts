@@ -1008,6 +1008,15 @@ const S2_STRICT = (process.env.SOLVER_S2_STRICT ?? "1") === "1";
 const REPAIR_DEFER = (process.env.SOLVER_REPAIR_DEFER ?? "1") === "1";
 const REPAIR_ROT = (process.env.SOLVER_REPAIR_ROT ?? "1") === "1";
 const REPAIR_SLACK = Math.max(0, Number(process.env.SOLVER_REPAIR_SLACK || "") || 0);
+/** ⑦-d S1(하루 시수 쏠림) 사후 보수 — 배치 상한(S1_MAX_DAY)이 부결된 뒤의 대안 (2026-08-22).
+ *  상한은 용량 제약이라 상시 발동해 실격했다(총점 45·S2 폭발 — S1_MAXDAY 주석). 이 패스는
+ *  완성된 판에서 5시간+ (교사,요일)의 수업 하나를 가벼운 요일로 내보내는 개선-한정 교환만 한다.
+ *
+ *  기본값 켬 (2026-08-22 관문 통과 승격 — 백지 벤치마크 전 8시드 개선, 선발 시드 총점
+ *  33→28.5·S1 6→3·S2 5→4·S4 0·4연속 0·미배정 0·폴백 0·결정론 ✅. 상세는 일지).
+ *  핵심 실측: 2자 교환은 델타가 전부 0에 갇혔고(목적지가 죄다 그 교사의 4시간 요일)
+ *  3자 회전이 있어야 개선이 나온다. 되돌리기: SOLVER_REPAIR_S1=0 */
+const REPAIR_S1 = (process.env.SOLVER_REPAIR_S1 ?? "1") === "1";
 
 /** 교시 집합의 최장 연속 길이 */
 function longestRun(periods: Set<number>): number {
@@ -1929,6 +1938,163 @@ export function solveTimetable(input: SolverInput): SolverResult {
           }
         }
       }
+    }
+  }
+
+  // ── ⑦-d S1(하루 시수 쏠림) 사후 보수 (2026-08-22) — 상한 부결 후의 개선-한정 패스 ──
+  // 배치 단계 상한(S1_MAX_DAY)은 용량 제약이라 상시 발동해 실격했다(총점 45·S2 폭발·4연속
+  // 재발 — 상단 S1_MAXDAY 주석). 여기서는 완성된 판에서 5시간+ (교사,요일)의 수업 하나를
+  // 같은 학급의 다른 요일 수업과 맞바꿔 가벼운 요일로 내보낸다. ⑦-c와 같은 구조 —
+  // 결정론(rng 무사용·정렬 순회), 내부 점수가 엄격히 좋아질 때만 채택(개선-한정),
+  // feasible()이 몫·S2 상한을 그대로 지키므로 S4·4연속 회귀가 배치 검사 수준에서 막힌다.
+  // 같은 교사의 다른 5시간 요일로 보내는 교환은 delta가 안 좋아져 자연 배제된다
+  // (실전 초안의 장예빈·정동희 = 5시간 요일 2개 사례 — 가벼운 요일로만 나간다).
+  if (REPAIR_S1) {
+    /** 5시간 이상 (교사,요일) 목록 — 정렬 순회로 결정론 보장 */
+    const overloadedDays = (): Array<{ tk: string; day: number }> => {
+      const out: Array<{ tk: string; day: number }> = [];
+      for (const [tk, dm] of soft.teacherDays) {
+        for (const [day, pm] of dm) {
+          let n = 0;
+          for (const [, c] of pm) if (c > 0) n++;
+          if (n >= 5) out.push({ tk, day });
+        }
+      }
+      out.sort((a, b) => (a.tk < b.tk ? -1 : a.tk > b.tk ? 1 : a.day - b.day));
+      return out;
+    };
+    // 교환 하나가 다른 교사의 판도 바꾼다 — 새로 좋아지는 것이 없을 때까지 반복 (상한 3회전, ⑦-b와 동일)
+    for (let pass = 0; pass < 3; pass++) {
+      let improved = 0;
+      for (const { tk, day } of overloadedDays()) {
+        // 앞선 교환이 이미 풀었을 수 있다 — 현재 상태로 재판정
+        if (teacherDaySnapshot(tk, day).periods.size < 5) continue;
+        // 그 교사의 그 요일 수업 중 옮길 수 있는 것 (단일 학급·비고정 — ⑦-c와 같은 반경)
+        const mine: string[] = [];
+        for (const [key, occ] of placed) {
+          if (occ.day !== day) continue;
+          const s = sections[occ.sectionIdx];
+          if (s.kind === "fixed" || s.classKeys.length !== 1) continue;
+          if (!s.teacherKeys.includes(tk)) continue;
+          mine.push(key);
+        }
+        mine.sort();
+        let done = false;
+        for (const key of mine) {
+          if (done) break;
+          const cur = placed.get(key);
+          if (!cur || cur.day !== day) continue;
+          const s = sections[cur.sectionIdx];
+          const peers = (byClass.get(s.classKeys[0]) || []).slice().sort();
+          let bestKey: string | null = null;
+          let bestDelta = REPAIR_SLACK; // 기본 0 = 엄격 개선만 (ⓐ 슬랙 공유)
+          let nFeasible = 0;
+          let minDelta = Infinity;
+          for (const otherKey of peers) {
+            if (otherKey === key) continue;
+            const other = placed.get(otherKey);
+            if (!other || other.len !== cur.len || other.day === cur.day) continue;
+            const so = sections[other.sectionIdx];
+            if (so.classKeys.length !== 1 || so.kind === "fixed") continue;
+            const before = softScore;
+            apply(cur, -1);
+            apply(other, -1);
+            let delta: number | null = null;
+            if (feasible(cur.sectionIdx, other.day, other.start, cur.len)) {
+              const movedCur: Occurrence = { ...cur, day: other.day, start: other.start };
+              apply(movedCur, 1);
+              if (feasible(other.sectionIdx, cur.day, cur.start, other.len)) {
+                const movedOther: Occurrence = { ...other, day: cur.day, start: cur.start };
+                apply(movedOther, 1);
+                delta = softScore - before;
+                apply(movedOther, -1);
+              }
+              apply(movedCur, -1);
+            }
+            apply(cur, 1);
+            apply(other, 1);
+            if (delta !== null) {
+              nFeasible++;
+              if (delta < minDelta) minDelta = delta;
+            }
+            if (delta !== null && delta < bestDelta) {
+              bestDelta = delta;
+              bestKey = otherKey;
+            }
+          }
+          if (process.env.SOLVER_S1_DEBUG === "1")
+            console.error(
+              `[s1d] pass=${pass} tk=${tk} day=${day} key=${key} peers=${peers.length} feasible=${nFeasible} minDelta=${minDelta} bestKey=${bestKey}`
+            );
+          if (bestKey) {
+            const other = placed.get(bestKey)!;
+            apply(cur, -1);
+            apply(other, -1);
+            apply({ ...cur, day: other.day, start: other.start }, 1);
+            apply({ ...other, day: cur.day, start: cur.start }, 1);
+            improved++;
+            done = true;
+            continue;
+          }
+          // 3자 회전 — 2자 교환이 전부 막히거나 델타 0(가로 이동)일 때. 실측(시드 1): 2자
+          // 교환의 가능 목적지가 전부 「그 교사의 4시간 요일」이라 델타가 정확히 0에 갇혔다 —
+          // 되돌아오는 수업까지 자유로워야 개선 여지가 생긴다. 구조는 ⑦-c의 ⓒ와 동일
+          // (정렬 순회·개선-한정·feasible 완전 준수).
+          let rBest: { k1: string; k2: string; delta: number } | null = null;
+          for (const k1 of peers) {
+            if (k1 === key) continue;
+            const o1 = placed.get(k1);
+            if (!o1 || o1.len !== cur.len || o1.day === cur.day) continue;
+            if (sections[o1.sectionIdx].classKeys.length !== 1 || sections[o1.sectionIdx].kind === "fixed") continue;
+            for (const k2 of peers) {
+              if (k2 === key || k2 === k1) continue;
+              const o2 = placed.get(k2);
+              if (!o2 || o2.len !== cur.len) continue;
+              if (sections[o2.sectionIdx].classKeys.length !== 1 || sections[o2.sectionIdx].kind === "fixed") continue;
+              const before = softScore;
+              apply(cur, -1);
+              apply(o1, -1);
+              apply(o2, -1);
+              let delta: number | null = null;
+              if (feasible(cur.sectionIdx, o1.day, o1.start, cur.len)) {
+                const mCur: Occurrence = { ...cur, day: o1.day, start: o1.start };
+                apply(mCur, 1);
+                if (feasible(o1.sectionIdx, o2.day, o2.start, o1.len)) {
+                  const mO1: Occurrence = { ...o1, day: o2.day, start: o2.start };
+                  apply(mO1, 1);
+                  if (feasible(o2.sectionIdx, cur.day, cur.start, o2.len)) {
+                    const mO2: Occurrence = { ...o2, day: cur.day, start: cur.start };
+                    apply(mO2, 1);
+                    delta = softScore - before;
+                    apply(mO2, -1);
+                  }
+                  apply(mO1, -1);
+                }
+                apply(mCur, -1);
+              }
+              apply(cur, 1);
+              apply(o1, 1);
+              apply(o2, 1);
+              if (delta !== null && delta < (rBest ? rBest.delta : REPAIR_SLACK)) rBest = { k1, k2, delta };
+            }
+          }
+          if (process.env.SOLVER_S1_DEBUG === "1" && rBest)
+            console.error(`[s1d-rot] tk=${tk} day=${day} key=${key} delta=${rBest.delta}`);
+          if (rBest) {
+            const o1 = placed.get(rBest.k1)!;
+            const o2 = placed.get(rBest.k2)!;
+            apply(cur, -1);
+            apply(o1, -1);
+            apply(o2, -1);
+            apply({ ...cur, day: o1.day, start: o1.start }, 1);
+            apply({ ...o1, day: o2.day, start: o2.start }, 1);
+            apply({ ...o2, day: cur.day, start: cur.start }, 1);
+            improved++;
+            done = true;
+          }
+        }
+      }
+      if (!improved) break;
     }
   }
 
