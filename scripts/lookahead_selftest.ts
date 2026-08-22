@@ -147,5 +147,75 @@ console.log("── 수읽기 엔진 L1 자가 테스트 ──");
   check("예산 소진: budgetExhausted 표시 + 크래시 없음", r.budgetExhausted === true);
 }
 
+// 5: 부작용 보고 — 「어디서 감점이 늘어나는지」가 실제로 나오는가 (2026-08-22 사용자 요구)
+//
+// 총점만 보여 주면 「0.5점 개선」이 어디서 벌고 어디서 잃은 숫자인지 알 수 없어
+// "이 감점을 늘리더라도 갈지"를 판단할 수 없다 — 그 판단 근거가 sideEffects다.
+{
+  const grids: ClassGrid[] = [
+    {
+      grade: 1,
+      classNum: 1,
+      cells: [
+        { day: 1, period: 1, lessons: [L("수학", "김가", "a@t")] },
+        { day: 1, period: 2, lessons: [L("과학", "김가", "a@t")] },
+        { day: 1, period: 3, lessons: [L("국어", "김가", "a@t")] },
+        { day: 2, period: 1, lessons: [L("도덕", "이나", "b@t")] },
+        { day: 2, period: 2, lessons: [L("미술", "이나", "b@t")] },
+        { day: 3, period: 1, lessons: [L("음악", "이나", "b@t")] },
+      ],
+    },
+  ];
+  const r = searchLookaheadLines({
+    grids,
+    model,
+    target: { scope: "teacher", key: "a@t", day: 1, code: "S2" },
+    depth: 3,
+    budget: 3000,
+  });
+  check("부작용: 기보가 나온다 (전제)", r.lines.length > 0, `evaluated=${r.evaluated}`);
+  for (const line of r.lines) {
+    check(
+      "부작용: sideEffects 필드가 배열로 채워진다",
+      Array.isArray(line.sideEffects),
+      JSON.stringify(line.sideEffects)
+    );
+    // 나빠지는 항목이 위로 정렬돼 있어야 화면이 그대로 쓸 수 있다
+    const deltas = line.sideEffects.map((e) => e.delta);
+    check(
+      "부작용: 나빠지는 것이 위로 정렬",
+      deltas.every((d, i) => i === 0 || deltas[i - 1] >= d),
+      JSON.stringify(deltas)
+    );
+    // 문구는 검사기 문장 그대로여야 한다 (화면이 따로 이름을 짓지 않게)
+    check(
+      "부작용: 각 항목에 사람이 읽는 문장이 있다",
+      line.sideEffects.every((e) => typeof e.text === "string" && e.text.length > 0),
+      JSON.stringify(line.sideEffects.map((e) => e.text))
+    );
+    // 목표 감점은 sideEffects에 섞이면 안 된다 (targetDelta가 따로 말한다)
+    check(
+      "부작용: 목표 감점은 제외된다",
+      line.sideEffects.every((e) => !(e.code === "S2" && e.text.includes("김가") && e.text.includes("월"))),
+      JSON.stringify(line.sideEffects.map((e) => e.text))
+    );
+    // delta 부호와 kind 가 어긋나면 화면이 초록/빨강을 거꾸로 칠한다
+    check(
+      "부작용: kind와 delta 부호가 일치",
+      line.sideEffects.every((e) =>
+        e.delta > 0 ? e.kind === "new" || e.kind === "worse" : e.kind === "gone" || e.kind === "better"
+      ),
+      JSON.stringify(line.sideEffects.map((e) => `${e.kind}:${e.delta}`))
+    );
+    // 총점 변화와 부작용 합의 정합 — 목표 변화 + 부작용 합 = 최종 총점 변화
+    const sideSum = line.sideEffects.reduce((a, e) => a + e.delta, 0);
+    check(
+      "부작용: 목표 변화 + 부작용 합 = 총점 변화 (숫자가 서로 맞는다)",
+      Math.abs(line.targetDelta + sideSum - line.finalDelta) < 1e-9,
+      `target=${line.targetDelta} side=${sideSum} final=${line.finalDelta}`
+    );
+  }
+}
+
 console.log(fail === 0 ? `\n✅ 수읽기 엔진 자가 테스트 전부 통과 (${pass}건)` : `\n❌ 실패 ${fail}건 / 통과 ${pass}건`);
 process.exit(fail === 0 ? 0 : 1);

@@ -17,6 +17,7 @@ import {
   TimetableConstraintModel,
   BaseRevisionOp,
   SoftPenaltyCode,
+  TermPenaltyDetail,
 } from "./types";
 import { validateTimetable } from "./validate";
 import { applyRevisionOps, cloneClassGrids } from "./utils";
@@ -46,6 +47,28 @@ export interface LookaheadLine {
   targetDelta: number;
   /** 미니 그리드 미리보기용 — 이 기보가 건드리는 칸들 */
   touched: Array<{ grade: number; classNum: number; day: number; period: number }>;
+  /**
+   * **목표 말고 다른 감점이 어떻게 되는가** (2026-08-22 사용자 실기기 요구).
+   *
+   * 총점만 보여 주면 「0.5점 개선」이 어디서 벌고 어디서 잃은 숫자인지 알 수 없어
+   * *"이 감점을 늘리더라도 진행할지"* 를 판단할 수 없다. 그래서 목표 감점을 뺀 나머지의
+   * 변화를 전건 싣는다. `text`는 **검사기가 쓴 문장 그대로**다(문구 단일 원본).
+   *
+   * 나빠지는 것(`worse`·`new`)이 먼저 오도록 정렬해 둔다 — 화면이 그대로 쓰면 된다.
+   */
+  sideEffects: LookaheadSideEffect[];
+}
+
+export interface LookaheadSideEffect {
+  /** new = 없던 것이 생김 · worse = 커짐 · gone = 없어짐 · better = 줄어듦 */
+  kind: "new" | "worse" | "gone" | "better";
+  code: SoftPenaltyCode;
+  /** 검사기가 만든 사람 문장 (예: "김○○ 화요일 시수 쏠림 (5시간)") */
+  text: string;
+  before: number;
+  after: number;
+  /** 양수 = 나빠짐 */
+  delta: number;
 }
 
 export interface LookaheadResult {
@@ -207,6 +230,7 @@ export function searchLookaheadLines(args: {
                 targetResolved: true,
                 targetDelta: child.tp - baseTp,
                 touched: child.touched,
+                sideEffects: [],
               });
             }
           } else {
@@ -233,6 +257,7 @@ export function searchLookaheadLines(args: {
           targetResolved: false,
           targetDelta: node.tp - baseTp,
           touched: node.touched,
+          sideEffects: [],
         });
       }
     }
@@ -244,5 +269,73 @@ export function searchLookaheadLines(args: {
       a.finalDelta - b.finalDelta ||
       a.ops.length - b.ops.length
   );
-  return { lines: done.slice(0, 3), evaluated, budgetExhausted: exhausted };
+  const top = done.slice(0, 3);
+  // 부작용은 **돌려줄 기보에만** 계산한다 — 탐색 중 전 노드에 들고 다니면 메모리·시간이
+  // 붙는데, 사용자가 보는 것은 상위 3개뿐이다. 기보당 검사기 1회면 된다.
+  for (const line of top) {
+    const g = cloneClassGrids(grids);
+    applyRevisionOps(g, line.ops);
+    line.sideEffects = diffSideEffects(baseReport, validateTimetable(g, model), target);
+  }
+  return { lines: top, evaluated, budgetExhausted: exhausted };
+}
+
+/** 감점 한 건의 신원 — 같은 코드·대상·요일이면 같은 감점으로 본다 */
+function detailKey(d: {
+  code: string;
+  scope: string;
+  key: string;
+  day: number;
+}): string {
+  return `${d.code}|${d.scope}|${d.key}|${d.day}`;
+}
+
+/**
+ * 목표를 **뺀** 나머지 감점의 전후 대조.
+ *
+ * 목표 감점은 `targetDelta`가 따로 말하므로 여기서 제외한다 — 안 그러면 화면에서
+ * "이 감점 해소"와 "이 감점 줄어듦"이 겹쳐 나와 무엇이 대가인지 흐려진다.
+ */
+function diffSideEffects(
+  before: ReturnType<typeof validateTimetable>,
+  after: ReturnType<typeof validateTimetable>,
+  target: LookaheadTarget
+): LookaheadSideEffect[] {
+  const isTarget = (d: TermPenaltyDetail) => {
+    if (d.scope !== target.scope || d.key !== target.key) return false;
+    if (target.day !== undefined && target.day !== 0 && d.day !== target.day) return false;
+    if (target.code && d.code !== target.code) return false;
+    return true;
+  };
+  const sum = (rep: ReturnType<typeof validateTimetable>) => {
+    const m = new Map<string, { d: TermPenaltyDetail; points: number }>();
+    for (const d of rep.soft.details) {
+      if (isTarget(d)) continue;
+      const k = detailKey(d);
+      const cur = m.get(k);
+      if (cur) cur.points += d.points;
+      else m.set(k, { d, points: d.points });
+    }
+    return m;
+  };
+  const b = sum(before);
+  const a = sum(after);
+  const out: LookaheadSideEffect[] = [];
+  for (const k of new Set([...b.keys(), ...a.keys()])) {
+    const bp = b.get(k)?.points ?? 0;
+    const ap = a.get(k)?.points ?? 0;
+    if (bp === ap) continue;
+    const d = (a.get(k) ?? b.get(k))!.d;
+    out.push({
+      kind: bp === 0 ? "new" : ap === 0 ? "gone" : ap > bp ? "worse" : "better",
+      code: d.code,
+      text: d.text,
+      before: bp,
+      after: ap,
+      delta: ap - bp,
+    });
+  }
+  // 나빠지는 것이 위로, 그 안에서는 크게 나빠진 것이 위로 (화면이 그대로 쓴다)
+  out.sort((x, y) => y.delta - x.delta || x.text.localeCompare(y.text));
+  return out;
 }
