@@ -217,5 +217,57 @@ console.log("── 수읽기 엔진 L1 자가 테스트 ──");
   }
 }
 
+// 6: 「더 깊이 읽기」가 실제로 더 깊이 읽는가 (2026-08-23 사용자 실기기 후 신설)
+//
+// 사용자: "더 깊이 생각했을 때 결과가 좋아지는 걸 본 적은 없어." 원인은 「더 깊이」가
+// **budget만** 올리고 beamWidth를 그대로 뒀던 것 — 빔 탐색은 깊이마다 beamWidth개만
+// 남기므로 트리 모양이 예산과 무관하게 고정된다. 이 케이스가 그 회귀를 잡는다.
+{
+  const T = (s: string, n: string, e: string) => L(s, n, e);
+  const subjects = [
+    ["국어", "가교사", "a@t"], ["수학", "나교사", "b@t"], ["영어", "다교사", "c@t"],
+    ["과학", "라교사", "d@t"], ["사회", "마교사", "e@t"], ["체육", "바교사", "f@t"],
+  ];
+  const wideModel: TimetableConstraintModel = {
+    lunchAfterPeriod: 3,
+    periodsPerDay: 6,
+    gradeDayPeriods: { 1: { 1: 6, 2: 6, 3: 6, 4: 6, 5: 6 } },
+    hours: [], simulGroups: [], venueGroups: [], teacherSlotBans: [],
+    consecutiveRules: [], coTeaching: [], fixedBlocks: [],
+  } as any;
+  const grids: ClassGrid[] = [];
+  for (let c = 1; c <= 4; c++) {
+    const cells: any[] = [];
+    for (let d = 1; d <= 5; d++)
+      for (let p = 1; p <= 6; p++) {
+        const sj = subjects[(d + p + c) % subjects.length];
+        cells.push({ day: d, period: p, lessons: [T(sj[0], sj[1], sj[2])] });
+      }
+    grids.push({ grade: 1, classNum: c, cells } as any);
+  }
+  const target = { scope: "teacher" as const, key: "a@t", day: 1, code: "S2" as const };
+
+  const shallow = searchLookaheadLines({ grids, model: wideModel, target, budget: 1500 });
+  // 화면의 「더 깊이 읽기」와 같은 설정 (DraftAutoTab: beamWidth 8 / budget 6000)
+  const deep = searchLookaheadLines({ grids, model: wideModel, target, beamWidth: 8, budget: 6000 });
+
+  const bestOf = (r: typeof shallow) =>
+    r.lines.length ? Math.min(...r.lines.map((l) => l.finalDelta)) : Infinity;
+
+  check("더 깊이: 탐색 수가 실제로 늘어난다", deep.evaluated > shallow.evaluated * 1.5,
+    `기본 ${shallow.evaluated} → 깊이 ${deep.evaluated}`);
+  check("더 깊이: 기보가 나빠지지 않는다", bestOf(deep) <= bestOf(shallow),
+    `기본 ${bestOf(shallow)} → 깊이 ${bestOf(deep)}`);
+  // ★ 이 결함의 본체 — 예산만 올리던 시절에는 여기가 동점이라 실패한다
+  check("더 깊이 ★ 이 판에서는 실제로 더 나은 기보를 낸다", bestOf(deep) < bestOf(shallow),
+    `기본 ${bestOf(shallow)} → 깊이 ${bestOf(deep)} (같으면 빔이 안 넓어진 것)`);
+
+  // 예산만 올리는 옛 방식은 개선이 없음을 함께 못 박는다 (왜 빔이어야 하는지의 근거)
+  const budgetOnly = searchLookaheadLines({ grids, model: wideModel, target, budget: 6000 });
+  check("더 깊이: 예산만 올리는 것으로는 안 된다 (옛 방식 반증)",
+    bestOf(budgetOnly) >= bestOf(shallow) && bestOf(budgetOnly) > bestOf(deep),
+    `예산만 ${bestOf(budgetOnly)} vs 빔확대 ${bestOf(deep)}`);
+}
+
 console.log(fail === 0 ? `\n✅ 수읽기 엔진 자가 테스트 전부 통과 (${pass}건)` : `\n❌ 실패 ${fail}건 / 통과 ${pass}건`);
 process.exit(fail === 0 ? 0 : 1);

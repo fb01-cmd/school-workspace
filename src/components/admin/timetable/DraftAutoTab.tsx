@@ -1308,7 +1308,23 @@ export default function DraftAutoTab({
       day: detail.day || undefined,
       code: detail.code as SoftPenaltyCode,
     };
-    const budget = deep ? 4500 : 1500;
+    // 「더 깊이 읽기」는 **빔 폭**을 넓힌다 — 예산이 아니다 (2026-08-23 실측).
+    //
+    // 종전에는 budget만 1500→4500으로 올렸는데 **기보가 전혀 나아지지 않았다**(사용자 실기기).
+    // 원인: 빔 탐색은 깊이마다 beamWidth개만 남기므로 **트리 모양이 예산과 무관하게 고정**된다.
+    // 예산은 「언제 멈추나」이고 「무엇을 보나」는 빔이 정한다. 실제로 관측된 탐색 수가
+    // 1476·1485·1492·1474로 전부 1500 미만이라 **기본 예산조차 다 쓰지 않고 있었다.**
+    //
+    // 합성 세계 3표적 실측(빔만 바꾸고 나머지 고정):
+    //   b4/1500(기본) 2947회 1.6초 delta합 −4.0
+    //   b8/6000       7957회 3.1초 delta합 **−6.0**  ← 전 이득이 여기서 난다
+    //   b12/6000     11773회 4.2초 delta합 −6.0     (개선 없음, 시간만 +36%)
+    //   b24/20000    20059회 7.5초 delta합 −6.0     (개선 없음)
+    // b12/6000과 b12/12000의 탐색 수가 **동일(11773)** — 예산이 병목이 아님을 재확증.
+    // depth·movesPerNode·picksPerNode 증가도 이득 0이었으므로 건드리지 않는다.
+    // 시간이 2배가 되지만 과제 Z에서 워커로 옮겨 **화면은 안 언다.**
+    const beamWidth = deep ? 8 : undefined; // undefined = 엔진 기본값 4
+    const budget = deep ? 6000 : 1500;
     setLookaheadProgress({ evaluated: 0, budget });
 
     try {
@@ -1317,6 +1333,7 @@ export default function DraftAutoTab({
           grids: currentGrids,
           model,
           target,
+          ...(beamWidth ? { beamWidth } : {}),
           budget,
         },
         (evaluated, b) => {
