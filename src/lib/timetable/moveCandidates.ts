@@ -178,11 +178,25 @@ export function evaluateMoveCandidates(args: {
           );
           if (!blocking2) {
             const delta2 = report2.soft.total - baseSoftTotal;
-            out.candidates.push({
+            const cand2: MoveCandidate = {
               day, period, kind: "displace",
               verdict: delta2 > 0 ? "worse" : "ok",
               softDelta: delta2,
-            });
+            };
+            // 「왜 나빠지는가」를 여기서도 채운다 (2026-08-23 사용자 실기기 발견).
+            // 종전엔 이 분기만 worseByCode를 빼먹어 **밀어내기 후보에서만 사유 말풍선이 비었다**
+            // — 실측 923개 worse 후보 중 385개(42%)가 그랬고, 42%는 정확히 displace 비율이었다.
+            // 다른 두 분기(:202 일반 이동·:289 집은 수업)는 같은 계산을 이미 하고 있었다.
+            if (delta2 > 0) {
+              const worse2: Partial<Record<SoftPenaltyCode, number>> = {};
+              for (const [code, pts] of Object.entries(report2.soft.byCode)) {
+                const before = baseReport.soft.byCode[code as SoftPenaltyCode] || 0;
+                const diff = (pts || 0) - before;
+                if (diff > 0) worse2[code as SoftPenaltyCode] = diff;
+              }
+              cand2.worseByCode = worse2;
+            }
+            out.candidates.push(cand2);
             continue;
           }
         }

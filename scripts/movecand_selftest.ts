@@ -189,5 +189,56 @@ console.log("── 직접 조정 후보 채점기 자가 테스트 ──");
   console.log(`  ⏱ 합성 소세계 채점 평균 ${((performance.now() - t0) / N).toFixed(1)}ms/회 (실데이터 30학급은 UI에서 실측)`);
 }
 
+// 8: 「밀어내고 들기」 후보에도 감점 사유가 붙는가 (2026-08-23 사용자 실기기 후 신설)
+//
+// 사용자: "누구는 감점 사유가 있고 누구는 없어." 실데이터 worse 후보 923개 중 385개(42%)가
+// 사유 없음이었고 **전부 kind=displace** — 그 분기만 worseByCode를 안 채웠다.
+//
+// ⚠️ 이 소세계는 「나빠지는 밀어내기」가 **반드시 생기도록** 설계했다. 처음엔 기존 소세계를
+// 재사용했는데 worse displace가 0건이라 `every`가 빈 배열에 참을 돌려 **고침을 되돌려도
+// 통과하는 헛검사**였다(되돌림 시험에서 발견). 검사는 「돌아간다」가 아니라 「되돌리면
+// 터진다」로 확인해야 한다.
+{
+  // 이나: 1-2 월2 / 1-1 화1  · 최라: 1-1 월3 / 1-2 화1
+  //  → 1-1 화1(국어·이나)을 집어 1-1 월3(미술·최라)으로:
+  //    · 맞바꿈은 최라가 화1로 못 가서(1-2 화1 점유) 불성립 → displace 분기
+  //    · 밀어내면 이나가 월 2교시(1-2)+3교시(1-1) = 점심 전후 연속 → S3 +1 (worse 보장)
+  const grids: ClassGrid[] = [
+    {
+      grade: 1, classNum: 1,
+      cells: [
+        { day: 1, period: 3, lessons: [L("미술", "최라", "d@t")] },
+        { day: 2, period: 1, lessons: [L("국어", "이나", "b@t")] },
+      ],
+    },
+    {
+      grade: 1, classNum: 2,
+      cells: [
+        { day: 1, period: 2, lessons: [L("수학", "이나", "b@t")] },
+        { day: 2, period: 1, lessons: [L("체육", "최라", "d@t")] },
+      ],
+    },
+  ] as any;
+
+  const r = evaluateMoveCandidates({ grids, model, pick: { grade: 1, classNum: 1, day: 2, period: 1 } });
+  const target = r.candidates.find((c) => c.day === 1 && c.period === 3);
+
+  check("밀어내기 후보가 생긴다 (전제)", target?.kind === "displace", `kind=${target?.kind}`);
+  check("밀어내기가 나빠지는 후보다 (전제 — 이게 0이면 검사가 공회전한다)",
+    target?.verdict === "worse", `verdict=${target?.verdict} delta=${target?.softDelta}`);
+
+  // ★ 이 결함의 본체 — 되돌리면 worseByCode가 undefined라 여기서 터진다
+  check(
+    "밀어내기 ★ 나빠지는 후보에 감점 사유가 붙는다",
+    target?.worseByCode !== undefined,
+    `worseByCode=${JSON.stringify(target?.worseByCode)}`
+  );
+  check(
+    "밀어내기: 사유가 비어 있지 않다 (코드 하나 이상 증가)",
+    Object.values(target?.worseByCode || {}).some((v) => (v || 0) > 0),
+    JSON.stringify(target?.worseByCode)
+  );
+}
+
 console.log(fail === 0 ? `\n✅ 후보 채점기 자가 테스트 전부 통과 (${pass}건)` : `\n❌ 실패 ${fail}건 / 통과 ${pass}건`);
 process.exit(fail === 0 ? 0 : 1);
