@@ -800,3 +800,15 @@
 - **[사실 3 — 기보 카드 미니 그리드 시각화 적용 (X-2)]** `DraftAutoTab.tsx:3586-3620` 기보 카드 영역에서 기존 텍스트 칩(`관련 교시: 1-5반 월요일 1교시` 등)을 전수 제거하고, `line.touched` 셀들을 학급별(`grade-classNum`)로 묶어 `HistoryMiniGrid`로 시각화(`1학년 5반` 등 학급명 뱃지 + 5x7 미니 그리드 번호 칩 표기). 요일/교시 텍스트 문장/칩 노출 0건 확인(스펙 제1원칙 텍스트 이동 표기 금지 준수).
 - **[규약 준수]** `project_notes.md`는 기존 내용 삭제 없이 하단에만 추가(append-only).
 - **[검증]** `tsc` 0건 · `build` (49/49) 통과 · `check:ui` 20/20 통과 · `check_ui_removals.sh 40ce5abf5951784e82b7f94a1769e2b7ee83c044` 검증 결과 전수 AI 3종 및 좌표 텍스트 칩 제거와 정확히 일치 · selftest 5종(`ai_selftest`, `movecand_selftest`(15), `m2ops_selftest`(15), `lookahead_selftest`(27), `unplaced_selftest`(24)) 100% 통과.
+
+## [2026-08-22] Claude(Opus) — 과제 X 검증 종결: 시간표 편성 화면 AI 완전 철거, 배포
+
+- **[경과]** `c32749b`. **−1,580 / +76** — 오늘 최대 삭제 커밋이자 유일한 철거 과제다. 핸드오버 ④ 기재.
+- **[기계 관문]** tsc 0 · build ✅ · check:ui 20/20 · selftest 4종 유지. **깨질 수 있다고 예고했던 `askfix_selftest`·`ai_selftest`도 통과** — 삭제분에 맞춰 `ai_selftest`를 175줄 줄이면서 남은 케이스는 살렸다.
+- **[핵심 완료 조건 충족]** `grep 'action: "ai_' DraftAutoTab.tsx` = **0건**. 시간표 편성 화면에서 AI 호출 경로가 사라졌다.
+- **[「손대지 마라」 3건 전부 생존]** ⓐ `ai_formalize` — 배정금지 탭 클라이언트(`TeacherSlotBanTab.tsx:284`)·서버 case 둘 다 ⓑ `ai_critique` 죽은 액션은 그대로(별건) ⓒ `ai.ts`는 749줄 남았고 배정표 경로가 쓰는 타입(`ExtractedAssignmentDept`·`ExtractedAssignmentRow`·`ExtractedHourCell`)과 `AiFormalizeResult`·`isAiEnabled` 전부 보존 — `hwpxAssignment`·`hoursAssignment`·`TeacherSlotBanTab`의 import가 살아 있다.
+- **[삭제 전건 대조]** DraftAutoTab 70건 · ai.ts 24건 · server.ts 3건 · 검사 스크립트 18건 — **전부 AI 3종 소속**(handleAi*·handleAskFix·handleApplyFixPlan·setAi*·setAskFix*·프롬프트 문자열·runDiagnose/runExplain/runAskFix). 비-AI 항목 0건.
+- **[반대 방향 확인 — 이게 철거 검증의 본론이다]** 「사라진 것이 맞나」만 보면 절반이다. **남아야 할 것이 남았는지**를 별도로 셌다: 해결안 찾기·대가 줄·한 수씩 밟기·전체 적용·더 깊이 읽기·작업기록·트레이·시간표 추가·직접 조정·중대 문제·좁은 화면 안내 — 전부 생존. 핵심 함수 6종(`executeOptimisticOp`·`searchLookaheadLines`·`resolveUnplacedTarget`·`historyDetails`·`evaluateMoveCandidates`·`handleParkCell`)도 전부.
+- **[X-2도 됨]** 기보 카드의 「관련 교시」 텍스트 칩이 사라지고 `HistoryMiniGrid`(과제 W 산물)로 교체됐다(`:3628`). **과제 U 미이행이 닫혔다.**
+- **[Codex 미파견 — 판단]** −1,580줄이지만 **삭제 위주**라 위험 성격이 다르다: 남은 참조는 tsc·build가 잡고, 「남아야 할 것이 죽었나」는 위 positive check로 셌다. 읽기가 무거운 부분(삭제 전건 대조 97건)을 이미 내가 했으므로 넘길 이득이 없다(§1-4).
+- **[판정]** 과제 X **합격 → 배포.** 시간표 편성 화면 AI 0.
