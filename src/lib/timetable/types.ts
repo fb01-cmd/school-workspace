@@ -497,6 +497,8 @@ export interface ManageTimetableRequest {
   draftOrigin?: TimetableDraftOrigin;
   draftGrids?: ClassGrid[]; // draft_create 시 솔버 산출 그리드 (optional — 없으면 서버가 현행 복제)
   draftUnplaced?: TimetableDraftUnplaced[];
+  /** draft_op 동시 편집 선행조건 — 클라이언트가 op를 만들 때 본 opCursor. 불일치 시 409 (2026-08-22) */
+  expectedOpCursor?: number;
   draftReport?: TimetableAuditReport; // draft_create 시 클라에서 검사기 실행 결과 동봉
   draftOp?: BaseRevisionOp; // draft_op 적용 연산 1건
   draftHours?: HoursRequirement[]; // Phase 9c-I 시수 계획 원본 스냅샷 (phase9c_i_spec §5-2)

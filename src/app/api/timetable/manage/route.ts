@@ -1452,7 +1452,9 @@ export async function POST(req: NextRequest) {
           body.draftId,
           body.draftOp,
           auth.email,
-          body.draftUnplaced
+          body.draftUnplaced,
+          // 동시 편집 선행조건 — 숫자일 때만 전달 (생략 = 구버전 호환 관용)
+          typeof body.expectedOpCursor === "number" ? body.expectedOpCursor : undefined
         );
         return NextResponse.json({ success: true, action, ...result });
       }

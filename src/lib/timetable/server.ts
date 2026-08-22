@@ -7152,7 +7152,12 @@ export async function applyDraftOp(
   draftId: string,
   op: BaseRevisionOp,
   operatorEmail: string,
-  customUnplaced?: import("./types").TimetableDraftUnplaced[]
+  customUnplaced?: import("./types").TimetableDraftUnplaced[],
+  /** 동시 편집 선행조건 (2026-08-22, 직접 조정 스펙 §5 R2 — Codex 실측 반영).
+   *  클라이언트가 op를 만들 때 본 opCursor. 저장된 값과 다르면 다른 창이 먼저 고친 것이므로
+   *  적용하지 않고 충돌로 알린다. 종전 저장은 버전 비교 없는 update라 두 창이 서로를 덮었다.
+   *  생략 시 검사 안 함 — 구버전 클라이언트·스크립트 호환(관용). */
+  expectedOpCursor?: number
 ): Promise<{
   meta: import("./types").TimetableDraft;
   baseGrids: ClassGrid[];
@@ -7160,6 +7165,11 @@ export async function applyDraftOp(
   report: import("./types").TimetableAuditReport;
 }> {
   const { meta, baseGrids } = await getDraft(domain, draftId);
+  if (expectedOpCursor !== undefined && expectedOpCursor !== meta.opCursor) {
+    throw new DraftOpConflictError(
+      "다른 창(또는 다른 사람)이 이 초안을 먼저 수정했습니다. 화면을 새로고침해 최신 상태를 불러온 뒤 다시 시도해 주세요."
+    );
+  }
   const { model } = await loadDraftConstraintModel(domain, meta, baseGrids);
 
   const truncatedOps = meta.ops.slice(0, meta.opCursor);

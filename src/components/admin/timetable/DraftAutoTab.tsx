@@ -1006,6 +1006,8 @@ export default function DraftAutoTab({
             action: "draft_op",
             draftId: currentOpenDraft.meta.id,
             draftOp: step.op,
+            // 동시 편집 선행조건 — 단계 i는 시작 커서+i를 기준으로 만든 op다
+            expectedOpCursor: currentOpenDraft.meta.opCursor + i,
           }),
         });
 
@@ -1239,6 +1241,7 @@ export default function DraftAutoTab({
           action: "draft_op",
           draftId: openDraft.meta.id,
           draftOp: proposedOp,
+          expectedOpCursor: openDraft.meta.opCursor,
           ...(updatedUnplacedList ? { draftUnplaced: updatedUnplacedList } : {}),
         }),
       });
