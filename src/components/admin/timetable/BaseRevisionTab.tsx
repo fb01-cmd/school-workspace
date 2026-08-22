@@ -478,6 +478,9 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                                     (op.b.day === d.num && op.b.period === period))
                                 );
                               }
+                              // 직접 조정 전용 op(연쇄·빼두기)는 개정 경로에서 만들지 않는다 — 표시 대상 아님
+                              if (op.type === "chain" || op.type === "park" || op.type === "unpark")
+                                return false;
                               if (op.grade !== selectedGrade || op.classNum !== selectedClassNum)
                                 return false;
                               return op.type === "swap"
@@ -564,7 +567,10 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
               </div>
             ) : (
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                {ops.map((op, idx) => (
+                {ops.map((op, idx) => {
+                  // 직접 조정 전용 op(연쇄·빼두기)는 개정 경로에서 만들지 않는다 — 타입 좁히기 겸 방어
+                  if (op.type === "chain" || op.type === "park" || op.type === "unpark") return null;
+                  return (
                   <div
                     key={idx}
                     className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50 text-xs flex items-center justify-between gap-2"
@@ -605,7 +611,8 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                       ✕
                     </button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

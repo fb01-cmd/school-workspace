@@ -13,7 +13,7 @@ import { createMemoStore } from "./memoCache";
 import { getKnobsCached } from "@/lib/ops/saving_mode";
 import { applySimulMarks } from "./simul";
 import { applyVenueMarks } from "./venue";
-import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardViolationKey, normSubject, teacherKeyOf, validateTimetable } from "./validate";
+import { checkPlaceholderOp, deriveGradeDayPeriods, deriveHoursFromGrids, hardViolationKey, normSubject, teacherKeyOf, validateTimetable, isParkExemptHard } from "./validate";
 import {
   cohortForGrade,
   expandCohortFixedBlocks,
@@ -26,7 +26,7 @@ import {
 } from "./cohort";
 import { compileSectionsFromHours } from "./solver";
 import { SOFT_CODE_LABELS } from "./labels";
-import { applyRevisionOps, cloneClassGrids, rankReferenceTerms } from "./utils";
+import { applyRevisionOps, replayRevisionOps, cloneClassGrids, rankReferenceTerms } from "./utils";
 export { applyRevisionOps, cloneClassGrids };
 import { buildNeisCsvBundle, buildNeisPrecheckReport, emptyNeisMapRegistry } from "./neis";
 import {
@@ -7211,15 +7211,17 @@ export async function applyDraftOp(
 
   const newOps = [...truncatedOps, op];
   const newGrids = cloneClassGrids(baseGrids);
-  applyRevisionOps(newGrids, newOps);
+  const replayed = replayRevisionOps(newGrids, newOps);
   const newReport = validateTimetable(newGrids, model);
 
   // 판정 키는 validate.ts의 hardViolationKey 단일 소재지 — 클라 관문·해결안 탐색기와 공유한다
   const oldHardKeys = new Set(oldReport.hard.map(hardViolationKey));
   const newHards = newReport.hard.filter((h) => !oldHardKeys.has(hardViolationKey(h)));
+  // 잠깐 빼두기(M2)가 만든 시수 부족(H1)은 조작 단계에서 막지 않는다 — 게시 관문이 책임진다
+  const blockingHards = newHards.filter((h) => !isParkExemptHard(h, replayed.tray));
 
-  if (newHards.length > 0) {
-    const firstErr = newHards[0];
+  if (blockingHards.length > 0) {
+    const firstErr = blockingHards[0];
     throw new DraftOpConflictError(
       `이동/교환 후 중대 문제(하드 위반)가 새로 발생합니다: [${firstErr.code}] ${firstErr.text}`
     );
@@ -8761,12 +8763,19 @@ export async function adoptDraftToTerm(
 
   const currentGrids = cloneClassGrids(baseGrids);
   const truncatedOps = meta.ops.slice(0, meta.opCursor !== undefined ? meta.opCursor : meta.ops.length);
-  if (truncatedOps.length > 0) {
-    applyRevisionOps(currentGrids, truncatedOps);
-  }
+  const adoptReplay = replayRevisionOps(currentGrids, truncatedOps);
 
   if (!currentGrids || currentGrids.length === 0) {
     throw new Error("채택할 시간표 그리드 데이터가 없습니다.");
+  }
+
+  // 가드 1.5: 잠깐 빼둔 수업이 남아 있으면 채택 불가 (직접 조정 M2 — 스펙 §2-5 게시 관문)
+  if (adoptReplay.tray.length > 0) {
+    const first = adoptReplay.tray[0];
+    const label = first.lessons[0]?.subjectName || "수업";
+    throw new Error(
+      `잠깐 빼둔 수업 ${adoptReplay.tray.length}건이 아직 시간표에 돌아오지 않았습니다 (예: ${first.grade}학년 ${first.classNum}반 ${label}). 모두 제자리를 찾아준 뒤 채택할 수 있습니다.`
+    );
   }
 
   // 가드 2: 검사기 하드 제약 위반 검사

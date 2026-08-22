@@ -3350,7 +3350,13 @@ export default function DraftAutoTab({
                             #{idx + 1}{" "}
                             {op.type === "swap_pair"
                               ? `학급 간 교환 (${op.classes.map((c) => `${c.grade}학년 ${c.classNum}반`).join("·")})`
-                              : `${op.type === "swap" ? "맞교환/이동" : "셀 통째 수정"} (${op.grade}학년 ${op.classNum}반)`}
+                              : op.type === "chain"
+                                ? `연쇄 조정 (${op.steps.length}수)`
+                                : op.type === "park"
+                                  ? `잠깐 빼두기 (${op.grade}학년 ${op.classNum}반)`
+                                  : op.type === "unpark"
+                                    ? `빼둔 수업 되돌리기 (${op.grade}학년 ${op.classNum}반)`
+                                    : `${op.type === "swap" ? "맞교환/이동" : "셀 통째 수정"} (${op.grade}학년 ${op.classNum}반)`}
                           </span>
                           {isCurrent && (
                             <span className="text-xs bg-purple-700 text-white font-extrabold px-1.5 py-0.5 rounded">

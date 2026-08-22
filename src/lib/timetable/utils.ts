@@ -83,7 +83,7 @@ ${params.requesterName} 교사입니다. 이렇게 수업 교체가 가능할까
 확인 부탁드립니다. 감사합니다!`;
 }
 
-import type { BaseRevisionOp, CandidateCoordination, ClassGrid, CoordinationOccupant } from "./types";
+import type { BaseRevisionOp, CandidateCoordination, ClassGrid, CoordinationOccupant, TrayEntry } from "./types";
 
 export function cloneClassGrids(grids: ClassGrid[]): ClassGrid[] {
   return grids.map((g) => ({
@@ -103,7 +103,20 @@ export function cloneClassGrids(grids: ClassGrid[]): ClassGrid[] {
 const DAY_KO = ["", "월", "화", "수", "목", "금"];
 
 export function applyRevisionOps(grids: ClassGrid[], ops: BaseRevisionOp[]): string[] {
+  return replayRevisionOps(grids, ops).warnings;
+}
+
+/**
+ * 재생 + 트레이 파생 (직접 조정 M2). 트레이는 저장하지 않는다 — park/unpark op를 재생한
+ * 결과가 곧 트레이다(Codex R3 처방). 관용 규약 유지: 이미 저장된 초안이 재생 불가가 되면
+ * 안 되므로, 성립하지 않는 수는 경고를 남기고 건너뛴다(반쪽 적용 없음 — 수 단위 원자).
+ */
+export function replayRevisionOps(
+  grids: ClassGrid[],
+  ops: BaseRevisionOp[]
+): { warnings: string[]; tray: TrayEntry[] } {
   const warnings: string[] = [];
+  const tray: TrayEntry[] = [];
   const findGrid = (grade: number, classNum: number) =>
     grids.find((g) => g.grade === grade && g.classNum === classNum);
   const getOrCreateCell = (grid: ClassGrid, day: number, period: number) => {
@@ -127,7 +140,85 @@ export function applyRevisionOps(grids: ClassGrid[], ops: BaseRevisionOp[]): str
     cellB.lessons = tmp;
     return true;
   };
+  /** park 한 수 — 칸의 수업을 트레이로 (빈 칸·중복 parkId는 경고 후 건너뜀) */
+  const doPark = (s: { parkId: string; grade: number; classNum: number; day: number; period: number }) => {
+    const grid = findGrid(s.grade, s.classNum);
+    if (!grid) {
+      warnings.push(`${s.grade}-${s.classNum}반 시간표가 없어 빼두기를 건너뜀`);
+      return;
+    }
+    const cell = getOrCreateCell(grid, s.day, s.period);
+    if (cell.lessons.length === 0) {
+      warnings.push(`${s.grade}-${s.classNum}반 ${DAY_KO[s.day]}${s.period}교시가 빈 칸이라 빼두기를 건너뜀`);
+      return;
+    }
+    if (tray.some((t) => t.parkId === s.parkId)) {
+      warnings.push(`빼두기 식별자(${s.parkId})가 중복되어 건너뜀`);
+      return;
+    }
+    tray.push({
+      parkId: s.parkId,
+      grade: s.grade,
+      classNum: s.classNum,
+      lessons: cell.lessons,
+      from: { day: s.day, period: s.period },
+    });
+    cell.lessons = [];
+  };
+  /** unpark 한 수 — 같은 학급의 빈 칸에만 (아니면 경고 후 건너뜀, 트레이 유지) */
+  const doUnpark = (s: { parkId: string; grade: number; classNum: number; day: number; period: number }) => {
+    const idx = tray.findIndex((t) => t.parkId === s.parkId);
+    if (idx < 0) {
+      warnings.push(`빼둔 수업(${s.parkId})이 트레이에 없어 되돌리기를 건너뜀`);
+      return;
+    }
+    const entry = tray[idx];
+    if (entry.grade !== s.grade || entry.classNum !== s.classNum) {
+      warnings.push(`빼둔 수업은 ${entry.grade}-${entry.classNum}반 것이라 다른 학급에 되돌릴 수 없어 건너뜀`);
+      return;
+    }
+    const grid = findGrid(s.grade, s.classNum);
+    if (!grid) {
+      warnings.push(`${s.grade}-${s.classNum}반 시간표가 없어 되돌리기를 건너뜀`);
+      return;
+    }
+    const cell = getOrCreateCell(grid, s.day, s.period);
+    if (cell.lessons.length > 0) {
+      warnings.push(`${s.grade}-${s.classNum}반 ${DAY_KO[s.day]}${s.period}교시가 비어 있지 않아 되돌리기를 건너뜀`);
+      return;
+    }
+    cell.lessons = entry.lessons;
+    tray.splice(idx, 1);
+  };
+
   for (const op of ops) {
+    if (op.type === "park") {
+      doPark(op);
+      continue;
+    }
+    if (op.type === "unpark") {
+      doUnpark(op);
+      continue;
+    }
+    if (op.type === "chain") {
+      // 연쇄 한 판 — 수 단위로 관용 재생 (op 자체가 undo의 원자 단위)
+      for (const step of op.steps) {
+        if (step.kind === "swap") {
+          const grid = findGrid(step.grade, step.classNum);
+          if (!grid) {
+            warnings.push(`${step.grade}-${step.classNum}반 시간표가 없어 연쇄 수 1건을 건너뜀`);
+            continue;
+          }
+          if (!swapInGrid(grid, step.a, step.b)) {
+            warnings.push(
+              `${step.grade}-${step.classNum}반 ${DAY_KO[step.a.day]}${step.a.period}·${DAY_KO[step.b.day]}${step.b.period}교시 모두 빈 교시라 연쇄 수 1건을 건너뜀`
+            );
+          }
+        } else if (step.kind === "park") doPark(step);
+        else doUnpark(step);
+      }
+      continue;
+    }
     if (op.type === "swap_pair") {
       // 학급 간 교환 — 담긴 학급 전부가 같은 두 슬롯을 맞바꾼다 (원자: 한 연산이 전부 수행)
       for (const cls of op.classes) {
@@ -163,7 +254,14 @@ export function applyRevisionOps(grids: ClassGrid[], ops: BaseRevisionOp[]): str
       }));
     }
   }
-  return warnings;
+  return { warnings, tray };
+}
+
+/** 트레이 파생 — base 그리드에 ops를 재생한 뒤 남아 있는 빼둔 수업 목록.
+ *  UI 트레이 표시·게시(채택) 관문이 쓴다. grids는 건드리지 않는다(사본 재생). */
+export function deriveTray(baseGrids: ClassGrid[], ops: BaseRevisionOp[]): TrayEntry[] {
+  const clone = cloneClassGrids(baseGrids);
+  return replayRevisionOps(clone, ops).tray;
 }
 
 

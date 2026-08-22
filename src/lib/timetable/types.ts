@@ -70,7 +70,57 @@ export type BaseRevisionOp =
       a: { day: number; period: number };
       b: { day: number; period: number };
       classes: Array<{ grade: number; classNum: number }>;
+    }
+  | {
+      /** 잠깐 빼두기 (직접 조정 M2 — manual_move_spec §2-5). 그 칸의 수업을 판에서 빼
+       *  트레이로 옮긴다. 트레이 상태는 저장하지 않는다 — **op 재생의 파생값**이다
+       *  (Codex R3 처방: customUnplaced 직접 저장은 정합 검증이 없다).
+       *  parkId = 클라이언트가 만든 고유 문자열 — unpark가 이것으로 대상을 지목한다
+       *  (배열 인덱스는 재생 순서에 따라 밀려 깨진다). */
+      type: "park";
+      parkId: string;
+      grade: number;
+      classNum: number;
+      day: number;
+      period: number;
+    }
+  | {
+      /** 빼둔 수업 되돌리기 — 같은 학급의 빈 칸에만 놓인다 (재생기가 관용 규약으로 검사) */
+      type: "unpark";
+      parkId: string;
+      grade: number;
+      classNum: number;
+      day: number;
+      period: number;
+    }
+  | {
+      /** 연쇄 한 판 (직접 조정 M2 — manual_move_spec §2-4·§2-6). 집기~내려놓기까지의
+       *  원자 수들을 op 1건으로 묶는다 — 실행취소 한 번에 한 판이 통째로 돌아온다. */
+      type: "chain";
+      steps: ChainStep[];
     };
+
+/** 연쇄의 원자 수 — swap/park/unpark의 재귀 없는 1단 묶음 (직접 조정 M2) */
+export type ChainStep =
+  | {
+      kind: "swap";
+      grade: number;
+      classNum: number;
+      a: { day: number; period: number };
+      b: { day: number; period: number };
+    }
+  | { kind: "park"; parkId: string; grade: number; classNum: number; day: number; period: number }
+  | { kind: "unpark"; parkId: string; grade: number; classNum: number; day: number; period: number };
+
+/** 트레이(잠깐 빼둔 수업) 항목 — 저장 안 함, op 재생의 파생값 (직접 조정 M2) */
+export interface TrayEntry {
+  parkId: string;
+  grade: number;
+  classNum: number;
+  lessons: TimetableLesson[];
+  /** 빼기 전 원위치 (작업기록·미니 그리드 표시용) */
+  from: { day: number; period: number };
+}
 
 export interface TimetableBaseRevision {
   id?: string;

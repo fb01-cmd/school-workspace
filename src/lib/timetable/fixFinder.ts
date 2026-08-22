@@ -115,6 +115,9 @@ const opKey = (op: BaseRevisionOp): string => {
     const cls = op.classes.map((c) => `${c.grade}-${c.classNum}`).sort().join("+");
     return `pair|${cls}|${x}|${y}`;
   }
+  if (op.type === "park" || op.type === "unpark")
+    return `${op.type}|${op.parkId}|${op.grade}-${op.classNum}|${op.day}-${op.period}`;
+  if (op.type === "chain") return `chain|${op.steps.length}|${op.steps.map((s) => s.kind).join(",")}`;
   return `edit|${op.grade}-${op.classNum}|${op.day}-${op.period}`;
 };
 

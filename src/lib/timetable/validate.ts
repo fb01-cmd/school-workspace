@@ -34,6 +34,7 @@ import {
   TimetableConstraintModel,
   TimetableLesson,
   VenueGroup,
+  TrayEntry,
 } from "./types";
 
 const norm = (e: string) => (e || "").trim().toLowerCase();
@@ -99,13 +100,45 @@ export function checkPlaceholderOp(grids: ClassGrid[], op: BaseRevisionOp): stri
             { grade: op.grade, classNum: op.classNum, ...op.a },
             { grade: op.grade, classNum: op.classNum, ...op.b },
           ]
-        : [{ grade: op.grade, classNum: op.classNum, day: op.day, period: op.period }];
+        : op.type === "chain"
+          ? // 연쇄(직접 조정 M2) — 모든 수의 관련 칸을 전부 검사한다
+            op.steps.flatMap((s) =>
+              s.kind === "swap"
+                ? [
+                    { grade: s.grade, classNum: s.classNum, ...s.a },
+                    { grade: s.grade, classNum: s.classNum, ...s.b },
+                  ]
+                : [{ grade: s.grade, classNum: s.classNum, day: s.day, period: s.period }]
+            )
+          : [{ grade: op.grade, classNum: op.classNum, day: op.day, period: op.period }];
   for (const t of targets) {
     const hit = findPlaceholderLesson(grids, t.grade, t.classNum, t.day, t.period);
     if (!hit) continue;
     return `${t.grade}학년 ${t.classNum}반 ${DAY_LABEL[t.day]}요일 ${t.period}교시는 '${hit.subjectName}' 자리입니다. 담당 선생님이 지정되지 않은 수업(창체·SLAT 등)은 학교 전체가 같은 시간에 묶여 있어 한 학급만 옮기거나 맞바꿀 수 없습니다.`;
   }
   return null;
+}
+
+/** park(잠깐 빼두기)가 만든 시수 부족(H1)인가 — draft_op 관문의 면제 판정 (직접 조정 M2).
+ *  빼둔 수업은 정의상 그 (학급|과목|교사)의 배정 수를 시수표보다 모자라게 만들어 H1을 낸다.
+ *  그 H1은 「트레이 비움」을 요구하는 게시(채택) 관문이 최종 책임지므로, 조작 단계에서는
+ *  막지 않는다 — 막으면 빼두기 자체가 불가능해져 M2의 존재 이유가 사라진다. */
+export function isParkExemptHard(h: HardViolation, tray: TrayEntry[]): boolean {
+  if (h.code !== "H1") return false;
+  return tray.some(
+    (t) =>
+      t.grade === h.grade &&
+      t.classNum === h.classNum &&
+      t.lessons.some(
+        (l) =>
+          normSubject(l.subjectName) === normSubject(h.subjectName || "") &&
+          (h.teacherEmail
+            ? (l.teachers || []).some(
+                (tt) => (tt.email || "").trim().toLowerCase() === h.teacherEmail
+              )
+            : true)
+      )
+  );
 }
 
 // ── 역산 헬퍼 (phase9c_spec §2-1ⓐ·§2-2 — Phase B의 최소형) ────
