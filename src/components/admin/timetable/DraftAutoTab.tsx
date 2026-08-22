@@ -45,6 +45,12 @@ import {
   type AskFixProgress,
 } from "@/lib/timetable/fixFinder";
 import {
+  searchLookaheadLines,
+  type LookaheadLine,
+  type LookaheadResult,
+  type LookaheadTarget,
+} from "@/lib/timetable/lookahead";
+import {
   ASK_FIX_EXAMPLES,
   type AiDiagnoseResult,
   type AiExplainResult,
@@ -304,13 +310,15 @@ export default function DraftAutoTab({
   const [applyPlanError, setApplyPlanError] = useState<string | null>(null);
   const [applyPlanSuccessMsg, setApplyPlanSuccessMsg] = useState<string | null>(null);
 
-  // ── F-2 해결안 탐색 상태 ──
+  // ── 수읽기 엔진 (Lookahead L1) 상태 — timetable_lookahead_spec §3·§4 ──
   /** 현재 [해결안 찾기]가 열려 있는 감점 항목 */
   const [activeFindDetail, setActiveFindDetail] = useState<TermPenaltyDetail | null>(null);
-  /** findFixCandidates 결과 (동기) */
-  const [fixCandidates, setFixCandidates] = useState<FixCandidate[] | null>(null);
-  /** 탐색 중 여부 — 동기지만 state 전환 전 render를 위해 */
+  /** 수읽기 엔진 탐색 결과 (기보 목록) */
+  const [lookaheadResult, setLookaheadResult] = useState<LookaheadResult | null>(null);
+  /** 탐색 중 여부 */
   const [findingFix, setFindingFix] = useState(false);
+  /** 더 깊이 읽기(예산 3배) 여부 */
+  const [isDeepSearch, setIsDeepSearch] = useState(false);
 
   // ── 직접 조정 모드 상태 (timetable_manual_move_spec §2 · §4 M1) ──
   const [manualMode, setManualMode] = useState(false);
@@ -521,8 +529,9 @@ export default function DraftAutoTab({
   const openDraftReport = openDraft?.report;
   useEffect(() => {
     setActiveFindDetail(null);
-    setFixCandidates(null);
+    setLookaheadResult(null);
     setFindingFix(false);
+    setIsDeepSearch(false);
     setPickedSlot(null);
     setCandidatesResult(null);
     setChainSteps([]);
@@ -1122,39 +1131,79 @@ export default function DraftAutoTab({
     }
   };
 
-  // ── F-2 해결안 탐색 ──
-  /**
-   * 감점 항목 한 건을 지목해 findFixCandidates를 동기로 호출한다.
-   * 같은 항목을 다시 누르면 닫힘 토글. 결과는 항목 아래에 인라인으로 표시.
-   */
-  const handleFindFix = (detail: TermPenaltyDetail) => {
-    if (!openDraft) return;
-    // 같은 항목 토글 — **객체 동일성**으로 판정한다. code+key+day는 유일하지 않다:
-    // S2는 한 교사·한 요일에 연속 블록이 둘이면 2건(검사기 validate.ts 연속 블록 루프),
-    // S4는 한 학급·한 요일에 중복 과목이 둘이면 2건이 나온다. 세 필드로 비교하면 둘째 항목의
-    // 버튼이 첫째의 '닫기'로 동작해 **그 감점은 영영 탐색되지 않는다.**
-    // 목록은 report.soft.details의 원본 참조를 그대로 렌더링하므로 참조 비교가 정확하다.
-    if (activeFindDetail === detail) {
+  // ── 수읽기 엔진 L1 — 해결안 탐색 (timetable_lookahead_spec §2·§3·§4) ──
+  const handleFindFix = (detail: TermPenaltyDetail, deep: boolean = false) => {
+    if (!openDraft || savingOp) return;
+    // 같은 항목 토글 — 객체 동일성으로 판정 (S2·S4 등 동일 code+key+day 중복 방어)
+    if (activeFindDetail === detail && !deep) {
       setActiveFindDetail(null);
-      setFixCandidates(null);
+      setLookaheadResult(null);
+      setIsDeepSearch(false);
       return;
     }
     setActiveFindDetail(detail);
-    setFixCandidates(null);
+    setLookaheadResult(null);
+    setIsDeepSearch(deep);
     setFindingFix(true);
 
-    // 동기 실행 — 실측 중앙 64ms·최대 173ms (§2-6)
-    const { baseGrids, meta, model, currentGrids } = openDraft;
-    const ops = meta.ops.slice(0, meta.opCursor);
-    const candidates = findFixCandidates({
-      baseGrids,
-      ops,
-      currentGrids,
-      model,
-      target: detail,
+    const { model, currentGrids } = openDraft;
+    const target: LookaheadTarget = {
+      scope: detail.scope,
+      key: detail.key,
+      day: detail.day || undefined,
+      code: detail.code as SoftPenaltyCode,
+    };
+    const budget = deep ? 4500 : 1500;
+
+    // 비동기 실행 (스피너 및 버튼 잠금 렌더 후 탐색 실행)
+    setTimeout(() => {
+      try {
+        const result = searchLookaheadLines({
+          grids: currentGrids,
+          model,
+          target,
+          budget,
+        });
+        setLookaheadResult(result);
+      } catch (err) {
+        console.error("Lookahead search error:", err);
+      } finally {
+        setFindingFix(false);
+      }
+    }, 20);
+  };
+
+  /** 기보 1수 적용 (한 수씩 밟기 — 기본) */
+  const handleApplyLineStep = async (line: LookaheadLine, stepIdx: number = 0) => {
+    if (!openDraft || savingOp || stepIdx >= line.ops.length) return;
+    const op = line.ops[stepIdx];
+    await executeOptimisticOp(op, undefined, undefined, "수읽기 기보 수 적용");
+  };
+
+  /** 기보 전체 적용 (M2 chain op로 원자적 적용) */
+  const handleApplyLineAll = async (line: LookaheadLine) => {
+    if (!openDraft || savingOp || line.ops.length === 0) return;
+    if (line.ops.length === 1) {
+      await executeOptimisticOp(line.ops[0], undefined, undefined, "수읽기 기보 적용");
+      return;
+    }
+    const chainSteps: ChainStep[] = line.ops.map((op) => {
+      if (op.type === "swap") {
+        return {
+          kind: "swap",
+          grade: op.grade,
+          classNum: op.classNum,
+          a: op.a,
+          b: op.b,
+        };
+      }
+      throw new Error("Only swap ops supported in lookahead L1");
     });
-    setFixCandidates(candidates);
-    setFindingFix(false);
+    const chainOp: BaseRevisionOp = {
+      type: "chain",
+      steps: chainSteps,
+    };
+    await executeOptimisticOp(chainOp, undefined, undefined, "수읽기 기보 전체 적용");
   };
 
   // ── 셀 이동 / 맞교환 what-if 미리보기 ──
@@ -3314,87 +3363,162 @@ export default function DraftAutoTab({
                                   </div>
                                 </div>
 
-                                {/* F-2 결과 카드 — 항목 바로 아래 인라인 */}
+                                {/* 수읽기 엔진 (Lookahead L1) 기보 카드 — 항목 바로 아래 인라인 */}
                                 {isActive && (
-                                  <div className="mt-1.5 ml-3 border-l-2 border-amber-300 pl-3 space-y-1.5">
+                                  <div className="mt-1.5 ml-3 border-l-2 border-amber-300 pl-3 space-y-2">
                                     {findingFix ? (
                                       <div className="py-3 flex items-center gap-2 text-xs text-amber-700 font-semibold">
                                         <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-amber-500 border-t-transparent" />
-                                        <span>교환 후보를 검사하는 중...</span>
+                                        <span>
+                                          {isDeepSearch
+                                            ? "더 깊은 수순(예산 3배)을 탐색하는 중..."
+                                            : "수순(기보)을 탐색하는 중..."}
+                                        </span>
                                       </div>
-                                    ) : fixCandidates === null ? null : fixCandidates.length === 0 ? (
-                                      /* ── 해결안 없음 — 다수 경로(30/39), 성의 있게 작성 ── */
-                                      <div className="bg-gray-50 rounded-lg border border-gray-200 p-3.5 text-xs space-y-2">
-                                        <div className="flex items-start gap-2">
-                                          <span className="text-base mt-0.5">🔒</span>
-                                          <div className="space-y-1">
-                                            <p className="font-bold text-gray-800">
-                                              지금 구조에서는 이 감점을 자동으로 줄이기 어렵습니다.
-                                            </p>
-                                            <p className="text-gray-600 leading-relaxed">
-                                              {item.code === "S1" || item.code === "S4" || item.code === "S6"
-                                                ? `이 수업을 다른 요일로 옮기려면 그 날의 빈 교시가 필요합니다. 같은 학급 안의 이동·맞교환과 두 학급이 함께 맞바꾸는 학급 간 교환까지 찾아봤지만, 전부 다른 조건(창체·SLAT 자리, 선생님 겹침)에 막혀 있습니다. 학급 전체 편성 조정이 필요합니다.`
-                                                : item.code === "S2"
-                                                ? `이 교사의 연속 수업을 분산하려면 같은 요일 내 빈 교시가 필요합니다. 빈 자리가 있더라도 옮겼을 때 다른 조건(교사 중복·운영 교시 초과)이 새로 생기면 후보에서 제외됩니다.`
-                                                : item.code === "S3"
-                                                ? `점심시간 전후 교시를 분리하려면 점심 블록 양쪽에서 맞바꿀 교시가 있어야 합니다. 가능한 교환이 모두 다른 조건에 막혀 있습니다.`
-                                                : item.code === "S5"
-                                                ? `이 요일의 과목 밀집을 풀려면 해당 수업을 다른 요일로 이동할 수 있어야 합니다. 현재 구조에서는 같은 학급 내에 적합한 빈 자리가 없습니다.`
-                                                : `이 감점은 다른 조건(창체·SLAT 자리표시, 교사 중복, 운영 교시 초과 등)에 묶여 있어 단일 교환으로는 줄이기 어렵습니다.`
-                                              }
-                                            </p>
-                                            <p className="text-[11px] text-gray-400 pt-1">
-                                              💡 AI 도움말("개선 제안")에서 구조적 원인을 더 자세히 설명받을 수 있습니다.
-                                            </p>
+                                    ) : lookaheadResult === null ? null : lookaheadResult.lines.length === 0 ? (
+                                      /* ── 해결안 없음 ── */
+                                      <div className="bg-gray-50 rounded-lg border border-gray-200 p-3.5 text-xs space-y-2.5">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex items-start gap-2 min-w-0">
+                                            <span className="text-base mt-0.5 shrink-0">🔒</span>
+                                            <div className="space-y-1">
+                                              <p className="font-bold text-gray-800">
+                                                {lookaheadResult.evaluated}가지 수를 읽었지만 이 감점을 줄이는 수순이 없습니다.
+                                              </p>
+                                              <p className="text-gray-600 leading-relaxed text-[11px]">
+                                                {item.code === "S1" || item.code === "S4" || item.code === "S6"
+                                                  ? `이 수업을 다른 요일로 옮기려면 그 날의 빈 교시가 필요합니다. 같은 학급 안의 이동·맞교환을 모두 탐색했지만, 전부 다른 조건(창체·SLAT 자리, 선생님 겹침)에 막혀 있습니다.`
+                                                  : item.code === "S2"
+                                                  ? `이 교사의 연속 수업을 분산하려면 같은 요일 내 빈 교시가 필요합니다. 빈 자리가 있더라도 옮겼을 때 다른 조건(교사 중복·운영 교시 초과)이 새로 생기면 후보에서 제외됩니다.`
+                                                  : item.code === "S3"
+                                                  ? `점심시간 전후 교시를 분리하려면 점심 블록 양쪽에서 맞바꿀 교시가 있어야 합니다. 가능한 교환이 모두 다른 조건에 막혀 있습니다.`
+                                                  : item.code === "S5"
+                                                  ? `이 요일의 과목 밀집을 풀려면 해당 수업을 다른 요일로 이동할 수 있어야 합니다. 현재 구조에서는 같은 학급 내에 적합한 빈 자리가 없습니다.`
+                                                  : `이 감점은 다른 조건(창체·SLAT 자리표시, 교사 중복, 운영 교시 초과 등)에 묶여 있어 단일/다단 교환으로는 줄이기 어렵습니다.`}
+                                              </p>
+                                            </div>
                                           </div>
+                                          {!isDeepSearch && (
+                                            <button
+                                              onClick={() => handleFindFix(item, true)}
+                                              disabled={findingFix || savingOp}
+                                              className="shrink-0 px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-2xs transition-colors flex items-center gap-1 disabled:opacity-50"
+                                              title="탐색 범위를 3배로 늘려 더 깊은 수순을 탐색합니다"
+                                            >
+                                              <span>🔍</span>
+                                              <span>더 깊이 읽기</span>
+                                            </button>
+                                          )}
                                         </div>
                                       </div>
                                     ) : (
-                                      /* ── 해결안 목록 ── */
-                                      fixCandidates.map((cand, ci) => (
-                                        <div
-                                          key={ci}
-                                          className="bg-white rounded-lg border border-amber-200 p-3 space-y-1.5 shadow-2xs"
-                                        >
-                                          <div className="flex items-start justify-between gap-2">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              {/* 순위 배지 */}
-                                              <span className="shrink-0 w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-extrabold flex items-center justify-center mt-0.5">
-                                                {ci + 1}
-                                              </span>
-                                              <div className="space-y-0.5 min-w-0">
-                                                <p className="font-semibold text-gray-900 text-xs leading-snug">{cand.desc}</p>
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                  {/* 점수 개선 */}
-                                                  <span className="text-[11px] font-bold text-emerald-700">
-                                                    {cand.oldSoftTotal}점 → {cand.newSoftTotal}점&nbsp;&nbsp;{Math.abs(cand.deltaScore)}점 개선
+                                      /* ── 기보(Line) 목록 — 상위 최대 3개 ── */
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between text-xs text-amber-900 px-1">
+                                          <span className="font-semibold text-[11px]">
+                                            총 {lookaheadResult.lines.length}개 기보 제안 ({lookaheadResult.evaluated}가지 수 탐색 완료)
+                                          </span>
+                                          {!isDeepSearch && lookaheadResult.budgetExhausted && (
+                                            <button
+                                              onClick={() => handleFindFix(item, true)}
+                                              disabled={findingFix || savingOp}
+                                              className="px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-[11px] border border-amber-300 transition-colors flex items-center gap-1 disabled:opacity-50"
+                                              title="탐색 범위를 3배로 늘려 추가 수순을 탐색합니다"
+                                            >
+                                              <span>🔍 더 깊이 읽기</span>
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        {lookaheadResult.lines.slice(0, 3).map((line, li) => {
+                                          const isSingleStep = line.ops.length === 1;
+                                          return (
+                                            <div
+                                              key={li}
+                                              className="bg-white rounded-lg border border-amber-200 p-3 space-y-2 shadow-2xs hover:border-amber-400 transition-all"
+                                            >
+                                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                                  <span className="w-5 h-5 rounded-full bg-amber-600 text-white text-xs font-extrabold flex items-center justify-center shrink-0">
+                                                    {li + 1}
                                                   </span>
-                                                  {/* 지목 항목 해소 여부 */}
-                                                  {cand.resolvesTarget && (
-                                                    <span className="text-xs px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                                                  <span className="text-xs font-bold text-gray-900">
+                                                    기보 {li + 1} ({line.ops.length}수)
+                                                  </span>
+                                                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                                    {line.finalDelta < 0
+                                                      ? `총점 ${Math.abs(line.finalDelta)}점 개선`
+                                                      : "점수 유지"}
+                                                  </span>
+                                                  {line.targetResolved && (
+                                                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
                                                       ✅ 이 감점 해소
                                                     </span>
                                                   )}
                                                 </div>
-                                                {/* 부작용 */}
-                                                {cand.sideEffects.length > 0 && (
-                                                  <p className="text-[11px] text-amber-700 mt-0.5">
-                                                    ⚠️ 다른 감점 증가: {cand.sideEffects.join(" / ")}
-                                                  </p>
+
+                                                {/* 조작 버튼 */}
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                  {/* 1. 한 수씩 밟기 (기본) */}
+                                                  <button
+                                                    disabled={savingOp}
+                                                    onClick={() => handleApplyLineStep(line, 0)}
+                                                    className="px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-xs border border-indigo-200 transition-colors disabled:opacity-50 flex items-center gap-1"
+                                                    title={isSingleStep ? "이 수순을 적용합니다" : "첫 번째 수를 적용하고 다음 수를 확인합니다"}
+                                                  >
+                                                    <span>▶</span>
+                                                    <span>{isSingleStep ? "적용하기" : "1수 적용"}</span>
+                                                  </button>
+
+                                                  {/* 2. 전체 적용 (2수 이상일 때) */}
+                                                  {!isSingleStep && (
+                                                    <button
+                                                      disabled={savingOp}
+                                                      onClick={() => handleApplyLineAll(line)}
+                                                      className="px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-2xs transition-colors disabled:opacity-50 flex items-center gap-1"
+                                                      title={`${line.ops.length}수 전체를 한 번에 적용합니다`}
+                                                    >
+                                                      <span>⏩</span>
+                                                      <span>전체 적용 ({line.ops.length}수)</span>
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              </div>
+
+                                              {/* 미니 그리드 / 변경 대상 칸 연쇄 표시 (텍스트 수순 표기 금지 — 스펙 §0-1) */}
+                                              <div className="bg-gray-50 rounded-md p-2 space-y-1.5 border border-gray-100">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                  <span className="text-[11px] font-bold text-gray-500">관련 교시:</span>
+                                                  {line.touched.map((t, ti) => (
+                                                    <span
+                                                      key={ti}
+                                                      className="px-1.5 py-0.5 rounded bg-white border border-gray-200 text-gray-800 text-[11px] font-mono font-bold"
+                                                    >
+                                                      {t.grade}-{t.classNum}반 {DAYS[t.day - 1]}요일 {t.period}교시
+                                                    </span>
+                                                  ))}
+                                                </div>
+
+                                                {/* 2수 이상인 경우 수순별 총점 진행 표시 */}
+                                                {line.stepScores.length > 1 && (
+                                                  <div className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
+                                                    <span>총점 변화:</span>
+                                                    <span className="font-mono font-bold text-gray-700">
+                                                      {openDraft?.report.soft.total}점
+                                                    </span>
+                                                    {line.stepScores.map((score, si) => (
+                                                      <span key={si} className="font-mono font-bold text-indigo-700 flex items-center gap-1">
+                                                        <span>→</span>
+                                                        <span>{score}점</span>
+                                                      </span>
+                                                    ))}
+                                                  </div>
                                                 )}
                                               </div>
                                             </div>
-                                            {/* 미리보기 버튼 — 기존 analyzeOpImpact 연결 */}
-                                            <button
-                                              onClick={() => analyzeOpImpact(cand.op, cand.desc)}
-                                              className="shrink-0 px-2.5 py-1 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-[11px] border border-blue-200 transition-colors flex items-center gap-1"
-                                            >
-                                              <span>👁</span>
-                                              <span>미리보기</span>
-                                            </button>
-                                          </div>
-                                        </div>
-                                      ))
+                                          );
+                                        })}
+                                      </div>
                                     )}
                                   </div>
                                 )}
