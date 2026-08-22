@@ -19,31 +19,6 @@
 
 ---
 
-## 과제 N — 직접 조정 모드 M1 화면 (시간표 작성 편집기)
-
-**기준 커밋: 이 파일과 같이 커밋된 HEAD. 스펙(배치 원본) = `docs/timetable_manual_move_spec.md` — §2가 화면 구성의 단일 원본이다. 배치를 임의로 바꾸지 말고, 스펙과 코드가 어긋나면 보고해라.**
-
-Claude 선행분은 이미 커밋돼 있다:
-- `src/lib/timetable/moveCandidates.ts` — `evaluateMoveCandidates({grids, model, pick})` 가 후보 전 칸의 3색 판정(`verdict: ok|worse|blocked`)·감점 변화(`softDelta`)·사유(`blockedReason`)·말풍선용 코드별 증가(`worseByCode`)를 돌려준다. 채점은 본검사기 단일 소재지라 서버 관문과 어긋나지 않는다. 자가 테스트 = `npx tsx scripts/movecand_selftest.ts`.
-- `draft_op`에 `expectedOpCursor` 선행조건이 생겼다 — **모든 draft_op 호출에 `expectedOpCursor: openDraft.meta.opCursor`를 담아라**(기존 2곳은 Claude가 이미 배선). 충돌 응답이 오면 "다른 창이 먼저 수정" 안내 후 초안 재로드.
-
-**M1 범위 (스펙 §4 — 연쇄·트레이는 M2, 손대지 마라)**:
-1. `DraftAutoTab` 도구줄에 `[직접 조정]` 토글 (1024px 미만 창에서는 렌더하지 않는다 — 스펙 §0-4).
-2. 토글 켜면: 교사 카드를 학급 그리드와 **동급 패널로 병치**(스펙 §2-2 배치도), 학급 그리드 칸 hover 시 그 수업 교사의 주간표가 교사 패널에 즉시 표시(현행 클릭 → hover로).
-3. 칸 클릭 = 집기 → `evaluateMoveCandidates` 호출(비동기, 결과 오기 전 칸들은 중립색) → 두 그리드에 3색 + softDelta 뱃지 렌더 (스펙 §2-3 표 그대로: 초록=즉시 이동, 노랑=뱃지·말풍선 후 즉시 이동(팝업 금지), 회색=무반응+hover 사유).
-4. 초록/노랑 클릭 = 기존 draft_op(swap) 경로로 적용(expectedOpCursor 포함) → 성공 시 그리드·감점 상세·상단 총점 갱신, 집기 해제.
-5. 집기 해제 = 같은 칸 재클릭/Esc. pickBlocked면 칸 옆 말풍선으로 사유 표시(alert 금지 — 기존 🔒 alert 두 곳도 이 기회에 말풍선으로 바꿔라).
-6. 상단 바: 현재 총점 + 직접 조정 시작 시점 대비 변화 (스펙 §2-2).
-
-**화면 문구**: 스펙 §0-3 — 개발 용어 금지. 텍스트 이동 표기(「월3→화2」) 금지 — 모든 표시는 그리드 위 색·뱃지.
-
-**완료 확인 방법 (전부 적어서 보고)**:
-- `npx tsc --noEmit` 0건 · `npm run build` ✅ · `npm run check:ui` ✅ · `bash scripts/check_ui_removals.sh <기준커밋>` (사라진 것 전부 사유 기재)
-- `npx tsx scripts/movecand_selftest.ts` 통과 유지 (모듈을 고치지 않았다면 자동)
-- 화면 실측 불가(로그인)므로: 토글·3색·뱃지·이동 각각에 대해 **무엇을 렌더하는지 코드 근거(file:line)로 보고** — 실기기 확인은 사용자 몫으로 남긴다
-
----
-
 ## 아직 착수하지 마라 — 과제 K (시간표)
 
 **착수 조건: 과제 J가 Codex 검증까지 통과한 뒤 Claude가 이 절을 과제로 승격한다.** 지금은 범위만 확정해 둔 것이다. 이 절을 보고 먼저 손대지 마라.
