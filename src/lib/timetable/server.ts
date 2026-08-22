@@ -7478,59 +7478,7 @@ export async function computeNeisCsvBundle(
  * E1 불능 진단 — 서버가 초안 리포트를 재산출(클라 신뢰 0)해 가명화 입력을 만들고 AI를 호출한다.
  * 하드 0·미배정 0이면 API 호출 없이 즉시 반환 (무료 한도 절약).
  */
-export async function computeAiDiagnosis(
-  domain: string,
-  draftId: string
-): Promise<{ clean: boolean; result?: import("./ai").AiDiagnoseResult }> {
-  // 모델 파생(hoursSnapshot 폴백·요일별 교시수)은 draft_op 경로와 동일하게 base 그리드 기준
-  const { meta, baseGrids, currentGrids } = await getDraft(domain, draftId);
-  const { model, registryStats } = await loadDraftConstraintModel(domain, meta, baseGrids);
-  const report = validateTimetable(currentGrids, model);
 
-  if (report.hard.length === 0 && (meta.unplaced || []).length === 0) {
-    return { clean: true };
-  }
-
-  // 가명 사전 원천 = 그리드의 **실교사** (위반·미배정 문장의 실명이 전부 이 집합에서 나옴).
-  // 가상 교사(이메일 없음 — 창체·SLAT)는 사람이 아니라 가명화 대상이 아니고, 사전에 넣으면
-  // AI가 활동명을 사람 가명으로 받아 교사로 착각한다 (2026-08-12 실사용 신고와 동일 계열).
-  const teachers: import("./ai").AiTeacherRef[] = [];
-  const seen = new Set<string>();
-  for (const grid of currentGrids) {
-    for (const cell of grid.cells) {
-      for (const lesson of cell.lessons) {
-        for (const t of lesson.teachers || []) {
-          if (!(t.email || "").trim()) continue; // 가상 교사 — 실명이 아니므로 치환 불요
-          const key = `${(t.email || "").toLowerCase()}|${t.name || ""}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          teachers.push({ email: t.email, name: t.name });
-        }
-      }
-    }
-  }
-
-  const term = await loadTimetableTerm(domain, meta.sourceTermId);
-  const { runDiagnose } = await import("./ai");
-  const result = await runDiagnose(
-    {
-      termLabel: term?.name || meta.sourceTermId,
-      draftLabel: meta.label,
-      teachers,
-      hard: report.hard.map((h) => ({
-        code: h.code,
-        text: h.text,
-        ...(h.registryGap ? { registryGap: true } : {}),
-        ...(h.hint ? { hint: h.hint } : {}),
-      })),
-      unplaced: (meta.unplaced || []).map((u) => ({ label: u.label, remaining: u.remaining })),
-      softTotal: report.soft.total,
-      registryStats,
-    },
-    (process.env.GEMINI_API_KEY || "").trim()
-  );
-  return { clean: false, result };
-}
 
 /**
  * E2 선호 정식화 — 활성 학기 그리드의 실교사(이메일 있는)만 로스터로 삼아 자연어를
@@ -7626,64 +7574,7 @@ async function buildAiGridSummary(
   };
 }
 
-/** E3 결과 설명 — 표시 전용 (spec §0 철칙: 어떤 저장도 하지 않는다) */
-export async function computeAiExplain(
-  domain: string,
-  draftId: string
-): Promise<import("./ai").AiExplainResult> {
-  const input = await buildAiGridSummary(domain, draftId);
-  const { runExplain } = await import("./ai");
-  return runExplain(input, (process.env.GEMINI_API_KEY || "").trim());
-}
 
-/**
- * 말로 묻는 해결사 — **질문 해석만** 한다 (timetable_ask_fix_spec §1 대원칙).
- *
- * 반환은 정형 목표 1건이 전부다. 교환 수(手)는 화면에서 fixFinder의 체인 탐색이 만들고
- * 검사기가 전수 채점한다 — 서버는 탐색도, 저장도 하지 않는다.
- * 읽기량: 초안 1건 + 등록부 5종 (ai_explain과 같은 경로, 추가 읽기 0건).
- */
-export async function computeAiAskFix(
-  domain: string,
-  draftId: string,
-  text: string
-): Promise<import("./ai").AiAskFixResult> {
-  const { meta, baseGrids, currentGrids } = await getDraft(domain, draftId);
-  const { model } = await loadDraftConstraintModel(domain, meta, baseGrids);
-  const report = validateTimetable(currentGrids, model);
-
-  // 가명 사전 원천 = 그리드의 **실교사**. 가상 교사(창체·SLAT 자리표시)는 사람이 아니라
-  // 가명화 대상이 아니고, 사전에 넣으면 AI가 활동명을 교사로 착각한다 (2026-08-12 실사용 신고).
-  const teachers: import("./ai").AiTeacherRef[] = [];
-  const seen = new Set<string>();
-  for (const grid of currentGrids) {
-    for (const cell of grid.cells) {
-      for (const lesson of cell.lessons) {
-        for (const t of lesson.teachers || []) {
-          const email = (t.email || "").trim().toLowerCase();
-          if (!email || seen.has(email)) continue;
-          seen.add(email);
-          teachers.push({ email, name: t.name });
-        }
-      }
-    }
-  }
-
-  const { runAskFix } = await import("./ai");
-  return runAskFix(
-    {
-      text,
-      teachers,
-      periodsPerDay: model.periodsPerDay,
-      classes: currentGrids.map((g) => ({ grade: g.grade, classNum: g.classNum })),
-      // key(이메일·학급키)는 프롬프트에 나가지 않는다 — AI는 색인(#N)으로만 지목한다
-      penalties: [...report.soft.details]
-        .sort((a, b) => b.points - a.points)
-        .map((d) => ({ code: d.code, key: d.key, day: d.day, text: d.text, points: d.points })),
-    },
-    (process.env.GEMINI_API_KEY || "").trim()
-  );
-}
 
 /** E4 정성 비평 — 표시 전용 (spec §0 철칙: 어떤 저장도 하지 않는다) */
 export async function computeAiCritique(

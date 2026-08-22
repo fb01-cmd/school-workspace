@@ -789,3 +789,14 @@
   - **W5 사실이나 작업기록이 아니다 — 「기보 카드」다(`:3929`).** 「관련 교시: 1-5반 월요일 1교시」 같은 **위치 텍스트 칩**이 남아 있다. 이건 **과제 U 미이행**이다 — U 지시서 1번이 *"미니 그리드 연쇄(touched 칸 하이라이트 — 텍스트 수순 표기 금지, 스펙 §0-1)"* 를 요구했는데 텍스트 목록만 만들어졌다.
 - **[⚠️ 내 검증 누락]** **과제 U 체크리스트에 「미니 그리드로 그렸는가」가 없었다.** 나는 「어떤 target을 넘기는지·두 적용 경로의 op 전송」만 물었다. 게다가 **사용자 스크린샷에 그 텍스트 칩이 그대로 찍혀 있었는데** 나는 카드가 「잘 작동한다」는 사용자 말에 묻어가 그 부분을 안 봤다. **스펙의 제1원칙(표가 계속 보여야 한다 / 텍스트 이동 표기 금지)이 걸린 항목은 과제마다 체크리스트에 상설로 넣어야 한다** — 이번에 작업기록(W)에는 넣어서 `HistoryMiniGrid`가 나왔고, 기보 카드(U)에는 안 넣어서 안 나왔다. 차이가 그것뿐이다.
 - **[판정]** 과제 W **합격 → 배포.** 기보 카드 미니 그리드는 별건으로 과제 X에 합류.
+
+## [2026-08-22] Antigravity — 과제 X(시간표 편성 화면 AI 3종 철거 + 기보 카드 미니 그리드 적용) 완결
+
+- **[사실 1 — AI 3종 철거 (X-1)]** 사용자 결정(*"물어보고 고치기 지워. 이 시간표 설명은 같이 지워. 셋 다 지워"*)에 따라 `DraftAutoTab.tsx`에서 AI 3종(원인 진단 `ai_diagnose`, 이 시간표 설명 `ai_explain`, 물어보고 고치기 `ai_ask_fix`)의 툴바 버튼, 상세 결과 카드, ask-fix 입력/진행/수순/적용 UI, 핸들러(`handleAiDiagnose`, `handleAiExplain`, `handleAskFix`, `handleApplyFixPlan`), 에러 배너 및 관련 상태 전수 제거. `grep -rn 'action: "ai_' src/components/admin/timetable/DraftAutoTab.tsx` 결과 **0건** 확인.
+- **[사실 2 — 백엔드 및 라이브러리 정리 (X-1)]**
+  - `src/app/api/timetable/manage/route.ts`: `case "ai_diagnose"`, `case "ai_explain"`, `case "ai_ask_fix"` 3개 케이스 및 미사용 import 제거.
+  - `src/lib/timetable/server.ts`: `computeAiDiagnosis`, `computeAiExplain`, `computeAiAskFix` 함수 제거.
+  - `src/lib/timetable/ai.ts`: `runDiagnose`, `runExplain`, `runAskFix` 및 관련 미사용 프롬프트/타입 정리. `TeacherSlotBanTab.tsx`가 쓰는 `ai_formalize` / `AiFormalizeResult`, `hwpxAssignment.ts`가 쓰는 `ExtractedAssignmentDept`, `fixFinder.ts` 등은 안전하게 보존.
+- **[사실 3 — 기보 카드 미니 그리드 시각화 적용 (X-2)]** `DraftAutoTab.tsx:3586-3620` 기보 카드 영역에서 기존 텍스트 칩(`관련 교시: 1-5반 월요일 1교시` 등)을 전수 제거하고, `line.touched` 셀들을 학급별(`grade-classNum`)로 묶어 `HistoryMiniGrid`로 시각화(`1학년 5반` 등 학급명 뱃지 + 5x7 미니 그리드 번호 칩 표기). 요일/교시 텍스트 문장/칩 노출 0건 확인(스펙 제1원칙 텍스트 이동 표기 금지 준수).
+- **[규약 준수]** `project_notes.md`는 기존 내용 삭제 없이 하단에만 추가(append-only).
+- **[검증]** `tsc` 0건 · `build` (49/49) 통과 · `check:ui` 20/20 통과 · `check_ui_removals.sh 40ce5abf5951784e82b7f94a1769e2b7ee83c044` 검증 결과 전수 AI 3종 및 좌표 텍스트 칩 제거와 정확히 일치 · selftest 5종(`ai_selftest`, `movecand_selftest`(15), `m2ops_selftest`(15), `lookahead_selftest`(27), `unplaced_selftest`(24)) 100% 통과.

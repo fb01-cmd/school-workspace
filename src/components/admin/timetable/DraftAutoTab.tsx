@@ -37,13 +37,6 @@ import {
 } from "@/lib/timetable/moveCandidates";
 import type { BlankCompileIssue } from "@/lib/timetable/solver";
 import { solveTimetableInWorker, SolverDone, SolverRun } from "@/lib/timetable/solverClient";
-import {
-  findFixCandidates,
-  FixCandidate,
-  findFixPlanAsync,
-  type FixPlan,
-  type AskFixProgress,
-} from "@/lib/timetable/fixFinder";
 import { resolveUnplacedTarget } from "@/lib/timetable/unplaced";
 import {
   searchLookaheadLines,
@@ -51,12 +44,6 @@ import {
   type LookaheadResult,
   type LookaheadTarget,
 } from "@/lib/timetable/lookahead";
-import {
-  ASK_FIX_EXAMPLES,
-  type AiDiagnoseResult,
-  type AiExplainResult,
-  type AiAskFixResult,
-} from "@/lib/timetable/ai";
 import {
   checkPlaceholderOp,
   deriveGradeDayPeriods,
@@ -323,33 +310,6 @@ export default function DraftAutoTab({
 
   // 작업기록 모달 상태
   const [showOpsHistory, setShowOpsHistory] = useState(false);
-
-  // ── AI 불능 진단 상태 (E-1b) ──
-  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null); // null=미확인, false=키없음
-  const [aiDiagnosis, setAiDiagnosis] = useState<AiDiagnoseResult | null>(null);
-  const [aiDiagnosing, setAiDiagnosing] = useState(false);
-  const [aiDiagError, setAiDiagError] = useState<string | null>(null);
-  const [aiCardOpen, setAiCardOpen] = useState(false);
-
-  // ── AI 결과 설명 상태 (E-3) ──
-  const [aiExplain, setAiExplain] = useState<AiExplainResult | null>(null);
-  const [aiExplaining, setAiExplaining] = useState(false);
-  const [aiExplainError, setAiExplainError] = useState<string | null>(null);
-  const [aiExplainCardOpen, setAiExplainCardOpen] = useState(false);
-
-  // ── 물어보고 고치기 상태 (ask-fix) ──
-  const [askFixCardOpen, setAskFixCardOpen] = useState(false);
-  const [askFixText, setAskFixText] = useState("");
-  const [askFixInterpreting, setAskFixInterpreting] = useState(false);
-  const [findingPlan, setFindingPlan] = useState(false);
-  const [askFixProgress, setAskFixProgress] = useState<AskFixProgress | null>(null);
-  const [askFixResult, setAskFixResult] = useState<AiAskFixResult | null>(null);
-  const [askFixPlan, setAskFixPlan] = useState<FixPlan | null>(null);
-  const [askFixError, setAskFixError] = useState<string | null>(null);
-  const [applyingPlan, setApplyingPlan] = useState(false);
-  const [appliedStepIndex, setAppliedStepIndex] = useState(0);
-  const [applyPlanError, setApplyPlanError] = useState<string | null>(null);
-  const [applyPlanSuccessMsg, setApplyPlanSuccessMsg] = useState<string | null>(null);
 
   // ── 수읽기 엔진 (Lookahead L1) 상태 — timetable_lookahead_spec §3·§4 ──
   /** 현재 [해결안 찾기]가 열려 있는 감점 항목 */
@@ -874,27 +834,9 @@ export default function DraftAutoTab({
     return result;
   }, [openDraft?.baseGrids, openDraft?.meta?.ops, openDraft?.meta?.opCursor]);
 
-  // 초안 전환·닫기 시 AI 및 직접 조정 상태 초기화
+  // 초안 전환·닫기 시 직접 조정 상태 초기화
   const openDraftId = openDraft?.meta.id;
   useEffect(() => {
-    setAiDiagnosis(null);
-    setAiDiagError(null);
-    setAiCardOpen(false);
-    setAiExplain(null);
-    setAiExplainError(null);
-    setAiExplainCardOpen(false);
-    setAskFixText("");
-    setAskFixInterpreting(false);
-    setFindingPlan(false);
-    setAskFixProgress(null);
-    setAskFixResult(null);
-    setAskFixPlan(null);
-    setAskFixError(null);
-    setApplyingPlan(false);
-    setAppliedStepIndex(0);
-    setApplyPlanError(null);
-    setApplyPlanSuccessMsg(null);
-    setAskFixCardOpen(false);
     setManualMode(false);
     setManualStartScore(null);
     setPickedSlot(null);
@@ -1323,196 +1265,6 @@ export default function DraftAutoTab({
       alert(`다시 실행 오류: ${err.message}`);
     } finally {
       setLoadingDraft(false);
-    }
-  };
-
-  // 세 AI 기능이 에러 배너 하나를 공유하는데 각자 자기 오류만 지우면, 한 기능에서 난 오류가
-  // 다른 기능이 성공한 뒤에도 배너에 남아 "경고가 계속 뜬다"로 보인다 (2026-08-12 실사용 신고).
-  // 어떤 AI 동작이든 시작할 때 세 오류를 함께 지운다.
-  const clearAiErrors = () => {
-    setAiDiagError(null);
-    setAiExplainError(null);
-    setAskFixError(null);
-    setApplyPlanError(null);
-  };
-
-  // ── AI 불능 진단 호출 (E-1b) ──
-  const handleAiDiagnose = async () => {
-    if (!openDraft) return;
-    setAiDiagnosing(true);
-    clearAiErrors();
-    setAiDiagnosis(null);
-    setAiCardOpen(false);
-    try {
-      const res = await fetch("/api/timetable/manage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "ai_diagnose", draftId: openDraft.meta.id }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "AI 진단 중 오류가 발생했습니다.");
-      if (data.enabled === false) {
-        setAiEnabled(false);
-        return;
-      }
-      setAiEnabled(true);
-      setAiDiagnosis(data.result ?? null);
-      setAiCardOpen(true);
-    } catch (err: any) {
-      setAiDiagError(err.message);
-    } finally {
-      setAiDiagnosing(false);
-    }
-  };
-
-  // ── AI 결과 설명 호출 (E-3) ──
-  const handleAiExplain = async () => {
-    if (!openDraft) return;
-    setAiExplaining(true);
-    clearAiErrors();
-    setAiExplain(null);
-    setAiExplainCardOpen(false);
-    try {
-      const res = await fetch("/api/timetable/manage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "ai_explain", draftId: openDraft.meta.id }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "AI 설명 생성 중 오류가 발생했습니다.");
-      if (data.enabled === false) {
-        setAiEnabled(false);
-        return;
-      }
-      setAiEnabled(true);
-      setAiExplain(data.result ?? null);
-      setAiExplainCardOpen(true);
-    } catch (err: any) {
-      setAiExplainError(err.message);
-    } finally {
-      setAiExplaining(false);
-    }
-  };
-
-  // ── 물어보고 고치기 호출 (ask-fix) ──
-  const handleAskFix = async (customText?: string) => {
-    if (!openDraft) return;
-    const textToAsk = (customText ?? askFixText).trim();
-    if (!textToAsk) return;
-
-    setAskFixText(textToAsk);
-    setAskFixInterpreting(true);
-    clearAiErrors();
-    setAskFixResult(null);
-    setAskFixPlan(null);
-    setAskFixProgress(null);
-    setApplyPlanSuccessMsg(null);
-
-    try {
-      // 1. 질문 해석 (서버 1회 호출)
-      const res = await fetch("/api/timetable/manage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "ai_ask_fix",
-          draftId: openDraft.meta.id,
-          aiText: textToAsk,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || "질문 해석 중 오류가 발생했습니다.");
-      }
-      if (data.enabled === false) {
-        setAiEnabled(false);
-        return;
-      }
-      setAiEnabled(true);
-
-      const result: AiAskFixResult = data.result;
-      setAskFixResult(result);
-
-      // 2. 수순 탐색 (화면에서 비동기 계산 — 서버 호출 없음)
-      if (result.goal) {
-        setFindingPlan(true);
-        const { baseGrids, meta, model, currentGrids } = openDraft;
-        const plan = await findFixPlanAsync(
-          {
-            baseGrids,
-            ops: meta.ops.slice(0, meta.opCursor),
-            currentGrids,
-            model,
-            goal: result.goal,
-          },
-          (p) => setAskFixProgress(p)
-        );
-        setAskFixPlan(plan);
-      }
-    } catch (err: any) {
-      setAskFixError(err.message || String(err));
-    } finally {
-      setAskFixInterpreting(false);
-      setFindingPlan(false);
-    }
-  };
-
-  // ── 물어보고 고치기 수순 전체 순차 적용 ──
-  const handleApplyFixPlan = async () => {
-    if (!openDraft || !askFixPlan || askFixPlan.steps.length === 0 || savingOp || applyingPlan) return;
-    setSavingOp(true);
-    setApplyingPlan(true);
-    setApplyPlanError(null);
-    setApplyPlanSuccessMsg(null);
-
-    let currentOpenDraft = openDraft;
-    let appliedCount = 0;
-
-    try {
-      for (let i = 0; i < askFixPlan.steps.length; i++) {
-        const step = askFixPlan.steps[i];
-        const res = await fetch("/api/timetable/manage", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "draft_op",
-            draftId: currentOpenDraft.meta.id,
-            draftOp: step.op,
-            // 동시 편집 선행조건 — 단계 i는 시작 커서+i를 기준으로 만든 op다
-            expectedOpCursor: currentOpenDraft.meta.opCursor + i,
-          }),
-        });
-
-        const data = await res.json();
-        if (!res.ok || data.error) {
-          throw new Error(
-            `${i + 1}단계 적용 중 오류 발생: ${data.error || "적용에 실패했습니다."}`
-          );
-        }
-
-        currentOpenDraft = {
-          meta: data.meta,
-          baseGrids: data.baseGrids,
-          currentGrids: data.currentGrids,
-          report: data.report,
-          model: currentOpenDraft.model,
-        };
-        setOpenDraft(currentOpenDraft);
-        appliedCount = i + 1;
-        setAppliedStepIndex(appliedCount);
-      }
-
-      setApplyPlanSuccessMsg(
-        `총 ${appliedCount}단계의 변경이 모두 적용되었습니다. 상단 [↩ 실행취소] 버튼으로 한 수씩 되돌릴 수 있습니다.`
-      );
-      setAskFixPlan(null);
-    } catch (err: any) {
-      setApplyPlanError(
-        `${appliedCount > 0 ? `${appliedCount}단계까지 적용된 후 ` : ""}${err.message || String(err)}`
-      );
-    } finally {
-      setApplyingPlan(false);
-      setSavingOp(false);
     }
   };
 
@@ -3377,84 +3129,6 @@ export default function DraftAutoTab({
               <span className="text-xs">{showSoftDetails ? "▲" : "▼"}</span>
             </button>
 
-            {/* AI 원인 진단 버튼 — 하드 > 0 이고 키 설정 시에만 노출 (E-1b) */}
-            {report.hard.length > 0 && aiEnabled !== false && (
-              <button
-                onClick={handleAiDiagnose}
-                disabled={aiDiagnosing}
-                className="px-3 py-1 bg-violet-50 hover:bg-violet-100 disabled:opacity-60 text-violet-800 font-bold rounded-lg text-xs border border-violet-300 transition-all flex items-center gap-1.5"
-                title="AI가 중대 문제 원인을 분석합니다 (참고용)"
-              >
-                {aiDiagnosing ? (
-                  <>
-                    <span className="animate-spin rounded-full h-3 w-3 border-2 border-violet-600 border-t-transparent" />
-                    <span>분석 중...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>🔍</span>
-                    <span>원인 진단 (AI 도움)</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* E-3 결과 설명 버튼 — 키 설정 시에만 노출 */}
-            {aiEnabled !== false && (
-              <button
-                onClick={handleAiExplain}
-                disabled={aiExplaining || askFixInterpreting || findingPlan}
-                className="px-3 py-1 bg-sky-50 hover:bg-sky-100 disabled:opacity-60 text-sky-800 font-bold rounded-lg text-xs border border-sky-300 transition-all flex items-center gap-1.5"
-                title="이 시간표가 어떻게 배치됐는지 설명합니다 (참고용)"
-              >
-                {aiExplaining ? (
-                  <>
-                    <span className="animate-spin rounded-full h-3 w-3 border-2 border-sky-600 border-t-transparent" />
-                    <span>설명 생성 중...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>💬</span>
-                    <span>이 시간표 설명 (AI 도움)</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* 물어보고 고치기 버튼 — 키 설정 시에만 노출 */}
-            {aiEnabled !== false && (
-              <button
-                onClick={() => setAskFixCardOpen((o) => !o)}
-                disabled={askFixInterpreting || findingPlan || aiExplaining || aiDiagnosing}
-                className="px-3 py-1 bg-purple-50 hover:bg-purple-100 disabled:opacity-60 text-purple-800 font-bold rounded-lg text-xs border border-purple-300 transition-all flex items-center gap-1.5"
-                title="시간표에서 해결하고 싶은 문제를 말로 질문하고 맞교환 수순을 찾습니다 (참고용)"
-              >
-                {askFixInterpreting ? (
-                  <>
-                    <span className="animate-spin rounded-full h-3 w-3 border-2 border-purple-600 border-t-transparent" />
-                    <span>질문 해석 중...</span>
-                  </>
-                ) : findingPlan ? (
-                  <>
-                    <span className="animate-spin rounded-full h-3 w-3 border-2 border-purple-600 border-t-transparent" />
-                    <span>방법 찾는 중...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>💡</span>
-                    <span>물어보고 고치기 (AI 도움)</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* 버튼이 조용히 사라지면 고장으로 오해한다 — 사라진 자리에 이유를 한 줄 남긴다 */}
-            {aiEnabled === false && (
-              <span className="text-[11px] text-gray-500 font-medium">
-                AI 도움 기능이 아직 설정되지 않아 사용할 수 없습니다.
-              </span>
-            )}
-
             <div className="h-4 w-px bg-gray-200 mx-1" />
 
             {/* Undo / Redo / 작업기록 */}
@@ -3590,13 +3264,7 @@ export default function DraftAutoTab({
           </div>
         )}
 
-        {/* AI 에러 배너 (E-1b / E-3 / ask-fix 공용) */}
-        {(aiDiagError || aiExplainError || askFixError) && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-800 font-semibold flex items-start gap-2">
-            <span>⚠️</span>
-            <span>{aiDiagError || aiExplainError || askFixError}</span>
-          </div>
-        )}
+
 
         {/* F-1 중대 문제 상세 패널 (E-1b AI 진단 카드와 동일 접이식 디자인) */}
         {showHardDetails && openDraft && (
@@ -3918,17 +3586,52 @@ export default function DraftAutoTab({
 
                                               {/* 상세 정보 컨테이너 */}
                                               <div className="bg-gray-50 rounded-md p-2.5 space-y-2 border border-gray-100">
-                                                {/* 관련 교시 */}
-                                                <div className="flex items-center gap-1.5 flex-wrap">
-                                                  <span className="text-[11px] font-bold text-gray-500">관련 교시:</span>
-                                                  {line.touched.map((t, ti) => (
-                                                    <span
-                                                      key={ti}
-                                                      className="px-1.5 py-0.5 rounded bg-white border border-gray-200 text-gray-800 text-[11px] font-mono font-bold"
-                                                    >
-                                                      {t.grade}-{t.classNum}반 {DAYS[t.day - 1]}요일 {t.period}교시
-                                                    </span>
-                                                  ))}
+                                                {/* 변경 위치 (미니 그리드) */}
+                                                <div className="flex items-center gap-3 flex-wrap">
+                                                  {(() => {
+                                                    const byClass = new Map<
+                                                      string,
+                                                      {
+                                                        grade: number;
+                                                        classNum: number;
+                                                        cells: Array<{
+                                                          day: number;
+                                                          period: number;
+                                                          label?: string;
+                                                          color?: string;
+                                                        }>;
+                                                      }
+                                                    >();
+                                                    line.touched.forEach((t, ti) => {
+                                                      const key = `${t.grade}-${t.classNum}`;
+                                                      let entry = byClass.get(key);
+                                                      if (!entry) {
+                                                        entry = { grade: t.grade, classNum: t.classNum, cells: [] };
+                                                        byClass.set(key, entry);
+                                                      }
+                                                      entry.cells.push({
+                                                        day: t.day,
+                                                        period: t.period,
+                                                        label: String(ti + 1),
+                                                        color: "bg-indigo-600 text-white",
+                                                      });
+                                                    });
+
+                                                    return Array.from(byClass.values()).map((cls, ci) => (
+                                                      <div
+                                                        key={ci}
+                                                        className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border border-gray-200"
+                                                      >
+                                                        <span className="text-[11px] font-bold text-gray-700 shrink-0">
+                                                          {cls.grade}학년 {cls.classNum}반
+                                                        </span>
+                                                        <HistoryMiniGrid
+                                                          highlightCells={cls.cells}
+                                                          periods={periodsPerDay}
+                                                        />
+                                                      </div>
+                                                    ));
+                                                  })()}
                                                 </div>
 
                                                 {/* 총점 변화 추이 (1수 및 다수 기보 공통) */}
@@ -4015,480 +3718,7 @@ export default function DraftAutoTab({
           </div>
         )}
 
-        {/* AI 진단 카드 (E-1b) — 접이식, 결과 있을 때만 */}
-        {aiDiagnosis && (
-          <div className="rounded-xl border border-violet-200 bg-violet-50/60 overflow-hidden">
-            <button
-              onClick={() => setAiCardOpen((o) => !o)}
-              className="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-violet-100/60 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-base">🔍</span>
-                <span className="text-xs font-bold text-violet-900">원인 진단 결과</span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-200 text-violet-800 font-bold border border-violet-300">
-                  AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
-                </span>
-              </div>
-              <span className="text-violet-500 text-xs font-bold">
-                {aiCardOpen ? "▲ 접기" : "▼ 펼치기"}
-              </span>
-            </button>
-            {aiCardOpen && (
-              <div className="px-5 pb-5 space-y-4">
-                <div className="bg-white rounded-xl border border-violet-100 p-4 text-xs text-gray-800 leading-relaxed font-medium">
-                  <p className="font-bold text-violet-900 mb-2 text-[11px] uppercase tracking-wide">진단 요약</p>
-                  <p>{aiDiagnosis.diagnosis}</p>
-                </div>
-                {aiDiagnosis.suggestions.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="font-bold text-violet-900 text-[11px] uppercase tracking-wide">완화 제안</p>
-                    <ul className="space-y-2">
-                      {aiDiagnosis.suggestions.map((s, i) => (
-                        <li
-                          key={i}
-                          className="flex items-start gap-2.5 bg-white rounded-lg border border-violet-100 px-3.5 py-2.5 text-xs text-gray-800 font-medium"
-                        >
-                          <span className="shrink-0 w-5 h-5 rounded-full bg-violet-600 text-white text-xs font-extrabold flex items-center justify-center mt-0.5">
-                            {i + 1}
-                          </span>
-                          <span>{s}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <p className="text-[11px] text-violet-700 font-semibold text-center pt-1">
-                  ⚠️ AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
-                </p>
-              </div>
-            )}
-          </div>
-        )}
 
-        {/* AI 결과 설명 카드 (E-3) — 접이식, 결과 있을 때만 */}
-        {aiExplain && (
-          <div className="rounded-xl border border-sky-200 bg-sky-50/60 overflow-hidden">
-            <button
-              onClick={() => setAiExplainCardOpen((o) => !o)}
-              className="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-sky-100/60 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-base">💬</span>
-                <span className="text-xs font-bold text-sky-900">이 시간표 설명</span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-200 text-sky-800 font-bold border border-sky-300">
-                  AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
-                </span>
-              </div>
-              <span className="text-sky-500 text-xs font-bold">
-                {aiExplainCardOpen ? "▲ 접기" : "▼ 펼치기"}
-              </span>
-            </button>
-            {aiExplainCardOpen && (
-              <div className="px-5 pb-5 space-y-4">
-                <div className="bg-white rounded-xl border border-sky-100 p-4 text-xs text-gray-800 leading-relaxed font-medium whitespace-pre-line">
-                  {aiExplain.explanation}
-                </div>
-                <p className="text-[11px] text-sky-700 font-semibold text-center pt-1">
-                  ⚠️ AI가 작성한 참고 의견입니다 — 반영 전 직접 확인하세요
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 물어보고 고치기 카드 (ask-fix) — 접이식 */}
-        {askFixCardOpen && (
-          <div className="rounded-xl border border-purple-200 bg-purple-50/50 overflow-hidden shadow-xs">
-            <div className="px-5 py-3 flex items-center justify-between bg-purple-100/70 border-b border-purple-200">
-              <div className="flex items-center gap-2">
-                <span className="text-base">💡</span>
-                <span className="text-xs font-bold text-purple-950">물어보고 고치기</span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-200 text-purple-900 font-bold border border-purple-300">
-                  AI 질문 해석 + 자동 계산
-                </span>
-              </div>
-              <button
-                onClick={() => setAskFixCardOpen(false)}
-                className="text-purple-700 hover:text-purple-950 text-xs font-bold px-2 py-1 rounded hover:bg-purple-200/60 transition-colors"
-              >
-                ✕ 닫기
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4">
-              {/* 1. 질문 입력 영역 */}
-              <div className="space-y-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                  <label className="text-sm font-bold text-gray-800">
-                    시간표에서 해결하고 싶은 문제를 말로 질문해 보세요:
-                  </label>
-                  <span className="text-[11px] text-gray-500">
-                    교사명·학급·과목·교시를 지정할 수 있습니다
-                  </span>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="text"
-                    value={askFixText}
-                    onChange={(e) => setAskFixText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !askFixInterpreting && !findingPlan && askFixText.trim()) {
-                        handleAskFix();
-                      }
-                    }}
-                    placeholder="예: 이경호 선생님 1교시가 5일 연속인데 해결할 방법은?"
-                    className="flex-1 px-3.5 py-2 bg-white border border-purple-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 font-medium"
-                    disabled={askFixInterpreting || findingPlan || applyingPlan}
-                  />
-                  <button
-                    onClick={() => handleAskFix()}
-                    disabled={askFixInterpreting || findingPlan || applyingPlan || !askFixText.trim()}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-sm rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 shrink-0"
-                  >
-                    {askFixInterpreting ? (
-                      <>
-                        <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
-                        <span>해석 중...</span>
-                      </>
-                    ) : findingPlan ? (
-                      <>
-                        <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
-                        <span>방법 찾는 중...</span>
-                      </>
-                    ) : (
-                      <span>해결 방법 찾기</span>
-                    )}
-                  </button>
-                </div>
-
-                {/* 질문 예시 칩 */}
-                <div className="pt-1 flex flex-wrap items-center gap-1.5 text-xs">
-                  <span className="text-[11px] text-gray-500 font-semibold">예시:</span>
-                  {ASK_FIX_EXAMPLES.map((ex, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => {
-                        setAskFixText(ex);
-                        handleAskFix(ex);
-                      }}
-                      disabled={askFixInterpreting || findingPlan || applyingPlan}
-                      className="px-2.5 py-1 bg-white hover:bg-purple-100/70 border border-purple-200 text-purple-900 rounded-md text-[11px] font-medium transition-colors text-left truncate max-w-full"
-                    >
-                      {ex}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 2. 진행 상태 및 메시지 표시 */}
-              {findingPlan && askFixProgress && (
-                <div className="bg-white border border-purple-200 rounded-xl p-4 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-purple-900">
-                    <span>여러 번 맞바꿔서 해결하는 방법을 찾는 중입니다...</span>
-                    <span>{askFixProgress.evaluated} / {askFixProgress.budget}회</span>
-                  </div>
-                  <div className="w-full bg-purple-100 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-purple-600 h-2 rounded-full transition-all duration-150"
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          Math.round((askFixProgress.evaluated / askFixProgress.budget) * 100)
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {applyPlanSuccessMsg && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm text-emerald-900 font-medium flex items-start gap-2">
-                  <span className="text-base">✅</span>
-                  <p>{applyPlanSuccessMsg}</p>
-                </div>
-              )}
-
-              {applyPlanError && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-900 font-medium flex items-start gap-2">
-                  <span className="text-base">⚠️</span>
-                  <p>{applyPlanError}</p>
-                </div>
-              )}
-
-              {/* 3. 해석 불가 (result.goal === null) 시 안내 */}
-              {askFixResult && !askFixResult.goal && !findingPlan && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-                  <div className="flex items-start gap-2">
-                    <span className="text-base">ℹ️</span>
-                    <div>
-                      <p className="text-sm font-bold text-amber-950">
-                        질문을 명확한 목표로 해석하지 못했습니다.
-                      </p>
-                      <p className="text-xs text-amber-900 mt-0.5">
-                        {askFixResult.interpretation ||
-                          "등록된 교사명, 학급, 과목 또는 교시를 포함하여 다시 질문해 주세요."}
-                      </p>
-                    </div>
-                  </div>
-
-                  {askFixResult.warnings && askFixResult.warnings.length > 0 && (
-                    <ul className="text-xs text-amber-800 list-disc list-inside space-y-0.5 pl-1">
-                      {askFixResult.warnings.map((w, i) => (
-                        <li key={i}>{w}</li>
-                      ))}
-                    </ul>
-                  )}
-
-                  <div className="pt-1 border-t border-amber-200">
-                    <p className="text-[11px] font-bold text-amber-900 mb-1.5">
-                      이런 형식으로 질문해 보세요:
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {ASK_FIX_EXAMPLES.map((ex, i) => (
-                        <button
-                          key={i}
-                          onClick={() => {
-                            setAskFixText(ex);
-                            handleAskFix(ex);
-                          }}
-                          className="px-2.5 py-1 bg-white border border-amber-300 text-amber-950 rounded text-xs hover:bg-amber-100/60 font-medium text-left"
-                        >
-                          {ex}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 4. 탐색 계획 (FixPlan) 결과 표시 */}
-              {askFixPlan && !findingPlan && (
-                <div className="space-y-4">
-                  {/* 해석 확인 문장 + AI 참고의견 딱지 (문구 규칙 3) */}
-                  <div className="bg-white border border-purple-200 rounded-xl p-4 space-y-2">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-purple-100 pb-2">
-                      <div className="text-sm font-bold text-purple-950">
-                        <span>이렇게 이해했습니다: </span>
-                        <span className="text-purple-800">「{askFixPlan.goalText}」</span>
-                      </div>
-                      <span className="text-[11px] text-purple-700 font-semibold">
-                        ⚠️ AI가 질문을 해석한 결과입니다 — 아래 수순과 점수는 계산된 결과입니다
-                      </span>
-                    </div>
-
-                    {/* 해결 여부 및 점수 변화 요약 */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                      <div className="flex items-center gap-2">
-                        {askFixPlan.steps.length > 0 ? (
-                          askFixPlan.resolvesGoal ? (
-                            askFixPlan.finalSoftTotal > openDraft.report.soft.total ? (
-                              <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold text-xs border border-amber-300">
-                                ⚠ 해결 시 다른 감점이 더 커집니다 ({askFixPlan.steps.length}단계 맞교환)
-                              </span>
-                            ) : (
-                              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-300">
-                                ✅ 목표 해결 가능 ({askFixPlan.steps.length}단계 맞교환)
-                              </span>
-                            )
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold text-xs border border-amber-300">
-                              ⚠️ 부분 개선 (시작 {askFixPlan.initialRemaining} → 남은{" "}
-                              {askFixPlan.remaining}, {askFixPlan.steps.length}단계 맞교환)
-                            </span>
-                          )
-                        ) : null}
-                      </div>
-
-                      {openDraft && (
-                        <div className="flex items-center gap-2 text-xs font-bold text-gray-700 bg-gray-50 px-3 py-1 rounded-lg border border-gray-200">
-                          <span>감점 점수 변화:</span>
-                          <span className="text-gray-500 font-mono">
-                            {openDraft.report.soft.total}점
-                          </span>
-                          <span>→</span>
-                          <span className="font-mono text-purple-900 font-extrabold">
-                            {askFixPlan.finalSoftTotal}점
-                          </span>
-                          <span
-                            className={`text-[11px] font-mono ${
-                              askFixPlan.finalSoftTotal - openDraft.report.soft.total <= 0
-                                ? "text-emerald-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            (
-                            {askFixPlan.finalSoftTotal - openDraft.report.soft.total > 0
-                              ? "+"
-                              : ""}
-                            {(
-                              askFixPlan.finalSoftTotal - openDraft.report.soft.total
-                            ).toFixed(1)}
-                            점)
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 미해결 출구 안내 문구 (문구 규칙 2) */}
-                    {!askFixPlan.resolvesGoal && (
-                      <div className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2.5 mt-2">
-                        {askFixPlan.budgetExhausted ? (
-                          <p>
-                            시간 안에 찾지 못했습니다. 조건을 조금 낮춰서(예: 3일 이하 → 4일
-                            이하) 다시 물어보시겠어요?
-                          </p>
-                        ) : (
-                          <p>
-                            세 번까지 바꿔 봐도 풀리지 않았습니다. 이 정도면 학급 전체 편성을
-                            조정해야 할 수 있습니다.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 수순이 있는 경우 (plan.steps.length > 0) */}
-                  {askFixPlan.steps.length > 0 ? (
-                    <div className="space-y-4">
-                      {/* 맞교환 수순 (steps[]) */}
-                      <div className="space-y-2">
-                        <div className="text-xs font-bold text-gray-800">
-                          바꿀 순서 (총 {askFixPlan.steps.length}단계):
-                        </div>
-                        <div className="space-y-2">
-                          {askFixPlan.steps.map((step, idx) => (
-                            <div
-                              key={idx}
-                              className="bg-white border border-purple-100 rounded-lg p-3 space-y-1.5 text-xs shadow-2xs"
-                            >
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <div className="flex items-start gap-2">
-                                  <span className="shrink-0 w-5 h-5 rounded-full bg-purple-600 text-white text-xs font-extrabold flex items-center justify-center mt-0.5">
-                                    {idx + 1}
-                                  </span>
-                                  <span className="text-sm font-bold text-gray-900">
-                                    {step.desc}
-                                  </span>
-                                </div>
-                                <button
-                                  onClick={() => analyzeOpImpact(step.op, step.desc)}
-                                  className="px-2.5 py-1 bg-gray-100 hover:bg-purple-100 text-purple-900 font-bold rounded text-xs transition-colors self-end sm:self-auto shrink-0 border border-gray-200"
-                                >
-                                  미리보기
-                                </button>
-                              </div>
-
-                              {step.sideEffects && step.sideEffects.length > 0 && (
-                                <div className="pl-7 text-[11px] text-gray-600 space-y-0.5">
-                                  {step.sideEffects.map((se, seIdx) => (
-                                    <div key={seIdx} className="flex items-center gap-1">
-                                      <span className="text-purple-500">•</span>
-                                      <span>{se}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* [가장 중요] 새로 생기는 감점 전부 고지 (newPenalties[]) */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs font-bold">
-                          <span className="text-gray-800">
-                            추가로 발생하는 감점 요소 (전수 고지):
-                          </span>
-                          <span className="text-[11px] text-gray-500">
-                            총 {askFixPlan.newPenalties.length}건
-                          </span>
-                        </div>
-
-                        {askFixPlan.newPenalties.length === 0 ? (
-                          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-900 font-bold flex items-center gap-1.5">
-                            <span>✅</span>
-                            <span>새로 추가되는 감점 요소가 없습니다.</span>
-                          </div>
-                        ) : (
-                          <div className="bg-amber-50/70 border border-amber-200 rounded-lg p-3 space-y-2">
-                            <p className="text-[11px] text-amber-900 font-bold">
-                              ⚠️ 이 변경을 적용하면 아래의 새로운 감점이 발생합니다. 내용을
-                              확인하고 수락해 주세요:
-                            </p>
-                            <div className="space-y-1.5">
-                              {askFixPlan.newPenalties.map((pen, penIdx) => (
-                                <div
-                                  key={penIdx}
-                                  className="bg-white border border-amber-200 rounded px-3 py-1.5 text-xs flex items-center justify-between gap-2"
-                                >
-                                  <div className="flex items-center gap-1.5 text-gray-800">
-                                    <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[11px] font-bold">
-                                      {SOFT_CODE_LABELS[pen.code] || pen.code}
-                                    </span>
-                                    <span className="font-medium">{pen.text}</span>
-                                  </div>
-                                  <span className="font-mono text-[11px] font-bold text-amber-800 shrink-0">
-                                    +{pen.points}점
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 수락 및 적용 제어 버튼 */}
-                      <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-purple-200">
-                        <p className="text-[11px] text-gray-500 font-medium">
-                          💡 [모두 적용] 시 순서대로 반영되며, 상단 [↩ 실행취소]로 한 단계씩
-                          되돌릴 수 있습니다.
-                        </p>
-
-                        <div className="flex items-center gap-2 self-end sm:self-auto">
-                          <button
-                            onClick={() => {
-                              setAskFixPlan(null);
-                              setAskFixResult(null);
-                            }}
-                            disabled={applyingPlan || savingOp}
-                            className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 font-bold rounded-lg text-sm transition-colors"
-                          >
-                            다시 질문하기
-                          </button>
-                          <button
-                            onClick={handleApplyFixPlan}
-                            disabled={applyingPlan || savingOp}
-                            className="px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold rounded-lg text-sm shadow-xs transition-colors flex items-center gap-1.5"
-                          >
-                            {applyingPlan ? (
-                              <>
-                                <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
-                                <span>
-                                  적용 중 ({appliedStepIndex}/{askFixPlan.steps.length})...
-                                </span>
-                              </>
-                            ) : (
-                              <span>모두 적용 ({askFixPlan.steps.length}단계)</span>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    /* 수순이 0건인 경우 */
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center text-xs text-gray-600 font-medium">
-                      {askFixPlan.resolvesGoal
-                        ? "이미 목표가 충족되어 있어 시간표를 변경할 필요가 없습니다."
-                        : "가능한 교환 수순을 찾지 못했습니다."}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* 미배정 배정 알림 팁 */}
         {selectedUnplaced && (
