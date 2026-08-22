@@ -753,3 +753,15 @@
   - **내 검증의 구멍**: 완료 확인에 *"후보 판정이 `evaluateMoveCandidates`를 쓰는지(자체 구현 0)"* 를 넣었고 그건 통과였다. 그러나 **「그 함수를 부르는가」와 「그 함수가 유효한 입력을 받는가」는 다른 질문**이다. 나는 앞엣것만 물었다.
   - 오늘 같은 계열의 실패가 이번이 **두 번째**다 — 「시간표 추가」도 `grep 'hidden lg:' = 0`으로 통과시켰는데 증상은 그대로였다. **「연결됐는가」가 아니라 「작동하는가」를 물어야 한다.**
 - **[처방]** 과제 BB-2로 인계. 초안 화면의 model 완성 6줄을 **그대로** 옮기게 하고, 완료 확인에 **「집기 직후 `candidatesResult.candidates`가 비어 있지 않게 되는 근거」**를 넣었다 — 호출 여부가 아니라 **결과가 비지 않는다**를 묻는 형태다.
+
+## [2026-08-23] Antigravity — 과제 BB-2(개정 화면 제약 모델 fullModel 보강 및 이동 복구) 완결
+
+- **[사실 1 — fullModel 구성으로 gradeDayPeriods 및 hours 보강 (BB-2)]**
+  - `BaseRevisionTab.tsx:14-17·148-159`: `deriveGradeDayPeriods(rawBaseGrids)`와 `deriveHoursFromGrids(rawBaseGrids)`를 호출하여 서버가 내려준 `rawModel`에 `gradeDayPeriods`와 `hours`를 채운 `fullModel`을 구성하여 `setModel(fullModel)`로 저장 (`DraftAutoTab.tsx:1144-1150` 규격과 100% 동일).
+- **[사실 2 — 집기 직후 candidatesResult.candidates가 비어 있지 않게 되는 근거 (BB-2)]**
+  - `evaluateMoveCandidates({ grids, model, pick })` 내부(`moveCandidates.ts:38-42`)에서 `model.gradeDayPeriods?.[pick.grade]`로 요일별 교시 수를 조회하여 후보 슬롯을 생성함.
+  - 종전에는 `model.gradeDayPeriods`가 undefined여서 `dayPeriods`가 `{}`가 되어 후보 슬롯이 0개였으나, `fullModel.gradeDayPeriods`가 주입됨으로써 1~5일 x 학년별 교시 수만큼 후보 슬롯(candidates)이 정상 생성되어 3색 신호등(`ok`/`worse`/`blocked`) 표출 및 목적지 클릭 이동 op 누적이 정상 작동함.
+- **[사실 3 — 중대 문제 시수 부족(H1) 및 검사기 판정 정확도 (BB-2)]**
+  - `validateTimetable(currentGrids, model)`이 `fullModel.hours`를 전달받아 시수 부족(H1) 위반을 빠짐없이 채점하므로, 상단 배너의 「중대 문제 N건 · 감점 N점」이 초안 화면과 동일한 기준으로 정확하게 산출됨.
+- **[규약 준수]** `project_notes.md`는 기존 내용 삭제 없이 하단에만 추가(append-only).
+- **[검증]** `tsc` 0건 · `build` (49/49) 통과 · `check:ui` 20/20 통과 · `check_ui_removals.sh 56d58c1` 0건 삭제 확인 · selftest 4종(`lookahead`(31), `movecand`(15), `m2ops`(15), `unplaced`(24)) 100% 통과.

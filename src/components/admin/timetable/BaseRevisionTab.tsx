@@ -11,7 +11,11 @@ import {
 } from "@/lib/timetable/types";
 import { useAvailableClasses } from "./useAvailableClasses";
 import { applyRevisionOps, cloneClassGrids } from "@/lib/timetable/utils";
-import { validateTimetable } from "@/lib/timetable/validate";
+import {
+  deriveGradeDayPeriods,
+  deriveHoursFromGrids,
+  validateTimetable,
+} from "@/lib/timetable/validate";
 import { evaluateMoveCandidates, MoveCandidatesResult } from "@/lib/timetable/moveCandidates";
 import { SOFT_CODE_LABELS } from "@/lib/timetable/labels";
 
@@ -141,8 +145,18 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
 
       if (res.ok) {
         const data = await res.json();
-        setBaseGrids(data.baseGrids || []);
-        setModel(data.model || null);
+        const rawBaseGrids: ClassGrid[] = data.baseGrids || [];
+        const rawModel: TimetableConstraintModel | null = data.model || null;
+        if (rawModel && rawBaseGrids.length > 0) {
+          const gradeDayPeriods = deriveGradeDayPeriods(rawBaseGrids);
+          const hours = deriveHoursFromGrids(rawBaseGrids);
+          const fullModel: TimetableConstraintModel = { ...rawModel, gradeDayPeriods, hours };
+          setBaseGrids(rawBaseGrids);
+          setModel(fullModel);
+        } else {
+          setBaseGrids(rawBaseGrids);
+          setModel(rawModel);
+        }
       } else {
         const errData = await res.json().catch(() => ({}));
         setError(errData.error || "기초시간표 및 제약 모델을 불러올 수 없습니다.");
