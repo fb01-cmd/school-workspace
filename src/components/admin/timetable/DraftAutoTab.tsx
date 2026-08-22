@@ -26,6 +26,8 @@ import {
   TermPenaltyDetail,
   HoursPlanSummary,
   SoftPenaltyCode,
+  ChainStep,
+  TrayEntry,
 } from "@/lib/timetable/types";
 import {
   evaluateMoveCandidates,
@@ -55,7 +57,7 @@ import {
   hardViolationKey,
   validateTimetable,
 } from "@/lib/timetable/validate";
-import { applyRevisionOps, cloneClassGrids } from "@/lib/timetable/utils";
+import { applyRevisionOps, cloneClassGrids, deriveTray } from "@/lib/timetable/utils";
 import { buildSimulMatcher } from "@/lib/timetable/simul";
 import { HARD_CODE_LABELS, SOFT_CODE_LABELS } from "@/lib/timetable/labels";
 import { getClientCache } from "@/lib/cache/clientCache";
@@ -318,10 +320,29 @@ export default function DraftAutoTab({
     message: string;
   } | null>(null);
 
-  // Esc 키 입력 시 집기 해제 (스펙 §2-3)
+  // ── 직접 조정 M2 상태 (연쇄·잠깐 빼두기 — 스펙 §2-4·§2-5) ──
+  const [chainSteps, setChainSteps] = useState<ChainStep[]>([]);
+  const [chainStartGrids, setChainStartGrids] = useState<ClassGrid[] | null>(null);
+  const [selectedParkedEntry, setSelectedParkedEntry] = useState<TrayEntry | null>(null);
+
+  // 트레이 (op 재생의 파생값)
+  const currentTray = useMemo(() => {
+    if (!openDraft) return [];
+    return deriveTray(openDraft.baseGrids, openDraft.meta.ops.slice(0, openDraft.meta.opCursor));
+  }, [openDraft]);
+
+  // Esc 키 입력 시 집기 해제 / 연쇄 취소 / 빼둔 수업 선택 해제 (스펙 §2-3·§2-4)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (selectedParkedEntry) {
+          setSelectedParkedEntry(null);
+        }
+        if (chainSteps.length > 0 && chainStartGrids) {
+          setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+          setChainSteps([]);
+          setChainStartGrids(null);
+        }
         if (pickedSlot) {
           setPickedSlot(null);
           setCandidatesResult(null);
@@ -331,7 +352,7 @@ export default function DraftAutoTab({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [pickedSlot]);
+  }, [pickedSlot, chainSteps, chainStartGrids, selectedParkedEntry]);
 
   // 감점 증가 사유 표시 문구 포맷팅 (노랑 후보 말풍선용)
   const formatWorseReasons = (worseByCode?: Partial<Record<SoftPenaltyCode, number>>): string => {
@@ -742,6 +763,10 @@ export default function DraftAutoTab({
       alert(`하드 제약 위반이 ${report.hard.length}건 남아 있어 기초시간표로 채택할 수 없습니다. 위반 사항을 먼저 해결해주세요.`);
       return;
     }
+    if (currentTray.length > 0) {
+      alert(`잠깐 빼둔 수업이 ${currentTray.length}건 남아 있어 기초시간표로 채택할 수 없습니다. 빼둔 수업을 먼저 시간표에 배치해주세요.`);
+      return;
+    }
 
     const confirmMsg = `현재 초안(${meta.label})을 '${activeTermId}' 학기의 정식 기초시간표로 채택하시겠습니까?\n\n※ 대상 학기의 기존 기초시간표 그리드가 이 초안의 결과로 전량 교체됩니다.`;
     if (!confirm(confirmMsg)) return;
@@ -1100,7 +1125,175 @@ export default function DraftAutoTab({
     setOpApiError(null);
   };
 
-  // ── 직접 조정 모드: 즉시 이동/맞교환 적용 (스펙 §2-3) ──
+  // ── 직접 조정 M2: 잠깐 빼두기 (park op — 스펙 §2-5) ──
+  const handleParkCell = async (grade: number, classNum: number, day: number, period: number) => {
+    if (!openDraft) return;
+    const grid = openDraft.currentGrids.find((g) => g.grade === grade && g.classNum === classNum);
+    const cell = grid?.cells?.find((c) => c.day === day && c.period === period);
+    const lesson = cell?.lessons?.[0];
+    if (!lesson) {
+      setBlockedBubble({ day, period, message: "빈 칸은 빼둘 수 없습니다." });
+      return;
+    }
+
+    const simulLabel = getSimulLabel(grade, classNum, day, period, lesson);
+    if (simulLabel) {
+      setBlockedBubble({
+        message: `🔒 동시수업('${simulLabel}')은 밴드 묶음 수업으로 개별 빼두기가 금지되어 있습니다.`,
+      });
+      return;
+    }
+
+    const placeholder = findPlaceholderLesson(openDraft.currentGrids, grade, classNum, day, period);
+    if (placeholder) {
+      setBlockedBubble({
+        message: "🔒 창체·SLAT 배치는 시간표 틀이므로 판에서 뺄 수 없습니다.",
+      });
+      return;
+    }
+
+    const parkId = `p_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    setSavingOp(true);
+    setBlockedBubble(null);
+
+    try {
+      let opToSend: BaseRevisionOp;
+      if (chainSteps.length > 0) {
+        // 연쇄 도중 트레이로 빼기 = 연쇄 종료 + park 수 합류 (스펙 §2-4)
+        const newStep: ChainStep = { kind: "park", parkId, grade, classNum, day, period };
+        opToSend = { type: "chain", steps: [...chainSteps, newStep] };
+      } else {
+        opToSend = { type: "park", parkId, grade, classNum, day, period };
+      }
+
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "draft_op",
+          draftId: openDraft.meta.id,
+          draftOp: opToSend,
+          expectedOpCursor: openDraft.meta.opCursor,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.status === 409 || data.error?.includes("다른 창") || data.error?.includes("opCursor")) {
+        setBlockedBubble({
+          message: "다른 창이 먼저 수정했습니다. 최신 초안을 다시 불러옵니다.",
+        });
+        await handleOpen(openDraft.meta);
+        return;
+      }
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "빼두기 적용에 실패했습니다.");
+      }
+
+      setOpenDraft({
+        meta: data.meta,
+        baseGrids: data.baseGrids,
+        currentGrids: data.currentGrids,
+        model: openDraft.model,
+        report: data.report,
+      });
+
+      setPickedSlot(null);
+      setCandidatesResult(null);
+      setChainSteps([]);
+      setChainStartGrids(null);
+      setSelectedParkedEntry(null);
+      setBlockedBubble(null);
+    } catch (err: any) {
+      if (chainStartGrids) {
+        setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+        setChainSteps([]);
+        setChainStartGrids(null);
+      }
+      setBlockedBubble({ message: `빼두기 실패: ${err.message || String(err)}` });
+    } finally {
+      setSavingOp(false);
+    }
+  };
+
+  // ── 직접 조정 M2: 빼둔 수업 복귀 (unpark op — 스펙 §2-5) ──
+  const handleUnparkCell = async (entry: TrayEntry, targetDay: number, targetPeriod: number) => {
+    if (!openDraft) return;
+    const grid = openDraft.currentGrids.find((g) => g.grade === entry.grade && g.classNum === entry.classNum);
+    const cell = grid?.cells?.find((c) => c.day === targetDay && c.period === targetPeriod);
+    if (cell && cell.lessons.length > 0) {
+      setBlockedBubble({
+        day: targetDay,
+        period: targetPeriod,
+        message: "비어 있는 칸에만 되돌릴 수 있습니다. 먼저 그 칸을 비우거나 다른 빈 칸을 선택하세요.",
+      });
+      return;
+    }
+
+    setSavingOp(true);
+    setBlockedBubble(null);
+    try {
+      const opToSend: BaseRevisionOp = {
+        type: "unpark",
+        parkId: entry.parkId,
+        grade: entry.grade,
+        classNum: entry.classNum,
+        day: targetDay,
+        period: targetPeriod,
+      };
+
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "draft_op",
+          draftId: openDraft.meta.id,
+          draftOp: opToSend,
+          expectedOpCursor: openDraft.meta.opCursor,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.status === 409 || data.error?.includes("다른 창") || data.error?.includes("opCursor")) {
+        setBlockedBubble({
+          message: "다른 창이 먼저 수정했습니다. 최신 초안을 다시 불러옵니다.",
+        });
+        await handleOpen(openDraft.meta);
+        return;
+      }
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "수업 되돌리기에 실패했습니다.");
+      }
+
+      setOpenDraft({
+        meta: data.meta,
+        baseGrids: data.baseGrids,
+        currentGrids: data.currentGrids,
+        model: openDraft.model,
+        report: data.report,
+      });
+
+      setSelectedParkedEntry(null);
+      setPickedSlot(null);
+      setCandidatesResult(null);
+      setBlockedBubble(null);
+    } catch (err: any) {
+      setBlockedBubble({ message: `되돌리기 실패: ${err.message || String(err)}` });
+    } finally {
+      setSavingOp(false);
+    }
+  };
+
+  const handleCellRightClick = (day: number, period: number) => {
+    if (!openDraft) return;
+    const grid = openDraft.currentGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
+    const cell = grid?.cells?.find((c) => c.day === day && c.period === period);
+    const lesson = cell?.lessons?.[0];
+    if (!lesson) return;
+
+    handleParkCell(viewGrade, viewClass, day, period);
+  };
+
+  // ── 직접 조정 모드: 즉시 이동 / 연쇄 적용 (스펙 §2-3·§2-4) ──
   const handleApplyDirectMove = async (
     grade: number,
     classNum: number,
@@ -1113,13 +1306,31 @@ export default function DraftAutoTab({
     setSavingOp(true);
     setBlockedBubble(null);
     try {
-      const op: BaseRevisionOp = {
-        type: "swap",
-        grade,
-        classNum,
-        a: { day: fromDay, period: fromPeriod },
-        b: { day: toDay, period: toPeriod },
-      };
+      let opToSend: BaseRevisionOp;
+
+      if (chainSteps.length > 0) {
+        // 연쇄의 마지막 이동 (빈 칸 안착)
+        const lastStep: ChainStep = {
+          kind: "swap",
+          grade,
+          classNum,
+          a: { day: fromDay, period: fromPeriod },
+          b: { day: toDay, period: toPeriod },
+        };
+        opToSend = {
+          type: "chain",
+          steps: [...chainSteps, lastStep],
+        };
+      } else {
+        // 단건 이동
+        opToSend = {
+          type: "swap",
+          grade,
+          classNum,
+          a: { day: fromDay, period: fromPeriod },
+          b: { day: toDay, period: toPeriod },
+        };
+      }
 
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
@@ -1127,7 +1338,7 @@ export default function DraftAutoTab({
         body: JSON.stringify({
           action: "draft_op",
           draftId: openDraft.meta.id,
-          draftOp: op,
+          draftOp: opToSend,
           expectedOpCursor: openDraft.meta.opCursor,
         }),
       });
@@ -1156,8 +1367,16 @@ export default function DraftAutoTab({
 
       setPickedSlot(null);
       setCandidatesResult(null);
+      setChainSteps([]);
+      setChainStartGrids(null);
+      setSelectedParkedEntry(null);
       setBlockedBubble(null);
     } catch (err: any) {
+      if (chainStartGrids) {
+        setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+        setChainSteps([]);
+        setChainStartGrids(null);
+      }
       setBlockedBubble({ message: `이동 실패: ${err.message || String(err)}` });
     } finally {
       setSavingOp(false);
@@ -1172,8 +1391,22 @@ export default function DraftAutoTab({
     const cell = grid?.cells?.find((c) => c.day === day && c.period === period);
     const lesson = cell?.lessons?.[0];
 
-    // ── 직접 조정 모드 (M1: 3색 및 즉시 이동) ──
+    // ── 직접 조정 모드 (M2: 연쇄 루미큐브 + 빼두기) ──
     if (manualMode) {
+      // 빼둔 수업 배치 모드인 경우
+      if (selectedParkedEntry) {
+        if (lesson) {
+          setBlockedBubble({
+            day,
+            period,
+            message: "비어 있는 칸에만 되돌릴 수 있습니다. 먼저 그 칸을 비우거나 다른 빈 칸을 선택하세요.",
+          });
+          return;
+        }
+        await handleUnparkCell(selectedParkedEntry, day, period);
+        return;
+      }
+
       if (!pickedSlot) {
         if (!lesson) {
           setBlockedBubble({ day, period, message: "빈 칸입니다 — 옮길 수업이 없습니다." });
@@ -1190,6 +1423,8 @@ export default function DraftAutoTab({
         }
         setPickedSlot({ grade: viewGrade, classNum: viewClass, day, period, lesson });
         setCandidatesResult(res);
+        setChainSteps([]);
+        setChainStartGrids(cloneClassGrids(currentGrids));
         setBlockedBubble(null);
         if (lesson.teachers?.[0]?.email) {
           setSelectedTeacherEmail(lesson.teachers[0].email);
@@ -1204,7 +1439,12 @@ export default function DraftAutoTab({
         pickedSlot.day === day &&
         pickedSlot.period === period
       ) {
-        // 동일 셀 재클릭 -> 집기 해제 (스펙 §2-3)
+        // 동일 셀 재클릭 -> 집기 해제 / 연쇄 취소 롤백 (스펙 §2-3·§2-4)
+        if (chainSteps.length > 0 && chainStartGrids) {
+          setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+          setChainSteps([]);
+          setChainStartGrids(null);
+        }
         setPickedSlot(null);
         setCandidatesResult(null);
         setBlockedBubble(null);
@@ -1217,15 +1457,75 @@ export default function DraftAutoTab({
         return;
       }
 
-      // 초록/노랑 칸: 즉시 이동/교환 실행 (팝업 금지)
-      await handleApplyDirectMove(
-        pickedSlot.grade,
-        pickedSlot.classNum,
-        pickedSlot.day,
-        pickedSlot.period,
-        day,
-        period
-      );
+      // 초록/노랑 칸:
+      if (cand.kind === "move" || !lesson) {
+        // 빈 칸으로 이동: 연쇄 종료 및 서버 전송 (스펙 §2-4)
+        await handleApplyDirectMove(
+          pickedSlot.grade,
+          pickedSlot.classNum,
+          pickedSlot.day,
+          pickedSlot.period,
+          day,
+          period
+        );
+        return;
+      }
+
+      // 점유 칸(수업 B 존재): 연쇄 밀어내기 (루미큐브 — 스펙 §2-4)
+      // 1. step 기록
+      const step: ChainStep = {
+        kind: "swap",
+        grade: viewGrade,
+        classNum: viewClass,
+        a: { day: pickedSlot.day, period: pickedSlot.period },
+        b: { day, period },
+      };
+      const nextChainSteps = [...chainSteps, step];
+
+      // 2. 로컬 그리드에 스왑 적용
+      const updatedGrids = cloneClassGrids(currentGrids);
+      const targetG = updatedGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
+      if (targetG) {
+        let cellA = targetG.cells.find((c) => c.day === pickedSlot.day && c.period === pickedSlot.period);
+        let cellB = targetG.cells.find((c) => c.day === day && c.period === period);
+        if (!cellA) {
+          cellA = { day: pickedSlot.day, period: pickedSlot.period, lessons: [] };
+          targetG.cells.push(cellA);
+        }
+        if (!cellB) {
+          cellB = { day, period, lessons: [] };
+          targetG.cells.push(cellB);
+        }
+        const tmp = cellA.lessons;
+        cellA.lessons = cellB.lessons;
+        cellB.lessons = tmp;
+      }
+
+      // 3. 밀려난 수업 B가 자동으로 커서에 들림
+      const newPicked = {
+        grade: viewGrade,
+        classNum: viewClass,
+        day: pickedSlot.day,
+        period: pickedSlot.period,
+        lesson,
+      };
+
+      setOpenDraft((prev) => (prev ? { ...prev, currentGrids: updatedGrids } : null));
+      setChainSteps(nextChainSteps);
+      setPickedSlot(newPicked);
+
+      // 4. 채점기 자동 재실행
+      const newRes = evaluateMoveCandidates({
+        grids: updatedGrids,
+        model: openDraft.model,
+        pick: newPicked,
+      });
+      setCandidatesResult(newRes);
+      setBlockedBubble(null);
+
+      if (lesson.teachers?.[0]?.email) {
+        setSelectedTeacherEmail(lesson.teachers[0].email);
+      }
       return;
     }
 
@@ -1331,6 +1631,24 @@ export default function DraftAutoTab({
     if (!openDraft || !manualMode) return;
     const { currentGrids } = openDraft;
 
+    // 빼둔 수업 배치 모드인 경우
+    if (selectedParkedEntry) {
+      const targetGrid = currentGrids.find(
+        (g) => g.grade === selectedParkedEntry.grade && g.classNum === selectedParkedEntry.classNum
+      );
+      const targetCell = targetGrid?.cells?.find((c) => c.day === day && c.period === period);
+      if (targetCell && targetCell.lessons.length > 0) {
+        setBlockedBubble({
+          day,
+          period,
+          message: "비어 있는 칸에만 되돌릴 수 있습니다. 먼저 그 칸을 비우거나 다른 빈 칸을 선택하세요.",
+        });
+        return;
+      }
+      await handleUnparkCell(selectedParkedEntry, day, period);
+      return;
+    }
+
     if (!pickedSlot) {
       const hit = teacherSlots.find((s) => s.day === day && s.period === period);
       if (!hit) {
@@ -1355,6 +1673,8 @@ export default function DraftAutoTab({
       }
       setPickedSlot({ grade: hit.grade, classNum: hit.classNum, day, period, lesson: targetLesson });
       setCandidatesResult(res);
+      setChainSteps([]);
+      setChainStartGrids(cloneClassGrids(currentGrids));
       setBlockedBubble(null);
       return;
     }
@@ -1366,6 +1686,11 @@ export default function DraftAutoTab({
       pickedSlot.day === day &&
       pickedSlot.period === period
     ) {
+      if (chainSteps.length > 0 && chainStartGrids) {
+        setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+        setChainSteps([]);
+        setChainStartGrids(null);
+      }
       setPickedSlot(null);
       setCandidatesResult(null);
       setBlockedBubble(null);
@@ -1377,14 +1702,84 @@ export default function DraftAutoTab({
       return;
     }
 
-    await handleApplyDirectMove(
-      pickedSlot.grade,
-      pickedSlot.classNum,
-      pickedSlot.day,
-      pickedSlot.period,
-      day,
-      period
-    );
+    // 빈 칸 이동
+    if (cand.kind === "move") {
+      await handleApplyDirectMove(
+        pickedSlot.grade,
+        pickedSlot.classNum,
+        pickedSlot.day,
+        pickedSlot.period,
+        day,
+        period
+      );
+      return;
+    }
+
+    // 점유 칸: 연쇄 밀어내기 (루미큐브)
+    const targetGrid = currentGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
+    const targetCell = targetGrid?.cells?.find((c) => c.day === day && c.period === period);
+    const targetLesson = targetCell?.lessons?.[0];
+    if (!targetLesson) {
+      await handleApplyDirectMove(
+        pickedSlot.grade,
+        pickedSlot.classNum,
+        pickedSlot.day,
+        pickedSlot.period,
+        day,
+        period
+      );
+      return;
+    }
+
+    const step: ChainStep = {
+      kind: "swap",
+      grade: viewGrade,
+      classNum: viewClass,
+      a: { day: pickedSlot.day, period: pickedSlot.period },
+      b: { day, period },
+    };
+    const nextChainSteps = [...chainSteps, step];
+
+    const updatedGrids = cloneClassGrids(currentGrids);
+    const targetG = updatedGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
+    if (targetG) {
+      let cellA = targetG.cells.find((c) => c.day === pickedSlot.day && c.period === pickedSlot.period);
+      let cellB = targetG.cells.find((c) => c.day === day && c.period === period);
+      if (!cellA) {
+        cellA = { day: pickedSlot.day, period: pickedSlot.period, lessons: [] };
+        targetG.cells.push(cellA);
+      }
+      if (!cellB) {
+        cellB = { day, period, lessons: [] };
+        targetG.cells.push(cellB);
+      }
+      const tmp = cellA.lessons;
+      cellA.lessons = cellB.lessons;
+      cellB.lessons = tmp;
+    }
+
+    const newPicked = {
+      grade: viewGrade,
+      classNum: viewClass,
+      day: pickedSlot.day,
+      period: pickedSlot.period,
+      lesson: targetLesson,
+    };
+
+    setOpenDraft((prev) => (prev ? { ...prev, currentGrids: updatedGrids } : null));
+    setChainSteps(nextChainSteps);
+    setPickedSlot(newPicked);
+
+    const newRes = evaluateMoveCandidates({
+      grids: updatedGrids,
+      model: openDraft.model,
+      pick: newPicked,
+    });
+    setCandidatesResult(newRes);
+    setBlockedBubble(null);
+    if (targetLesson.teachers?.[0]?.email) {
+      setSelectedTeacherEmail(targetLesson.teachers[0].email);
+    }
   };
 
   // ── op 연쇄 영향 다이얼로그에서 [적용하기] 실행 ──
@@ -1660,9 +2055,15 @@ export default function DraftAutoTab({
             {isDraftTerm && (
               <button
                 onClick={handleAdoptDraft}
-                disabled={adopting || loadingDraft || report.hard.length > 0}
+                disabled={adopting || loadingDraft || report.hard.length > 0 || currentTray.length > 0}
                 className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-lg text-xs shadow-xs transition-all flex items-center gap-1.5"
-                title={report.hard.length > 0 ? "하드 위반이 남아 있어 채택할 수 없습니다" : "이 결과를 정식 기초시간표로 채택합니다"}
+                title={
+                  report.hard.length > 0
+                    ? "하드 위반이 남아 있어 채택할 수 없습니다"
+                    : currentTray.length > 0
+                    ? `잠깐 빼둔 수업 ${currentTray.length}건이 남아 있어 채택할 수 없습니다`
+                    : "이 결과를 정식 기초시간표로 채택합니다"
+                }
               >
                 <span>📥</span>
                 <span>{adopting ? "채택 중..." : "기초시간표로 채택"}</span>
@@ -2534,27 +2935,50 @@ export default function DraftAutoTab({
 
                 {/* 상태 문구 / 집은 수업 표시 */}
                 {manualMode ? (
-                  pickedSlot ? (
+                  selectedParkedEntry ? (
                     <div className="flex items-center gap-1.5 text-xs font-bold text-sky-800 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200">
                       <span>
-                        📌 집은 수업: {pickedSlot.lesson.subjectShort || pickedSlot.lesson.subjectName}
+                        📌 [빼둔 수업 복귀] {selectedParkedEntry.grade}-{selectedParkedEntry.classNum}반{" "}
+                        {selectedParkedEntry.lessons[0]?.subjectShort || selectedParkedEntry.lessons[0]?.subjectName}
+                        {selectedParkedEntry.lessons[0]?.teachers?.[0]?.name
+                          ? ` (${selectedParkedEntry.lessons[0].teachers[0].name})`
+                          : ""}
+                      </span>
+                      <button
+                        onClick={() => setSelectedParkedEntry(null)}
+                        className="text-sky-600 hover:text-sky-950 ml-1 font-extrabold"
+                        title="선택 해제 (Esc)"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : pickedSlot ? (
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-sky-800 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200">
+                      <span>
+                        📌 {chainSteps.length > 0 ? `[연쇄 ${chainSteps.length + 1}수째] ` : ""}집은 수업:{" "}
+                        {pickedSlot.lesson.subjectShort || pickedSlot.lesson.subjectName}
                         {pickedSlot.lesson.teachers?.[0]?.name ? ` (${pickedSlot.lesson.teachers[0].name})` : ""}
                       </span>
                       <button
                         onClick={() => {
+                          if (chainSteps.length > 0 && chainStartGrids) {
+                            setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+                            setChainSteps([]);
+                            setChainStartGrids(null);
+                          }
                           setPickedSlot(null);
                           setCandidatesResult(null);
                           setBlockedBubble(null);
                         }}
                         className="text-sky-600 hover:text-sky-950 ml-1 font-extrabold"
-                        title="집기 해제 (Esc)"
+                        title={chainSteps.length > 0 ? "연쇄 취소 (원상 복원, Esc)" : "집기 해제 (Esc)"}
                       >
                         ✕
                       </button>
                     </div>
                   ) : (
                     <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
-                      직접 조정 모드: 옮길 수업을 클릭하세요
+                      직접 조정 모드: 옮길 수업을 클릭하거나 우클릭으로 빼두세요
                     </span>
                   )
                 ) : selectedSlotA ? (
@@ -2634,6 +3058,10 @@ export default function DraftAutoTab({
                                 <td
                                   key={day}
                                   onClick={() => handleCellClick(day, period)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    handleCellRightClick(day, period);
+                                  }}
                                   title="집은 수업 (클릭 또는 Esc로 해제)"
                                   className="p-2 border-r border-gray-200 bg-sky-100/90 text-sky-950 align-top cursor-pointer select-none relative"
                                 >
@@ -2669,6 +3097,10 @@ export default function DraftAutoTab({
                                   <td
                                     key={day}
                                     onClick={() => handleCellClick(day, period)}
+                                    onContextMenu={(e) => {
+                                      e.preventDefault();
+                                      handleCellRightClick(day, period);
+                                    }}
                                     title={
                                       cand.kind === "swap"
                                         ? `${lesson?.subjectShort || "수업"}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
@@ -2725,6 +3157,10 @@ export default function DraftAutoTab({
                                   <td
                                     key={day}
                                     onClick={() => handleCellClick(day, period)}
+                                    onContextMenu={(e) => {
+                                      e.preventDefault();
+                                      handleCellRightClick(day, period);
+                                    }}
                                     title={worseReason ? `감점 (+${cand.softDelta}점): ${worseReason}` : `감점 +${cand.softDelta}점`}
                                     className="p-2 border-r border-gray-200 bg-amber-50/80 hover:bg-amber-100/80 text-gray-800 align-top cursor-pointer select-none transition-colors relative"
                                   >
@@ -2763,6 +3199,10 @@ export default function DraftAutoTab({
                               return (
                                 <td
                                   key={day}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    handleCellRightClick(day, period);
+                                  }}
                                   title={cand.blockedReason ? `이동 불가: ${cand.blockedReason}` : "이동 불가"}
                                   className="p-2 border-r border-gray-200 bg-gray-100/90 text-gray-400 align-top cursor-not-allowed select-none relative opacity-70"
                                 >
@@ -2798,6 +3238,10 @@ export default function DraftAutoTab({
                               <td
                                 key={day}
                                 onClick={() => handleCellClick(day, period)}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  handleCellRightClick(day, period);
+                                }}
                                 onMouseEnter={() => {
                                   if (lesson?.teachers?.[0]?.email) {
                                     setSelectedTeacherEmail(lesson.teachers[0].email);
@@ -3132,6 +3576,109 @@ export default function DraftAutoTab({
             </div>
           </div>
         </div>
+
+        {/* Ⓒ 잠깐 빼둔 수업 트레이 (스펙 §2-5) */}
+        {manualMode && (
+          <div
+            onClick={() => {
+              if (pickedSlot) {
+                handleParkCell(pickedSlot.grade, pickedSlot.classNum, pickedSlot.day, pickedSlot.period);
+              }
+            }}
+            className={`rounded-xl border transition-all p-3.5 ${
+              pickedSlot
+                ? "bg-amber-50/80 border-amber-300 ring-2 ring-amber-300/60 cursor-pointer hover:bg-amber-100/80"
+                : currentTray.length > 0
+                ? "bg-amber-50/40 border-amber-200"
+                : "bg-gray-50/80 border-dashed border-gray-200"
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                  <span>📥</span>
+                  <span>잠깐 빼둔 수업</span>
+                </span>
+                {currentTray.length > 0 ? (
+                  <span className="text-[11px] px-2 py-0.2 rounded-full bg-amber-200 text-amber-900 font-extrabold border border-amber-300">
+                    {currentTray.length}건
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-gray-400 font-normal">
+                    {pickedSlot
+                      ? "여기를 클릭하면 지금 집은 수업을 보관합니다"
+                      : "수업 셀을 우클릭하거나 집은 상태에서 여기를 클릭하면 임시로 보관합니다"}
+                  </span>
+                )}
+              </div>
+              {selectedParkedEntry && (
+                <div className="flex items-center gap-1.5 text-xs text-sky-800 bg-sky-100 px-2 py-0.5 rounded-lg font-bold">
+                  <span>
+                    선택: {selectedParkedEntry.grade}-{selectedParkedEntry.classNum}반{" "}
+                    {selectedParkedEntry.lessons[0]?.subjectShort || selectedParkedEntry.lessons[0]?.subjectName} (시간표의 빈 칸을 클릭해 배치하세요)
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedParkedEntry(null);
+                    }}
+                    className="text-sky-700 hover:text-sky-950 font-bold ml-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {currentTray.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2.5">
+                {currentTray.map((entry) => {
+                  const lesson = entry.lessons[0];
+                  const isSelected = selectedParkedEntry?.parkId === entry.parkId;
+                  return (
+                    <div
+                      key={entry.parkId}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isSelected) {
+                          setSelectedParkedEntry(null);
+                        } else {
+                          setSelectedParkedEntry(entry);
+                          setViewGrade(entry.grade);
+                          setViewClass(entry.classNum);
+                          setPickedSlot(null);
+                          setCandidatesResult(null);
+                        }
+                      }}
+                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-2xs ${
+                        isSelected
+                          ? "bg-sky-100 text-sky-950 border-sky-400 ring-2 ring-sky-300"
+                          : "bg-white hover:bg-amber-100/80 text-gray-800 border-amber-200"
+                      }`}
+                      title="클릭하여 학급 그리드의 빈 칸에 배치하거나, ✕를 눌러 원래 자리로 복귀를 시도합니다"
+                    >
+                      <span>
+                        {entry.grade}-{entry.classNum}반 {lesson?.subjectShort || lesson?.subjectName || "수업"}
+                        {lesson?.teachers?.[0]?.name ? ` (${lesson.teachers[0].name})` : ""}
+                      </span>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          // 원래 자리로 unpark 시도
+                          await handleUnparkCell(entry, entry.from.day, entry.from.period);
+                        }}
+                        className="text-gray-400 hover:text-red-600 font-bold px-1 py-0.2 rounded hover:bg-red-50 text-[11px]"
+                        title="원래 자리로 되돌리기"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 연쇄 영향 다이얼로그 모달 (Impact Modal - 컴시간 §8-다 재현) */}
         {impactAnalysis && proposedOp && (
