@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   BaseRevisionOp,
   ClassGrid,
+  HardViolation,
   SoftPenaltyCode,
+  TermPenaltyDetail,
   TimetableBaseRevision,
   TimetableConstraintModel,
   TimetableLesson,
@@ -17,7 +19,17 @@ import {
   validateTimetable,
 } from "@/lib/timetable/validate";
 import { evaluateMoveCandidates, MoveCandidatesResult } from "@/lib/timetable/moveCandidates";
-import { SOFT_CODE_LABELS } from "@/lib/timetable/labels";
+import { HARD_CODE_LABELS, SOFT_CODE_LABELS } from "@/lib/timetable/labels";
+import {
+  type LookaheadLine,
+  type LookaheadResult,
+  type LookaheadTarget,
+} from "@/lib/timetable/lookahead";
+import {
+  searchLookaheadInWorker,
+  type LookaheadRun,
+} from "@/lib/timetable/lookaheadClient";
+import { HistoryMiniGrid } from "./MiniGrid";
 
 interface BaseRevisionTabProps {
   activeTermId?: string | null;
@@ -77,6 +89,17 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
   const [effectiveFromDate, setEffectiveFromDate] = useState("");
   const [applying, setApplying] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // ── 수읽기 (Lookahead L1) 상태 (과제 CC) ──
+  const [showHardDetails, setShowHardDetails] = useState(false);
+  const [showSoftDetails, setShowSoftDetails] = useState(false);
+  const [activeFindDetail, setActiveFindDetail] = useState<TermPenaltyDetail | null>(null);
+  const [findingFix, setFindingFix] = useState(false);
+  const [isDeepSearch, setIsDeepSearch] = useState(false);
+  const [lookaheadProgress, setLookaheadProgress] = useState<{ evaluated: number; budget: number } | null>(null);
+  const [lookaheadResult, setLookaheadResult] = useState<LookaheadResult | null>(null);
+  const [lookaheadChunkError, setLookaheadChunkError] = useState(false);
+  const lookaheadRunRef = useRef<LookaheadRun | null>(null);
 
   const DAYS = [
     { num: 1, label: "월요일" },
@@ -227,6 +250,120 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
       parts.push(`${label} (+${delta}점)`);
     }
     return parts.join(", ");
+  };
+
+  // 워커 청크 로드 실패 감지 헬퍼
+  const isWorkerChunkLoadError = (err: unknown): boolean => {
+    if (!err) return false;
+    const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+    const name = err instanceof Error ? err.name.toLowerCase() : "";
+    return (
+      msg.includes("networkerror") ||
+      msg.includes("chunkloaderror") ||
+      msg.includes("loading chunk") ||
+      msg.includes("failed to fetch") ||
+      msg.includes("importscripts") ||
+      msg.includes("dynamically imported module") ||
+      msg.includes("failed to load script") ||
+      msg.includes("error loading worker") ||
+      msg.includes("workerglobalscope") ||
+      name.includes("chunkloaderror") ||
+      name.includes("networkerror")
+    );
+  };
+
+  // 수읽기 탐색 실행 (Lookahead L1 in Worker)
+  const handleFindFix = async (detail: TermPenaltyDetail, deep: boolean = false) => {
+    if (activeFindDetail === detail && !deep) {
+      setActiveFindDetail(null);
+      setLookaheadResult(null);
+      setFindingFix(false);
+      setLookaheadProgress(null);
+      setLookaheadChunkError(false);
+      if (lookaheadRunRef.current) {
+        lookaheadRunRef.current.cancel();
+        lookaheadRunRef.current = null;
+      }
+      return;
+    }
+
+    if (!model || currentGrids.length === 0) return;
+
+    setActiveFindDetail(detail);
+    setFindingFix(true);
+    setIsDeepSearch(deep);
+    setLookaheadResult(null);
+    setLookaheadChunkError(false);
+
+    const target: LookaheadTarget = {
+      scope: detail.scope,
+      key: detail.key,
+      day: detail.day,
+      code: detail.code,
+    };
+
+    const beamWidth = deep ? 8 : undefined;
+    const budget = deep ? 6000 : 1500;
+    setLookaheadProgress({ evaluated: 0, budget });
+
+    try {
+      const run = searchLookaheadInWorker(
+        {
+          grids: currentGrids,
+          model,
+          target,
+          ...(beamWidth ? { beamWidth } : {}),
+          budget,
+        },
+        (evaluated, b) => {
+          setLookaheadProgress({ evaluated, budget: b });
+        }
+      );
+      lookaheadRunRef.current = run;
+      const result = await run.promise;
+      lookaheadRunRef.current = null;
+      setLookaheadResult(result);
+    } catch (err) {
+      lookaheadRunRef.current = null;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "cancelled") {
+        return;
+      }
+      if (isWorkerChunkLoadError(err)) {
+        setLookaheadChunkError(true);
+      } else {
+        console.error("Lookahead search error:", err);
+      }
+    } finally {
+      setFindingFix(false);
+      setLookaheadProgress(null);
+    }
+  };
+
+  // 기보 1수 적용 (한 수씩 밟기 — 로컬 ops 누적, 서버 호출 0회)
+  const handleApplyLineStep = (line: LookaheadLine, stepIdx: number = 0) => {
+    if (stepIdx >= line.ops.length) return;
+    const op = line.ops[stepIdx];
+    setOps((prev) => [...prev, op]);
+  };
+
+  // 기보 전체 적용 (전체 ops 일괄 누적, 서버 호출 0회)
+  const handleApplyLineAll = (line: LookaheadLine) => {
+    if (line.ops.length === 0) return;
+    setOps((prev) => [...prev, ...line.ops]);
+  };
+
+  // 감점 항목 클릭 시 해당 학급/시간표로 뷰 전환
+  const handlePenaltyDetailClick = (item: TermPenaltyDetail) => {
+    if (item.scope === "class") {
+      const [gStr, cStr] = item.key.split("-");
+      const g = parseInt(gStr, 10);
+      const c = parseInt(cStr, 10);
+      if (!isNaN(g) && !isNaN(c)) {
+        setSelectedGrade(g);
+        setSelectedClassNum(c);
+      }
+    }
   };
 
   // 셀 클릭 핸들러 (집기 → 3색 신호등 → 이동)
@@ -539,39 +676,561 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
               </div>
             </div>
 
-            {/* 상단 검사기 검증 바 (BB-1) */}
+            {/* 상단 검사기 검증 바 (BB-1, CC-2) */}
             {auditReport && (
-              <div className="flex items-center justify-between gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs flex-wrap">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-gray-700">전체 시간표 검증:</span>
-                  {auditReport.hard.length === 0 ? (
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 flex items-center gap-1">
-                      <span>✅</span>
-                      <span>중대 문제 0건</span>
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-bold border border-red-200 flex items-center gap-1">
-                      <span>⚠️</span>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-gray-700">전체 시간표 검증:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowHardDetails(!showHardDetails);
+                        if (!showHardDetails) setShowSoftDetails(false);
+                      }}
+                      className={`text-[11px] px-2.5 py-0.5 rounded-full border font-extrabold cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1 ${
+                        auditReport.hard.length === 0
+                          ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                          : "bg-red-50 text-red-800 border-red-300"
+                      }`}
+                    >
+                      <span>{auditReport.hard.length === 0 ? "✅" : "⚠️"}</span>
                       <span>중대 문제 {auditReport.hard.length}건</span>
-                    </span>
-                  )}
-                  <span className="px-2 py-0.5 rounded-full bg-gray-200/80 text-gray-800 font-bold">
-                    감점 {auditReport.soft.total}점
-                  </span>
+                      <span className="text-[10px] text-gray-500">{showHardDetails ? "▲" : "▼"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSoftDetails(!showSoftDetails);
+                        if (!showSoftDetails) setShowHardDetails(false);
+                      }}
+                      className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-300 font-extrabold cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1"
+                    >
+                      <span>🟡</span>
+                      <span>감점 {auditReport.soft.total}점</span>
+                      <span className="text-[10px] text-gray-500">{showSoftDetails ? "▲" : "▼"}</span>
+                    </button>
+                  </div>
+
+                  <div className="text-[11px] text-gray-500">
+                    {pickedSlot ? (
+                      <span className="text-amber-900 font-bold flex items-center gap-1 bg-amber-100/70 px-2 py-0.5 rounded border border-amber-300">
+                        <span>📌</span>
+                        <span>
+                          {DAY_LABEL[pickedSlot.day]} {pickedSlot.period}교시 ({pickedSlot.lesson.subjectName}) 집음 — 목적지 클릭 (취소: 재클릭 또는 Esc)
+                        </span>
+                      </span>
+                    ) : (
+                      <span>수업을 클릭하면 이동 가능한 위치(3색 신호등)가 표시됩니다.</span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="text-[11px] text-gray-500">
-                  {pickedSlot ? (
-                    <span className="text-amber-900 font-bold flex items-center gap-1 bg-amber-100/70 px-2 py-0.5 rounded border border-amber-300">
-                      <span>📌</span>
-                      <span>
-                        {DAY_LABEL[pickedSlot.day]} {pickedSlot.period}교시 ({pickedSlot.lesson.subjectName}) 집음 — 목적지 클릭 (취소: 재클릭 또는 Esc)
-                      </span>
-                    </span>
-                  ) : (
-                    <span>수업을 클릭하면 이동 가능한 위치(3색 신호등)가 표시됩니다.</span>
-                  )}
-                </div>
+                {/* 중대 문제 상세 패널 (CC-2) */}
+                {showHardDetails && (
+                  <div className="rounded-xl border border-red-200 bg-red-50/60 overflow-hidden text-xs">
+                    <div className="px-5 py-3 flex items-center justify-between bg-red-100/70 border-b border-red-200">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">⚠️</span>
+                        <span className="font-bold text-red-950">중대 문제 상세 (총 {auditReport.hard.length}건)</span>
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-200 text-red-900 font-bold border border-red-300">
+                          반드시 해결해야 하는 규칙 위반입니다
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowHardDetails(false)}
+                        className="text-red-700 hover:text-red-950 font-bold cursor-pointer"
+                      >
+                        ▲ 접기
+                      </button>
+                    </div>
+                    <div className="p-5 space-y-4">
+                      {auditReport.hard.length === 0 ? (
+                        <div className="bg-white rounded-lg p-4 text-emerald-800 font-bold border border-emerald-200 flex items-center gap-2">
+                          <span>✨</span>
+                          <span>중대 문제가 없습니다.</span>
+                        </div>
+                      ) : (
+                        (() => {
+                          const grouped: Record<string, HardViolation[]> = {};
+                          for (const h of auditReport.hard) {
+                            if (!grouped[h.code]) grouped[h.code] = [];
+                            grouped[h.code].push(h);
+                          }
+
+                          return Object.entries(grouped).map(([code, items]) => {
+                            const label = HARD_CODE_LABELS[code as keyof typeof HARD_CODE_LABELS] || code;
+                            const regularItems = items.filter((it) => !it.registryGap);
+                            const gapItems = items.filter((it) => it.registryGap);
+
+                            const renderItem = (item: HardViolation, idx: number) => {
+                              const coordLabel = [
+                                item.grade && item.classNum ? `${item.grade}-${item.classNum}반` : "",
+                                item.day ? `${DAYS[item.day - 1]?.label || `${item.day}요일`}` : "",
+                                item.period ? `${item.period}교시` : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" ");
+
+                              return (
+                                <div
+                                  key={idx}
+                                  className="bg-white rounded-lg border border-red-100 p-3 flex flex-wrap items-start justify-between gap-2 shadow-2xs"
+                                >
+                                  <div className="space-y-1 min-w-0 flex-1">
+                                    <p className="font-medium text-gray-900 leading-snug">{item.text}</p>
+                                    {item.hint && (
+                                      <p className="text-[11px] text-gray-500 font-normal">💡 {item.hint}</p>
+                                    )}
+                                  </div>
+                                  {coordLabel && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (item.grade) setSelectedGrade(item.grade);
+                                        if (item.classNum) setSelectedClassNum(item.classNum);
+                                      }}
+                                      className="shrink-0 px-2 py-1 rounded bg-red-100 hover:bg-red-200 text-red-900 font-bold text-[11px] border border-red-300 transition-colors flex items-center gap-1 cursor-pointer"
+                                      title="해당 위치로 이동"
+                                    >
+                                      <span>📍</span>
+                                      <span>{coordLabel}</span>
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            };
+
+                            return (
+                              <div key={code} className="space-y-2">
+                                <div className="flex items-center gap-2 border-b border-red-200 pb-1">
+                                  <span className="font-extrabold text-red-900 text-xs">{code} ({label})</span>
+                                  <span className="text-xs font-extrabold px-2 py-0.2 rounded-full bg-red-200 text-red-900">
+                                    {items.length}건
+                                  </span>
+                                </div>
+                                {regularItems.map(renderItem)}
+                                {gapItems.length > 0 && (
+                                  <details className="mt-2 text-xs group">
+                                    <summary className="cursor-pointer text-[11px] font-bold text-gray-600 hover:text-gray-900 py-1 flex items-center gap-1.5 select-none">
+                                      <span>📋</span>
+                                      <span>등록부 미비로 추정 ({gapItems.length}건)</span>
+                                      <span className="text-xs text-gray-400 group-open:rotate-180 transition-transform">▼</span>
+                                    </summary>
+                                    <div className="mt-2 space-y-2 pl-3 border-l-2 border-amber-300">
+                                      {gapItems.map(renderItem)}
+                                    </div>
+                                  </details>
+                                )}
+                              </div>
+                            );
+                          });
+                        })()
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 소프트 감점 상세 패널 (CC-2, CC-3) */}
+                {showSoftDetails && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/60 overflow-hidden text-xs">
+                    <div className="px-5 py-3 flex items-center justify-between bg-amber-100/70 border-b border-amber-200">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">🟡</span>
+                        <span className="font-bold text-amber-950">감점 상세 (총 {auditReport.soft.total}점)</span>
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold border border-amber-300">
+                          시간표의 가독성 및 균형 감점 현황입니다
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowSoftDetails(false)}
+                        className="text-amber-700 hover:text-amber-950 font-bold cursor-pointer"
+                      >
+                        ▲ 접기
+                      </button>
+                    </div>
+                    <div className="p-5 space-y-4">
+                      {auditReport.soft.details.length === 0 ? (
+                        <div className="bg-white rounded-lg p-4 text-emerald-800 font-bold border border-emerald-200 flex items-center gap-2">
+                          <span>✨</span>
+                          <span>감점 항목이 없습니다.</span>
+                        </div>
+                      ) : (
+                        (() => {
+                          const grouped: Record<string, TermPenaltyDetail[]> = {};
+                          for (const d of auditReport.soft.details) {
+                            if (!grouped[d.code]) grouped[d.code] = [];
+                            grouped[d.code].push(d);
+                          }
+
+                          return Object.entries(grouped).map(([code, items]) => {
+                            const label = SOFT_CODE_LABELS[code as SoftPenaltyCode] || code;
+                            const codeScore =
+                              (auditReport.soft.byCode as Record<string, number>)[code] ||
+                              items.reduce((acc, it) => acc + it.points, 0);
+                            const sortedItems = [...items].sort((a, b) => b.points - a.points);
+
+                            return (
+                              <div key={code} className="space-y-2">
+                                <div className="flex items-center justify-between border-b border-amber-200 pb-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-extrabold text-amber-950 text-xs">{code} ({label})</span>
+                                    <span className="text-xs font-extrabold px-2 py-0.2 rounded-full bg-amber-200 text-amber-900">
+                                      {sortedItems.length}건
+                                    </span>
+                                  </div>
+                                  <span className="font-extrabold text-amber-800 text-xs">소계 -{codeScore}점</span>
+                                </div>
+                                <div className="space-y-1.5">
+                                  {sortedItems.map((item, idx) => {
+                                    const isActive = activeFindDetail === item;
+                                    return (
+                                      <div key={idx}>
+                                        {/* 항목 행 */}
+                                        <div
+                                          onClick={() => handlePenaltyDetailClick(item)}
+                                          className="bg-white hover:bg-amber-50/80 rounded-lg border border-amber-100 hover:border-amber-300 p-3 flex items-center justify-between gap-3 shadow-2xs cursor-pointer transition-all group"
+                                          title="클릭하면 해당 학급 시간표로 이동합니다"
+                                        >
+                                          <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+                                            <span className="font-bold text-amber-900 shrink-0">[{item.label}]</span>
+                                            {item.day && (
+                                              <span className="text-[11px] px-1.5 py-0.2 rounded bg-gray-100 group-hover:bg-amber-100 text-gray-700 group-hover:text-amber-900 font-semibold shrink-0 transition-colors">
+                                                {DAYS[item.day - 1]?.label || `${item.day}요일`}
+                                              </span>
+                                            )}
+                                            <span className="text-gray-800">{item.text}</span>
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <span className="font-extrabold text-amber-800 text-xs">−{item.points}점</span>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleFindFix(item);
+                                              }}
+                                              disabled={findingFix}
+                                              className={`px-2.5 py-1 rounded-md font-bold text-[11px] border transition-colors flex items-center gap-1 cursor-pointer ${
+                                                isActive
+                                                  ? "bg-amber-700 text-white border-amber-700"
+                                                  : "bg-amber-100 hover:bg-amber-200 text-amber-950 border-amber-300"
+                                              } disabled:opacity-50`}
+                                            >
+                                              <span>🔍</span>
+                                              <span>{isActive ? "닫기" : "해결안 찾기"}</span>
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        {/* 수읽기 엔진 (Lookahead L1) 기보 카드 — 항목 바로 아래 인라인 (CC-3) */}
+                                        {isActive && (
+                                          <div className="mt-1.5 ml-3 border-l-2 border-amber-300 pl-3 space-y-2">
+                                            {findingFix ? (
+                                              <div className="py-3 flex items-center gap-2 text-xs text-amber-700 font-semibold">
+                                                <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-amber-500 border-t-transparent" />
+                                                <span>
+                                                  {lookaheadProgress && lookaheadProgress.evaluated > 0
+                                                    ? `${lookaheadProgress.evaluated}가지 수 탐색 중... (${isDeepSearch ? "더 깊이 읽기" : "수읽기"})`
+                                                    : isDeepSearch
+                                                    ? "더 깊은 수순(예산 3배)을 탐색하는 중..."
+                                                    : "수순(기보)을 탐색하는 중..."}
+                                                </span>
+                                              </div>
+                                            ) : lookaheadChunkError ? (
+                                              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-900 space-y-1">
+                                                <div className="font-bold flex items-center gap-1">
+                                                  <span>⚠️</span>
+                                                  <span>새 버전 배포로 수읽기 모듈을 불러오지 못했습니다.</span>
+                                                </div>
+                                                <p className="text-[11px] text-red-700">
+                                                  브라우저를 새로고침(F5)한 뒤 다시 시도해 주세요.
+                                                </p>
+                                              </div>
+                                            ) : lookaheadResult === null ? null : lookaheadResult.lines.length === 0 ? (
+                                              /* ── 해결안 없음 ── */
+                                              <div className="bg-gray-50 rounded-lg border border-gray-200 p-3.5 text-xs space-y-2.5">
+                                                <div className="flex items-start justify-between gap-3">
+                                                  <div className="flex items-start gap-2 min-w-0">
+                                                    <span className="text-base mt-0.5 shrink-0">🔒</span>
+                                                    <div className="space-y-1">
+                                                      <p className="font-bold text-gray-800">
+                                                        {lookaheadResult.evaluated}가지 수를 읽었지만 이 감점을 줄이는 수순이 없습니다.
+                                                      </p>
+                                                      <p className="text-gray-600 leading-relaxed text-[11px]">
+                                                        {item.code === "S1" || item.code === "S4" || item.code === "S6"
+                                                          ? `이 수업을 다른 요일로 옮기려면 그 날의 빈 교시가 필요합니다. 같은 학급 안의 이동·맞교환을 모두 탐색했지만, 전부 다른 조건(창체·SLAT 자리, 선생님 겹침)에 막혀 있습니다.`
+                                                          : item.code === "S2"
+                                                          ? `이 교사의 연속 수업을 분산하려면 같은 요일 내 빈 교시가 필요합니다. 빈 자리가 있더라도 옮겼을 때 다른 조건(교사 중복·운영 교시 초과)이 새로 생기면 후보에서 제외됩니다.`
+                                                          : item.code === "S3"
+                                                          ? `점심시간 전후 교시를 분리하려면 점심 블록 양쪽에서 맞바꿀 교시가 있어야 합니다. 가능한 교환이 모두 다른 조건에 막혀 있습니다.`
+                                                          : item.code === "S5"
+                                                          ? `이 요일의 과목 밀집을 풀려면 해당 수업을 다른 요일로 이동할 수 있어야 합니다. 현재 구조에서는 같은 학급 내에 적합한 빈 자리가 없습니다.`
+                                                          : `이 감점은 다른 조건(창체·SLAT 자리표시, 교사 중복, 운영 교시 초과 등)에 묶여 있어 단일/다단 교환으로는 줄이기 어렵습니다.`}
+                                                      </p>
+                                                    </div>
+                                                  </div>
+                                                  {!isDeepSearch && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleFindFix(item, true)}
+                                                      disabled={findingFix}
+                                                      className="shrink-0 px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-2xs transition-colors flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                                                      title="탐색 범위를 3배로 늘려 더 깊은 수순을 탐색합니다"
+                                                    >
+                                                      <span>🔍</span>
+                                                      <span>더 깊이 읽기</span>
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              /* ── 기보(Line) 목록 — 상위 최대 3개 ── */
+                                              <div className="space-y-2">
+                                                <div className="flex items-center justify-between text-xs text-amber-900 px-1">
+                                                  <span className="font-semibold text-[11px]">
+                                                    총 {lookaheadResult.lines.length}개 기보 제안 ({lookaheadResult.evaluated}가지 수 탐색 완료)
+                                                  </span>
+                                                  {!isDeepSearch && lookaheadResult.budgetExhausted && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleFindFix(item, true)}
+                                                      disabled={findingFix}
+                                                      className="px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-[11px] border border-amber-300 transition-colors flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                                                      title="탐색 범위를 3배로 늘려 추가 수순을 탐색합니다"
+                                                    >
+                                                      <span>🔍 더 깊이 읽기</span>
+                                                    </button>
+                                                  )}
+                                                </div>
+
+                                                {lookaheadResult.lines.slice(0, 3).map((line, li) => {
+                                                  const isSingleStep = line.ops.length === 1;
+                                                  return (
+                                                    <div
+                                                      key={li}
+                                                      className="bg-white rounded-lg border border-amber-200 p-3 space-y-2.5 shadow-2xs hover:border-amber-400 transition-all"
+                                                    >
+                                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                                          <span className="w-5 h-5 rounded-full bg-amber-600 text-white text-xs font-extrabold flex items-center justify-center shrink-0">
+                                                            {li + 1}
+                                                          </span>
+                                                          <span className="text-xs font-bold text-gray-900">
+                                                            기보 {li + 1} ({line.ops.length}수)
+                                                          </span>
+                                                          {/* §0-5: 순증(나빠짐)이면 총점 경고 딱지가 가장 먼저 오고, 해소/감소 딱지는 뒤로 배치 */}
+                                                          {line.finalDelta > 0 && (
+                                                            <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                                              총점 {line.finalDelta}점 나빠짐
+                                                            </span>
+                                                          )}
+                                                          <span className="text-[11px] font-bold text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                                                            이 감점 {line.targetDelta < 0 ? `${line.targetDelta}점` : `+${line.targetDelta}점`}
+                                                          </span>
+                                                          {line.finalDelta <= 0 && (
+                                                            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                                              {line.finalDelta < 0
+                                                                ? `총점 ${Math.abs(line.finalDelta)}점 개선`
+                                                                : "점수 유지"}
+                                                            </span>
+                                                          )}
+                                                          {line.targetResolved && (
+                                                            <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                                                              ✅ 이 감점 해소
+                                                            </span>
+                                                          )}
+                                                        </div>
+
+                                                        {/* 조작 버튼 (서버 호출 0회 — ops 배열에 누적) */}
+                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                          {/* 1. 한 수씩 밟기 (기본) */}
+                                                          <button
+                                                            type="button"
+                                                            onClick={() => handleApplyLineStep(line, 0)}
+                                                            className="px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-xs border border-indigo-200 transition-colors cursor-pointer flex items-center gap-1"
+                                                            title={isSingleStep ? "이 수순을 적용합니다" : "첫 번째 수를 적용하고 다음 수를 확인합니다"}
+                                                          >
+                                                            <span>▶</span>
+                                                            <span>{isSingleStep ? "적용하기" : "1수 적용"}</span>
+                                                          </button>
+
+                                                          {/* 2. 전체 적용 (2수 이상일 때) */}
+                                                          {!isSingleStep && (
+                                                            <button
+                                                              type="button"
+                                                              onClick={() => handleApplyLineAll(line)}
+                                                              className="px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
+                                                              title={`${line.ops.length}수 전체를 한 번에 적용합니다`}
+                                                            >
+                                                              <span>⏩</span>
+                                                              <span>전체 적용 ({line.ops.length}수)</span>
+                                                            </button>
+                                                          )}
+                                                        </div>
+                                                      </div>
+
+                                                      {/* 상세 정보 컨테이너 */}
+                                                      <div className="bg-gray-50 rounded-md p-2.5 space-y-2 border border-gray-100">
+                                                        {/* 변경 위치 (수별 미니 그리드 + 과목/교사 연쇄 시각화 — 스펙 §0-1) */}
+                                                        <div className="flex items-center gap-2.5 flex-wrap">
+                                                          {(() => {
+                                                            if (!currentGrids.length) return null;
+                                                            const simBoard = cloneClassGrids(currentGrids);
+                                                            const circled = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+
+                                                            return (
+                                                              <div className="flex items-center gap-2 flex-wrap">
+                                                                {line.ops.map((op, opIdx) => {
+                                                                  if (op.type !== "swap") return null;
+
+                                                                  const g = simBoard.find((x) => x.grade === op.grade && x.classNum === op.classNum);
+                                                                  const c1 = g?.cells?.find((c) => c.day === op.a.day && c.period === op.a.period);
+                                                                  const c2 = g?.cells?.find((c) => c.day === op.b.day && c.period === op.b.period);
+                                                                  const l1 = c1?.lessons?.[0];
+                                                                  const l2 = c2?.lessons?.[0];
+
+                                                                  const t1 = l1?.teachers?.map((t) => t.name).join(", ") || (l1 ? "교사 미상" : "");
+                                                                  const t2 = l2?.teachers?.map((t) => t.name).join(", ") || (l2 ? "교사 미상" : "");
+                                                                  const s1 = l1?.subjectName || "빈 칸";
+                                                                  const s2 = l2?.subjectName || "빈 칸";
+
+                                                                  const name1 = t1 ? `${s1}(${t1})` : s1;
+                                                                  const name2 = t2 ? `${s2}(${t2})` : s2;
+
+                                                                  const num1 = opIdx * 2 + 1;
+                                                                  const num2 = opIdx * 2 + 2;
+                                                                  const c1Label = circled[num1 - 1] || `${num1}.`;
+                                                                  const c2Label = circled[num2 - 1] || `${num2}.`;
+
+                                                                  const stepCells = [
+                                                                    { day: op.a.day, period: op.a.period, label: String(num1), color: "bg-indigo-600 text-white" },
+                                                                    { day: op.b.day, period: op.b.period, label: String(num2), color: "bg-amber-600 text-white" },
+                                                                  ];
+
+                                                                  // 다음 수를 위해 현재 수를 simBoard에 적용
+                                                                  applyRevisionOps(simBoard, [op]);
+
+                                                                  return (
+                                                                    <Fragment key={opIdx}>
+                                                                      {opIdx > 0 && (
+                                                                        <span className="text-amber-500 font-extrabold text-sm shrink-0">→</span>
+                                                                      )}
+                                                                      <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-gray-200 shadow-2xs flex-wrap">
+                                                                        {line.ops.length > 1 && (
+                                                                          <span className="text-[10px] font-extrabold text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded shrink-0">
+                                                                            {opIdx + 1}수
+                                                                          </span>
+                                                                        )}
+                                                                        <span className="text-[11px] font-bold text-gray-700 shrink-0">
+                                                                          {op.grade}학년 {op.classNum}반
+                                                                        </span>
+                                                                        <HistoryMiniGrid
+                                                                          highlightCells={stepCells}
+                                                                          periods={periodsPerDay}
+                                                                        />
+                                                                        <div className="flex items-center gap-1 flex-wrap text-xs">
+                                                                          <span className="font-bold text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                                                            {c1Label} {name1}
+                                                                          </span>
+                                                                          <span className="text-gray-400 font-bold">↔</span>
+                                                                          <span className="font-bold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                                                            {c2Label} {name2}
+                                                                          </span>
+                                                                        </div>
+                                                                      </div>
+                                                                    </Fragment>
+                                                                  );
+                                                                })}
+                                                              </div>
+                                                            );
+                                                          })()}
+                                                        </div>
+
+                                                        {/* 총점 변화 추이 */}
+                                                        <div className="flex items-center gap-1 text-[11px] text-gray-600 font-medium flex-wrap">
+                                                          <span className="font-bold text-gray-500">총점 변화:</span>
+                                                          <span className="font-mono font-bold text-gray-700">
+                                                            {auditReport.soft.total}점
+                                                          </span>
+                                                          {line.stepScores.map((score, si) => (
+                                                            <span key={si} className="font-mono font-bold text-indigo-700 flex items-center gap-0.5">
+                                                              <span>→</span>
+                                                              <span>{score}점</span>
+                                                            </span>
+                                                          ))}
+                                                          <span className="ml-1 text-[11px] font-bold text-emerald-700 font-mono">
+                                                            ({line.finalDelta < 0 ? `${line.finalDelta}점` : line.finalDelta === 0 ? "0점" : `+${line.finalDelta}점`})
+                                                          </span>
+                                                        </div>
+
+                                                        {/* 대가 줄 (다른 감점 변화) */}
+                                                        <div className="pt-1.5 border-t border-gray-200/80 space-y-1">
+                                                          <div className="text-[11px] font-bold text-gray-700">
+                                                            이 수를 두면 다른 감점이 이렇게 바뀝니다:
+                                                          </div>
+                                                          {line.sideEffects && line.sideEffects.length > 0 ? (
+                                                            <div className="space-y-1">
+                                                              {line.sideEffects.map((se, sei) => {
+                                                                const isWorse = se.kind === "new" || se.kind === "worse";
+                                                                return (
+                                                                  <div
+                                                                    key={sei}
+                                                                    className={`flex items-center justify-between gap-2 px-2 py-1 rounded text-[11px] ${
+                                                                      isWorse
+                                                                        ? "bg-amber-50 text-amber-950 border border-amber-200"
+                                                                        : "bg-emerald-50 text-emerald-950 border border-emerald-200"
+                                                                    }`}
+                                                                  >
+                                                                    <span className="flex items-center gap-1 min-w-0">
+                                                                      <span className="shrink-0">{isWorse ? "⚠️" : "✅"}</span>
+                                                                      <span className="font-semibold text-gray-800 truncate">{se.text}</span>
+                                                                    </span>
+                                                                    <span
+                                                                      className={`font-mono font-bold shrink-0 ${
+                                                                        isWorse ? "text-amber-800" : "text-emerald-700"
+                                                                      }`}
+                                                                    >
+                                                                      {se.delta > 0 ? `+${se.delta}점` : `${se.delta}점`}
+                                                                    </span>
+                                                                  </div>
+                                                                );
+                                                              })}
+                                                              {!line.sideEffects.some((s) => s.kind === "new" || s.kind === "worse") && (
+                                                                <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-100 flex items-center gap-1">
+                                                                  <span>✅</span>
+                                                                  <span>다른 감점이 늘어나지 않습니다</span>
+                                                                </div>
+                                                              )}
+                                                            </div>
+                                                          ) : (
+                                                            <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-100 flex items-center gap-1">
+                                                              <span>✅</span>
+                                                              <span>다른 감점이 늘어나지 않습니다</span>
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

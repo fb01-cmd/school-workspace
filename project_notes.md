@@ -779,3 +779,21 @@
   **버그를 재현하고 고침을 입증했다.** 「후보 0개」가 사용자가 겪은 *"목적지 클릭이 아예 안 돼"* 의 정체임이 숫자로 확인됐다. 읽기 약 40건(2026-2 기초 그리드 30학급 + 등록부 5종).
 - **[정직한 정정]** BB-2 지시서에 *"`hours` 부재로 중대 문제가 실제보다 적게 나올 수 있다"* 고 적었으나 **이 데이터에서는 판정이 안 바뀌었다**(양쪽 다 0건/40점). H1이 애초에 안 걸리는 상태였다. **가능성으로 적은 것을 사실처럼 읽지 않게** 여기 남긴다.
 - **[판정]** 과제 BB-2 **합격 → 배포.** 이로써 개정 화면의 집기·3색·이동이 실제로 동작한다(코드 근거 + 실데이터 실증). **다만 화면에서 눈으로 보는 것은 여전히 사용자 몫** — 오늘 두 번 다 코드 통과·화면 실패였다.
+
+## [2026-08-23] Antigravity — 과제 CC(개정 화면에 해결안 찾기·수읽기 붙이기) 완결
+
+- **[사실 1 — MiniGrid.tsx 공용 파일 추출 (CC-1)]**
+  - `src/components/admin/timetable/MiniGrid.tsx` 신설: `DraftAutoTab.tsx`의 `HistoryMiniGrid` 컴포넌트를 로직 변경 0(순수 이동)으로 추출.
+  - `DraftAutoTab.tsx:61`: `import { HistoryMiniGrid } from "./MiniGrid";`로 대체 (diff: +1줄 import, -39줄 함수 추출 외 변경 0).
+- **[사실 2 — 개정 화면 감점 및 중대 문제 상세 접이식 목록 (CC-2)]**
+  - `BaseRevisionTab.tsx:681-711·713-790·792-1033`: 상단 검증 바에서 중대 문제(⚠️) 및 감점(🟡) 뱃지 클릭 시 접이식 상세 패널 표출.
+  - 검사기(validate)가 생성한 `item.text` 및 `item.hint`를 화면 임의 변형 없이 그대로 표출하여 초안 화면과 동일한 문장 체계 유지.
+- **[사실 3 — 해결안 찾기(Lookahead L1 in Worker) 및 기보 카드 (CC-3)]**
+  - `BaseRevisionTab.tsx:267-336`: `searchLookaheadInWorker`(`lookaheadClient.ts`)를 호출하여 Web Worker 기반 탐색 배선 (`searchLookaheadLines` 직접 호출 0건). 실시간 탐색 수 진행률 및 청크 에러/취소 처리 완비.
+  - 기보 카드: 2수 이상 기보에서 `simBoard = cloneClassGrids(currentGrids)` 누적판을 사용하여 n번째 수의 변경 위치/과목/교사를 정확히 시각화(`:941-987`) + `HistoryMiniGrid` 연쇄 표출 + `line.sideEffects` 대가 줄 표시 + §0-5 점수 딱지 규약 준수.
+- **[사실 4 — 기보 적용 시 서버 호출 0회 (CC-3)]**
+  - `BaseRevisionTab.tsx:338-348`: `handleApplyLineStep` (1수 적용) 및 `handleApplyLineAll` (전체 적용)은 로컬 `setOps((prev) => [...prev, ...])`로만 연산을 누적하므로 조작 시 서버 호출 0회.
+- **[사실 5 — 읽기량 보고 (규칙 ⑪)]**
+  - 해결안 찾기 및 기보 적용 시 추가 읽기 0회 (브라우저 Web Worker 및 메모리 계산).
+- **[규약 준수]** `project_notes.md`는 기존 내용 삭제 없이 하단에만 추가(append-only).
+- **[검증]** `tsc` 0건 · `build` (49/49) 통과 · `check:ui` 20/20 통과 · `check_ui_removals.sh 3eb0b68` 통과 · selftest 4종(`lookahead`(31), `movecand`(15), `m2ops`(15), `unplaced`(24)) 100% 통과.
