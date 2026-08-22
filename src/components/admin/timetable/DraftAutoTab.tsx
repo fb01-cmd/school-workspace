@@ -216,6 +216,20 @@ export default function DraftAutoTab({
   const [viewGrade, setViewGrade] = useState(1);
   const [viewClass, setViewClass] = useState(1);
   const [selectedTeacherEmail, setSelectedTeacherEmail] = useState<string | null>(null);
+  // 📌 고정 토글 상태 (스펙 §2-2: 고정 시 hover 연동 무시, 명시적 선택으로만 변경)
+  const [isClassPinned, setIsClassPinned] = useState(false);
+  const [isTeacherPinned, setIsTeacherPinned] = useState(false);
+
+  // 추가 고정 시간표 패널 (스펙 §2-2: 최대 2개)
+  const [extraPanels, setExtraPanels] = useState<
+    {
+      id: string;
+      type: "class" | "teacher";
+      grade: number;
+      classNum: number;
+      teacherEmail: string;
+    }[]
+  >([]);
   // GWS 이름 맵 — 렌더 중 캐시 직독 금지 원칙(AGENTS 「사람 이름 표시 원칙」)대로 마운트 시 state로 옮긴다.
   // 캐시가 비어 있어도 추가 조회는 안 한다 — 초안 그리드의 수업에 교사 이름이 이미 박혀 있어
   // 그쪽 폴백으로 충분하다 (읽기량: 추가 0건).
@@ -1424,14 +1438,19 @@ export default function DraftAutoTab({
     );
   };
 
-  const handleCellRightClick = (day: number, period: number) => {
+  const handleCellRightClick = (
+    day: number,
+    period: number,
+    targetGrade: number = viewGrade,
+    targetClass: number = viewClass
+  ) => {
     if (!openDraft || savingOp) return;
-    const grid = openDraft.currentGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
+    const grid = openDraft.currentGrids.find((g) => g.grade === targetGrade && g.classNum === targetClass);
     const cell = grid?.cells?.find((c) => c.day === day && c.period === period);
     const lesson = cell?.lessons?.[0];
     if (!lesson) return;
 
-    handleParkCell(viewGrade, viewClass, day, period);
+    handleParkCell(targetGrade, targetClass, day, period);
   };
 
   // ── 직접 조정 모드: 즉시 이동 / 연쇄 적용 (스펙 §2-3·§2-4) ──
@@ -1487,10 +1506,15 @@ export default function DraftAutoTab({
   };
 
   // ── 셀 클릭 핸들러 (학급 그리드) ──
-  const handleCellClick = async (day: number, period: number) => {
+  const handleCellClick = async (
+    day: number,
+    period: number,
+    targetGrade: number = viewGrade,
+    targetClass: number = viewClass
+  ) => {
     if (!openDraft || savingOp) return;
     const { currentGrids } = openDraft;
-    const grid = currentGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
+    const grid = currentGrids.find((g) => g.grade === targetGrade && g.classNum === targetClass);
     const cell = grid?.cells?.find((c) => c.day === day && c.period === period);
     const lesson = cell?.lessons?.[0];
 
@@ -1540,19 +1564,19 @@ export default function DraftAutoTab({
         const res = evaluateMoveCandidates({
           grids: currentGrids,
           model: openDraft.model,
-          pick: { grade: viewGrade, classNum: viewClass, day, period },
+          pick: { grade: targetGrade, classNum: targetClass, day, period },
         });
         if (res.pickBlocked) {
           setBlockedBubble({ day, period, message: res.pickBlocked });
           return;
         }
-        setPickedSlot({ grade: viewGrade, classNum: viewClass, day, period, lesson });
+        setPickedSlot({ grade: targetGrade, classNum: targetClass, day, period, lesson });
         setCandidatesResult(res);
         setChainSteps([]);
         setChainStartGrids(cloneClassGrids(currentGrids));
         setHeldParkId(null);
         setBlockedBubble(null);
-        if (lesson.teachers?.[0]?.email) {
+        if (lesson.teachers?.[0]?.email && !isTeacherPinned) {
           setSelectedTeacherEmail(lesson.teachers[0].email);
         }
         return;
@@ -1560,8 +1584,8 @@ export default function DraftAutoTab({
 
       // 이미 집은 상태
       if (
-        pickedSlot.grade === viewGrade &&
-        pickedSlot.classNum === viewClass &&
+        pickedSlot.grade === targetGrade &&
+        pickedSlot.classNum === targetClass &&
         pickedSlot.day === day &&
         pickedSlot.period === period
       ) {
@@ -1586,8 +1610,6 @@ export default function DraftAutoTab({
       }
 
       // 1) 빈 칸으로 이동 (kind === "move" 또는 수업 없음):
-      //    - 연쇄 비활성이면 단독 swap op 전송
-      //    - 연쇄 중이면 마지막 unpark 합류 후 chain op 전송 (과제 Q-2 ③)
       if (cand.kind === "move" || !lesson) {
         await handleApplyDirectMove(
           pickedSlot.grade,
@@ -1601,7 +1623,6 @@ export default function DraftAutoTab({
       }
 
       // 2) 맞바꿈 가능 점유 칸 (kind === "swap"):
-      //    - 연쇄 비활성 상태에서 즉시 swap op 전송 (M1 동작 복원 — 과제 Q-2 ①)
       if (cand.kind === "swap") {
         await handleApplyDirectMove(
           pickedSlot.grade,
@@ -1616,7 +1637,7 @@ export default function DraftAutoTab({
 
       // 3) 밀어내기 칸 (kind === "displace" — 맞바꿈 불성립 점유 칸에서 수업을 넣고 상대 수업을 듦 — 과제 Q-2 ②):
       const updatedGrids = cloneClassGrids(currentGrids);
-      const targetG = updatedGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
+      const targetG = updatedGrids.find((g) => g.grade === targetGrade && g.classNum === targetClass);
       if (!targetG) return;
 
       const parkId = `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -1624,25 +1645,23 @@ export default function DraftAutoTab({
 
       if (chainSteps.length === 0) {
         // 최초 밀어내기 (연쇄 시작):
-        // steps = [park(목적지), swap(원위치->목적지)]
         const stepPark: ChainStep = {
           kind: "park",
           parkId,
-          grade: viewGrade,
-          classNum: viewClass,
+          grade: targetGrade,
+          classNum: targetClass,
           day,
           period,
         };
         const stepSwap: ChainStep = {
           kind: "swap",
-          grade: viewGrade,
-          classNum: viewClass,
+          grade: targetGrade,
+          classNum: targetClass,
           a: { day: pickedSlot.day, period: pickedSlot.period },
           b: { day, period },
         };
         nextChainSteps = [stepPark, stepSwap];
 
-        // 로컬 미리보기 그리드 갱신: 원위치 비우고 목적지에 내 수업 배치
         let cellA = targetG.cells.find((c) => c.day === pickedSlot.day && c.period === pickedSlot.period);
         let cellB = targetG.cells.find((c) => c.day === day && c.period === period);
         if (!cellA) {
@@ -1657,26 +1676,24 @@ export default function DraftAutoTab({
         cellB.lessons = [pickedSlot.lesson];
       } else {
         // 연쇄 진행 중 추가 밀어내기:
-        // steps = [...이전steps, park(새목적지), unpark(이전parkId->새목적지)]
         const stepPark: ChainStep = {
           kind: "park",
           parkId,
-          grade: viewGrade,
-          classNum: viewClass,
+          grade: targetGrade,
+          classNum: targetClass,
           day,
           period,
         };
         const stepUnpark: ChainStep = {
           kind: "unpark",
           parkId: heldParkId!,
-          grade: viewGrade,
-          classNum: viewClass,
+          grade: targetGrade,
+          classNum: targetClass,
           day,
           period,
         };
         nextChainSteps = [...chainSteps, stepPark, stepUnpark];
 
-        // 로컬 미리보기 그리드 갱신: 새 목적지에 이전에 들고 있던 수업 배치
         let cellB = targetG.cells.find((c) => c.day === day && c.period === period);
         if (!cellB) {
           cellB = { day, period, lessons: [] };
@@ -1686,8 +1703,8 @@ export default function DraftAutoTab({
       }
 
       const newPicked = {
-        grade: viewGrade,
-        classNum: viewClass,
+        grade: targetGrade,
+        classNum: targetClass,
         day,
         period,
         lesson,
@@ -1702,27 +1719,32 @@ export default function DraftAutoTab({
       const newRes = evaluateHeldCandidates({
         grids: updatedGrids,
         model: openDraft.model,
-        held: { grade: viewGrade, classNum: viewClass, lessons: [lesson] },
+        held: { grade: targetGrade, classNum: targetClass, lessons: [lesson] },
       });
       setCandidatesResult(newRes);
       setBlockedBubble(null);
 
-      if (lesson.teachers?.[0]?.email) {
+      if (lesson.teachers?.[0]?.email && !isTeacherPinned) {
         setSelectedTeacherEmail(lesson.teachers[0].email);
       }
       return;
     }
 
     // ── 열람 모드 (manualMode 꺼짐: 교사 주간 시간표 연동 등 열람 동작만) ──
-    if (lesson?.teachers?.[0]?.email) {
+    if (lesson?.teachers?.[0]?.email && !isTeacherPinned) {
       setSelectedTeacherEmail(lesson.teachers[0].email);
     }
   };
 
   // ── 교사 그리드 셀 클릭 핸들러 (직접 조정 모드) ──
-  const handleTeacherCellClick = async (day: number, period: number) => {
-    if (!openDraft || !manualMode || savingOp) return;
+  const handleTeacherCellClick = async (
+    day: number,
+    period: number,
+    targetTeacherEmail: string | null = selectedTeacherEmail
+  ) => {
+    if (!openDraft || !manualMode || savingOp || !targetTeacherEmail) return;
     const { currentGrids } = openDraft;
+    const slots = synthesizeTeacherGrid(currentGrids, targetTeacherEmail, periodsPerDay);
 
     // 미배정 수업 배정 모드인 경우
     if (selectedUnplaced) {
@@ -1767,13 +1789,15 @@ export default function DraftAutoTab({
     }
 
     if (!pickedSlot) {
-      const hit = teacherSlots.find((s) => s.day === day && s.period === period);
+      const hit = slots.find((s) => s.day === day && s.period === period);
       if (!hit) {
         setBlockedBubble({ day, period, message: "선택한 교사의 수업이 없는 빈 칸입니다." });
         return;
       }
-      setViewGrade(hit.grade);
-      setViewClass(hit.classNum);
+      if (!isClassPinned) {
+        setViewGrade(hit.grade);
+        setViewClass(hit.classNum);
+      }
       const targetGrid = currentGrids.find((g) => g.grade === hit.grade && g.classNum === hit.classNum);
       const targetCell = targetGrid?.cells?.find((c) => c.day === day && c.period === period);
       const targetLesson = targetCell?.lessons?.[0];
@@ -1798,9 +1822,11 @@ export default function DraftAutoTab({
     }
 
     // 이미 집은 상태
+    const hit = slots.find((s) => s.day === day && s.period === period);
     if (
-      pickedSlot.grade === viewGrade &&
-      pickedSlot.classNum === viewClass &&
+      hit &&
+      pickedSlot.grade === hit.grade &&
+      pickedSlot.classNum === hit.classNum &&
       pickedSlot.day === day &&
       pickedSlot.period === period
     ) {
@@ -1822,7 +1848,7 @@ export default function DraftAutoTab({
       return;
     }
 
-    const targetGrid = currentGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
+    const targetGrid = currentGrids.find((g) => g.grade === pickedSlot.grade && g.classNum === pickedSlot.classNum);
     const targetCell = targetGrid?.cells?.find((c) => c.day === day && c.period === period);
     const targetLesson = targetCell?.lessons?.[0];
 
@@ -1854,7 +1880,7 @@ export default function DraftAutoTab({
 
     // 3) 밀어내기 칸 (kind === "displace"):
     const updatedGrids = cloneClassGrids(currentGrids);
-    const targetG = updatedGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
+    const targetG = updatedGrids.find((g) => g.grade === pickedSlot.grade && g.classNum === pickedSlot.classNum);
     if (!targetG) return;
 
     const parkId = `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -1864,15 +1890,15 @@ export default function DraftAutoTab({
       const stepPark: ChainStep = {
         kind: "park",
         parkId,
-        grade: viewGrade,
-        classNum: viewClass,
+        grade: pickedSlot.grade,
+        classNum: pickedSlot.classNum,
         day,
         period,
       };
       const stepSwap: ChainStep = {
         kind: "swap",
-        grade: viewGrade,
-        classNum: viewClass,
+        grade: pickedSlot.grade,
+        classNum: pickedSlot.classNum,
         a: { day: pickedSlot.day, period: pickedSlot.period },
         b: { day, period },
       };
@@ -1894,16 +1920,16 @@ export default function DraftAutoTab({
       const stepPark: ChainStep = {
         kind: "park",
         parkId,
-        grade: viewGrade,
-        classNum: viewClass,
+        grade: pickedSlot.grade,
+        classNum: pickedSlot.classNum,
         day,
         period,
       };
       const stepUnpark: ChainStep = {
         kind: "unpark",
         parkId: heldParkId!,
-        grade: viewGrade,
-        classNum: viewClass,
+        grade: pickedSlot.grade,
+        classNum: pickedSlot.classNum,
         day,
         period,
       };
@@ -1918,8 +1944,8 @@ export default function DraftAutoTab({
     }
 
     const newPicked = {
-      grade: viewGrade,
-      classNum: viewClass,
+      grade: pickedSlot.grade,
+      classNum: pickedSlot.classNum,
       day,
       period,
       lesson: targetLesson,
@@ -1933,11 +1959,12 @@ export default function DraftAutoTab({
     const newRes = evaluateHeldCandidates({
       grids: updatedGrids,
       model: openDraft.model,
-      held: { grade: viewGrade, classNum: viewClass, lessons: [targetLesson] },
+      held: { grade: pickedSlot.grade, classNum: pickedSlot.classNum, lessons: [targetLesson] },
     });
     setCandidatesResult(newRes);
     setBlockedBubble(null);
-    if (targetLesson.teachers?.[0]?.email) {
+
+    if (targetLesson?.teachers?.[0]?.email && !isTeacherPinned) {
       setSelectedTeacherEmail(targetLesson.teachers[0].email);
     }
   };
@@ -2030,6 +2057,811 @@ export default function DraftAutoTab({
     const { meta, report } = openDraft;
     const canUndo = meta.opCursor > 0;
     const canRedo = meta.opCursor < meta.ops.length;
+
+    // ── 학급 그리드 테이블 렌더러 (셀 높이 상시 균일화: h-14 고정) ──
+    const renderClassGridTable = (
+      grade: number,
+      classNum: number,
+      isExtra: boolean = false
+    ) => {
+      const grid = openDraft.currentGrids.find((g) => g.grade === grade && g.classNum === classNum);
+      if (!grid) {
+        return (
+          <div className="p-8 text-center text-xs text-gray-400">
+            {grade}학년 {classNum}반 시간표가 없습니다.
+          </div>
+        );
+      }
+
+      return (
+        <table className="w-full text-center text-xs border-collapse">
+          <thead>
+            <tr className="bg-gray-100 border-b border-gray-200 font-bold text-gray-700">
+              <th className="py-2.5 px-2 border-r border-gray-200 w-10">교시</th>
+              {DAYS.map((d, dIdx) => {
+                const isHighlighted =
+                  !isExtra &&
+                  highlightDay?.target === "class" &&
+                  highlightDay.day === dIdx + 1;
+                return (
+                  <th
+                    key={d}
+                    className={`py-2.5 px-1 border-r border-gray-200 min-w-[5.5rem] transition-colors duration-500 ${
+                      isHighlighted
+                        ? "bg-amber-200 text-amber-950 ring-2 ring-inset ring-amber-400"
+                        : ""
+                    }`}
+                  >
+                    {d}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {Array.from({ length: Math.max(7, periodsPerDay) }, (_, i) => i + 1).map((period) => (
+              <tr key={period}>
+                <td className="py-2 px-2 font-bold bg-gray-50 border-r border-gray-200 text-gray-600">
+                  {period}
+                </td>
+                {[1, 2, 3, 4, 5].map((day) => {
+                  const cell = grid.cells.find((c) => c.day === day && c.period === period);
+                  const lesson = cell?.lessons?.[0];
+
+                  // 직접 조정 모드일 때
+                  if (manualMode) {
+                    const isPicked =
+                      pickedSlot?.grade === grade &&
+                      pickedSlot?.classNum === classNum &&
+                      pickedSlot?.day === day &&
+                      pickedSlot?.period === period;
+                    const cand =
+                      pickedSlot?.grade === grade && pickedSlot?.classNum === classNum
+                        ? candidatesResult?.candidates.find(
+                            (c) => c.day === day && c.period === period
+                          )
+                        : undefined;
+                    const simulLabel = getSimulLabel(grade, classNum, day, period, lesson);
+                    const placeholder = findPlaceholderLesson(openDraft.currentGrids, grade, classNum, day, period);
+                    const isBandLocked = !!simulLabel;
+                    const isPlaceholder = !!placeholder;
+                    const canDragCell = manualMode && !savingOp && !!lesson && !isBandLocked && !isPlaceholder;
+                    const isDragOverThis =
+                      dragOverCell?.day === day &&
+                      dragOverCell?.period === period &&
+                      (!dragSource ||
+                        dragSource.type !== "cell" ||
+                        (dragSource.grade === grade && dragSource.classNum === classNum));
+
+                    const dndProps = {
+                      draggable: canDragCell,
+                      onDragStart: (e: React.DragEvent) => {
+                        if (!canDragCell) return;
+                        e.dataTransfer.setData(
+                          "text/plain",
+                          JSON.stringify({ type: "cell", grade, classNum, day, period })
+                        );
+                        e.dataTransfer.effectAllowed = "move";
+                        setDragSource({ type: "cell", grade, classNum, day, period, lesson: lesson! });
+
+                        if (!isPicked) {
+                          const res = evaluateMoveCandidates({
+                            grids: openDraft.currentGrids,
+                            model: openDraft.model,
+                            pick: { grade, classNum, day, period },
+                          });
+                          if (!res.pickBlocked) {
+                            setPickedSlot({ grade, classNum, day, period, lesson: lesson! });
+                            setCandidatesResult(res);
+                            setChainSteps([]);
+                            setChainStartGrids(cloneClassGrids(openDraft.currentGrids));
+                            setHeldParkId(null);
+                          }
+                        }
+                      },
+                      onDragEnd: () => {
+                        setDragSource(null);
+                        setDragOverCell(null);
+                        setIsTrayDragOver(false);
+                      },
+                      onDragOver: (e: React.DragEvent) => {
+                        if (!dragSource || savingOp) return;
+                        if (
+                          dragSource.type === "cell" &&
+                          (dragSource.grade !== grade || dragSource.classNum !== classNum)
+                        ) {
+                          return;
+                        }
+                        const candItem = candidatesResult?.candidates.find(
+                          (c) => c.day === day && c.period === period
+                        );
+                        if (candItem && candItem.verdict !== "blocked") {
+                          if (dragSource.type === "cell") {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "move";
+                            setDragOverCell({ day, period });
+                          } else if (dragSource.type === "tray" || dragSource.type === "unplaced") {
+                            if (!lesson) {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              setDragOverCell({ day, period });
+                            }
+                          }
+                        }
+                      },
+                      onDragLeave: (e: React.DragEvent) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setDragOverCell((prev) =>
+                            prev?.day === day && prev?.period === period ? null : prev
+                          );
+                        }
+                      },
+                      onDrop: (e: React.DragEvent) => {
+                        e.preventDefault();
+                        setDragOverCell(null);
+                        if (!dragSource || savingOp) return;
+
+                        const candItem = candidatesResult?.candidates.find(
+                          (c) => c.day === day && c.period === period
+                        );
+                        if (!candItem || candItem.verdict === "blocked") return;
+
+                        if (dragSource.type === "cell") {
+                          if (
+                            dragSource.grade === grade &&
+                            dragSource.classNum === classNum &&
+                            dragSource.day === day &&
+                            dragSource.period === period
+                          )
+                            return;
+                          setDragSource(null);
+                          handleCellClick(day, period, grade, classNum);
+                        } else if (dragSource.type === "tray") {
+                          if (lesson) return;
+                          setDragSource(null);
+                          handleUnparkCell(dragSource.entry, day, period);
+                        } else if (dragSource.type === "unplaced") {
+                          if (lesson) return;
+                          setDragSource(null);
+                          handleApplyUnplacedAssignment(dragSource.unplaced, day, period);
+                        }
+                      },
+                    };
+
+                    if (isPicked) {
+                      return (
+                        <td
+                          key={day}
+                          {...dndProps}
+                          onClick={() => handleCellClick(day, period, grade, classNum)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            handleCellRightClick(day, period, grade, classNum);
+                          }}
+                          title="집은 수업 (클릭 또는 Esc로 해제)"
+                          className={`h-14 min-h-[3.5rem] max-h-[3.5rem] p-1.5 border-r border-gray-200 bg-sky-100/90 text-sky-950 align-top cursor-pointer select-none relative overflow-hidden ${
+                            isDragOverThis ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10" : ""
+                          } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
+                        >
+                          {lesson ? (
+                            <div className="h-full flex flex-col justify-between">
+                              <div className="flex items-start justify-between gap-0.5">
+                                <span className="font-bold text-[11px] truncate leading-tight">
+                                  {lesson.subjectShort || lesson.subjectName}
+                                </span>
+                                <span className="shrink-0 text-[10px] leading-none" title="집은 수업">
+                                  📌
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-sky-800 truncate leading-tight text-left">
+                                {lesson.teachers?.map((t) => t.name).join(", ") || "—"}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="h-full flex flex-col justify-between">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] text-gray-300">—</span>
+                              </div>
+                              <div className="text-[10px] text-transparent leading-tight select-none">—</div>
+                            </div>
+                          )}
+                        </td>
+                      );
+                    }
+
+                    if (cand) {
+                      if (cand.verdict === "ok") {
+                        return (
+                          <td
+                            key={day}
+                            {...dndProps}
+                            onClick={() => handleCellClick(day, period, grade, classNum)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              handleCellRightClick(day, period, grade, classNum);
+                            }}
+                            title={
+                              cand.kind === "swap"
+                                ? `${lesson?.subjectShort || "수업"}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                : cand.kind === "displace"
+                                ? `${lesson?.subjectShort || "수업"} 밀어내고 들기 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                : `빈 칸으로 이동 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                            }
+                            className={`h-14 min-h-[3.5rem] max-h-[3.5rem] p-1.5 border-r border-gray-200 bg-emerald-50/80 hover:bg-emerald-100/80 text-gray-800 align-top cursor-pointer select-none transition-colors relative overflow-hidden ${
+                              isDragOverThis ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10" : ""
+                            } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
+                          >
+                            {lesson ? (
+                              <div className="h-full flex flex-col justify-between">
+                                <div className="flex items-start justify-between gap-0.5">
+                                  <span className="font-bold text-[11px] truncate leading-tight text-emerald-950 flex items-center gap-0.5">
+                                    {cand.kind === "displace" && (
+                                      <span className="text-[9px]" title="밀어내고 들기">
+                                        ✋
+                                      </span>
+                                    )}
+                                    {isBandLocked && (
+                                      <span className="text-[9px]" title={simulLabel ? `동시수업: ${simulLabel}` : "동시수업"}>
+                                        🔒
+                                      </span>
+                                    )}
+                                    <span>{lesson.subjectShort || lesson.subjectName}</span>
+                                  </span>
+                                  <span
+                                    className={`shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none ${
+                                      cand.softDelta < 0
+                                        ? "bg-emerald-600 text-white shadow-2xs"
+                                        : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                    }`}
+                                  >
+                                    {cand.softDelta < 0 ? cand.softDelta : "0"}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-gray-500 truncate leading-tight text-left">
+                                  {lesson.teachers?.map((t) => t.name).join(", ") || "—"}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="h-full flex flex-col justify-between">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] text-gray-300">—</span>
+                                  <span
+                                    className={`shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none ${
+                                      cand.softDelta < 0
+                                        ? "bg-emerald-600 text-white shadow-2xs"
+                                        : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                    }`}
+                                  >
+                                    {cand.softDelta < 0 ? cand.softDelta : "0"}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-transparent leading-tight select-none">—</div>
+                              </div>
+                            )}
+                          </td>
+                        );
+                      }
+
+                      if (cand.verdict === "worse") {
+                        const worseReason = formatWorseReasons(cand.worseByCode);
+                        return (
+                          <td
+                            key={day}
+                            {...dndProps}
+                            onClick={() => handleCellClick(day, period, grade, classNum)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              handleCellRightClick(day, period, grade, classNum);
+                            }}
+                            title={
+                              cand.kind === "displace"
+                                ? worseReason
+                                  ? `밀어내고 들기 감점 (+${cand.softDelta}점): ${worseReason}`
+                                  : `밀어내고 들기 감점 +${cand.softDelta}점`
+                                : worseReason
+                                ? `감점 (+${cand.softDelta}점): ${worseReason}`
+                                : `감점 +${cand.softDelta}점`
+                            }
+                            className={`h-14 min-h-[3.5rem] max-h-[3.5rem] p-1.5 border-r border-gray-200 bg-amber-50/80 hover:bg-amber-100/80 text-gray-800 align-top cursor-pointer select-none transition-colors relative overflow-hidden ${
+                              isDragOverThis ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10" : ""
+                            } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
+                          >
+                            {lesson ? (
+                              <div className="h-full flex flex-col justify-between">
+                                <div className="flex items-start justify-between gap-0.5">
+                                  <span className="font-bold text-[11px] truncate leading-tight text-amber-950 flex items-center gap-0.5">
+                                    {cand.kind === "displace" && (
+                                      <span className="text-[9px]" title="밀어내고 들기">
+                                        ✋
+                                      </span>
+                                    )}
+                                    {isBandLocked && (
+                                      <span className="text-[9px]" title={simulLabel ? `동시수업: ${simulLabel}` : "동시수업"}>
+                                        🔒
+                                      </span>
+                                    )}
+                                    <span>{lesson.subjectShort || lesson.subjectName}</span>
+                                  </span>
+                                  <span className="shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none bg-amber-500 text-white shadow-2xs">
+                                    +{cand.softDelta}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-gray-500 truncate leading-tight text-left">
+                                  {lesson.teachers?.map((t) => t.name).join(", ") || "—"}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="h-full flex flex-col justify-between">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] text-gray-300">—</span>
+                                  <span className="shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none bg-amber-500 text-white shadow-2xs">
+                                    +{cand.softDelta}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-transparent leading-tight select-none">—</div>
+                              </div>
+                            )}
+                          </td>
+                        );
+                      }
+
+                      // blocked (하드 위반 등)
+                      return (
+                        <td
+                          key={day}
+                          {...dndProps}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            handleCellRightClick(day, period, grade, classNum);
+                          }}
+                          title={
+                            cand.blockedReason
+                              ? `이동 불가: ${cand.blockedReason}`
+                              : isBandLocked
+                              ? `동시수업 (${simulLabel})`
+                              : isPlaceholder
+                              ? "학교 공통 시간"
+                              : "이동 불가"
+                          }
+                          className={`h-14 min-h-[3.5rem] max-h-[3.5rem] p-1.5 border-r border-gray-200 bg-gray-100/90 text-gray-400 align-top cursor-not-allowed select-none relative opacity-70 overflow-hidden ${
+                            savingOp ? "cursor-wait" : ""
+                          }`}
+                        >
+                          {lesson ? (
+                            <div className="h-full flex flex-col justify-between">
+                              <div className="flex items-start justify-between gap-0.5">
+                                <span className="font-bold text-[11px] truncate leading-tight text-gray-400">
+                                  {lesson.subjectShort || lesson.subjectName}
+                                </span>
+                                <span className="shrink-0 text-[10px] text-gray-400 leading-none">🔒</span>
+                              </div>
+                              <div className="text-[10px] text-gray-400 truncate leading-tight text-left">
+                                {lesson.teachers?.map((t) => t.name).join(", ") || "—"}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="h-full flex flex-col justify-between">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] text-gray-300">—</span>
+                                <span className="text-[10px] text-gray-400 leading-none">🔒</span>
+                              </div>
+                              <div className="text-[10px] text-transparent leading-tight select-none">—</div>
+                            </div>
+                          )}
+                        </td>
+                      );
+                    }
+
+                    // pickedSlot이 없는 대기 상태
+                    return (
+                      <td
+                        key={day}
+                        {...dndProps}
+                        onClick={() => handleCellClick(day, period, grade, classNum)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          handleCellRightClick(day, period, grade, classNum);
+                        }}
+                        onMouseEnter={() => {
+                          if (!isTeacherPinned && !pickedSlot && lesson?.teachers?.[0]?.email) {
+                            setSelectedTeacherEmail(lesson.teachers[0].email);
+                          }
+                        }}
+                        title={
+                          isBandLocked
+                            ? `동시수업 (${simulLabel})`
+                            : isPlaceholder
+                            ? "학교 공통 시간"
+                            : lesson
+                            ? `${lesson.subjectName} (${lesson.teachers?.map((t) => t.name).join(", ") || ""})`
+                            : undefined
+                        }
+                        className={`h-14 min-h-[3.5rem] max-h-[3.5rem] p-1.5 border-r border-gray-200 align-top transition-colors cursor-pointer select-none bg-white hover:bg-indigo-50/50 text-gray-800 relative overflow-hidden ${
+                          isDragOverThis ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10" : ""
+                        } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
+                      >
+                        {lesson ? (
+                          <div className="h-full flex flex-col justify-between">
+                            <div className="flex items-start justify-between gap-0.5">
+                              <span className="font-bold text-[11px] truncate leading-tight">
+                                {lesson.subjectShort || lesson.subjectName}
+                              </span>
+                              {isBandLocked && (
+                                <span className="shrink-0 text-[10px] text-purple-700 leading-none" title={`동시수업: ${simulLabel}`}>
+                                  🔒
+                                </span>
+                              )}
+                              {isPlaceholder && (
+                                <span className="shrink-0 text-[10px] text-purple-700 leading-none" title="학교 공통 시간">
+                                  🔒
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-gray-500 truncate leading-tight text-left">
+                              {lesson.teachers?.map((t) => t.name).join(", ") || "—"}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="h-full flex flex-col justify-between">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] text-gray-300">—</span>
+                            </div>
+                            <div className="text-[10px] text-transparent leading-tight select-none">—</div>
+                          </div>
+                        )}
+                      </td>
+                    );
+                  }
+
+                  // ── 열람 모드 (manualMode 꺼짐) ──
+                  const simulLabel = getSimulLabel(grade, classNum, day, period, lesson);
+                  const isBandLocked = !!simulLabel;
+
+                  const hasHardError = report.hard.some((h) => {
+                    const hasAnyCoord =
+                      h.grade !== undefined ||
+                      h.classNum !== undefined ||
+                      h.day !== undefined ||
+                      h.period !== undefined;
+                    if (!hasAnyCoord) return false;
+                    if (h.grade !== undefined && h.grade !== grade) return false;
+                    if (h.classNum !== undefined && h.classNum !== classNum) return false;
+                    if (h.day !== undefined && h.day !== day) return false;
+                    if (h.period !== undefined && h.period !== period) return false;
+                    return true;
+                  });
+
+                  return (
+                    <td
+                      key={day}
+                      onClick={() => handleCellClick(day, period, grade, classNum)}
+                      onMouseEnter={() => {
+                        if (!isTeacherPinned && !pickedSlot && lesson?.teachers?.[0]?.email) {
+                          setSelectedTeacherEmail(lesson.teachers[0].email);
+                        }
+                      }}
+                      title={
+                        hasHardError
+                          ? "하드 제약 위반 발생"
+                          : isBandLocked
+                          ? `동시수업 (${simulLabel})`
+                          : lesson
+                          ? `${lesson.subjectName} (${lesson.teachers?.map((t) => t.name).join(", ") || ""})`
+                          : undefined
+                      }
+                      className={`h-14 min-h-[3.5rem] max-h-[3.5rem] p-1.5 border-r border-gray-200 align-top transition-colors cursor-pointer select-none overflow-hidden ${
+                        hasHardError
+                          ? "bg-red-100 text-red-950 font-bold border-2 border-red-400"
+                          : isBandLocked
+                          ? "bg-gray-100/80 text-gray-500"
+                          : "bg-white hover:bg-gray-50 text-gray-800"
+                      }`}
+                    >
+                      {lesson ? (
+                        <div className="h-full flex flex-col justify-between">
+                          <div className="flex items-start justify-between gap-0.5">
+                            <span className="font-bold text-[11px] truncate leading-tight">
+                              {lesson.subjectShort || lesson.subjectName}
+                            </span>
+                            {isBandLocked && (
+                              <span className="shrink-0 text-[10px] text-purple-700 leading-none" title={`동시수업: ${simulLabel}`}>
+                                🔒
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-gray-500 truncate leading-tight text-left">
+                            {lesson.teachers?.map((t) => t.name).join(", ") || "—"}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-full flex flex-col justify-between">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-gray-300">—</span>
+                          </div>
+                          <div className="text-[10px] text-transparent leading-tight select-none">—</div>
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+    };
+
+    // ── 교사 그리드 테이블 렌더러 (셀 높이 상시 균일화: h-8 고정) ──
+    const renderTeacherGridTable = (
+      teacherEmail: string | null,
+      isExtra: boolean = false
+    ) => {
+      const slots = teacherEmail
+        ? synthesizeTeacherGrid(openDraft.currentGrids, teacherEmail, periodsPerDay)
+        : [];
+
+      if (!teacherEmail) {
+        return (
+          <div className="py-6 text-center text-xs text-gray-400">
+            {manualMode
+              ? "학급 시간표 셀을 가리키거나 위에서 교사를 선택하세요."
+              : "시간표 셀을 클릭하면 해당 교사의 주간 시간표가 자동 표시됩니다."}
+          </div>
+        );
+      }
+
+      return (
+        <div className="overflow-x-auto border border-gray-100 rounded-lg text-[11px]">
+          <table className="w-full text-center border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200 font-bold text-gray-600">
+                <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
+                {DAYS.map((d, dIdx) => {
+                  const isHighlighted =
+                    !isExtra &&
+                    highlightDay?.target === "teacher" &&
+                    highlightDay.day === dIdx + 1;
+                  return (
+                    <th
+                      key={d}
+                      className={`py-1 px-1 border-r border-gray-200 transition-colors duration-500 ${
+                        isHighlighted
+                          ? "bg-amber-200 text-amber-950 ring-2 ring-inset ring-amber-400"
+                          : ""
+                      }`}
+                    >
+                      {d}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {Array.from({ length: Math.max(7, periodsPerDay) }, (_, i) => i + 1).map((p) => (
+                <tr key={p}>
+                  <td className="py-1 px-1 font-bold bg-gray-50 border-r border-gray-200 text-gray-500 text-[10px]">
+                    {p}
+                  </td>
+                  {[1, 2, 3, 4, 5].map((d) => {
+                    const hit = slots.find((s) => s.day === d && s.period === p);
+
+                    if (manualMode) {
+                      const cand = pickedSlot
+                        ? candidatesResult?.candidates.find((c) => c.day === d && c.period === p)
+                        : undefined;
+                      const isDragOverTeacherThis =
+                        dragOverCell?.day === d && dragOverCell?.period === p;
+
+                      const teacherDndProps = {
+                        onDragOver: (e: React.DragEvent) => {
+                          if (!dragSource || savingOp) return;
+                          const candItem = candidatesResult?.candidates.find(
+                            (c) => c.day === d && c.period === p
+                          );
+                          if (candItem && candItem.verdict !== "blocked") {
+                            if (dragSource.type === "cell") {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              setDragOverCell({ day: d, period: p });
+                            } else if (dragSource.type === "tray" || dragSource.type === "unplaced") {
+                              if (!hit) {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = "move";
+                                setDragOverCell({ day: d, period: p });
+                              }
+                            }
+                          }
+                        },
+                        onDragLeave: (e: React.DragEvent) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                            setDragOverCell((prev) =>
+                              prev?.day === d && prev?.period === p ? null : prev
+                            );
+                          }
+                        },
+                        onDrop: (e: React.DragEvent) => {
+                          e.preventDefault();
+                          setDragOverCell(null);
+                          if (!dragSource || savingOp) return;
+
+                          const candItem = candidatesResult?.candidates.find(
+                            (c) => c.day === d && c.period === p
+                          );
+                          if (!candItem || candItem.verdict === "blocked") return;
+
+                          if (dragSource.type === "cell") {
+                            setDragSource(null);
+                            handleTeacherCellClick(d, p, teacherEmail);
+                          } else if (dragSource.type === "tray") {
+                            if (hit) return;
+                            setDragSource(null);
+                            handleUnparkCell(dragSource.entry, d, p);
+                          } else if (dragSource.type === "unplaced") {
+                            if (hit) return;
+                            setDragSource(null);
+                            handleApplyUnplacedAssignment(dragSource.unplaced, d, p);
+                          }
+                        },
+                      };
+
+                      if (pickedSlot && cand) {
+                        if (cand.verdict === "ok") {
+                          return (
+                            <td
+                              key={d}
+                              {...teacherDndProps}
+                              onClick={() => handleTeacherCellClick(d, p, teacherEmail)}
+                              className={`h-8 min-h-[2rem] max-h-[2rem] p-1 border-r border-gray-100 bg-emerald-50/80 hover:bg-emerald-100/80 text-emerald-950 font-bold cursor-pointer select-none text-[10px] transition-colors overflow-hidden ${
+                                isDragOverTeacherThis
+                                  ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10"
+                                  : ""
+                              } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
+                              title={
+                                hit
+                                  ? cand.kind === "displace"
+                                    ? `${hit.grade}-${hit.classNum} ${hit.subjectName} 밀어내고 들기 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                    : `${hit.grade}-${hit.classNum} ${hit.subjectName}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                  : `빈 칸으로 이동 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                              }
+                            >
+                              <div className="h-full flex items-center justify-between gap-0.5">
+                                <span className="truncate flex items-center gap-0.5">
+                                  {cand.kind === "displace" && (
+                                    <span className="text-[9px]" title="밀어내고 들기">
+                                      ✋
+                                    </span>
+                                  )}
+                                  <span>{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
+                                </span>
+                                <span
+                                  className={`px-1 py-0.2 rounded font-mono text-[8px] font-extrabold leading-none ${
+                                    cand.softDelta < 0
+                                      ? "bg-emerald-600 text-white"
+                                      : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                  }`}
+                                >
+                                  {cand.softDelta < 0 ? cand.softDelta : "0"}
+                                </span>
+                              </div>
+                            </td>
+                          );
+                        }
+
+                        if (cand.verdict === "worse") {
+                          const worseReason = formatWorseReasons(cand.worseByCode);
+                          return (
+                            <td
+                              key={d}
+                              {...teacherDndProps}
+                              onClick={() => handleTeacherCellClick(d, p, teacherEmail)}
+                              className={`h-8 min-h-[2rem] max-h-[2rem] p-1 border-r border-gray-100 bg-amber-50/80 hover:bg-amber-100/80 text-amber-950 font-bold cursor-pointer select-none text-[10px] transition-colors overflow-hidden ${
+                                isDragOverTeacherThis
+                                  ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10"
+                                  : ""
+                              } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
+                              title={
+                                cand.kind === "displace"
+                                  ? worseReason
+                                    ? `밀어내고 들기 감점 (+${cand.softDelta}점): ${worseReason}`
+                                    : `밀어내고 들기 감점 +${cand.softDelta}점`
+                                  : worseReason
+                                  ? `감점 (+${cand.softDelta}점): ${worseReason}`
+                                  : `감점 +${cand.softDelta}점`
+                              }
+                            >
+                              <div className="h-full flex items-center justify-between gap-0.5">
+                                <span className="truncate flex items-center gap-0.5">
+                                  {cand.kind === "displace" && (
+                                    <span className="text-[9px]" title="밀어내고 들기">
+                                      ✋
+                                    </span>
+                                  )}
+                                  <span>{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
+                                </span>
+                                <span className="px-1 py-0.2 rounded font-mono text-[8px] font-extrabold leading-none bg-amber-500 text-white">
+                                  +{cand.softDelta}
+                                </span>
+                              </div>
+                            </td>
+                          );
+                        }
+
+                        return (
+                          <td
+                            key={d}
+                            {...teacherDndProps}
+                            className={`h-8 min-h-[2rem] max-h-[2rem] p-1 border-r border-gray-100 bg-gray-100/90 text-gray-400 cursor-not-allowed select-none text-[10px] opacity-70 overflow-hidden ${
+                              savingOp ? "cursor-wait" : ""
+                            }`}
+                            title={cand.blockedReason ? `이동 불가: ${cand.blockedReason}` : "이동 불가"}
+                          >
+                            <div className="h-full flex items-center justify-between gap-0.5">
+                              <span className="truncate">{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
+                              <span className="text-[8px] text-gray-400 leading-none">🔒</span>
+                            </div>
+                          </td>
+                        );
+                      }
+
+                      return (
+                        <td
+                          key={d}
+                          {...teacherDndProps}
+                          onClick={() => {
+                            if (hit) handleTeacherCellClick(d, p, teacherEmail);
+                          }}
+                          onMouseEnter={() => {
+                            if (!isClassPinned && !pickedSlot && hit) {
+                              setViewGrade(hit.grade);
+                              setViewClass(hit.classNum);
+                            }
+                          }}
+                          className={`h-8 min-h-[2rem] max-h-[2rem] p-1 border-r border-gray-100 text-[10px] transition-colors cursor-pointer select-none overflow-hidden ${
+                            hit
+                              ? "bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-bold border border-indigo-200"
+                              : "bg-white text-gray-300"
+                          } ${
+                            isDragOverTeacherThis
+                              ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10"
+                              : ""
+                          } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
+                          title={hit ? `${hit.grade}학년 ${hit.classNum}반 ${hit.subjectName}` : undefined}
+                        >
+                          <div className="h-full flex items-center justify-center">
+                            {hit ? `${hit.grade}-${hit.classNum}` : "—"}
+                          </div>
+                        </td>
+                      );
+                    }
+
+                    // 일반 모드
+                    return (
+                      <td
+                        key={d}
+                        onClick={() => {
+                          if (hit && !isClassPinned) {
+                            setViewGrade(hit.grade);
+                            setViewClass(hit.classNum);
+                          }
+                        }}
+                        className={`h-8 min-h-[2rem] max-h-[2rem] p-1 border-r border-gray-100 text-[10px] overflow-hidden ${
+                          hit ? "bg-indigo-100 text-indigo-950 font-bold cursor-pointer" : "bg-white text-gray-300"
+                        }`}
+                        title={hit ? `${hit.grade}학년 ${hit.classNum}반 ${hit.subjectName}` : undefined}
+                      >
+                        <div className="h-full flex items-center justify-center">
+                          {hit ? `${hit.grade}-${hit.classNum}` : "—"}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    };
 
     return (
       <div className="space-y-5 font-sans">
@@ -2211,6 +3043,45 @@ export default function DraftAutoTab({
               <span>직접 조정</span>
               <span>{manualMode ? "⏻ 켜짐" : "⏻"}</span>
             </button>
+
+            {/* 시간표 추가 버튼 (스펙 §2-2: 고정 전용 그리드 패널 최대 2개 추가) */}
+            {manualMode && (
+              <button
+                disabled={savingOp || extraPanels.length >= 2}
+                onClick={() => {
+                  if (savingOp || extraPanels.length >= 2 || !openDraft) return;
+                  const newId = `extra_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+                  const otherClass = viewClass === 1 ? 2 : 1;
+                  setExtraPanels((prev) => [
+                    ...prev,
+                    {
+                      id: newId,
+                      type: "class",
+                      grade: viewGrade,
+                      classNum: otherClass,
+                      teacherEmail: selectedTeacherEmail || allDraftTeachers[0]?.email || "",
+                    },
+                  ]);
+                }}
+                className={`hidden lg:flex items-center gap-1.5 px-3 py-1 font-bold rounded-lg text-xs transition-all border ${
+                  extraPanels.length >= 2
+                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                    : "bg-white hover:bg-indigo-50 text-indigo-700 border-indigo-200 shadow-2xs"
+                } ${savingOp ? "opacity-50 cursor-not-allowed" : ""}`}
+                title={
+                  extraPanels.length >= 2
+                    ? "시간표는 최대 2개까지 추가할 수 있습니다"
+                    : "비교하며 조정할 추가 고정 시간표 패널을 엽니다 (최대 2개)"
+                }
+              >
+                <span>➕ 시간표 추가</span>
+                {extraPanels.length > 0 && (
+                  <span className="bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded-full text-[10px] font-extrabold">
+                    {extraPanels.length}/2
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* 기초시간표로 채택 버튼 (spec §5) — 초안 학기(status: draft)에서만 노출 */}
             {isDraftTerm && (
@@ -3028,9 +3899,9 @@ export default function DraftAutoTab({
         )}
 
         {/* 그리드 레이아웃: 일반 모드는 8:4 분할, 직접 조정 모드는 1:1 동급 병치 (스펙 §2-2) */}
-        <div className={`grid grid-cols-1 ${manualMode ? "lg:grid-cols-2" : "xl:grid-cols-12"} gap-5`}>
+        <div className={`grid grid-cols-1 ${manualMode || extraPanels.length > 0 ? "lg:grid-cols-2" : "xl:grid-cols-12"} gap-5`}>
           {/* 좌: 학급 그리드 Ⓐ */}
-          <div ref={classGridRef} className={`${manualMode ? "lg:col-span-1" : "xl:col-span-8"} space-y-4`}>
+          <div ref={classGridRef} className={`${manualMode || extraPanels.length > 0 ? "lg:col-span-1" : "xl:col-span-8"} space-y-4`}>
             <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
               <div className="flex flex-wrap gap-2 items-center justify-between">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -3090,6 +3961,25 @@ export default function DraftAutoTab({
                         {c}
                       </button>
                     ))}
+
+                  {/* 📌 학급 고정 토글 버튼 */}
+                  <button
+                    type="button"
+                    onClick={() => setIsClassPinned((prev) => !prev)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1 ml-1 ${
+                      isClassPinned
+                        ? "bg-indigo-50 border-indigo-300 text-indigo-700 ring-1 ring-indigo-300"
+                        : "bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-600"
+                    }`}
+                    title={
+                      isClassPinned
+                        ? "학급 시간표가 고정되어 마우스 오버에 따라 변경되지 않습니다 (클릭하여 해제)"
+                        : "클릭하여 현재 학급 시간표를 고정합니다 (교사 그리드 마우스 오버 무시)"
+                    }
+                  >
+                    <span>📌</span>
+                    <span>{isClassPinned ? "학급 고정됨" : "학급 고정"}</span>
+                  </button>
                 </div>
 
                 {/* 상태 문구 / 집은 수업 표시 */}
@@ -3168,692 +4058,60 @@ export default function DraftAutoTab({
 
             {/* 그리드 테이블 */}
             <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto shadow-xs">
-              {!currentGrid ? (
-                <div className="p-8 text-center text-xs text-gray-400">
-                  {viewGrade}학년 {viewClass}반 시간표가 없습니다.
-                </div>
-              ) : (
-                <table className="w-full text-center text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-gray-100 border-b border-gray-200 font-bold text-gray-700">
-                      <th className="py-2.5 px-2 border-r border-gray-200 w-10">교시</th>
-                      {DAYS.map((d, dIdx) => {
-                        const isHighlighted = highlightDay?.target === "class" && highlightDay.day === (dIdx + 1);
-                        return (
-                          <th
-                            key={d}
-                            className={`py-2.5 px-1 border-r border-gray-200 min-w-[5.5rem] transition-colors duration-500 ${
-                              isHighlighted ? "bg-amber-200 text-amber-950 ring-2 ring-inset ring-amber-400" : ""
-                            }`}
-                          >
-                            {d}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {Array.from({ length: Math.max(7, periodsPerDay) }, (_, i) => i + 1).map((period) => (
-                      <tr key={period}>
-                        <td className="py-2 px-2 font-bold bg-gray-50 border-r border-gray-200 text-gray-600">
-                          {period}
-                        </td>
-                        {[1, 2, 3, 4, 5].map((day) => {
-                          const cell = currentGrid.cells.find((c) => c.day === day && c.period === period);
-                          const lesson = cell?.lessons?.[0];
-
-                          // 직접 조정 모드일 때
-                          if (manualMode) {
-                            const isPicked =
-                              pickedSlot?.grade === viewGrade &&
-                              pickedSlot?.classNum === viewClass &&
-                              pickedSlot?.day === day &&
-                              pickedSlot?.period === period;
-                            const cand = candidatesResult?.candidates.find(
-                              (c) => c.day === day && c.period === period
-                            );
-                            const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
-                            const placeholder = findPlaceholderLesson(openDraft.currentGrids, viewGrade, viewClass, day, period);
-                            const isBandLocked = !!simulLabel;
-                            const isPlaceholder = !!placeholder;
-                            const canDragCell = manualMode && !savingOp && !!lesson && !isBandLocked && !isPlaceholder;
-                            const isDragOverThis = dragOverCell?.day === day && dragOverCell?.period === period;
-
-                            const dndProps = {
-                              draggable: canDragCell,
-                              onDragStart: (e: React.DragEvent) => {
-                                if (!canDragCell) return;
-                                e.dataTransfer.setData("text/plain", JSON.stringify({ type: "cell", grade: viewGrade, classNum: viewClass, day, period }));
-                                e.dataTransfer.effectAllowed = "move";
-                                setDragSource({ type: "cell", grade: viewGrade, classNum: viewClass, day, period, lesson: lesson! });
-
-                                if (!isPicked) {
-                                  const res = evaluateMoveCandidates({
-                                    grids: openDraft.currentGrids,
-                                    model: openDraft.model,
-                                    pick: { grade: viewGrade, classNum: viewClass, day, period },
-                                  });
-                                  if (!res.pickBlocked) {
-                                    setPickedSlot({ grade: viewGrade, classNum: viewClass, day, period, lesson: lesson! });
-                                    setCandidatesResult(res);
-                                    setChainSteps([]);
-                                    setChainStartGrids(cloneClassGrids(openDraft.currentGrids));
-                                    setHeldParkId(null);
-                                  }
-                                }
-                              },
-                              onDragEnd: () => {
-                                setDragSource(null);
-                                setDragOverCell(null);
-                                setIsTrayDragOver(false);
-                              },
-                              onDragOver: (e: React.DragEvent) => {
-                                if (!dragSource || savingOp) return;
-                                const candItem = candidatesResult?.candidates.find((c) => c.day === day && c.period === period);
-                                if (candItem && candItem.verdict !== "blocked") {
-                                  if (dragSource.type === "cell") {
-                                    e.preventDefault();
-                                    e.dataTransfer.dropEffect = "move";
-                                    setDragOverCell({ day, period });
-                                  } else if (dragSource.type === "tray" || dragSource.type === "unplaced") {
-                                    if (!lesson) {
-                                      e.preventDefault();
-                                      e.dataTransfer.dropEffect = "move";
-                                      setDragOverCell({ day, period });
-                                    }
-                                  }
-                                }
-                              },
-                              onDragLeave: (e: React.DragEvent) => {
-                                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                                  setDragOverCell((prev) => (prev?.day === day && prev?.period === period ? null : prev));
-                                }
-                              },
-                              onDrop: (e: React.DragEvent) => {
-                                e.preventDefault();
-                                setDragOverCell(null);
-                                if (!dragSource || savingOp) return;
-
-                                const candItem = candidatesResult?.candidates.find((c) => c.day === day && c.period === period);
-                                if (!candItem || candItem.verdict === "blocked") return;
-
-                                if (dragSource.type === "cell") {
-                                  if (dragSource.grade === viewGrade && dragSource.classNum === viewClass && dragSource.day === day && dragSource.period === period) return;
-                                  setDragSource(null);
-                                  handleCellClick(day, period);
-                                } else if (dragSource.type === "tray") {
-                                  if (lesson) return;
-                                  setDragSource(null);
-                                  handleUnparkCell(dragSource.entry, day, period);
-                                } else if (dragSource.type === "unplaced") {
-                                  if (lesson) return;
-                                  setDragSource(null);
-                                  handleApplyUnplacedAssignment(dragSource.unplaced, day, period);
-                                }
-                              },
-                            };
-
-                            if (isPicked) {
-                              return (
-                                <td
-                                  key={day}
-                                  {...dndProps}
-                                  onClick={() => handleCellClick(day, period)}
-                                  onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    handleCellRightClick(day, period);
-                                  }}
-                                  title="집은 수업 (클릭 또는 Esc로 해제)"
-                                  className={`p-2 border-r border-gray-200 bg-sky-100/90 text-sky-950 align-top cursor-pointer select-none relative ${
-                                    isDragOverThis ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10" : ""
-                                  } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
-                                >
-                                  {lesson ? (
-                                    <div className="space-y-0.5">
-                                      <div className="flex items-start justify-between gap-1">
-                                        <span className="font-bold text-[11px] truncate leading-tight">
-                                          {lesson.subjectShort || lesson.subjectName}
-                                        </span>
-                                        <span className="shrink-0 text-[10px] leading-none" title="집은 수업">📌</span>
-                                      </div>
-                                      <div className="text-[10px] text-sky-800 truncate leading-tight">
-                                        {lesson.teachers?.map((t) => t.name).join(", ")}
-                                      </div>
-                                      {simulLabel && (
-                                        <div className="text-[10px] text-purple-700 font-extrabold mt-0.5">
-                                          🔒 {simulLabel}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <div className="py-1">
-                                      <span className="text-[10px] text-gray-300">—</span>
-                                    </div>
-                                  )}
-                                </td>
-                              );
-                            }
-
-                            if (cand) {
-                              if (cand.verdict === "ok") {
-                                return (
-                                  <td
-                                    key={day}
-                                    {...dndProps}
-                                    onClick={() => handleCellClick(day, period)}
-                                    onContextMenu={(e) => {
-                                      e.preventDefault();
-                                      handleCellRightClick(day, period);
-                                    }}
-                                    title={
-                                      cand.kind === "swap"
-                                        ? `${lesson?.subjectShort || "수업"}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
-                                        : cand.kind === "displace"
-                                        ? `${lesson?.subjectShort || "수업"} 밀어내고 들기 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
-                                        : `빈 칸으로 이동 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
-                                    }
-                                    className={`p-2 border-r border-gray-200 bg-emerald-50/80 hover:bg-emerald-100/80 text-gray-800 align-top cursor-pointer select-none transition-colors relative ${
-                                      isDragOverThis ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10" : ""
-                                    } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
-                                  >
-                                    {lesson ? (
-                                      <div className="space-y-0.5">
-                                        <div className="flex items-start justify-between gap-1">
-                                          <span className="font-bold text-[11px] truncate leading-tight text-emerald-950 flex items-center gap-0.5">
-                                            {cand.kind === "displace" && <span className="text-[10px]" title="밀어내고 들기">✋</span>}
-                                            <span>{lesson.subjectShort || lesson.subjectName}</span>
-                                          </span>
-                                          <span
-                                            className={`shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none ${
-                                              cand.softDelta < 0
-                                                ? "bg-emerald-600 text-white shadow-2xs"
-                                                : "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                                            }`}
-                                          >
-                                            {cand.softDelta < 0 ? cand.softDelta : "0"}
-                                          </span>
-                                        </div>
-                                        <div className="text-[10px] text-gray-500 truncate leading-tight">
-                                          {lesson.teachers?.map((t) => t.name).join(", ")}
-                                        </div>
-                                        {simulLabel && (
-                                          <div className="text-[10px] text-purple-700 font-extrabold mt-0.5">
-                                            🔒 {simulLabel}
-                                          </div>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <div className="py-1 flex items-center justify-between">
-                                        <span className="text-[10px] text-gray-300">—</span>
-                                        <span
-                                          className={`px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none ${
-                                            cand.softDelta < 0
-                                              ? "bg-emerald-600 text-white shadow-2xs"
-                                              : "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                                          }`}
-                                        >
-                                          {cand.softDelta < 0 ? cand.softDelta : "0"}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              }
-
-                              if (cand.verdict === "worse") {
-                                const worseReason = formatWorseReasons(cand.worseByCode);
-                                return (
-                                  <td
-                                    key={day}
-                                    {...dndProps}
-                                    onClick={() => handleCellClick(day, period)}
-                                    onContextMenu={(e) => {
-                                      e.preventDefault();
-                                      handleCellRightClick(day, period);
-                                    }}
-                                    title={
-                                      cand.kind === "displace"
-                                        ? worseReason
-                                          ? `밀어내고 들기 감점 (+${cand.softDelta}점): ${worseReason}`
-                                          : `밀어내고 들기 감점 +${cand.softDelta}점`
-                                        : worseReason
-                                        ? `감점 (+${cand.softDelta}점): ${worseReason}`
-                                        : `감점 +${cand.softDelta}점`
-                                    }
-                                    className={`p-2 border-r border-gray-200 bg-amber-50/80 hover:bg-amber-100/80 text-gray-800 align-top cursor-pointer select-none transition-colors relative ${
-                                      isDragOverThis ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10" : ""
-                                    } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
-                                  >
-                                    {lesson ? (
-                                      <div className="space-y-0.5">
-                                        <div className="flex items-start justify-between gap-1">
-                                          <span className="font-bold text-[11px] truncate leading-tight text-amber-950 flex items-center gap-0.5">
-                                            {cand.kind === "displace" && <span className="text-[10px]" title="밀어내고 들기">✋</span>}
-                                            <span>{lesson.subjectShort || lesson.subjectName}</span>
-                                          </span>
-                                          <span className="shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none bg-amber-500 text-white shadow-2xs">
-                                            +{cand.softDelta}
-                                          </span>
-                                        </div>
-                                        <div className="text-[10px] text-gray-500 truncate leading-tight">
-                                          {lesson.teachers?.map((t) => t.name).join(", ")}
-                                        </div>
-                                        {simulLabel && (
-                                          <div className="text-[10px] text-purple-700 font-extrabold mt-0.5">
-                                            🔒 {simulLabel}
-                                          </div>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <div className="py-1 flex items-center justify-between">
-                                        <span className="text-[10px] text-gray-300">—</span>
-                                        <span className="px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none bg-amber-500 text-white shadow-2xs">
-                                          +{cand.softDelta}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              }
-
-                              // blocked (하드 위반 등)
-                              return (
-                                <td
-                                  key={day}
-                                  {...dndProps}
-                                  onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    handleCellRightClick(day, period);
-                                  }}
-                                  title={cand.blockedReason ? `이동 불가: ${cand.blockedReason}` : "이동 불가"}
-                                  className={`p-2 border-r border-gray-200 bg-gray-100/90 text-gray-400 align-top cursor-not-allowed select-none relative opacity-70 ${
-                                    savingOp ? "cursor-wait" : ""
-                                  }`}
-                                >
-                                  {lesson ? (
-                                    <div className="space-y-0.5">
-                                      <div className="flex items-start justify-between gap-1">
-                                        <span className="font-bold text-[11px] truncate leading-tight text-gray-400">
-                                          {lesson.subjectShort || lesson.subjectName}
-                                        </span>
-                                        <span className="shrink-0 text-[10px] text-gray-400 leading-none">🔒</span>
-                                      </div>
-                                      <div className="text-[10px] text-gray-400 truncate leading-tight">
-                                        {lesson.teachers?.map((t) => t.name).join(", ")}
-                                      </div>
-                                      {simulLabel && (
-                                        <div className="text-[10px] text-purple-700/60 font-extrabold mt-0.5">
-                                          🔒 {simulLabel}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <div className="py-1 flex items-center justify-between">
-                                      <span className="text-[10px] text-gray-300">—</span>
-                                      <span className="text-[10px] text-gray-400 leading-none">🔒</span>
-                                    </div>
-                                  )}
-                                </td>
-                              );
-                            }
-
-                            // pickedSlot이 없는 대기 상태
-                            return (
-                              <td
-                                key={day}
-                                {...dndProps}
-                                onClick={() => handleCellClick(day, period)}
-                                onContextMenu={(e) => {
-                                  e.preventDefault();
-                                  handleCellRightClick(day, period);
-                                }}
-                                onMouseEnter={() => {
-                                  if (lesson?.teachers?.[0]?.email) {
-                                    setSelectedTeacherEmail(lesson.teachers[0].email);
-                                  }
-                                }}
-                                className={`p-2 border-r border-gray-200 align-top transition-colors cursor-pointer select-none bg-white hover:bg-indigo-50/50 text-gray-800 ${
-                                  isDragOverThis ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10" : ""
-                                } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
-                              >
-                                {lesson ? (
-                                  <div className="space-y-0.5">
-                                    <div className="font-bold text-[11px] truncate leading-tight">
-                                      {lesson.subjectShort || lesson.subjectName}
-                                    </div>
-                                    <div className="text-[10px] text-gray-500 truncate leading-tight">
-                                      {lesson.teachers?.map((t) => t.name).join(", ")}
-                                    </div>
-                                    {simulLabel && (
-                                      <div className="text-[10px] text-purple-700 font-extrabold mt-0.5">
-                                        🔒 {simulLabel}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="py-1">
-                                    <span className="text-[10px] text-gray-300">—</span>
-                                  </div>
-                                )}
-                              </td>
-                            );
-                          }
-
-                          // ── 열람 모드 (manualMode 꺼짐) ──
-                          const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
-                          const isBandLocked = !!simulLabel;
-
-                          const hasHardError = report.hard.some((h) => {
-                            const hasAnyCoord =
-                              h.grade !== undefined ||
-                              h.classNum !== undefined ||
-                              h.day !== undefined ||
-                              h.period !== undefined;
-                            if (!hasAnyCoord) return false;
-                            if (h.grade !== undefined && h.grade !== viewGrade) return false;
-                            if (h.classNum !== undefined && h.classNum !== viewClass) return false;
-                            if (h.day !== undefined && h.day !== day) return false;
-                            if (h.period !== undefined && h.period !== period) return false;
-                            return true;
-                          });
-
-                          return (
-                            <td
-                              key={day}
-                              onClick={() => handleCellClick(day, period)}
-                              onMouseEnter={() => {
-                                if (lesson?.teachers?.[0]?.email) {
-                                  setSelectedTeacherEmail(lesson.teachers[0].email);
-                                }
-                              }}
-                              className={`p-2 border-r border-gray-200 align-top transition-colors cursor-pointer select-none ${
-                                hasHardError
-                                  ? "bg-red-100 text-red-950 font-bold border-2 border-red-400"
-                                  : isBandLocked
-                                  ? "bg-gray-100/80 text-gray-400"
-                                  : "bg-white hover:bg-gray-50 text-gray-800"
-                              }`}
-                            >
-                              {lesson ? (
-                                <div className="space-y-0.5 relative">
-                                  <div className="font-bold text-[11px] truncate leading-tight">
-                                    {lesson.subjectShort || lesson.subjectName}
-                                  </div>
-                                  <div className="text-[10px] text-gray-500 truncate leading-tight">
-                                    {lesson.teachers?.map((t) => t.name).join(", ")}
-                                  </div>
-                                  {simulLabel && (
-                                    <div className="text-[10px] text-purple-700 font-extrabold mt-0.5">
-                                      🔒 {simulLabel}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="py-1">
-                                  <span className="text-[10px] text-gray-300">—</span>
-                                </div>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+              {renderClassGridTable(viewGrade, viewClass, false)}
             </div>
           </div>
 
-          {/* 우: 교사 그리드 Ⓑ (+ 미배정 목록) */}
-          <div ref={teacherGridRef} className={`${manualMode ? "lg:col-span-1" : "xl:col-span-4"} space-y-4`}>
+          {/* 우: 교사 그리드 Ⓑ */}
+          <div ref={teacherGridRef} className={`${manualMode || extraPanels.length > 0 ? "lg:col-span-1" : "xl:col-span-4"} space-y-4`}>
             {/* 교사 파생 그리드 카드 */}
             <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
                 <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
                   <span>👤 {selectedTeacherName ? `${selectedTeacherName} 선생님` : "교사"} 주간 시간표</span>
                 </h4>
-                {manualMode ? (
-                  <select
-                    value={selectedTeacherEmail || ""}
-                    onChange={(e) => setSelectedTeacherEmail(e.target.value || null)}
-                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white font-bold text-gray-700 max-w-[12rem] truncate"
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsTeacherPinned((prev) => !prev)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1 shrink-0 ${
+                      isTeacherPinned
+                        ? "bg-indigo-50 border-indigo-300 text-indigo-700 ring-1 ring-indigo-300"
+                        : "bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-600"
+                    }`}
+                    title={
+                      isTeacherPinned
+                        ? "교사 시간표가 고정되어 마우스 오버에 따라 변경되지 않습니다 (클릭하여 해제)"
+                        : "클릭하여 현재 교사 시간표를 고정합니다 (학급 그리드 마우스 오버 무시)"
+                    }
                   >
-                    <option value="">교사 선택...</option>
-                    {allDraftTeachers.map((t) => (
-                      <option key={t.email} value={t.email}>
-                        {t.name} ({t.email.split("@")[0]})
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  selectedTeacherEmail && (
-                    <span className="text-[11px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded">
-                      {selectedTeacherName} 선생님
-                    </span>
-                  )
-                )}
+                    <span>📌</span>
+                    <span>{isTeacherPinned ? "교사 고정됨" : "교사 고정"}</span>
+                  </button>
+                  {manualMode ? (
+                    <select
+                      value={selectedTeacherEmail || ""}
+                      onChange={(e) => setSelectedTeacherEmail(e.target.value || null)}
+                      className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white font-bold text-gray-700 max-w-[12rem] truncate"
+                    >
+                      <option value="">교사 선택...</option>
+                      {allDraftTeachers.map((t) => (
+                        <option key={t.email} value={t.email}>
+                          {t.name} ({t.email.split("@")[0]})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    selectedTeacherEmail && (
+                      <span className="text-[11px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded">
+                        {selectedTeacherName} 선생님
+                      </span>
+                    )
+                  )}
+                </div>
               </div>
 
-              {!selectedTeacherEmail ? (
-                <div className="py-6 text-center text-xs text-gray-400">
-                  {manualMode
-                    ? "학급 시간표 셀을 가리키거나 위에서 교사를 선택하세요."
-                    : "시간표 셀을 클릭하면 해당 교사의 주간 시간표가 자동 표시됩니다."}
-                </div>
-              ) : (
-                <div className="overflow-x-auto border border-gray-100 rounded-lg text-[11px]">
-                  <table className="w-full text-center border-collapse">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200 font-bold text-gray-600">
-                        <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
-                        {DAYS.map((d, dIdx) => {
-                          const isHighlighted = highlightDay?.target === "teacher" && highlightDay.day === (dIdx + 1);
-                          return (
-                            <th
-                              key={d}
-                              className={`py-1 px-1 border-r border-gray-200 transition-colors duration-500 ${
-                                isHighlighted ? "bg-amber-200 text-amber-950 ring-2 ring-inset ring-amber-400" : ""
-                              }`}
-                            >
-                              {d}
-                            </th>
-                          );
-                        })}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {Array.from({ length: Math.max(7, periodsPerDay) }, (_, i) => i + 1).map((p) => (
-                        <tr key={p}>
-                          <td className="py-1 px-1 font-bold bg-gray-50 border-r border-gray-200 text-gray-500 text-[10px]">
-                            {p}
-                          </td>
-                          {[1, 2, 3, 4, 5].map((d) => {
-                            const hit = teacherSlots.find((s) => s.day === d && s.period === p);
-
-                            if (manualMode) {
-                              const cand = candidatesResult?.candidates.find(
-                                (c) => c.day === d && c.period === p
-                              );
-                              const isDragOverTeacherThis = dragOverCell?.day === d && dragOverCell?.period === p;
-
-                              const teacherDndProps = {
-                                onDragOver: (e: React.DragEvent) => {
-                                  if (!dragSource || savingOp) return;
-                                  const candItem = candidatesResult?.candidates.find((c) => c.day === d && c.period === p);
-                                  if (candItem && candItem.verdict !== "blocked") {
-                                    if (dragSource.type === "cell") {
-                                      e.preventDefault();
-                                      e.dataTransfer.dropEffect = "move";
-                                      setDragOverCell({ day: d, period: p });
-                                    } else if (dragSource.type === "tray" || dragSource.type === "unplaced") {
-                                      if (!hit) {
-                                        e.preventDefault();
-                                        e.dataTransfer.dropEffect = "move";
-                                        setDragOverCell({ day: d, period: p });
-                                      }
-                                    }
-                                  }
-                                },
-                                onDragLeave: (e: React.DragEvent) => {
-                                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                                    setDragOverCell((prev) => (prev?.day === d && prev?.period === p ? null : prev));
-                                  }
-                                },
-                                onDrop: (e: React.DragEvent) => {
-                                  e.preventDefault();
-                                  setDragOverCell(null);
-                                  if (!dragSource || savingOp) return;
-
-                                  const candItem = candidatesResult?.candidates.find((c) => c.day === d && c.period === p);
-                                  if (!candItem || candItem.verdict === "blocked") return;
-
-                                  if (dragSource.type === "cell") {
-                                    setDragSource(null);
-                                    handleTeacherCellClick(d, p);
-                                  } else if (dragSource.type === "tray") {
-                                    if (hit) return;
-                                    setDragSource(null);
-                                    handleUnparkCell(dragSource.entry, d, p);
-                                  } else if (dragSource.type === "unplaced") {
-                                    if (hit) return;
-                                    setDragSource(null);
-                                    handleApplyUnplacedAssignment(dragSource.unplaced, d, p);
-                                  }
-                                },
-                              };
-
-                              if (pickedSlot && cand) {
-                                if (cand.verdict === "ok") {
-                                  return (
-                                    <td
-                                      key={d}
-                                      {...teacherDndProps}
-                                      onClick={() => handleTeacherCellClick(d, p)}
-                                      className={`p-1 border-r border-gray-100 bg-emerald-50/80 hover:bg-emerald-100/80 text-emerald-950 font-bold cursor-pointer select-none text-[10px] transition-colors ${
-                                        isDragOverTeacherThis ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10" : ""
-                                      } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
-                                      title={
-                                        hit
-                                          ? cand.kind === "displace"
-                                            ? `${hit.grade}-${hit.classNum} ${hit.subjectName} 밀어내고 들기 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
-                                            : `${hit.grade}-${hit.classNum} ${hit.subjectName}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
-                                          : `빈 칸으로 이동 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
-                                      }
-                                    >
-                                      <div className="flex items-center justify-between gap-0.5">
-                                        <span className="truncate flex items-center gap-0.5">
-                                          {cand.kind === "displace" && <span className="text-[9px]" title="밀어내고 들기">✋</span>}
-                                          <span>{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
-                                        </span>
-                                        <span
-                                          className={`px-1 py-0.2 rounded font-mono text-[8px] font-extrabold leading-none ${
-                                            cand.softDelta < 0
-                                              ? "bg-emerald-600 text-white"
-                                              : "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                                          }`}
-                                        >
-                                          {cand.softDelta < 0 ? cand.softDelta : "0"}
-                                        </span>
-                                      </div>
-                                    </td>
-                                  );
-                                }
-
-                                if (cand.verdict === "worse") {
-                                  const worseReason = formatWorseReasons(cand.worseByCode);
-                                  return (
-                                    <td
-                                      key={d}
-                                      {...teacherDndProps}
-                                      onClick={() => handleTeacherCellClick(d, p)}
-                                      className={`p-1 border-r border-gray-100 bg-amber-50/80 hover:bg-amber-100/80 text-amber-950 font-bold cursor-pointer select-none text-[10px] transition-colors ${
-                                        isDragOverTeacherThis ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10" : ""
-                                      } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
-                                      title={
-                                        cand.kind === "displace"
-                                          ? worseReason
-                                            ? `밀어내고 들기 감점 (+${cand.softDelta}점): ${worseReason}`
-                                            : `밀어내고 들기 감점 +${cand.softDelta}점`
-                                          : worseReason
-                                          ? `감점 (+${cand.softDelta}점): ${worseReason}`
-                                          : `감점 +${cand.softDelta}점`
-                                      }
-                                    >
-                                      <div className="flex items-center justify-between gap-0.5">
-                                        <span className="truncate flex items-center gap-0.5">
-                                          {cand.kind === "displace" && <span className="text-[9px]" title="밀어내고 들기">✋</span>}
-                                          <span>{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
-                                        </span>
-                                        <span className="px-1 py-0.2 rounded font-mono text-[8px] font-extrabold leading-none bg-amber-500 text-white">
-                                          +{cand.softDelta}
-                                        </span>
-                                      </div>
-                                    </td>
-                                  );
-                                }
-
-                                return (
-                                  <td
-                                    key={d}
-                                    {...teacherDndProps}
-                                    className={`p-1 border-r border-gray-100 bg-gray-100/90 text-gray-400 cursor-not-allowed select-none text-[10px] opacity-70 ${
-                                      savingOp ? "cursor-wait" : ""
-                                    }`}
-                                    title={cand.blockedReason ? `이동 불가: ${cand.blockedReason}` : "이동 불가"}
-                                  >
-                                    <div className="flex items-center justify-between gap-0.5">
-                                      <span className="truncate">{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
-                                      <span className="text-[8px] text-gray-400 leading-none">🔒</span>
-                                    </div>
-                                  </td>
-                                );
-                              }
-
-                              return (
-                                <td
-                                  key={d}
-                                  {...teacherDndProps}
-                                  onClick={() => {
-                                    if (hit) handleTeacherCellClick(d, p);
-                                  }}
-                                  onMouseEnter={() => {
-                                    if (hit && !pickedSlot) {
-                                      setViewGrade(hit.grade);
-                                      setViewClass(hit.classNum);
-                                    }
-                                  }}
-                                  className={`p-1 border-r border-gray-100 text-[10px] transition-colors cursor-pointer select-none ${
-                                    hit
-                                      ? "bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-bold border border-indigo-200"
-                                      : "bg-white text-gray-300"
-                                  } ${isDragOverTeacherThis ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10" : ""} ${
-                                    savingOp ? "opacity-75 cursor-wait" : ""
-                                  }`}
-                                  title={hit ? `${hit.grade}학년 ${hit.classNum}반 ${hit.subjectName}` : undefined}
-                                >
-                                  {hit ? `${hit.grade}-${hit.classNum}` : "—"}
-                                </td>
-                              );
-                            }
-
-                            // 일반 모드
-                            return (
-                              <td
-                                key={d}
-                                className={`p-1 border-r border-gray-100 text-[10px] ${
-                                  hit ? "bg-indigo-100 text-indigo-950 font-bold" : "bg-white text-gray-300"
-                                }`}
-                              >
-                                {hit ? `${hit.grade}-${hit.classNum}` : "—"}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {renderTeacherGridTable(selectedTeacherEmail, false)}
             </div>
 
             {/* 미배정 목록 카드 */}
@@ -3999,6 +4257,136 @@ export default function DraftAutoTab({
               )}
             </div>
           </div>
+
+          {/* 추가 고정 시간표 패널 (스펙 §2-2: 최대 2개) */}
+          {manualMode &&
+            extraPanels.map((panel) => {
+              return (
+                <div key={panel.id} className="lg:col-span-1 space-y-4">
+                  <div className="bg-white rounded-xl border border-indigo-200 p-4 space-y-3 shadow-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* 학급 / 교사 전환 탭 */}
+                        <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-[11px] font-bold">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExtraPanels((prev) =>
+                                prev.map((p) => (p.id === panel.id ? { ...p, type: "class" } : p))
+                              )
+                            }
+                            className={`px-2 py-0.5 rounded-md transition-all ${
+                              panel.type === "class"
+                                ? "bg-white text-indigo-700 shadow-2xs"
+                                : "text-gray-600 hover:text-gray-900"
+                            }`}
+                          >
+                            학급
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExtraPanels((prev) =>
+                                prev.map((p) => (p.id === panel.id ? { ...p, type: "teacher" } : p))
+                              )
+                            }
+                            className={`px-2 py-0.5 rounded-md transition-all ${
+                              panel.type === "teacher"
+                                ? "bg-white text-indigo-700 shadow-2xs"
+                                : "text-gray-600 hover:text-gray-900"
+                            }`}
+                          >
+                            교사
+                          </button>
+                        </div>
+
+                        {panel.type === "class" ? (
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={panel.grade}
+                              onChange={(e) => {
+                                const newG = parseInt(e.target.value, 10);
+                                setExtraPanels((prev) =>
+                                  prev.map((p) => (p.id === panel.id ? { ...p, grade: newG } : p))
+                                );
+                              }}
+                              className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white font-bold text-gray-700"
+                            >
+                              {[1, 2, 3].map((g) => (
+                                <option key={g} value={g}>
+                                  {g}학년
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              value={panel.classNum}
+                              onChange={(e) => {
+                                const newC = parseInt(e.target.value, 10);
+                                setExtraPanels((prev) =>
+                                  prev.map((p) => (p.id === panel.id ? { ...p, classNum: newC } : p))
+                                );
+                              }}
+                              className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white font-bold text-gray-700"
+                            >
+                              {Array.from(
+                                new Set(
+                                  openDraft.currentGrids
+                                    .filter((g) => g.grade === panel.grade)
+                                    .map((g) => g.classNum)
+                                )
+                              )
+                                .sort((a, b) => a - b)
+                                .map((c) => (
+                                  <option key={c} value={c}>
+                                    {c}반
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <select
+                            value={panel.teacherEmail}
+                            onChange={(e) => {
+                              const newEmail = e.target.value;
+                              setExtraPanels((prev) =>
+                                prev.map((p) => (p.id === panel.id ? { ...p, teacherEmail: newEmail } : p))
+                              );
+                            }}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white font-bold text-gray-700 max-w-[12rem] truncate"
+                          >
+                            <option value="">교사 선택...</option>
+                            {allDraftTeachers.map((t) => (
+                              <option key={t.email} value={t.email}>
+                                {t.name} ({t.email.split("@")[0]})
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                          <span>📌</span>
+                          <span>고정됨</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setExtraPanels((prev) => prev.filter((p) => p.id !== panel.id))}
+                          className="text-gray-400 hover:text-gray-700 font-bold px-2 py-1 rounded-lg hover:bg-gray-100 text-xs transition-colors"
+                          title="추가 시간표 닫기"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+
+                    {panel.type === "class"
+                      ? renderClassGridTable(panel.grade, panel.classNum, true)
+                      : renderTeacherGridTable(panel.teacherEmail, true)}
+                  </div>
+                </div>
+              );
+            })}
         </div>
 
         {/* Ⓒ 잠깐 빼둔 수업 트레이 (스펙 §2-5) */}
