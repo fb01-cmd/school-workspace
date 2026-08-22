@@ -476,3 +476,13 @@
 
 - **[판정] 통과.** 재확인: 다시 짜기 문자열 0 · 「복제로 시작」 유지 · `TimetableSection` 참조 0 · 공용 `compileSectionsFromGrids` 15참조 보존 · 실행 경로(handleSolveFromPlan·시작 버튼) 잔존 · tsc 0·check:ui·build ✅. 삭제 목록의 「어떻게 짤까요?」 라디오 머리 소실은 경로가 하나가 되며 선택지 자체가 사라진 정당 결과. **Antigravity 핸드오버 ④ 첫 준수** — 항목별 근거 기재 양호.
 - **[감시 재무장]** 과제 P(감점 클릭 세팅)·Q(M2 화면) 대기 — 코드 커밋 감지 조건으로 재가동.
+
+## [2026-08-22] Antigravity — 과제 P(감점 항목 클릭 = 그리드 즉시 세팅) 완결: 교사/학급 전환 및 요일 하이라이트
+
+- **[사실 1 — 교사/학급 축 클릭 즉시 세팅]** `DraftAutoTab.tsx`에서 감점 상세 행 본문 클릭 시 `handlePenaltyDetailClick(item)` 실행:
+  - 교사 축(`item.scope === "teacher"`): `setSelectedTeacherEmail(item.key)`로 우측 교사 주간 시간표를 해당 교사로 즉시 전환 (직접 조정 모드 상태 유지).
+  - 학급 축(`item.scope === "class"`): `setViewGrade(g)` 및 `setViewClass(c)`로 좌측 학급 그리드를 해당 학급으로 즉시 전환.
+- **[사실 2 — 스크롤 및 요일 하이라이트]** 클릭한 축의 그리드로 부드럽게 스크롤(`scrollIntoView({ behavior: "smooth", block: "nearest" })`)하며, `item.day`가 있을 경우 해당 요일 열 `<th>`를 2초간 은은하게 하이라이트(`highlightDay` 상태 + `bg-amber-200 ring-2 ring-inset ring-amber-400`, 셀 크기 불변 조항 100% 준수).
+- **[사실 3 — 인터랙션 안전성]** 기존 「해결안 찾기」 버튼 클릭은 `e.stopPropagation()`으로 행 클릭과 분리 보존. 행 hover 시 `hover:bg-amber-50/80 cursor-pointer` 스타일 및 안내 툴팁 추가.
+- **[검증]** `tsc` 0건 · `npm run check:ui` 통과 (4/4) · `check_ui_removals.sh` 사라진 상호작용 0건 · `movecand_selftest` 11/11 · `m2ops_selftest` 15/15 · `askfix_selftest` 42/42 · `npm run build` 성공 (49/49).
+

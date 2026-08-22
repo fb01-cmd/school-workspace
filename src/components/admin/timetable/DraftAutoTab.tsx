@@ -345,6 +345,40 @@ export default function DraftAutoTab({
     return parts.join(", ");
   };
 
+  // ── 감점 항목 클릭 시 그리드 즉시 세팅 및 요일 하이라이트 (과제 P) ──
+  const classGridRef = useRef<HTMLDivElement>(null);
+  const teacherGridRef = useRef<HTMLDivElement>(null);
+  const [highlightDay, setHighlightDay] = useState<{ day: number; target: "class" | "teacher" } | null>(null);
+  const highlightTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handlePenaltyDetailClick = (item: TermPenaltyDetail) => {
+    if (item.scope === "teacher") {
+      // 1. 교사 축 항목: 교사 주간 시간표 패널을 그 교사(item.key = 이메일)로 즉시 전환
+      setSelectedTeacherEmail(item.key);
+      if (item.day) {
+        setHighlightDay({ day: item.day, target: "teacher" });
+        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = setTimeout(() => setHighlightDay(null), 2000);
+      }
+      teacherGridRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } else if (item.scope === "class") {
+      // 2. 학급 축 항목: 학년·반 선택을 그 학급(item.key = "학년-반")으로 즉시 전환
+      const parts = item.key.split("-");
+      const g = Number(parts[0]);
+      const c = Number(parts[1]);
+      if (!isNaN(g) && !isNaN(c)) {
+        setViewGrade(g);
+        setViewClass(c);
+      }
+      if (item.day) {
+        setHighlightDay({ day: item.day, target: "class" });
+        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = setTimeout(() => setHighlightDay(null), 2000);
+      }
+      classGridRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  };
+
   // 현재 초안에 배정된 모든 교사 목록 (이름 가나다순 — 우측 교사 패널 드롭다운용)
   const allDraftTeachers = useMemo(() => {
     if (!openDraft) return [];
@@ -1809,12 +1843,16 @@ export default function DraftAutoTab({
                             const isActive = activeFindDetail === item;
                             return (
                               <div key={idx}>
-                                {/* 항목 행 */}
-                                <div className="bg-white rounded-lg border border-amber-100 p-3 flex items-center justify-between gap-3 shadow-2xs">
+                                {/* 항목 행 (클릭 시 아래 그리드 즉시 세팅 — 과제 P) */}
+                                <div
+                                  onClick={() => handlePenaltyDetailClick(item)}
+                                  className="bg-white hover:bg-amber-50/80 rounded-lg border border-amber-100 hover:border-amber-300 p-3 flex items-center justify-between gap-3 shadow-2xs cursor-pointer transition-all group"
+                                  title="클릭하면 아래 시간표에서 해당 교사/학급으로 즉시 이동합니다"
+                                >
                                   <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
                                     <span className="font-bold text-amber-900 shrink-0">[{item.label}]</span>
                                     {item.day && (
-                                      <span className="text-[11px] px-1.5 py-0.2 rounded bg-gray-100 text-gray-700 font-semibold shrink-0">
+                                      <span className="text-[11px] px-1.5 py-0.2 rounded bg-gray-100 group-hover:bg-amber-100 text-gray-700 group-hover:text-amber-900 font-semibold shrink-0 transition-colors">
                                         {DAYS[item.day - 1]}요일
                                       </span>
                                     )}
@@ -1823,7 +1861,10 @@ export default function DraftAutoTab({
                                   <div className="flex items-center gap-2 shrink-0">
                                     <span className="font-extrabold text-amber-800 text-xs">−{item.points}점</span>
                                     <button
-                                      onClick={() => handleFindFix(item)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleFindFix(item);
+                                      }}
                                       disabled={findingFix}
                                       className={`px-2.5 py-1 rounded-md font-bold text-[11px] border transition-colors flex items-center gap-1 ${
                                         isActive
@@ -2427,7 +2468,7 @@ export default function DraftAutoTab({
         {/* 그리드 레이아웃: 일반 모드는 8:4 분할, 직접 조정 모드는 1:1 동급 병치 (스펙 §2-2) */}
         <div className={`grid grid-cols-1 ${manualMode ? "lg:grid-cols-2" : "xl:grid-cols-12"} gap-5`}>
           {/* 좌: 학급 그리드 Ⓐ */}
-          <div className={`${manualMode ? "lg:col-span-1" : "xl:col-span-8"} space-y-4`}>
+          <div ref={classGridRef} className={`${manualMode ? "lg:col-span-1" : "xl:col-span-8"} space-y-4`}>
             <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
               <div className="flex flex-wrap gap-2 items-center justify-between">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -2551,11 +2592,19 @@ export default function DraftAutoTab({
                   <thead>
                     <tr className="bg-gray-100 border-b border-gray-200 font-bold text-gray-700">
                       <th className="py-2.5 px-2 border-r border-gray-200 w-10">교시</th>
-                      {DAYS.map((d) => (
-                        <th key={d} className="py-2.5 px-1 border-r border-gray-200 min-w-[5.5rem]">
-                          {d}
-                        </th>
-                      ))}
+                      {DAYS.map((d, dIdx) => {
+                        const isHighlighted = highlightDay?.target === "class" && highlightDay.day === (dIdx + 1);
+                        return (
+                          <th
+                            key={d}
+                            className={`py-2.5 px-1 border-r border-gray-200 min-w-[5.5rem] transition-colors duration-500 ${
+                              isHighlighted ? "bg-amber-200 text-amber-950 ring-2 ring-inset ring-amber-400" : ""
+                            }`}
+                          >
+                            {d}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -2855,7 +2904,7 @@ export default function DraftAutoTab({
           </div>
 
           {/* 우: 교사 그리드 Ⓑ (+ 미배정 목록) */}
-          <div className={`${manualMode ? "lg:col-span-1" : "xl:col-span-4"} space-y-4`}>
+          <div ref={teacherGridRef} className={`${manualMode ? "lg:col-span-1" : "xl:col-span-4"} space-y-4`}>
             {/* 교사 파생 그리드 카드 */}
             <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
@@ -2896,11 +2945,19 @@ export default function DraftAutoTab({
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200 font-bold text-gray-600">
                         <th className="py-1 px-1 border-r border-gray-200 w-7">교시</th>
-                        {DAYS.map((d) => (
-                          <th key={d} className="py-1 px-1 border-r border-gray-200">
-                            {d}
-                          </th>
-                        ))}
+                        {DAYS.map((d, dIdx) => {
+                          const isHighlighted = highlightDay?.target === "teacher" && highlightDay.day === (dIdx + 1);
+                          return (
+                            <th
+                              key={d}
+                              className={`py-1 px-1 border-r border-gray-200 transition-colors duration-500 ${
+                                isHighlighted ? "bg-amber-200 text-amber-950 ring-2 ring-inset ring-amber-400" : ""
+                              }`}
+                            >
+                              {d}
+                            </th>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
