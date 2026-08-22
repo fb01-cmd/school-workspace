@@ -2463,7 +2463,7 @@ export default function DraftAutoTab({
                           handleCellRightClick(day, period, grade, classNum);
                         }}
                         onMouseEnter={() => {
-                          if (!isTeacherPinned && !pickedSlot && lesson?.teachers?.[0]?.email) {
+                          if (!isExtra && !isTeacherPinned && !pickedSlot && lesson?.teachers?.[0]?.email) {
                             setSelectedTeacherEmail(lesson.teachers[0].email);
                           }
                         }}
@@ -2536,7 +2536,7 @@ export default function DraftAutoTab({
                       key={day}
                       onClick={() => handleCellClick(day, period, grade, classNum)}
                       onMouseEnter={() => {
-                        if (!isTeacherPinned && !pickedSlot && lesson?.teachers?.[0]?.email) {
+                        if (!isExtra && !isTeacherPinned && !pickedSlot && lesson?.teachers?.[0]?.email) {
                           setSelectedTeacherEmail(lesson.teachers[0].email);
                         }
                       }}
@@ -2811,7 +2811,7 @@ export default function DraftAutoTab({
                             if (hit) handleTeacherCellClick(d, p, teacherEmail);
                           }}
                           onMouseEnter={() => {
-                            if (!isClassPinned && !pickedSlot && hit) {
+                            if (!isExtra && !isClassPinned && !pickedSlot && hit) {
                               setViewGrade(hit.grade);
                               setViewClass(hit.classNum);
                             }
@@ -2839,7 +2839,7 @@ export default function DraftAutoTab({
                       <td
                         key={d}
                         onClick={() => {
-                          if (hit && !isClassPinned) {
+                          if (hit) {
                             setViewGrade(hit.grade);
                             setViewClass(hit.classNum);
                           }
@@ -3038,7 +3038,7 @@ export default function DraftAutoTab({
                   ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-xs"
                   : "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200"
               } ${savingOp ? "opacity-50 cursor-not-allowed" : ""}`}
-              title="시간표 직접 조정 모드 (두 그리드 병치 및 신호등 이동)"
+              title="시간표 직접 조정 모드 (두 시간표 나란히 보기 및 신호등 이동)"
             >
               <span>직접 조정</span>
               <span>{manualMode ? "⏻ 켜짐" : "⏻"}</span>
@@ -3052,16 +3052,19 @@ export default function DraftAutoTab({
                   if (savingOp || extraPanels.length >= 2 || !openDraft) return;
                   const newId = `extra_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
                   const otherClass = viewClass === 1 ? 2 : 1;
-                  setExtraPanels((prev) => [
-                    ...prev,
-                    {
-                      id: newId,
-                      type: "class",
-                      grade: viewGrade,
-                      classNum: otherClass,
-                      teacherEmail: selectedTeacherEmail || allDraftTeachers[0]?.email || "",
-                    },
-                  ]);
+                  setExtraPanels((prev) => {
+                    if (prev.length >= 2) return prev;
+                    return [
+                      ...prev,
+                      {
+                        id: newId,
+                        type: "class",
+                        grade: viewGrade,
+                        classNum: otherClass,
+                        teacherEmail: selectedTeacherEmail || allDraftTeachers[0]?.email || "",
+                      },
+                    ];
+                  });
                 }}
                 className={`hidden lg:flex items-center gap-1.5 px-3 py-1 font-bold rounded-lg text-xs transition-all border ${
                   extraPanels.length >= 2
@@ -3071,7 +3074,7 @@ export default function DraftAutoTab({
                 title={
                   extraPanels.length >= 2
                     ? "시간표는 최대 2개까지 추가할 수 있습니다"
-                    : "비교하며 조정할 추가 고정 시간표 패널을 엽니다 (최대 2개)"
+                    : "비교하며 조정할 고정 시간표를 추가로 엽니다 (최대 2개)"
                 }
               >
                 <span>➕ 시간표 추가</span>
@@ -3973,8 +3976,8 @@ export default function DraftAutoTab({
                     }`}
                     title={
                       isClassPinned
-                        ? "학급 시간표가 고정되어 마우스 오버에 따라 변경되지 않습니다 (클릭하여 해제)"
-                        : "클릭하여 현재 학급 시간표를 고정합니다 (교사 그리드 마우스 오버 무시)"
+                        ? "학급 시간표가 고정돼 있어 마우스를 올려도 바뀌지 않습니다 (누르면 해제)"
+                        : "누르면 현재 학급 시간표를 고정합니다 (교사 시간표에 마우스를 올려도 유지)"
                     }
                   >
                     <span>📌</span>
@@ -4081,8 +4084,8 @@ export default function DraftAutoTab({
                     }`}
                     title={
                       isTeacherPinned
-                        ? "교사 시간표가 고정되어 마우스 오버에 따라 변경되지 않습니다 (클릭하여 해제)"
-                        : "클릭하여 현재 교사 시간표를 고정합니다 (학급 그리드 마우스 오버 무시)"
+                        ? "교사 시간표가 고정돼 있어 마우스를 올려도 바뀌지 않습니다 (누르면 해제)"
+                        : "누르면 현재 교사 시간표를 고정합니다 (학급 시간표에 마우스를 올려도 유지)"
                     }
                   >
                     <span>📌</span>
@@ -4539,7 +4542,7 @@ export default function DraftAutoTab({
                           ? "bg-sky-100 text-sky-950 border-sky-400 ring-2 ring-sky-300"
                           : "bg-white hover:bg-amber-100/80 text-gray-800 border-amber-200"
                       } ${savingOp ? "opacity-60 pointer-events-none" : ""}`}
-                      title="클릭하거나 드래그하여 학급 그리드의 빈 칸에 배치하거나, ✕를 눌러 원래 자리로 복귀를 시도합니다"
+                      title="클릭하거나 드래그하여 학급 시간표의 빈 칸에 배치하거나, ✕를 눌러 원래 자리로 복귀를 시도합니다"
                     >
                       <span className="cursor-grab active:cursor-grabbing">
                         {entry.grade}-{entry.classNum}반 {lesson?.subjectShort || lesson?.subjectName || "수업"}
