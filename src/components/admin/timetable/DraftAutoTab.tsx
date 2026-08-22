@@ -334,7 +334,7 @@ export default function DraftAutoTab({
         setManualMode((prev) => {
           if (prev) {
             setBlockedBubble({
-              message: "화면 폭이 좁아져(1024px 미만) 직접 조정 모드가 해제되었습니다. 넓은 화면에서 다시 켤 수 있습니다.",
+              message: "화면이 좁아져 직접 조정이 꺼졌습니다. 창을 넓히면 다시 쓸 수 있어요.",
             });
           }
           return false;
@@ -3132,7 +3132,7 @@ export default function DraftAutoTab({
               } ${savingOp ? "opacity-50 cursor-not-allowed" : ""}`}
               title={
                 !isLgScreen
-                  ? "직접 조정 모드는 화면 폭 1024px 이상(넓은 화면)에서 사용할 수 있습니다"
+                  ? "창을 넓히면 쓸 수 있어요"
                   : "시간표 직접 조정 모드 (두 시간표 나란히 보기 및 신호등 이동)"
               }
             >
@@ -3143,9 +3143,9 @@ export default function DraftAutoTab({
             {/* 시간표 추가 버튼 (스펙 §2-2: 고정 전용 그리드 패널 최대 2개 추가) */}
             {manualMode && (
               <button
-                disabled={savingOp || extraPanels.length >= 2}
+                disabled={savingOp || extraPanels.length >= 2 || !isLgScreen}
                 onClick={() => {
-                  if (savingOp || extraPanels.length >= 2 || !openDraft) return;
+                  if (!isLgScreen || savingOp || extraPanels.length >= 2 || !openDraft) return;
                   const newId = `extra_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
                   const otherClass = viewClass === 1 ? 2 : 1;
                   setExtraPanels((prev) => {
@@ -3162,13 +3162,17 @@ export default function DraftAutoTab({
                     ];
                   });
                 }}
-                className={`hidden lg:flex items-center gap-1.5 px-3 py-1 font-bold rounded-lg text-xs transition-all border ${
-                  extraPanels.length >= 2
+                className={`flex items-center gap-1.5 px-3 py-1 font-bold rounded-lg text-xs transition-all border ${
+                  !isLgScreen
+                    ? "bg-gray-100 text-gray-400 border-gray-200 opacity-60 cursor-not-allowed"
+                    : extraPanels.length >= 2
                     ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
                     : "bg-white hover:bg-indigo-50 text-indigo-700 border-indigo-200 shadow-2xs"
                 } ${savingOp ? "opacity-50 cursor-not-allowed" : ""}`}
                 title={
-                  extraPanels.length >= 2
+                  !isLgScreen
+                    ? "창을 넓히면 쓸 수 있어요"
+                    : extraPanels.length >= 2
                     ? "시간표는 최대 2개까지 추가할 수 있습니다"
                     : "비교하며 조정할 고정 시간표를 추가로 엽니다 (최대 2개)"
                 }
