@@ -2627,8 +2627,7 @@ export default function DraftAutoTab({
                   pickedSlot ? (
                     <div className="flex items-center gap-1.5 text-xs font-bold text-sky-800 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200">
                       <span>
-                        📌 집은 수업: {DAYS[pickedSlot.day - 1]}${pickedSlot.period}교시{" "}
-                        {pickedSlot.lesson.subjectShort || pickedSlot.lesson.subjectName}
+                        📌 집은 수업: {pickedSlot.lesson.subjectShort || pickedSlot.lesson.subjectName}
                         {pickedSlot.lesson.teachers?.[0]?.name ? ` (${pickedSlot.lesson.teachers[0].name})` : ""}
                       </span>
                       <button
@@ -2717,19 +2716,31 @@ export default function DraftAutoTab({
                                 <td
                                   key={day}
                                   onClick={() => handleCellClick(day, period)}
-                                  className="p-2 border-2 border-sky-500 bg-sky-100 ring-2 ring-sky-400/50 align-top cursor-pointer select-none shadow-sm"
+                                  title="집은 수업 (클릭 또는 Esc로 해제)"
+                                  className="p-2 border-r border-gray-200 bg-sky-100/90 text-sky-950 align-top cursor-pointer select-none relative"
                                 >
-                                  <div className="space-y-0.5 relative">
-                                    <div className="font-bold text-[11px] text-sky-950 truncate leading-tight">
-                                      {lesson?.subjectShort || lesson?.subjectName}
+                                  {lesson ? (
+                                    <div className="space-y-0.5">
+                                      <div className="flex items-start justify-between gap-1">
+                                        <span className="font-bold text-[11px] truncate leading-tight">
+                                          {lesson.subjectShort || lesson.subjectName}
+                                        </span>
+                                        <span className="shrink-0 text-[10px] leading-none" title="집은 수업">📌</span>
+                                      </div>
+                                      <div className="text-[10px] text-sky-800 truncate leading-tight">
+                                        {lesson.teachers?.map((t) => t.name).join(", ")}
+                                      </div>
+                                      {simulLabel && (
+                                        <div className="text-[10px] text-purple-700 font-extrabold mt-0.5">
+                                          🔒 {simulLabel}
+                                        </div>
+                                      )}
                                     </div>
-                                    <div className="text-[10px] text-sky-800 truncate leading-tight">
-                                      {lesson?.teachers?.map((t) => t.name).join(", ")}
+                                  ) : (
+                                    <div className="py-1">
+                                      <span className="text-[10px] text-gray-300">—</span>
                                     </div>
-                                    <div className="text-[10px] text-sky-700 font-extrabold mt-1">
-                                      📌 집은 수업
-                                    </div>
-                                  </div>
+                                  )}
                                 </td>
                               );
                             }
@@ -2740,15 +2751,43 @@ export default function DraftAutoTab({
                                   <td
                                     key={day}
                                     onClick={() => handleCellClick(day, period)}
-                                    className="p-2 border-2 border-emerald-500 bg-emerald-50 hover:bg-emerald-100/90 align-top cursor-pointer select-none text-emerald-950 transition-all"
+                                    title={
+                                      cand.kind === "swap"
+                                        ? `${lesson?.subjectShort || "수업"}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                        : `빈 칸으로 이동 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                    }
+                                    className="p-2 border-r border-gray-200 bg-emerald-50/80 hover:bg-emerald-100/80 text-gray-800 align-top cursor-pointer select-none transition-colors relative"
                                   >
-                                    <div className="space-y-0.5 relative">
-                                      <div className="flex items-start justify-between gap-1">
-                                        <span className="font-bold text-[11px] truncate leading-tight">
-                                          {lesson ? lesson.subjectShort || lesson.subjectName : "빈 칸"}
-                                        </span>
+                                    {lesson ? (
+                                      <div className="space-y-0.5">
+                                        <div className="flex items-start justify-between gap-1">
+                                          <span className="font-bold text-[11px] truncate leading-tight text-emerald-950">
+                                            {lesson.subjectShort || lesson.subjectName}
+                                          </span>
+                                          <span
+                                            className={`shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none ${
+                                              cand.softDelta < 0
+                                                ? "bg-emerald-600 text-white shadow-2xs"
+                                                : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                            }`}
+                                          >
+                                            {cand.softDelta < 0 ? cand.softDelta : "0"}
+                                          </span>
+                                        </div>
+                                        <div className="text-[10px] text-gray-500 truncate leading-tight">
+                                          {lesson.teachers?.map((t) => t.name).join(", ")}
+                                        </div>
+                                        {simulLabel && (
+                                          <div className="text-[10px] text-purple-700 font-extrabold mt-0.5">
+                                            🔒 {simulLabel}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="py-1 flex items-center justify-between">
+                                        <span className="text-[10px] text-gray-300">—</span>
                                         <span
-                                          className={`px-1.5 py-0.2 rounded-full font-mono text-[10px] font-extrabold ${
+                                          className={`px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none ${
                                             cand.softDelta < 0
                                               ? "bg-emerald-600 text-white shadow-2xs"
                                               : "bg-emerald-100 text-emerald-800 border border-emerald-300"
@@ -2757,15 +2796,7 @@ export default function DraftAutoTab({
                                           {cand.softDelta < 0 ? cand.softDelta : "0"}
                                         </span>
                                       </div>
-                                      {lesson && (
-                                        <div className="text-[10px] text-gray-500 truncate leading-tight">
-                                          {lesson.teachers?.map((t) => t.name).join(", ")}
-                                        </div>
-                                      )}
-                                      <div className="text-[10px] text-emerald-700 font-black mt-1">
-                                        {cand.kind === "swap" ? "⇄ 맞교환" : "📥 이동"}
-                                      </div>
-                                    </div>
+                                    )}
                                   </td>
                                 );
                               }
@@ -2776,32 +2807,36 @@ export default function DraftAutoTab({
                                   <td
                                     key={day}
                                     onClick={() => handleCellClick(day, period)}
-                                    className="p-2 border-2 border-amber-400 bg-amber-50 hover:bg-amber-100/90 align-top cursor-pointer select-none text-amber-950 transition-all"
-                                    title={worseReason ? `감점 사유: ${worseReason}` : undefined}
+                                    title={worseReason ? `감점 (+${cand.softDelta}점): ${worseReason}` : `감점 +${cand.softDelta}점`}
+                                    className="p-2 border-r border-gray-200 bg-amber-50/80 hover:bg-amber-100/80 text-gray-800 align-top cursor-pointer select-none transition-colors relative"
                                   >
-                                    <div className="space-y-0.5 relative">
-                                      <div className="flex items-start justify-between gap-1">
-                                        <span className="font-bold text-[11px] truncate leading-tight">
-                                          {lesson ? lesson.subjectShort || lesson.subjectName : "빈 칸"}
-                                        </span>
-                                        <span className="px-1.5 py-0.2 rounded-full font-mono text-[10px] font-extrabold bg-amber-500 text-white shadow-2xs">
-                                          +{cand.softDelta}
-                                        </span>
-                                      </div>
-                                      {lesson && (
+                                    {lesson ? (
+                                      <div className="space-y-0.5">
+                                        <div className="flex items-start justify-between gap-1">
+                                          <span className="font-bold text-[11px] truncate leading-tight text-amber-950">
+                                            {lesson.subjectShort || lesson.subjectName}
+                                          </span>
+                                          <span className="shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none bg-amber-500 text-white shadow-2xs">
+                                            +{cand.softDelta}
+                                          </span>
+                                        </div>
                                         <div className="text-[10px] text-gray-500 truncate leading-tight">
                                           {lesson.teachers?.map((t) => t.name).join(", ")}
                                         </div>
-                                      )}
-                                      <div className="text-[10px] text-amber-800 font-black mt-1">
-                                        {cand.kind === "swap" ? "⇄ 맞교환" : "📥 이동"}
+                                        {simulLabel && (
+                                          <div className="text-[10px] text-purple-700 font-extrabold mt-0.5">
+                                            🔒 {simulLabel}
+                                          </div>
+                                        )}
                                       </div>
-                                      {worseReason && (
-                                        <div className="text-[9px] text-amber-800 font-bold truncate mt-0.5">
-                                          ⚠ {worseReason}
-                                        </div>
-                                      )}
-                                    </div>
+                                    ) : (
+                                      <div className="py-1 flex items-center justify-between">
+                                        <span className="text-[10px] text-gray-300">—</span>
+                                        <span className="px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none bg-amber-500 text-white shadow-2xs">
+                                          +{cand.softDelta}
+                                        </span>
+                                      </div>
+                                    )}
                                   </td>
                                 );
                               }
@@ -2810,22 +2845,32 @@ export default function DraftAutoTab({
                               return (
                                 <td
                                   key={day}
-                                  className="p-2 border border-gray-200 bg-gray-100/90 text-gray-400 align-top cursor-not-allowed select-none"
                                   title={cand.blockedReason ? `이동 불가: ${cand.blockedReason}` : "이동 불가"}
+                                  className="p-2 border-r border-gray-200 bg-gray-100/90 text-gray-400 align-top cursor-not-allowed select-none relative opacity-70"
                                 >
-                                  <div className="space-y-0.5 relative">
-                                    <div className="font-bold text-[11px] truncate leading-tight text-gray-400">
-                                      {lesson ? lesson.subjectShort || lesson.subjectName : "—"}
-                                    </div>
-                                    {lesson && (
+                                  {lesson ? (
+                                    <div className="space-y-0.5">
+                                      <div className="flex items-start justify-between gap-1">
+                                        <span className="font-bold text-[11px] truncate leading-tight text-gray-400">
+                                          {lesson.subjectShort || lesson.subjectName}
+                                        </span>
+                                        <span className="shrink-0 text-[10px] text-gray-400 leading-none">🔒</span>
+                                      </div>
                                       <div className="text-[10px] text-gray-400 truncate leading-tight">
                                         {lesson.teachers?.map((t) => t.name).join(", ")}
                                       </div>
-                                    )}
-                                    <div className="text-[9px] text-gray-400 truncate mt-1">
-                                      🔒 {cand.blockedReason || "이동 불가"}
+                                      {simulLabel && (
+                                        <div className="text-[10px] text-purple-700/60 font-extrabold mt-0.5">
+                                          🔒 {simulLabel}
+                                        </div>
+                                      )}
                                     </div>
-                                  </div>
+                                  ) : (
+                                    <div className="py-1 flex items-center justify-between">
+                                      <span className="text-[10px] text-gray-300">—</span>
+                                      <span className="text-[10px] text-gray-400 leading-none">🔒</span>
+                                    </div>
+                                  )}
                                 </td>
                               );
                             }
@@ -2840,10 +2885,10 @@ export default function DraftAutoTab({
                                     setSelectedTeacherEmail(lesson.teachers[0].email);
                                   }
                                 }}
-                                className="p-2 border-r border-gray-200 align-top transition-all cursor-pointer select-none bg-white hover:bg-indigo-50/50 text-gray-800"
+                                className="p-2 border-r border-gray-200 align-top transition-colors cursor-pointer select-none bg-white hover:bg-indigo-50/50 text-gray-800"
                               >
                                 {lesson ? (
-                                  <div className="space-y-0.5 relative">
+                                  <div className="space-y-0.5">
                                     <div className="font-bold text-[11px] truncate leading-tight">
                                       {lesson.subjectShort || lesson.subjectName}
                                     </div>
@@ -3009,12 +3054,24 @@ export default function DraftAutoTab({
                                     <td
                                       key={d}
                                       onClick={() => handleTeacherCellClick(d, p)}
-                                      className="p-1 border-2 border-emerald-500 bg-emerald-50 hover:bg-emerald-100 cursor-pointer select-none text-[10px] text-emerald-950 font-bold"
-                                      title={hit ? `${hit.grade}-${hit.classNum} ${hit.subjectName}과 맞교환` : "빈교시로 이동"}
+                                      className="p-1 border-r border-gray-100 bg-emerald-50/80 hover:bg-emerald-100/80 text-emerald-950 font-bold cursor-pointer select-none text-[10px] transition-colors"
+                                      title={
+                                        hit
+                                          ? `${hit.grade}-${hit.classNum} ${hit.subjectName}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                          : `빈 칸으로 이동 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                      }
                                     >
-                                      <div>{hit ? `${hit.grade}-${hit.classNum}` : "빈 칸"}</div>
-                                      <div className="text-emerald-700 font-extrabold text-[9px]">
-                                        {cand.kind === "swap" ? "⇄" : "📥"} ({cand.softDelta < 0 ? cand.softDelta : "0"})
+                                      <div className="flex items-center justify-between gap-0.5">
+                                        <span className="truncate">{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
+                                        <span
+                                          className={`px-1 py-0.2 rounded font-mono text-[8px] font-extrabold leading-none ${
+                                            cand.softDelta < 0
+                                              ? "bg-emerald-600 text-white"
+                                              : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                          }`}
+                                        >
+                                          {cand.softDelta < 0 ? cand.softDelta : "0"}
+                                        </span>
                                       </div>
                                     </td>
                                   );
@@ -3026,12 +3083,14 @@ export default function DraftAutoTab({
                                     <td
                                       key={d}
                                       onClick={() => handleTeacherCellClick(d, p)}
-                                      className="p-1 border-2 border-amber-400 bg-amber-50 hover:bg-amber-100 cursor-pointer select-none text-[10px] text-amber-950 font-bold"
-                                      title={worseReason ? `감점: ${worseReason}` : `+${cand.softDelta}점`}
+                                      className="p-1 border-r border-gray-100 bg-amber-50/80 hover:bg-amber-100/80 text-amber-950 font-bold cursor-pointer select-none text-[10px] transition-colors"
+                                      title={worseReason ? `감점 (+${cand.softDelta}점): ${worseReason}` : `감점 +${cand.softDelta}점`}
                                     >
-                                      <div>{hit ? `${hit.grade}-${hit.classNum}` : "빈 칸"}</div>
-                                      <div className="text-amber-800 font-extrabold text-[9px]">
-                                        +{cand.softDelta}
+                                      <div className="flex items-center justify-between gap-0.5">
+                                        <span className="truncate">{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
+                                        <span className="px-1 py-0.2 rounded font-mono text-[8px] font-extrabold leading-none bg-amber-500 text-white">
+                                          +{cand.softDelta}
+                                        </span>
                                       </div>
                                     </td>
                                   );
@@ -3040,10 +3099,13 @@ export default function DraftAutoTab({
                                 return (
                                   <td
                                     key={d}
-                                    className="p-1 border border-gray-100 bg-gray-100/90 text-gray-400 cursor-not-allowed select-none text-[10px]"
-                                    title={cand.blockedReason || "이동 불가"}
+                                    className="p-1 border-r border-gray-100 bg-gray-100/90 text-gray-400 cursor-not-allowed select-none text-[10px] opacity-70"
+                                    title={cand.blockedReason ? `이동 불가: ${cand.blockedReason}` : "이동 불가"}
                                   >
-                                    <div>{hit ? `${hit.grade}-${hit.classNum}` : "—"}</div>
+                                    <div className="flex items-center justify-between gap-0.5">
+                                      <span className="truncate">{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
+                                      <span className="text-[8px] text-gray-400 leading-none">🔒</span>
+                                    </div>
                                   </td>
                                 );
                               }
@@ -3065,6 +3127,7 @@ export default function DraftAutoTab({
                                       ? "bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-bold border border-indigo-200"
                                       : "bg-white text-gray-300"
                                   }`}
+                                  title={hit ? `${hit.grade}학년 ${hit.classNum}반 ${hit.subjectName}` : undefined}
                                 >
                                   {hit ? `${hit.grade}-${hit.classNum}` : "—"}
                                 </td>
