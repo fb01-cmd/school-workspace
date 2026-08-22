@@ -16,8 +16,43 @@
 6. **지시가 지금 코드와 다를 수 있다. 다르면 맞추지 말고 다르다고 보고해라.**
 7. **실행해야만 알 수 있는 것은 통과/실패로 몰지 말고 「판정 불가」로 두고, 무엇을 실행해야 아는지 적어라.**
 8. **근거는 `파일:줄번호`로 단다.** 보고는 항목당 한 줄 — 서술형 장문 금지.
-9. **한 번에 한 과제만 한다.** **지금 지시된 과제가 없다** — 과제 BB까지 검증 통과·배포로 종결됐다. 다음 과제는 Claude가 여기에 새로 적는다.
+9. **한 번에 한 과제만 한다.** 지금 차례는 **과제 BB-2 하나**다. 커밋·핸드오버까지 마쳤으면 **거기서 멈추고 보고해라.**
 10. **`project_notes.md`는 덧붙이기만 한다 (④-2).** 과제 U 커밋이 남의 엔트리 한 줄을 지웠다 — 커밋 전에 `git diff --numstat project_notes.md`의 삭제 열이 0인지 확인해라.
+
+---
+
+## 과제 BB-2 — 개정 화면 이동이 아예 안 된다 (검증 누락 보수, 2026-08-23)
+
+**기준 커밋: `56d58c1`.** 사용자 실기기: *"그냥 단순 집기만 돼. 그걸 집고 목적지 클릭은 아예 안 돼."* **과제 BB의 핵심 기능이 동작하지 않는다.**
+
+### 원인 — 제약 모델이 반쪽이다
+
+`BaseRevisionTab.tsx:145`가 `setModel(data.model || null)`로 **서버가 준 model을 날것 그대로** 쓴다. 그런데 **`draft_model` 응답의 model에는 `gradeDayPeriods`와 `hours`가 없다**(`route.ts:1336-1343` — `lunchAfterPeriod`·`periodsPerDay`·등록부 5종뿐).
+
+**초안 화면은 그 둘을 클라이언트에서 채운다**(`DraftAutoTab.tsx:1144-1150`):
+```ts
+const gradeDayPeriods = deriveGradeDayPeriods(baseGrids);
+const hours = … deriveHoursFromGrids(baseGrids);
+const fullModel = { ...model, gradeDayPeriods, hours };
+```
+
+결과:
+- **`gradeDayPeriods` 없음 → 후보 0개.** `evaluateMoveCandidates`가 `model.gradeDayPeriods?.[pick.grade] || {}`(`moveCandidates.ts:40` 부근)로 후보 슬롯을 만드는데 빈 객체가 되어 **후보가 하나도 안 나온다.** 그래서 모든 칸이 「후보 아님」으로 떨어지고 `handleCellClick`의 `if (!cand …) return`(`:266`)에 걸려 **클릭이 무반응**이다. 3색도 당연히 안 뜬다.
+- **`hours` 없음 → 검사 결과가 헐겁다.** 시수 부족(H1) 판정이 돌 수 없어 **「중대 문제 0건」이 실제보다 적게** 나올 수 있다. 화면의 감점 총점도 같은 model로 계산된다.
+
+### 고칠 것
+
+1. `fetchModelAndBaseGrids`에서 model을 **초안 화면과 똑같이 완성**한다 — `deriveGradeDayPeriods(baseGrids)`와 `deriveHoursFromGrids(baseGrids)`를 붙여 `fullModel`로 저장. 두 함수는 `@/lib/timetable/validate`에 이미 있다.
+2. **초안 화면의 그 6줄을 그대로 옮겨라.** 다르게 쓰면 두 화면의 판정이 갈린다 — 이 과제열 내내 지켜 온 원칙이다.
+3. 고친 뒤 **집기 → 3색이 뜨는지 → 목적지 클릭으로 이동 op가 쌓이는지**를 **코드 경로로 설명**해라(어느 값이 어떻게 채워져서 후보가 나오는지).
+
+### ⚠️ 이 항목이 왜 검증을 통과했는지 (같은 실수 반복 방지)
+
+tsc·build·selftest가 전부 통과했다 — `gradeDayPeriods`가 **optional 필드**라 타입 오류가 안 나고, selftest는 model을 손으로 만들어 넣으므로 이 경로를 안 밟는다. **Claude 검증도 「`evaluateMoveCandidates`를 부르는가」만 확인하고 「유효한 model을 받는가」는 안 봤다.**
+
+→ **보고할 때 「불렀다」가 아니라 「그 함수가 받은 입력이 무엇인지」를 적어라.** 이번 완료 확인에 그 항목을 넣었다.
+
+**완료 확인**: tsc · build · check:ui · `check_ui_removals`(기준 `56d58c1`) · selftest 4종 유지 + ⓐ`fullModel`에 `gradeDayPeriods`·`hours`가 들어가는 지점(file:line) ⓑ**집기 직후 `candidatesResult.candidates`가 비어 있지 않게 되는 근거** ⓒ「중대 문제」 건수가 `hours`를 반영해 계산되는지. **핸드오버 ④ 기재.**
 
 ---
 
