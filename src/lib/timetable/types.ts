@@ -1475,8 +1475,22 @@ export interface TimetableDraftOrigin {
 /** 솔버 미배정 항목 — SolverResult.unplaced와 동형 (저장 후 재사용) */
 export interface TimetableDraftUnplaced {
   sectionId: string;
-  label: string;   // "2-3반 통합과학 김○○" 형태 (솔버가 조립)
+  /**
+   * 사람이 읽는 표시 문자열 (솔버가 조립, 예: "2-3반 통합과학").
+   * ⚠️ **파싱 대상이 아니다** — 배치에 필요한 값은 아래 구조화 필드를 쓴다.
+   * (2026-08-22 정정: 이 주석이 오래 `"2-3반 통합과학 김○○"` 세 토막이라고 적혀 있었으나
+   *  솔버는 네 조립부 전부에서 두 토막만 만든다. 그 주석을 믿고 세 번째 토막을 교사로 읽던
+   *  화면 코드가 교사를 항상 빈 값으로 넣고 있었다 — `unplaced.ts` 머리말 참조.)
+   */
+  label: string;
   remaining: number; // 미배정 시수
+  /**
+   * 배치 대상 원본 (2026-08-22 신설). **이 필드 신설 이전에 저장된 초안에는 없다** —
+   * 그래서 optional이고, 없으면 `resolveUnplacedTarget`이 라벨에서 되돌린다.
+   */
+  grade?: number;
+  classNum?: number;
+  lessons?: TimetableLesson[];
 }
 
 export interface TimetableDraftLastReport {

@@ -87,7 +87,18 @@ export interface SolverInput {
 
 export interface SolverResult {
   grids: ClassGrid[];
-  unplaced: Array<{ sectionId: string; label: string; remaining: number }>;
+  /**
+   * 미배정 섹션. `label`은 표시 전용이고, 배치에 쓸 값은 구조화 필드다
+   * (2026-08-22 — 화면이 label을 파싱해 교사를 항상 빈 값으로 넣던 결함 처방).
+   */
+  unplaced: Array<{
+    sectionId: string;
+    label: string;
+    remaining: number;
+    grade: number;
+    classNum: number;
+    lessons: TimetableLesson[];
+  }>;
   stats: {
     sections: number;
     occurrencesTotal: number;
@@ -2585,11 +2596,25 @@ export function solveTimetable(input: SolverInput): SolverResult {
   const unplacedBySection = new Map<number, number>();
   for (const p of unplacedFinal)
     unplacedBySection.set(p.sectionIdx, (unplacedBySection.get(p.sectionIdx) || 0) + p.len);
-  const unplaced = [...unplacedBySection.entries()].map(([i, remaining]) => ({
-    sectionId: sections[i].id,
-    label: sections[i].label,
-    remaining,
-  }));
+  // 표시용 label 외에 **배치 대상 원본**을 함께 싣는다 (2026-08-22).
+  // 종전에는 label만 저장해 화면이 그 문자열을 잘라 학급·과목·교사를 되읽었는데,
+  // label은 두 토막("2-3반 통합과학")뿐이라 교사가 항상 비었다. 여기 lessonsByClass에
+  // 이미 진짜 TimetableLesson(교사 포함)이 있으므로 그것을 그대로 넘긴다.
+  const unplaced = [...unplacedBySection.entries()].map(([i, remaining]) => {
+    const sec = sections[i];
+    const ck = sec.classKeys[0] || "";
+    const [gStr, cStr] = ck.split("-");
+    const g = parseInt(gStr, 10);
+    const c = parseInt(cStr, 10);
+    return {
+      sectionId: sec.id,
+      label: sec.label,
+      remaining,
+      grade: Number.isFinite(g) && g > 0 ? g : sec.grade,
+      classNum: Number.isFinite(c) && c > 0 ? c : 0,
+      lessons: sec.lessonsByClass[ck] || [],
+    };
+  });
 
   // ── ⑦-f 위반 표적 LNS (2026-08-22) — 부분 파괴·재배치 (REPAIR_LNS 주석·리서치 1안) ──
   // 파괴 = 잔존 위반 (교사,요일)의 수업 전부(고정 제외). 재배치 = 기존 그리디(직접 배치) +

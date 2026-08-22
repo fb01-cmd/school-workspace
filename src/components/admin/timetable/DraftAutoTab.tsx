@@ -44,6 +44,7 @@ import {
   type FixPlan,
   type AskFixProgress,
 } from "@/lib/timetable/fixFinder";
+import { resolveUnplacedTarget } from "@/lib/timetable/unplaced";
 import {
   searchLookaheadLines,
   type LookaheadLine,
@@ -1444,13 +1445,8 @@ export default function DraftAutoTab({
     targetPeriod: number
   ) => {
     if (!openDraft || savingOp) return;
-    const tokens = u.label.split(" ");
-    const classToken = tokens[0] || "";
-    const subjectToken = tokens[1] || "미배정과목";
-    const teacherToken = tokens[2] || "";
-    const [gStr, cStr] = classToken.replace(/반$/, "").split("-");
-    const grade = parseInt(gStr, 10) || viewGrade;
-    const classNum = parseInt(cStr, 10) || viewClass;
+    const target = resolveUnplacedTarget(u, { grade: viewGrade, classNum: viewClass });
+    const { grade, classNum } = target;
 
     const opToSend: BaseRevisionOp = {
       type: "edit_cell",
@@ -1458,13 +1454,7 @@ export default function DraftAutoTab({
       classNum,
       day: targetDay,
       period: targetPeriod,
-      lessons: [
-        {
-          subjectName: subjectToken,
-          subjectShort: subjectToken,
-          teachers: [{ email: "", name: teacherToken }],
-        },
-      ],
+      lessons: target.lessons,
     };
 
     const updatedUnplacedList = openDraft.meta.unplaced
@@ -1797,11 +1787,10 @@ export default function DraftAutoTab({
 
     // 미배정 수업 배정 모드인 경우
     if (selectedUnplaced) {
-      const tokens = selectedUnplaced.label.split(" ");
-      const classToken = tokens[0] || "";
-      const [gStr, cStr] = classToken.replace(/반$/, "").split("-");
-      const unplacedGrade = parseInt(gStr, 10) || viewGrade;
-      const unplacedClass = parseInt(cStr, 10) || viewClass;
+      const { grade: unplacedGrade, classNum: unplacedClass } = resolveUnplacedTarget(
+        selectedUnplaced,
+        { grade: viewGrade, classNum: viewClass }
+      );
 
       const targetGrid = currentGrids.find(
         (g) => g.grade === unplacedGrade && g.classNum === unplacedClass
@@ -4260,13 +4249,12 @@ export default function DraftAutoTab({
                 <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
                   {meta.unplaced.map((u) => {
                     const isSelected = selectedUnplaced?.sectionId === u.sectionId;
-                    const tokens = u.label.split(" ");
-                    const classToken = tokens[0] || "";
-                    const subjectToken = tokens[1] || "미배정과목";
-                    const teacherToken = tokens[2] || "";
-                    const [gStr, cStr] = classToken.replace(/반$/, "").split("-");
-                    const targetGrade = parseInt(gStr, 10) || viewGrade;
-                    const targetClass = parseInt(cStr, 10) || viewClass;
+                    const unplacedTarget = resolveUnplacedTarget(u, {
+                      grade: viewGrade,
+                      classNum: viewClass,
+                    });
+                    const targetGrade = unplacedTarget.grade;
+                    const targetClass = unplacedTarget.classNum;
 
                     return (
                       <div
@@ -4292,16 +4280,14 @@ export default function DraftAutoTab({
                           setViewGrade(targetGrade);
                           setViewClass(targetClass);
 
-                          const lesson: TimetableLesson = {
-                            subjectName: subjectToken,
-                            subjectShort: subjectToken,
-                            teachers: [{ email: "", name: teacherToken }],
-                          };
-
                           const res = evaluateHeldCandidates({
                             grids: openDraft.currentGrids,
                             model: openDraft.model,
-                            held: { grade: targetGrade, classNum: targetClass, lessons: [lesson] },
+                            held: {
+                              grade: targetGrade,
+                              classNum: targetClass,
+                              lessons: unplacedTarget.lessons,
+                            },
                           });
                           setCandidatesResult(res);
                           setBlockedBubble(null);
@@ -4346,16 +4332,16 @@ export default function DraftAutoTab({
                                 setViewGrade(targetGrade);
                                 setViewClass(targetClass);
 
-                                const lesson: TimetableLesson = {
-                                  subjectName: subjectToken,
-                                  subjectShort: subjectToken,
-                                  teachers: [{ email: "", name: teacherToken }],
-                                };
+
 
                                 const res = evaluateHeldCandidates({
                                   grids: openDraft.currentGrids,
                                   model: openDraft.model,
-                                  held: { grade: targetGrade, classNum: targetClass, lessons: [lesson] },
+                                  held: {
+                                    grade: targetGrade,
+                                    classNum: targetClass,
+                                    lessons: unplacedTarget.lessons,
+                                  },
                                 });
                                 setCandidatesResult(res);
                                 setBlockedBubble(null);
