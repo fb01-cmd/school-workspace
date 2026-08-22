@@ -471,3 +471,8 @@
 - **[사실 3 — 빈 초안 안내문 갱신]** "위 버튼으로 자동 작성을 실행하거나..."를 "시수 계획으로 새로 시간표를 작성하거나, 등록된 기초 시간표를 복제해 시작하세요."로 눈높이 갱신.
 - **[검증]** `tsc` 0건 · `npm run check:ui` 통과 (4/4) · `check_ui_removals.sh` 11건 전수 의도 부합 확인 · `movecand_selftest` 11/11 · `m2ops_selftest` 15/15 · `askfix_selftest` 42/42 · `npm run build` 성공 (49/49).
 
+
+## [2026-08-22] Claude(Fable) — 과제 O 검증 종결 (직접 검증 — 소규모라 Codex 미파견)
+
+- **[판정] 통과.** 재확인: 다시 짜기 문자열 0 · 「복제로 시작」 유지 · `TimetableSection` 참조 0 · 공용 `compileSectionsFromGrids` 15참조 보존 · 실행 경로(handleSolveFromPlan·시작 버튼) 잔존 · tsc 0·check:ui·build ✅. 삭제 목록의 「어떻게 짤까요?」 라디오 머리 소실은 경로가 하나가 되며 선택지 자체가 사라진 정당 결과. **Antigravity 핸드오버 ④ 첫 준수** — 항목별 근거 기재 양호.
+- **[감시 재무장]** 과제 P(감점 클릭 세팅)·Q(M2 화면) 대기 — 코드 커밋 감지 조건으로 재가동.
