@@ -725,3 +725,12 @@
 - **[과제 V 인계]** V-1 대가 줄(위 데이터를 그대로 쓸 것, 직접 계산 금지) · V-2 **교사 격자 드래그 시작 부재**(놓는 자리만 있고 `draggable`·`onDragStart` 0건 — **내 검증 체크리스트가 「드롭 판정」만 물어서 놓쳤다**) · V-3 좁은 화면에서 토글이 소리 없이 사라지고 직접 조정이 말없이 꺼지는 것(R-2 지시가 미배정 버튼에만 걸린 반쪽이었다).
 - **[사용자 결정]** AI 버튼 2종(물어보고 고치기·이 시간표 설명) **철거 확정** — 과제 X로 V·W 뒤에. 근거는 STATUS 행 참조. 철거 시 시간표 화면 AI 호출 0 전수 확인 포함.
 - **[다음]** 과제 V → W(작업기록 셀 특정 = M3 + 「하드 위반」 문구) → X(AI 철거).
+
+## [2026-08-22] Antigravity — 과제 V(기보 카드 대가 줄·교사 시간표 드래그 시작·좁은 화면 비활성 안내) 완결
+
+- **[사실 1 — 기보 카드 대가 줄 및 총점 변화 표시 (V-1)]** `DraftAutoTab.tsx:3550-3608`에서 엔진의 `LookaheadSideEffect[]`를 그대로 렌더링. 나빠지는 감점(`new`·`worse`)은 `⚠️ +N점`, 좋아지는 감점(`gone`·`better`)은 `✅ -N점`으로 표시하고, 나빠지는 항목이 없으면 `✅ 다른 감점이 늘어나지 않습니다`를 명시. 1수 기보에도 `stepScores` 기반 총점 변화(`총점 A점 → B점 (C점)`) 표시.
+- **[사실 2 — 교사 시간표 셀 드래그 시작 복원 (V-2)]** `renderTeacherGridTable`(`:2700-2745`)의 `teacherDndProps`에 `draggable: canDragTeacherCell` 및 `onDragStart` / `onDragEnd` 추가. 드래그 시작 시 `handleTeacherCellClick`을 호출하여 기존 집기 및 3색 채점 경로를 100% 동일하게 재사용.
+- **[사실 3 — 좁은 화면 비활성 및 사유 안내 (V-3)]** `DraftAutoTab.tsx:3060-3095`에서 `manualMode` 토글의 `hidden lg:flex`를 제거하고 좁은 화면(`!isLgScreen`) 시 `disabled` + `opacity-60` + `"직접 조정 모드는 화면 폭 1024px 이상(넓은 화면)에서 사용할 수 있습니다"` 툴팁 제공. 리사이즈로 해제 시 말풍선 안내 추가(`:334-340`). `timetable_manual_move_spec.md` §0-4 문구 정정 완료.
+- **[규약 준수]** `project_notes.md`는 기존 내용 삭제 없이 하단에만 추가(append-only).
+- **[검증]** `tsc` 0건 · `build` (49/49) 통과 · `check:ui` 20/20 통과 · `check_ui_removals.sh 16e3f12da8f02702df787fd3d1b4c38a8e519f8b` 0건 통과 · selftest 4종(`lookahead`(27), `movecand`(15), `m2ops`(15), `unplaced`(24)) 100% 통과.
+

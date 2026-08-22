@@ -331,7 +331,14 @@ export default function DraftAutoTab({
       const isLg = typeof window !== "undefined" && window.innerWidth >= 1024;
       setIsLgScreen(isLg);
       if (!isLg) {
-        setManualMode(false);
+        setManualMode((prev) => {
+          if (prev) {
+            setBlockedBubble({
+              message: "화면 폭이 좁아져(1024px 미만) 직접 조정 모드가 해제되었습니다. 넓은 화면에서 다시 켤 수 있습니다.",
+            });
+          }
+          return false;
+        });
       }
     };
     checkWidth();
@@ -2690,7 +2697,52 @@ export default function DraftAutoTab({
                       const isDragOverTeacherThis =
                         dragOverCell?.day === d && dragOverCell?.period === p;
 
+                      const canDragTeacherCell = manualMode && !savingOp && !!hit;
                       const teacherDndProps = {
+                        draggable: canDragTeacherCell,
+                        onDragStart: (e: React.DragEvent) => {
+                          if (!canDragTeacherCell) return;
+                          const targetGrid = openDraft.currentGrids.find(
+                            (g) => g.grade === hit.grade && g.classNum === hit.classNum
+                          );
+                          const targetCell = targetGrid?.cells?.find((c) => c.day === d && c.period === p);
+                          const targetLesson = targetCell?.lessons?.[0];
+                          if (!targetLesson) return;
+
+                          e.dataTransfer.setData(
+                            "text/plain",
+                            JSON.stringify({
+                              type: "cell",
+                              grade: hit.grade,
+                              classNum: hit.classNum,
+                              day: d,
+                              period: p,
+                            })
+                          );
+                          e.dataTransfer.effectAllowed = "move";
+                          setDragSource({
+                            type: "cell",
+                            grade: hit.grade,
+                            classNum: hit.classNum,
+                            day: d,
+                            period: p,
+                            lesson: targetLesson,
+                          });
+
+                          if (
+                            !pickedSlot ||
+                            pickedSlot.grade !== hit.grade ||
+                            pickedSlot.classNum !== hit.classNum ||
+                            pickedSlot.day !== d ||
+                            pickedSlot.period !== p
+                          ) {
+                            handleTeacherCellClick(d, p, teacherEmail);
+                          }
+                        },
+                        onDragEnd: () => {
+                          setDragSource(null);
+                          setDragOverCell(null);
+                        },
                         onDragOver: (e: React.DragEvent) => {
                           if (!dragSource || savingOp) return;
                           const candItem = candidatesResult?.candidates.find(
@@ -3053,9 +3105,9 @@ export default function DraftAutoTab({
               📋 작업기록 ({meta.opCursor}/{meta.ops.length})
             </button>
 
-            {/* 직접 조정 모드 토글 (스펙 §0-4: 1024px 미만 화면에서는 미표시) */}
+            {/* 직접 조정 모드 토글 (스펙 §0-4: 1024px 미만 화면에서는 비활성 + 안내) */}
             <button
-              disabled={savingOp}
+              disabled={savingOp || !isLgScreen}
               onClick={() => {
                 if (!isLgScreen || savingOp) return;
                 if (!manualMode) {
@@ -3071,15 +3123,21 @@ export default function DraftAutoTab({
                   setBlockedBubble(null);
                 }
               }}
-              className={`hidden lg:flex items-center gap-1.5 px-3 py-1 font-bold rounded-lg text-xs transition-all border ${
-                manualMode
+              className={`flex items-center gap-1.5 px-3 py-1 font-bold rounded-lg text-xs transition-all border ${
+                !isLgScreen
+                  ? "bg-gray-100 text-gray-400 border-gray-200 opacity-60 cursor-not-allowed"
+                  : manualMode
                   ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-xs"
                   : "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200"
               } ${savingOp ? "opacity-50 cursor-not-allowed" : ""}`}
-              title="시간표 직접 조정 모드 (두 시간표 나란히 보기 및 신호등 이동)"
+              title={
+                !isLgScreen
+                  ? "직접 조정 모드는 화면 폭 1024px 이상(넓은 화면)에서 사용할 수 있습니다"
+                  : "시간표 직접 조정 모드 (두 시간표 나란히 보기 및 신호등 이동)"
+              }
             >
               <span>직접 조정</span>
-              <span>{manualMode ? "⏻ 켜짐" : "⏻"}</span>
+              <span>{!isLgScreen ? "🔒" : manualMode ? "⏻ 켜짐" : "⏻"}</span>
             </button>
 
             {/* 시간표 추가 버튼 (스펙 §2-2: 고정 전용 그리드 패널 최대 2개 추가) */}
@@ -3424,7 +3482,7 @@ export default function DraftAutoTab({
                                           return (
                                             <div
                                               key={li}
-                                              className="bg-white rounded-lg border border-amber-200 p-3 space-y-2 shadow-2xs hover:border-amber-400 transition-all"
+                                              className="bg-white rounded-lg border border-amber-200 p-3 space-y-2.5 shadow-2xs hover:border-amber-400 transition-all"
                                             >
                                               <div className="flex flex-wrap items-center justify-between gap-2">
                                                 <div className="flex items-center gap-2 flex-wrap min-w-0">
@@ -3433,6 +3491,9 @@ export default function DraftAutoTab({
                                                   </span>
                                                   <span className="text-xs font-bold text-gray-900">
                                                     기보 {li + 1} ({line.ops.length}수)
+                                                  </span>
+                                                  <span className="text-[11px] font-bold text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                                                    이 감점 {line.targetDelta < 0 ? `${line.targetDelta}점` : `+${line.targetDelta}점`}
                                                   </span>
                                                   <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                                                     {line.finalDelta < 0
@@ -3474,8 +3535,9 @@ export default function DraftAutoTab({
                                                 </div>
                                               </div>
 
-                                              {/* 미니 그리드 / 변경 대상 칸 연쇄 표시 (텍스트 수순 표기 금지 — 스펙 §0-1) */}
-                                              <div className="bg-gray-50 rounded-md p-2 space-y-1.5 border border-gray-100">
+                                              {/* 상세 정보 컨테이너 */}
+                                              <div className="bg-gray-50 rounded-md p-2.5 space-y-2 border border-gray-100">
+                                                {/* 관련 교시 */}
                                                 <div className="flex items-center gap-1.5 flex-wrap">
                                                   <span className="text-[11px] font-bold text-gray-500">관련 교시:</span>
                                                   {line.touched.map((t, ti) => (
@@ -3488,21 +3550,69 @@ export default function DraftAutoTab({
                                                   ))}
                                                 </div>
 
-                                                {/* 2수 이상인 경우 수순별 총점 진행 표시 */}
-                                                {line.stepScores.length > 1 && (
-                                                  <div className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
-                                                    <span>총점 변화:</span>
-                                                    <span className="font-mono font-bold text-gray-700">
-                                                      {openDraft?.report.soft.total}점
+                                                {/* 총점 변화 추이 (1수 및 다수 기보 공통) */}
+                                                <div className="flex items-center gap-1 text-[11px] text-gray-600 font-medium flex-wrap">
+                                                  <span className="font-bold text-gray-500">총점 변화:</span>
+                                                  <span className="font-mono font-bold text-gray-700">
+                                                    {openDraft?.report.soft.total}점
+                                                  </span>
+                                                  {line.stepScores.map((score, si) => (
+                                                    <span key={si} className="font-mono font-bold text-indigo-700 flex items-center gap-0.5">
+                                                      <span>→</span>
+                                                      <span>{score}점</span>
                                                     </span>
-                                                    {line.stepScores.map((score, si) => (
-                                                      <span key={si} className="font-mono font-bold text-indigo-700 flex items-center gap-1">
-                                                        <span>→</span>
-                                                        <span>{score}점</span>
-                                                      </span>
-                                                    ))}
+                                                  ))}
+                                                  <span className="ml-1 text-[11px] font-bold text-emerald-700 font-mono">
+                                                    ({line.finalDelta < 0 ? `${line.finalDelta}점` : line.finalDelta === 0 ? "0점" : `+${line.finalDelta}점`})
+                                                  </span>
+                                                </div>
+
+                                                {/* 대가 줄 (다른 감점 변화) */}
+                                                <div className="pt-1.5 border-t border-gray-200/80 space-y-1">
+                                                  <div className="text-[11px] font-bold text-gray-700">
+                                                    이 수를 두면 다른 감점이 이렇게 바뀝니다:
                                                   </div>
-                                                )}
+                                                  {line.sideEffects && line.sideEffects.length > 0 ? (
+                                                    <div className="space-y-1">
+                                                      {line.sideEffects.map((se, sei) => {
+                                                        const isWorse = se.kind === "new" || se.kind === "worse";
+                                                        return (
+                                                          <div
+                                                            key={sei}
+                                                            className={`flex items-center justify-between gap-2 px-2 py-1 rounded text-[11px] ${
+                                                              isWorse
+                                                                ? "bg-amber-50 text-amber-950 border border-amber-200"
+                                                                : "bg-emerald-50 text-emerald-950 border border-emerald-200"
+                                                            }`}
+                                                          >
+                                                            <span className="flex items-center gap-1 min-w-0">
+                                                              <span className="shrink-0">{isWorse ? "⚠️" : "✅"}</span>
+                                                              <span className="font-semibold text-gray-800 truncate">{se.text}</span>
+                                                            </span>
+                                                            <span
+                                                              className={`font-mono font-bold shrink-0 ${
+                                                                isWorse ? "text-amber-800" : "text-emerald-700"
+                                                              }`}
+                                                            >
+                                                              {se.delta > 0 ? `+${se.delta}점` : `${se.delta}점`}
+                                                            </span>
+                                                          </div>
+                                                        );
+                                                      })}
+                                                      {!line.sideEffects.some((s) => s.kind === "new" || s.kind === "worse") && (
+                                                        <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-100 flex items-center gap-1">
+                                                          <span>✅</span>
+                                                          <span>다른 감점이 늘어나지 않습니다</span>
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  ) : (
+                                                    <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-100 flex items-center gap-1">
+                                                      <span>✅</span>
+                                                      <span>다른 감점이 늘어나지 않습니다</span>
+                                                    </div>
+                                                  )}
+                                                </div>
                                               </div>
                                             </div>
                                           );
