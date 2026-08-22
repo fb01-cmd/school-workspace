@@ -38,15 +38,24 @@ async function main() {
     return;
   }
   const consoleEdits = deployedOnlyLines(before.source, local);
-  if (consoleEdits.length) {
+  // 이 대조는 줄 단위 휴리스틱이라, 저장소에서 일부러 바꾼 줄(옛 주석·옛 조건)도
+  // "실배포에만 있는 줄"로 잡는다. 실배포 원문을 내려받아 diff 전체가 의도한 변경뿐임을
+  // 사람이 확인한 경우에만 --ack-replaced로 계속 진행한다 — 확인 없이 쓰는 플래그가 아니다.
+  const ackReplaced = process.argv.includes("--ack-replaced");
+  if (consoleEdits.length && !ackReplaced) {
     console.error(
-      `\n🛑 중단: 실배포에만 있는 줄이 ${consoleEdits.length}행 있다(콘솔 직접 수정 흔적).\n` +
-        `   그대로 게시하면 그 변경이 사라진다. 저장소에 반영한 뒤 다시 시도할 것.`
+      `\n🛑 중단: 실배포에만 있는 줄이 ${consoleEdits.length}행 있다(콘솔 직접 수정 흔적 또는 이번에 대체한 줄).\n` +
+        `   콘솔 수정이면 저장소에 반영할 것. 이번 변경으로 대체된 줄임을 diff로 확인했으면 --ack-replaced.`
     );
     consoleEdits.forEach((l) => console.error("   실배포만 | " + l.trim()));
     process.exit(1);
   }
-  console.log("사전 점검 ✅ 실배포에만 있는 줄 0행 (콘솔 직접 수정 흔적 없음)");
+  if (consoleEdits.length) {
+    console.log(`사전 점검 ⚠️ 실배포에만 있는 줄 ${consoleEdits.length}행 — --ack-replaced로 확인 완료 처리`);
+    consoleEdits.forEach((l) => console.log("   대체됨 | " + l.trim()));
+  } else {
+    console.log("사전 점검 ✅ 실배포에만 있는 줄 0행 (콘솔 직접 수정 흔적 없음)");
+  }
 
   if (!commit) {
     console.log("\n(사전 점검 전용 실행 — 게시하지 않았다. 실제 게시는 --commit)");
