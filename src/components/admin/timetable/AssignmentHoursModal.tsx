@@ -1069,7 +1069,7 @@ export default function AssignmentHoursModal({
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50/80 flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-              <span>📄 배정표에서 주당 수업 시간 만들기</span>
+              <span>📄 배정표에서 수업 시수 만들기</span>
             </h3>
           </div>
           <button
@@ -1343,7 +1343,7 @@ export default function AssignmentHoursModal({
                 </p>
                 <ul className="list-disc list-inside space-y-0.5 text-[11px] text-gray-600">
                   <li>
-                    과목별 배정표의 부서별 표를 순차적으로 읽어 교사별 주당 수업 시간을 자동으로 추출합니다.
+                    과목별 배정표의 부서별 표를 순차적으로 읽어 교사별 수업 시수를 자동으로 추출합니다.
                   </li>
                   <li>
                     추출된 교사 성명은 시스템에 등록된 계정과 1:1로 매칭되며, 결과 화면에서 자유롭게 수정할 수 있습니다.

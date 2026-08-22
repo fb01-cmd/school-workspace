@@ -180,7 +180,7 @@ export default function NeisBatchExportTab({ activeTermId }: NeisBatchExportTabP
     const target: NeisPrecheckTarget =
       targetKind === "term"
         ? { kind: "term", id: activeTermId || "", label: "현재 활성 학기" }
-        : { kind: "draft", id: selectedDraftId, label: "자동 작성 초안" };
+        : { kind: "draft", id: selectedDraftId, label: "시간표 편성 초안" };
     setPrecheckTarget(target);
 
     const res = await api({
@@ -335,7 +335,7 @@ export default function NeisBatchExportTab({ activeTermId }: NeisBatchExportTabP
               onChange={() => setTargetKind("draft")}
               className="text-indigo-600 focus:ring-indigo-500"
             />
-            <span>자동 작성 초안</span>
+            <span>시간표 편성 초안</span>
           </label>
 
           {targetKind === "draft" && (

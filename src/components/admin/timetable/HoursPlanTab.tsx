@@ -637,7 +637,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         setSelectedPlanId(data.plan.id);
         setOriginalRowsSnapshot(JSON.stringify(data.plan.rows || []));
         setPendingSubjectConfirmations(null);
-        setSuccessMessage("선생님별 주당 수업 시간이 안전하게 저장되었습니다.");
+        setSuccessMessage("수업 시수가 안전하게 저장되었습니다.");
         setTimeout(() => setSuccessMessage(null), 3000);
 
         // 목록 갱신
@@ -927,7 +927,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
         <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent mb-4"></div>
-        <p className="text-sm font-semibold text-gray-600">선생님별 주당 수업 시간 데이터를 불러오는 중입니다...</p>
+        <p className="text-sm font-semibold text-gray-600">수업 시수 데이터를 불러오는 중입니다...</p>
       </div>
     );
   }
@@ -939,7 +939,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-4">
           <div>
             <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-              <span>📋 선생님별 주당 수업 시간</span>
+              <span>📋 수업 시수</span>
             </h2>
           </div>
 
@@ -1401,7 +1401,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
                               (담당 없음 — {row.teacherName || "가상"})
                             </span>
                             <span className="text-[11px] text-gray-400">
-                              위치는 「창체·SLAT 배치」에서 정함
+                              위치는 「학교 공통 시간」에서 정함
                             </span>
                           </div>
                         ) : editingTeacherRowId === row.id ? (
@@ -1528,7 +1528,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
           <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-gray-900">📥 선생님별 주당 수업 시간 엑셀 불러오기</h3>
+                <h3 className="text-base font-bold text-gray-900">📥 수업 시수 엑셀 불러오기</h3>
               </div>
               <button
                 onClick={() => setUploadModalOpen(false)}

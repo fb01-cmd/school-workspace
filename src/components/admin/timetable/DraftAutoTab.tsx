@@ -230,12 +230,6 @@ export default function DraftAutoTab({
   const [showHardDetails, setShowHardDetails] = useState(false);
   const [showSoftDetails, setShowSoftDetails] = useState(false);
 
-  // 선택 셀 A 상태 (이동 소스)
-  const [selectedSlotA, setSelectedSlotA] = useState<{
-    day: number;
-    period: number;
-  } | null>(null);
-
   // 미배정 배정 모드 상태
   const [selectedUnplaced, setSelectedUnplaced] = useState<TimetableDraftUnplaced | null>(null);
 
@@ -333,10 +327,14 @@ export default function DraftAutoTab({
     return deriveTray(openDraft.baseGrids, openDraft.meta.ops.slice(0, openDraft.meta.opCursor));
   }, [openDraft]);
 
-  // Esc 키 입력 시 집기 해제 / 연쇄 취소 / 빼둔 수업 선택 해제 (스펙 §2-3·§2-4)
+  // Esc 키 입력 시 집기 해제 / 연쇄 취소 / 빼둔 수업·미배정 선택 해제 (스펙 §2-3·§2-4)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (selectedUnplaced) {
+          setSelectedUnplaced(null);
+          setCandidatesResult(null);
+        }
         if (selectedParkedEntry) {
           setSelectedParkedEntry(null);
         }
@@ -356,7 +354,7 @@ export default function DraftAutoTab({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [pickedSlot, chainSteps, chainStartGrids, selectedParkedEntry]);
+  }, [pickedSlot, chainSteps, chainStartGrids, selectedParkedEntry, selectedUnplaced]);
 
   // 감점 증가 사유 표시 문구 포맷팅 (노랑 후보 말풍선용)
   const formatWorseReasons = (worseByCode?: Partial<Record<SoftPenaltyCode, number>>): string => {
@@ -621,7 +619,7 @@ export default function DraftAutoTab({
         });
       } else {
         setSolverError({
-          message: err.message || "시간표 자동 작성 중 오류가 발생했습니다.",
+          message: err.message || "시간표 편성 중 오류가 발생했습니다.",
         });
       }
       setRunning(false);
@@ -713,7 +711,6 @@ export default function DraftAutoTab({
   const handleOpen = async (draft: TimetableDraft) => {
     setLoadingDraft(true);
     setDraftError(null);
-    setSelectedSlotA(null);
     setSelectedUnplaced(null);
     try {
       const [getRes, modelRes] = await Promise.all([
@@ -844,7 +841,6 @@ export default function DraftAutoTab({
         model: openDraft.model,
         report: data.report,
       });
-      setSelectedSlotA(null);
     } catch (err: any) {
       alert(`실행 취소 오류: ${err.message}`);
     } finally {
@@ -870,7 +866,6 @@ export default function DraftAutoTab({
         model: openDraft.model,
         report: data.report,
       });
-      setSelectedSlotA(null);
     } catch (err: any) {
       alert(`다시 실행 오류: ${err.message}`);
     } finally {
@@ -1111,7 +1106,6 @@ export default function DraftAutoTab({
     const placeholderBlock = checkPlaceholderOp(currentGrids, op);
     if (placeholderBlock) {
       setBlockedBubble({ message: `🔒 ${placeholderBlock}` });
-      setSelectedSlotA(null);
       return;
     }
 
@@ -1349,6 +1343,90 @@ export default function DraftAutoTab({
     }
   };
 
+  // ── 직접 조정: 미배정 수업 배정 적용 ──
+  const handleApplyUnplacedAssignment = async (
+    u: TimetableDraftUnplaced,
+    targetDay: number,
+    targetPeriod: number
+  ) => {
+    if (!openDraft) return;
+    const tokens = u.label.split(" ");
+    const classToken = tokens[0] || "";
+    const subjectToken = tokens[1] || "미배정과목";
+    const teacherToken = tokens[2] || "";
+    const [gStr, cStr] = classToken.replace(/반$/, "").split("-");
+    const grade = parseInt(gStr, 10) || viewGrade;
+    const classNum = parseInt(cStr, 10) || viewClass;
+
+    const opToSend: BaseRevisionOp = {
+      type: "edit_cell",
+      grade,
+      classNum,
+      day: targetDay,
+      period: targetPeriod,
+      lessons: [
+        {
+          subjectName: subjectToken,
+          subjectShort: subjectToken,
+          teachers: [{ email: "", name: teacherToken }],
+        },
+      ],
+    };
+
+    const updatedUnplacedList = openDraft.meta.unplaced
+      .map((item) => {
+        if (item.sectionId === u.sectionId) {
+          return { ...item, remaining: item.remaining - 1 };
+        }
+        return item;
+      })
+      .filter((item) => item.remaining > 0);
+
+    setSavingOp(true);
+    setBlockedBubble(null);
+    try {
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "draft_op",
+          draftId: openDraft.meta.id,
+          draftOp: opToSend,
+          draftUnplaced: updatedUnplacedList,
+          expectedOpCursor: openDraft.meta.opCursor,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.status === 409 || data.error?.includes("다른 창") || data.error?.includes("opCursor")) {
+        setBlockedBubble({
+          message: "다른 창이 먼저 수정했습니다. 최신 초안을 다시 불러옵니다.",
+        });
+        await handleOpen(openDraft.meta);
+        return;
+      }
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "미배정 수업 배정에 실패했습니다.");
+      }
+
+      setOpenDraft({
+        meta: data.meta,
+        baseGrids: data.baseGrids,
+        currentGrids: data.currentGrids,
+        model: openDraft.model,
+        report: data.report,
+      });
+
+      setSelectedUnplaced(null);
+      setCandidatesResult(null);
+      setBlockedBubble(null);
+    } catch (err: any) {
+      setBlockedBubble({ message: `배정 실패: ${err.message || String(err)}` });
+    } finally {
+      setSavingOp(false);
+    }
+  };
+
   const handleCellRightClick = (day: number, period: number) => {
     if (!openDraft) return;
     const grid = openDraft.currentGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
@@ -1460,8 +1538,26 @@ export default function DraftAutoTab({
     const cell = grid?.cells?.find((c) => c.day === day && c.period === period);
     const lesson = cell?.lessons?.[0];
 
-    // ── 직접 조정 모드 (M2: 연쇄 루미큐브 + 빼두기) ──
+    // ── 직접 조정 모드 (M2: 연쇄 루미큐브 + 빼두기 + 미배정 배정) ──
     if (manualMode) {
+      // 미배정 수업 배정 모드인 경우
+      if (selectedUnplaced) {
+        const cand = candidatesResult?.candidates.find((c) => c.day === day && c.period === period);
+        if (cand?.verdict === "blocked") {
+          return;
+        }
+        if (lesson) {
+          setBlockedBubble({
+            day,
+            period,
+            message: "비어 있는 칸에만 배정할 수 있습니다. 먼저 그 칸을 비우거나 다른 빈 칸을 선택하세요.",
+          });
+          return;
+        }
+        await handleApplyUnplacedAssignment(selectedUnplaced, day, period);
+        return;
+      }
+
       // 빼둔 수업 배치 모드인 경우
       if (selectedParkedEntry) {
         const cand = candidatesResult?.candidates.find((c) => c.day === day && c.period === period);
@@ -1661,99 +1757,8 @@ export default function DraftAutoTab({
       return;
     }
 
-    // ── 기존 일반 편집 모드 (What-if 미리보기) ──
-    // Case 1: 미배정 항목 배정 모드인 경우
-    if (selectedUnplaced) {
-      const targetSimulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
-      if (targetSimulLabel) {
-        setBlockedBubble({
-          message: `🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`,
-        });
-        return;
-      }
-      // 미배정 항목을 이 셀에 배정 (edit_cell op)
-      const desc = `${viewGrade}학년 ${viewClass}반 ${DAYS[day - 1]}${period}교시에 [${selectedUnplaced.label}] 배정`;
-      const op: BaseRevisionOp = {
-        type: "edit_cell",
-        grade: viewGrade,
-        classNum: viewClass,
-        day,
-        period,
-        lessons: [
-          {
-            subjectName: selectedUnplaced.label.split(" ")[1] || "미배정과목",
-            subjectShort: selectedUnplaced.label.split(" ")[1] || "미배정",
-            teachers: [{ email: "", name: selectedUnplaced.label.split(" ")[2] || "" }],
-          },
-        ],
-      };
-      analyzeOpImpact(op, desc);
-      return;
-    }
-
-    // Case 2: 셀 A가 선택된 상태에서 셀 B(이동/맞교환 목적지) 클릭
-    if (selectedSlotA) {
-      if (selectedSlotA.day === day && selectedSlotA.period === period) {
-        // 동일 셀 클릭 시 선택 해제
-        setSelectedSlotA(null);
-        return;
-      }
-
-      const targetSimulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
-      if (targetSimulLabel) {
-        setBlockedBubble({
-          message: `🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`,
-        });
-        return;
-      }
-
-      const cellA = grid?.cells?.find((c) => c.day === selectedSlotA.day && c.period === selectedSlotA.period);
-      const lessonA = cellA?.lessons?.[0];
-
-      const slotAName = `${DAYS[selectedSlotA.day - 1]}${selectedSlotA.period}교시(${lessonA?.subjectShort || lessonA?.subjectName || "빈교시"})`;
-      const slotBName = `${DAYS[day - 1]}${period}교시(${lesson?.subjectShort || lesson?.subjectName || "빈교시"})`;
-      const desc = `${viewGrade}학년 ${viewClass}반 ${slotAName} ↔ ${slotBName} 이동/맞교환`;
-
-      const op: BaseRevisionOp = {
-        type: "swap",
-        grade: viewGrade,
-        classNum: viewClass,
-        a: { day: selectedSlotA.day, period: selectedSlotA.period },
-        b: { day, period },
-      };
-
-      analyzeOpImpact(op, desc);
-      return;
-    }
-
-    // Case 3: 소스 셀 A 선택
-    if (!lesson) {
-      return;
-    }
-
-    // 고정 밴드 셀(동시수업 simul) 방어 🔒
-    const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
-    if (simulLabel) {
-      setBlockedBubble({
-        message: `🔒 동시수업(분반 이동수업 그룹 '${simulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`,
-      });
-      return;
-    }
-
-    // 자리표시(창체·SLAT) 셀 방어 🔒 — 목적지 클릭까지 기다리지 않고 선택 시점에 알린다
-    const placeholder = findPlaceholderLesson(currentGrids, viewGrade, viewClass, day, period);
-    if (placeholder) {
-      setBlockedBubble({
-        message: `🔒 '${placeholder.subjectName}'은 담당 선생님이 지정되지 않은 수업이라 학교 전체가 같은 시간에 묶여 있습니다. 한 학급만 옮기거나 맞바꿀 수 없습니다.`,
-      });
-      return;
-    }
-
-    // 셀 A 선택 완료
-    setSelectedSlotA({ day, period });
-
-    // 해당 수업 교사가 존재하면 우측 교사 그리드 자동 선택
-    if (lesson.teachers?.[0]?.email) {
+    // ── 열람 모드 (manualMode 꺼짐: 교사 주간 시간표 연동 등 열람 동작만) ──
+    if (lesson?.teachers?.[0]?.email) {
       setSelectedTeacherEmail(lesson.teachers[0].email);
     }
   };
@@ -1762,6 +1767,30 @@ export default function DraftAutoTab({
   const handleTeacherCellClick = async (day: number, period: number) => {
     if (!openDraft || !manualMode) return;
     const { currentGrids } = openDraft;
+
+    // 미배정 수업 배정 모드인 경우
+    if (selectedUnplaced) {
+      const tokens = selectedUnplaced.label.split(" ");
+      const classToken = tokens[0] || "";
+      const [gStr, cStr] = classToken.replace(/반$/, "").split("-");
+      const unplacedGrade = parseInt(gStr, 10) || viewGrade;
+      const unplacedClass = parseInt(cStr, 10) || viewClass;
+
+      const targetGrid = currentGrids.find(
+        (g) => g.grade === unplacedGrade && g.classNum === unplacedClass
+      );
+      const targetCell = targetGrid?.cells?.find((c) => c.day === day && c.period === period);
+      if (targetCell && targetCell.lessons.length > 0) {
+        setBlockedBubble({
+          day,
+          period,
+          message: "비어 있는 칸에만 배정할 수 있습니다. 먼저 그 칸을 비우거나 다른 빈 칸을 선택하세요.",
+        });
+        return;
+      }
+      await handleApplyUnplacedAssignment(selectedUnplaced, day, period);
+      return;
+    }
 
     // 빼둔 수업 배치 모드인 경우
     if (selectedParkedEntry) {
@@ -2006,7 +2035,6 @@ export default function DraftAutoTab({
       // 상태 초기화
       setProposedOp(null);
       setImpactAnalysis(null);
-      setSelectedSlotA(null);
       setSelectedUnplaced(null);
     } catch (err: any) {
       setOpApiError(err.message);
@@ -2204,7 +2232,6 @@ export default function DraftAutoTab({
                 if (!manualMode) {
                   setManualMode(true);
                   setManualStartScore(report.soft.total);
-                  setSelectedSlotA(null);
                   setPickedSlot(null);
                   setCandidatesResult(null);
                   setBlockedBubble(null);
@@ -3064,7 +3091,6 @@ export default function DraftAutoTab({
                         if (available.length > 0 && !available.includes(viewClass)) {
                           setViewClass(available[0]);
                         }
-                        setSelectedSlotA(null);
                         setPickedSlot(null);
                         setCandidatesResult(null);
                         setBlockedBubble(null);
@@ -3092,7 +3118,6 @@ export default function DraftAutoTab({
                         key={c}
                         onClick={() => {
                           setViewClass(c);
-                          setSelectedSlotA(null);
                           setPickedSlot(null);
                           setCandidatesResult(null);
                           setBlockedBubble(null);
@@ -3158,11 +3183,11 @@ export default function DraftAutoTab({
                       직접 조정 모드: 옮길 수업을 클릭하거나 우클릭으로 빼두세요
                     </span>
                   )
-                ) : selectedSlotA ? (
-                  <span className="text-xs font-bold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200">
-                    선택: {DAYS[selectedSlotA.day - 1]}요일 {selectedSlotA.period}교시 (이동할 목적지 셀을 선택하세요)
+                ) : (
+                  <span className="text-[11px] font-bold text-gray-500 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-200">
+                    열람 모드: 셀을 가리키거나 클릭하면 교사 주간 시간표가 표시됩니다
                   </span>
-                ) : null}
+                )}
               </div>
 
               {/* 말풍선 안내 (alert 대체 — 스펙 §2-3) */}
@@ -3461,9 +3486,7 @@ export default function DraftAutoTab({
                             );
                           }
 
-                          // ── 일반 모드 ──
-                          const isSelectedA = selectedSlotA?.day === day && selectedSlotA?.period === period;
-                          const isCandidateB = !!selectedSlotA && !isSelectedA;
+                          // ── 열람 모드 (manualMode 꺼짐) ──
                           const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
                           const isBandLocked = !!simulLabel;
 
@@ -3485,15 +3508,16 @@ export default function DraftAutoTab({
                             <td
                               key={day}
                               onClick={() => handleCellClick(day, period)}
-                              className={`p-2 border-r border-gray-200 align-top transition-all cursor-pointer select-none ${
-                                isSelectedA
-                                  ? "bg-sky-100 border-2 border-sky-500 ring-2 ring-sky-400/50 shadow-sm"
-                                  : isCandidateB
-                                  ? "bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-300 font-semibold"
-                                  : hasHardError
+                              onMouseEnter={() => {
+                                if (lesson?.teachers?.[0]?.email) {
+                                  setSelectedTeacherEmail(lesson.teachers[0].email);
+                                }
+                              }}
+                              className={`p-2 border-r border-gray-200 align-top transition-colors cursor-pointer select-none ${
+                                hasHardError
                                   ? "bg-red-100 text-red-950 font-bold border-2 border-red-400"
                                   : isBandLocked
-                                  ? "bg-gray-100/80 text-gray-400 cursor-not-allowed"
+                                  ? "bg-gray-100/80 text-gray-400"
                                   : "bg-white hover:bg-gray-50 text-gray-800"
                               }`}
                             >
@@ -3510,19 +3534,10 @@ export default function DraftAutoTab({
                                       🔒 {simulLabel}
                                     </div>
                                   )}
-                                  {isCandidateB && (
-                                    <div className="text-[10px] text-emerald-700 font-black mt-1">
-                                      ⇄ 맞교환
-                                    </div>
-                                  )}
                                 </div>
                               ) : (
                                 <div className="py-1">
-                                  {isCandidateB ? (
-                                    <span className="text-[10px] text-emerald-700 font-bold">📥 이동</span>
-                                  ) : (
-                                    <span className="text-[10px] text-gray-300">—</span>
-                                  )}
+                                  <span className="text-[10px] text-gray-300">—</span>
                                 </div>
                               )}
                             </td>
@@ -3764,7 +3779,49 @@ export default function DraftAutoTab({
                           </p>
                         </div>
                         <button
-                          onClick={() => setSelectedUnplaced(isSelected ? null : u)}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedUnplaced(null);
+                              setCandidatesResult(null);
+                            } else {
+                              if (chainSteps.length > 0 && chainStartGrids) {
+                                setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+                                setChainSteps([]);
+                                setChainStartGrids(null);
+                                setHeldParkId(null);
+                              }
+                              setSelectedParkedEntry(null);
+                              setPickedSlot(null);
+                              setHeldParkId(null);
+                              setManualMode(true);
+                              setSelectedUnplaced(u);
+
+                              const tokens = u.label.split(" ");
+                              const classToken = tokens[0] || "";
+                              const subjectToken = tokens[1] || "미배정과목";
+                              const teacherToken = tokens[2] || "";
+                              const [gStr, cStr] = classToken.replace(/반$/, "").split("-");
+                              const targetGrade = parseInt(gStr, 10) || viewGrade;
+                              const targetClass = parseInt(cStr, 10) || viewClass;
+
+                              setViewGrade(targetGrade);
+                              setViewClass(targetClass);
+
+                              const lesson: TimetableLesson = {
+                                subjectName: subjectToken,
+                                subjectShort: subjectToken,
+                                teachers: [{ email: "", name: teacherToken }],
+                              };
+
+                              const res = evaluateHeldCandidates({
+                                grids: openDraft.currentGrids,
+                                model: openDraft.model,
+                                held: { grade: targetGrade, classNum: targetClass, lessons: [lesson] },
+                              });
+                              setCandidatesResult(res);
+                              setBlockedBubble(null);
+                            }
+                          }}
                           className={`px-2.5 py-1 rounded text-xs font-bold shadow-xs shrink-0 transition-all ${
                             isSelected
                               ? "bg-indigo-600 text-white"
@@ -4082,7 +4139,7 @@ export default function DraftAutoTab({
       <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 text-indigo-900 text-xs leading-relaxed space-y-1">
         <div className="font-bold text-sm flex items-center gap-1.5">
           <span>🧩</span>
-          <span>자동 작성 & 수동 조정</span>
+          <span>시간표 편성 & 직접 조정</span>
         </div>
         <p>
           솔버가 작성한 초안을 기반으로 셀 이동·맞교환 및 연쇄 영향 미리보기를 수행하여 하드 위반 0건 완성을 진행합니다.
@@ -4114,11 +4171,11 @@ export default function DraftAutoTab({
           )}
         </div>
         <p className="text-[11px] text-gray-500 font-normal">
-          신학기 주당 수업 시간 계획과 창체·SLAT 배치를 결합해 시간표를 백지에서 새로 짭니다.
+          신학기 수업 시수 계획과 학교 공통 시간을 결합해 시간표를 백지에서 새로 짭니다.
         </p>
         {plans.length === 0 && !loadingPlans && (
           <div className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 font-medium">
-            이 학기로 지정된 시수 계획이 없습니다. 「선생님별 주당 수업 시간」에서 먼저 만들어 주세요.
+            이 학기로 지정된 시수 계획이 없습니다. 「수업 시수」에서 먼저 만들어 주세요.
           </div>
         )}
       </div>
@@ -4140,7 +4197,7 @@ export default function DraftAutoTab({
               ) : (
                 <>
                   <span>✨</span>
-                  <span>시수 계획으로 자동 작성 시작</span>
+                  <span>시수 계획으로 자동으로 초안 만들기</span>
                 </>
               )}
             </button>
@@ -4413,7 +4470,7 @@ export default function DraftAutoTab({
                       <p className="font-bold text-sm text-gray-900 truncate">{draft.label}</p>
                       <p className="text-[11px] text-gray-500 mt-0.5">
                         {draft.origin.kind === "solver"
-                          ? `🤖 자동 작성 (시드 ${draft.origin.seed ?? "—"})`
+                          ? `🤖 자동 편성 (시드 ${draft.origin.seed ?? "—"})`
                           : "📋 현행 복제"}
                       </p>
                     </div>

@@ -270,7 +270,7 @@ export default function TimetableCreationSection() {
               : "text-gray-600 hover:bg-gray-100"
           }`}
         >
-          <span>⏱️ 창체·SLAT 배치</span>
+          <span>⏱️ 학교 공통 시간</span>
         </button>
 
         <button
@@ -281,7 +281,7 @@ export default function TimetableCreationSection() {
               : "text-gray-600 hover:bg-gray-100"
           }`}
         >
-          <span>📋 선생님별 주당 수업 시간</span>
+          <span>📋 수업 시수</span>
         </button>
 
         <button
@@ -347,7 +347,7 @@ export default function TimetableCreationSection() {
               : "text-gray-600 hover:bg-gray-100"
           }`}
         >
-          <span>🧩 자동 작성</span>
+          <span>🧩 시간표 편성</span>
         </button>
 
         <button

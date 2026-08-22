@@ -391,7 +391,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-            <span>⏱️ 창체·SLAT 배치</span>
+            <span>⏱️ 학교 공통 시간</span>
           </h2>
           <p className="text-xs text-gray-500 mt-1">
             창체·SLAT이 들어갈 요일·교시를 지정합니다. 기본 배치는 교육과정(입학년도)별로 등록하고, 특정 학년도부터의 변경은 학년도별 변경으로 등록합니다.
