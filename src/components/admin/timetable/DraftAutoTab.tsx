@@ -25,7 +25,13 @@ import {
   TimetableLesson,
   TermPenaltyDetail,
   HoursPlanSummary,
+  SoftPenaltyCode,
 } from "@/lib/timetable/types";
+import {
+  evaluateMoveCandidates,
+  type MoveCandidate,
+  type MoveCandidatesResult,
+} from "@/lib/timetable/moveCandidates";
 import type { BlankCompileIssue } from "@/lib/timetable/solver";
 import { solveTimetableInWorker, SolverDone, SolverRun } from "@/lib/timetable/solverClient";
 import {
@@ -300,8 +306,78 @@ export default function DraftAutoTab({
   /** 탐색 중 여부 — 동기지만 state 전환 전 render를 위해 */
   const [findingFix, setFindingFix] = useState(false);
 
-  // 초안 전환·닫기 시 AI 상태 초기화 — 이전 초안의 결과가 다른 초안에 붙어 보이는 오귀속 방지.
-  // 같은 초안 내 조정(draft_op·undo·redo)에는 유지 — 제안을 따라가며 적용하는 흐름 보존.
+  // ── 직접 조정 모드 상태 (timetable_manual_move_spec §2 · §4 M1) ──
+  const [manualMode, setManualMode] = useState(false);
+  const [manualStartScore, setManualStartScore] = useState<number | null>(null);
+  const [pickedSlot, setPickedSlot] = useState<{
+    grade: number;
+    classNum: number;
+    day: number;
+    period: number;
+    lesson: TimetableLesson;
+  } | null>(null);
+  const [candidatesResult, setCandidatesResult] = useState<MoveCandidatesResult | null>(null);
+  const [blockedBubble, setBlockedBubble] = useState<{
+    day?: number;
+    period?: number;
+    message: string;
+  } | null>(null);
+
+  // Esc 키 입력 시 집기 해제 (스펙 §2-3)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (pickedSlot) {
+          setPickedSlot(null);
+          setCandidatesResult(null);
+          setBlockedBubble(null);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [pickedSlot]);
+
+  // 감점 증가 사유 표시 문구 포맷팅 (노랑 후보 말풍선용)
+  const formatWorseReasons = (worseByCode?: Partial<Record<SoftPenaltyCode, number>>): string => {
+    if (!worseByCode) return "";
+    const parts: string[] = [];
+    for (const [code, delta] of Object.entries(worseByCode)) {
+      if (!delta || delta <= 0) continue;
+      const label = SOFT_CODE_LABELS[code as SoftPenaltyCode] || code;
+      parts.push(`${label} (+${delta}점)`);
+    }
+    return parts.join(", ");
+  };
+
+  // 현재 초안에 배정된 모든 교사 목록 (이름 가나다순 — 우측 교사 패널 드롭다운용)
+  const allDraftTeachers = useMemo(() => {
+    if (!openDraft) return [];
+    const map = new Map<string, string>();
+    for (const g of openDraft.currentGrids) {
+      for (const c of g.cells || []) {
+        for (const l of c.lessons || []) {
+          for (const t of l.teachers || []) {
+            const email = (t.email || "").trim().toLowerCase();
+            if (!email) continue;
+            if (!map.has(email)) {
+              const name = resolveDisplayName(
+                email,
+                undefined,
+                gwsNameMap.get(email) || t.name?.trim() || undefined
+              ).name;
+              map.set(email, name);
+            }
+          }
+        }
+      }
+    }
+    return Array.from(map.entries())
+      .map(([email, name]) => ({ email, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  }, [openDraft, gwsNameMap]);
+
+  // 초안 전환·닫기 시 AI 및 직접 조정 상태 초기화
   const openDraftId = openDraft?.meta.id;
   useEffect(() => {
     setAiDiagnosis(null);
@@ -322,6 +398,11 @@ export default function DraftAutoTab({
     setApplyPlanError(null);
     setApplyPlanSuccessMsg(null);
     setAskFixCardOpen(false);
+    setManualMode(false);
+    setManualStartScore(null);
+    setPickedSlot(null);
+    setCandidatesResult(null);
+    setBlockedBubble(null);
   }, [openDraftId]);
 
   // 해결안 결과는 **그리드가 바뀌는 순간 무효**다 — 카드에 적힌 "39점 → 38점"은 계산 당시
@@ -334,6 +415,8 @@ export default function DraftAutoTab({
     setActiveFindDetail(null);
     setFixCandidates(null);
     setFindingFix(false);
+    setPickedSlot(null);
+    setCandidatesResult(null);
   }, [openDraftReport]);
 
   // ── 목록 로드 ──
@@ -1087,7 +1170,7 @@ export default function DraftAutoTab({
     // 검사기는 이 종류를 잡을 수 없어(가상 교사는 교사 중복 대상 아님) 연산 자체를 막는다.
     const placeholderBlock = checkPlaceholderOp(currentGrids, op);
     if (placeholderBlock) {
-      alert(`🔒 ${placeholderBlock}`);
+      setBlockedBubble({ message: `🔒 ${placeholderBlock}` });
       setSelectedSlotA(null);
       return;
     }
@@ -1114,23 +1197,146 @@ export default function DraftAutoTab({
     setOpApiError(null);
   };
 
+  // ── 직접 조정 모드: 즉시 이동/맞교환 적용 (스펙 §2-3) ──
+  const handleApplyDirectMove = async (
+    grade: number,
+    classNum: number,
+    fromDay: number,
+    fromPeriod: number,
+    toDay: number,
+    toPeriod: number
+  ) => {
+    if (!openDraft) return;
+    setSavingOp(true);
+    setBlockedBubble(null);
+    try {
+      const op: BaseRevisionOp = {
+        type: "swap",
+        grade,
+        classNum,
+        a: { day: fromDay, period: fromPeriod },
+        b: { day: toDay, period: toPeriod },
+      };
+
+      const res = await fetch("/api/timetable/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "draft_op",
+          draftId: openDraft.meta.id,
+          draftOp: op,
+          expectedOpCursor: openDraft.meta.opCursor,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.status === 409 || data.error?.includes("다른 창") || data.error?.includes("opCursor")) {
+        setBlockedBubble({
+          message: "다른 창이 먼저 수정했습니다. 최신 초안을 다시 불러옵니다.",
+        });
+        await handleOpen(openDraft.meta);
+        return;
+      }
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "이동 적용에 실패했습니다.");
+      }
+
+      // 성공 갱신
+      setOpenDraft({
+        meta: data.meta,
+        baseGrids: data.baseGrids,
+        currentGrids: data.currentGrids,
+        model: openDraft.model,
+        report: data.report,
+      });
+
+      setPickedSlot(null);
+      setCandidatesResult(null);
+      setBlockedBubble(null);
+    } catch (err: any) {
+      setBlockedBubble({ message: `이동 실패: ${err.message || String(err)}` });
+    } finally {
+      setSavingOp(false);
+    }
+  };
+
   // ── 셀 클릭 핸들러 (학급 그리드) ──
-  const handleCellClick = (day: number, period: number) => {
+  const handleCellClick = async (day: number, period: number) => {
     if (!openDraft) return;
     const { currentGrids } = openDraft;
     const grid = currentGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
     const cell = grid?.cells?.find((c) => c.day === day && c.period === period);
     const lesson = cell?.lessons?.[0];
 
+    // ── 직접 조정 모드 (M1: 3색 및 즉시 이동) ──
+    if (manualMode) {
+      if (!pickedSlot) {
+        if (!lesson) {
+          setBlockedBubble({ day, period, message: "빈 칸입니다 — 옮길 수업이 없습니다." });
+          return;
+        }
+        const res = evaluateMoveCandidates({
+          grids: currentGrids,
+          model: openDraft.model,
+          pick: { grade: viewGrade, classNum: viewClass, day, period },
+        });
+        if (res.pickBlocked) {
+          setBlockedBubble({ day, period, message: res.pickBlocked });
+          return;
+        }
+        setPickedSlot({ grade: viewGrade, classNum: viewClass, day, period, lesson });
+        setCandidatesResult(res);
+        setBlockedBubble(null);
+        if (lesson.teachers?.[0]?.email) {
+          setSelectedTeacherEmail(lesson.teachers[0].email);
+        }
+        return;
+      }
+
+      // 이미 집은 상태
+      if (
+        pickedSlot.grade === viewGrade &&
+        pickedSlot.classNum === viewClass &&
+        pickedSlot.day === day &&
+        pickedSlot.period === period
+      ) {
+        // 동일 셀 재클릭 -> 집기 해제 (스펙 §2-3)
+        setPickedSlot(null);
+        setCandidatesResult(null);
+        setBlockedBubble(null);
+        return;
+      }
+
+      const cand = candidatesResult?.candidates.find((c) => c.day === day && c.period === period);
+      if (!cand || cand.verdict === "blocked") {
+        // 차단 칸: 클릭 무반응 (스펙 §2-3)
+        return;
+      }
+
+      // 초록/노랑 칸: 즉시 이동/교환 실행 (팝업 금지)
+      await handleApplyDirectMove(
+        pickedSlot.grade,
+        pickedSlot.classNum,
+        pickedSlot.day,
+        pickedSlot.period,
+        day,
+        period
+      );
+      return;
+    }
+
+    // ── 기존 일반 편집 모드 (What-if 미리보기) ──
     // Case 1: 미배정 항목 배정 모드인 경우
     if (selectedUnplaced) {
       const targetSimulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
       if (targetSimulLabel) {
-        alert(`🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`);
+        setBlockedBubble({
+          message: `🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`,
+        });
         return;
       }
       // 미배정 항목을 이 셀에 배정 (edit_cell op)
-      // label 형태: "2-3반 통합과학 김○○"
       const desc = `${viewGrade}학년 ${viewClass}반 ${DAYS[day - 1]}${period}교시에 [${selectedUnplaced.label}] 배정`;
       const op: BaseRevisionOp = {
         type: "edit_cell",
@@ -1160,7 +1366,9 @@ export default function DraftAutoTab({
 
       const targetSimulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
       if (targetSimulLabel) {
-        alert(`🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`);
+        setBlockedBubble({
+          message: `🔒 동시수업(분반 이동수업 그룹 '${targetSimulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`,
+        });
         return;
       }
 
@@ -1185,23 +1393,24 @@ export default function DraftAutoTab({
 
     // Case 3: 소스 셀 A 선택
     if (!lesson) {
-      // 빈 셀 클릭 시 조용히 무시
       return;
     }
 
     // 고정 밴드 셀(동시수업 simul) 방어 🔒
     const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
     if (simulLabel) {
-      alert(`🔒 동시수업(분반 이동수업 그룹 '${simulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`);
+      setBlockedBubble({
+        message: `🔒 동시수업(분반 이동수업 그룹 '${simulLabel}')은 밴드 묶음 수업으로 수동 교시 이동이 금지되어 있습니다.`,
+      });
       return;
     }
 
     // 자리표시(창체·SLAT) 셀 방어 🔒 — 목적지 클릭까지 기다리지 않고 선택 시점에 알린다
     const placeholder = findPlaceholderLesson(currentGrids, viewGrade, viewClass, day, period);
     if (placeholder) {
-      alert(
-        `🔒 '${placeholder.subjectName}'은 담당 선생님이 지정되지 않은 수업이라 학교 전체가 같은 시간에 묶여 있습니다. 한 학급만 옮기거나 맞바꿀 수 없습니다.`
-      );
+      setBlockedBubble({
+        message: `🔒 '${placeholder.subjectName}'은 담당 선생님이 지정되지 않은 수업이라 학교 전체가 같은 시간에 묶여 있습니다. 한 학급만 옮기거나 맞바꿀 수 없습니다.`,
+      });
       return;
     }
 
@@ -1212,6 +1421,67 @@ export default function DraftAutoTab({
     if (lesson.teachers?.[0]?.email) {
       setSelectedTeacherEmail(lesson.teachers[0].email);
     }
+  };
+
+  // ── 교사 그리드 셀 클릭 핸들러 (직접 조정 모드) ──
+  const handleTeacherCellClick = async (day: number, period: number) => {
+    if (!openDraft || !manualMode) return;
+    const { currentGrids } = openDraft;
+
+    if (!pickedSlot) {
+      const hit = teacherSlots.find((s) => s.day === day && s.period === period);
+      if (!hit) {
+        setBlockedBubble({ day, period, message: "선택한 교사의 수업이 없는 빈 칸입니다." });
+        return;
+      }
+      setViewGrade(hit.grade);
+      setViewClass(hit.classNum);
+      const targetGrid = currentGrids.find((g) => g.grade === hit.grade && g.classNum === hit.classNum);
+      const targetCell = targetGrid?.cells?.find((c) => c.day === day && c.period === period);
+      const targetLesson = targetCell?.lessons?.[0];
+      if (!targetLesson) return;
+
+      const res = evaluateMoveCandidates({
+        grids: currentGrids,
+        model: openDraft.model,
+        pick: { grade: hit.grade, classNum: hit.classNum, day, period },
+      });
+      if (res.pickBlocked) {
+        setBlockedBubble({ day, period, message: res.pickBlocked });
+        return;
+      }
+      setPickedSlot({ grade: hit.grade, classNum: hit.classNum, day, period, lesson: targetLesson });
+      setCandidatesResult(res);
+      setBlockedBubble(null);
+      return;
+    }
+
+    // 이미 집은 상태
+    if (
+      pickedSlot.grade === viewGrade &&
+      pickedSlot.classNum === viewClass &&
+      pickedSlot.day === day &&
+      pickedSlot.period === period
+    ) {
+      setPickedSlot(null);
+      setCandidatesResult(null);
+      setBlockedBubble(null);
+      return;
+    }
+
+    const cand = candidatesResult?.candidates.find((c) => c.day === day && c.period === period);
+    if (!cand || cand.verdict === "blocked") {
+      return;
+    }
+
+    await handleApplyDirectMove(
+      pickedSlot.grade,
+      pickedSlot.classNum,
+      pickedSlot.day,
+      pickedSlot.period,
+      day,
+      period
+    );
   };
 
   // ── op 연쇄 영향 다이얼로그에서 [적용하기] 실행 ──
@@ -1321,7 +1591,7 @@ export default function DraftAutoTab({
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
-            {/* 배지 */}
+            {/* 배지 / 점수 */}
             <button
               onClick={() => setShowHardDetails((o) => !o)}
               className={`text-[11px] px-2.5 py-0.5 rounded-full border font-extrabold cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1 ${hardBadgeColor(report.hard.length)}`}
@@ -1332,10 +1602,22 @@ export default function DraftAutoTab({
             </button>
             <button
               onClick={() => setShowSoftDetails((o) => !o)}
-              className="text-[11px] px-2.5 py-0.5 rounded-full border font-extrabold bg-amber-100 text-amber-900 border-amber-300 cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1"
+              className={`text-[11px] px-2.5 py-0.5 rounded-full border font-extrabold cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1 ${
+                manualMode
+                  ? "bg-indigo-100 text-indigo-950 border-indigo-300"
+                  : "bg-amber-100 text-amber-900 border-amber-300"
+              }`}
               title="클릭하여 소프트 감점 상세를 확인하거나 접습니다"
             >
-              <span>소프트 {report.soft.total}점</span>
+              <span>
+                {manualMode && manualStartScore !== null
+                  ? `총점 ${report.soft.total}점 (시작 ${manualStartScore} · ${
+                      report.soft.total - manualStartScore > 0
+                        ? `+${(report.soft.total - manualStartScore).toFixed(1).replace(/\.0$/, "")}`
+                        : (report.soft.total - manualStartScore).toFixed(1).replace(/\.0$/, "")
+                    })`
+                  : `소프트 ${report.soft.total}점`}
+              </span>
               <span className="text-xs">{showSoftDetails ? "▲" : "▼"}</span>
             </button>
 
@@ -1441,6 +1723,34 @@ export default function DraftAutoTab({
               className="px-3 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold rounded-lg text-xs border border-purple-200 transition-all"
             >
               📋 작업기록 ({meta.opCursor}/{meta.ops.length})
+            </button>
+
+            {/* 직접 조정 모드 토글 (스펙 §0-4: 1024px 미만 화면에서는 미표시) */}
+            <button
+              onClick={() => {
+                if (!manualMode) {
+                  setManualMode(true);
+                  setManualStartScore(report.soft.total);
+                  setSelectedSlotA(null);
+                  setPickedSlot(null);
+                  setCandidatesResult(null);
+                  setBlockedBubble(null);
+                } else {
+                  setManualMode(false);
+                  setPickedSlot(null);
+                  setCandidatesResult(null);
+                  setBlockedBubble(null);
+                }
+              }}
+              className={`hidden lg:flex items-center gap-1.5 px-3 py-1 font-bold rounded-lg text-xs transition-all border ${
+                manualMode
+                  ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-xs"
+                  : "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200"
+              }`}
+              title="시간표 직접 조정 모드 (두 그리드 병치 및 신호등 이동)"
+            >
+              <span>직접 조정</span>
+              <span>{manualMode ? "⏻ 켜짐" : "⏻"}</span>
             </button>
 
             {/* 기초시간표로 채택 버튼 (spec §5) — 초안 학기(status: draft)에서만 노출 */}
@@ -2021,16 +2331,24 @@ export default function DraftAutoTab({
                     {/* 해결 여부 및 점수 변화 요약 */}
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                       <div className="flex items-center gap-2">
-                        {askFixPlan.resolvesGoal ? (
-                          <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-300">
-                            ✅ 목표 해결 가능 ({askFixPlan.steps.length}단계 맞교환)
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold text-xs border border-amber-300">
-                            ⚠️ 부분 개선 (시작 {askFixPlan.initialRemaining} → 남은{" "}
-                            {askFixPlan.remaining}, {askFixPlan.steps.length}단계 맞교환)
-                          </span>
-                        )}
+                        {askFixPlan.steps.length > 0 ? (
+                          askFixPlan.resolvesGoal ? (
+                            askFixPlan.finalSoftTotal > openDraft.report.soft.total ? (
+                              <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold text-xs border border-amber-300">
+                                ⚠ 해결 시 다른 감점이 더 커집니다 ({askFixPlan.steps.length}단계 맞교환)
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-300">
+                                ✅ 목표 해결 가능 ({askFixPlan.steps.length}단계 맞교환)
+                              </span>
+                            )
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold text-xs border border-amber-300">
+                              ⚠️ 부분 개선 (시작 {askFixPlan.initialRemaining} → 남은{" "}
+                              {askFixPlan.remaining}, {askFixPlan.steps.length}단계 맞교환)
+                            </span>
+                          )
+                        ) : null}
                       </div>
 
                       {openDraft && (
@@ -2237,10 +2555,10 @@ export default function DraftAutoTab({
           </div>
         )}
 
-        {/* 3면 IA 레이아웃: 좌=학급 그리드(8 col), 우=교사 파생 그리드 + 미배정 목록(4 col) */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          {/* 좌: 학급 그리드 */}
-          <div className="xl:col-span-8 space-y-4">
+        {/* 그리드 레이아웃: 일반 모드는 8:4 분할, 직접 조정 모드는 1:1 동급 병치 (스펙 §2-2) */}
+        <div className={`grid grid-cols-1 ${manualMode ? "lg:grid-cols-2" : "xl:grid-cols-12"} gap-5`}>
+          {/* 좌: 학급 그리드 Ⓐ */}
+          <div className={`${manualMode ? "lg:col-span-1" : "xl:col-span-8"} space-y-4`}>
             <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
               <div className="flex flex-wrap gap-2 items-center justify-between">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -2261,6 +2579,9 @@ export default function DraftAutoTab({
                           setViewClass(available[0]);
                         }
                         setSelectedSlotA(null);
+                        setPickedSlot(null);
+                        setCandidatesResult(null);
+                        setBlockedBubble(null);
                       }}
                       className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
                         viewGrade === g
@@ -2286,6 +2607,9 @@ export default function DraftAutoTab({
                         onClick={() => {
                           setViewClass(c);
                           setSelectedSlotA(null);
+                          setPickedSlot(null);
+                          setCandidatesResult(null);
+                          setBlockedBubble(null);
                         }}
                         className={`w-8 h-8 rounded-lg text-xs font-bold border transition-all ${
                           viewClass === c
@@ -2298,12 +2622,54 @@ export default function DraftAutoTab({
                     ))}
                 </div>
 
-                {selectedSlotA && (
+                {/* 상태 문구 / 집은 수업 표시 */}
+                {manualMode ? (
+                  pickedSlot ? (
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-sky-800 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200">
+                      <span>
+                        📌 집은 수업: {DAYS[pickedSlot.day - 1]}${pickedSlot.period}교시{" "}
+                        {pickedSlot.lesson.subjectShort || pickedSlot.lesson.subjectName}
+                        {pickedSlot.lesson.teachers?.[0]?.name ? ` (${pickedSlot.lesson.teachers[0].name})` : ""}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setPickedSlot(null);
+                          setCandidatesResult(null);
+                          setBlockedBubble(null);
+                        }}
+                        className="text-sky-600 hover:text-sky-950 ml-1 font-extrabold"
+                        title="집기 해제 (Esc)"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
+                      직접 조정 모드: 옮길 수업을 클릭하세요
+                    </span>
+                  )
+                ) : selectedSlotA ? (
                   <span className="text-xs font-bold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200">
                     선택: {DAYS[selectedSlotA.day - 1]}요일 {selectedSlotA.period}교시 (이동할 목적지 셀을 선택하세요)
                   </span>
-                )}
+                ) : null}
               </div>
+
+              {/* 말풍선 안내 (alert 대체 — 스펙 §2-3) */}
+              {blockedBubble && (
+                <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-2.5 text-xs flex items-center justify-between gap-2 shadow-2xs animate-fade-in">
+                  <div className="flex items-center gap-1.5 font-bold min-w-0">
+                    <span className="text-sm">💬</span>
+                    <span className="truncate">{blockedBubble.message}</span>
+                  </div>
+                  <button
+                    onClick={() => setBlockedBubble(null)}
+                    className="text-amber-700 hover:text-amber-950 font-bold px-1.5 py-0.5 rounded text-xs shrink-0"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 그리드 테이블 */}
@@ -2334,12 +2700,177 @@ export default function DraftAutoTab({
                           const cell = currentGrid.cells.find((c) => c.day === day && c.period === period);
                           const lesson = cell?.lessons?.[0];
 
+                          // 직접 조정 모드일 때
+                          if (manualMode) {
+                            const isPicked =
+                              pickedSlot?.grade === viewGrade &&
+                              pickedSlot?.classNum === viewClass &&
+                              pickedSlot?.day === day &&
+                              pickedSlot?.period === period;
+                            const cand = candidatesResult?.candidates.find(
+                              (c) => c.day === day && c.period === period
+                            );
+                            const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
+
+                            if (isPicked) {
+                              return (
+                                <td
+                                  key={day}
+                                  onClick={() => handleCellClick(day, period)}
+                                  className="p-2 border-2 border-sky-500 bg-sky-100 ring-2 ring-sky-400/50 align-top cursor-pointer select-none shadow-sm"
+                                >
+                                  <div className="space-y-0.5 relative">
+                                    <div className="font-bold text-[11px] text-sky-950 truncate leading-tight">
+                                      {lesson?.subjectShort || lesson?.subjectName}
+                                    </div>
+                                    <div className="text-[10px] text-sky-800 truncate leading-tight">
+                                      {lesson?.teachers?.map((t) => t.name).join(", ")}
+                                    </div>
+                                    <div className="text-[10px] text-sky-700 font-extrabold mt-1">
+                                      📌 집은 수업
+                                    </div>
+                                  </div>
+                                </td>
+                              );
+                            }
+
+                            if (cand) {
+                              if (cand.verdict === "ok") {
+                                return (
+                                  <td
+                                    key={day}
+                                    onClick={() => handleCellClick(day, period)}
+                                    className="p-2 border-2 border-emerald-500 bg-emerald-50 hover:bg-emerald-100/90 align-top cursor-pointer select-none text-emerald-950 transition-all"
+                                  >
+                                    <div className="space-y-0.5 relative">
+                                      <div className="flex items-start justify-between gap-1">
+                                        <span className="font-bold text-[11px] truncate leading-tight">
+                                          {lesson ? lesson.subjectShort || lesson.subjectName : "빈 칸"}
+                                        </span>
+                                        <span
+                                          className={`px-1.5 py-0.2 rounded-full font-mono text-[10px] font-extrabold ${
+                                            cand.softDelta < 0
+                                              ? "bg-emerald-600 text-white shadow-2xs"
+                                              : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                          }`}
+                                        >
+                                          {cand.softDelta < 0 ? cand.softDelta : "0"}
+                                        </span>
+                                      </div>
+                                      {lesson && (
+                                        <div className="text-[10px] text-gray-500 truncate leading-tight">
+                                          {lesson.teachers?.map((t) => t.name).join(", ")}
+                                        </div>
+                                      )}
+                                      <div className="text-[10px] text-emerald-700 font-black mt-1">
+                                        {cand.kind === "swap" ? "⇄ 맞교환" : "📥 이동"}
+                                      </div>
+                                    </div>
+                                  </td>
+                                );
+                              }
+
+                              if (cand.verdict === "worse") {
+                                const worseReason = formatWorseReasons(cand.worseByCode);
+                                return (
+                                  <td
+                                    key={day}
+                                    onClick={() => handleCellClick(day, period)}
+                                    className="p-2 border-2 border-amber-400 bg-amber-50 hover:bg-amber-100/90 align-top cursor-pointer select-none text-amber-950 transition-all"
+                                    title={worseReason ? `감점 사유: ${worseReason}` : undefined}
+                                  >
+                                    <div className="space-y-0.5 relative">
+                                      <div className="flex items-start justify-between gap-1">
+                                        <span className="font-bold text-[11px] truncate leading-tight">
+                                          {lesson ? lesson.subjectShort || lesson.subjectName : "빈 칸"}
+                                        </span>
+                                        <span className="px-1.5 py-0.2 rounded-full font-mono text-[10px] font-extrabold bg-amber-500 text-white shadow-2xs">
+                                          +{cand.softDelta}
+                                        </span>
+                                      </div>
+                                      {lesson && (
+                                        <div className="text-[10px] text-gray-500 truncate leading-tight">
+                                          {lesson.teachers?.map((t) => t.name).join(", ")}
+                                        </div>
+                                      )}
+                                      <div className="text-[10px] text-amber-800 font-black mt-1">
+                                        {cand.kind === "swap" ? "⇄ 맞교환" : "📥 이동"}
+                                      </div>
+                                      {worseReason && (
+                                        <div className="text-[9px] text-amber-800 font-bold truncate mt-0.5">
+                                          ⚠ {worseReason}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              }
+
+                              // blocked (하드 위반 등)
+                              return (
+                                <td
+                                  key={day}
+                                  className="p-2 border border-gray-200 bg-gray-100/90 text-gray-400 align-top cursor-not-allowed select-none"
+                                  title={cand.blockedReason ? `이동 불가: ${cand.blockedReason}` : "이동 불가"}
+                                >
+                                  <div className="space-y-0.5 relative">
+                                    <div className="font-bold text-[11px] truncate leading-tight text-gray-400">
+                                      {lesson ? lesson.subjectShort || lesson.subjectName : "—"}
+                                    </div>
+                                    {lesson && (
+                                      <div className="text-[10px] text-gray-400 truncate leading-tight">
+                                        {lesson.teachers?.map((t) => t.name).join(", ")}
+                                      </div>
+                                    )}
+                                    <div className="text-[9px] text-gray-400 truncate mt-1">
+                                      🔒 {cand.blockedReason || "이동 불가"}
+                                    </div>
+                                  </div>
+                                </td>
+                              );
+                            }
+
+                            // pickedSlot이 없는 대기 상태
+                            return (
+                              <td
+                                key={day}
+                                onClick={() => handleCellClick(day, period)}
+                                onMouseEnter={() => {
+                                  if (lesson?.teachers?.[0]?.email) {
+                                    setSelectedTeacherEmail(lesson.teachers[0].email);
+                                  }
+                                }}
+                                className="p-2 border-r border-gray-200 align-top transition-all cursor-pointer select-none bg-white hover:bg-indigo-50/50 text-gray-800"
+                              >
+                                {lesson ? (
+                                  <div className="space-y-0.5 relative">
+                                    <div className="font-bold text-[11px] truncate leading-tight">
+                                      {lesson.subjectShort || lesson.subjectName}
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 truncate leading-tight">
+                                      {lesson.teachers?.map((t) => t.name).join(", ")}
+                                    </div>
+                                    {simulLabel && (
+                                      <div className="text-[10px] text-purple-700 font-extrabold mt-0.5">
+                                        🔒 {simulLabel}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="py-1">
+                                    <span className="text-[10px] text-gray-300">—</span>
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          }
+
+                          // ── 일반 모드 ──
                           const isSelectedA = selectedSlotA?.day === day && selectedSlotA?.period === period;
                           const isCandidateB = !!selectedSlotA && !isSelectedA;
                           const simulLabel = getSimulLabel(viewGrade, viewClass, day, period, lesson);
                           const isBandLocked = !!simulLabel;
 
-                          // 하드 위반 셀 체크 (현재 그리드 기준, 좌표가 존재하는 항목만 대조하여 H8·H9 사각지대 해소)
                           const hasHardError = report.hard.some((h) => {
                             const hasAnyCoord =
                               h.grade !== undefined ||
@@ -2409,24 +2940,41 @@ export default function DraftAutoTab({
             </div>
           </div>
 
-          {/* 우: 교사 파생 그리드 + 미배정 목록 */}
-          <div className="xl:col-span-4 space-y-4">
+          {/* 우: 교사 그리드 Ⓑ (+ 미배정 목록) */}
+          <div className={`${manualMode ? "lg:col-span-1" : "xl:col-span-4"} space-y-4`}>
             {/* 교사 파생 그리드 카드 */}
             <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
                 <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
-                  <span>👤 교사 주간 시간표 파생</span>
+                  <span>👤 {selectedTeacherName ? `${selectedTeacherName} 선생님` : "교사"} 주간 시간표</span>
                 </h4>
-                {selectedTeacherEmail && (
-                  <span className="text-[11px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded">
-                    {selectedTeacherName} 선생님
-                  </span>
+                {manualMode ? (
+                  <select
+                    value={selectedTeacherEmail || ""}
+                    onChange={(e) => setSelectedTeacherEmail(e.target.value || null)}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white font-bold text-gray-700 max-w-[12rem] truncate"
+                  >
+                    <option value="">교사 선택...</option>
+                    {allDraftTeachers.map((t) => (
+                      <option key={t.email} value={t.email}>
+                        {t.name} ({t.email.split("@")[0]})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  selectedTeacherEmail && (
+                    <span className="text-[11px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded">
+                      {selectedTeacherName} 선생님
+                    </span>
+                  )
                 )}
               </div>
 
               {!selectedTeacherEmail ? (
                 <div className="py-6 text-center text-xs text-gray-400">
-                  시간표 셀을 클릭하면 해당 교사의 주간 시간표가 자동 표시됩니다.
+                  {manualMode
+                    ? "학급 시간표 셀을 가리키거나 위에서 교사를 선택하세요."
+                    : "시간표 셀을 클릭하면 해당 교사의 주간 시간표가 자동 표시됩니다."}
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-gray-100 rounded-lg text-[11px]">
@@ -2449,6 +2997,81 @@ export default function DraftAutoTab({
                           </td>
                           {[1, 2, 3, 4, 5].map((d) => {
                             const hit = teacherSlots.find((s) => s.day === d && s.period === p);
+
+                            if (manualMode) {
+                              const cand = candidatesResult?.candidates.find(
+                                (c) => c.day === d && c.period === p
+                              );
+
+                              if (pickedSlot && cand) {
+                                if (cand.verdict === "ok") {
+                                  return (
+                                    <td
+                                      key={d}
+                                      onClick={() => handleTeacherCellClick(d, p)}
+                                      className="p-1 border-2 border-emerald-500 bg-emerald-50 hover:bg-emerald-100 cursor-pointer select-none text-[10px] text-emerald-950 font-bold"
+                                      title={hit ? `${hit.grade}-${hit.classNum} ${hit.subjectName}과 맞교환` : "빈교시로 이동"}
+                                    >
+                                      <div>{hit ? `${hit.grade}-${hit.classNum}` : "빈 칸"}</div>
+                                      <div className="text-emerald-700 font-extrabold text-[9px]">
+                                        {cand.kind === "swap" ? "⇄" : "📥"} ({cand.softDelta < 0 ? cand.softDelta : "0"})
+                                      </div>
+                                    </td>
+                                  );
+                                }
+
+                                if (cand.verdict === "worse") {
+                                  const worseReason = formatWorseReasons(cand.worseByCode);
+                                  return (
+                                    <td
+                                      key={d}
+                                      onClick={() => handleTeacherCellClick(d, p)}
+                                      className="p-1 border-2 border-amber-400 bg-amber-50 hover:bg-amber-100 cursor-pointer select-none text-[10px] text-amber-950 font-bold"
+                                      title={worseReason ? `감점: ${worseReason}` : `+${cand.softDelta}점`}
+                                    >
+                                      <div>{hit ? `${hit.grade}-${hit.classNum}` : "빈 칸"}</div>
+                                      <div className="text-amber-800 font-extrabold text-[9px]">
+                                        +{cand.softDelta}
+                                      </div>
+                                    </td>
+                                  );
+                                }
+
+                                return (
+                                  <td
+                                    key={d}
+                                    className="p-1 border border-gray-100 bg-gray-100/90 text-gray-400 cursor-not-allowed select-none text-[10px]"
+                                    title={cand.blockedReason || "이동 불가"}
+                                  >
+                                    <div>{hit ? `${hit.grade}-${hit.classNum}` : "—"}</div>
+                                  </td>
+                                );
+                              }
+
+                              return (
+                                <td
+                                  key={d}
+                                  onClick={() => {
+                                    if (hit) handleTeacherCellClick(d, p);
+                                  }}
+                                  onMouseEnter={() => {
+                                    if (hit && !pickedSlot) {
+                                      setViewGrade(hit.grade);
+                                      setViewClass(hit.classNum);
+                                    }
+                                  }}
+                                  className={`p-1 border-r border-gray-100 text-[10px] transition-colors cursor-pointer select-none ${
+                                    hit
+                                      ? "bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-bold border border-indigo-200"
+                                      : "bg-white text-gray-300"
+                                  }`}
+                                >
+                                  {hit ? `${hit.grade}-${hit.classNum}` : "—"}
+                                </td>
+                              );
+                            }
+
+                            // 일반 모드
                             return (
                               <td
                                 key={d}
