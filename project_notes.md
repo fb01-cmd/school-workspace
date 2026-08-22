@@ -486,3 +486,8 @@
 - **[사실 3 — 인터랙션 안전성]** 기존 「해결안 찾기」 버튼 클릭은 `e.stopPropagation()`으로 행 클릭과 분리 보존. 행 hover 시 `hover:bg-amber-50/80 cursor-pointer` 스타일 및 안내 툴팁 추가.
 - **[검증]** `tsc` 0건 · `npm run check:ui` 통과 (4/4) · `check_ui_removals.sh` 사라진 상호작용 0건 · `movecand_selftest` 11/11 · `m2ops_selftest` 15/15 · `askfix_selftest` 42/42 · `npm run build` 성공 (49/49).
 
+
+## [2026-08-22] Claude(Fable) — 과제 P 검증 종결 (직접 검증)
+
+- **[판정] 통과.** +73/−16 단일 파일. 재확인: tsc 0 · check:ui · removals 사라진 상호작용 0 · 배선 = scope별 상태 전환(setSelectedTeacherEmail / setViewGrade·Class) + scrollIntoView + 2초 요일 하이라이트(요일 머리 `<th>`에만 — 셀 불변 준수) + 해결안 찾기 stopPropagation 분리. 핸드오버 ④ 연속 준수. build는 작성자 보고 수용(표본 원칙 — 표시 배선 전용이라 위험 낮음, Q 검증 때 일괄 재실행).
+- NEXT.md에서 O·P 절 제거(덮어쓰기 규약). Q 감시 재무장.
