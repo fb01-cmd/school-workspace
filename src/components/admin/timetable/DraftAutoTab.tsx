@@ -140,6 +140,46 @@ function synthesizeTeacherGrid(
   return result;
 }
 
+/** 작업기록 모달 전용 5x7 미니 그리드 (스펙 §0-1 제1원칙: 텍스트 이동 좌표 표기 금지) */
+function HistoryMiniGrid({
+  highlightCells,
+  periods = 7,
+}: {
+  highlightCells: Array<{ day: number; period: number; color?: string; label?: string }>;
+  periods?: number;
+}) {
+  return (
+    <div className="inline-block bg-white p-1 rounded-md border border-gray-200 shadow-2xs select-none shrink-0">
+      <div className="grid grid-cols-5 gap-0.5 text-center text-[8px] font-bold text-gray-400 pb-0.5">
+        <span>월</span>
+        <span>화</span>
+        <span>수</span>
+        <span>목</span>
+        <span>금</span>
+      </div>
+      <div className="grid grid-cols-5 gap-0.5">
+        {Array.from({ length: periods * 5 }).map((_, i) => {
+          const day = (i % 5) + 1;
+          const period = Math.floor(i / 5) + 1;
+          const hit = highlightCells.find((h) => h.day === day && h.period === period);
+          return (
+            <div
+              key={i}
+              className={`w-3.5 h-3 rounded-xs flex items-center justify-center text-[7px] font-mono font-extrabold transition-colors ${
+                hit
+                  ? hit.color || "bg-indigo-600 text-white"
+                  : "bg-gray-100/70 border border-gray-200/40"
+              }`}
+            >
+              {hit?.label || ""}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface SolverErrorInfo {
   message: string;
   isChunkError?: boolean;
@@ -497,6 +537,343 @@ export default function DraftAutoTab({
       .sort((a, b) => a.name.localeCompare(b.name, "ko"));
   }, [openDraft, gwsNameMap]);
 
+  // ── 작업기록 항목별 시점 판(board) 누적 재생 및 셀/수업 상세 추출 (과제 W, M3) ──
+  const historyDetails = useMemo(() => {
+    if (!openDraft?.baseGrids || !openDraft.meta?.ops) return [];
+    const currentBoard = cloneClassGrids(openDraft.baseGrids);
+    const parkMap = new Map<string, TimetableLesson>();
+    const result: Array<{
+      op: BaseRevisionOp;
+      idx: number;
+      isCurrent: boolean;
+      isApplied: boolean;
+      title: string;
+      gridCells: Array<{ day: number; period: number; color?: string; label?: string }>;
+      lessonNode: React.ReactNode;
+      chainSteps?: Array<{
+        title: string;
+        gridCells: Array<{ day: number; period: number; color?: string; label?: string }>;
+        lessonNode: React.ReactNode;
+      }>;
+    }> = [];
+
+    for (let idx = 0; idx < openDraft.meta.ops.length; idx++) {
+      const op = openDraft.meta.ops[idx];
+      const isCurrent = idx === openDraft.meta.opCursor - 1;
+      const isApplied = idx < openDraft.meta.opCursor;
+
+      if (op.type === "swap") {
+        const g = currentBoard.find((x) => x.grade === op.grade && x.classNum === op.classNum);
+        const c1 = g?.cells?.find((c) => c.day === op.a.day && c.period === op.a.period);
+        const c2 = g?.cells?.find((c) => c.day === op.b.day && c.period === op.b.period);
+        const l1 = c1?.lessons?.[0];
+        const l2 = c2?.lessons?.[0];
+
+        const t1 = l1?.teachers?.map((t) => t.name).join(", ") || (l1 ? "교사 미상" : "");
+        const t2 = l2?.teachers?.map((t) => t.name).join(", ") || (l2 ? "교사 미상" : "");
+        const s1 = l1?.subjectName || "빈 칸";
+        const s2 = l2?.subjectName || "빈 칸";
+
+        const name1 = t1 ? `${s1}(${t1})` : s1;
+        const name2 = t2 ? `${s2}(${t2})` : s2;
+
+        result.push({
+          op,
+          idx,
+          isCurrent,
+          isApplied,
+          title: `맞교환/이동 (${op.grade}학년 ${op.classNum}반)`,
+          gridCells: [
+            { day: op.a.day, period: op.a.period, color: "bg-indigo-600 text-white", label: "1" },
+            { day: op.b.day, period: op.b.period, color: "bg-amber-600 text-white", label: "2" },
+          ],
+          lessonNode: (
+            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="font-bold text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                ① {name1}
+              </span>
+              <span className="text-gray-400 font-bold">↔</span>
+              <span className="font-bold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                ② {name2}
+              </span>
+            </div>
+          ),
+        });
+        applyRevisionOps(currentBoard, [op]);
+      } else if (op.type === "edit_cell") {
+        const g = currentBoard.find((x) => x.grade === op.grade && x.classNum === op.classNum);
+        const c = g?.cells?.find((cell) => cell.day === op.day && cell.period === op.period);
+        const beforeL = c?.lessons?.[0];
+        const afterL = op.lessons?.[0];
+
+        const tBefore = beforeL?.teachers?.map((t) => t.name).join(", ") || (beforeL ? "교사 미상" : "");
+        const tAfter = afterL?.teachers?.map((t) => t.name).join(", ") || (afterL ? "교사 미상" : "");
+        const sBefore = beforeL?.subjectName || "비어 있던 칸";
+        const sAfter = afterL?.subjectName || "빈 칸";
+
+        const nameBefore = tBefore ? `${sBefore}(${tBefore})` : sBefore;
+        const nameAfter = tAfter ? `${sAfter}(${tAfter})` : sAfter;
+
+        result.push({
+          op,
+          idx,
+          isCurrent,
+          isApplied,
+          title: `수업 수정 (${op.grade}학년 ${op.classNum}반)`,
+          gridCells: [
+            { day: op.day, period: op.period, color: "bg-indigo-600 text-white", label: "✏" },
+          ],
+          lessonNode: (
+            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded line-through">
+                {nameBefore}
+              </span>
+              <span className="text-gray-400 font-bold">→</span>
+              <span className="font-bold text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                {nameAfter}
+              </span>
+            </div>
+          ),
+        });
+        applyRevisionOps(currentBoard, [op]);
+      } else if (op.type === "park") {
+        const g = currentBoard.find((x) => x.grade === op.grade && x.classNum === op.classNum);
+        const c = g?.cells?.find((cell) => cell.day === op.day && cell.period === op.period);
+        const l = c?.lessons?.[0];
+        if (l) {
+          parkMap.set(op.parkId, l);
+        }
+        const t = l?.teachers?.map((tch) => tch.name).join(", ") || (l ? "교사 미상" : "");
+        const s = l?.subjectName || "수업";
+        const name = t ? `${s}(${t})` : s;
+
+        result.push({
+          op,
+          idx,
+          isCurrent,
+          isApplied,
+          title: `잠깐 빼두기 (${op.grade}학년 ${op.classNum}반)`,
+          gridCells: [
+            { day: op.day, period: op.period, color: "bg-amber-600 text-white", label: "P" },
+          ],
+          lessonNode: (
+            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="font-bold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                빼둔 수업: {name}
+              </span>
+            </div>
+          ),
+        });
+        applyRevisionOps(currentBoard, [op]);
+      } else if (op.type === "unpark") {
+        const l = parkMap.get(op.parkId);
+        const t = l?.teachers?.map((tch) => tch.name).join(", ") || (l ? "교사 미상" : "");
+        const s = l?.subjectName || "수업";
+        const name = t ? `${s}(${t})` : s;
+
+        result.push({
+          op,
+          idx,
+          isCurrent,
+          isApplied,
+          title: `빼둔 수업 되돌리기 (${op.grade}학년 ${op.classNum}반)`,
+          gridCells: [
+            { day: op.day, period: op.period, color: "bg-emerald-600 text-white", label: "U" },
+          ],
+          lessonNode: (
+            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="font-bold text-emerald-900 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                되돌린 수업: {name}
+              </span>
+            </div>
+          ),
+        });
+        applyRevisionOps(currentBoard, [op]);
+      } else if (op.type === "chain") {
+        const allGridCells: Array<{ day: number; period: number; color?: string; label?: string }> = [];
+        const stepDetails: Array<{
+          title: string;
+          gridCells: Array<{ day: number; period: number; color?: string; label?: string }>;
+          lessonNode: React.ReactNode;
+        }> = [];
+
+        const subBoard = cloneClassGrids(currentBoard);
+        const subParkMap = new Map<string, TimetableLesson>(parkMap);
+
+        for (let si = 0; si < op.steps.length; si++) {
+          const step = op.steps[si];
+          if (step.kind === "swap") {
+            const g = subBoard.find((x) => x.grade === step.grade && x.classNum === step.classNum);
+            const c1 = g?.cells?.find((c) => c.day === step.a.day && c.period === step.a.period);
+            const c2 = g?.cells?.find((c) => c.day === step.b.day && c.period === step.b.period);
+            const l1 = c1?.lessons?.[0];
+            const l2 = c2?.lessons?.[0];
+            const t1 = l1?.teachers?.map((t) => t.name).join(", ") || (l1 ? "교사 미상" : "");
+            const t2 = l2?.teachers?.map((t) => t.name).join(", ") || (l2 ? "교사 미상" : "");
+            const s1 = l1?.subjectName || "빈 칸";
+            const s2 = l2?.subjectName || "빈 칸";
+            const name1 = t1 ? `${s1}(${t1})` : s1;
+            const name2 = t2 ? `${s2}(${t2})` : s2;
+
+            const stepCells = [
+              { day: step.a.day, period: step.a.period, color: "bg-indigo-600 text-white", label: `${si + 1}a` },
+              { day: step.b.day, period: step.b.period, color: "bg-amber-600 text-white", label: `${si + 1}b` },
+            ];
+            allGridCells.push(...stepCells);
+
+            stepDetails.push({
+              title: `${si + 1}수: 맞교환 (${step.grade}-${step.classNum}반)`,
+              gridCells: stepCells,
+              lessonNode: (
+                <div className="flex items-center gap-1 flex-wrap text-[11px]">
+                  <span className="font-bold text-indigo-900 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-200">
+                    {name1}
+                  </span>
+                  <span className="text-gray-400 font-bold">↔</span>
+                  <span className="font-bold text-amber-900 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
+                    {name2}
+                  </span>
+                </div>
+              ),
+            });
+            applyRevisionOps(subBoard, [{
+              type: "swap",
+              grade: step.grade,
+              classNum: step.classNum,
+              a: step.a,
+              b: step.b,
+            }]);
+          } else if (step.kind === "park") {
+            const g = subBoard.find((x) => x.grade === step.grade && x.classNum === step.classNum);
+            const c = g?.cells?.find((cell) => cell.day === step.day && cell.period === step.period);
+            const l = c?.lessons?.[0];
+            if (l) subParkMap.set(step.parkId, l);
+            const t = l?.teachers?.map((tch) => tch.name).join(", ") || (l ? "교사 미상" : "");
+            const s = l?.subjectName || "수업";
+            const name = t ? `${s}(${t})` : s;
+            const stepCells = [{ day: step.day, period: step.period, color: "bg-amber-600 text-white", label: "P" }];
+            allGridCells.push(...stepCells);
+            stepDetails.push({
+              title: `${si + 1}수: 잠깐 빼두기 (${step.grade}-${step.classNum}반)`,
+              gridCells: stepCells,
+              lessonNode: (
+                <div className="text-[11px] font-bold text-amber-900 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
+                  빼둔 수업: {name}
+                </div>
+              ),
+            });
+            applyRevisionOps(subBoard, [{
+              type: "park",
+              parkId: step.parkId,
+              grade: step.grade,
+              classNum: step.classNum,
+              day: step.day,
+              period: step.period,
+            }]);
+          } else if (step.kind === "unpark") {
+            const l = subParkMap.get(step.parkId);
+            const t = l?.teachers?.map((tch) => tch.name).join(", ") || (l ? "교사 미상" : "");
+            const s = l?.subjectName || "수업";
+            const name = t ? `${s}(${t})` : s;
+            const stepCells = [{ day: step.day, period: step.period, color: "bg-emerald-600 text-white", label: "U" }];
+            allGridCells.push(...stepCells);
+            stepDetails.push({
+              title: `${si + 1}수: 되돌리기 (${step.grade}-${step.classNum}반)`,
+              gridCells: stepCells,
+              lessonNode: (
+                <div className="text-[11px] font-bold text-emerald-900 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">
+                  되돌린 수업: {name}
+                </div>
+              ),
+            });
+            applyRevisionOps(subBoard, [{
+              type: "unpark",
+              parkId: step.parkId,
+              grade: step.grade,
+              classNum: step.classNum,
+              day: step.day,
+              period: step.period,
+            }]);
+          }
+        }
+
+        result.push({
+          op,
+          idx,
+          isCurrent,
+          isApplied,
+          title: `연쇄 조정 (${op.steps.length}수)`,
+          gridCells: allGridCells,
+          chainSteps: stepDetails,
+          lessonNode: (
+            <div className="space-y-1.5">
+              <div className="text-xs font-bold text-indigo-900">
+                총 {op.steps.length}단계 연쇄 이동
+              </div>
+              <div className="space-y-1 pl-1 border-l-2 border-indigo-200">
+                {stepDetails.map((st, sti) => (
+                  <div key={sti} className="space-y-0.5">
+                    <div className="text-[10px] font-bold text-gray-500">{st.title}</div>
+                    {st.lessonNode}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ),
+        });
+        applyRevisionOps(currentBoard, [op]);
+      } else if (op.type === "swap_pair") {
+        const allGridCells: Array<{ day: number; period: number; color?: string; label?: string }> = [
+          { day: op.a.day, period: op.a.period, color: "bg-indigo-600 text-white", label: "1" },
+          { day: op.b.day, period: op.b.period, color: "bg-amber-600 text-white", label: "2" },
+        ];
+        const pairNodes: React.ReactNode[] = [];
+
+        for (let pi = 0; pi < op.classes.length; pi++) {
+          const cls = op.classes[pi];
+          const g = currentBoard.find((x) => x.grade === cls.grade && x.classNum === cls.classNum);
+          const c1 = g?.cells?.find((c) => c.day === op.a.day && c.period === op.a.period);
+          const c2 = g?.cells?.find((c) => c.day === op.b.day && c.period === op.b.period);
+          const l1 = c1?.lessons?.[0];
+          const l2 = c2?.lessons?.[0];
+          const t1 = l1?.teachers?.map((t) => t.name).join(", ") || (l1 ? "교사 미상" : "");
+          const t2 = l2?.teachers?.map((t) => t.name).join(", ") || (l2 ? "교사 미상" : "");
+          const s1 = l1?.subjectName || "빈 칸";
+          const s2 = l2?.subjectName || "빈 칸";
+          const name1 = t1 ? `${s1}(${t1})` : s1;
+          const name2 = t2 ? `${s2}(${t2})` : s2;
+
+          pairNodes.push(
+            <div key={pi} className="flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="font-semibold text-gray-700">{cls.grade}-{cls.classNum}반:</span>
+              <span className="font-bold text-indigo-900 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-200">
+                {name1}
+              </span>
+              <span className="text-gray-400 font-bold">↔</span>
+              <span className="font-bold text-amber-900 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
+                {name2}
+              </span>
+            </div>
+          );
+        }
+
+        result.push({
+          op,
+          idx,
+          isCurrent,
+          isApplied,
+          title: `학급 간 교환 (${op.classes.map((c) => `${c.grade}-${c.classNum}반`).join(" · ")})`,
+          gridCells: allGridCells,
+          lessonNode: <div className="space-y-1">{pairNodes}</div>,
+        });
+        applyRevisionOps(currentBoard, [op]);
+      } else {
+        applyRevisionOps(currentBoard, [op]);
+      }
+    }
+    return result;
+  }, [openDraft?.baseGrids, openDraft?.meta?.ops, openDraft?.meta?.opCursor]);
+
   // 초안 전환·닫기 시 AI 및 직접 조정 상태 초기화
   const openDraftId = openDraft?.meta.id;
   useEffect(() => {
@@ -845,7 +1222,7 @@ export default function DraftAutoTab({
     if (!openDraft || !activeTermId) return;
     const { meta, report } = openDraft;
     if (report.hard.length > 0) {
-      alert(`하드 제약 위반이 ${report.hard.length}건 남아 있어 기초시간표로 채택할 수 없습니다. 위반 사항을 먼저 해결해주세요.`);
+      alert(`중대 문제가 ${report.hard.length}건 남아 있어 기초시간표로 채택할 수 없습니다. 문제를 먼저 해결해주세요.`);
       return;
     }
     if (currentTray.length > 0) {
@@ -2587,7 +2964,7 @@ export default function DraftAutoTab({
                       }}
                       title={
                         hasHardError
-                          ? "하드 제약 위반 발생"
+                          ? "중대 문제 발생"
                           : isBandLocked
                           ? `동시수업 (${simulLabel})`
                           : lesson
@@ -2974,9 +3351,9 @@ export default function DraftAutoTab({
             <button
               onClick={() => setShowHardDetails((o) => !o)}
               className={`text-[11px] px-2.5 py-0.5 rounded-full border font-extrabold cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1 ${hardBadgeColor(report.hard.length)}`}
-              title="클릭하여 하드 위반 상세를 확인하거나 접습니다"
+              title="클릭하여 중대 문제 상세를 확인하거나 접습니다"
             >
-              <span>하드 위반 {report.hard.length}건</span>
+              <span>중대 문제 {report.hard.length}건</span>
               <span className="text-xs">{showHardDetails ? "▲" : "▼"}</span>
             </button>
             <button
@@ -2986,7 +3363,7 @@ export default function DraftAutoTab({
                   ? "bg-indigo-100 text-indigo-950 border-indigo-300"
                   : "bg-amber-100 text-amber-900 border-amber-300"
               }`}
-              title="클릭하여 소프트 감점 상세를 확인하거나 접습니다"
+              title="클릭하여 감점 상세를 확인하거나 접습니다"
             >
               <span>
                 {manualMode && manualStartScore !== null
@@ -2995,7 +3372,7 @@ export default function DraftAutoTab({
                         ? `+${(report.soft.total - manualStartScore).toFixed(1).replace(/\.0$/, "")}`
                         : (report.soft.total - manualStartScore).toFixed(1).replace(/\.0$/, "")
                     })`
-                  : `소프트 ${report.soft.total}점`}
+                  : `감점 ${report.soft.total}점`}
               </span>
               <span className="text-xs">{showSoftDetails ? "▲" : "▼"}</span>
             </button>
@@ -3006,7 +3383,7 @@ export default function DraftAutoTab({
                 onClick={handleAiDiagnose}
                 disabled={aiDiagnosing}
                 className="px-3 py-1 bg-violet-50 hover:bg-violet-100 disabled:opacity-60 text-violet-800 font-bold rounded-lg text-xs border border-violet-300 transition-all flex items-center gap-1.5"
-                title="AI가 하드 위반 원인을 분석합니다 (참고용)"
+                title="AI가 중대 문제 원인을 분석합니다 (참고용)"
               >
                 {aiDiagnosing ? (
                   <>
@@ -3194,7 +3571,7 @@ export default function DraftAutoTab({
                 className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-bold rounded-lg text-xs shadow-xs transition-all flex items-center gap-1.5"
                 title={
                   report.hard.length > 0
-                    ? "하드 위반이 남아 있어 채택할 수 없습니다"
+                    ? "중대 문제가 남아 있어 채택할 수 없습니다"
                     : currentTray.length > 0
                     ? `잠깐 빼둔 수업 ${currentTray.length}건이 남아 있어 채택할 수 없습니다`
                     : "이 결과를 정식 기초시간표로 채택합니다"
@@ -3221,13 +3598,13 @@ export default function DraftAutoTab({
           </div>
         )}
 
-        {/* F-1 하드 위반 상세 패널 (E-1b AI 진단 카드와 동일 접이식 디자인) */}
+        {/* F-1 중대 문제 상세 패널 (E-1b AI 진단 카드와 동일 접이식 디자인) */}
         {showHardDetails && openDraft && (
           <div className="rounded-xl border border-red-200 bg-red-50/60 overflow-hidden">
             <div className="px-5 py-3 flex items-center justify-between bg-red-100/70 border-b border-red-200">
               <div className="flex items-center gap-2">
                 <span className="text-base">🔴</span>
-                <span className="text-xs font-bold text-red-950">하드 위반 상세 (총 {report.hard.length}건)</span>
+                <span className="text-xs font-bold text-red-950">중대 문제 상세 (총 {report.hard.length}건)</span>
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-200 text-red-900 font-bold border border-red-300">
                   완성본을 위해 해결이 권장되는 위반 항목입니다
                 </span>
@@ -3243,7 +3620,7 @@ export default function DraftAutoTab({
               {report.hard.length === 0 ? (
                 <div className="bg-white rounded-lg p-4 text-emerald-800 font-bold border border-emerald-200 flex items-center gap-2">
                   <span>✅</span>
-                  <span>하드 위반이 없습니다.</span>
+                  <span>중대 문제가 없습니다.</span>
                 </div>
               ) : (
                 (() => {
@@ -3331,7 +3708,7 @@ export default function DraftAutoTab({
             <div className="px-5 py-3 flex items-center justify-between bg-amber-100/70 border-b border-amber-200">
               <div className="flex items-center gap-2">
                 <span className="text-base">🟡</span>
-                <span className="text-xs font-bold text-amber-950">소프트 감점 상세 (총 {report.soft.total}점)</span>
+                <span className="text-xs font-bold text-amber-950">감점 상세 (총 {report.soft.total}점)</span>
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold border border-amber-300">
                   시간표의 가독성 및 균형 감점 현황입니다
                 </span>
@@ -4825,7 +5202,7 @@ export default function DraftAutoTab({
                     <span>🛑 중대 문제 발생 (이동 실행 비활성)</span>
                   </div>
                   <p className="text-red-700 leading-relaxed font-semibold">
-                    이 이동/맞교환을 적용하면 시간표에 해결할 수 없는 중대한 하드 위반이 새로 발생합니다:
+                    이 이동/맞교환을 적용하면 시간표에 해결할 수 없는 중대 문제가 새로 발생합니다:
                   </p>
                   <ul className="list-disc pl-5 text-red-800 space-y-1 font-bold">
                     {impactAnalysis.newHards.map((h, idx) => (
@@ -4840,14 +5217,14 @@ export default function DraftAutoTab({
                 </div>
               ) : (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-bold flex items-center gap-2">
-                  <span>✅ 중대 문제(하드 위반) 없음 — 정상 적용 가능합니다.</span>
+                  <span>✅ 중대 문제 없음 — 정상 적용 가능합니다.</span>
                 </div>
               )}
 
               {/* 소프트 점수 변화 */}
               <div className="p-3.5 border border-gray-200 rounded-xl text-xs space-y-2 bg-white">
                 <div className="flex justify-between items-center font-bold">
-                  <span className="text-gray-700">소프트 감점 변화:</span>
+                  <span className="text-gray-700">감점 변화:</span>
                   <div className="space-x-2">
                     <span className="text-gray-500">{impactAnalysis.oldSoftTotal}점</span>
                     <span>→</span>
@@ -4906,10 +5283,15 @@ export default function DraftAutoTab({
         {/* 작업기록 열람 모달 */}
         {showOpsHistory && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 max-w-md w-full p-5 space-y-4">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 max-w-xl w-full p-5 space-y-4">
               <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-                <h3 className="text-sm font-bold text-gray-900">📋 초안 작업기록 열람</h3>
-                <button onClick={() => setShowOpsHistory(false)} className="text-gray-400 font-bold">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-gray-900">📋 초안 작업기록 열람</h3>
+                  <span className="text-xs text-gray-500 font-medium">
+                    (총 {meta.ops.length}건 중 {meta.opCursor}건 반영됨)
+                  </span>
+                </div>
+                <button onClick={() => setShowOpsHistory(false)} className="text-gray-400 hover:text-gray-600 font-bold">
                   ✕
                 </button>
               </div>
@@ -4917,42 +5299,41 @@ export default function DraftAutoTab({
               {meta.ops.length === 0 ? (
                 <p className="text-xs text-gray-400 text-center py-6">기록된 수동 조정 연산이 없습니다.</p>
               ) : (
-                <div className="space-y-2 max-h-[50vh] overflow-y-auto text-xs pr-1">
-                  {meta.ops.map((op, idx) => {
-                    const isCurrent = idx === meta.opCursor - 1;
-                    return (
-                      <div
-                        key={idx}
-                        className={`p-2.5 rounded-lg border text-xs font-semibold transition-all ${
-                          isCurrent
-                            ? "bg-purple-100 border-purple-400 text-purple-950 font-bold ring-1 ring-purple-400"
-                            : idx < meta.opCursor
-                            ? "bg-gray-50 border-gray-200 text-gray-700"
-                            : "bg-gray-100/50 border-gray-200 text-gray-400 line-through"
-                        }`}
-                      >
-                        <div className="flex justify-between items-center">
-                          <span>
-                            #{idx + 1}{" "}
-                            {op.type === "swap_pair"
-                              ? `학급 간 교환 (${op.classes.map((c) => `${c.grade}학년 ${c.classNum}반`).join("·")})`
-                              : op.type === "chain"
-                                ? `연쇄 조정 (${op.steps.length}수)`
-                                : op.type === "park"
-                                  ? `잠깐 빼두기 (${op.grade}학년 ${op.classNum}반)`
-                                  : op.type === "unpark"
-                                    ? `빼둔 수업 되돌리기 (${op.grade}학년 ${op.classNum}반)`
-                                    : `${op.type === "swap" ? "맞교환/이동" : "셀 통째 수정"} (${op.grade}학년 ${op.classNum}반)`}
-                          </span>
-                          {isCurrent && (
-                            <span className="text-xs bg-purple-700 text-white font-extrabold px-1.5 py-0.5 rounded">
-                              현재 지점
-                            </span>
-                          )}
+                <div className="space-y-2.5 max-h-[60vh] overflow-y-auto text-xs pr-1">
+                  {historyDetails.map((item) => (
+                    <div
+                      key={item.idx}
+                      className={`p-3 rounded-xl border transition-all ${
+                        item.isCurrent
+                          ? "bg-purple-50/80 border-purple-400 ring-1 ring-purple-400 shadow-2xs"
+                          : item.isApplied
+                          ? "bg-white border-gray-200 hover:border-gray-300 shadow-2xs"
+                          : "bg-gray-50/70 border-gray-200 opacity-60 line-through"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                          {/* 미니 그리드 (위치 시각화) */}
+                          <HistoryMiniGrid highlightCells={item.gridCells} periods={periodsPerDay} />
+
+                          {/* 내용 (제목 + 수업 과목 및 교사) */}
+                          <div className="space-y-1.5 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-extrabold text-xs text-gray-900">
+                                #{item.idx + 1} {item.title}
+                              </span>
+                              {item.isCurrent && (
+                                <span className="text-[10px] bg-purple-700 text-white font-extrabold px-1.5 py-0.5 rounded-full">
+                                  현재 지점
+                                </span>
+                              )}
+                            </div>
+                            <div>{item.lessonNode}</div>
+                          </div>
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -5315,7 +5696,7 @@ export default function DraftAutoTab({
                       <span
                         className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full border font-extrabold ${hardBadgeColor(report.hardCount)}`}
                       >
-                        하드 {report.hardCount}
+                        중대 문제 {report.hardCount}
                       </span>
                     )}
                   </div>
@@ -5323,7 +5704,7 @@ export default function DraftAutoTab({
                   {report && (
                     <div className="flex gap-2 text-[11px]">
                       <span className="px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 rounded font-bold">
-                        소프트 {report.softTotal}점
+                        감점 {report.softTotal}점
                       </span>
                       {draft.unplaced.length > 0 && (
                         <span className="px-2 py-0.5 bg-red-50 border border-red-200 text-red-800 rounded font-bold">
