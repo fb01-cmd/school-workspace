@@ -157,7 +157,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 | 한도 소진 시 | **고급 판단 에이전트가 며칠간 사라짐** | 영향 적음 |
 
 Claude의 토큰은 **회복에 며칠이 걸리는 소모성 자원**이다. 분업의 목표는 "공평한 배분"이 아니라 **"비싼 자원을 그것이 아니면 안 되는 곳에만 쓰기"** 이다.
-> 💡 **한시적 예외 (2026-07-24 ~ **2026-08-22**)**: 사용자의 Claude Max20 구독에 따른 한시적 분업 확장 적용 중. 상세 내용은 [`archive/collaboration_proposal_2026-07-24_max20.md`](./archive/collaboration_proposal_2026-07-24_max20.md) 참조.
+> ✅ **한시적 예외 종료 (2026-07-24 ~ 2026-08-22, 종료 확정)**: Max20 분업 확장은 끝났다. **사용자가 2026-08-22 당일 Max5로 실제 전환했고**(사용자 통보 — 결제 화면·문서보다 이 사실이 원본), 분업은 위 표의 기본값(비싼 자원은 그것이 아니면 안 되는 곳에만)으로 복귀했다. 같은 날 실증된 형태 = Claude 판단·검증 / Antigravity 구현 / Codex 검증 (`docs/orchestration_guide.md`). **구독 유지 여부를 다시 묻지 않는다** — 이미 답이 났다. 상세 이력: [`archive/collaboration_proposal_2026-07-24_max20.md`](./archive/collaboration_proposal_2026-07-24_max20.md).
 >
 > 🔴 **만료일 정정 (2026-08-19)**: 이 예외의 만료일은 오래 `2026-08-24`로 적혀 있었으나, 사용자 결제 화면 실측 결과 **실제 다운그레이드 예약일은 2026-08-22**다(*"Your downgrade to the Max 5x plan is scheduled for Aug 22, 2026"*). 문서가 이틀을 더 얹어 두고 있었다 — 그 이틀은 근거 없는 확장이었다. **요금제 날짜의 원본은 문서가 아니라 결제 화면이다.**
 >
