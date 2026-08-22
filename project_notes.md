@@ -491,3 +491,32 @@
 
 - **[판정] 통과.** +73/−16 단일 파일. 재확인: tsc 0 · check:ui · removals 사라진 상호작용 0 · 배선 = scope별 상태 전환(setSelectedTeacherEmail / setViewGrade·Class) + scrollIntoView + 2초 요일 하이라이트(요일 머리 `<th>`에만 — 셀 불변 준수) + 해결안 찾기 stopPropagation 분리. 핸드오버 ④ 연속 준수. build는 작성자 보고 수용(표본 원칙 — 표시 배선 전용이라 위험 낮음, Q 검증 때 일괄 재실행).
 - NEXT.md에서 O·P 절 제거(덮어쓰기 규약). Q 감시 재무장.
+
+## [2026-08-22] Antigravity — 과제 Q(직접 조정 M2 화면: 연쇄 루미큐브 + 잠깐 빼두기 트레이) 완결
+
+- **[사실 1 — 연쇄 루미큐브 (스펙 §2-4)]** `DraftAutoTab.tsx`에서 점유 칸 클릭 시 즉시 스왑 대신 연쇄 모드 진입:
+  - 점유 칸 클릭 시 `ChainStep`(`kind: "swap"`) 기록 후 로컬 그리드에 스왑 반영 (`DraftAutoTab.tsx:1285-1327`).
+  - 밀려난 수업이 자동으로 커서에 들림(`pickedSlot` 갱신 + `evaluateMoveCandidates` 자동 재채점). 우측 교사 그리드도 밀려난 교사로 자동 전환.
+  - 상단 칩에 `📌 [연쇄 N수째] 집은 수업: 과목 (교사)` 표시 (`DraftAutoTab.tsx:2956-2977`).
+  - 종료 3경로 배선:
+    1. **빈 칸에 내려놓기**: `chainSteps`에 마지막 착지 수 합류 후 단일 `chain` op(`{ type: "chain", steps: [...] }`) 서버 전송 (`DraftAutoTab.tsx:1210-1230, 1276-1283`). 단건(연쇄 없이 1수)은 기존 `swap` op 전송 (`DraftAutoTab.tsx:1221-1227`).
+    2. **트레이로 빼두기**: 연쇄 중 트레이 클릭 시 `park` 수 합류 후 `chain` op(`{ type: "chain", steps: [...chainSteps, { kind: "park", ... }] }`) 서버 전송 (`DraftAutoTab.tsx:1152-1158`).
+    3. **Esc / 취소 ✕**: 서버 미전송 로컬 스테이징 상태를 `chainStartGrids`로 즉시 롤백 및 로컬 상태 폐기 (`DraftAutoTab.tsx:338-343, 2963-2968`).
+- **[사실 2 — 잠깐 빼두기 트레이 패널 Ⓒ (스펙 §2-5)]**
+  - 그리드 하단에 트레이 패널 Ⓒ 배치 (`DraftAutoTab.tsx:3580-3683`).
+  - `currentTray`는 `deriveTray(openDraft.baseGrids, openDraft.meta.ops.slice(0, openDraft.meta.opCursor))` 파생값으로 계산 (`DraftAutoTab.tsx:331-334`).
+  - 셀 우클릭(`onContextMenu`) 시 `handleCellRightClick` → `handleParkCell` 호출 (`DraftAutoTab.tsx:1130-1193, 3061, 3095, 3150, 3187, 3221`).
+  - 트레이 칩 ✕ 클릭: 원래 자리 비어 있으면 `unpark` 전송 (`DraftAutoTab.tsx:1196-1249, 3669-3676`). 차 있으면 안내 말풍선 표시.
+  - 트레이 칩 클릭: `selectedParkedEntry` 상태로 진입, 그리드의 빈 칸 클릭 시 해당 칸으로 `unpark` 전송.
+  - 채택 관문: `currentTray.length > 0`일 때 채택 버튼 비활성화 + 툴팁 고지 ("잠깐 빼둔 수업 N건이 남아 있어 채택할 수 없습니다") 및 채택 시도 사전 차단 (`DraftAutoTab.tsx:766-769, 1688-1696`).
+- **[사실 3 — 셀 불변 조항 100% 준수]**
+  - 셀 내부 레이아웃·크기 전혀 변경 없음 (문장 표기 0건, 틴트+뱃지 유지). 우클릭 이벤트 핸들러만 부착.
+- **[검증]**
+  - `npx tsc --noEmit`: 0 errors
+  - `npm run check:ui`: 4/4 통과
+  - `bash scripts/check_ui_removals.sh HEAD~1`: UI 문구 변경 의도 부합 확인
+  - `npx tsx scripts/movecand_selftest.ts`: 11/11 통과
+  - `npx tsx scripts/m2ops_selftest.ts`: 15/15 통과
+  - `npx tsx scripts/askfix_selftest.ts`: 42/42 통과
+  - `npm run build`: 49/49 페이지 성공
+
