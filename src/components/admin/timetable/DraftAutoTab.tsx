@@ -334,7 +334,7 @@ export default function DraftAutoTab({
         setManualMode((prev) => {
           if (prev) {
             setBlockedBubble({
-              message: "화면이 좁아져 직접 조정이 꺼졌습니다. 창을 넓히면 다시 쓸 수 있어요.",
+              message: "화면이 좁아져 직접 조정과 시간표 추가를 쓸 수 없습니다. 창을 넓히면 다시 쓸 수 있어요.",
             });
           }
           return false;
@@ -2455,6 +2455,7 @@ export default function DraftAutoTab({
                               handleCellRightClick(day, period, grade, classNum);
                             }}
                             title={
+                              /* 여기는 delta <= 0 보장 */
                               cand.kind === "swap"
                                 ? `${lesson?.subjectShort || "수업"}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
                                 : cand.kind === "displace"
@@ -2930,12 +2931,17 @@ export default function DraftAutoTab({
                               key={d}
                               {...teacherDndProps}
                               onClick={() => handleTeacherCellClick(d, p, teacherEmail)}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                if (hit) handleCellRightClick(d, p, hit.grade, hit.classNum);
+                              }}
                               className={`h-8 min-h-[2rem] max-h-[2rem] p-1 border-r border-gray-100 bg-emerald-50/80 hover:bg-emerald-100/80 text-emerald-950 font-bold cursor-pointer select-none text-[10px] transition-colors overflow-hidden ${
                                 isDragOverTeacherThis
                                   ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10"
                                   : ""
                               } ${savingOp ? "opacity-75 cursor-wait" : ""}`}
                               title={
+                                /* 여기는 delta <= 0 보장 */
                                 hit
                                   ? cand.kind === "displace"
                                     ? `${hit.grade}-${hit.classNum} ${hit.subjectName} 밀어내고 들기 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
@@ -2973,6 +2979,10 @@ export default function DraftAutoTab({
                               key={d}
                               {...teacherDndProps}
                               onClick={() => handleTeacherCellClick(d, p, teacherEmail)}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                if (hit) handleCellRightClick(d, p, hit.grade, hit.classNum);
+                              }}
                               className={`h-8 min-h-[2rem] max-h-[2rem] p-1 border-r border-gray-100 bg-amber-50/80 hover:bg-amber-100/80 text-amber-950 font-bold cursor-pointer select-none text-[10px] transition-colors overflow-hidden ${
                                 isDragOverTeacherThis
                                   ? "ring-2 ring-indigo-500 shadow-md scale-[1.02] z-10"
@@ -3009,6 +3019,10 @@ export default function DraftAutoTab({
                           <td
                             key={d}
                             {...teacherDndProps}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              if (hit) handleCellRightClick(d, p, hit.grade, hit.classNum);
+                            }}
                             className={`h-8 min-h-[2rem] max-h-[2rem] p-1 border-r border-gray-100 bg-gray-100/90 text-gray-400 cursor-not-allowed select-none text-[10px] opacity-70 overflow-hidden ${
                               savingOp ? "cursor-wait" : ""
                             }`}
@@ -3028,6 +3042,10 @@ export default function DraftAutoTab({
                           {...teacherDndProps}
                           onClick={() => {
                             if (hit) handleTeacherCellClick(d, p, teacherEmail);
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            if (hit) handleCellRightClick(d, p, hit.grade, hit.classNum);
                           }}
                           onMouseEnter={() => {
                             if (!isExtra && !isClassPinned && !pickedSlot && hit) {
@@ -3191,51 +3209,53 @@ export default function DraftAutoTab({
               <span>{!isLgScreen ? "🔒" : manualMode ? "⏻ 켜짐" : "⏻"}</span>
             </button>
 
-            {/* 시간표 추가 버튼 (스펙 §2-2: 고정 전용 그리드 패널 최대 2개 추가) */}
-            {manualMode && (
-              <button
-                disabled={savingOp || extraPanels.length >= 2 || !isLgScreen}
-                onClick={() => {
-                  if (!isLgScreen || savingOp || extraPanels.length >= 2 || !openDraft) return;
-                  const newId = `extra_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-                  const otherClass = viewClass === 1 ? 2 : 1;
-                  setExtraPanels((prev) => {
-                    if (prev.length >= 2) return prev;
-                    return [
-                      ...prev,
-                      {
-                        id: newId,
-                        type: "class",
-                        grade: viewGrade,
-                        classNum: otherClass,
-                        teacherEmail: selectedTeacherEmail || allDraftTeachers[0]?.email || "",
-                      },
-                    ];
-                  });
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1 font-bold rounded-lg text-xs transition-all border ${
-                  !isLgScreen
-                    ? "bg-gray-100 text-gray-400 border-gray-200 opacity-60 cursor-not-allowed"
-                    : extraPanels.length >= 2
-                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                    : "bg-white hover:bg-indigo-50 text-indigo-700 border-indigo-200 shadow-2xs"
-                } ${savingOp ? "opacity-50 cursor-not-allowed" : ""}`}
-                title={
-                  !isLgScreen
-                    ? "창을 넓히면 쓸 수 있어요"
-                    : extraPanels.length >= 2
-                    ? "시간표는 최대 2개까지 추가할 수 있습니다"
-                    : "비교하며 조정할 고정 시간표를 추가로 엽니다 (최대 2개)"
-                }
-              >
-                <span>➕ 시간표 추가</span>
-                {extraPanels.length > 0 && (
-                  <span className="bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded-full text-[10px] font-extrabold">
-                    {extraPanels.length}/2
-                  </span>
-                )}
-              </button>
-            )}
+            {/* 시간표 추가 버튼 (스펙 §2-2: 고정 전용 그리드 패널 최대 2개 추가, §0-6: 좁은 화면에서 사라지지 않고 비활성) */}
+            <button
+              disabled={!isLgScreen || !manualMode || savingOp || extraPanels.length >= 2}
+              onClick={() => {
+                if (!isLgScreen || !manualMode || savingOp || extraPanels.length >= 2 || !openDraft) return;
+                const newId = `extra_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+                const otherClass = viewClass === 1 ? 2 : 1;
+                setExtraPanels((prev) => {
+                  if (prev.length >= 2) return prev;
+                  return [
+                    ...prev,
+                    {
+                      id: newId,
+                      type: "class",
+                      grade: viewGrade,
+                      classNum: otherClass,
+                      teacherEmail: selectedTeacherEmail || allDraftTeachers[0]?.email || "",
+                    },
+                  ];
+                });
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1 font-bold rounded-lg text-xs transition-all border ${
+                !isLgScreen
+                  ? "bg-gray-100 text-gray-400 border-gray-200 opacity-60 cursor-not-allowed"
+                  : !manualMode
+                  ? "bg-gray-100 text-gray-400 border-gray-200 opacity-60 cursor-not-allowed"
+                  : extraPanels.length >= 2
+                  ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                  : "bg-white hover:bg-indigo-50 text-indigo-700 border-indigo-200 shadow-2xs"
+              } ${savingOp ? "opacity-50 cursor-not-allowed" : ""}`}
+              title={
+                !isLgScreen
+                  ? "창을 넓히면 쓸 수 있어요"
+                  : !manualMode
+                  ? "직접 조정 모드를 켜면 시간표를 추가할 수 있습니다"
+                  : extraPanels.length >= 2
+                  ? "시간표는 최대 2개까지 추가할 수 있습니다"
+                  : "비교하며 조정할 고정 시간표를 추가로 엽니다 (최대 2개)"
+              }
+            >
+              <span>➕ 시간표 추가</span>
+              {extraPanels.length > 0 && (
+                <span className="bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded-full text-[10px] font-extrabold">
+                  {extraPanels.length}/2
+                </span>
+              )}
+            </button>
 
             {/* 기초시간표로 채택 버튼 (spec §5) — 초안 학기(status: draft)에서만 노출 */}
             {isDraftTerm && (
@@ -3541,14 +3561,22 @@ export default function DraftAutoTab({
                                                   <span className="text-xs font-bold text-gray-900">
                                                     기보 {li + 1} ({line.ops.length}수)
                                                   </span>
+                                                  {/* §0-5: 순증(나빠짐)이면 총점 경고 딱지가 가장 먼저 오고, 해소/감소 딱지는 뒤로 배치 */}
+                                                  {line.finalDelta > 0 && (
+                                                    <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                                      총점 {line.finalDelta}점 나빠짐
+                                                    </span>
+                                                  )}
                                                   <span className="text-[11px] font-bold text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
                                                     이 감점 {line.targetDelta < 0 ? `${line.targetDelta}점` : `+${line.targetDelta}점`}
                                                   </span>
-                                                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                                    {line.finalDelta < 0
-                                                      ? `총점 ${Math.abs(line.finalDelta)}점 개선`
-                                                      : "점수 유지"}
-                                                  </span>
+                                                  {line.finalDelta <= 0 && (
+                                                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                                      {line.finalDelta < 0
+                                                        ? `총점 ${Math.abs(line.finalDelta)}점 개선`
+                                                        : "점수 유지"}
+                                                    </span>
+                                                  )}
                                                   {line.targetResolved && (
                                                     <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
                                                       ✅ 이 감점 해소
@@ -3586,7 +3614,7 @@ export default function DraftAutoTab({
 
                                               {/* 상세 정보 컨테이너 */}
                                               <div className="bg-gray-50 rounded-md p-2.5 space-y-2 border border-gray-100">
-                                                {/* 변경 위치 (미니 그리드) */}
+                                                {/* 변경 위치 (미니 그리드 + 수업 과목/교사 시각화) */}
                                                 <div className="flex items-center gap-3 flex-wrap">
                                                   {(() => {
                                                     const byClass = new Map<
@@ -3613,24 +3641,82 @@ export default function DraftAutoTab({
                                                         day: t.day,
                                                         period: t.period,
                                                         label: String(ti + 1),
-                                                        color: "bg-indigo-600 text-white",
+                                                        color: ti % 2 === 0 ? "bg-indigo-600 text-white" : "bg-amber-600 text-white",
                                                       });
                                                     });
 
-                                                    return Array.from(byClass.values()).map((cls, ci) => (
-                                                      <div
-                                                        key={ci}
-                                                        className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border border-gray-200"
-                                                      >
-                                                        <span className="text-[11px] font-bold text-gray-700 shrink-0">
-                                                          {cls.grade}학년 {cls.classNum}반
-                                                        </span>
-                                                        <HistoryMiniGrid
-                                                          highlightCells={cls.cells}
-                                                          periods={periodsPerDay}
-                                                        />
+                                                    // 2수 이상 연쇄 시 앞선 수 적용 판에서 순차적으로 수업 정보를 읽음 (historyDetails 본보기)
+                                                    const stepNodes: React.ReactNode[] = [];
+                                                    if (openDraft?.currentGrids) {
+                                                      const simBoard = cloneClassGrids(openDraft.currentGrids);
+                                                      const circled = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+
+                                                      line.ops.forEach((op, opIdx) => {
+                                                        if (op.type === "swap") {
+                                                          const g = simBoard.find((x) => x.grade === op.grade && x.classNum === op.classNum);
+                                                          const c1 = g?.cells?.find((c) => c.day === op.a.day && c.period === op.a.period);
+                                                          const c2 = g?.cells?.find((c) => c.day === op.b.day && c.period === op.b.period);
+                                                          const l1 = c1?.lessons?.[0];
+                                                          const l2 = c2?.lessons?.[0];
+
+                                                          const t1 = l1?.teachers?.map((t) => t.name).join(", ") || (l1 ? "교사 미상" : "");
+                                                          const t2 = l2?.teachers?.map((t) => t.name).join(", ") || (l2 ? "교사 미상" : "");
+                                                          const s1 = l1?.subjectName || "빈 칸";
+                                                          const s2 = l2?.subjectName || "빈 칸";
+
+                                                          const name1 = t1 ? `${s1}(${t1})` : s1;
+                                                          const name2 = t2 ? `${s2}(${t2})` : s2;
+
+                                                          const num1 = opIdx * 2 + 1;
+                                                          const num2 = opIdx * 2 + 2;
+                                                          const c1Label = circled[num1 - 1] || `${num1}.`;
+                                                          const c2Label = circled[num2 - 1] || `${num2}.`;
+
+                                                          stepNodes.push(
+                                                            <div key={opIdx} className="flex items-center gap-1.5 flex-wrap text-xs">
+                                                              {line.ops.length > 1 && (
+                                                                <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1 py-0.2 rounded">
+                                                                  {opIdx + 1}수
+                                                                </span>
+                                                              )}
+                                                              <span className="font-bold text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                                                {c1Label} {name1}
+                                                              </span>
+                                                              <span className="text-gray-400 font-bold">↔</span>
+                                                              <span className="font-bold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                                                {c2Label} {name2}
+                                                              </span>
+                                                            </div>
+                                                          );
+
+                                                          applyRevisionOps(simBoard, [op]);
+                                                        }
+                                                      });
+                                                    }
+
+                                                    return (
+                                                      <div className="flex items-center gap-3 flex-wrap">
+                                                        {Array.from(byClass.values()).map((cls, ci) => (
+                                                          <div
+                                                            key={ci}
+                                                            className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border border-gray-200"
+                                                          >
+                                                            <span className="text-[11px] font-bold text-gray-700 shrink-0">
+                                                              {cls.grade}학년 {cls.classNum}반
+                                                            </span>
+                                                            <HistoryMiniGrid
+                                                              highlightCells={cls.cells}
+                                                              periods={periodsPerDay}
+                                                            />
+                                                          </div>
+                                                        ))}
+                                                        {stepNodes.length > 0 && (
+                                                          <div className="flex flex-col gap-1 min-w-0">
+                                                            {stepNodes}
+                                                          </div>
+                                                        )}
                                                       </div>
-                                                    ));
+                                                    );
                                                   })()}
                                                 </div>
 
@@ -3879,9 +3965,9 @@ export default function DraftAutoTab({
               {/* 말풍선 안내 (alert 대체 — 스펙 §2-3) */}
               {blockedBubble && (
                 <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-2.5 text-xs flex items-center justify-between gap-2 shadow-2xs animate-fade-in">
-                  <div className="flex items-center gap-1.5 font-bold min-w-0">
-                    <span className="text-sm">💬</span>
-                    <span className="truncate">{blockedBubble.message}</span>
+                  <div className="flex items-start gap-1.5 font-bold min-w-0 flex-1">
+                    <span className="text-sm shrink-0">💬</span>
+                    <span className="break-keep leading-snug">{blockedBubble.message}</span>
                   </div>
                   <button
                     onClick={() => setBlockedBubble(null)}
@@ -3949,146 +4035,6 @@ export default function DraftAutoTab({
               </div>
 
               {renderTeacherGridTable(selectedTeacherEmail, false)}
-            </div>
-
-            {/* 미배정 목록 카드 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
-              <h4 className="text-xs font-bold text-gray-900 flex items-center justify-between">
-                <span>📭 미배정 수업 목록</span>
-                {meta.unplaced.length > 0 && (
-                  <span className="bg-red-100 text-red-800 text-[11px] px-2 py-0.5 rounded-full font-extrabold border border-red-300">
-                    {meta.unplaced.length}건
-                  </span>
-                )}
-              </h4>
-
-              {meta.unplaced.length === 0 ? (
-                <div className="py-6 text-center text-xs text-emerald-700 font-bold bg-emerald-50/50 rounded-lg">
-                  ✅ 모든 수업이 배정되었습니다!
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-                  {meta.unplaced.map((u) => {
-                    const isSelected = selectedUnplaced?.sectionId === u.sectionId;
-                    const unplacedTarget = resolveUnplacedTarget(u, {
-                      grade: viewGrade,
-                      classNum: viewClass,
-                    });
-                    const targetGrade = unplacedTarget.grade;
-                    const targetClass = unplacedTarget.classNum;
-
-                    return (
-                      <div
-                        key={u.sectionId}
-                        draggable={manualMode && isLgScreen && !savingOp}
-                        onDragStart={(e) => {
-                          if (!isLgScreen || savingOp) return;
-                          e.dataTransfer.setData("text/plain", JSON.stringify({ type: "unplaced", unplaced: u }));
-                          e.dataTransfer.effectAllowed = "move";
-                          setDragSource({ type: "unplaced", unplaced: u });
-                          if (chainSteps.length > 0 && chainStartGrids) {
-                            setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
-                            setChainSteps([]);
-                            setChainStartGrids(null);
-                            setHeldParkId(null);
-                          }
-                          setSelectedParkedEntry(null);
-                          setPickedSlot(null);
-                          setHeldParkId(null);
-                          setManualMode(true);
-                          setSelectedUnplaced(u);
-
-                          setViewGrade(targetGrade);
-                          setViewClass(targetClass);
-
-                          const res = evaluateHeldCandidates({
-                            grids: openDraft.currentGrids,
-                            model: openDraft.model,
-                            held: {
-                              grade: targetGrade,
-                              classNum: targetClass,
-                              lessons: unplacedTarget.lessons,
-                            },
-                          });
-                          setCandidatesResult(res);
-                          setBlockedBubble(null);
-                        }}
-                        onDragEnd={() => {
-                          setDragSource(null);
-                          setDragOverCell(null);
-                        }}
-                        className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-2 ${
-                          isSelected
-                            ? "bg-indigo-100 border-indigo-500 ring-2 ring-indigo-400/50"
-                            : "bg-red-50/80 border-red-200 hover:border-red-300"
-                        } ${savingOp ? "opacity-60" : ""}`}
-                      >
-                        <div className="min-w-0">
-                          <p className="font-bold text-xs text-red-950 truncate">{u.label}</p>
-                          <p className="text-[11px] text-red-700 font-semibold mt-0.5">
-                            잔여 {u.remaining}시수 미배정
-                          </p>
-                        </div>
-                        <div className="shrink-0 flex flex-col items-end gap-1">
-                          <button
-                            disabled={!isLgScreen || savingOp}
-                            onClick={() => {
-                              if (!isLgScreen || savingOp) return;
-                              if (isSelected) {
-                                setSelectedUnplaced(null);
-                                setCandidatesResult(null);
-                              } else {
-                                if (chainSteps.length > 0 && chainStartGrids) {
-                                  setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
-                                  setChainSteps([]);
-                                  setChainStartGrids(null);
-                                  setHeldParkId(null);
-                                }
-                                setSelectedParkedEntry(null);
-                                setPickedSlot(null);
-                                setHeldParkId(null);
-                                setManualMode(true);
-                                setSelectedUnplaced(u);
-
-                                setViewGrade(targetGrade);
-                                setViewClass(targetClass);
-
-
-
-                                const res = evaluateHeldCandidates({
-                                  grids: openDraft.currentGrids,
-                                  model: openDraft.model,
-                                  held: {
-                                    grade: targetGrade,
-                                    classNum: targetClass,
-                                    lessons: unplacedTarget.lessons,
-                                  },
-                                });
-                                setCandidatesResult(res);
-                                setBlockedBubble(null);
-                              }
-                            }}
-                            className={`px-2.5 py-1 rounded text-xs font-bold shadow-xs transition-all ${
-                              !isLgScreen || savingOp
-                                ? "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
-                                : isSelected
-                                ? "bg-indigo-600 text-white"
-                                : "bg-red-600 hover:bg-red-700 text-white"
-                            }`}
-                          >
-                            {isSelected ? "선택됨" : "배정하기"}
-                          </button>
-                          {!isLgScreen && (
-                            <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">
-                              넓은 화면에서 쓸 수 있어요
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           </div>
 
@@ -4221,6 +4167,151 @@ export default function DraftAutoTab({
                 </div>
               );
             })}
+        </div>
+
+        {/* 미배정 목록 카드 (스펙 §2-2: 그리드 컬럼 밖 독립 배치 — 추가 패널 개수와 무관하게 자리가 고정됨) */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                <span>📭 편성 미배정 수업 목록</span>
+              </h4>
+              <span className="text-[11px] text-gray-500 font-normal">
+                편성할 때 자리를 찾지 못한 수업입니다 (직접 뺀 수업은 아래 「잠깐 빼둔 수업」 트레이에 보관됩니다).
+              </span>
+            </div>
+            {meta.unplaced.length > 0 && (
+              <span className="bg-red-100 text-red-800 text-[11px] px-2 py-0.5 rounded-full font-extrabold border border-red-300">
+                {meta.unplaced.length}건
+              </span>
+            )}
+          </div>
+
+          {meta.unplaced.length === 0 ? (
+            <div className="py-3 text-center text-xs text-emerald-700 font-bold bg-emerald-50/50 rounded-lg">
+              ✅ 편성 시 미배정된 수업이 없습니다 (모든 수업이 시간표에 배정되었습니다).
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+              {meta.unplaced.map((u) => {
+                const isSelected = selectedUnplaced?.sectionId === u.sectionId;
+                const unplacedTarget = resolveUnplacedTarget(u, {
+                  grade: viewGrade,
+                  classNum: viewClass,
+                });
+                const targetGrade = unplacedTarget.grade;
+                const targetClass = unplacedTarget.classNum;
+
+                return (
+                  <div
+                    key={u.sectionId}
+                    draggable={manualMode && isLgScreen && !savingOp}
+                    onDragStart={(e) => {
+                      if (!isLgScreen || savingOp) return;
+                      e.dataTransfer.setData("text/plain", JSON.stringify({ type: "unplaced", unplaced: u }));
+                      e.dataTransfer.effectAllowed = "move";
+                      setDragSource({ type: "unplaced", unplaced: u });
+                      if (chainSteps.length > 0 && chainStartGrids) {
+                        setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+                        setChainSteps([]);
+                        setChainStartGrids(null);
+                        setHeldParkId(null);
+                      }
+                      setSelectedParkedEntry(null);
+                      setPickedSlot(null);
+                      setHeldParkId(null);
+                      setManualMode(true);
+                      setSelectedUnplaced(u);
+
+                      setViewGrade(targetGrade);
+                      setViewClass(targetClass);
+
+                      const res = evaluateHeldCandidates({
+                        grids: openDraft.currentGrids,
+                        model: openDraft.model,
+                        held: {
+                          grade: targetGrade,
+                          classNum: targetClass,
+                          lessons: unplacedTarget.lessons,
+                        },
+                      });
+                      setCandidatesResult(res);
+                      setBlockedBubble(null);
+                    }}
+                    onDragEnd={() => {
+                      setDragSource(null);
+                      setDragOverCell(null);
+                    }}
+                    className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                      isSelected
+                        ? "bg-indigo-100 border-indigo-500 ring-2 ring-indigo-400/50"
+                        : "bg-red-50/80 border-red-200 hover:border-red-300"
+                    } ${savingOp ? "opacity-60" : ""}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-bold text-xs text-red-950 truncate">{u.label}</p>
+                      <p className="text-[11px] text-red-700 font-semibold mt-0.5">
+                        잔여 {u.remaining}시수 미배정
+                      </p>
+                    </div>
+                    <div className="shrink-0 flex flex-col items-end gap-1">
+                      <button
+                        disabled={!isLgScreen || savingOp}
+                        onClick={() => {
+                          if (!isLgScreen || savingOp) return;
+                          if (isSelected) {
+                            setSelectedUnplaced(null);
+                            setCandidatesResult(null);
+                          } else {
+                            if (chainSteps.length > 0 && chainStartGrids) {
+                              setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+                              setChainSteps([]);
+                              setChainStartGrids(null);
+                              setHeldParkId(null);
+                            }
+                            setSelectedParkedEntry(null);
+                            setPickedSlot(null);
+                            setHeldParkId(null);
+                            setManualMode(true);
+                            setSelectedUnplaced(u);
+
+                            setViewGrade(targetGrade);
+                            setViewClass(targetClass);
+
+                            const res = evaluateHeldCandidates({
+                              grids: openDraft.currentGrids,
+                              model: openDraft.model,
+                              held: {
+                                grade: targetGrade,
+                                classNum: targetClass,
+                                lessons: unplacedTarget.lessons,
+                              },
+                            });
+                            setCandidatesResult(res);
+                            setBlockedBubble(null);
+                          }
+                        }}
+                        className={`px-2.5 py-1 rounded text-xs font-bold shadow-xs transition-all ${
+                          !isLgScreen || savingOp
+                            ? "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                            : isSelected
+                            ? "bg-indigo-600 text-white"
+                            : "bg-red-600 hover:bg-red-700 text-white"
+                        }`}
+                      >
+                        {isSelected ? "선택됨" : "배정하기"}
+                      </button>
+                      {!isLgScreen && (
+                        <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">
+                          넓은 화면에서 쓸 수 있어요
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Ⓒ 잠깐 빼둔 수업 트레이 (스펙 §2-5) */}
