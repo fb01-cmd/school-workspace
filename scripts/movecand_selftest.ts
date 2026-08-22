@@ -13,7 +13,7 @@
  *
  * 실행: npx tsx scripts/movecand_selftest.ts
  */
-import { evaluateMoveCandidates } from "../src/lib/timetable/moveCandidates";
+import { evaluateMoveCandidates, evaluateHeldCandidates } from "../src/lib/timetable/moveCandidates";
 import { validateTimetable } from "../src/lib/timetable/validate";
 import { applyRevisionOps, cloneClassGrids } from "../src/lib/timetable/utils";
 import {
@@ -146,6 +146,37 @@ console.log("── 직접 조정 후보 채점기 자가 테스트 ──");
 {
   const r = evaluateMoveCandidates({ grids: makeGrids(), model, pick: { grade: 1, classNum: 1, day: 1, period: 3 } });
   check("빈 칸 집기 = pickBlocked", !!r.pickBlocked);
+}
+
+// 7 (M2): displace — 맞바꿈 불성립 점유 칸에 밀어내기 배치 후보가 뜨는지
+{
+  // 월2 국어(이나)를 집고 → 월1 수학(김가) 칸: 맞바꿈은 김가가 1-2 월3?… 이 소세계에서는
+  // 맞바꿈이 성립하므로, 불성립을 만들기 위해 1-2반에 이나 수업을 월1에 둔다
+  // (국어가 월1로 가는 건 OK, 수학이 월2로 오는 것도 OK → 성립. displace 검증에는
+  //  "수학이 월2로 못 가는" 배치가 필요) — 1-2반 월2에 김가 수업 추가.
+  const grids = makeGrids();
+  grids[1].cells!.push({ day: 1, period: 2, lessons: [L("수학", "김가", "a@t")] });
+  const r = evaluateMoveCandidates({ grids, model, pick: { grade: 1, classNum: 1, day: 1, period: 2 } });
+  const m1 = r.candidates.find((c) => c.day === 1 && c.period === 1);
+  check(
+    "displace: 맞바꿈 불성립(상대가 내 자리로 못 옴) 점유 칸 = displace 후보",
+    m1?.kind === "displace" && m1?.verdict !== "blocked",
+    JSON.stringify(m1)
+  );
+}
+// 8 (M2): held — 든 카드의 내려놓기·재밀어내기 채점
+{
+  const grids = makeGrids();
+  // 월1 수학을 들었다 치고 판에서 제거
+  const heldLessons = grids[0].cells!.find((c) => c.day === 1 && c.period === 1)!.lessons;
+  grids[0].cells!.find((c) => c.day === 1 && c.period === 1)!.lessons = [];
+  const r = evaluateHeldCandidates({ grids, model, held: { grade: 1, classNum: 1, lessons: heldLessons } });
+  const back = r.candidates.find((c) => c.day === 1 && c.period === 1);
+  check("held: 비운 원래 칸 = move 후보(내려놓기)", back?.kind === "move" && back?.verdict !== "blocked", JSON.stringify(back));
+  const m3 = r.candidates.find((c) => c.day === 1 && c.period === 3);
+  check("held: 다른 빈 칸도 후보 (김가 월3 겹침이면 회색이어야)", m3?.verdict === "blocked", JSON.stringify(m3));
+  const occ = r.candidates.find((c) => c.day === 1 && c.period === 2);
+  check("held: 점유 칸 = displace(다음 카드 들기)", occ?.kind === "displace", JSON.stringify(occ));
 }
 
 // 시간 측정 (참고)

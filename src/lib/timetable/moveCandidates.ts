@@ -20,16 +20,18 @@ import {
   TimetableLesson,
   BaseRevisionOp,
   SoftPenaltyCode,
+  TrayEntry,
 } from "./types";
-import { validateTimetable, hardViolationKey, findPlaceholderLesson } from "./validate";
+import { validateTimetable, hardViolationKey, findPlaceholderLesson, isParkExemptHard } from "./validate";
 import { applyRevisionOps, cloneClassGrids } from "./utils";
 import { buildSimulMatcher } from "./simul";
 
 export interface MoveCandidate {
   day: number;
   period: number;
-  /** move = 빈 칸으로 이동, swap = 그 칸 수업과 맞바꿈 */
-  kind: "move" | "swap";
+  /** move = 빈 칸으로 이동, swap = 그 칸 수업과 맞바꿈,
+   *  displace = 맞바꿈은 불성립이지만 내 수업을 넣고 그 칸 수업을 들어올릴 수 있음(연쇄 시작 — M2) */
+  kind: "move" | "swap" | "displace";
   /** ok = 초록(감점 비증가) · worse = 노랑(감점 증가, 감수 강행 가능) · blocked = 회색 */
   verdict: "ok" | "worse" | "blocked";
   /** 공식 총점 변화 (blocked면 0) — 음수가 개선 */
@@ -156,6 +158,34 @@ export function evaluateMoveCandidates(args: {
 
       const newHard = report.hard.find((h) => !baseHardKeys.has(hardViolationKey(h)));
       if (newHard) {
+        // 맞바꿈 불성립 — 점유 칸이면 「밀어내기 배치」(내 수업을 넣고 그 칸 수업을 들어올림)를
+        // 시도한다 (M2 연쇄의 시작 수 — 컴시간 연쇄이동의 재현). 들린 수업의 시수 부족(H1)은
+        // park와 같은 원리로 면제한다 — 연쇄가 끝나기 전의 중간 상태이기 때문.
+        if (targetLesson) {
+          const trial2 = cloneClassGrids(grids);
+          const g2 = trial2.find((g) => g.grade === pick.grade && g.classNum === pick.classNum)!;
+          const src = g2.cells!.find((c) => c.day === pick.day && c.period === pick.period)!;
+          const dst = g2.cells!.find((c) => c.day === day && c.period === period)!;
+          const heldLessons = dst.lessons;
+          dst.lessons = src.lessons;
+          src.lessons = [];
+          const report2 = validateTimetable(trial2, model);
+          const heldTray: TrayEntry[] = [
+            { parkId: "_probe", grade: pick.grade, classNum: pick.classNum, lessons: heldLessons, from: { day, period } },
+          ];
+          const blocking2 = report2.hard.find(
+            (h) => !baseHardKeys.has(hardViolationKey(h)) && !isParkExemptHard(h, heldTray)
+          );
+          if (!blocking2) {
+            const delta2 = report2.soft.total - baseSoftTotal;
+            out.candidates.push({
+              day, period, kind: "displace",
+              verdict: delta2 > 0 ? "worse" : "ok",
+              softDelta: delta2,
+            });
+            continue;
+          }
+        }
         out.candidates.push({
           day, period, kind, verdict: "blocked", softDelta: 0,
           blockedReason: newHard.text,
@@ -169,6 +199,92 @@ export function evaluateMoveCandidates(args: {
         verdict: softDelta > 0 ? "worse" : "ok",
         softDelta,
       };
+      if (softDelta > 0) {
+        const worse: Partial<Record<SoftPenaltyCode, number>> = {};
+        for (const [code, pts] of Object.entries(report.soft.byCode)) {
+          const before = baseReport.soft.byCode[code as SoftPenaltyCode] || 0;
+          const diff = (pts || 0) - before;
+          if (diff > 0) worse[code as SoftPenaltyCode] = diff;
+        }
+        cand.worseByCode = worse;
+      }
+      out.candidates.push(cand);
+    }
+  }
+  return out;
+}
+
+/**
+ * 든 카드(held — 밀려나 들린 수업 또는 트레이 카드) 기준 후보 채점 (M2 연쇄 재계산용).
+ * held 수업은 이미 판에서 빠져 있는 상태의 grids를 받는다. 같은 학급의 각 칸에 대해:
+ *  - 빈 칸 = 내려놓기(move) · 점유 칸 = 또 밀어내기(displace — 그 칸 수업이 다음 held가 된다)
+ * 채점·차단 원리는 evaluateMoveCandidates와 동일(본검사기 단일 소재지). held 자신과
+ * 새로 들리는 수업의 시수 부족(H1)은 중간 상태이므로 면제한다(park와 같은 원리).
+ */
+export function evaluateHeldCandidates(args: {
+  grids: ClassGrid[];
+  model: TimetableConstraintModel;
+  held: { grade: number; classNum: number; lessons: TimetableLesson[] };
+}): MoveCandidatesResult {
+  const { grids, model, held } = args;
+  const baseReport = validateTimetable(grids, model);
+  const baseSoftTotal = baseReport.soft.total;
+  const out: MoveCandidatesResult = { candidates: [], baseSoftTotal };
+  const grid = grids.find((g) => g.grade === held.grade && g.classNum === held.classNum);
+  if (!grid || !held.lessons.length) {
+    out.pickBlocked = "들고 있는 수업이 없습니다.";
+    return out;
+  }
+  const simulMatch = buildSimulMatcher(model.simulGroups || [], model.subjects);
+  // held 자신의 H1은 base에 이미 있어 "신규"가 아니므로 자동 무해 — 신규로 들릴 수업만 면제 대상
+  const baseHardKeys = new Set(baseReport.hard.map(hardViolationKey));
+  const dayPeriods = model.gradeDayPeriods?.[held.grade] || {};
+
+  for (let day = 1; day <= 5; day++) {
+    const maxP = dayPeriods[day] || 0;
+    for (let period = 1; period <= maxP; period++) {
+      const targetCell = grid.cells?.find((c) => c.day === day && c.period === period);
+      const targetLesson = targetCell?.lessons?.[0] || null;
+      const kind: MoveCandidate["kind"] = targetLesson ? "displace" : "move";
+
+      if (findPlaceholderLesson(grids, held.grade, held.classNum, day, period)) {
+        out.candidates.push({ day, period, kind, verdict: "blocked", softDelta: 0, blockedReason: "학교 전체가 같은 시간에 묶인 칸입니다." });
+        continue;
+      }
+      const targetSimul = targetLesson
+        ? simulMatch(held.grade, held.classNum, day, period, targetLesson.subjectName)
+        : null;
+      if (targetSimul) {
+        out.candidates.push({ day, period, kind, verdict: "blocked", softDelta: 0, blockedReason: `분반 이동수업 묶음(${targetSimul}) 칸입니다.` });
+        continue;
+      }
+      if (targetLesson && matchesConsecutiveRule(model, held.grade, held.classNum, targetLesson)) {
+        out.candidates.push({ day, period, kind, verdict: "blocked", softDelta: 0, blockedReason: "이어서 하는 묶음 수업이 있는 칸입니다." });
+        continue;
+      }
+
+      const trial = cloneClassGrids(grids);
+      const g2 = trial.find((g) => g.grade === held.grade && g.classNum === held.classNum)!;
+      let cell = g2.cells!.find((c) => c.day === day && c.period === period);
+      if (!cell) {
+        cell = { day, period, lessons: [] };
+        g2.cells!.push(cell);
+      }
+      const nextHeld = cell.lessons;
+      cell.lessons = held.lessons.map((l) => ({ ...l, teachers: (l.teachers || []).map((t) => ({ ...t })) }));
+      const report = validateTimetable(trial, model);
+      const exemptTray: TrayEntry[] = nextHeld.length
+        ? [{ parkId: "_probe", grade: held.grade, classNum: held.classNum, lessons: nextHeld, from: { day, period } }]
+        : [];
+      const blocking = report.hard.find(
+        (h) => !baseHardKeys.has(hardViolationKey(h)) && !isParkExemptHard(h, exemptTray)
+      );
+      if (blocking) {
+        out.candidates.push({ day, period, kind, verdict: "blocked", softDelta: 0, blockedReason: blocking.text });
+        continue;
+      }
+      const softDelta = report.soft.total - baseSoftTotal;
+      const cand: MoveCandidate = { day, period, kind, verdict: softDelta > 0 ? "worse" : "ok", softDelta };
       if (softDelta > 0) {
         const worse: Partial<Record<SoftPenaltyCode, number>> = {};
         for (const [code, pts] of Object.entries(report.soft.byCode)) {
