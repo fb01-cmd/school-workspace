@@ -729,3 +729,16 @@
   - 전체 저장소 grep 결과 `selectedSlotA`는 `BaseRevisionTab.tsx` 외 타 파일 참조 0건이었음을 확인 후 안전하게 전면 철거.
 - **[규약 준수]** `project_notes.md`는 기존 내용 삭제 없이 하단에만 추가(append-only).
 - **[검증]** `tsc` 0건 · `build` (49/49) 통과 · `check:ui` 20/20 통과 · `check_ui_removals.sh 23067ba` 8건(구 맞교환 철거 및 문구 개정) 확인 · selftest 4종(`lookahead`(31), `movecand`(15), `m2ops`(15), `unplaced`(24)) 100% 통과.
+
+## [2026-08-23] Claude(Opus) — 과제 BB 검증 종결: 개정 화면에 직접 조정, 배포
+
+- **[경과]** `22fbd64`(`BaseRevisionTab.tsx` +438/−149). 기계 관문 전부 통과 — tsc 0 · build ✅ · check:ui ✅ · selftest 4종. **금지선(`DraftAutoTab` 미변경) 준수**를 diff로 확인.
+- **[핵심 셋 — 「복사해 오면 생기는」 문제를 전부 피했다]**
+  1. **`draft_model` 호출이 진짜 1회다.** 호출 지점이 1곳인 것으로 만족하지 않고 **언제 불리는지**를 봤다 — `useEffect(..., [activeTermId])`(`:157-160`)라 학기가 안 바뀌면 1회다. 두 번째 호출부(`:405`)는 **개정 적용 직후 재로드**라 정당하다.
+  2. **학급 전환이 서버를 안 부른다.** 그 effect에 `fetch(` 0건 — 종전 `action:"class"` 경로(`fetchBaseClassGrid`)는 통째로 사라졌다. 읽기가 **줄었다**.
+  3. **후보 판정 자체 구현 0.** `evaluateMoveCandidates`·`validateTimetable`·`applyRevisionOps`를 그대로 쓴다(`:13-15·186·200·230`). 두 화면의 판정이 갈릴 수 없다.
+  - 핸드오버에 읽기량 한 줄 기재됨(규칙 ⑪): *"화면 진입 시 draft_model 1회, 학급 전환 시 0회, 조작 시 0회."*
+- **[구 맞교환 철거]** `selectedSlotA` **0건**. 삭제 8건 전건 대조 — 구 맞교환 안내 2건 · 구 로더(`fetchBaseClassGrid`·`setBaseGrid`·`setLoadingGrid`·로딩 문구) 4건 · `setSelectedSlotA` · 라벨 1건.
+- **[⚠️ 내가 오늘 세 번째로 성급했다 — 전부 자체 기각]** 삭제 목록의 **「✏️ 내용 변경」**을 보고 *"셀 내용 편집 진입 버튼이 사라진 회귀"* 로 의심했다. **틀렸다** — 기능 심볼은 전부 그대로였고(`editModalSlot` 6/6 · `handleSaveEditCell` 2/2 · `edit_cell` 4/4), **진입 지점은 오히려 1곳(`:522`) → 2곳(`:780`·`:802`)으로 늘었다**(수업 있는 칸 + 빈 칸 각각, 툴팁 「셀 내용 직접 수정」). 라벨만 바뀐 것이다.
+  - 오늘 같은 실수를 **세 번** 했다: `setHeldParkId` 삭제 의심(호출 수 26→26으로 반증) · 교사 `onDragStart`가 새 구현이라는 의심(끝에서 `handleTeacherCellClick`을 부름) · 이번 「내용 변경」. **셋 다 「삭제·변경 목록의 한 줄」만 보고 단정한 것**이 원인이다. 삭제 검사의 출력은 **질문 목록**이지 결론이 아니다 — 항목마다 **심볼 수 대조 + 진입 지점 전수**로 확인해야 한다. 다행히 셋 다 커밋 전에 잡았다.
+- **[판정]** 과제 BB **합격 → 배포.** 다음 = 개정 화면에 **해결안 찾기(수읽기)** 붙이기 · 교사 그리드 병치(격자 렌더러 공용 추출 — 회귀 위험이라 따로).
