@@ -65,6 +65,23 @@
 
 ---
 
+## 과제 U — 수읽기 기보 카드: 해결안 찾기 내부 엔진 교체 (L1)
+
+**착수 조건: 과제 R·S·T를 먼저 끝내라(같은 파일 — 순차).** 배치 원본 = `docs/timetable_lookahead_spec.md` §3·§4.
+
+Claude 선행분(이 커밋 포함): `src/lib/timetable/lookahead.ts`의 `searchLookaheadLines({grids, model, target, budget…})` — 감점 항목(target = scope·key·day·code)을 주면 **기보(수순 상위 3개)** 를 돌려준다. 각 기보 = ops(전부 swap — 기존 draft_op 어휘)·stepScores·finalDelta·targetResolved·touched. 결정론·AI 호출 0. 자가 테스트 `npx tsx scripts/lookahead_selftest.ts` 8건(2수 문제·재생 파리티·예산 포함).
+
+1. **감점 상세의 「해결안 찾기」 버튼 내부를 교체**: 기존 체인 탐색 호출 → `searchLookaheadLines`(target = 그 항목의 scope·key·day·code, 기본 budget). 결과 카드 = **기보 카드**: 미니 그리드 연쇄(touched 칸 하이라이트 — 텍스트 수순 표기 금지, 스펙 §0-1) + 최종 delta + [한 수씩 밟기] [전체 적용].
+2. **한 수씩 밟기** = 기본. 각 수를 기존 draft_op(swap, expectedOpCursor 포함)로 순차 적용 — 수마다 그리드·총점 갱신, 언제든 중단·실행취소.
+3. **전체 적용** = 남은 수들을 chain op 1건으로(steps = swap step 나열) 전송.
+4. 기보를 못 찾으면: 읽은 수 표시 + 「더 깊이 읽기」(budget 3배 재호출, 1회만). 그래도 없으면 기존 잠금 안내 스타일 문구.
+5. 계산은 비동기(집기 채점과 같은 패턴 — 처리 중 버튼 잠금·진행 표시, 과제 S의 반응성 규약 적용).
+6. 기존 체인 탐색기(fixFinder)는 **삭제하지 말 것** — 물어보고 고치기가 아직 쓴다(그쪽 교체는 별도 판단).
+
+**완료 확인**: tsc·build·check:ui·removals + `lookahead_selftest` 8건 유지 + 해결안 찾기 1회 호출 경로(어떤 target을 넘기는지)·두 적용 경로의 op 전송 코드 근거 보고. **핸드오버 ④ 기재.**
+
+---
+
 ## 아직 착수하지 마라 — 과제 K (시간표)
 
 **착수 조건: 과제 J가 Codex 검증까지 통과한 뒤 Claude가 이 절을 과제로 승격한다.** 지금은 범위만 확정해 둔 것이다. 이 절을 보고 먼저 손대지 마라.
