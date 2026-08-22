@@ -1240,17 +1240,10 @@ export default function DraftAutoTab({
 
       const data = await res.json();
       if (res.status === 409 || data.error?.includes("다른 창") || data.error?.includes("opCursor")) {
+        await handleOpen(prevDraft.meta);
         setBlockedBubble({
           message: "다른 창이 먼저 수정했습니다. 최신 초안을 다시 불러옵니다.",
         });
-        setPickedSlot(null);
-        setCandidatesResult(null);
-        setChainSteps([]);
-        setChainStartGrids(null);
-        setHeldParkId(null);
-        setSelectedParkedEntry(null);
-        setSelectedUnplaced(null);
-        await handleOpen(prevDraft.meta);
         return;
       }
       if (!res.ok || data.error) {
