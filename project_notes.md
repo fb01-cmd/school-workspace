@@ -463,3 +463,11 @@
 - **[부수 수리]** op 유니언 확장에 걸린 좁히기 3곳(BaseRevisionTab 2·fixFinder 1) 수리 — 개정 경로는 신규 op을 만들지 않으므로 방어 분기. 작업기록 라벨에 신규 op 한글 라벨 추가(연쇄 조정 N수·잠깐 빼두기·되돌리기 — 사용자 "구체적으로" 피드백의 1단계).
 - **[검증]** 신규 `m2ops_selftest` 15건(park/unpark 관용 6종·chain 원자성·undo 동형성·H1 면제 3종·자리표시 가드 3종) + movecand 11·validate·solver·askfix·tsc 0·build·check:ui 전부 통과.
 - **[인계열]** 과제 O(잔재 철거) → P(감점 클릭 = 그리드 세팅) → **Q(M2 화면: 연쇄 상호작용·트레이·chain 전송)** — NEXT.md에 순차 등재, 셀 불변 조항 상속 명시.
+
+## [2026-08-22] Antigravity — 과제 O(시간표 잔재 철거) 완결: 다시 짜기 경로 제거·죽은 컴포넌트 삭제·안내문 갱신
+
+- **[사실 1 — 다시 짜기 라디오 & 전용 분기 제거]** `DraftAutoTab.tsx`에서 `startMethod` 라디오 및 `cachedDraftModel` 상태, `handleSolve` 함수(기초시간표 기반 직접 전달 솔버 분기)를 완전히 걷어냈다. 이제 자동 작성은 「시수 계획으로 새로 짜기(`handlePreflight` → `handleSolveFromPlan`)」가 유일 경로가 되며, 「현행 시간표 복제로 시작(`handleCopy`)」 보조 버튼은 정상 유지.
+- **[사실 2 — 죽은 컴포넌트 삭제]** `src/components/admin/timetable/TimetableSection.tsx` 파일 삭제 (`git rm`). 삭제 전 `grep -rn "TimetableSection" src/` 결과 0건 참조 재확인.
+- **[사실 3 — 빈 초안 안내문 갱신]** "위 버튼으로 자동 작성을 실행하거나..."를 "시수 계획으로 새로 시간표를 작성하거나, 등록된 기초 시간표를 복제해 시작하세요."로 눈높이 갱신.
+- **[검증]** `tsc` 0건 · `npm run check:ui` 통과 (4/4) · `check_ui_removals.sh` 11건 전수 의도 부합 확인 · `movecand_selftest` 11/11 · `m2ops_selftest` 15/15 · `askfix_selftest` 42/42 · `npm run build` 성공 (49/49).
+

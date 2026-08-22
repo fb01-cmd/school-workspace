@@ -165,16 +165,11 @@ export default function DraftAutoTab({
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
 
-  // ── 시작 방법 & 시수 계획 상태 (phase9c_i_spec §6·§7) ──
-  const [startMethod, setStartMethod] = useState<"grid" | "plan">("plan");
+  // ── 시수 계획 상태 (phase9c_i_spec §6·§7) ──
   const [plans, setPlans] = useState<HoursPlanSummary[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
   const [hasBaseGrids, setHasBaseGrids] = useState<boolean | null>(null);
-  const [cachedDraftModel, setCachedDraftModel] = useState<{
-    model: TimetableConstraintModel;
-    baseGrids: ClassGrid[];
-  } | null>(null);
 
   // ── 확인 화면 (Preflight) 상태 (phase9c_i_spec §6-2·§7) ──
   const [preflightModalOpen, setPreflightModalOpen] = useState(false);
@@ -468,8 +463,6 @@ export default function DraftAutoTab({
   const checkBaseGrids = async () => {
     if (!activeTermId) {
       setHasBaseGrids(false);
-      setCachedDraftModel(null);
-      setStartMethod("plan");
       return;
     }
     try {
@@ -481,16 +474,8 @@ export default function DraftAutoTab({
       const data = await res.json();
       const count = Array.isArray(data.baseGrids) ? data.baseGrids.length : 0;
       setHasBaseGrids(count > 0);
-      if (count > 0 && data.model) {
-        setCachedDraftModel({ model: data.model, baseGrids: data.baseGrids });
-      } else {
-        setCachedDraftModel(null);
-        setStartMethod("plan");
-      }
     } catch {
       setHasBaseGrids(false);
-      setCachedDraftModel(null);
-      setStartMethod("plan");
     }
   };
 
@@ -607,122 +592,6 @@ export default function DraftAutoTab({
           draftHours: preflightData.model.hours,
           draftFixedBlocks: preflightData.model.fixedBlocks,
           draftPlanId: selectedPlanId,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "초안 저장에 실패했습니다.");
-
-      await fetchDrafts();
-    } catch (err: any) {
-      console.error("[초안 저장 오류]", err);
-      if (isWorkerChunkLoadError(err)) {
-        setSolverError({
-          message: "새 버전이 배포되었습니다 — 페이지를 새로고침한 뒤 다시 실행해 주세요",
-          isChunkError: true,
-        });
-      } else {
-        setSolverError({ message: err.message || "초안 저장에 실패했습니다." });
-      }
-    } finally {
-      setRunning(false);
-      setProgress(null);
-      runRef.current = null;
-    }
-  };
-
-  // ── 솔버 실행 ──
-  const handleSolve = async () => {
-    setSolverError(null);
-    setProgress(null);
-
-    let model: TimetableConstraintModel;
-    let baseGrids: ClassGrid[];
-    if (cachedDraftModel && cachedDraftModel.baseGrids.length > 0) {
-      model = cachedDraftModel.model;
-      baseGrids = cachedDraftModel.baseGrids;
-    } else {
-      try {
-        const res = await fetch("/api/timetable/manage", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "draft_model", termId: activeTermId }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.error) throw new Error(data.error || "제약 모델 로드에 실패했습니다.");
-        model = data.model as TimetableConstraintModel;
-        baseGrids = data.baseGrids as ClassGrid[];
-        setCachedDraftModel({ model, baseGrids });
-      } catch (err: any) {
-        console.error("[제약 모델 로드 오류]", err);
-        if (isWorkerChunkLoadError(err)) {
-          setSolverError({
-            message: "새 버전이 배포되었습니다 — 페이지를 새로고침한 뒤 다시 실행해 주세요",
-            isChunkError: true,
-          });
-        } else {
-          setSolverError({ message: err.message || "제약 모델 로드에 실패했습니다." });
-        }
-        return;
-      }
-    }
-
-    if (!baseGrids || baseGrids.length === 0) {
-      setSolverError({
-        message: "기초 시간표가 없습니다. 먼저 가져오기 탭에서 시간표를 가져와 주세요.",
-      });
-      return;
-    }
-
-    setRunning(true);
-    const run = solveTimetableInWorker({ grids: baseGrids, model }, (phase, done, total) => {
-      setProgress({ phase, done, total });
-    });
-    runRef.current = run;
-
-    let result: SolverDone;
-    try {
-      result = await run.promise;
-    } catch (err: any) {
-      if (err.message === "cancelled") {
-        setRunning(false);
-        setProgress(null);
-        return;
-      }
-      console.error("[솔버 워커 오류]", err);
-      if (isWorkerChunkLoadError(err)) {
-        setSolverError({
-          message: "새 버전이 배포되었습니다 — 페이지를 새로고침한 뒤 다시 실행해 주세요",
-          isChunkError: true,
-        });
-      } else {
-        setSolverError({
-          message: err.message || "솔버 실행 중 오류가 발생했습니다.",
-        });
-      }
-      setRunning(false);
-      return;
-    }
-
-    try {
-      setProgress({ phase: "초안 저장 중...", done: 0, total: 1 });
-      const unplaced = (result.unplaced || []).map((u) => ({
-        sectionId: u.sectionId,
-        label: u.label,
-        remaining: u.remaining,
-      }));
-      const report = result.report;
-      const origin = { kind: "solver" as const, seed: result.seed, ranking: result.ranking?.[0]?.seed };
-
-      const res = await fetch("/api/timetable/manage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "draft_create",
-          termId: activeTermId,
-          draftOrigin: origin,
-          draftGrids: result.grids,
-          draftUnplaced: unplaced,
-          draftReport: report,
         }),
       });
       const data = await res.json();
@@ -3400,117 +3269,41 @@ export default function DraftAutoTab({
         </p>
       </div>
 
-      {/* ── 어떻게 짤까요? 시작 방법 선택 (phase9c_i_spec §7) ── */}
+      {/* ── 시수 계획 기반 자동 작성 ── */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-xs">
-        <h4 className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-          <span>🎯</span>
-          <span>어떻게 짤까요?</span>
-        </h4>
-        <div className="space-y-2.5 text-xs">
-          {/* 방법 1: 현행 시간표에서 다시 짜기 */}
-          <label
-            className={`flex items-start gap-2.5 p-3 rounded-lg border transition-all cursor-pointer ${
-              startMethod === "grid"
-                ? "bg-indigo-50/70 border-indigo-300 text-indigo-950 font-semibold ring-1 ring-indigo-200"
-                : hasBaseGrids === false
-                ? "bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed opacity-60"
-                : "border-gray-200 hover:bg-gray-50 text-gray-700"
-            }`}
-            title={hasBaseGrids === false ? "이 학기에는 아직 시간표가 없어 이 방법을 쓸 수 없습니다." : undefined}
-          >
-            <input
-              type="radio"
-              name="startMethod"
-              value="grid"
-              checked={startMethod === "grid"}
-              disabled={hasBaseGrids === false}
-              onChange={() => setStartMethod("grid")}
-              className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
-            />
-            <div className="flex-1 space-y-0.5">
-              <div className="flex items-center gap-2">
-                <span className="font-bold">현행 시간표에서 다시 짜기</span>
-                {hasBaseGrids === false && (
-                  <span className="text-xs text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-normal">
-                    기초 시간표 없음
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-gray-500 font-normal">
-                등록된 기초 시간표의 수업 구성과 교사를 기준으로 시간표를 다시 배치합니다.
-              </p>
-            </div>
-          </label>
-
-          {/* 방법 2: 시수 계획으로 새로 짜기 */}
-          <label
-            className={`flex items-start gap-2.5 p-3 rounded-lg border transition-all cursor-pointer ${
-              startMethod === "plan"
-                ? "bg-indigo-50/70 border-indigo-300 text-indigo-950 font-semibold ring-1 ring-indigo-200"
-                : "border-gray-200 hover:bg-gray-50 text-gray-700"
-            }`}
-          >
-            <input
-              type="radio"
-              name="startMethod"
-              value="plan"
-              checked={startMethod === "plan"}
-              onChange={() => setStartMethod("plan")}
-              className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
-            />
-            <div className="flex-1 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-bold">시수 계획으로 새로 짜기</span>
-                {plans.length > 0 && (
-                  <select
-                    value={selectedPlanId}
-                    onChange={(e) => setSelectedPlanId(e.target.value)}
-                    disabled={startMethod !== "plan"}
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-xs px-2.5 py-1 bg-white border border-gray-300 rounded-md font-medium text-gray-800 shadow-xs focus:ring-1 focus:ring-indigo-500"
-                  >
-                    {plans.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label} ({p.rowCount}개 수업)
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-              <p className="text-[11px] text-gray-500 font-normal">
-                신학기 주당 수업 시간 계획과 창체·SLAT 배치를 결합해 시간표를 백지에서 새로 짭니다.
-              </p>
-              {plans.length === 0 && !loadingPlans && (
-                <div className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 font-medium">
-                  이 학기로 지정된 시수 계획이 없습니다. 「선생님별 주당 수업 시간」에서 먼저 만들어 주세요.
-                </div>
-              )}
-            </div>
-          </label>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+            <span>🎯</span>
+            <span>시수 계획으로 새로 짜기</span>
+          </h4>
+          {plans.length > 0 && (
+            <select
+              value={selectedPlanId}
+              onChange={(e) => setSelectedPlanId(e.target.value)}
+              className="text-xs px-2.5 py-1 bg-white border border-gray-300 rounded-md font-medium text-gray-800 shadow-xs focus:ring-1 focus:ring-indigo-500"
+            >
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label} ({p.rowCount}개 수업)
+                </option>
+              ))}
+            </select>
+          )}
         </div>
+        <p className="text-[11px] text-gray-500 font-normal">
+          신학기 주당 수업 시간 계획과 창체·SLAT 배치를 결합해 시간표를 백지에서 새로 짭니다.
+        </p>
+        {plans.length === 0 && !loadingPlans && (
+          <div className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 font-medium">
+            이 학기로 지정된 시수 계획이 없습니다. 「선생님별 주당 수업 시간」에서 먼저 만들어 주세요.
+          </div>
+        )}
       </div>
 
       {/* 실행 버튼 */}
       <div className="flex flex-wrap gap-3">
         {!running ? (
-          startMethod === "grid" ? (
-            <>
-              <button
-                onClick={handleSolve}
-                disabled={hasBaseGrids === false}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2"
-              >
-                <span>🤖 자동 작성 실행</span>
-              </button>
-              <button
-                onClick={handleCopy}
-                disabled={hasBaseGrids === false}
-                className="px-4 py-2.5 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700 font-bold rounded-xl text-xs border border-gray-300 shadow-sm transition-all flex items-center gap-2"
-              >
-                <span>📋 현행 시간표 복제로 시작</span>
-              </button>
-            </>
-          ) : (
+          <>
             <button
               onClick={handlePreflight}
               disabled={plans.length === 0 || preflightLoading}
@@ -3528,7 +3321,15 @@ export default function DraftAutoTab({
                 </>
               )}
             </button>
-          )
+            <button
+              onClick={handleCopy}
+              disabled={hasBaseGrids === false}
+              className="px-4 py-2.5 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700 font-bold rounded-xl text-xs border border-gray-300 shadow-sm transition-all flex items-center gap-2"
+              title={hasBaseGrids === false ? "이 학기에는 아직 기초 시간표가 없어 복제할 수 없습니다." : undefined}
+            >
+              <span>📋 현행 시간표 복제로 시작</span>
+            </button>
+          </>
         ) : (
           <button
             onClick={handleCancelSolver}
@@ -3773,7 +3574,7 @@ export default function DraftAutoTab({
         ) : drafts.length === 0 ? (
           <div className="bg-white rounded-xl border border-dashed border-gray-200 p-12 text-center text-xs text-gray-400">
             <p className="font-semibold text-base mb-1">저장된 초안이 없습니다</p>
-            <p>위 버튼으로 자동 작성을 실행하거나 현행 시간표를 복제해 시작하세요.</p>
+            <p>시수 계획으로 새로 시간표를 작성하거나, 등록된 기초 시간표를 복제해 시작하세요.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
