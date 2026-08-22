@@ -301,6 +301,20 @@ export default function DraftAutoTab({
   // ── 직접 조정 모드 상태 (timetable_manual_move_spec §2 · §4 M1) ──
   const [manualMode, setManualMode] = useState(false);
   const [manualStartScore, setManualStartScore] = useState<number | null>(null);
+  const [isLgScreen, setIsLgScreen] = useState(true);
+
+  useEffect(() => {
+    const checkWidth = () => {
+      const isLg = typeof window !== "undefined" && window.innerWidth >= 1024;
+      setIsLgScreen(isLg);
+      if (!isLg) {
+        setManualMode(false);
+      }
+    };
+    checkWidth();
+    window.addEventListener("resize", checkWidth);
+    return () => window.removeEventListener("resize", checkWidth);
+  }, []);
   const [pickedSlot, setPickedSlot] = useState<{
     grade: number;
     classNum: number;
@@ -1212,7 +1226,7 @@ export default function DraftAutoTab({
     const placeholder = findPlaceholderLesson(openDraft.currentGrids, grade, classNum, day, period);
     if (placeholder) {
       setBlockedBubble({
-        message: "🔒 창체·SLAT 배치는 시간표 틀이므로 판에서 뺄 수 없습니다.",
+        message: "🔒 학교 공통 시간은 시간표 틀이므로 판에서 뺄 수 없습니다.",
       });
       return;
     }
@@ -2229,6 +2243,7 @@ export default function DraftAutoTab({
             {/* 직접 조정 모드 토글 (스펙 §0-4: 1024px 미만 화면에서는 미표시) */}
             <button
               onClick={() => {
+                if (!isLgScreen) return;
                 if (!manualMode) {
                   setManualMode(true);
                   setManualStartScore(report.soft.total);
@@ -3778,58 +3793,69 @@ export default function DraftAutoTab({
                             잔여 {u.remaining}시수 미배정
                           </p>
                         </div>
-                        <button
-                          onClick={() => {
-                            if (isSelected) {
-                              setSelectedUnplaced(null);
-                              setCandidatesResult(null);
-                            } else {
-                              if (chainSteps.length > 0 && chainStartGrids) {
-                                setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
-                                setChainSteps([]);
-                                setChainStartGrids(null);
+                        <div className="shrink-0 flex flex-col items-end gap-1">
+                          <button
+                            disabled={!isLgScreen}
+                            onClick={() => {
+                              if (!isLgScreen) return;
+                              if (isSelected) {
+                                setSelectedUnplaced(null);
+                                setCandidatesResult(null);
+                              } else {
+                                if (chainSteps.length > 0 && chainStartGrids) {
+                                  setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+                                  setChainSteps([]);
+                                  setChainStartGrids(null);
+                                  setHeldParkId(null);
+                                }
+                                setSelectedParkedEntry(null);
+                                setPickedSlot(null);
                                 setHeldParkId(null);
+                                setManualMode(true);
+                                setSelectedUnplaced(u);
+
+                                const tokens = u.label.split(" ");
+                                const classToken = tokens[0] || "";
+                                const subjectToken = tokens[1] || "미배정과목";
+                                const teacherToken = tokens[2] || "";
+                                const [gStr, cStr] = classToken.replace(/반$/, "").split("-");
+                                const targetGrade = parseInt(gStr, 10) || viewGrade;
+                                const targetClass = parseInt(cStr, 10) || viewClass;
+
+                                setViewGrade(targetGrade);
+                                setViewClass(targetClass);
+
+                                const lesson: TimetableLesson = {
+                                  subjectName: subjectToken,
+                                  subjectShort: subjectToken,
+                                  teachers: [{ email: "", name: teacherToken }],
+                                };
+
+                                const res = evaluateHeldCandidates({
+                                  grids: openDraft.currentGrids,
+                                  model: openDraft.model,
+                                  held: { grade: targetGrade, classNum: targetClass, lessons: [lesson] },
+                                });
+                                setCandidatesResult(res);
+                                setBlockedBubble(null);
                               }
-                              setSelectedParkedEntry(null);
-                              setPickedSlot(null);
-                              setHeldParkId(null);
-                              setManualMode(true);
-                              setSelectedUnplaced(u);
-
-                              const tokens = u.label.split(" ");
-                              const classToken = tokens[0] || "";
-                              const subjectToken = tokens[1] || "미배정과목";
-                              const teacherToken = tokens[2] || "";
-                              const [gStr, cStr] = classToken.replace(/반$/, "").split("-");
-                              const targetGrade = parseInt(gStr, 10) || viewGrade;
-                              const targetClass = parseInt(cStr, 10) || viewClass;
-
-                              setViewGrade(targetGrade);
-                              setViewClass(targetClass);
-
-                              const lesson: TimetableLesson = {
-                                subjectName: subjectToken,
-                                subjectShort: subjectToken,
-                                teachers: [{ email: "", name: teacherToken }],
-                              };
-
-                              const res = evaluateHeldCandidates({
-                                grids: openDraft.currentGrids,
-                                model: openDraft.model,
-                                held: { grade: targetGrade, classNum: targetClass, lessons: [lesson] },
-                              });
-                              setCandidatesResult(res);
-                              setBlockedBubble(null);
-                            }
-                          }}
-                          className={`px-2.5 py-1 rounded text-xs font-bold shadow-xs shrink-0 transition-all ${
-                            isSelected
-                              ? "bg-indigo-600 text-white"
-                              : "bg-red-600 hover:bg-red-700 text-white"
-                          }`}
-                        >
-                          {isSelected ? "선택됨" : "배정하기"}
-                        </button>
+                            }}
+                            className={`px-2.5 py-1 rounded text-xs font-bold shadow-xs transition-all ${
+                              !isLgScreen
+                                ? "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                                : isSelected
+                                ? "bg-indigo-600 text-white"
+                                : "bg-red-600 hover:bg-red-700 text-white"
+                            }`}
+                          >
+                            {isSelected ? "선택됨" : "배정하기"}
+                          </button>
+                          {!isLgScreen && (
+                            <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">
+                              넓은 화면에서 쓸 수 있어요
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -4139,13 +4165,13 @@ export default function DraftAutoTab({
       <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 text-indigo-900 text-xs leading-relaxed space-y-1">
         <div className="font-bold text-sm flex items-center gap-1.5">
           <span>🧩</span>
-          <span>시간표 편성 & 직접 조정</span>
+          <span>시간표 편성 및 직접 조정</span>
         </div>
         <p>
-          솔버가 작성한 초안을 기반으로 셀 이동·맞교환 및 연쇄 영향 미리보기를 수행하여 하드 위반 0건 완성을 진행합니다.
+          작성된 초안을 바탕으로 수업을 직접 옮기거나 연쇄 조정을 거쳐 충돌 없는 완성본을 만듭니다.
         </p>
         <p className="text-[11px] text-indigo-700 font-semibold">
-          💡 중대한 문제가 생기는 이동은 실행이 자동으로 차단됩니다.
+          💡 선생님 수업 시간이 겹치거나 규칙에 어긋나는 이동은 실행이 자동으로 차단됩니다.
         </p>
       </div>
 
@@ -4262,7 +4288,7 @@ export default function DraftAutoTab({
                   <span>교육과정 미등록 학년 안내</span>
                 </div>
                 <p className="text-[11px] text-amber-800">
-                  {preflightData.stats.cohortMissingGrades.join(", ")}학년의 창체·SLAT 배치가 등록돼 있지 않습니다. 창체·SLAT 자리가 비게 됩니다.
+                  {preflightData.stats.cohortMissingGrades.join(", ")}학년의 학교 공통 시간이 등록돼 있지 않습니다. 창체·SLAT 자리가 비게 됩니다.
                 </p>
               </div>
             )}
@@ -4272,12 +4298,12 @@ export default function DraftAutoTab({
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1">
                 <div className="font-bold flex items-center gap-1.5">
                   <span>⚠️</span>
-                  <span>창체·SLAT 학년도별 변경이 적용되지 않은 학년</span>
+                  <span>학교 공통 시간 학년도별 변경이 적용되지 않은 학년</span>
                 </div>
                 {preflightData.stats.overrideSkips!.map((s) => (
                   <p key={`${s.overrideId}-${s.grade}`} className="text-[11px] text-amber-800">
                     「{s.label}」은 {s.grade}학년에 적용되지 않았습니다 — 만들 당시와 지금의 {s.grade}학년
-                    교육과정이 다릅니다. 이 학년은 교육과정에 등록된 배치를 따랐습니다. 창체·SLAT 배치
+                    교육과정이 다릅니다. 이 학년은 교육과정에 등록된 배치를 따랐습니다. 학교 공통 시간
                     화면에서 확인해 주세요.
                   </p>
                 ))}

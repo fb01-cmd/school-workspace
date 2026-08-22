@@ -192,11 +192,11 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
       const data = await res.json();
       if (res.ok) {
         setModalOpen(false);
-        setSuccessMessage("창체·SLAT 배치가 안전하게 저장되었습니다.");
+        setSuccessMessage("학교 공통 시간이 안전하게 저장되었습니다.");
         setTimeout(() => setSuccessMessage(null), 3000);
         await loadData();
       } else {
-        setError(data.error || "창체·SLAT 배치 저장에 실패했습니다.");
+        setError(data.error || "학교 공통 시간 저장에 실패했습니다.");
       }
     } catch (err: any) {
       setError(`저장 오류: ${err.message || String(err)}`);
@@ -217,7 +217,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
         }),
       });
       if (res.ok) {
-        setSuccessMessage("창체·SLAT 배치가 삭제되었습니다.");
+        setSuccessMessage("학교 공통 시간이 삭제되었습니다.");
         setTimeout(() => setSuccessMessage(null), 3000);
         await loadData();
       } else {
@@ -567,7 +567,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
               <span>📚 교육과정별 기본 배치</span>
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              입학생을 기준으로 3년간 적용되는 기본 창체·SLAT 배치입니다.
+              입학생을 기준으로 3년간 적용되는 기본 학교 공통 시간입니다.
             </p>
           </div>
           <button
@@ -592,7 +592,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
         {loading ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent mb-4"></div>
-            <p className="text-sm font-semibold text-gray-600">창체·SLAT 배치를 불러오는 중입니다...</p>
+            <p className="text-sm font-semibold text-gray-600">학교 공통 시간을 불러오는 중입니다...</p>
           </div>
         ) : cohorts.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center space-y-3">
@@ -738,7 +738,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
             <span className="text-2xl">📋</span>
             <h4 className="text-sm font-bold text-gray-700">등록된 학년도별 변경이 없습니다</h4>
             <p className="text-xs text-gray-500 max-w-md mx-auto">
-              특정 학년도부터 창체·SLAT 배치를 변경하려면 위 「+ {currentSchoolYear}학년도부터 바꾸기」 버튼을 눌러 등록하세요.
+              특정 학년도부터 학교 공통 시간을 변경하려면 위 「+ {currentSchoolYear}학년도부터 바꾸기」 버튼을 눌러 등록하세요.
             </p>
           </div>
         ) : (
@@ -888,7 +888,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-gray-900">
-                  {editingCohortId ? "창체·SLAT 배치 수정" : "새 창체·SLAT 배치 등록"}
+                  {editingCohortId ? "학교 공통 시간 수정" : "새 학교 공통 시간 등록"}
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
                   이 배치를 어느 입학생부터 적용할지와, 창체·SLAT이 들어갈 요일·교시를 정합니다.
@@ -1037,7 +1037,7 @@ export default function CurriculumCohortTab({ periodsPerDay = 7 }: CurriculumCoh
                     : `새 학년도별 변경 등록 (${overrideFormYear}학년도부터 바꾸기)`}
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  특정 학년도부터 적용할 창체·SLAT 배치를 등록합니다. 지난 학년도 기록은 안전하게 보존됩니다.
+                  특정 학년도부터 적용할 학교 공통 시간을 등록합니다. 지난 학년도 기록은 안전하게 보존됩니다.
                 </p>
               </div>
               <button

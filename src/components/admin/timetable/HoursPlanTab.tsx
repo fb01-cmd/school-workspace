@@ -445,7 +445,7 @@ export default function HoursPlanTab({ activeTermId, periodsPerDay = 7 }: HoursP
     // 창체·SLAT 배치 등록부 확인
     if (cohorts.length === 0) {
       const confirmNoCohort = confirm(
-        "창체·SLAT 배치 등록부가 비어 있어 창체·SLAT 시간이 추가되지 않습니다.\n\n이대로 계속 진행하시겠습니까?"
+        "학교 공통 시간 등록부가 비어 있어 창체·SLAT 시간이 추가되지 않습니다.\n\n이대로 계속 진행하시겠습니까?"
       );
       if (!confirmNoCohort) return;
     }
