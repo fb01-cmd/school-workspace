@@ -713,3 +713,19 @@
   3. 따라서 사용자가 겪은 *"3단계 가도 뭐 없다"* 의 정체는 **깊이 부족이 아니라 「그 자리엔 정말 경로가 없다」**였을 가능성이 높다. **엔진이 제대로 답하고 있었는데 화면이 그 사실을 말해주지 않았을 뿐이다** — 과제 AA의 계기판이 정확히 그것을 고쳤다.
 - **[한계 — 정직하게]** 표본 14건은 작다. **「3단계 전용 사례가 없다」가 아니라 「이 표본에는 없었다」**이다. 다만 ⓐ시간초과 0회는 29회 전수 관측이라 시간 병목 배제는 근거가 단단하고 ⓑ 깊이 판단은 표본을 늘려 보강할 수 있다(표본 1건당 약 40~120 읽기).
 - **[사용자에게 준 검증용 실사례]** 계기판이 제대로 도는지 화면에서 확인할 수 있는 실제 조합 — 2단계로 풀리는 것(박윤흡 1-1 철학 월1→월3, 3건) / 아예 없는 것(이경호 2-1 중화 수2→월2).
+
+## [2026-08-23] Antigravity — 과제 BB(기초시간표 개정 화면에 직접 조정 붙이기) 완결
+
+- **[사실 1 — draft_model 1회 호출로 전역 판 로드 및 개별 fetch 제거 (BB-1, 규칙 ⑪)]**
+  - `BaseRevisionTab.tsx:107-133`: 화면 진입 시 `draft_model` 1회 호출로 전 학급 기초 그리드(`baseGrids`)와 제약 모델(`model`)을 수신.
+  - 종전의 학급 전환 시마다 발생하던 `action: "class"` 개별 호출(`fetchBaseClassGrid`) 및 관련 상태(`baseGrid`, `loadingGrid`) 완전 철거.
+  - 읽기량: 화면 진입 시 `draft_model` 1회, 학급 전환 시 0회, 조작 시 0회 (전부 브라우저 내 메모리 계산).
+- **[사실 2 — 전역 검사기 상단 배너 및 용어 동등화 (BB-1)]**
+  - `BaseRevisionTab.tsx:189-195·529-548`: `validateTimetable(currentGrids, model)`을 호출하여 상단 검증 바에 `중대 문제 ${auditReport.hard.length}건 · 감점 ${auditReport.soft.total}점`을 표출 (초안 편집 화면과 동일한 용어 사용).
+- **[사실 3 — 직접 조정 (집기 → 3색 신호등 → 이동) 및 evaluateMoveCandidates 연동 (BB-1)]**
+  - `BaseRevisionTab.tsx:218-283·597-680`: `evaluateMoveCandidates`를 자체 판정 없이 그대로 사용하여 초록(`ok`, 감점 개선/유지)/노랑(`worse`, 감점 증가 뱃지)/회색(`blocked`, 차단 사유 툴팁) 3색 신호등과 집기 상태(`isPicked`, 📌) 구현.
+  - 셀 불변 조항(높이 균일 `h-16 min-h-[4rem]`, 내부 문장 블록 금지) 및 Esc 키 집기 해제 핸들러 배선.
+- **[사실 4 — 구 맞교환(selectedSlotA) 철거 확인]**
+  - 전체 저장소 grep 결과 `selectedSlotA`는 `BaseRevisionTab.tsx` 외 타 파일 참조 0건이었음을 확인 후 안전하게 전면 철거.
+- **[규약 준수]** `project_notes.md`는 기존 내용 삭제 없이 하단에만 추가(append-only).
+- **[검증]** `tsc` 0건 · `build` (49/49) 통과 · `check:ui` 20/20 통과 · `check_ui_removals.sh 23067ba` 8건(구 맞교환 철거 및 문구 개정) 확인 · selftest 4종(`lookahead`(31), `movecand`(15), `m2ops`(15), `unplaced`(24)) 100% 통과.

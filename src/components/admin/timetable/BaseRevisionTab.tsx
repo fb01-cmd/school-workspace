@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BaseRevisionOp,
   ClassGrid,
+  SoftPenaltyCode,
   TimetableBaseRevision,
+  TimetableConstraintModel,
   TimetableLesson,
 } from "@/lib/timetable/types";
 import { useAvailableClasses } from "./useAvailableClasses";
+import { applyRevisionOps, cloneClassGrids } from "@/lib/timetable/utils";
+import { validateTimetable } from "@/lib/timetable/validate";
+import { evaluateMoveCandidates, MoveCandidatesResult } from "@/lib/timetable/moveCandidates";
+import { SOFT_CODE_LABELS } from "@/lib/timetable/labels";
 
 interface BaseRevisionTabProps {
   activeTermId?: string | null;
@@ -22,11 +28,14 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
 
   const { getClassesForGrade } = useAvailableClasses(activeTermId, { fallbackOnEmpty: true });
 
-  // 학급 및 기초시간표 그리드 상태
+  // 학급 선택 상태
   const [selectedGrade, setSelectedGrade] = useState<number>(1);
   const [selectedClassNum, setSelectedClassNum] = useState<number>(1);
-  const [baseGrid, setBaseGrid] = useState<ClassGrid | null>(null);
-  const [loadingGrid, setLoadingGrid] = useState(false);
+
+  // draft_model 기반 전체 기초 그리드 + 제약 모델
+  const [baseGrids, setBaseGrids] = useState<ClassGrid[] | null>(null);
+  const [model, setModel] = useState<TimetableConstraintModel | null>(null);
+  const [loadingModel, setLoadingModel] = useState(false);
 
   const currentClasses = getClassesForGrade(selectedGrade);
 
@@ -43,8 +52,16 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
   const [savingDraft, setSavingDraft] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
 
-  // 셀 선택 (맞교환 op 생성용)
-  const [selectedSlotA, setSelectedSlotA] = useState<{ day: number; period: number } | null>(null);
+  // 직접 조정 (집기 → 3색 신호등 → 이동) State
+  const [pickedSlot, setPickedSlot] = useState<{
+    grade: number;
+    classNum: number;
+    day: number;
+    period: number;
+    lesson: TimetableLesson;
+  } | null>(null);
+  const [candidatesResult, setCandidatesResult] = useState<MoveCandidatesResult | null>(null);
+  const [blockedBubble, setBlockedBubble] = useState<{ day: number; period: number; message: string } | null>(null);
 
   // 셀 통째 편집 모달 (edit_cell op 생성용)
   const [editModalSlot, setEditModalSlot] = useState<{ day: number; period: number } | null>(null);
@@ -75,6 +92,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
     return kst.toISOString().split("T")[0];
   };
 
+  // 1) 개정 이력 목록 로드 (화면 진입 시 1회)
   const fetchRevisions = async () => {
     setLoading(true);
     setError(null);
@@ -108,66 +126,161 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
     }
   };
 
-  const fetchBaseClassGrid = async (g: number, c: number) => {
-    setLoadingGrid(true);
+  // 2) 전 학급 기초 그리드 + 제약 모델 로드 (화면 진입 시 1회 — draft_model)
+  const fetchModelAndBaseGrids = async () => {
+    setLoadingModel(true);
     try {
-      const res = await fetch("/api/timetable/view", {
+      const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "class",
-          grade: g,
-          classNum: c,
+          action: "draft_model",
           termId: activeTermId || undefined,
         }),
       });
+
       if (res.ok) {
         const data = await res.json();
-        if (data.data && !Array.isArray(data.data)) {
-          setBaseGrid(data.data as ClassGrid);
-        } else if (Array.isArray(data.data) && data.data.length > 0) {
-          setBaseGrid(data.data[0] as ClassGrid);
-        } else {
-          setBaseGrid(null);
-        }
+        setBaseGrids(data.baseGrids || []);
+        setModel(data.model || null);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setError(errData.error || "기초시간표 및 제약 모델을 불러올 수 없습니다.");
       }
-    } catch {
-      setBaseGrid(null);
+    } catch (err: any) {
+      setError(`네트워크 오류: ${err.message}`);
     } finally {
-      setLoadingGrid(false);
+      setLoadingModel(false);
     }
   };
 
   useEffect(() => {
     fetchRevisions();
+    fetchModelAndBaseGrids();
   }, [activeTermId]);
 
+  // 학급 변경 시 집기 상태 초기화
   useEffect(() => {
-    fetchBaseClassGrid(selectedGrade, selectedClassNum);
-  }, [selectedGrade, selectedClassNum, activeTermId]);
+    setPickedSlot(null);
+    setCandidatesResult(null);
+    setBlockedBubble(null);
+  }, [selectedGrade, selectedClassNum]);
 
-  // 셀 클릭 핸들러 (맞교환 op 생성)
+  // Esc 키로 집기 해제
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && pickedSlot) {
+        setPickedSlot(null);
+        setCandidatesResult(null);
+        setBlockedBubble(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [pickedSlot]);
+
+  // 현재 판 계산 (baseGrids + ops)
+  const currentGrids = useMemo(() => {
+    if (!baseGrids || baseGrids.length === 0) return [];
+    const cloned = cloneClassGrids(baseGrids);
+    applyRevisionOps(cloned, ops);
+    return cloned;
+  }, [baseGrids, ops]);
+
+  // 현재 선택된 학급의 그리드
+  const currentBaseGrid = useMemo(() => {
+    return (
+      currentGrids.find((g) => g.grade === selectedGrade && g.classNum === selectedClassNum) || null
+    );
+  }, [currentGrids, selectedGrade, selectedClassNum]);
+
+  // 전역 검사기 채점 결과 (중대 문제 건수 · 감점 총점)
+  const auditReport = useMemo(() => {
+    if (!currentGrids.length || !model) return null;
+    return validateTimetable(currentGrids, model);
+  }, [currentGrids, model]);
+
+  // 하루 교시 수
+  const periodsPerDay = model?.periodsPerDay || 7;
+
+  // 감점 증가 사유 포맷팅
+  const formatWorseReasons = (worseByCode?: Partial<Record<SoftPenaltyCode, number>>): string => {
+    if (!worseByCode) return "";
+    const parts: string[] = [];
+    for (const [code, delta] of Object.entries(worseByCode)) {
+      if (!delta || delta <= 0) continue;
+      const label = SOFT_CODE_LABELS[code as SoftPenaltyCode] || code;
+      parts.push(`${label} (+${delta}점)`);
+    }
+    return parts.join(", ");
+  };
+
+  // 셀 클릭 핸들러 (집기 → 3색 신호등 → 이동)
   const handleCellClick = (day: number, period: number) => {
-    if (!selectedSlotA) {
-      setSelectedSlotA({ day, period });
-    } else {
-      if (selectedSlotA.day === day && selectedSlotA.period === period) {
-        setSelectedSlotA(null); // 동일 셀 클릭 시 해제
+    if (!currentBaseGrid || !model) return;
+    const cell = currentBaseGrid.cells?.find((c) => c.day === day && c.period === period);
+    const lesson = cell?.lessons?.[0];
+
+    // 1) 아직 아무것도 집지 않은 상태
+    if (!pickedSlot) {
+      if (!lesson) {
+        setBlockedBubble({ day, period, message: "빈 칸입니다 — 옮길 수업이 없습니다." });
         return;
       }
-
-      // 맞교환 (swap) 연산 생성
-      const newSwapOp: BaseRevisionOp = {
-        type: "swap",
+      const res = evaluateMoveCandidates({
+        grids: currentGrids,
+        model,
+        pick: { grade: selectedGrade, classNum: selectedClassNum, day, period },
+      });
+      if (res.pickBlocked) {
+        setBlockedBubble({ day, period, message: res.pickBlocked });
+        return;
+      }
+      setPickedSlot({
         grade: selectedGrade,
         classNum: selectedClassNum,
-        a: { day: selectedSlotA.day, period: selectedSlotA.period },
-        b: { day, period },
-      };
-
-      setOps([...ops, newSwapOp]);
-      setSelectedSlotA(null);
+        day,
+        period,
+        lesson,
+      });
+      setCandidatesResult(res);
+      setBlockedBubble(null);
+      return;
     }
+
+    // 2) 이미 집은 상태에서 동일 셀 재클릭 -> 집기 해제
+    if (
+      pickedSlot.grade === selectedGrade &&
+      pickedSlot.classNum === selectedClassNum &&
+      pickedSlot.day === day &&
+      pickedSlot.period === period
+    ) {
+      setPickedSlot(null);
+      setCandidatesResult(null);
+      setBlockedBubble(null);
+      return;
+    }
+
+    // 3) 후보 셀 클릭
+    const cand = candidatesResult?.candidates.find((c) => c.day === day && c.period === period);
+    if (!cand || cand.verdict === "blocked") {
+      // 차단 칸: 클릭 무반응 (스펙 §2-3)
+      return;
+    }
+
+    // 이동 (move 또는 swap) op 추가
+    const newSwapOp: BaseRevisionOp = {
+      type: "swap",
+      grade: selectedGrade,
+      classNum: selectedClassNum,
+      a: { day: pickedSlot.day, period: pickedSlot.period },
+      b: { day, period },
+    };
+
+    setOps((prev) => [...prev, newSwapOp]);
+    setPickedSlot(null);
+    setCandidatesResult(null);
+    setBlockedBubble(null);
   };
 
   // 셀 상세 편집 op 추가 (edit_cell)
@@ -192,7 +305,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
       lessons,
     };
 
-    setOps([...ops, newEditOp]);
+    setOps((prev) => [...prev, newEditOp]);
     setEditModalSlot(null);
     setEditSubjectName("");
     setEditTeacherName("");
@@ -289,7 +402,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
       setRevisionNote("");
       setWarnings([]);
       fetchRevisions();
-      fetchBaseClassGrid(selectedGrade, selectedClassNum);
+      fetchModelAndBaseGrids();
     } catch (err: any) {
       alert(`적용 오류: ${err.message}`);
     } finally {
@@ -359,8 +472,8 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* 좌측: 학급 선택 & 기초시간표 그리드 편집기 (lg:col-span-8) */}
-        <div className="lg:col-span-8 space-y-6">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+        <div className="lg:col-span-8 space-y-4">
+          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-6 space-y-4">
             {/* 학급 선택 바 */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
@@ -371,13 +484,12 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                     type="button"
                     onClick={() => {
                       setSelectedGrade(g);
-                      setSelectedSlotA(null);
                       const classes = getClassesForGrade(g);
                       if (classes.length > 0 && !classes.includes(selectedClassNum)) {
                         setSelectedClassNum(classes[0]);
                       }
                     }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       selectedGrade === g
                         ? "bg-amber-600 text-white shadow-xs"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -399,9 +511,8 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                       type="button"
                       onClick={() => {
                         setSelectedClassNum(cNum);
-                        setSelectedSlotA(null);
                       }}
-                      className={`w-7 h-7 rounded text-xs font-bold transition-all ${
+                      className={`w-7 h-7 rounded text-xs font-bold transition-all cursor-pointer ${
                         selectedClassNum === cNum
                           ? "bg-gray-800 text-white shadow-xs"
                           : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -414,33 +525,54 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
               </div>
             </div>
 
-            {/* 안내 텍스트 */}
-            <div className="p-3 bg-amber-50/60 border border-amber-100 rounded-lg text-xs text-amber-900 flex justify-between items-center">
-              <div>
-                🏫 <strong>{selectedGrade}학년 {selectedClassNum}반 기초시간표 편집</strong>
-                <span className="text-gray-500 ml-2">
-                  (첫 번째 셀 클릭 후 두 번째 셀을 클릭하면 교시 맞교환 연산이 추가됩니다)
-                </span>
-              </div>
-              {selectedSlotA && (
-                <span className="text-[11px] font-bold bg-amber-200 text-amber-950 px-2 py-0.5 rounded animate-pulse">
-                  📌 {DAY_LABEL[selectedSlotA.day]}요일 {selectedSlotA.period}교시 선택됨 (교체할 상대 셀 클릭)
-                </span>
-              )}
-            </div>
+            {/* 상단 검사기 검증 바 (BB-1) */}
+            {auditReport && (
+              <div className="flex items-center justify-between gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-gray-700">전체 시간표 검증:</span>
+                  {auditReport.hard.length === 0 ? (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 flex items-center gap-1">
+                      <span>✅</span>
+                      <span>중대 문제 0건</span>
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-bold border border-red-200 flex items-center gap-1">
+                      <span>⚠️</span>
+                      <span>중대 문제 {auditReport.hard.length}건</span>
+                    </span>
+                  )}
+                  <span className="px-2 py-0.5 rounded-full bg-gray-200/80 text-gray-800 font-bold">
+                    감점 {auditReport.soft.total}점
+                  </span>
+                </div>
 
-            {/* 5일 x 7교시 그리드 */}
-            {loadingGrid ? (
-              <div className="py-12 text-center text-xs text-gray-500 font-semibold">
-                기초시간표를 불러오는 중입니다...
+                <div className="text-[11px] text-gray-500">
+                  {pickedSlot ? (
+                    <span className="text-amber-900 font-bold flex items-center gap-1 bg-amber-100/70 px-2 py-0.5 rounded border border-amber-300">
+                      <span>📌</span>
+                      <span>
+                        {DAY_LABEL[pickedSlot.day]} {pickedSlot.period}교시 ({pickedSlot.lesson.subjectName}) 집음 — 목적지 클릭 (취소: 재클릭 또는 Esc)
+                      </span>
+                    </span>
+                  ) : (
+                    <span>수업을 클릭하면 이동 가능한 위치(3색 신호등)가 표시됩니다.</span>
+                  )}
+                </div>
               </div>
-            ) : !baseGrid ? (
+            )}
+
+            {/* 5일 x N교시 그리드 */}
+            {loadingModel ? (
+              <div className="py-12 text-center text-xs text-gray-500 font-semibold">
+                기초시간표 및 제약 모델을 불러오는 중입니다...
+              </div>
+            ) : !currentBaseGrid ? (
               <div className="py-12 text-center text-xs text-gray-400">
                 시간표 데이터를 불러올 수 없습니다.
               </div>
             ) : (
               <div className="overflow-x-auto border border-gray-200 rounded-xl">
-                <table className="w-full border-collapse text-xs text-center">
+                <table className="w-full border-collapse text-xs text-center table-fixed">
                   <thead>
                     <tr className="bg-gray-800 text-white font-bold">
                       <th className="py-2.5 px-2 border-r border-gray-700 w-14">교시</th>
@@ -452,22 +584,29 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 bg-white">
-                    {Array.from({ length: 7 }).map((_, pIdx) => {
+                    {Array.from({ length: periodsPerDay }).map((_, pIdx) => {
                       const period = pIdx + 1;
                       return (
                         <tr key={period} className={period % 2 === 0 ? "bg-gray-50/40" : "bg-white"}>
-                          <td className="py-3 px-2 border-r border-gray-200 font-bold text-gray-500 bg-gray-50">
+                          <td className="py-2 px-1.5 border-r border-gray-200 font-bold text-gray-500 bg-gray-50 text-[11px]">
                             {period}교시
                           </td>
                           {DAYS.map((d) => {
-                            const cell = baseGrid.cells?.find(
+                            const cell = currentBaseGrid.cells?.find(
                               (c) => c.day === d.num && c.period === period
                             );
                             const lesson = cell?.lessons?.[0];
-                            const isSelectedA =
-                              selectedSlotA?.day === d.num && selectedSlotA?.period === period;
 
-                            // 이 셀과 관련된 현재 ops가 존재하는지 체크
+                            const isPicked =
+                              pickedSlot?.grade === selectedGrade &&
+                              pickedSlot?.classNum === selectedClassNum &&
+                              pickedSlot?.day === d.num &&
+                              pickedSlot?.period === period;
+
+                            const cand = candidatesResult?.candidates.find(
+                              (c) => c.day === d.num && c.period === period
+                            );
+
                             const hasOp = ops.some((op) => {
                               if (op.type === "swap_pair") {
                                 return (
@@ -478,7 +617,6 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                                     (op.b.day === d.num && op.b.period === period))
                                 );
                               }
-                              // 직접 조정 전용 op(연쇄·빼두기)는 개정 경로에서 만들지 않는다 — 표시 대상 아님
                               if (op.type === "chain" || op.type === "park" || op.type === "unpark")
                                 return false;
                               if (op.grade !== selectedGrade || op.classNum !== selectedClassNum)
@@ -489,45 +627,191 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                                 : op.day === d.num && op.period === period;
                             });
 
+                            const isBubbleThis =
+                              blockedBubble?.day === d.num && blockedBubble?.period === period;
+
+                            // 1) 집은 셀
+                            if (isPicked) {
+                              return (
+                                <td
+                                  key={d.num}
+                                  onClick={() => handleCellClick(d.num, period)}
+                                  title="집은 수업 (클릭 또는 Esc로 해제)"
+                                  className="h-16 min-h-[4rem] max-h-[4rem] p-1.5 border-r border-gray-200 bg-amber-100 text-amber-950 align-top cursor-pointer select-none relative ring-2 ring-amber-500 font-bold overflow-hidden shadow-xs"
+                                >
+                                  <div className="h-full flex flex-col justify-between">
+                                    <div className="flex items-start justify-between gap-0.5">
+                                      <span className="font-bold text-[11px] truncate leading-tight">
+                                        {lesson?.subjectShort || lesson?.subjectName || "-"}
+                                      </span>
+                                      <span className="shrink-0 text-[10px] leading-none" title="집은 수업">
+                                        📌
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-amber-800 truncate leading-tight text-left">
+                                      {lesson?.teachers?.map((t) => t.name).join(", ") || "—"}
+                                    </div>
+                                  </div>
+                                </td>
+                              );
+                            }
+
+                            // 2) 집기 상태에서의 후보 셀들
+                            if (cand) {
+                              if (cand.verdict === "ok") {
+                                return (
+                                  <td
+                                    key={d.num}
+                                    onClick={() => handleCellClick(d.num, period)}
+                                    title={
+                                      cand.kind === "swap"
+                                        ? `${lesson?.subjectShort || "수업"}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                        : `빈 칸으로 이동 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                    }
+                                    className="h-16 min-h-[4rem] max-h-[4rem] p-1.5 border-r border-gray-200 bg-emerald-50/90 hover:bg-emerald-100 border-emerald-300 text-gray-800 align-top cursor-pointer select-none transition-colors relative overflow-hidden"
+                                  >
+                                    <div className="h-full flex flex-col justify-between">
+                                      <div className="flex items-start justify-between gap-0.5">
+                                        <span className="font-bold text-[11px] truncate leading-tight text-emerald-950">
+                                          {lesson ? (lesson.subjectShort || lesson.subjectName) : "—"}
+                                        </span>
+                                        <span
+                                          className={`shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none ${
+                                            cand.softDelta < 0
+                                              ? "bg-emerald-600 text-white shadow-2xs"
+                                              : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                          }`}
+                                        >
+                                          {cand.softDelta < 0 ? cand.softDelta : "0"}
+                                        </span>
+                                      </div>
+                                      <div className="text-[10px] text-gray-500 truncate leading-tight text-left">
+                                        {lesson?.teachers?.map((t) => t.name).join(", ") || "—"}
+                                      </div>
+                                    </div>
+                                  </td>
+                                );
+                              }
+
+                              if (cand.verdict === "worse") {
+                                const worseReason = formatWorseReasons(cand.worseByCode);
+                                return (
+                                  <td
+                                    key={d.num}
+                                    onClick={() => handleCellClick(d.num, period)}
+                                    title={
+                                      worseReason
+                                        ? `감점 (+${cand.softDelta}점): ${worseReason}`
+                                        : `감점 +${cand.softDelta}점`
+                                    }
+                                    className="h-16 min-h-[4rem] max-h-[4rem] p-1.5 border-r border-gray-200 bg-amber-50/90 hover:bg-amber-100 border-amber-300 text-gray-800 align-top cursor-pointer select-none transition-colors relative overflow-hidden"
+                                  >
+                                    <div className="h-full flex flex-col justify-between">
+                                      <div className="flex items-start justify-between gap-0.5">
+                                        <span className="font-bold text-[11px] truncate leading-tight text-amber-950">
+                                          {lesson ? (lesson.subjectShort || lesson.subjectName) : "—"}
+                                        </span>
+                                        <span className="shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none bg-amber-500 text-white shadow-2xs">
+                                          +{cand.softDelta}
+                                        </span>
+                                      </div>
+                                      <div className="text-[10px] text-gray-500 truncate leading-tight text-left">
+                                        {lesson?.teachers?.map((t) => t.name).join(", ") || "—"}
+                                      </div>
+                                    </div>
+                                  </td>
+                                );
+                              }
+
+                              // blocked
+                              return (
+                                <td
+                                  key={d.num}
+                                  title={cand.blockedReason ? `이동 불가: ${cand.blockedReason}` : "이동 불가"}
+                                  className="h-16 min-h-[4rem] max-h-[4rem] p-1.5 border-r border-gray-200 bg-gray-100/90 text-gray-400 align-top cursor-not-allowed select-none relative opacity-70 overflow-hidden"
+                                >
+                                  <div className="h-full flex flex-col justify-between">
+                                    <div className="flex items-start justify-between gap-0.5">
+                                      <span className="font-bold text-[11px] truncate leading-tight text-gray-400">
+                                        {lesson ? (lesson.subjectShort || lesson.subjectName) : "—"}
+                                      </span>
+                                      <span className="shrink-0 text-[10px] text-gray-400 leading-none">🔒</span>
+                                    </div>
+                                    <div className="text-[10px] text-gray-400 truncate leading-tight text-left">
+                                      {lesson?.teachers?.map((t) => t.name).join(", ") || "—"}
+                                    </div>
+                                  </div>
+                                </td>
+                              );
+                            }
+
+                            // 3) 대기 상태 (일반 모드)
                             return (
                               <td
                                 key={d.num}
-                                className={`p-1.5 border-r border-gray-200 transition-all ${
-                                  isSelectedA
-                                    ? "bg-amber-500 text-white font-bold ring-2 ring-amber-300 shadow-md"
-                                    : hasOp
-                                    ? "bg-amber-100/80 border-amber-300 font-bold"
-                                    : "hover:bg-amber-50/50"
+                                onClick={() => handleCellClick(d.num, period)}
+                                title={
+                                  lesson
+                                    ? `${lesson.subjectName} (${lesson.teachers?.map((t) => t.name).join(", ") || ""})`
+                                    : undefined
+                                }
+                                className={`h-16 min-h-[4rem] max-h-[4rem] p-1.5 border-r border-gray-200 align-top transition-colors cursor-pointer select-none text-gray-800 relative overflow-hidden group ${
+                                  hasOp
+                                    ? "bg-amber-50/70 border-amber-300 font-semibold"
+                                    : "bg-white hover:bg-indigo-50/50"
                                 }`}
                               >
-                                <div className="group relative flex flex-col justify-between h-full min-h-[3.2rem]">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCellClick(d.num, period)}
-                                    className="w-full text-left p-1"
-                                  >
-                                    <div className={`font-bold text-xs truncate ${isSelectedA ? "text-white" : "text-gray-900"}`}>
-                                      {lesson ? lesson.subjectName : "-"}
+                                {isBubbleThis && (
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-30 bg-gray-900 text-white text-[11px] font-semibold px-2 py-1 rounded shadow-lg whitespace-nowrap pointer-events-none flex items-center gap-1">
+                                    <span>⚠️</span>
+                                    <span>{blockedBubble.message}</span>
+                                  </div>
+                                )}
+                                {lesson ? (
+                                  <div className="h-full flex flex-col justify-between">
+                                    <div className="flex items-start justify-between gap-0.5">
+                                      <span className="font-bold text-[11px] truncate leading-tight text-gray-900">
+                                        {lesson.subjectShort || lesson.subjectName}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditModalSlot({ day: d.num, period });
+                                          setEditSubjectName(lesson?.subjectName || "");
+                                          setEditTeacherName(lesson?.teachers?.[0]?.name || "");
+                                        }}
+                                        title="셀 내용 직접 수정"
+                                        className="opacity-0 group-hover:opacity-100 text-[10px] text-amber-800 hover:text-amber-950 font-bold px-1 rounded bg-amber-100/80 transition-opacity cursor-pointer"
+                                      >
+                                        ✏️
+                                      </button>
                                     </div>
-                                    <div className={`text-[10px] truncate ${isSelectedA ? "text-amber-100" : "text-gray-500"}`}>
-                                      {lesson?.teachers?.map((t) => t.name).join(", ") || "교사 미지정"}
+                                    <div className="text-[10px] text-gray-500 truncate leading-tight text-left">
+                                      {lesson.teachers?.map((t) => t.name).join(", ") || "—"}
                                     </div>
-                                  </button>
-
-                                  {/* 셀 직접 편집 모달 호출 버튼 */}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setEditModalSlot({ day: d.num, period });
-                                      setEditSubjectName(lesson?.subjectName || "");
-                                      setEditTeacherName(lesson?.teachers?.[0]?.name || "");
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 text-xs text-amber-800 hover:underline text-right w-full pt-0.5"
-                                  >
-                                    ✏️ 내용 변경
-                                  </button>
-                                </div>
+                                  </div>
+                                ) : (
+                                  <div className="h-full flex flex-col justify-between">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] text-gray-300">—</span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditModalSlot({ day: d.num, period });
+                                          setEditSubjectName("");
+                                          setEditTeacherName("");
+                                        }}
+                                        title="셀 내용 직접 수정"
+                                        className="opacity-0 group-hover:opacity-100 text-[10px] text-amber-800 hover:text-amber-950 font-bold px-1 rounded bg-amber-100/80 transition-opacity cursor-pointer"
+                                      >
+                                        ✏️
+                                      </button>
+                                    </div>
+                                    <div className="text-[10px] text-transparent select-none">—</div>
+                                  </div>
+                                )}
                               </td>
                             );
                           })}
@@ -544,15 +828,21 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
         {/* 우측: 변경 연산(Ops) 편집 패널 & 개정 이력 (lg:col-span-4) */}
         <div className="lg:col-span-4 space-y-6">
           {/* Ops 편집 및 저장/적용 패널 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
                 <span>📝 편집 연산 목록 ({ops.length}건)</span>
               </h4>
               {ops.length > 0 && (
                 <button
-                  onClick={() => setOps([])}
-                  className="text-xs text-red-600 hover:underline font-semibold"
+                  type="button"
+                  onClick={() => {
+                    setOps([]);
+                    setPickedSlot(null);
+                    setCandidatesResult(null);
+                    setBlockedBubble(null);
+                  }}
+                  className="text-xs text-red-600 hover:underline font-semibold cursor-pointer"
                 >
                   전체 초기화
                 </button>
@@ -563,54 +853,53 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
             {ops.length === 0 ? (
               <div className="py-8 text-center text-xs text-gray-400 space-y-1">
                 <p className="font-semibold">추가된 개정 연산이 없습니다.</p>
-                <p className="text-[11px]">좌측 시간표에서 교시를 클릭해 맞교환 또는 편집하세요.</p>
+                <p className="text-[11px]">좌측 시간표에서 수업을 클릭해 이동하거나 수정하세요.</p>
               </div>
             ) : (
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                 {ops.map((op, idx) => {
-                  // 직접 조정 전용 op(연쇄·빼두기)는 개정 경로에서 만들지 않는다 — 타입 좁히기 겸 방어
                   if (op.type === "chain" || op.type === "park" || op.type === "unpark") return null;
                   return (
-                  <div
-                    key={idx}
-                    className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50 text-xs flex items-center justify-between gap-2"
-                  >
-                    <div>
-                      {op.type === "swap_pair" ? (
-                        <>
-                          <span className="font-bold text-amber-900">
-                            {op.classes.map((c) => `${c.grade}학년 ${c.classNum}반`).join("·")}:
-                          </span>{" "}
-                          <span>
-                            {DAY_LABEL[op.a.day]} {op.a.period}교시 ↔ {DAY_LABEL[op.b.day]} {op.b.period}교시 함께 맞바꿈 (학급 간 교환)
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="font-bold text-amber-900">
-                            {op.grade}학년 {op.classNum}반:
-                          </span>{" "}
-                          {op.type === "swap" ? (
-                            <span>
-                              {DAY_LABEL[op.a.day]} {op.a.period}교시 ↔ {DAY_LABEL[op.b.day]} {op.b.period}교시 맞바꿈
-                            </span>
-                          ) : (
-                            <span>
-                              {DAY_LABEL[op.day]} {op.period}교시 내용 변경 (
-                              {op.lessons?.[0]?.subjectName || "공강"})
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveOp(idx)}
-                      className="text-amber-700 hover:text-red-700 font-bold text-xs"
+                    <div
+                      key={idx}
+                      className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50 text-xs flex items-center justify-between gap-2"
                     >
-                      ✕
-                    </button>
-                  </div>
+                      <div>
+                        {op.type === "swap_pair" ? (
+                          <>
+                            <span className="font-bold text-amber-900">
+                              {op.classes.map((c) => `${c.grade}학년 ${c.classNum}반`).join("·")}:
+                            </span>{" "}
+                            <span>
+                              {DAY_LABEL[op.a.day]} {op.a.period}교시 ↔ {DAY_LABEL[op.b.day]} {op.b.period}교시 함께 맞바꿈 (학급 간 교환)
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-bold text-amber-900">
+                              {op.grade}학년 {op.classNum}반:
+                            </span>{" "}
+                            {op.type === "swap" ? (
+                              <span>
+                                {DAY_LABEL[op.a.day]} {op.a.period}교시 ↔ {DAY_LABEL[op.b.day]} {op.b.period}교시 맞바꿈
+                              </span>
+                            ) : (
+                              <span>
+                                {DAY_LABEL[op.day]} {op.period}교시 내용 변경 (
+                                {op.lessons?.[0]?.subjectName || "공강"})
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveOp(idx)}
+                        className="text-amber-700 hover:text-red-700 font-bold text-xs cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -636,7 +925,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                 type="button"
                 onClick={handleSaveDraft}
                 disabled={savingDraft}
-                className="w-full py-2.5 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-lg text-xs disabled:opacity-50 transition-colors shadow-xs"
+                className="w-full py-2.5 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-lg text-xs disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
               >
                 {savingDraft ? "저장 중..." : "💾 개정안 임시저장 및 검증"}
               </button>
@@ -645,7 +934,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
                 type="button"
                 onClick={handleOpenApplyModal}
                 disabled={ops.length === 0}
-                className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs disabled:opacity-50 transition-colors shadow-xs"
+                className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
               >
                 ✨ 적용 확정 (다음 주 월요일부터 적용)
               </button>
@@ -653,7 +942,7 @@ export default function BaseRevisionTab({ activeTermId }: BaseRevisionTabProps) 
           </div>
 
           {/* 개정 이력 목록 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-3">
+          <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-6 space-y-3">
             <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
               <h4 className="text-xs font-bold text-gray-800">📜 개정 이력 목록 ({revisions.length}건)</h4>
               <button
