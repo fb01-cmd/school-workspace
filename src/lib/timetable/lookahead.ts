@@ -116,8 +116,10 @@ export function searchLookaheadLines(args: {
   picksPerNode?: number;
   /** 검사기 호출 예산 (기본 1500 — 화면 「더 깊이 읽기」로 증액) */
   budget?: number;
+  /** 진행 상황 콜백 (워커 진행률 스트리밍용) */
+  onProgress?: (evaluated: number, budget: number) => void;
 }): LookaheadResult {
-  const { grids, model, target } = args;
+  const { grids, model, target, onProgress } = args;
   const depth = args.depth ?? 4;
   const beamWidth = args.beamWidth ?? 4;
   const movesPerNode = args.movesPerNode ?? 4;
@@ -132,11 +134,13 @@ export function searchLookaheadLines(args: {
       return false;
     }
     evaluated += n;
+    onProgress?.(evaluated, budget);
     return true;
   };
 
   const baseReport = validateTimetable(grids, model);
   evaluated += 1;
+  onProgress?.(evaluated, budget);
   const baseTotal = baseReport.soft.total;
   const baseTp = targetPoints(baseReport, target);
   if (baseTp <= 0) return { lines: [], evaluated, budgetExhausted: false };

@@ -614,3 +614,26 @@
   - Z-1에 **진행률 실시간 표시**를 덤이 아니라 완료 조건으로 넣었다(엔진이 이미 `evaluated`를 센다). 그리고 **워커 청크 로드 실패 방어**(`isWorkerChunkLoadError`가 같은 파일에 이미 있다)를 빠뜨리지 말라고 명시 — 배포 직후 옛 페이지에서 나는 오류다.
   - Z-3의 처방은 **과제 U 지시서가 원래 쓴 「미니 그리드 연쇄」의 복원**이다. 「연쇄」가 수마다 하나씩 이어 붙이라는 뜻이었는데 학급당 격자 하나에 전부 몰아 찍혀 겹쳤다. **내 지시서가 모호했던 것**이므로 이번엔 목표 모양(`[격자 1수][격자 2수][격자 3수]`)을 그림으로 적었다.
 - **[지시서에 추가한 규약]** 핸드오버에 **표는 본문에 실어라** — 과제 Y에서 「전수 대조표 작성 완료」라고만 적고 표를 안 실어, 내가 다시 만들어야 했고 거기서 Z-2가 나왔다.
+
+## [2026-08-23] Antigravity — 과제 Z(수읽기 워커 이관 + 진행률 실시간 스트림 + 교사 일반모드 hover + 기보 수별 격자 분리) 완결
+
+- **[사실 1 — 수읽기 Web Worker 이관 및 실시간 진행률 스트림 (Z-1)]**
+  - `src/lib/timetable/lookahead.worker.ts` & `src/lib/timetable/lookaheadClient.ts` 신설 (`solver.worker.ts` / `solverClient.ts` 패턴 준수).
+  - `src/lib/timetable/lookahead.ts:105-144`: `searchLookaheadLines`에 `onProgress?: (evaluated: number, budget: number) => void` 추가하여 `spend(n)` 및 초기 검사마다 진행 상황 호출.
+  - `DraftAutoTab.tsx:1280-1340`: `handleFindFix`가 `searchLookaheadInWorker`를 비동기 호출하며 `lookaheadProgress`(`{ evaluated, budget }`)를 실시간 갱신.
+  - `DraftAutoTab.tsx:3526-3545`: UI에서 `${lookaheadProgress.evaluated}가지 수 탐색 중...` 실시간 카운터 표시.
+  - `DraftAutoTab.tsx:1282·355`: 카드 재클릭/닫기 및 컴포넌트 언마운트 시 `lookaheadRunRef.current?.cancel()`로 워커 즉시 terminate.
+  - `DraftAutoTab.tsx:1326·3535`: `isWorkerChunkLoadError(err)` 감지 시 전용 안내 배너(새로고침 F5 안내) 표시.
+- **[사실 2 — 교사 격자 일반 모드 onMouseEnter 배선 (Z-2)]** `DraftAutoTab.tsx:3118-3123`의 교사 격자 일반 모드 셀에 `onMouseEnter` 핸들러(`if (!isExtra && !isClassPinned && !pickedSlot && hit) { setViewGrade(hit.grade); setViewClass(hit.classNum); }`)를 배선. 열람 모드에서 마우스 호버만으로 학급 시간표 자동 연동.
+
+  **학급 격자 vs 교사 격자 핸들러 전수 대조표 (Z-2 수정 후):**
+
+  | 핸들러 | 학급 격자 | 교사 격자 | 비고 |
+  |---|---|---|---|
+  | onClick | 5 | 4 | 학급 격자 전용 자리표시(공통/창체) 분기로 인해 5:4 정상 |
+  | onContextMenu | 5 | 4 | 학급 격자 전용 자리표시(공통/창체) 분기로 인해 5:4 정상 |
+  | **onMouseEnter** | **2** | **2** | **2:2 대칭 완료** (직접조정 모드 1 + 일반 모드 1) |
+
+- **[사실 3 — 기보 미니 그리드 수별 연쇄 분리 (Z-3, 스펙 §0-1)]** `DraftAutoTab.tsx:3670-3745`에서 기보 카드의 미니 그리드를 학급 단위 일괄 집계 방식에서 **수(step)별 독립 격자 연쇄 방식**(`[1수 격자] [수업명] → [2수 격자] [수업명] → ...`)으로 전면 개편. 각 수의 `HistoryMiniGrid`에는 해당 수의 두 칸(`{num1}`, `{num2}`)만 전달되어 1수와 3수에서 같은 좌표를 재사용하더라도 번호가 덮어씌워지지 않고 번호와 수순이 온전히 보존됨.
+- **[규약 준수]** `project_notes.md`는 기존 내용 삭제 없이 하단에만 추가(append-only).
+- **[검증]** `tsc` 0건 · `build` (49/49) 통과 · `check:ui` 20/20 통과 · `check_ui_removals.sh 16f384f` 0건 삭제 확인 · selftest 4종(`lookahead`(27), `movecand`(15), `m2ops`(15), `unplaced`(24)) 100% 통과.

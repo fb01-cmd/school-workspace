@@ -12,7 +12,7 @@
  *  - 고정 밴드 셀(동시수업 simul) 수동 이동 차단 🔒
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   TimetableDraft,
   TimetableConstraintModel,
@@ -39,11 +39,14 @@ import type { BlankCompileIssue } from "@/lib/timetable/solver";
 import { solveTimetableInWorker, SolverDone, SolverRun } from "@/lib/timetable/solverClient";
 import { resolveUnplacedTarget } from "@/lib/timetable/unplaced";
 import {
-  searchLookaheadLines,
   type LookaheadLine,
   type LookaheadResult,
   type LookaheadTarget,
 } from "@/lib/timetable/lookahead";
+import {
+  searchLookaheadInWorker,
+  type LookaheadRun,
+} from "@/lib/timetable/lookaheadClient";
 import {
   checkPlaceholderOp,
   deriveGradeDayPeriods,
@@ -320,6 +323,12 @@ export default function DraftAutoTab({
   const [findingFix, setFindingFix] = useState(false);
   /** 더 깊이 읽기(예산 3배) 여부 */
   const [isDeepSearch, setIsDeepSearch] = useState(false);
+  /** 수읽기 탐색 실시간 진행 상황 (읽은 수, 예산) */
+  const [lookaheadProgress, setLookaheadProgress] = useState<{ evaluated: number; budget: number } | null>(null);
+  /** 수읽기 워커 취소용 ref */
+  const lookaheadRunRef = useRef<LookaheadRun | null>(null);
+  /** 수읽기 워커 청크 로드 오류 상태 */
+  const [lookaheadChunkError, setLookaheadChunkError] = useState(false);
 
   // ── 직접 조정 모드 상태 (timetable_manual_move_spec §2 · §4 M1) ──
   const [manualMode, setManualMode] = useState(false);
@@ -1269,19 +1278,28 @@ export default function DraftAutoTab({
   };
 
   // ── 수읽기 엔진 L1 — 해결안 탐색 (timetable_lookahead_spec §2·§3·§4) ──
-  const handleFindFix = (detail: TermPenaltyDetail, deep: boolean = false) => {
+  const handleFindFix = async (detail: TermPenaltyDetail, deep: boolean = false) => {
     if (!openDraft || savingOp) return;
+    // 이전 실행 중인 수읽기 워커 취소
+    if (lookaheadRunRef.current) {
+      lookaheadRunRef.current.cancel();
+      lookaheadRunRef.current = null;
+    }
     // 같은 항목 토글 — 객체 동일성으로 판정 (S2·S4 등 동일 code+key+day 중복 방어)
     if (activeFindDetail === detail && !deep) {
       setActiveFindDetail(null);
       setLookaheadResult(null);
       setIsDeepSearch(false);
+      setFindingFix(false);
+      setLookaheadProgress(null);
+      setLookaheadChunkError(false);
       return;
     }
     setActiveFindDetail(detail);
     setLookaheadResult(null);
     setIsDeepSearch(deep);
     setFindingFix(true);
+    setLookaheadChunkError(false);
 
     const { model, currentGrids } = openDraft;
     const target: LookaheadTarget = {
@@ -1291,23 +1309,39 @@ export default function DraftAutoTab({
       code: detail.code as SoftPenaltyCode,
     };
     const budget = deep ? 4500 : 1500;
+    setLookaheadProgress({ evaluated: 0, budget });
 
-    // 비동기 실행 (스피너 및 버튼 잠금 렌더 후 탐색 실행)
-    setTimeout(() => {
-      try {
-        const result = searchLookaheadLines({
+    try {
+      const run = searchLookaheadInWorker(
+        {
           grids: currentGrids,
           model,
           target,
           budget,
-        });
-        setLookaheadResult(result);
-      } catch (err) {
-        console.error("Lookahead search error:", err);
-      } finally {
-        setFindingFix(false);
+        },
+        (evaluated, b) => {
+          setLookaheadProgress({ evaluated, budget: b });
+        }
+      );
+      lookaheadRunRef.current = run;
+      const result = await run.promise;
+      lookaheadRunRef.current = null;
+      setLookaheadResult(result);
+    } catch (err) {
+      lookaheadRunRef.current = null;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "cancelled") {
+        return;
       }
-    }, 20);
+      if (isWorkerChunkLoadError(err)) {
+        setLookaheadChunkError(true);
+      } else {
+        console.error("Lookahead search error:", err);
+      }
+    } finally {
+      setFindingFix(false);
+      setLookaheadProgress(null);
+    }
   };
 
   /** 기보 1수 적용 (한 수씩 밟기 — 기본) */
@@ -3081,8 +3115,14 @@ export default function DraftAutoTab({
                             setViewClass(hit.classNum);
                           }
                         }}
+                        onMouseEnter={() => {
+                          if (!isExtra && !isClassPinned && !pickedSlot && hit) {
+                            setViewGrade(hit.grade);
+                            setViewClass(hit.classNum);
+                          }
+                        }}
                         className={`h-8 min-h-[2rem] max-h-[2rem] p-1 border-r border-gray-100 text-[10px] overflow-hidden ${
-                          hit ? "bg-indigo-100 text-indigo-950 font-bold cursor-pointer" : "bg-white text-gray-300"
+                          hit ? "bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-bold cursor-pointer transition-colors" : "bg-white text-gray-300"
                         }`}
                         title={hit ? `${hit.grade}학년 ${hit.classNum}반 ${hit.subjectName}` : undefined}
                       >
@@ -3486,10 +3526,22 @@ export default function DraftAutoTab({
                                       <div className="py-3 flex items-center gap-2 text-xs text-amber-700 font-semibold">
                                         <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-amber-500 border-t-transparent" />
                                         <span>
-                                          {isDeepSearch
+                                          {lookaheadProgress && lookaheadProgress.evaluated > 0
+                                            ? `${lookaheadProgress.evaluated}가지 수 탐색 중... (${isDeepSearch ? "더 깊이 읽기" : "수읽기"})`
+                                            : isDeepSearch
                                             ? "더 깊은 수순(예산 3배)을 탐색하는 중..."
                                             : "수순(기보)을 탐색하는 중..."}
                                         </span>
+                                      </div>
+                                    ) : lookaheadChunkError ? (
+                                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-900 space-y-1">
+                                        <div className="font-bold flex items-center gap-1">
+                                          <span>⚠️</span>
+                                          <span>새 버전 배포로 수읽기 모듈을 불러오지 못했습니다.</span>
+                                        </div>
+                                        <p className="text-[11px] text-red-700">
+                                          브라우저를 새로고침(F5)한 뒤 다시 시도해 주세요.
+                                        </p>
                                       </div>
                                     ) : lookaheadResult === null ? null : lookaheadResult.lines.length === 0 ? (
                                       /* ── 해결안 없음 ── */
@@ -3614,45 +3666,18 @@ export default function DraftAutoTab({
 
                                               {/* 상세 정보 컨테이너 */}
                                               <div className="bg-gray-50 rounded-md p-2.5 space-y-2 border border-gray-100">
-                                                {/* 변경 위치 (미니 그리드 + 수업 과목/교사 시각화) */}
-                                                <div className="flex items-center gap-3 flex-wrap">
+                                                {/* 변경 위치 (수별 미니 그리드 + 과목/교사 연쇄 시각화 — 스펙 §0-1) */}
+                                                <div className="flex items-center gap-2.5 flex-wrap">
                                                   {(() => {
-                                                    const byClass = new Map<
-                                                      string,
-                                                      {
-                                                        grade: number;
-                                                        classNum: number;
-                                                        cells: Array<{
-                                                          day: number;
-                                                          period: number;
-                                                          label?: string;
-                                                          color?: string;
-                                                        }>;
-                                                      }
-                                                    >();
-                                                    line.touched.forEach((t, ti) => {
-                                                      const key = `${t.grade}-${t.classNum}`;
-                                                      let entry = byClass.get(key);
-                                                      if (!entry) {
-                                                        entry = { grade: t.grade, classNum: t.classNum, cells: [] };
-                                                        byClass.set(key, entry);
-                                                      }
-                                                      entry.cells.push({
-                                                        day: t.day,
-                                                        period: t.period,
-                                                        label: String(ti + 1),
-                                                        color: ti % 2 === 0 ? "bg-indigo-600 text-white" : "bg-amber-600 text-white",
-                                                      });
-                                                    });
+                                                    if (!openDraft?.currentGrids) return null;
+                                                    const simBoard = cloneClassGrids(openDraft.currentGrids);
+                                                    const circled = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
 
-                                                    // 2수 이상 연쇄 시 앞선 수 적용 판에서 순차적으로 수업 정보를 읽음 (historyDetails 본보기)
-                                                    const stepNodes: React.ReactNode[] = [];
-                                                    if (openDraft?.currentGrids) {
-                                                      const simBoard = cloneClassGrids(openDraft.currentGrids);
-                                                      const circled = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+                                                    return (
+                                                      <div className="flex items-center gap-2 flex-wrap">
+                                                        {line.ops.map((op, opIdx) => {
+                                                          if (op.type !== "swap") return null;
 
-                                                      line.ops.forEach((op, opIdx) => {
-                                                        if (op.type === "swap") {
                                                           const g = simBoard.find((x) => x.grade === op.grade && x.classNum === op.classNum);
                                                           const c1 = g?.cells?.find((c) => c.day === op.a.day && c.period === op.a.period);
                                                           const c2 = g?.cells?.find((c) => c.day === op.b.day && c.period === op.b.period);
@@ -3672,49 +3697,45 @@ export default function DraftAutoTab({
                                                           const c1Label = circled[num1 - 1] || `${num1}.`;
                                                           const c2Label = circled[num2 - 1] || `${num2}.`;
 
-                                                          stepNodes.push(
-                                                            <div key={opIdx} className="flex items-center gap-1.5 flex-wrap text-xs">
-                                                              {line.ops.length > 1 && (
-                                                                <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1 py-0.2 rounded">
-                                                                  {opIdx + 1}수
-                                                                </span>
-                                                              )}
-                                                              <span className="font-bold text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
-                                                                {c1Label} {name1}
-                                                              </span>
-                                                              <span className="text-gray-400 font-bold">↔</span>
-                                                              <span className="font-bold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                                                                {c2Label} {name2}
-                                                              </span>
-                                                            </div>
-                                                          );
+                                                          const stepCells = [
+                                                            { day: op.a.day, period: op.a.period, label: String(num1), color: "bg-indigo-600 text-white" },
+                                                            { day: op.b.day, period: op.b.period, label: String(num2), color: "bg-amber-600 text-white" },
+                                                          ];
 
+                                                          // 다음 수를 위해 현재 수를 simBoard에 적용
                                                           applyRevisionOps(simBoard, [op]);
-                                                        }
-                                                      });
-                                                    }
 
-                                                    return (
-                                                      <div className="flex items-center gap-3 flex-wrap">
-                                                        {Array.from(byClass.values()).map((cls, ci) => (
-                                                          <div
-                                                            key={ci}
-                                                            className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border border-gray-200"
-                                                          >
-                                                            <span className="text-[11px] font-bold text-gray-700 shrink-0">
-                                                              {cls.grade}학년 {cls.classNum}반
-                                                            </span>
-                                                            <HistoryMiniGrid
-                                                              highlightCells={cls.cells}
-                                                              periods={periodsPerDay}
-                                                            />
-                                                          </div>
-                                                        ))}
-                                                        {stepNodes.length > 0 && (
-                                                          <div className="flex flex-col gap-1 min-w-0">
-                                                            {stepNodes}
-                                                          </div>
-                                                        )}
+                                                          return (
+                                                            <Fragment key={opIdx}>
+                                                              {opIdx > 0 && (
+                                                                <span className="text-amber-500 font-extrabold text-sm shrink-0">→</span>
+                                                              )}
+                                                              <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-gray-200 shadow-2xs flex-wrap">
+                                                                {line.ops.length > 1 && (
+                                                                  <span className="text-[10px] font-extrabold text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded shrink-0">
+                                                                    {opIdx + 1}수
+                                                                  </span>
+                                                                )}
+                                                                <span className="text-[11px] font-bold text-gray-700 shrink-0">
+                                                                  {op.grade}학년 {op.classNum}반
+                                                                </span>
+                                                                <HistoryMiniGrid
+                                                                  highlightCells={stepCells}
+                                                                  periods={periodsPerDay}
+                                                                />
+                                                                <div className="flex items-center gap-1 flex-wrap text-xs">
+                                                                  <span className="font-bold text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                                                    {c1Label} {name1}
+                                                                  </span>
+                                                                  <span className="text-gray-400 font-bold">↔</span>
+                                                                  <span className="font-bold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                                                    {c2Label} {name2}
+                                                                  </span>
+                                                                </div>
+                                                              </div>
+                                                            </Fragment>
+                                                          );
+                                                        })}
                                                       </div>
                                                     );
                                                   })()}
