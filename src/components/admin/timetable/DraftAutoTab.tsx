@@ -374,6 +374,7 @@ export default function DraftAutoTab({
         }
         if (selectedParkedEntry) {
           setSelectedParkedEntry(null);
+          setCandidatesResult(null);
         }
         if (chainSteps.length > 0 && chainStartGrids) {
           setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
@@ -748,7 +749,14 @@ export default function DraftAutoTab({
   const handleOpen = async (draft: TimetableDraft) => {
     setLoadingDraft(true);
     setDraftError(null);
+    setPickedSlot(null);
+    setCandidatesResult(null);
+    setChainSteps([]);
+    setChainStartGrids(null);
+    setHeldParkId(null);
+    setSelectedParkedEntry(null);
     setSelectedUnplaced(null);
+    setBlockedBubble(null);
     try {
       const [getRes, modelRes] = await Promise.all([
         fetch("/api/timetable/manage", {
@@ -861,7 +869,7 @@ export default function DraftAutoTab({
 
   // ── Undo / Redo 실행 ──
   const handleUndo = async () => {
-    if (!openDraft || openDraft.meta.opCursor <= 0) return;
+    if (!openDraft || openDraft.meta.opCursor <= 0 || loadingDraft || savingOp) return;
     setLoadingDraft(true);
     try {
       const res = await fetch("/api/timetable/manage", {
@@ -886,7 +894,7 @@ export default function DraftAutoTab({
   };
 
   const handleRedo = async () => {
-    if (!openDraft || openDraft.meta.opCursor >= openDraft.meta.ops.length) return;
+    if (!openDraft || openDraft.meta.opCursor >= openDraft.meta.ops.length || loadingDraft || savingOp) return;
     setLoadingDraft(true);
     try {
       const res = await fetch("/api/timetable/manage", {
@@ -1043,7 +1051,8 @@ export default function DraftAutoTab({
 
   // ── 물어보고 고치기 수순 전체 순차 적용 ──
   const handleApplyFixPlan = async () => {
-    if (!openDraft || !askFixPlan || askFixPlan.steps.length === 0) return;
+    if (!openDraft || !askFixPlan || askFixPlan.steps.length === 0 || savingOp || applyingPlan) return;
+    setSavingOp(true);
     setApplyingPlan(true);
     setApplyPlanError(null);
     setApplyPlanSuccessMsg(null);
@@ -1095,6 +1104,7 @@ export default function DraftAutoTab({
       );
     } finally {
       setApplyingPlan(false);
+      setSavingOp(false);
     }
   };
 
@@ -1233,6 +1243,13 @@ export default function DraftAutoTab({
         setBlockedBubble({
           message: "다른 창이 먼저 수정했습니다. 최신 초안을 다시 불러옵니다.",
         });
+        setPickedSlot(null);
+        setCandidatesResult(null);
+        setChainSteps([]);
+        setChainStartGrids(null);
+        setHeldParkId(null);
+        setSelectedParkedEntry(null);
+        setSelectedUnplaced(null);
         await handleOpen(prevDraft.meta);
         return;
       }
@@ -1934,7 +1951,7 @@ export default function DraftAutoTab({
 
   // ── op 연쇄 영향 다이얼로그에서 [적용하기] 실행 ──
   const handleApplyOp = async () => {
-    if (!openDraft || !proposedOp) return;
+    if (!openDraft || !proposedOp || savingOp) return;
     setSavingOp(true);
     setOpApiError(null);
 
@@ -2964,14 +2981,14 @@ export default function DraftAutoTab({
                               setAskFixPlan(null);
                               setAskFixResult(null);
                             }}
-                            disabled={applyingPlan}
-                            className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg text-sm transition-colors"
+                            disabled={applyingPlan || savingOp}
+                            className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 font-bold rounded-lg text-sm transition-colors"
                           >
                             다시 질문하기
                           </button>
                           <button
                             onClick={handleApplyFixPlan}
-                            disabled={applyingPlan}
+                            disabled={applyingPlan || savingOp}
                             className="px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold rounded-lg text-sm shadow-xs transition-colors flex items-center gap-1.5"
                           >
                             {applyingPlan ? (

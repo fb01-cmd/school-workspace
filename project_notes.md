@@ -608,3 +608,11 @@
   - **S3 사실·지시 미이행** → S-2 대상. 지시 1번이 *"다른 조작도 op 전송 중에는 같은 패턴인지 점검해 일괄 적용"* 을 요구했는데 `handleApplyFixPlan`(`:1048`, `savingOp` 미검사 + 직접 `draft_op` 연달아 전송)과 `handleApplyOp`(`:1936`, `setSavingOp(true)`를 **설정만 하고 진입 검사 없음**)이 남았다.
   - **S5 기각** — 「드래그 취소 시 집기·3색 잔존」은 **클릭으로 집었을 때와 동일한 상태**이고, 지시서가 *"클릭 방식 병행 유지"* 를 요구했으므로 정합적이다. ESC가 드래그 상태를 안 지운다는 지적도 오독 — 브라우저가 ESC 취소 시 `dragend`를 쏘고 `onDragEnd`가 지운다. **단 파고들다 별건 1건 확보**: ESC 네 분기 중 `selectedParkedEntry` 분기만 `setCandidatesResult(null)`이 없어(`:378-380`), 트레이 카드를 고른 상태(`pickedSlot`은 null)에서 ESC를 누르면 3색이 남는다 → S-2에 포함.
 - **[판정]** 조건부 불합격 → 과제 S-2. **배포하지 않는다.**
+
+## [2026-08-22] Antigravity — 과제 S-2(과제 S 보수: 409 상태 초기화·이중 클릭 가드·ESC 트레이 후보 소거) 완결
+
+- **[사실 1 — 409 충돌 및 초안 재로드 시 상호작용 상태 전면 초기화 (S2-1)]** `handleOpen`(`DraftAutoTab.tsx:752-759`) 및 `executeOptimisticOp`의 409 분기(`:1246-1253`) 양쪽에 `pickedSlot`·`candidatesResult`·`chainSteps`·`chainStartGrids`·`heldParkId`·`selectedParkedEntry`·`selectedUnplaced`·`blockedBubble` 초기화 배치. 초안 목록 전환 및 409 재동기화 시 이전 판 상태 잔존 원천 차단.
+- **[사실 2 — draft_op 및 조작부 savingOp 가드 전수 완료 (S2-2)]** `handleApplyFixPlan`(`:1054`, `:1105`)에 `savingOp || applyingPlan` 진입 가드 및 `setSavingOp(true/false)` 연동 + 버튼 `disabled` 추가(`:2984, :2991`), `handleApplyOp`(`:1954`)에 `savingOp` 진입 가드 추가, `handleUndo`/`handleRedo`(`:864, :888`)에 `savingOp` 진입 가드 보강. draft_op 전송 경로 전수 3곳(`executeOptimisticOp`, `handleApplyFixPlan`, `handleApplyOp`) 모두 가드 확인.
+- **[사실 3 — ESC 트레이 카드 선택 해제 시 3색 후보 소거 (S2-3)]** `useEffect` 키보드 핸들러의 `selectedParkedEntry` 분기(`DraftAutoTab.tsx:376-378`)에 `setCandidatesResult(null)` 추가. 트레이 카드 선택 상태에서 ESC 취소 시 3색 그리드 하이라이트 정상 소거.
+- **[검증]** `tsc` 0건 · `build` (49/49) 통과 · `check:ui` 20/20 통과 · `check_ui_removals.sh c4eb908` 삭제 0건 · `movecand`(15)·`m2ops`(15)·`lookahead`(8) 자가 테스트 100% 통과.
+
