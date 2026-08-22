@@ -171,6 +171,7 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
   const [chainSearchError, setChainSearchError] = useState<string | null>(null);
   const [chainResults, setChainResults] = useState<any[]>([]);
   const [chainMaxDepth, setChainMaxDepth] = useState<number>(2);
+  const [chainTruncated, setChainTruncated] = useState<boolean>(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -638,10 +639,17 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
       const data = await res.json();
       if (res.ok && data.success) {
         const chains = data.chains || [];
+        const isTruncated = Boolean(data.truncated);
         setChainResults(chains);
+        setChainTruncated(isTruncated);
         if (chains.length === 0) {
-          const reasonText = data.reason ? ` (${data.reason})` : "";
-          setChainSearchError(`${depth}단계 안에서는 경로(체인)가 없습니다.${reasonText}`);
+          if (data.reason) {
+            setChainSearchError(data.reason);
+          } else if (isTruncated) {
+            setChainSearchError("탐색 제한 시간(3초) 안에 연결 가능한 경로를 찾지 못했습니다.");
+          } else {
+            setChainSearchError(`${depth}단계 안에서는 연결 가능한 경로(체인)가 없습니다.`);
+          }
         }
       } else {
         setChainSearchError(data.error || "체인 탐색 실패");
@@ -2031,13 +2039,16 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
             </div>
 
             {chainSearchError && (
-              <div className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg font-semibold space-y-2">
-                <p>{chainSearchError}</p>
+              <div className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg font-semibold space-y-2 border border-red-200">
+                <div className="flex items-start gap-1.5">
+                  <span className="text-sm shrink-0">💬</span>
+                  <p className="leading-snug break-keep">{chainSearchError}</p>
+                </div>
                 {chainMaxDepth < 3 && (
                   <button
                     type="button"
                     onClick={() => handleRunChainSearch(3)}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shadow-xs cursor-pointer"
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shadow-xs cursor-pointer transition-colors"
                   >
                     🔄 3단계까지 넓혀 다시 탐색
                   </button>
@@ -2047,31 +2058,87 @@ export default function DirectSubstituteTab({ activeTermId }: DirectSubstituteTa
 
             {chainResults.length > 0 && (
               <div className="space-y-2 pt-2 border-t border-gray-100">
-                <div className="text-xs font-bold text-purple-950 flex items-center justify-between">
+                <div className="text-xs font-bold text-purple-950 flex flex-wrap items-center justify-between gap-1">
                   <span>발견된 체인 경로 ({chainResults.length}건):</span>
+                  {chainResults.length >= 5 && (
+                    <span className="text-[11px] text-gray-500 font-normal">
+                      (최대 5건 표시 — 추가 경로가 더 있을 수 있습니다)
+                    </span>
+                  )}
                 </div>
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {chainResults.map((chain, cIdx) => (
-                    <div key={cIdx} className="p-3 bg-purple-50/60 border border-purple-200 rounded-xl space-y-2 text-xs">
-                      <div className="font-extrabold text-purple-950 flex items-center justify-between">
-                        <span>경로 #{cIdx + 1} ({chain.steps?.length || 2}단계 교환)</span>
-                        <button
-                          type="button"
-                          onClick={() => handleAddChainToCart(chain)}
-                          className="px-3 py-1 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-lg text-xs shadow-2xs cursor-pointer"
-                        >
-                          🛒 이 체인 담기
-                        </button>
-                      </div>
-                      <div className="space-y-1 font-mono text-[11px] text-purple-900">
-                        {chain.steps?.map((step: any, sIdx: number) => (
-                          <div key={sIdx} className="bg-white p-1.5 rounded border border-purple-200">
-                            단계 {sIdx + 1}: {step.stepSummary || `${step.sourceTeacherName || ""} → ${step.candidate?.counterpartName || ""} (${step.targetDay}요일 ${step.targetPeriod}교시)`}
+
+                {chainTruncated && (
+                  <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-center gap-1.5 font-semibold">
+                    <span>⏱️</span>
+                    <span>탐색 제한 시간(3초) 안에 다 확인하지 못해 그때까지 찾은 경로만 표시합니다.</span>
+                  </div>
+                )}
+
+                <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                  {chainResults.map((chain, cIdx) => {
+                    const totalScore = typeof chain.totalScore === "number" ? chain.totalScore : 0;
+                    return (
+                      <div key={cIdx} className="p-3 bg-purple-50/60 border border-purple-200 rounded-xl space-y-2.5 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-extrabold text-purple-950 text-sm">
+                              경로 #{cIdx + 1}
+                            </span>
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold border border-purple-200">
+                              {chain.steps?.length || 2}단계 교환
+                            </span>
+                            {totalScore > 0 ? (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-extrabold border border-amber-300">
+                                총 감점 {totalScore}점
+                              </span>
+                            ) : (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                                추가 감점 없습니다
+                              </span>
+                            )}
                           </div>
-                        ))}
+                          <button
+                            type="button"
+                            onClick={() => handleAddChainToCart(chain)}
+                            className="px-3 py-1 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-lg text-xs shadow-2xs cursor-pointer transition-colors"
+                          >
+                            🛒 이 체인 담기
+                          </button>
+                        </div>
+
+                        <div className="space-y-1.5 font-sans text-xs">
+                          {chain.steps?.map((step: any, sIdx: number) => {
+                            const stepScore = typeof step.score === "number" ? step.score : 0;
+                            const penalties = Array.isArray(step.penalties) ? step.penalties : [];
+                            return (
+                              <div key={sIdx} className="bg-white p-2.5 rounded-lg border border-purple-200 space-y-1">
+                                <div className="flex items-center justify-between gap-2 flex-wrap font-medium text-purple-950">
+                                  <span className="font-bold">
+                                    {step.stepSummary || `단계 ${sIdx + 1}: ${step.sourceTeacherName || ""} → ${step.candidate?.counterpartName || ""}`}
+                                  </span>
+                                  {stepScore > 0 ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
+                                      감점 {stepScore}점
+                                    </span>
+                                  ) : (
+                                    <span className="px-1.5 py-0.5 rounded text-[11px] font-medium text-gray-500 shrink-0">
+                                      감점 없음
+                                    </span>
+                                  )}
+                                </div>
+                                {penalties.length > 0 && (
+                                  <div className="text-[11px] text-amber-900 bg-amber-50/70 p-1.5 rounded border border-amber-100 space-y-0.5">
+                                    <span className="font-bold text-amber-950">감점 사유: </span>
+                                    <span>{penalties.join(" · ")}</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

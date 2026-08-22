@@ -5401,6 +5401,8 @@ export async function computeChainSearch(
         reason = `목적지 점유 수업(${occ.info.teacherName} · ${occ.info.subjectName})이 특별실·구장 제약 또는 시간표 충돌로 이동 가능한 대안 슬롯이 없습니다 (후보 0건).`;
       } else if (sCandsCount === 0) {
         reason = `이동 대상 수업(${mover.teacherName} · ${mover.subjectName})이 특별실·구장 제약 또는 시간표 충돌로 이동 가능한 대안 슬롯이 없습니다 (후보 0건).`;
+      } else if (truncated) {
+        reason = `탐색 제한 시간(3초)이 초과되어 목적지 점유 수업(${occ.info.subjectName}, 대안 ${occCandsCount}건)과 이동 대상 수업(${mover.subjectName}, 대안 ${sCandsCount}건) 간 ${maxDepth}단계 내 연결 경로를 다 확인하지 못했습니다.`;
       } else {
         reason = `목적지 점유 수업(${occ.info.subjectName}, 대안 ${occCandsCount}건)과 이동 대상 수업(${mover.subjectName}, 대안 ${sCandsCount}건) 간 탐색 깊이(${maxDepth}단계) 내 연결 가능한 경로가 없습니다.`;
       }
