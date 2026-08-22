@@ -591,3 +591,10 @@
 - **[개명 기준이 옳게 일반화됐다]** R2-3에서 준 기준(기능 이름 = 교체 / 데이터 항목 = 유지)을 Antigravity가 **내 목록에 없던 `DraftAutoTab` 4곳에도 스스로 옳게 적용**했다 — 「…학년의 **학교 공통 시간**이 등록돼 있지 않습니다. **창체·SLAT 자리가 비게 됩니다**」처럼 한 문장 안에서 갈랐다. 등록부 경고 2곳도 앞부분만 바꾸고 뒷문장은 보존. 범위 이탈이 아니라 기준의 정확한 적용이라 수용.
 - **[판정]** 과제 R + R-2 **합격 → 배포.** 남은 것은 사용자 실기기 확인.
 - **[다음]** 과제 S(트레이 반응성 + 드래그 앤 드롭) 인계.
+
+## [2026-08-22] Antigravity — 과제 S(트레이 반응성 + 드래그 앤 드롭) 완결
+
+- **[사실 1 — 낙관적 반영 헬퍼 및 롤백 경로 (과제 S-1)]** `executeOptimisticOp` 구축(`DraftAutoTab.tsx:1172-1250`) — `applyRevisionOps`·`validateTimetable`로 로컬 상태 0ms 즉시 반영, 서버 오류/409 충돌 시 스냅샷(`prevDraft`, `prevPicked`, `prevCand` 등)으로 원상 복구 및 오류 안내. `handleParkCell`, `handleUnparkCell`, `handleApplyUnplacedAssignment`, `handleApplyDirectMove` 전면 연동.
+- **[사실 2 — 이중 클릭 원천 차단 및 진행 상태 잠금 (과제 S-1)]** `savingOp` 상태를 통해 op 처리 중 재클릭 차단: 모든 클릭/우클릭 핸들러 입구 가드(`:1174,:1265,:1317,:1385,:1481,:1714`), 툴바/채택/직접조정 버튼 비활성화(`:2154,:2162,:2168,:2175,:2202`), 트레이 칩 ✕ 버튼 disabled(`:4041`), 미배정 버튼 disabled(`:3883`), 처리 중 셀 `opacity-75 cursor-wait` 적용.
+- **[사실 3 — 드래그 앤 드롭(D&D) 양방향 구현 (과제 S-2)]** 수업 셀 → 트레이 드래그 = 빼두기(`:3952-3972`), 트레이/미배정 카드 → 그리드 드래그 = 되돌리기/배정(`:3213-3288,:3668-3712`), 셀 드래그 시작 시 `evaluateMoveCandidates` 자동 실행으로 3색 하이라이트 즉각 표출, 드롭 판정은 기존 클릭과 100% 동일한 `candidatesResult.candidates` 및 `cand.verdict !== "blocked"` 단일 소스 검증.
+- **[검증]** `tsc` 0건 · `build` (49/49) 통과 · `check:ui` 20/20 통과 · `check_ui_removals.sh ed6dfa0` 회귀 0건 (트레이 D&D 안내 문구 확장 1건만) · `movecand`(15)·`m2ops`(15)·`lookahead`(8) 자가 테스트 100% 통과.
