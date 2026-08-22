@@ -31,6 +31,7 @@ import {
 } from "@/lib/timetable/types";
 import {
   evaluateMoveCandidates,
+  evaluateHeldCandidates,
   type MoveCandidate,
   type MoveCandidatesResult,
 } from "@/lib/timetable/moveCandidates";
@@ -323,6 +324,7 @@ export default function DraftAutoTab({
   // ── 직접 조정 M2 상태 (연쇄·잠깐 빼두기 — 스펙 §2-4·§2-5) ──
   const [chainSteps, setChainSteps] = useState<ChainStep[]>([]);
   const [chainStartGrids, setChainStartGrids] = useState<ClassGrid[] | null>(null);
+  const [heldParkId, setHeldParkId] = useState<string | null>(null);
   const [selectedParkedEntry, setSelectedParkedEntry] = useState<TrayEntry | null>(null);
 
   // 트레이 (op 재생의 파생값)
@@ -342,9 +344,11 @@ export default function DraftAutoTab({
           setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
           setChainSteps([]);
           setChainStartGrids(null);
+          setHeldParkId(null);
         }
         if (pickedSlot) {
           setPickedSlot(null);
+          setHeldParkId(null);
           setCandidatesResult(null);
           setBlockedBubble(null);
         }
@@ -452,6 +456,10 @@ export default function DraftAutoTab({
     setManualStartScore(null);
     setPickedSlot(null);
     setCandidatesResult(null);
+    setChainSteps([]);
+    setChainStartGrids(null);
+    setHeldParkId(null);
+    setSelectedParkedEntry(null);
     setBlockedBubble(null);
   }, [openDraftId]);
 
@@ -467,6 +475,10 @@ export default function DraftAutoTab({
     setFindingFix(false);
     setPickedSlot(null);
     setCandidatesResult(null);
+    setChainSteps([]);
+    setChainStartGrids(null);
+    setHeldParkId(null);
+    setSelectedParkedEntry(null);
   }, [openDraftReport]);
 
   // ── 목록 로드 ──
@@ -1128,6 +1140,65 @@ export default function DraftAutoTab({
   // ── 직접 조정 M2: 잠깐 빼두기 (park op — 스펙 §2-5) ──
   const handleParkCell = async (grade: number, classNum: number, day: number, period: number) => {
     if (!openDraft) return;
+
+    if (chainSteps.length > 0) {
+      // 연쇄 도중 트레이로 빼기 = 이미 들린 수업이 park되어 있으므로 지금까지의 steps를 chain op로 전송 (스펙 §2-4)
+      setSavingOp(true);
+      setBlockedBubble(null);
+      try {
+        const opToSend: BaseRevisionOp = { type: "chain", steps: chainSteps };
+        const res = await fetch("/api/timetable/manage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "draft_op",
+            draftId: openDraft.meta.id,
+            draftOp: opToSend,
+            expectedOpCursor: openDraft.meta.opCursor,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.status === 409 || data.error?.includes("다른 창") || data.error?.includes("opCursor")) {
+          setBlockedBubble({
+            message: "다른 창이 먼저 수정했습니다. 최신 초안을 다시 불러옵니다.",
+          });
+          await handleOpen(openDraft.meta);
+          return;
+        }
+        if (!res.ok || data.error) {
+          throw new Error(data.error || "빼두기 적용에 실패했습니다.");
+        }
+
+        setOpenDraft({
+          meta: data.meta,
+          baseGrids: data.baseGrids,
+          currentGrids: data.currentGrids,
+          model: openDraft.model,
+          report: data.report,
+        });
+
+        setPickedSlot(null);
+        setCandidatesResult(null);
+        setChainSteps([]);
+        setChainStartGrids(null);
+        setHeldParkId(null);
+        setSelectedParkedEntry(null);
+        setBlockedBubble(null);
+      } catch (err: any) {
+        if (chainStartGrids) {
+          setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+          setChainSteps([]);
+          setChainStartGrids(null);
+          setHeldParkId(null);
+        }
+        setBlockedBubble({ message: `빼두기 실패: ${err.message || String(err)}` });
+      } finally {
+        setSavingOp(false);
+      }
+      return;
+    }
+
     const grid = openDraft.currentGrids.find((g) => g.grade === grade && g.classNum === classNum);
     const cell = grid?.cells?.find((c) => c.day === day && c.period === period);
     const lesson = cell?.lessons?.[0];
@@ -1157,15 +1228,7 @@ export default function DraftAutoTab({
     setBlockedBubble(null);
 
     try {
-      let opToSend: BaseRevisionOp;
-      if (chainSteps.length > 0) {
-        // 연쇄 도중 트레이로 빼기 = 연쇄 종료 + park 수 합류 (스펙 §2-4)
-        const newStep: ChainStep = { kind: "park", parkId, grade, classNum, day, period };
-        opToSend = { type: "chain", steps: [...chainSteps, newStep] };
-      } else {
-        opToSend = { type: "park", parkId, grade, classNum, day, period };
-      }
-
+      const opToSend: BaseRevisionOp = { type: "park", parkId, grade, classNum, day, period };
       const res = await fetch("/api/timetable/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1201,6 +1264,7 @@ export default function DraftAutoTab({
       setCandidatesResult(null);
       setChainSteps([]);
       setChainStartGrids(null);
+      setHeldParkId(null);
       setSelectedParkedEntry(null);
       setBlockedBubble(null);
     } catch (err: any) {
@@ -1208,6 +1272,7 @@ export default function DraftAutoTab({
         setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
         setChainSteps([]);
         setChainStartGrids(null);
+        setHeldParkId(null);
       }
       setBlockedBubble({ message: `빼두기 실패: ${err.message || String(err)}` });
     } finally {
@@ -1274,6 +1339,7 @@ export default function DraftAutoTab({
 
       setSelectedParkedEntry(null);
       setPickedSlot(null);
+      setHeldParkId(null);
       setCandidatesResult(null);
       setBlockedBubble(null);
     } catch (err: any) {
@@ -1308,21 +1374,22 @@ export default function DraftAutoTab({
     try {
       let opToSend: BaseRevisionOp;
 
-      if (chainSteps.length > 0) {
-        // 연쇄의 마지막 이동 (빈 칸 안착)
+      if (chainSteps.length > 0 && heldParkId) {
+        // 연쇄의 마지막 이동 (빈 칸 안착 — unpark로 종료)
         const lastStep: ChainStep = {
-          kind: "swap",
+          kind: "unpark",
+          parkId: heldParkId,
           grade,
           classNum,
-          a: { day: fromDay, period: fromPeriod },
-          b: { day: toDay, period: toPeriod },
+          day: toDay,
+          period: toPeriod,
         };
         opToSend = {
           type: "chain",
           steps: [...chainSteps, lastStep],
         };
       } else {
-        // 단건 이동
+        // 단건 이동 또는 단독 맞교환
         opToSend = {
           type: "swap",
           grade,
@@ -1369,6 +1436,7 @@ export default function DraftAutoTab({
       setCandidatesResult(null);
       setChainSteps([]);
       setChainStartGrids(null);
+      setHeldParkId(null);
       setSelectedParkedEntry(null);
       setBlockedBubble(null);
     } catch (err: any) {
@@ -1376,6 +1444,7 @@ export default function DraftAutoTab({
         setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
         setChainSteps([]);
         setChainStartGrids(null);
+        setHeldParkId(null);
       }
       setBlockedBubble({ message: `이동 실패: ${err.message || String(err)}` });
     } finally {
@@ -1395,6 +1464,10 @@ export default function DraftAutoTab({
     if (manualMode) {
       // 빼둔 수업 배치 모드인 경우
       if (selectedParkedEntry) {
+        const cand = candidatesResult?.candidates.find((c) => c.day === day && c.period === period);
+        if (cand?.verdict === "blocked") {
+          return;
+        }
         if (lesson) {
           setBlockedBubble({
             day,
@@ -1425,6 +1498,7 @@ export default function DraftAutoTab({
         setCandidatesResult(res);
         setChainSteps([]);
         setChainStartGrids(cloneClassGrids(currentGrids));
+        setHeldParkId(null);
         setBlockedBubble(null);
         if (lesson.teachers?.[0]?.email) {
           setSelectedTeacherEmail(lesson.teachers[0].email);
@@ -1444,8 +1518,10 @@ export default function DraftAutoTab({
           setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
           setChainSteps([]);
           setChainStartGrids(null);
+          setHeldParkId(null);
         }
         setPickedSlot(null);
+        setHeldParkId(null);
         setCandidatesResult(null);
         setBlockedBubble(null);
         return;
@@ -1457,9 +1533,10 @@ export default function DraftAutoTab({
         return;
       }
 
-      // 초록/노랑 칸:
+      // 1) 빈 칸으로 이동 (kind === "move" 또는 수업 없음):
+      //    - 연쇄 비활성이면 단독 swap op 전송
+      //    - 연쇄 중이면 마지막 unpark 합류 후 chain op 전송 (과제 Q-2 ③)
       if (cand.kind === "move" || !lesson) {
-        // 빈 칸으로 이동: 연쇄 종료 및 서버 전송 (스펙 §2-4)
         await handleApplyDirectMove(
           pickedSlot.grade,
           pickedSlot.classNum,
@@ -1471,21 +1548,49 @@ export default function DraftAutoTab({
         return;
       }
 
-      // 점유 칸(수업 B 존재): 연쇄 밀어내기 (루미큐브 — 스펙 §2-4)
-      // 1. step 기록
-      const step: ChainStep = {
-        kind: "swap",
-        grade: viewGrade,
-        classNum: viewClass,
-        a: { day: pickedSlot.day, period: pickedSlot.period },
-        b: { day, period },
-      };
-      const nextChainSteps = [...chainSteps, step];
+      // 2) 맞바꿈 가능 점유 칸 (kind === "swap"):
+      //    - 연쇄 비활성 상태에서 즉시 swap op 전송 (M1 동작 복원 — 과제 Q-2 ①)
+      if (cand.kind === "swap") {
+        await handleApplyDirectMove(
+          pickedSlot.grade,
+          pickedSlot.classNum,
+          pickedSlot.day,
+          pickedSlot.period,
+          day,
+          period
+        );
+        return;
+      }
 
-      // 2. 로컬 그리드에 스왑 적용
+      // 3) 밀어내기 칸 (kind === "displace" — 맞바꿈 불성립 점유 칸에서 수업을 넣고 상대 수업을 듦 — 과제 Q-2 ②):
       const updatedGrids = cloneClassGrids(currentGrids);
       const targetG = updatedGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
-      if (targetG) {
+      if (!targetG) return;
+
+      const parkId = `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      let nextChainSteps: ChainStep[];
+
+      if (chainSteps.length === 0) {
+        // 최초 밀어내기 (연쇄 시작):
+        // steps = [park(목적지), swap(원위치->목적지)]
+        const stepPark: ChainStep = {
+          kind: "park",
+          parkId,
+          grade: viewGrade,
+          classNum: viewClass,
+          day,
+          period,
+        };
+        const stepSwap: ChainStep = {
+          kind: "swap",
+          grade: viewGrade,
+          classNum: viewClass,
+          a: { day: pickedSlot.day, period: pickedSlot.period },
+          b: { day, period },
+        };
+        nextChainSteps = [stepPark, stepSwap];
+
+        // 로컬 미리보기 그리드 갱신: 원위치 비우고 목적지에 내 수업 배치
         let cellA = targetG.cells.find((c) => c.day === pickedSlot.day && c.period === pickedSlot.period);
         let cellB = targetG.cells.find((c) => c.day === day && c.period === period);
         if (!cellA) {
@@ -1496,29 +1601,56 @@ export default function DraftAutoTab({
           cellB = { day, period, lessons: [] };
           targetG.cells.push(cellB);
         }
-        const tmp = cellA.lessons;
-        cellA.lessons = cellB.lessons;
-        cellB.lessons = tmp;
+        cellA.lessons = [];
+        cellB.lessons = [pickedSlot.lesson];
+      } else {
+        // 연쇄 진행 중 추가 밀어내기:
+        // steps = [...이전steps, park(새목적지), unpark(이전parkId->새목적지)]
+        const stepPark: ChainStep = {
+          kind: "park",
+          parkId,
+          grade: viewGrade,
+          classNum: viewClass,
+          day,
+          period,
+        };
+        const stepUnpark: ChainStep = {
+          kind: "unpark",
+          parkId: heldParkId!,
+          grade: viewGrade,
+          classNum: viewClass,
+          day,
+          period,
+        };
+        nextChainSteps = [...chainSteps, stepPark, stepUnpark];
+
+        // 로컬 미리보기 그리드 갱신: 새 목적지에 이전에 들고 있던 수업 배치
+        let cellB = targetG.cells.find((c) => c.day === day && c.period === period);
+        if (!cellB) {
+          cellB = { day, period, lessons: [] };
+          targetG.cells.push(cellB);
+        }
+        cellB.lessons = [pickedSlot.lesson];
       }
 
-      // 3. 밀려난 수업 B가 자동으로 커서에 들림
       const newPicked = {
         grade: viewGrade,
         classNum: viewClass,
-        day: pickedSlot.day,
-        period: pickedSlot.period,
+        day,
+        period,
         lesson,
       };
 
       setOpenDraft((prev) => (prev ? { ...prev, currentGrids: updatedGrids } : null));
       setChainSteps(nextChainSteps);
+      setHeldParkId(parkId);
       setPickedSlot(newPicked);
 
-      // 4. 채점기 자동 재실행
-      const newRes = evaluateMoveCandidates({
+      // 든 카드 기준으로 evaluateHeldCandidates 3색 재계산 (과제 Q-2 ②)
+      const newRes = evaluateHeldCandidates({
         grids: updatedGrids,
         model: openDraft.model,
-        pick: newPicked,
+        held: { grade: viewGrade, classNum: viewClass, lessons: [lesson] },
       });
       setCandidatesResult(newRes);
       setBlockedBubble(null);
@@ -1675,6 +1807,7 @@ export default function DraftAutoTab({
       setCandidatesResult(res);
       setChainSteps([]);
       setChainStartGrids(cloneClassGrids(currentGrids));
+      setHeldParkId(null);
       setBlockedBubble(null);
       return;
     }
@@ -1690,8 +1823,10 @@ export default function DraftAutoTab({
         setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
         setChainSteps([]);
         setChainStartGrids(null);
+        setHeldParkId(null);
       }
       setPickedSlot(null);
+      setHeldParkId(null);
       setCandidatesResult(null);
       setBlockedBubble(null);
       return;
@@ -1702,24 +1837,12 @@ export default function DraftAutoTab({
       return;
     }
 
-    // 빈 칸 이동
-    if (cand.kind === "move") {
-      await handleApplyDirectMove(
-        pickedSlot.grade,
-        pickedSlot.classNum,
-        pickedSlot.day,
-        pickedSlot.period,
-        day,
-        period
-      );
-      return;
-    }
-
-    // 점유 칸: 연쇄 밀어내기 (루미큐브)
     const targetGrid = currentGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
     const targetCell = targetGrid?.cells?.find((c) => c.day === day && c.period === period);
     const targetLesson = targetCell?.lessons?.[0];
-    if (!targetLesson) {
+
+    // 1) 빈 칸 이동 (kind === "move" 또는 수업 없음):
+    if (cand.kind === "move" || !targetLesson) {
       await handleApplyDirectMove(
         pickedSlot.grade,
         pickedSlot.classNum,
@@ -1731,18 +1854,45 @@ export default function DraftAutoTab({
       return;
     }
 
-    const step: ChainStep = {
-      kind: "swap",
-      grade: viewGrade,
-      classNum: viewClass,
-      a: { day: pickedSlot.day, period: pickedSlot.period },
-      b: { day, period },
-    };
-    const nextChainSteps = [...chainSteps, step];
+    // 2) 맞바꿈 가능 점유 칸 (kind === "swap"):
+    if (cand.kind === "swap") {
+      await handleApplyDirectMove(
+        pickedSlot.grade,
+        pickedSlot.classNum,
+        pickedSlot.day,
+        pickedSlot.period,
+        day,
+        period
+      );
+      return;
+    }
 
+    // 3) 밀어내기 칸 (kind === "displace"):
     const updatedGrids = cloneClassGrids(currentGrids);
     const targetG = updatedGrids.find((g) => g.grade === viewGrade && g.classNum === viewClass);
-    if (targetG) {
+    if (!targetG) return;
+
+    const parkId = `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    let nextChainSteps: ChainStep[];
+
+    if (chainSteps.length === 0) {
+      const stepPark: ChainStep = {
+        kind: "park",
+        parkId,
+        grade: viewGrade,
+        classNum: viewClass,
+        day,
+        period,
+      };
+      const stepSwap: ChainStep = {
+        kind: "swap",
+        grade: viewGrade,
+        classNum: viewClass,
+        a: { day: pickedSlot.day, period: pickedSlot.period },
+        b: { day, period },
+      };
+      nextChainSteps = [stepPark, stepSwap];
+
       let cellA = targetG.cells.find((c) => c.day === pickedSlot.day && c.period === pickedSlot.period);
       let cellB = targetG.cells.find((c) => c.day === day && c.period === period);
       if (!cellA) {
@@ -1753,27 +1903,52 @@ export default function DraftAutoTab({
         cellB = { day, period, lessons: [] };
         targetG.cells.push(cellB);
       }
-      const tmp = cellA.lessons;
-      cellA.lessons = cellB.lessons;
-      cellB.lessons = tmp;
+      cellA.lessons = [];
+      cellB.lessons = [pickedSlot.lesson];
+    } else {
+      const stepPark: ChainStep = {
+        kind: "park",
+        parkId,
+        grade: viewGrade,
+        classNum: viewClass,
+        day,
+        period,
+      };
+      const stepUnpark: ChainStep = {
+        kind: "unpark",
+        parkId: heldParkId!,
+        grade: viewGrade,
+        classNum: viewClass,
+        day,
+        period,
+      };
+      nextChainSteps = [...chainSteps, stepPark, stepUnpark];
+
+      let cellB = targetG.cells.find((c) => c.day === day && c.period === period);
+      if (!cellB) {
+        cellB = { day, period, lessons: [] };
+        targetG.cells.push(cellB);
+      }
+      cellB.lessons = [pickedSlot.lesson];
     }
 
     const newPicked = {
       grade: viewGrade,
       classNum: viewClass,
-      day: pickedSlot.day,
-      period: pickedSlot.period,
+      day,
+      period,
       lesson: targetLesson,
     };
 
     setOpenDraft((prev) => (prev ? { ...prev, currentGrids: updatedGrids } : null));
     setChainSteps(nextChainSteps);
+    setHeldParkId(parkId);
     setPickedSlot(newPicked);
 
-    const newRes = evaluateMoveCandidates({
+    const newRes = evaluateHeldCandidates({
       grids: updatedGrids,
       model: openDraft.model,
-      pick: newPicked,
+      held: { grade: viewGrade, classNum: viewClass, lessons: [targetLesson] },
     });
     setCandidatesResult(newRes);
     setBlockedBubble(null);
@@ -2965,8 +3140,10 @@ export default function DraftAutoTab({
                             setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
                             setChainSteps([]);
                             setChainStartGrids(null);
+                            setHeldParkId(null);
                           }
                           setPickedSlot(null);
+                          setHeldParkId(null);
                           setCandidatesResult(null);
                           setBlockedBubble(null);
                         }}
@@ -3104,6 +3281,8 @@ export default function DraftAutoTab({
                                     title={
                                       cand.kind === "swap"
                                         ? `${lesson?.subjectShort || "수업"}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                        : cand.kind === "displace"
+                                        ? `${lesson?.subjectShort || "수업"} 밀어내고 들기 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
                                         : `빈 칸으로 이동 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
                                     }
                                     className="p-2 border-r border-gray-200 bg-emerald-50/80 hover:bg-emerald-100/80 text-gray-800 align-top cursor-pointer select-none transition-colors relative"
@@ -3111,8 +3290,9 @@ export default function DraftAutoTab({
                                     {lesson ? (
                                       <div className="space-y-0.5">
                                         <div className="flex items-start justify-between gap-1">
-                                          <span className="font-bold text-[11px] truncate leading-tight text-emerald-950">
-                                            {lesson.subjectShort || lesson.subjectName}
+                                          <span className="font-bold text-[11px] truncate leading-tight text-emerald-950 flex items-center gap-0.5">
+                                            {cand.kind === "displace" && <span className="text-[10px]" title="밀어내고 들기">✋</span>}
+                                            <span>{lesson.subjectShort || lesson.subjectName}</span>
                                           </span>
                                           <span
                                             className={`shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none ${
@@ -3161,14 +3341,23 @@ export default function DraftAutoTab({
                                       e.preventDefault();
                                       handleCellRightClick(day, period);
                                     }}
-                                    title={worseReason ? `감점 (+${cand.softDelta}점): ${worseReason}` : `감점 +${cand.softDelta}점`}
+                                    title={
+                                      cand.kind === "displace"
+                                        ? worseReason
+                                          ? `밀어내고 들기 감점 (+${cand.softDelta}점): ${worseReason}`
+                                          : `밀어내고 들기 감점 +${cand.softDelta}점`
+                                        : worseReason
+                                        ? `감점 (+${cand.softDelta}점): ${worseReason}`
+                                        : `감점 +${cand.softDelta}점`
+                                    }
                                     className="p-2 border-r border-gray-200 bg-amber-50/80 hover:bg-amber-100/80 text-gray-800 align-top cursor-pointer select-none transition-colors relative"
                                   >
                                     {lesson ? (
                                       <div className="space-y-0.5">
                                         <div className="flex items-start justify-between gap-1">
-                                          <span className="font-bold text-[11px] truncate leading-tight text-amber-950">
-                                            {lesson.subjectShort || lesson.subjectName}
+                                          <span className="font-bold text-[11px] truncate leading-tight text-amber-950 flex items-center gap-0.5">
+                                            {cand.kind === "displace" && <span className="text-[10px]" title="밀어내고 들기">✋</span>}
+                                            <span>{lesson.subjectShort || lesson.subjectName}</span>
                                           </span>
                                           <span className="shrink-0 px-1 py-0.2 rounded font-mono text-[9px] font-extrabold leading-none bg-amber-500 text-white shadow-2xs">
                                             +{cand.softDelta}
@@ -3427,12 +3616,17 @@ export default function DraftAutoTab({
                                       className="p-1 border-r border-gray-100 bg-emerald-50/80 hover:bg-emerald-100/80 text-emerald-950 font-bold cursor-pointer select-none text-[10px] transition-colors"
                                       title={
                                         hit
-                                          ? `${hit.grade}-${hit.classNum} ${hit.subjectName}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                          ? cand.kind === "displace"
+                                            ? `${hit.grade}-${hit.classNum} ${hit.subjectName} 밀어내고 들기 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
+                                            : `${hit.grade}-${hit.classNum} ${hit.subjectName}과 맞교환 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
                                           : `빈 칸으로 이동 (${cand.softDelta < 0 ? `${cand.softDelta}점 개선` : "점수 유지"})`
                                       }
                                     >
                                       <div className="flex items-center justify-between gap-0.5">
-                                        <span className="truncate">{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
+                                        <span className="truncate flex items-center gap-0.5">
+                                          {cand.kind === "displace" && <span className="text-[9px]" title="밀어내고 들기">✋</span>}
+                                          <span>{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
+                                        </span>
                                         <span
                                           className={`px-1 py-0.2 rounded font-mono text-[8px] font-extrabold leading-none ${
                                             cand.softDelta < 0
@@ -3454,10 +3648,21 @@ export default function DraftAutoTab({
                                       key={d}
                                       onClick={() => handleTeacherCellClick(d, p)}
                                       className="p-1 border-r border-gray-100 bg-amber-50/80 hover:bg-amber-100/80 text-amber-950 font-bold cursor-pointer select-none text-[10px] transition-colors"
-                                      title={worseReason ? `감점 (+${cand.softDelta}점): ${worseReason}` : `감점 +${cand.softDelta}점`}
+                                      title={
+                                        cand.kind === "displace"
+                                          ? worseReason
+                                            ? `밀어내고 들기 감점 (+${cand.softDelta}점): ${worseReason}`
+                                            : `밀어내고 들기 감점 +${cand.softDelta}점`
+                                          : worseReason
+                                          ? `감점 (+${cand.softDelta}점): ${worseReason}`
+                                          : `감점 +${cand.softDelta}점`
+                                      }
                                     >
                                       <div className="flex items-center justify-between gap-0.5">
-                                        <span className="truncate">{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
+                                        <span className="truncate flex items-center gap-0.5">
+                                          {cand.kind === "displace" && <span className="text-[9px]" title="밀어내고 들기">✋</span>}
+                                          <span>{hit ? `${hit.grade}-${hit.classNum}` : "—"}</span>
+                                        </span>
                                         <span className="px-1 py-0.2 rounded font-mono text-[8px] font-extrabold leading-none bg-amber-500 text-white">
                                           +{cand.softDelta}
                                         </span>
@@ -3642,12 +3847,26 @@ export default function DraftAutoTab({
                         e.stopPropagation();
                         if (isSelected) {
                           setSelectedParkedEntry(null);
+                          setCandidatesResult(null);
                         } else {
+                          if (chainSteps.length > 0 && chainStartGrids) {
+                            setOpenDraft((prev) => (prev ? { ...prev, currentGrids: chainStartGrids } : null));
+                            setChainSteps([]);
+                            setChainStartGrids(null);
+                            setHeldParkId(null);
+                          }
                           setSelectedParkedEntry(entry);
                           setViewGrade(entry.grade);
                           setViewClass(entry.classNum);
                           setPickedSlot(null);
-                          setCandidatesResult(null);
+                          setHeldParkId(null);
+                          const res = evaluateHeldCandidates({
+                            grids: openDraft.currentGrids,
+                            model: openDraft.model,
+                            held: { grade: entry.grade, classNum: entry.classNum, lessons: entry.lessons },
+                          });
+                          setCandidatesResult(res);
+                          setBlockedBubble(null);
                         }
                       }}
                       className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-2xs ${
